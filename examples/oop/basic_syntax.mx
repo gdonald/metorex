@@ -1,0 +1,17 @@
+def setup_runtime
+  log "Runtime starting"
+end
+
+class Dog < Animal
+  def init(name, breed)
+    @name = name
+    @breed = breed
+  end
+
+  def bark
+    puts "#{@name} says woof!"
+  end
+end
+
+dog = Dog.new("Fido", "Labrador")
+dog.bark

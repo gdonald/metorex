@@ -1,0 +1,47 @@
+class Book
+  def initialize(title)
+    @title = title
+  end
+
+  def to_s
+    "Book: " + @title
+  end
+
+  def inspect
+    "Book(title=" + @title + ")"
+  end
+end
+
+class Magazine
+  def initialize(name)
+    @name = name
+  end
+
+  def inspect
+    "Magazine: " + @name
+  end
+end
+
+class SimpleIterator
+  def initialize
+    @value = 0
+  end
+
+  def each
+    self
+  end
+
+  def next
+    "next_value"
+  end
+end
+
+book = Book.new("Python Guide")
+puts book
+
+magazine = Magazine.new("Tech Monthly")
+puts magazine
+
+it = SimpleIterator.new
+iterator = it.each
+puts iterator.next

@@ -1,6 +1,14 @@
-# METOREX Programming Language
+# Metorex Programming Language
 
 **METOREX** (**M**eta **O**bject **R**untime **E**xecution) is a modern, production-ready programming language that combines the expressiveness of Ruby and Python with the performance and safety of Rust. It features a unique **Code-as-Object** meta-programming system that exposes the AST as first-class runtime objects, enabling powerful DSL construction and runtime code manipulation.
+
+⚠️ &nbsp;It's still very early in development.
+
+🙂 &nbsp;[PRs](https://github.com/gdonald/metorex/pulls) and [new](https://github.com/gdonald/metorex/issues/new) [issues](https://github.com/gdonald/metorex/issues) are welcome.
+
+###
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/gdonald/metorex/blob/main/LICENSE) [![CI](https://github.com/gdonald/metorex/workflows/CI/badge.svg)](https://github.com/gdonald/metorex/actions) [![codecov](https://codecov.io/gh/gdonald/metorex/graph/badge.svg?token=GQ4LA1VMRE)](https://codecov.io/gh/gdonald/metorex)
 
 ## Project Status
 
@@ -12,8 +20,6 @@ METOREX is currently in **active development** following a comprehensive 4-phase
 - **Phase 4**: Advanced features (macros, WebAssembly, functional programming) - *Planned*
 
 See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
-
----
 
 ## Key Features
 
@@ -46,8 +52,6 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Build System**: Incremental compilation, profiles, and optimization
 - **Linter & Formatter**: Code quality and style enforcement
 
----
-
 ## Core Philosophy and Identity
 
 | Element                 | Description                                                                                                                       |
@@ -59,96 +63,29 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 | **Typing**              | **Dynamic by default**, with **optional static typing** and gradual type inference                                                |
 | **Performance**         | **Bytecode VM** with **JIT compilation** for hot paths, built on Rust for safety                                                  |
 
----
-
 ## Syntax Overview
 
 METOREX syntax prioritizes readability while minimizing keystrokes, combining elements from Ruby and Python.
 
 ### Basic Syntax
 
-```metorex
-# Function Definition (Zero-argument: no parentheses needed)
-def setup_runtime
-    log "Runtime starting"
-end
-
-# Class Definition with inheritance
-class Dog < Animal
-    def __init__(name, breed)
-        @name = name      # Instance variables use '@' (Ruby convention)
-        @breed = breed
-    end
-
-    def bark
-        puts "#{@name} says woof!"
-    end
-end
-
-# Method call: parentheses are optional
-dog = Dog.new("Fido", "Labrador")
-dog.bark
-```
+See [examples/basic_syntax.mx](examples/oop/basic_syntax.mx)
 
 ### Exception Handling
 
-```metorex
-try
-    result = risky_operation()
-catch TypeError as e
-    puts "Type error: #{e.message}"
-catch StandardError as e
-    puts "General error: #{e.message}"
-finally
-    cleanup()
-end
-```
+See [examples/exception_handling.mx](examples/advanced/exception_handling.mx)
 
 ### Pattern Matching
 
-```metorex
-match value
-    when 0
-        puts "Zero"
-    when [a, b, ...rest]
-        puts "Array with first two: #{a}, #{b}"
-    when {x, y}
-        puts "Object with x and y"
-    when _ if condition
-        puts "Wildcard with guard"
-end
-```
+See [examples/pattern_matching.mx](examples/advanced/pattern_matching.mx)
 
 ### Traits (Interfaces)
 
-```metorex
-trait Drawable
-    def draw
-end
-
-class Circle
-    impl Drawable
-        def draw
-            puts "Drawing circle"
-        end
-    end
-end
-```
+See [examples/traits.mx](examples/advanced/traits.mx)
 
 ### Optional Type Annotations
 
-```metorex
-def calculate(x: Int, y: Int): Int
-    return x + y
-end
-
-# Type inference still works without annotations
-def multiply(a, b)
-    a * b  # Types inferred from usage
-end
-```
-
----
+See [examples/type_annotations.mx](examples/advanced/type_annotations.mx)
 
 ## Meta-Programming: The Core Innovation
 
@@ -168,51 +105,15 @@ The parser converts source code into an in-memory graph of objects, defined in t
 
 Methods can accept code blocks as objects.
 
-```metorex
-# 'block' is an instance of BlockStatement, passed automatically
-def custom_wrapper(name, block)
-    puts "Starting: #{name}"
-
-    # Executes the code stored in the block object
-    block.call
-
-    puts "Finished: #{name}"
-end
-
-custom_wrapper "Network Fetch" do
-    Network.fetch "data.json"
-end
-```
+See [examples/implicit_block_capture.mx](examples/advanced/implicit_block_capture.mx)
 
 ### Dynamic Method Definition
 
-```metorex
-# Define methods at runtime
-MyClass.define_method("greet") do
-    puts "Hello from dynamically defined method!"
-end
-
-# Inspect method source
-source = obj.get_source("greet")
-puts source.statements  # Access AST nodes
-```
+See [examples/dynamic_method_definition.mx](examples/advanced/dynamic_method_definition.mx)
 
 ### Building DSLs
 
-```metorex
-# Example: Test Framework DSL
-describe "Calculator" do
-    it "adds numbers" do
-        expect(Calculator.add(2, 3)).to_equal(5)
-    end
-
-    it "multiplies numbers" do
-        expect(Calculator.multiply(4, 5)).to_equal(20)
-    end
-end
-```
-
----
+See [examples/dsl_example.mx](examples/advanced/dsl_example.mx)
 
 ## Architecture
 
@@ -239,67 +140,33 @@ end
    - Algebraic data types and functional features
    - WebAssembly compilation target
    - Security features and sandboxing
+   
+   ## Design Principles
 
----
-
-## Design Principles
-
-| Principle             | Implementation                                                                                               |
-| :-------------------- | :----------------------------------------------------------------------------------------------------------- |
-| **Syntax Simplicity** | Non-whitespace sensitive with mandatory `end` blocks. No colons, optional parentheses.                       |
-| **OO Purity**         | Everything is an object rooted in `Object` class. No standalone functions.                                   |
-| **Meta-First**        | AST is always accessible as first-class objects. Code can inspect and modify itself.                         |
-| **Gradual Typing**    | Dynamic by default, optional static types for performance. Best of both worlds.                              |
-| **Performance**       | Rust-based VM with bytecode compilation and JIT for hot paths.                                               |
-| **Safety**            | Exception handling, memory safety from Rust, optional sandboxing.                                            |
-| **Concurrency**       | Multiple models: fibers, async/await, OS threads, channels. Choose the right tool.                           |
-| **Productivity**      | Built-in testing, documentation, linting, formatting. Everything you need included.                          |
-
----
+| Principle             | Implementation                                                                         |
+| :-------------------- | :------------------------------------------------------------------------------------- |
+| **Syntax Simplicity** | Non-whitespace sensitive with mandatory `end` blocks. No colons, optional parentheses. |
+| **OO Purity**         | Everything is an object rooted in `Object` class. No standalone functions.             |
+| **Meta-First**        | AST is always accessible as first-class objects. Code can inspect and modify itself.   |
+| **Gradual Typing**    | Dynamic by default, optional static types for performance. Best of both worlds.        |
+| **Performance**       | Rust-based VM with bytecode compilation and JIT for hot paths.                         |
+| **Safety**            | Exception handling, memory safety from Rust, optional sandboxing.                      |
+| **Concurrency**       | Multiple models: fibers, async/await, OS threads, channels. Choose the right tool.     |
+| **Productivity**      | Built-in testing, documentation, linting, formatting. Everything you need included.    |
 
 ## Standard Library Highlights
 
 ### Networking
-```metorex
-# HTTP Client
-response = HTTP.get("https://api.example.com/data")
-puts response.body
 
-# HTTP Server
-server = HTTPServer.new(port: 3000)
-server.route "/hello" do |request|
-    Response.new(body: "Hello, World!")
-end
-server.start
-```
+See [examples/networking.mx](examples/advanced/networking.mx)
 
 ### Concurrency
-```metorex
-# Channels for communication
-channel = Channel.new
 
-# Spawn threads
-thread = Thread.new do
-    result = expensive_computation()
-    channel.send(result)
-end
-
-result = channel.receive
-puts "Got result: #{result}"
-```
+See [examples/concurrency.mx](examples/advanced/concurrency.mx)
 
 ### Serialization
-```metorex
-# JSON
-data = {name: "Atlas", age: 30}
-json = JSON.encode(data)
-parsed = JSON.decode(json)
 
-# YAML
-yaml = YAML.encode(data)
-```
-
----
+See [examples/serialization.mx](examples/advanced/serialization.mx)
 
 ## Roadmap Highlights
 
@@ -336,8 +203,6 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Security and sandboxing
 - Advanced tooling (profilers, static analysis)
 
----
-
 ## Contributing
 
 METOREX is in active development. We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
@@ -359,13 +224,9 @@ cargo test
 cargo run
 ```
 
----
-
 ## License
 
 See [LICENSE](LICENSE) for details.
-
----
 
 ## Why METOREX?
 
@@ -378,7 +239,5 @@ See [LICENSE](LICENSE) for details.
 **For Functional Enthusiasts**: Optional algebraic data types, immutable structures, and functional patterns.
 
 **For Pragmatists**: One language that adapts to your needs - from quick scripts to production systems.
-
----
 
 **METOREX: Where meta-programming meets production-ready performance.**

@@ -1,0 +1,9 @@
+describe "Calculator" do
+  it "adds numbers" do
+    expect(Calculator.add(2, 3)).to_equal(5)
+  end
+
+  it "multiplies numbers" do
+    expect(Calculator.multiply(4, 5)).to_equal(20)
+  end
+end

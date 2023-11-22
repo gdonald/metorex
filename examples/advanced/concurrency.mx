@@ -1,0 +1,9 @@
+channel = Channel.new
+
+thread = Thread.new do
+  result = expensive_computation()
+  channel.send(result)
+end
+
+result = channel.receive
+puts "Got result: #{result}"

@@ -1,0 +1,9 @@
+try
+  result = risky_operation()
+catch TypeError as e
+  puts "Type error: #{e.message}"
+catch StandardError as e
+  puts "General error: #{e.message}"
+finally
+  cleanup()
+end

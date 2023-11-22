@@ -1,0 +1,6 @@
+MyClass.define_method("greet") do
+  puts "Hello from dynamically defined method!"
+end
+
+source = obj.get_source("greet")
+puts source.statements

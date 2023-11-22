@@ -1,0 +1,5 @@
+data = {name: "Atlas", age: 30}
+json = JSON.encode(data)
+parsed = JSON.decode(json)
+
+yaml = YAML.encode(data)

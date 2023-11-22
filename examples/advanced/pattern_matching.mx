@@ -1,0 +1,10 @@
+match value
+  when 0
+    puts "Zero"
+  when [a, b, ...rest]
+    puts "Array with first two: #{a}, #{b}"
+  when {x, y}
+    puts "Object with x and y"
+  when _ if condition
+    puts "Wildcard with guard"
+end

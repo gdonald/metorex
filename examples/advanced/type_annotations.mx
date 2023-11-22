@@ -1,0 +1,7 @@
+def calculate(x: Int, y: Int): Int
+  return x + y
+end
+
+def multiply(a, b)
+  a * b  # Types inferred from usage
+end

@@ -1,0 +1,11 @@
+trait Drawable
+  def draw
+end
+
+class Circle
+  impl Drawable
+    def draw
+        puts "Drawing circle"
+    end
+  end
+end

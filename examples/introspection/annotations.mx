@@ -1,0 +1,21 @@
+def add(x, y)  # int, int -> int
+  x + y
+end
+
+def greet(name)  # str -> str
+  "Hello, " + name
+end
+
+def process(data, count, flag)  # str, int, bool
+  data
+end
+
+puts "add.__annotations__ = #{method(:add).parameters}"
+puts "greet.__annotations__ = #{method(:greet).parameters}"
+puts "process.__annotations__ = #{method(:process).parameters}"
+
+def no_annotations(a, b)
+  a + b
+end
+
+puts "no_annotations.__annotations__ = #{method(:no_annotations).parameters}"

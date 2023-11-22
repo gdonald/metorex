@@ -1,0 +1,7 @@
+class Test
+  def initialize
+    puts "init called"
+  end
+end
+
+t = Test.new
