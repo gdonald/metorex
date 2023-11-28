@@ -4,11 +4,17 @@
 
 # Get the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SRC_DIR="$SCRIPT_DIR/../src"
+PROJECT_ROOT="$SCRIPT_DIR/.."
 
-# Check if src directory exists
-if [ ! -d "$SRC_DIR" ]; then
-  echo "Error: $SRC_DIR does not exist"
+# Find all src directories in workspace crates
+SRC_DIRS=()
+while IFS= read -r src_dir; do
+  SRC_DIRS+=("$src_dir")
+done < <(find "$PROJECT_ROOT" -type d -name "src" -path "*/*/src" | grep -E "(core|runtime|cli)/src" | sort)
+
+# Check if any src directories exist
+if [ "${#SRC_DIRS[@]}" -eq 0 ]; then
+  echo "Error: No src directories found in workspace crates"
   exit 1
 fi
 
@@ -19,15 +25,15 @@ declare -a counts
 while IFS= read -r file; do
   if [ -f "$file" ]; then
     line_count=$(wc -l < "$file")
-    relative_path="${file#$SCRIPT_DIR/../}"
+    relative_path="${file#$PROJECT_ROOT/}"
     files+=("$relative_path")
     counts+=("$line_count")
   fi
-done < <(find "$SRC_DIR" -type f -name "*.rs")
+done < <(for src_dir in "${SRC_DIRS[@]}"; do find "$src_dir" -type f -name "*.rs"; done | sort)
 
 # Check if any files were found
 if [ ${#files[@]} -eq 0 ]; then
-  echo "No Rust files found in $SRC_DIR"
+  echo "No Rust files found in workspace crates"
   exit 0
 fi
 

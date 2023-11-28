@@ -6,12 +6,12 @@
 
 ### 1. Project Setup and Infrastructure
 
-- [ ] **1.1. Initialize Rust Project**
-  - [ ] 1.1.1. Run `cargo init metorex`
-  - [ ] 1.1.2. Create workspace with `core`, `runtime`, and `cli` crates
-  - [ ] 1.1.3. Configure `Cargo.toml` with dependencies (clap, thiserror, etc.)
-  - [ ] 1.1.4. Set up `.gitignore` for Rust projects
-  - [ ] 1.1.5. Create `LICENSE` and `CONTRIBUTING.md`
+- [x] **1.1. Initialize Rust Project**
+  - [x] 1.1.1. Run `cargo init metorex`
+  - [x] 1.1.2. Create workspace with `core`, `runtime`, and `cli` crates
+  - [x] 1.1.3. Configure `Cargo.toml` with dependencies (clap, thiserror, etc.)
+  - [x] 1.1.4. Set up `.gitignore` for Rust projects
+  - [x] 1.1.5. Create `LICENSE` and `CONTRIBUTING.md`
 
 - [ ] **1.2. Error Handling Foundation**
   - [ ] 1.2.1. Define `MetorexError` enum in `core/src/error.rs`

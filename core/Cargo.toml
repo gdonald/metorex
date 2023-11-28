@@ -1,0 +1,11 @@
+[package]
+name = "metorex-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+logos.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]

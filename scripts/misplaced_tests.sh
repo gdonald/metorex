@@ -8,11 +8,16 @@
 # Get the script directory and project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
-SRC_DIR="$PROJECT_ROOT/src"
 
-# Check if src directory exists
-if [ ! -d "$SRC_DIR" ]; then
-  echo "Error: $SRC_DIR directory not found"
+# Find all src directories in workspace crates
+SRC_DIRS=()
+while IFS= read -r src_dir; do
+  SRC_DIRS+=("$src_dir")
+done < <(find "$PROJECT_ROOT" -type d -name "src" -path "*/*/src" | grep -E "(core|runtime|cli)/src" | sort)
+
+# Check if any src directories exist
+if [ "${#SRC_DIRS[@]}" -eq 0 ]; then
+  echo "Error: No src directories found in workspace crates"
   exit 1
 fi
 
@@ -60,7 +65,7 @@ while IFS= read -r file; do
     if [ -n "$line" ]; then
       test_names+=("$line")
     fi
-  done < <(echo "$content" | grep -A 1 '#\[test\]' | grep -oP 'fn\s+\K\w+' || true)
+  done < <(echo "$content" | grep -A 1 '#\[test\]' | grep -o 'fn [a-zA-Z_][a-zA-Z0-9_]*' | sed 's/fn //' || true)
 
   # Store file info
   relative_path="${file#$PROJECT_ROOT/}"
@@ -69,7 +74,7 @@ while IFS= read -r file; do
   total_tests=$((total_tests + test_count))
   files_with_tests=$((files_with_tests + 1))
 
-done < <(find "$SRC_DIR" -type f -name "*.rs" | sort)
+done < <(for src_dir in "${SRC_DIRS[@]}"; do find "$src_dir" -type f -name "*.rs"; done | sort)
 
 # Output results
 if [ "$files_with_tests" -gt 0 ]; then
