@@ -1,9 +1,9 @@
-try
+begin
   result = risky_operation()
-catch TypeError as e
+rescue TypeError => e
   puts "Type error: #{e.message}"
-catch StandardError as e
+rescue StandardError => e
   puts "General error: #{e.message}"
-finally
+ensure
   cleanup()
 end

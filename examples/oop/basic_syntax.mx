@@ -3,7 +3,7 @@ def setup_runtime
 end
 
 class Dog < Animal
-  def init(name, breed)
+  def initialize(name, breed)
     @name = name
     @breed = breed
   end

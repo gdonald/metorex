@@ -1,11 +1,12 @@
-trait Drawable
+module Drawable
   def draw
+  end
 end
 
 class Circle
-  impl Drawable
-    def draw
-        puts "Drawing circle"
-    end
+  include Drawable
+
+  def draw
+    puts "Drawing circle"
   end
 end
