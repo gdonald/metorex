@@ -1,6 +1,6 @@
 // Tests for Metorex error handling foundation
 
-use metorex_core::error::{MetorexError, SourceLocation, StackFrame, reporting};
+use metorex::error::{MetorexError, SourceLocation, StackFrame, reporting};
 
 #[test]
 fn test_source_location_display() {

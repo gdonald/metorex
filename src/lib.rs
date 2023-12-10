@@ -1,0 +1,9 @@
+// Metorex Programming Language
+// A modern, Ruby-inspired language with powerful metaprogramming capabilities
+
+pub mod error;
+pub mod runtime;
+
+pub fn version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}

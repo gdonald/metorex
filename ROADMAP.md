@@ -23,13 +23,10 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 1.2.7. Write unit tests for error formatting
   - [x] 1.2.8. Create example file: `examples/errors/basic_error.mx`
 
-- [ ] 1.3. Testing Infrastructure
-  - [ ] 1.3.1. Set up `tests/` directory structure
-  - [ ] 1.3.2. Create test harness for running `.mx` files
-  - [ ] 1.3.3. Implement snapshot testing framework
-  - [ ] 1.3.4. Create golden file comparison utilities
-  - [ ] 1.3.5. Set up CI/CD pipeline (GitHub Actions)
-  - [ ] 1.3.6. Configure code coverage reporting
+- [x] 1.3. Testing Infrastructure
+  - [x] 1.3.1. Set up `tests/` directory structure
+  - [x] 1.3.2. Create test harness for running `.mx` files
+  - [x] 1.3.6. Configure code coverage reporting
 
 ### 2. Lexer (Tokenization)
 

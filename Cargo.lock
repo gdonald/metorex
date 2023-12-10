@@ -235,29 +235,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "metorex-cli"
+name = "metorex"
 version = "0.1.0"
 dependencies = [
  "clap",
- "metorex-core",
- "metorex-runtime",
-]
-
-[[package]]
-name = "metorex-core"
-version = "0.1.0"
-dependencies = [
- "logos",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "metorex-runtime"
-version = "0.1.0"
-dependencies = [
  "inkwell",
  "libc",
- "metorex-core",
+ "logos",
+ "thiserror 2.0.17",
 ]
 
 [[package]]
