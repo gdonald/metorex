@@ -8,13 +8,13 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 - [x] 1.1. Initialize Rust Project
   - [x] 1.1.1. Run `cargo init metorex`
-  - [x] 1.1.2. Create workspace with `core`, `runtime`, and `cli` crates
+  - [x] 1.1.2. Create single crate with `src/` and `tests/` directories
   - [x] 1.1.3. Configure `Cargo.toml` with dependencies (clap, thiserror, etc.)
   - [x] 1.1.4. Set up `.gitignore` for Rust projects
   - [x] 1.1.5. Create `LICENSE` and `CONTRIBUTING.md`
 
 - [x] 1.2. Error Handling Foundation
-  - [x] 1.2.1. Define `MetorexError` enum in `core/src/error.rs`
+  - [x] 1.2.1. Define `MetorexError` enum in `src/error.rs`
   - [x] 1.2.2. Implement `SyntaxError` variant with line/column info
   - [x] 1.2.3. Implement `RuntimeError` variant with stack trace support
   - [x] 1.2.4. Implement `TypeError` variant for type mismatches
@@ -31,7 +31,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 ### 2. Lexer (Tokenization)
 
 - [ ] 2.1. Token Type Definitions
-  - [ ] 2.1.1. Define `Token` enum in `core/src/lexer/token.rs`
+  - [ ] 2.1.1. Define `Token` enum in `src/lexer/token.rs`
   - [ ] 2.1.2. Add keyword tokens (`Def`, `Class`, `If`, `Else`, `While`, `End`, `Do`)
   - [ ] 2.1.3. Add literal tokens (`Int`, `Float`, `String`, `True`, `False`, `Nil`)
   - [ ] 2.1.4. Add identifier token (`Ident`)
@@ -42,7 +42,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 2.1.9. Implement `Display` for tokens
 
 - [ ] 2.2. Lexer Core Implementation
-  - [ ] 2.2.1. Create `Lexer` struct in `core/src/lexer/mod.rs`
+  - [ ] 2.2.1. Create `Lexer` struct in `src/lexer/mod.rs`
   - [ ] 2.2.2. Implement character stream with lookahead
   - [ ] 2.2.3. Implement `advance()` and `peek()` methods
   - [ ] 2.2.4. Track current position (line, column, offset)
@@ -88,7 +88,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 ### 3. Parser and AST Construction
 
 - [ ] 3.1. AST Node Type System
-  - [ ] 3.1.1. Define `Node` trait in `core/src/ast/node.rs`
+  - [ ] 3.1.1. Define `Node` trait in `src/ast/node.rs`
   - [ ] 3.1.2. Define `Statement` trait extending `Node`
   - [ ] 3.1.3. Define `Expression` trait extending `Node`
   - [ ] 3.1.4. Add `accept()` method for visitor pattern support
@@ -210,7 +210,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 ### 4. Runtime Object System
 
 - [ ] 4.1. Core Object Representation
-  - [ ] 4.1.1. Define `Object` enum in `runtime/src/object.rs`
+  - [ ] 4.1.1. Define `Object` enum in `src/object.rs`
   - [ ] 4.1.2. Add `Nil` variant
   - [ ] 4.1.3. Add `Bool(bool)` variant
   - [ ] 4.1.4. Add `Int(i64)` variant
@@ -237,7 +237,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 4.2.8. Create test file: `tests/type_system_tests.rs`
 
 - [ ] 4.3. Class Structure
-  - [ ] 4.3.1. Define `Class` struct in `runtime/src/class.rs`
+  - [ ] 4.3.1. Define `Class` struct in `src/class.rs`
   - [ ] 4.3.2. Add name field
   - [ ] 4.3.3. Add superclass reference (Option<Rc<Class>>)
   - [ ] 4.3.4. Add method table (HashMap<String, Rc<Method>>)
@@ -248,7 +248,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 4.3.9. Create test file: `tests/class_system_tests.rs`
 
 - [ ] 4.4. Instance Structure
-  - [ ] 4.4.1. Define `Instance` struct in `runtime/src/instance.rs`
+  - [ ] 4.4.1. Define `Instance` struct in `src/instance.rs`
   - [ ] 4.4.2. Add class reference
   - [ ] 4.4.3. Add instance variable storage (HashMap<String, Object>)
   - [ ] 4.4.4. Implement instance variable get/set methods
@@ -257,7 +257,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 4.4.7. Create example file: `examples/runtime/instances.mx`
 
 - [ ] 4.5. Method Structure
-  - [ ] 4.5.1. Define `Method` struct in `runtime/src/method.rs`
+  - [ ] 4.5.1. Define `Method` struct in `src/method.rs`
   - [ ] 4.5.2. Add name field
   - [ ] 4.5.3. Add parameter list
   - [ ] 4.5.4. Add body (AST BlockStatement reference)
@@ -267,7 +267,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 4.5.8. Create example file: `examples/runtime/methods.mx`
 
 - [ ] 4.6. Exception Structure
-  - [ ] 4.6.1. Define `Exception` struct in `runtime/src/exception.rs`
+  - [ ] 4.6.1. Define `Exception` struct in `src/exception.rs`
   - [ ] 4.6.2. Add exception message field
   - [ ] 4.6.3. Add exception type/class field
   - [ ] 4.6.4. Add stack trace capture
@@ -300,7 +300,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 ### 5. Scope and Environment Management
 
 - [ ] 5.1. Scope Implementation
-  - [ ] 5.1.1. Define `Scope` struct in `runtime/src/scope.rs`
+  - [ ] 5.1.1. Define `Scope` struct in `src/scope.rs`
   - [ ] 5.1.2. Add variable storage (HashMap<String, Object>)
   - [ ] 5.1.3. Add parent scope reference (Option<Rc<RefCell<Scope>>>)
   - [ ] 5.1.4. Implement `define()` method for new variables
@@ -332,7 +332,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 ### 6. Virtual Machine (AST Interpreter)
 
 - [ ] 6.1. VM Core Structure
-  - [ ] 6.1.1. Define `VirtualMachine` struct in `runtime/src/vm.rs`
+  - [ ] 6.1.1. Define `VirtualMachine` struct in `src/vm.rs`
   - [ ] 6.1.2. Add environment (scope stack) field
   - [ ] 6.1.3. Add call stack for debugging
   - [ ] 6.1.4. Add global object registry
@@ -376,7 +376,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 6.4.11. Create test file: `tests/method_dispatch_tests.rs`
 
 - [ ] 6.5. Block Execution (Critical Meta-Programming Feature)
-  - [ ] 6.5.1. Define `Callable` trait in `runtime/src/callable.rs`
+  - [ ] 6.5.1. Define `Callable` trait in `src/callable.rs`
   - [ ] 6.5.2. Implement `Callable` for `BlockStatement`
   - [ ] 6.5.3. Implement `BlockStatement::call()` method
   - [ ] 6.5.4. Capture closure scope on block creation
@@ -664,7 +664,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
 ### 11. Bytecode Design and Implementation
 
 - [ ] 11.1. Bytecode Instruction Set
-  - [ ] 11.1.1. Define `OpCode` enum in `core/src/bytecode/opcode.rs`
+  - [ ] 11.1.1. Define `OpCode` enum in `src/bytecode/opcode.rs`
   - [ ] 11.1.2. Add `OP_CONSTANT` (load constant from pool)
   - [ ] 11.1.3. Add `OP_NIL`, `OP_TRUE`, `OP_FALSE`
   - [ ] 11.1.4. Add `OP_POP` (pop from stack)
@@ -697,7 +697,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 11.1.31. Create test file: `tests/opcode_tests.rs`
 
 - [ ] 11.2. Chunk (Bytecode Container)
-  - [ ] 11.2.1. Define `Chunk` struct in `core/src/bytecode/chunk.rs`
+  - [ ] 11.2.1. Define `Chunk` struct in `src/bytecode/chunk.rs`
   - [ ] 11.2.2. Add `code: Vec<u8>` for bytecode
   - [ ] 11.2.3. Add `constants: Vec<Object>` for constant pool
   - [ ] 11.2.4. Add `lines: Vec<usize>` for line number mapping
@@ -709,7 +709,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 11.2.10. Create test file: `tests/chunk_tests.rs`
 
 - [ ] 11.3. Bytecode Disassembler
-  - [ ] 11.3.1. Create disassembler in `core/src/bytecode/disassembler.rs`
+  - [ ] 11.3.1. Create disassembler in `src/bytecode/disassembler.rs`
   - [ ] 11.3.2. Implement instruction formatting
   - [ ] 11.3.3. Show constant values in disassembly
   - [ ] 11.3.4. Show line numbers
@@ -722,7 +722,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
 ### 12. Compiler (AST to Bytecode)
 
 - [ ] 12.1. Compiler Core Structure
-  - [ ] 12.1.1. Define `Compiler` struct in `core/src/compiler/mod.rs`
+  - [ ] 12.1.1. Define `Compiler` struct in `src/compiler/mod.rs`
   - [ ] 12.1.2. Add current chunk reference
   - [ ] 12.1.3. Add scope depth tracking
   - [ ] 12.1.4. Add local variable stack
@@ -955,7 +955,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.5.7. Create test file: `tests/ast_manipulation_tests.rs`
 
 - [ ] 14.6. Trait/Interface System
-  - [ ] 14.6.1. Define `Trait` struct in `runtime/src/trait.rs`
+  - [ ] 14.6.1. Define `Trait` struct in `src/trait.rs`
   - [ ] 14.6.2. Add trait name and method signatures
   - [ ] 14.6.3. Implement trait definition syntax parsing (`trait Drawable ... end`)
   - [ ] 14.6.4. Parse trait method declarations (without implementations)
@@ -1024,7 +1024,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
 ### 16. Module System
 
 - [ ] 16.1. Module Object and Runtime Type
-  - [ ] 16.1.1. Define `Module` runtime type in `runtime/src/module.rs`
+  - [ ] 16.1.1. Define `Module` runtime type in `src/module.rs`
   - [ ] 16.1.2. Add module's own global namespace (symbol table)
   - [ ] 16.1.3. Add module metadata (name, file path, load status)
   - [ ] 16.1.4. Implement `Module::new()` constructor

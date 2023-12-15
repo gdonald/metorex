@@ -30,11 +30,18 @@ Thank you for your interest in contributing to Metorex! This document provides g
 
 ## Project Structure
 
-Metorex is organized as a Cargo workspace with three main crates:
+Metorex is organized as a single Rust crate with the following structure:
 
-- **`core/`** - Core abstractions, types, and fundamental building blocks
-- **`runtime/`** - Runtime execution environment, actor management, and message passing
-- **`cli/`** - Command-line interface tool
+- **`src/`** - Source code
+  - `lib.rs` - Library entry point
+  - `main.rs` - CLI binary entry point
+  - `error.rs` - Error handling and reporting
+  - `runtime.rs` - Runtime execution environment
+- **`tests/`** - Integration tests
+  - `error_test.rs` - Error handling tests
+  - `test_runner.rs` - Example file test harness
+  - `version_test.rs` - Version tests
+- **`examples/`** - Example `.mx` files demonstrating language features
 
 ## Development Guidelines
 
