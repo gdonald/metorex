@@ -2,6 +2,7 @@
 // A modern, Ruby-inspired language with powerful metaprogramming capabilities
 
 pub mod error;
+pub mod lexer;
 pub mod runtime;
 
 pub fn version() -> &'static str {

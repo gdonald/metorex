@@ -30,16 +30,16 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 ### 2. Lexer (Tokenization)
 
-- [ ] 2.1. Token Type Definitions
-  - [ ] 2.1.1. Define `Token` enum in `src/lexer/token.rs`
-  - [ ] 2.1.2. Add keyword tokens (`Def`, `Class`, `If`, `Else`, `While`, `End`, `Do`)
-  - [ ] 2.1.3. Add literal tokens (`Int`, `Float`, `String`, `True`, `False`, `Nil`)
-  - [ ] 2.1.4. Add identifier token (`Ident`)
-  - [ ] 2.1.5. Add operator tokens (`Plus`, `Minus`, `Star`, `Slash`, `Percent`, `Equal`, `EqualEqual`, `BangEqual`, `Less`, `Greater`, `LessEqual`, `GreaterEqual`)
-  - [ ] 2.1.6. Add delimiter tokens (`LParen`, `RParen`, `LBrace`, `RBrace`, `LBracket`, `RBracket`, `Comma`, `Dot`, `Colon`, `Arrow`)
-  - [ ] 2.1.7. Add special tokens (`Newline`, `Semicolon`, `Comment`, `EOF`)
-  - [ ] 2.1.8. Add `TokenKind` and `Token` struct with position info (line, column, offset)
-  - [ ] 2.1.9. Implement `Display` for tokens
+- [x] 2.1. Token Type Definitions
+  - [x] 2.1.1. Define `Token` enum in `src/lexer/token.rs`
+  - [x] 2.1.2. Add keyword tokens (`Def`, `Class`, `If`, `Else`, `While`, `End`, `Do`)
+  - [x] 2.1.3. Add literal tokens (`Int`, `Float`, `String`, `True`, `False`, `Nil`)
+  - [x] 2.1.4. Add identifier token (`Ident`)
+  - [x] 2.1.5. Add operator tokens (`Plus`, `Minus`, `Star`, `Slash`, `Percent`, `Equal`, `EqualEqual`, `BangEqual`, `Less`, `Greater`, `LessEqual`, `GreaterEqual`)
+  - [x] 2.1.6. Add delimiter tokens (`LParen`, `RParen`, `LBrace`, `RBrace`, `LBracket`, `RBracket`, `Comma`, `Dot`, `Colon`, `Arrow`)
+  - [x] 2.1.7. Add special tokens (`Newline`, `Semicolon`, `Comment`, `EOF`)
+  - [x] 2.1.8. Add `TokenKind` and `Token` struct with position info (line, column, offset)
+  - [x] 2.1.9. Implement `Display` for tokens
 
 - [ ] 2.2. Lexer Core Implementation
   - [ ] 2.2.1. Create `Lexer` struct in `src/lexer/mod.rs`
