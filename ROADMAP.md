@@ -41,14 +41,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.1.8. Add `TokenKind` and `Token` struct with position info (line, column, offset)
   - [x] 2.1.9. Implement `Display` for tokens
 
-- [ ] 2.2. Lexer Core Implementation
-  - [ ] 2.2.1. Create `Lexer` struct in `src/lexer/mod.rs`
-  - [ ] 2.2.2. Implement character stream with lookahead
-  - [ ] 2.2.3. Implement `advance()` and `peek()` methods
-  - [ ] 2.2.4. Track current position (line, column, offset)
-  - [ ] 2.2.5. Implement whitespace skipping (not significant)
-  - [ ] 2.2.6. Implement comment handling (# to end of line)
-  - [ ] 2.2.7. Create `next_token()` method skeleton
+- [x] 2.2. Lexer Core Implementation
+  - [x] 2.2.1. Create `Lexer` struct in `src/lexer/mod.rs`
+  - [x] 2.2.2. Implement character stream with lookahead
+  - [x] 2.2.3. Implement `advance()` and `peek()` methods
+  - [x] 2.2.4. Track current position (line, column, offset)
+  - [x] 2.2.5. Implement whitespace skipping (not significant)
+  - [x] 2.2.6. Implement comment handling (# to end of line)
+  - [x] 2.2.7. Create `next_token()` method skeleton
 
 - [ ] 2.3. Literal Tokenization
   - [ ] 2.3.1. Implement integer literal parsing
