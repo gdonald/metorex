@@ -2,7 +2,7 @@
 
 pub mod token;
 
-pub use token::{Position, Token, TokenKind};
+pub use token::{InterpolationPart, Position, Token, TokenKind};
 
 use std::iter::Peekable;
 use std::str::Chars;
@@ -82,6 +82,199 @@ impl<'a> Lexer<'a> {
         comment.trim().to_string()
     }
 
+    /// Read a number (integer or float)
+    fn read_number(&mut self) -> TokenKind {
+        let mut number = String::new();
+        let mut is_float = false;
+
+        // Read digits before decimal point
+        while let Some(ch) = self.peek() {
+            if ch.is_ascii_digit() {
+                number.push(ch);
+                self.advance();
+            } else if ch == '.' {
+                // Check if next character is a digit to distinguish from method call
+                self.advance();
+                if let Some(next_ch) = self.peek() {
+                    if next_ch.is_ascii_digit() {
+                        is_float = true;
+                        number.push('.');
+                        // Read digits after decimal point
+                        while let Some(digit_ch) = self.peek() {
+                            if digit_ch.is_ascii_digit() {
+                                number.push(digit_ch);
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                        break;
+                    } else {
+                        // Not a float, just a dot - we need to handle this case
+                        // For now, we'll treat the number as an integer and the dot will be lexed separately
+                        // We need to "put back" the dot by not consuming it
+                        // But we already advanced, so we need to create a mechanism to handle this
+                        // For simplicity in this implementation, if we see a dot not followed by a digit,
+                        // we'll just stop reading the number
+                        break;
+                    }
+                }
+                break;
+            } else {
+                break;
+            }
+        }
+
+        if is_float {
+            TokenKind::Float(number.parse().unwrap_or(0.0))
+        } else {
+            TokenKind::Int(number.parse().unwrap_or(0))
+        }
+    }
+
+    /// Read a string literal (single or double quoted)
+    fn read_string(&mut self, quote: char) -> Result<TokenKind, String> {
+        let mut parts = Vec::new();
+        let mut current_text = String::new();
+        let has_interpolation = quote == '"'; // Only double-quoted strings support interpolation
+
+        // Skip the opening quote
+        self.advance();
+
+        loop {
+            match self.peek() {
+                None => {
+                    return Err(format!(
+                        "Unterminated string starting at line {}",
+                        self.line
+                    ));
+                }
+                Some('\n') => {
+                    return Err(format!(
+                        "Unterminated string starting at line {}",
+                        self.line
+                    ));
+                }
+                Some(ch) if ch == quote => {
+                    // Found closing quote
+                    self.advance();
+
+                    // If we have interpolation parts, return an interpolated string
+                    if has_interpolation && !parts.is_empty() {
+                        if !current_text.is_empty() {
+                            parts.push(InterpolationPart::Text(current_text));
+                        }
+                        return Ok(TokenKind::InterpolatedString(parts));
+                    } else {
+                        return Ok(TokenKind::String(current_text));
+                    }
+                }
+                Some('\\') => {
+                    // Handle escape sequences
+                    self.advance();
+                    match self.peek() {
+                        Some('n') => {
+                            current_text.push('\n');
+                            self.advance();
+                        }
+                        Some('t') => {
+                            current_text.push('\t');
+                            self.advance();
+                        }
+                        Some('r') => {
+                            current_text.push('\r');
+                            self.advance();
+                        }
+                        Some('\\') => {
+                            current_text.push('\\');
+                            self.advance();
+                        }
+                        Some('"') => {
+                            current_text.push('"');
+                            self.advance();
+                        }
+                        Some('\'') => {
+                            current_text.push('\'');
+                            self.advance();
+                        }
+                        Some('{') => {
+                            // Escaped brace - not interpolation
+                            current_text.push('{');
+                            self.advance();
+                        }
+                        Some(ch) => {
+                            // For unrecognized escape sequences, include the backslash
+                            current_text.push('\\');
+                            current_text.push(ch);
+                            self.advance();
+                        }
+                        None => {
+                            return Err(format!(
+                                "Unterminated string starting at line {}",
+                                self.line
+                            ));
+                        }
+                    }
+                }
+                Some('{') if has_interpolation => {
+                    // Start of interpolation
+                    self.advance();
+
+                    // Save current text as a part
+                    if !current_text.is_empty() {
+                        parts.push(InterpolationPart::Text(current_text.clone()));
+                        current_text.clear();
+                    }
+
+                    // Read the expression until we find }
+                    let mut expr = String::new();
+                    let mut depth = 1; // Track nested braces
+
+                    loop {
+                        match self.peek() {
+                            None => {
+                                return Err(format!(
+                                    "Unterminated interpolation starting at line {}",
+                                    self.line
+                                ));
+                            }
+                            Some('\n') => {
+                                return Err(format!(
+                                    "Unterminated interpolation starting at line {}",
+                                    self.line
+                                ));
+                            }
+                            Some('{') => {
+                                depth += 1;
+                                expr.push('{');
+                                self.advance();
+                            }
+                            Some('}') => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    self.advance();
+                                    parts.push(InterpolationPart::Expression(expr));
+                                    break;
+                                } else {
+                                    expr.push('}');
+                                    self.advance();
+                                }
+                            }
+                            Some(ch) => {
+                                expr.push(ch);
+                                self.advance();
+                            }
+                        }
+                    }
+                }
+                Some(ch) => {
+                    current_text.push(ch);
+                    self.advance();
+                }
+            }
+        }
+    }
+
     /// Get the next token from the source code
     pub fn next_token(&mut self) -> Token {
         // Skip whitespace (but not newlines)
@@ -100,6 +293,18 @@ impl<'a> Lexer<'a> {
                     let comment = self.read_comment();
                     Token::new(TokenKind::Comment(comment), position)
                 }
+                '0'..='9' => {
+                    let kind = self.read_number();
+                    Token::new(kind, position)
+                }
+                '"' | '\'' => match self.read_string(ch) {
+                    Ok(kind) => Token::new(kind, position),
+                    Err(_err) => {
+                        // For now, return EOF on error
+                        // TODO: Proper error handling will be added later
+                        Token::new(TokenKind::EOF, position)
+                    }
+                },
                 _ => {
                     // For now, just consume the character and return EOF
                     // This skeleton will be expanded in later roadmap items

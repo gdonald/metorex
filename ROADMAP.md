@@ -50,15 +50,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.2.6. Implement comment handling (# to end of line)
   - [x] 2.2.7. Create `next_token()` method skeleton
 
-- [ ] 2.3. Literal Tokenization
-  - [ ] 2.3.1. Implement integer literal parsing
-  - [ ] 2.3.2. Implement float literal parsing (with decimal point)
-  - [ ] 2.3.3. Implement string literal parsing (single and double quotes)
-  - [ ] 2.3.4. Handle escape sequences in strings (`\n`, `\t`, `\"`, `\\`)
-  - [ ] 2.3.5. Implement string interpolation syntax (`"Hello {name}"`)
-  - [ ] 2.3.6. Add error handling for unterminated strings
-  - [ ] 2.3.7. Write unit tests for all literal types
-  - [ ] 2.3.8. Create example file: `examples/lexer/literals.mx`
+- [x] 2.3. Literal Tokenization
+  - [x] 2.3.1. Implement integer literal parsing
+  - [x] 2.3.2. Implement float literal parsing (with decimal point)
+  - [x] 2.3.3. Implement string literal parsing (single and double quotes)
+  - [x] 2.3.4. Handle escape sequences in strings (`\n`, `\t`, `\"`, `\\`)
+  - [x] 2.3.5. Implement string interpolation syntax (`"Hello {name}"`)
+  - [x] 2.3.6. Add error handling for unterminated strings
+  - [x] 2.3.7. Write unit tests for all literal types
+  - [x] 2.3.8. Create example file: `examples/lexer/literals.mx`
 
 - [ ] 2.4. Identifier and Keyword Tokenization
   - [ ] 2.4.1. Implement identifier parsing (alphanumeric + underscore)

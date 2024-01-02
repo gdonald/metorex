@@ -1,0 +1,56 @@
+# Examples of literal tokenization in Metorex
+
+# Integer literals
+42
+0
+12345
+999999999
+
+# Float literals
+3.14
+0.5
+123.456789
+0.001
+
+# String literals with double quotes
+"hello world"
+""
+"test 123"
+"!@#$%^&*()"
+
+# String literals with single quotes
+'single quoted'
+''
+'no interpolation here'
+
+# Escape sequences
+"hello\nworld"
+"tab\there"
+"quote: \"test\""
+'it\'s fine'
+"backslash: \\"
+"multiple\nescapes\ttogether"
+
+# String interpolation (double quotes only)
+"hello {name}"
+"{x} + {y} = {z}"
+"result: {value}"
+"{expression}"
+"complex: {x + y * 2}"
+
+# Single quotes don't support interpolation
+'{this is literal}'
+
+# Escaped braces (not interpolation)
+"\{not interpolated}"
+
+# Mixed literals
+42 "hello"
+3.14 'pi'
+123 45.67 "string" 'text'
+
+# Literals with comments
+42 # an integer
+3.14 # a float
+"hello" # a string
+'world' # another string

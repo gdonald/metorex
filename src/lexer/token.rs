@@ -2,6 +2,13 @@
 
 use std::fmt;
 
+/// Represents a part of an interpolated string
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpolationPart {
+    Text(String),
+    Expression(String), // The expression inside {}
+}
+
 /// Represents the position of a token in the source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Position {
@@ -36,6 +43,7 @@ pub enum TokenKind {
     Int(i64),
     Float(f64),
     String(String),
+    InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
     True,
     False,
     Nil,
@@ -105,6 +113,16 @@ impl fmt::Display for TokenKind {
             TokenKind::Int(n) => write!(f, "{}", n),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
+            TokenKind::InterpolatedString(parts) => {
+                write!(f, "\"")?;
+                for part in parts {
+                    match part {
+                        InterpolationPart::Text(s) => write!(f, "{}", s)?,
+                        InterpolationPart::Expression(e) => write!(f, "{{{}}}", e)?,
+                    }
+                }
+                write!(f, "\"")
+            }
             TokenKind::True => write!(f, "true"),
             TokenKind::False => write!(f, "false"),
             TokenKind::Nil => write!(f, "nil"),
