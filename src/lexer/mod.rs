@@ -132,6 +132,85 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Check if a character can start an identifier (letter or underscore)
+    fn is_identifier_start(ch: char) -> bool {
+        ch.is_ascii_alphabetic() || ch == '_'
+    }
+
+    /// Check if a character can continue an identifier (letter, digit, or underscore)
+    fn is_identifier_continue(ch: char) -> bool {
+        ch.is_ascii_alphanumeric() || ch == '_'
+    }
+
+    /// Read an identifier or keyword
+    fn read_identifier(&mut self) -> TokenKind {
+        let mut ident = String::new();
+
+        // Read identifier characters
+        while let Some(ch) = self.peek() {
+            if Self::is_identifier_continue(ch) {
+                ident.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        // Check if it's a keyword
+        self.keyword_or_identifier(ident)
+    }
+
+    /// Read an instance or class variable (@var or @@var)
+    fn read_variable(&mut self) -> TokenKind {
+        // Skip the first @
+        self.advance();
+
+        // Check if it's a class variable (@@)
+        if self.peek() == Some('@') {
+            self.advance();
+            // Read the identifier part
+            let mut ident = String::new();
+            while let Some(ch) = self.peek() {
+                if Self::is_identifier_continue(ch) {
+                    ident.push(ch);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            TokenKind::ClassVar(ident)
+        } else {
+            // Instance variable (@)
+            let mut ident = String::new();
+            while let Some(ch) = self.peek() {
+                if Self::is_identifier_continue(ch) {
+                    ident.push(ch);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            TokenKind::InstanceVar(ident)
+        }
+    }
+
+    /// Convert a string to a keyword token or identifier
+    fn keyword_or_identifier(&self, ident: String) -> TokenKind {
+        match ident.as_str() {
+            "def" => TokenKind::Def,
+            "class" => TokenKind::Class,
+            "if" => TokenKind::If,
+            "else" => TokenKind::Else,
+            "while" => TokenKind::While,
+            "end" => TokenKind::End,
+            "do" => TokenKind::Do,
+            "true" => TokenKind::True,
+            "false" => TokenKind::False,
+            "nil" => TokenKind::Nil,
+            _ => TokenKind::Ident(ident),
+        }
+    }
+
     /// Read a string literal (single or double quoted)
     fn read_string(&mut self, quote: char) -> Result<TokenKind, String> {
         let mut parts = Vec::new();
@@ -305,6 +384,14 @@ impl<'a> Lexer<'a> {
                         Token::new(TokenKind::EOF, position)
                     }
                 },
+                '@' => {
+                    let kind = self.read_variable();
+                    Token::new(kind, position)
+                }
+                ch if Self::is_identifier_start(ch) => {
+                    let kind = self.read_identifier();
+                    Token::new(kind, position)
+                }
                 _ => {
                     // For now, just consume the character and return EOF
                     // This skeleton will be expanded in later roadmap items

@@ -60,14 +60,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.3.7. Write unit tests for all literal types
   - [x] 2.3.8. Create example file: `examples/lexer/literals.mx`
 
-- [ ] 2.4. Identifier and Keyword Tokenization
-  - [ ] 2.4.1. Implement identifier parsing (alphanumeric + underscore)
-  - [ ] 2.4.2. Create keyword lookup table
-  - [ ] 2.4.3. Distinguish keywords from identifiers
-  - [ ] 2.4.4. Handle instance variables (@ prefix)
-  - [ ] 2.4.5. Handle class variables (@@ prefix)
-  - [ ] 2.4.6. Write unit tests for identifiers and keywords
-  - [ ] 2.4.7. Create example file: `examples/lexer/identifiers.mx`
+- [x] 2.4. Identifier and Keyword Tokenization
+  - [x] 2.4.1. Implement identifier parsing (alphanumeric + underscore)
+  - [x] 2.4.2. Create keyword lookup table
+  - [x] 2.4.3. Distinguish keywords from identifiers
+  - [x] 2.4.4. Handle instance variables (@ prefix)
+  - [x] 2.4.5. Handle class variables (@@ prefix)
+  - [x] 2.4.6. Write unit tests for identifiers and keywords
+  - [x] 2.4.7. Create example file: `examples/lexer/identifiers.mx`
 
 - [ ] 2.5. Operator and Delimiter Tokenization
   - [ ] 2.5.1. Implement single-character operators

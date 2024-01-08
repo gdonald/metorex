@@ -48,8 +48,10 @@ pub enum TokenKind {
     False,
     Nil,
 
-    // Identifier
+    // Identifiers
     Ident(String),
+    InstanceVar(String), // @variable
+    ClassVar(String),    // @@variable
 
     // Operators
     Plus,         // +
@@ -127,8 +129,10 @@ impl fmt::Display for TokenKind {
             TokenKind::False => write!(f, "false"),
             TokenKind::Nil => write!(f, "nil"),
 
-            // Identifier
+            // Identifiers
             TokenKind::Ident(s) => write!(f, "{}", s),
+            TokenKind::InstanceVar(s) => write!(f, "@{}", s),
+            TokenKind::ClassVar(s) => write!(f, "@@{}", s),
 
             // Operators
             TokenKind::Plus => write!(f, "+"),
