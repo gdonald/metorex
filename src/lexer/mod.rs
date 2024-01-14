@@ -392,9 +392,131 @@ impl<'a> Lexer<'a> {
                     let kind = self.read_identifier();
                     Token::new(kind, position)
                 }
+                // Single-character operators and compound operators
+                '+' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::PlusEqual, position)
+                    } else {
+                        Token::new(TokenKind::Plus, position)
+                    }
+                }
+                '-' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::MinusEqual, position)
+                    } else if self.peek() == Some('>') {
+                        self.advance();
+                        Token::new(TokenKind::Arrow, position)
+                    } else {
+                        Token::new(TokenKind::Minus, position)
+                    }
+                }
+                '*' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::StarEqual, position)
+                    } else {
+                        Token::new(TokenKind::Star, position)
+                    }
+                }
+                '/' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::SlashEqual, position)
+                    } else {
+                        Token::new(TokenKind::Slash, position)
+                    }
+                }
+                '%' => {
+                    self.advance();
+                    Token::new(TokenKind::Percent, position)
+                }
+                '=' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::EqualEqual, position)
+                    } else {
+                        Token::new(TokenKind::Equal, position)
+                    }
+                }
+                '!' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::BangEqual, position)
+                    } else {
+                        // For now, return EOF if ! is not followed by =
+                        // TODO: Add Bang token if needed for unary not operator
+                        Token::new(TokenKind::EOF, position)
+                    }
+                }
+                '<' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::LessEqual, position)
+                    } else {
+                        Token::new(TokenKind::Less, position)
+                    }
+                }
+                '>' => {
+                    self.advance();
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::GreaterEqual, position)
+                    } else {
+                        Token::new(TokenKind::Greater, position)
+                    }
+                }
+                // Delimiters
+                '(' => {
+                    self.advance();
+                    Token::new(TokenKind::LParen, position)
+                }
+                ')' => {
+                    self.advance();
+                    Token::new(TokenKind::RParen, position)
+                }
+                '{' => {
+                    self.advance();
+                    Token::new(TokenKind::LBrace, position)
+                }
+                '}' => {
+                    self.advance();
+                    Token::new(TokenKind::RBrace, position)
+                }
+                '[' => {
+                    self.advance();
+                    Token::new(TokenKind::LBracket, position)
+                }
+                ']' => {
+                    self.advance();
+                    Token::new(TokenKind::RBracket, position)
+                }
+                ',' => {
+                    self.advance();
+                    Token::new(TokenKind::Comma, position)
+                }
+                '.' => {
+                    self.advance();
+                    Token::new(TokenKind::Dot, position)
+                }
+                ':' => {
+                    self.advance();
+                    Token::new(TokenKind::Colon, position)
+                }
+                ';' => {
+                    self.advance();
+                    Token::new(TokenKind::Semicolon, position)
+                }
                 _ => {
-                    // For now, just consume the character and return EOF
-                    // This skeleton will be expanded in later roadmap items
+                    // Unknown character, consume and return EOF
                     self.advance();
                     Token::new(TokenKind::EOF, position)
                 }

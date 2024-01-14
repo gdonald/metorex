@@ -66,6 +66,10 @@ pub enum TokenKind {
     Greater,      // >
     LessEqual,    // <=
     GreaterEqual, // >=
+    PlusEqual,    // +=
+    MinusEqual,   // -=
+    StarEqual,    // *=
+    SlashEqual,   // /=
 
     // Delimiters
     LParen,   // (
@@ -147,6 +151,10 @@ impl fmt::Display for TokenKind {
             TokenKind::Greater => write!(f, ">"),
             TokenKind::LessEqual => write!(f, "<="),
             TokenKind::GreaterEqual => write!(f, ">="),
+            TokenKind::PlusEqual => write!(f, "+="),
+            TokenKind::MinusEqual => write!(f, "-="),
+            TokenKind::StarEqual => write!(f, "*="),
+            TokenKind::SlashEqual => write!(f, "/="),
 
             // Delimiters
             TokenKind::LParen => write!(f, "("),

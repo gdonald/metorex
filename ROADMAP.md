@@ -69,13 +69,13 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.4.6. Write unit tests for identifiers and keywords
   - [x] 2.4.7. Create example file: `examples/lexer/identifiers.mx`
 
-- [ ] 2.5. Operator and Delimiter Tokenization
-  - [ ] 2.5.1. Implement single-character operators
-  - [ ] 2.5.2. Implement multi-character operators (`==`, `!=`, `<=`, `>=`, `->`)
-  - [ ] 2.5.3. Implement compound assignment operators (`+=`, `-=`, `*=`, `/=`)
-  - [ ] 2.5.4. Handle operator precedence table preparation
-  - [ ] 2.5.5. Write unit tests for all operators
-  - [ ] 2.5.6. Create example file: `examples/lexer/operators.mx`
+- [x] 2.5. Operator and Delimiter Tokenization
+  - [x] 2.5.1. Implement single-character operators
+  - [x] 2.5.2. Implement multi-character operators (`==`, `!=`, `<=`, `>=`, `->`)
+  - [x] 2.5.3. Implement compound assignment operators (`+=`, `-=`, `*=`, `/=`)
+  - [x] 2.5.4. Handle operator precedence table preparation
+  - [x] 2.5.5. Write unit tests for all operators
+  - [x] 2.5.6. Create example file: `examples/lexer/operators.mx`
 
 - [ ] 2.6. Lexer Integration and Testing
   - [ ] 2.6.1. Implement `Iterator` trait for `Lexer`
