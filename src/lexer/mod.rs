@@ -354,6 +354,40 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Peek at the next token without consuming it
+    pub fn peek_token(&mut self) -> Token {
+        // Save current state
+        let saved_chars = self.chars.clone();
+        let saved_line = self.line;
+        let saved_column = self.column;
+        let saved_offset = self.offset;
+
+        // Get the next token
+        let token = self.next_token();
+
+        // Restore state
+        self.chars = saved_chars;
+        self.line = saved_line;
+        self.column = saved_column;
+        self.offset = saved_offset;
+
+        token
+    }
+
+    /// Collect all tokens from the lexer
+    pub fn tokenize(mut self) -> Vec<Token> {
+        let mut tokens = Vec::new();
+        loop {
+            let token = self.next_token();
+            if token.kind == TokenKind::EOF {
+                tokens.push(token);
+                break;
+            }
+            tokens.push(token);
+        }
+        tokens
+    }
+
     /// Get the next token from the source code
     pub fn next_token(&mut self) -> Token {
         // Skip whitespace (but not newlines)
@@ -523,6 +557,21 @@ impl<'a> Lexer<'a> {
             }
         } else {
             Token::new(TokenKind::EOF, position)
+        }
+    }
+}
+
+/// Iterator implementation for Lexer
+/// This allows using the lexer in for loops and with iterator methods
+impl<'a> Iterator for Lexer<'a> {
+    type Item = Token;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let token = self.next_token();
+        if token.kind == TokenKind::EOF {
+            None
+        } else {
+            Some(token)
         }
     }
 }

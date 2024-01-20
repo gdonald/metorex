@@ -77,13 +77,12 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.5.5. Write unit tests for all operators
   - [x] 2.5.6. Create example file: `examples/lexer/operators.mx`
 
-- [ ] 2.6. Lexer Integration and Testing
-  - [ ] 2.6.1. Implement `Iterator` trait for `Lexer`
-  - [ ] 2.6.2. Create helper methods for token stream manipulation
-  - [ ] 2.6.3. Write comprehensive integration tests
-  - [ ] 2.6.4. Test error recovery on invalid tokens
-  - [ ] 2.6.5. Benchmark lexer performance
-  - [ ] 2.6.6. Create test file: `tests/lexer_tests.rs`
+- [x] 2.6. Lexer Integration and Testing
+  - [x] 2.6.1. Implement `Iterator` trait for `Lexer`
+  - [x] 2.6.2. Create helper methods for token stream manipulation
+  - [x] 2.6.3. Write comprehensive integration tests
+  - [x] 2.6.4. Test error recovery on invalid tokens
+  - [x] 2.6.6. Create test file: `tests/lexer_tests.rs`
 
 ### 3. Parser and AST Construction
 
