@@ -1,6 +1,7 @@
 // Metorex Programming Language
 // A modern, Ruby-inspired language with powerful metaprogramming capabilities
 
+pub mod ast;
 pub mod error;
 pub mod lexer;
 pub mod runtime;

@@ -86,14 +86,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 ### 3. Parser and AST Construction
 
-- [ ] 3.1. AST Node Type System
-  - [ ] 3.1.1. Define `Node` trait in `src/ast/node.rs`
-  - [ ] 3.1.2. Define `Statement` trait extending `Node`
-  - [ ] 3.1.3. Define `Expression` trait extending `Node`
-  - [ ] 3.1.4. Add `accept()` method for visitor pattern support
-  - [ ] 3.1.5. Add `location()` method returning source position
-  - [ ] 3.1.6. Add `children()` method for AST traversal
-  - [ ] 3.1.7. Implement `Debug` and `Display` for AST visualization
+- [x] 3.1. AST Node Type System
+  - [x] 3.1.1. Define `Node` trait in `src/ast/node.rs`
+  - [x] 3.1.2. Define `Statement` trait extending `Node`
+  - [x] 3.1.3. Define `Expression` trait extending `Node`
+  - [x] 3.1.4. Add `accept()` method for visitor pattern support
+  - [x] 3.1.5. Add `location()` method returning source position
+  - [x] 3.1.6. Add `children()` method for AST traversal
+  - [x] 3.1.7. Implement `Debug` and `Display` for AST visualization
 
 - [ ] 3.2. Expression AST Nodes
   - [ ] 3.2.1. Implement `LiteralExpr` (int, float, string, bool, nil)
