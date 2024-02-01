@@ -1,0 +1,223 @@
+# Example expressions demonstrating the AST node types in Metorex
+
+# Integer literals
+42
+0
+-5
+1000000
+
+# Float literals
+3.14
+0.0
+-2.5
+99.999
+
+# String literals
+"hello world"
+'single quoted'
+""
+"with\nescape\tsequences"
+
+# Interpolated strings
+"Hello {name}"
+"Value is {x + y}"
+"Multiple {a} interpolations {b}"
+
+# Boolean literals
+true
+false
+
+# Nil literal
+nil
+
+# Identifiers
+foo
+bar_baz
+_private
+variable123
+CamelCase
+
+# Instance variables
+@name
+@age
+@_private
+@value123
+
+# Class variables
+@@count
+@@shared_state
+@@version
+
+# Binary expressions - arithmetic
+1 + 2
+5 - 3
+4 * 6
+10 / 2
+7 % 3
+
+# Binary expressions - comparison
+x == y
+a != b
+p < q
+r > s
+m <= n
+o >= p
+
+# Binary expressions - assignment
+x = 10
+y += 5
+z -= 3
+a *= 2
+b /= 4
+
+# Unary expressions
++5
+-10
+
+# Grouped expressions
+(1 + 2)
+(x * y)
+((a + b) * (c - d))
+
+# Array literals
+[]
+[1, 2, 3]
+[1, 2, 3, 4, 5]
+["a", "b", "c"]
+[true, false, nil]
+[1, "two", 3.0, true]
+
+# Nested arrays
+[[1, 2], [3, 4]]
+[[], [1], [1, 2]]
+
+# Array indexing
+arr[0]
+arr[i]
+arr[x + 1]
+matrix[i][j]
+
+# Dictionary literals
+{}
+{x: 1, y: 2}
+{name: "Alice", age: 30}
+{"key": "value", "another": "pair"}
+
+# Nested dictionaries
+{outer: {inner: 1}}
+{a: {b: {c: 1}}}
+
+# Method calls
+obj.method()
+obj.property
+receiver.foo(1, 2, 3)
+obj.method(x, y)
+
+# Chained method calls
+obj.method1().method2()
+obj.foo().bar().baz()
+
+# Function calls
+foo()
+bar(1, 2, 3)
+calculate(x, y, z)
+
+# Lambda expressions
+x -> x + 1
+(a, b) -> a + b
+() -> 42
+
+# Complex expressions combining multiple node types
+(x + y) * (a - b)
+arr[i] + arr[j]
+obj.method(x + y, z * w)
+(a > b) == (c < d)
+{x: 1 + 2, y: 3 * 4}
+[x + 1, y * 2, z - 3]
+
+# Mixed expressions with all literal types
+42 + 3.14 * "hello"
+[1, 2.5, "three", true, nil]
+{int: 1, float: 2.5, str: "three", bool: true, nil: nil}
+
+# Expressions with variables
+@instance + @@class
+local_var * @instance_var
+@@class_var / local
+
+# Complex nested expressions
+((x + y) * (a - b)) / ((c + d) - (e * f))
+[1, [2, [3, [4, [5]]]]]
+{a: {b: {c: {d: {e: 1}}}}}
+
+# Expressions with indexing and method calls
+array[0].method()
+obj.arr[i].method(x)
+hash[key].property.method()
+
+# Expressions with lambdas
+map([1, 2, 3], x -> x * 2)
+filter(arr, x -> x > 0)
+reduce(list, (acc, x) -> acc + x)
+
+# Assignment expressions with complex right-hand sides
+x = (a + b) * c
+y = obj.method(1, 2)
+z = arr[i] + arr[j]
+result = {x: 1, y: 2}
+
+# Comparison chains
+a < b
+b <= c
+c == d
+d != e
+e >= f
+f > g
+
+# Arithmetic expression chains
+a + b - c * d / e % f
+x * y + z
+(a + b) * (c + d)
+
+# All operators with literals
+1 + 2 - 3 * 4 / 5 % 6
+10 == 10
+5 != 6
+3 < 4
+7 > 2
+8 <= 8
+9 >= 1
+
+# Grouping for precedence
+(1 + 2) * 3
+1 + (2 * 3)
+((1 + 2) * 3) + 4
+
+# Array indexing with expressions
+arr[i + j]
+arr[x * 2]
+arr[func()]
+arr[obj.method()]
+
+# Method calls with complex arguments
+obj.method(1 + 2, 3 * 4, arr[i])
+foo(bar(baz()))
+calculate((x + y), (a - b), (c * d))
+
+# Dictionary with complex values
+{
+  simple: 1,
+  calculated: x + y,
+  array: [1, 2, 3],
+  nested: {inner: value},
+  method: obj.foo()
+}
+
+# Array with complex elements
+[
+  1 + 2,
+  x * y,
+  obj.method(),
+  [nested, array],
+  {nested: dict}
+]

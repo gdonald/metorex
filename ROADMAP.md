@@ -95,26 +95,26 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.1.6. Add `children()` method for AST traversal
   - [x] 3.1.7. Implement `Debug` and `Display` for AST visualization
 
-- [ ] 3.2. Expression AST Nodes
-  - [ ] 3.2.1. Implement `LiteralExpr` (int, float, string, bool, nil)
-  - [ ] 3.2.2. Implement `IdentifierExpr` (variable reference)
-  - [ ] 3.2.3. Implement `BinaryExpr` (left, operator, right)
-  - [ ] 3.2.4. Implement `UnaryExpr` (operator, operand)
-  - [ ] 3.2.5. Implement `GroupingExpr` (parenthesized expressions)
-  - [ ] 3.2.6. Implement `ArrayLiteralExpr` (`[1, 2, 3]`)
-  - [ ] 3.2.7. Implement `DictLiteralExpr` (`{key: value}`)
-  - [ ] 3.2.8. Implement `IndexExpr` (array/dict access `arr[0]`)
-  - [ ] 3.2.9. Write unit tests for expression nodes
-  - [ ] 3.2.10. Create example file: `examples/parser/expressions.mx`
+- [x] 3.2. Expression AST Nodes
+  - [x] 3.2.1. Implement `LiteralExpr` (int, float, string, bool, nil)
+  - [x] 3.2.2. Implement `IdentifierExpr` (variable reference)
+  - [x] 3.2.3. Implement `BinaryExpr` (left, operator, right)
+  - [x] 3.2.4. Implement `UnaryExpr` (operator, operand)
+  - [x] 3.2.5. Implement `GroupingExpr` (parenthesized expressions)
+  - [x] 3.2.6. Implement `ArrayLiteralExpr` (`[1, 2, 3]`)
+  - [x] 3.2.7. Implement `DictLiteralExpr` (`{key: value}`)
+  - [x] 3.2.8. Implement `IndexExpr` (array/dict access `arr[0]`)
+  - [x] 3.2.9. Write unit tests for expression nodes
+  - [x] 3.2.10. Create example file: `examples/parser/expressions.mx`
 
-- [ ] 3.3. Method Call and Access Expressions
-  - [ ] 3.3.1. Implement `MethodCallExpr` (receiver, method_name, arguments)
-  - [ ] 3.3.2. Handle optional parentheses for zero-argument calls
-  - [ ] 3.3.3. Implement `PropertyAccessExpr` (object.property)
-  - [ ] 3.3.4. Implement `SelfExpr` (implicit self reference)
-  - [ ] 3.3.5. Handle method chaining (receiver.method1.method2)
-  - [ ] 3.3.6. Write unit tests for method calls
-  - [ ] 3.3.7. Create example file: `examples/parser/method_calls.mx`
+- [x] 3.3. Method Call and Access Expressions
+  - [x] 3.3.1. Implement `MethodCallExpr` (receiver, method_name, arguments)
+  - [x] 3.3.2. Handle optional parentheses for zero-argument calls
+  - [x] 3.3.3. Implement `PropertyAccessExpr` (object.property)
+  - [x] 3.3.4. Implement `SelfExpr` (implicit self reference)
+  - [x] 3.3.5. Handle method chaining (receiver.method1.method2)
+  - [x] 3.3.6. Write unit tests for method calls
+  - [x] 3.3.7. Create example file: `examples/parser/method_calls.mx`
 
 - [ ] 3.4. Statement AST Nodes
   - [ ] 3.4.1. Implement `AssignmentStmt` (target, value)

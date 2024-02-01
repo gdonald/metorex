@@ -139,6 +139,11 @@ pub enum Expression {
         expression: Box<Expression>,
         position: Position,
     },
+
+    // Self reference (implicit receiver)
+    SelfExpr {
+        position: Position,
+    },
 }
 
 /// Parts of an interpolated string
@@ -264,7 +269,8 @@ impl Expression {
             | Expression::Index { position, .. }
             | Expression::Dictionary { position, .. }
             | Expression::Lambda { position, .. }
-            | Expression::Grouped { position, .. } => *position,
+            | Expression::Grouped { position, .. }
+            | Expression::SelfExpr { position, .. } => *position,
         }
     }
 
