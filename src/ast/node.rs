@@ -206,6 +206,16 @@ pub enum Statement {
         position: Position,
     },
 
+    // Break statement (exit from loop)
+    Break {
+        position: Position,
+    },
+
+    // Continue statement (skip to next iteration)
+    Continue {
+        position: Position,
+    },
+
     // Block statement
     Block {
         statements: Vec<Statement>,
@@ -310,6 +320,8 @@ impl Statement {
             | Statement::If { position, .. }
             | Statement::While { position, .. }
             | Statement::Return { position, .. }
+            | Statement::Break { position, .. }
+            | Statement::Continue { position, .. }
             | Statement::Block { position, .. } => *position,
         }
     }
@@ -326,7 +338,11 @@ impl Statement {
     pub fn is_control_flow(&self) -> bool {
         matches!(
             self,
-            Statement::If { .. } | Statement::While { .. } | Statement::Return { .. }
+            Statement::If { .. }
+                | Statement::While { .. }
+                | Statement::Return { .. }
+                | Statement::Break { .. }
+                | Statement::Continue { .. }
         )
     }
 }

@@ -1,0 +1,503 @@
+# Example statements demonstrating all statement types in Metorex
+
+# Expression statements (expressions used as statements)
+42
+3.14
+"hello"
+true
+nil
+x
+@name
+@@count
+
+# Simple expressions as statements
+1 + 2
+x * y
+obj.method()
+
+# Assignment statements - simple
+x = 10
+y = 20
+z = 30
+
+# Assignment with expressions
+result = x + y
+product = a * b
+value = obj.method()
+
+# Compound assignments
+x += 5
+y -= 3
+z *= 2
+w /= 4
+
+# Assignment to instance variables
+@name = "Alice"
+@age = 30
+@valid = true
+
+# Assignment to class variables
+@@count = 0
+@@total = 100
+@@config = {key: "value"}
+
+# Assignment with complex expressions
+@result = (x + y) * (a - b)
+@@sum = arr[0] + arr[1] + arr[2]
+
+# Multiple assignments (each is a separate statement)
+x = 1
+y = 2
+z = 3
+
+# Return statements - simple
+return
+return 42
+return true
+return nil
+
+# Return with expressions
+return x + y
+return obj.method()
+return [1, 2, 3]
+return {x: 1, y: 2}
+
+# Return with complex expressions
+return (a + b) * c
+return arr.map(x -> x * 2)
+return obj.property.nested
+
+# Break statements in loops
+while true
+  break
+end
+
+while x < 10
+  if x == 5
+    break
+  end
+  x += 1
+end
+
+# Continue statements in loops
+while x < 10
+  if x % 2 == 0
+    continue
+  end
+  process(x)
+  x += 1
+end
+
+# If statements - simple
+if true
+  1
+end
+
+if false
+  2
+else
+  3
+end
+
+# If with complex conditions
+if x > 0
+  positive()
+end
+
+if x == y
+  equal()
+else
+  not_equal()
+end
+
+# Nested if statements
+if x > 0
+  if y > 0
+    both_positive()
+  else
+    x_positive_y_not()
+  end
+else
+  x_not_positive()
+end
+
+# If with multiple statements in branches
+if condition
+  statement1()
+  statement2()
+  statement3()
+else
+  alternative1()
+  alternative2()
+end
+
+# While loops - simple
+while true
+  work()
+end
+
+while x < 10
+  x += 1
+end
+
+# While with complex conditions
+while x < 10 && y > 0
+  process(x, y)
+  x += 1
+  y -= 1
+end
+
+# While with multiple statements
+while running
+  update()
+  render()
+  check_input()
+end
+
+# While with break and continue
+while true
+  item = get_next()
+
+  if item == nil
+    break
+  end
+
+  if item.skip
+    continue
+  end
+
+  process(item)
+end
+
+# Nested while loops
+while x < 10
+  y = 0
+  while y < 5
+    process(x, y)
+    y += 1
+  end
+  x += 1
+end
+
+# Method definitions - simple
+def simple
+  42
+end
+
+def with_params(x, y)
+  x + y
+end
+
+# Method with multiple statements
+def complex_method(a, b, c)
+  result = a + b
+  result = result * c
+  return result
+end
+
+# Method with control flow
+def find_value(arr, target)
+  i = 0
+  while i < arr.length()
+    if arr[i] == target
+      return i
+    end
+    i += 1
+  end
+  return nil
+end
+
+# Method with instance variables
+def initialize(@name, @age)
+  @@count += 1
+  @id = @@count
+end
+
+# Method with early returns
+def validate(x)
+  if x == nil
+    return false
+  end
+
+  if x < 0
+    return false
+  end
+
+  return true
+end
+
+# Class definitions - simple
+class Person
+end
+
+class Empty
+end
+
+# Class with superclass
+class Employee
+end
+
+class Manager
+end
+
+# Class with methods
+class Calculator
+  def add(x, y)
+    x + y
+  end
+
+  def subtract(x, y)
+    x - y
+  end
+end
+
+# Class with instance variables
+class Person
+  def initialize(@name, @age)
+    @created_at = Time.now()
+  end
+
+  def greet
+    "Hello, I'm {@name}"
+  end
+end
+
+# Class with class variables
+class Counter
+  @@count = 0
+
+  def initialize
+    @@count += 1
+    @id = @@count
+  end
+
+  def self.total
+    @@count
+  end
+end
+
+# Block statements
+do
+  statement1()
+  statement2()
+  statement3()
+end
+
+do
+  x = 10
+  y = 20
+  x + y
+end
+
+# Complex control flow examples
+
+# Loop with conditional break
+while true
+  input = read_input()
+
+  if input == "quit"
+    break
+  end
+
+  process(input)
+end
+
+# Loop with conditional continue
+i = 0
+while i < 100
+  i += 1
+
+  if i % 2 == 0
+    continue
+  end
+
+  process_odd(i)
+end
+
+# Nested loops with break
+found = false
+x = 0
+while x < 10 && !found
+  y = 0
+  while y < 10
+    if matrix[x][y] == target
+      found = true
+      break
+    end
+    y += 1
+  end
+  x += 1
+end
+
+# Mixed statements in methods
+def complex_algorithm(data)
+  # Initialize
+  result = []
+  index = 0
+
+  # Process loop
+  while index < data.length()
+    item = data[index]
+
+    # Skip invalid items
+    if !item.valid
+      index += 1
+      continue
+    end
+
+    # Break on sentinel
+    if item == :stop
+      break
+    end
+
+    # Transform and add
+    transformed = transform(item)
+    result.push(transformed)
+
+    index += 1
+  end
+
+  return result
+end
+
+# Statement combinations
+
+# Assignment with method call
+value = calculator.compute(x, y)
+
+# Assignment with conditional
+result = if x > 0
+  positive_result()
+else
+  negative_result()
+end
+
+# Return in different contexts
+def get_value
+  if @cached
+    return @cache
+  end
+
+  @cache = expensive_computation()
+  @cached = true
+  return @cache
+end
+
+# Break and continue with labels (conceptual)
+outer = true
+while outer
+  inner = true
+  while inner
+    if condition1
+      break  # breaks inner loop
+    end
+
+    if condition2
+      outer = false
+      break  # breaks inner, will exit outer next
+    end
+  end
+end
+
+# All statement types in one method
+def demonstrate_all_statements(param)
+  # Expression statement
+  42
+
+  # Assignment
+  x = param
+
+  # Compound assignment
+  x += 10
+
+  # Conditional
+  if x > 50
+    return "high"
+  end
+
+  # Loop
+  count = 0
+  while count < x
+    if count == 10
+      break
+    end
+
+    if count % 2 == 0
+      count += 1
+      continue
+    end
+
+    process(count)
+    count += 1
+  end
+
+  # Method call statement
+  finalize()
+
+  # Return
+  return "complete"
+end
+
+# Edge cases and special scenarios
+
+# Empty method body (just returns nil implicitly)
+def empty
+end
+
+# Single statement method
+def single
+  42
+end
+
+# Method with only return
+def just_return
+  return 100
+end
+
+# Nested blocks
+do
+  do
+    do
+      innermost()
+    end
+  end
+end
+
+# Many sequential statements
+statement1()
+statement2()
+statement3()
+statement4()
+statement5()
+statement6()
+statement7()
+statement8()
+statement9()
+statement10()
+
+# Complex expression statements
+obj.method1().method2().method3()
+array[0].process().result
+hash["key"].transform().validate()
+
+# Assignment chains (separate statements)
+a = 1
+b = a
+c = b
+
+# Multiple returns in method (only first executes)
+def multiple_returns(x)
+  if x < 0
+    return "negative"
+  end
+
+  if x == 0
+    return "zero"
+  end
+
+  if x > 0
+    return "positive"
+  end
+
+  return "unknown"  # unreachable but valid
+end

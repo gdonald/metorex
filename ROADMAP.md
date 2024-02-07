@@ -116,13 +116,13 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.3.6. Write unit tests for method calls
   - [x] 3.3.7. Create example file: `examples/parser/method_calls.mx`
 
-- [ ] 3.4. Statement AST Nodes
-  - [ ] 3.4.1. Implement `AssignmentStmt` (target, value)
-  - [ ] 3.4.2. Implement `ExpressionStmt` (wraps expression)
-  - [ ] 3.4.3. Implement `ReturnStmt` (optional return value)
-  - [ ] 3.4.4. Implement `BreakStmt` and `ContinueStmt`
-  - [ ] 3.4.5. Write unit tests for statement nodes
-  - [ ] 3.4.6. Create example file: `examples/parser/statements.mx`
+- [x] 3.4. Statement AST Nodes
+  - [x] 3.4.1. Implement `AssignmentStmt` (target, value)
+  - [x] 3.4.2. Implement `ExpressionStmt` (wraps expression)
+  - [x] 3.4.3. Implement `ReturnStmt` (optional return value)
+  - [x] 3.4.4. Implement `BreakStmt` and `ContinueStmt`
+  - [x] 3.4.5. Write unit tests for statement nodes
+  - [x] 3.4.6. Create example file: `examples/parser/statements.mx`
 
 - [ ] 3.5. Block Statement (Core Meta-Object)
   - [ ] 3.5.1. Define `BlockStmt` struct with `Vec<Box<dyn Statement>>`
