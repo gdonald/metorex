@@ -124,15 +124,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.4.5. Write unit tests for statement nodes
   - [x] 3.4.6. Create example file: `examples/parser/statements.mx`
 
-- [ ] 3.5. Block Statement (Core Meta-Object)
-  - [ ] 3.5.1. Define `BlockStmt` struct with `Vec<Box<dyn Statement>>`
-  - [ ] 3.5.2. Add scope capture mechanism
-  - [ ] 3.5.3. Add metadata (source range, parent scope reference)
-  - [ ] 3.5.4. Implement block parameter support (`do |param|`)
-  - [ ] 3.5.5. Add implicit return value (last expression)
-  - [ ] 3.5.6. Implement `Clone` for blocks
-  - [ ] 3.5.7. Write unit tests for block construction
-  - [ ] 3.5.8. Create example file: `examples/parser/blocks.mx`
+- [x] 3.5. Block Statement (Core Meta-Object)
+  - [x] 3.5.1. Define `BlockStmt` struct with `Vec<Box<dyn Statement>>`
+  - [x] 3.5.2. Add scope capture mechanism
+  - [x] 3.5.3. Add metadata (source range, parent scope reference)
+  - [x] 3.5.4. Implement block parameter support (`do |param|`)
+  - [x] 3.5.5. Add implicit return value (last expression)
+  - [x] 3.5.6. Implement `Clone` for blocks
+  - [x] 3.5.7. Write unit tests for block construction
+  - [x] 3.5.8. Create example file: `examples/parser/blocks.mx`
 
 - [ ] 3.6. Control Flow AST Nodes
   - [ ] 3.6.1. Implement `IfStmt` (condition, then_block, else_block)

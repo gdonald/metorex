@@ -1,0 +1,509 @@
+# Example blocks and lambdas in Metorex
+
+# Simple blocks with do...end
+do
+  42
+end
+
+do
+  x = 10
+  y = 20
+  x + y
+end
+
+# Block with multiple statements (implicit return)
+do
+  statement1()
+  statement2()
+  statement3()
+end
+
+# Block as statement grouping
+do
+  initialize()
+  process()
+  cleanup()
+end
+
+# Nested blocks
+do
+  outer = 10
+  do
+    inner = 20
+    outer + inner
+  end
+end
+
+# Deeply nested blocks
+do
+  level1 = 1
+  do
+    level2 = 2
+    do
+      level3 = 3
+      level1 + level2 + level3
+    end
+  end
+end
+
+# Simple lambdas with arrow syntax
+x -> x
+x -> x * 2
+x -> x + 1
+
+# Lambda with multiple parameters
+(x, y) -> x + y
+(a, b, c) -> a + b + c
+(x, y, z) -> x * y * z
+
+# Lambda with no parameters
+-> 42
+-> "hello"
+-> [1, 2, 3]
+
+# Lambda with block body
+x -> do
+  temp = x * 2
+  temp + 1
+end
+
+# Lambda with multiple statements (implicit return)
+x -> do
+  squared = x * x
+  cubed = squared * x
+  cubed
+end
+
+# Lambdas capturing outer scope variables
+y = 10
+x -> x + y  # Captures y
+
+a = 5
+b = 3
+x -> x * a + b  # Captures a and b
+
+# Lambda capturing instance variables
+@count = 0
+x -> x + @count  # Captures @count
+
+# Lambda capturing class variables
+@@total = 100
+x -> x + @@total  # Captures @@total
+
+# Higher-order functions with lambdas
+arr.map(x -> x * 2)
+arr.filter(x -> x > 0)
+arr.reduce((acc, x) -> acc + x)
+
+# Lambda returning lambda (closure)
+x -> (y -> x + y)
+
+# Nested lambdas with scope capture
+outer_var = 10
+outer_lambda = x -> do
+  middle_var = 20
+  inner_lambda = y -> x + y + outer_var + middle_var
+  inner_lambda
+end
+
+# Lambda assigned to variable
+double = x -> x * 2
+square = x -> x * x
+add = (x, y) -> x + y
+
+# Using stored lambdas
+double(5)
+square(4)
+add(3, 7)
+
+# Lambda as argument to method
+process(x -> x * 2)
+transform(arr, x -> x + 1)
+apply(value, x -> x * x)
+
+# Lambda with complex expressions
+arr.map(x -> (x + 1) * 2)
+data.filter(item -> item.value > 10)
+list.reduce((acc, x) -> acc + x.score)
+
+# Lambda with method calls
+strings.map(s -> s.upcase())
+items.filter(item -> item.is_valid())
+objects.map(obj -> obj.to_json())
+
+# Lambda with array/hash literals
+x -> [x, x * 2, x * 3]
+x -> {value: x, doubled: x * 2}
+(x, y) -> [x + y, x - y, x * y, x / y]
+
+# Block with control flow
+do
+  if condition
+    result1()
+  else
+    result2()
+  end
+end
+
+# Block with loops
+do
+  i = 0
+  while i < 10
+    process(i)
+    i += 1
+  end
+end
+
+# Block with early return
+do
+  if error
+    return nil
+  end
+
+  process()
+  return result
+end
+
+# Block with break and continue
+do
+  i = 0
+  while i < 100
+    i += 1
+
+    if i % 2 == 0
+      continue
+    end
+
+    if i > 50
+      break
+    end
+
+    process(i)
+  end
+end
+
+# Blocks for scoping
+do
+  local_var = 42
+  temp_result = compute()
+  local_var + temp_result
+end
+
+# Block with variable shadowing
+x = 10
+do
+  x = 20  # Shadows outer x
+  x + 5
+end
+
+# Method taking a block parameter
+def each(arr, block)
+  i = 0
+  while i < arr.length()
+    block(arr[i])
+    i += 1
+  end
+end
+
+# Calling method with block
+each([1, 2, 3], x -> print(x))
+
+# Method returning a lambda
+def make_adder(n)
+  x -> x + n
+end
+
+add5 = make_adder(5)
+add10 = make_adder(10)
+
+# Using the returned lambdas
+add5(3)   # Returns 8
+add10(3)  # Returns 13
+
+# Method with block parameter syntax
+def times(n, &block)
+  i = 0
+  while i < n
+    block()
+    i += 1
+  end
+end
+
+# Calling with block
+times(5, -> print("Hello"))
+
+# Lambda with pattern matching (future feature)
+match_lambda = x -> match x
+  case 0 -> "zero"
+  case 1 -> "one"
+  case _ -> "other"
+end
+
+# Blocks with explicit returns
+do
+  x = compute()
+  if x == nil
+    return 0
+  end
+  return x * 2
+end
+
+# Lambda with conditional expression
+is_positive = x -> if x > 0 then true else false end
+
+# Lambda with complex boolean logic
+is_valid = x -> x != nil && x > 0 && x < 100
+
+# Chained method calls with lambdas
+data
+  .filter(x -> x > 0)
+  .map(x -> x * 2)
+  .reduce((acc, x) -> acc + x)
+
+# Lambda with destructuring (future feature)
+pair_sum = (x, y) -> x + y
+triple_sum = (a, b, c) -> a + b + c
+
+# Block returning complex value
+result = do
+  data = fetch()
+  processed = transform(data)
+  validated = validate(processed)
+  validated
+end
+
+# Lambda with side effects
+log_and_double = x -> do
+  log(x)
+  x * 2
+end
+
+# Lambda composition (future feature)
+compose = (f, g) -> (x -> f(g(x)))
+add_one = x -> x + 1
+double = x -> x * 2
+add_one_then_double = compose(double, add_one)
+
+# Partial application with lambdas
+def partial(f, a)
+  b -> f(a, b)
+end
+
+add = (x, y) -> x + y
+add5 = partial(add, 5)
+
+# Currying with lambdas
+def curry(f)
+  a -> (b -> f(a, b))
+end
+
+curried_add = curry((x, y) -> x + y)
+add3 = curried_add(3)
+
+# Lambda with guards/conditions
+safe_divide = (x, y) -> do
+  if y == 0
+    return nil
+  end
+  x / y
+end
+
+# Block with resource management pattern
+result = do
+  resource = acquire()
+  result = process(resource)
+  release(resource)
+  result
+end
+
+# Lambda memoization pattern
+def memoize(f)
+  cache = {}
+  x -> do
+    if cache.has_key?(x)
+      return cache[x]
+    end
+    result = f(x)
+    cache[x] = result
+    result
+  end
+end
+
+# Lambda with default value pattern
+get_or_default = (map, key, default) -> do
+  if map.has_key?(key)
+    map[key]
+  else
+    default
+  end
+end
+
+# Block as expression in assignment
+value = do
+  temp = expensive_computation()
+  transform(temp)
+end
+
+# Block in method call
+process(do
+  prepare()
+  validate()
+  execute()
+end)
+
+# Lambda with recursion (requires Y-combinator or named recursion)
+factorial = n -> do
+  if n <= 1
+    1
+  else
+    n * factorial(n - 1)
+  end
+end
+
+# Block with multiple return points
+result = do
+  if condition1
+    return value1
+  end
+
+  if condition2
+    return value2
+  end
+
+  default_value
+end
+
+# Lambda with exception handling (future feature)
+safe_parse = x -> do
+  if x == nil
+    return 0
+  end
+  parse_int(x)
+end
+
+# Blocks for lazy evaluation
+lazy_value = -> expensive_computation()
+# Only computed when called: lazy_value()
+
+# Lambda pipeline pattern
+pipeline = [
+  x -> x * 2,
+  x -> x + 1,
+  x -> x * x
+]
+
+def apply_pipeline(value, pipeline)
+  result = value
+  pipeline.each(f -> result = f(result))
+  result
+end
+
+# Block with local helper functions
+result = do
+  helper = x -> x * 2
+  other_helper = x -> x + 1
+
+  value = helper(5)
+  other_helper(value)
+end
+
+# Lambda with state capture
+def make_counter
+  count = 0
+  -> do
+    count += 1
+    count
+  end
+end
+
+counter = make_counter()
+counter()  # Returns 1
+counter()  # Returns 2
+counter()  # Returns 3
+
+# Block with complex initialization
+initialized = do
+  config = load_config()
+  validate_config(config)
+
+  db = connect_database(config.db)
+  cache = initialize_cache(config.cache)
+
+  {
+    database: db,
+    cache: cache,
+    config: config
+  }
+end
+
+# Lambda with method chaining
+transform = x -> x.trim().upcase().reverse()
+
+# Block with iterator pattern
+do
+  iterator = collection.iterator()
+  while iterator.has_next()
+    item = iterator.next()
+    process(item)
+  end
+end
+
+# Lambda with complex capture
+x = 10
+y = 20
+z = 30
+complex_lambda = a -> do
+  b = a * 2
+  c = b + x
+  d = c + y
+  d + z
+end
+
+# Block as scope boundary
+global = 100
+local_scope = do
+  local = 50
+  temporary = 25
+  global + local + temporary
+end
+# local and temporary not accessible here
+
+# Empty blocks and lambdas
+do
+end
+
+-> nil
+
+x -> nil
+
+# Block with all statement types
+comprehensive_block = do
+  # Variable assignments
+  x = 10
+  y = 20
+
+  # Compound assignments
+  x += 5
+  y *= 2
+
+  # Control flow
+  if x > y
+    max = x
+  else
+    max = y
+  end
+
+  # Loops
+  sum = 0
+  i = 0
+  while i < 10
+    sum += i
+    i += 1
+  end
+
+  # Method calls
+  result = process(max, sum)
+
+  # Implicit return
+  result
+end

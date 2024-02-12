@@ -131,6 +131,7 @@ pub enum Expression {
     Lambda {
         parameters: Vec<String>,
         body: Vec<Statement>,
+        captured_vars: Option<Vec<String>>, // Variables captured from outer scope
         position: Position,
     },
 
