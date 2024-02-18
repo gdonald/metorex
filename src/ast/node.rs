@@ -154,6 +154,38 @@ pub enum InterpolationPart {
     Expression(Box<Expression>),
 }
 
+/// Pattern for match statement cases
+#[derive(Debug, Clone, PartialEq)]
+pub enum MatchPattern {
+    // Literal patterns
+    IntLiteral(i64),
+    FloatLiteral(f64),
+    StringLiteral(String),
+    BoolLiteral(bool),
+    NilLiteral,
+
+    // Variable binding pattern
+    Identifier(String),
+
+    // Wildcard pattern (matches anything)
+    Wildcard,
+
+    // Array pattern
+    Array(Vec<MatchPattern>),
+
+    // Type pattern (for future use)
+    Type(String),
+}
+
+/// A single case in a match statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchCase {
+    pub pattern: MatchPattern,
+    pub guard: Option<Expression>, // Optional guard condition (if ...)
+    pub body: Vec<Statement>,
+    pub position: Position,
+}
+
 /// Statements in Metorex - instructions that can be executed
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -198,6 +230,21 @@ pub enum Statement {
     While {
         condition: Expression,
         body: Vec<Statement>,
+        position: Position,
+    },
+
+    // For loop (iteration over collections)
+    For {
+        variable: String,
+        iterable: Expression,
+        body: Vec<Statement>,
+        position: Position,
+    },
+
+    // Match statement (pattern matching)
+    Match {
+        expression: Expression,
+        cases: Vec<MatchCase>,
         position: Position,
     },
 
@@ -320,6 +367,8 @@ impl Statement {
             | Statement::ClassDef { position, .. }
             | Statement::If { position, .. }
             | Statement::While { position, .. }
+            | Statement::For { position, .. }
+            | Statement::Match { position, .. }
             | Statement::Return { position, .. }
             | Statement::Break { position, .. }
             | Statement::Continue { position, .. }
@@ -341,6 +390,8 @@ impl Statement {
             self,
             Statement::If { .. }
                 | Statement::While { .. }
+                | Statement::For { .. }
+                | Statement::Match { .. }
                 | Statement::Return { .. }
                 | Statement::Break { .. }
                 | Statement::Continue { .. }

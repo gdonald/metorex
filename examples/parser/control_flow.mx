@@ -1,0 +1,686 @@
+# Example control flow statements in Metorex
+
+# ============================================
+# IF STATEMENTS
+# ============================================
+
+# Simple if statement
+if true
+  1
+end
+
+if false
+  2
+end
+
+# If with else
+if true
+  "yes"
+else
+  "no"
+end
+
+# If with comparison
+if x > 0
+  "positive"
+end
+
+if x == 0
+  "zero"
+else
+  "non-zero"
+end
+
+# If with complex conditions
+if x > 0 && y > 0
+  "both positive"
+end
+
+if x == y
+  "equal"
+else
+  "not equal"
+end
+
+# Nested if statements
+if x > 0
+  if y > 0
+    "both positive"
+  else
+    "x positive, y not"
+  end
+else
+  "x not positive"
+end
+
+# Multiple branches (else if pattern)
+if x > 0
+  "positive"
+else
+  if x < 0
+    "negative"
+  else
+    "zero"
+  end
+end
+
+# If with multiple statements
+if condition
+  statement1()
+  statement2()
+  statement3()
+end
+
+# If as expression (returns value)
+result = if x > 0
+  "positive"
+else
+  "non-positive"
+end
+
+# ============================================
+# WHILE LOOPS
+# ============================================
+
+# Simple while loop
+while true
+  work()
+end
+
+# While with condition
+while x < 10
+  x += 1
+end
+
+# While with complex condition
+while x < 10 && y > 0
+  process(x, y)
+  x += 1
+  y -= 1
+end
+
+# While with multiple statements
+while running
+  update()
+  render()
+  check_input()
+end
+
+# While with break
+while true
+  item = get_next()
+  if item == nil
+    break
+  end
+  process(item)
+end
+
+# While with continue
+while i < 100
+  i += 1
+  if i % 2 == 0
+    continue
+  end
+  process_odd(i)
+end
+
+# Nested while loops
+while x < 10
+  y = 0
+  while y < 5
+    process(x, y)
+    y += 1
+  end
+  x += 1
+end
+
+# While with conditional break
+while true
+  input = read_input()
+  if input == "quit"
+    break
+  end
+  process(input)
+end
+
+# ============================================
+# FOR LOOPS
+# ============================================
+
+# Simple for loop over array
+for x in [1, 2, 3]
+  print(x)
+end
+
+# For loop over array variable
+for item in items
+  process(item)
+end
+
+# For loop with range
+for i in 0.upto(10)
+  print(i)
+end
+
+# For loop with method call
+for line in file.read_lines()
+  process(line)
+end
+
+# For loop with transformation
+for x in arr
+  result.push(x * 2)
+end
+
+# Nested for loops
+for x in [1, 2, 3]
+  for y in [4, 5, 6]
+    print(x + y)
+  end
+end
+
+# For loop with break
+for item in items
+  if item == nil
+    break
+  end
+  process(item)
+end
+
+# For loop with continue
+for item in items
+  if !item.valid
+    continue
+  end
+  process(item)
+end
+
+# For loop with conditional logic
+for item in collection
+  if item.skip
+    continue
+  end
+
+  if item.stop
+    break
+  end
+
+  transform(item)
+end
+
+# For loop with index tracking
+i = 0
+for item in items
+  process(item, i)
+  i += 1
+end
+
+# For loop over dictionary keys
+for key in hash.keys()
+  value = hash[key]
+  process(key, value)
+end
+
+# For loop over dictionary entries
+for entry in hash.entries()
+  process(entry.key, entry.value)
+end
+
+# ============================================
+# MATCH STATEMENTS (Pattern Matching)
+# ============================================
+
+# Simple match with literal patterns
+match x
+  case 0 -> "zero"
+  case 1 -> "one"
+  case 2 -> "two"
+  case _ -> "other"
+end
+
+# Match with multiple statements per case
+match x
+  case 0 ->
+    log("zero")
+    return 0
+  case 1 ->
+    log("one")
+    return 1
+  case _ ->
+    log("other")
+    return -1
+end
+
+# Match with string patterns
+match command
+  case "start" -> server.start()
+  case "stop" -> server.stop()
+  case "restart" -> server.restart()
+  case _ -> error("Unknown command")
+end
+
+# Match with boolean patterns
+match flag
+  case true -> enable()
+  case false -> disable()
+end
+
+# Match with nil pattern
+match value
+  case nil -> return 0
+  case _ -> return value
+end
+
+# Match with guard conditions
+match x
+  case n if n > 0 -> "positive"
+  case n if n < 0 -> "negative"
+  case _ -> "zero"
+end
+
+# Match with variable binding
+match result
+  case value if value > 100 -> "large"
+  case value if value > 10 -> "medium"
+  case value -> "small"
+end
+
+# Match with array patterns
+match arr
+  case [first, second, _] -> first + second
+  case [single] -> single
+  case [] -> 0
+  case _ -> nil
+end
+
+# Match with type patterns
+match obj
+  case String -> obj.upcase()
+  case Integer -> obj * 2
+  case Array -> obj.length()
+  case _ -> nil
+end
+
+# Match in assignment
+result = match status
+  case "success" -> 0
+  case "warning" -> 1
+  case "error" -> 2
+  case _ -> -1
+end
+
+# Match with complex expressions
+match user.role
+  case "admin" -> grant_all_permissions()
+  case "moderator" -> grant_moderate_permissions()
+  case "user" -> grant_basic_permissions()
+  case _ -> deny_access()
+end
+
+# Nested match statements
+match outer
+  case "type1" ->
+    match inner
+      case "a" -> process_type1_a()
+      case "b" -> process_type1_b()
+      case _ -> process_type1_default()
+    end
+  case "type2" ->
+    match inner
+      case "x" -> process_type2_x()
+      case "y" -> process_type2_y()
+      case _ -> process_type2_default()
+    end
+  case _ -> process_default()
+end
+
+# ============================================
+# COMPLEX CONTROL FLOW COMBINATIONS
+# ============================================
+
+# If inside while
+while running
+  if should_exit()
+    break
+  end
+  work()
+end
+
+# While inside if
+if condition
+  while !done
+    process()
+  end
+end
+
+# For inside if
+if should_process
+  for item in items
+    process(item)
+  end
+end
+
+# Match inside loop
+while true
+  command = get_command()
+  match command
+    case "quit" -> break
+    case "skip" -> continue
+    case cmd -> execute(cmd)
+  end
+end
+
+# Loop inside match
+match mode
+  case "batch" ->
+    for item in items
+      process(item)
+    end
+  case "single" ->
+    process(items[0])
+  case _ ->
+    error("Unknown mode")
+end
+
+# Complex nested control flow
+if condition1
+  for x in items
+    match x
+      case 0 -> continue
+      case n if n > 100 -> break
+      case n ->
+        if n % 2 == 0
+          process_even(n)
+        else
+          process_odd(n)
+        end
+    end
+  end
+end
+
+# Multiple nested loops with break/continue
+outer = true
+while outer
+  inner = true
+  while inner
+    if condition1
+      break  # breaks inner loop
+    end
+
+    if condition2
+      outer = false
+      break  # breaks inner, will exit outer next
+    end
+
+    work()
+  end
+end
+
+# Loop with multiple exit conditions
+while true
+  # Check for completion
+  if is_complete()
+    break
+  end
+
+  # Skip invalid items
+  if !is_valid()
+    continue
+  end
+
+  # Process item
+  process()
+
+  # Check for error
+  if has_error()
+    break
+  end
+end
+
+# State machine pattern with match
+while running
+  match state
+    case "init" ->
+      initialize()
+      state = "ready"
+    case "ready" ->
+      if has_work()
+        state = "processing"
+      end
+    case "processing" ->
+      process()
+      if is_complete()
+        state = "cleanup"
+      end
+    case "cleanup" ->
+      cleanup()
+      state = "done"
+    case "done" ->
+      break
+    case _ ->
+      error("Invalid state")
+      break
+  end
+end
+
+# Loop with early return
+def find_value(arr, target)
+  for item in arr
+    if item == target
+      return item
+    end
+  end
+  return nil
+end
+
+# Guard clauses with early returns
+def process_value(x)
+  if x == nil
+    return 0
+  end
+
+  if x < 0
+    return -1
+  end
+
+  if x > 100
+    return 100
+  end
+
+  return x
+end
+
+# Accumulator pattern with loop
+sum = 0
+for item in items
+  sum += item
+end
+
+# Filter pattern with loop
+result = []
+for item in items
+  if item > 0
+    result.push(item)
+  end
+end
+
+# Transform and collect pattern
+transformed = []
+for item in items
+  if item.valid
+    transformed.push(item.transform())
+  end
+end
+
+# Search pattern with early exit
+found = nil
+for item in items
+  if item.matches(criteria)
+    found = item
+    break
+  end
+end
+
+# Iterator pattern
+iterator = collection.iterator()
+while iterator.has_next()
+  item = iterator.next()
+  process(item)
+end
+
+# Conditional accumulation
+count = 0
+for item in items
+  match item.type
+    case "valid" -> count += 1
+    case "invalid" -> continue
+    case "error" -> break
+    case _ -> nil
+  end
+end
+
+# Multi-level break pattern (requires flag)
+found = false
+for x in matrix
+  for y in x
+    if y == target
+      found = true
+      break
+    end
+  end
+
+  if found
+    break
+  end
+end
+
+# Batch processing with counter
+batch = []
+count = 0
+for item in items
+  batch.push(item)
+  count += 1
+
+  if count == batch_size
+    process_batch(batch)
+    batch = []
+    count = 0
+  end
+end
+
+# Process remaining batch
+if !batch.empty()
+  process_batch(batch)
+end
+
+# Retry pattern with loop
+attempts = 0
+max_attempts = 3
+success = false
+
+while attempts < max_attempts && !success
+  attempts += 1
+
+  if try_operation()
+    success = true
+  else
+    if attempts < max_attempts
+      wait(delay)
+    end
+  end
+end
+
+# Loop with timeout
+start_time = Time.now()
+timeout = 10
+
+while true
+  if Time.now() - start_time > timeout
+    break
+  end
+
+  if work_complete()
+    break
+  end
+
+  do_work()
+end
+
+# Producer-consumer pattern
+while true
+  item = queue.pop()
+
+  match item
+    case nil ->
+      if queue.closed()
+        break
+      else
+        wait()
+        continue
+      end
+    case item ->
+      process(item)
+  end
+end
+
+# State validation pattern
+for item in items
+  if !validate(item)
+    log_error(item)
+    continue
+  end
+
+  match item.type
+    case "type_a" -> process_a(item)
+    case "type_b" -> process_b(item)
+    case _ ->
+      log_warning(item)
+      continue
+  end
+
+  mark_processed(item)
+end
+
+# Conditional branching with multiple paths
+if mode == "fast"
+  # Fast path
+  for item in items
+    quick_process(item)
+  end
+elsif mode == "thorough"
+  # Thorough path
+  for item in items
+    if validate(item)
+      deep_process(item)
+    else
+      log_invalid(item)
+    end
+  end
+else
+  # Default path
+  for item in items
+    standard_process(item)
+  end
+end
+
+# Match as control flow router
+match operation
+  case "map" ->
+    for item in items
+      result.push(transform(item))
+    end
+  case "filter" ->
+    for item in items
+      if predicate(item)
+        result.push(item)
+      end
+    end
+  case "reduce" ->
+    acc = initial
+    for item in items
+      acc = combine(acc, item)
+    end
+    result = acc
+  case _ ->
+    error("Unknown operation")
+end

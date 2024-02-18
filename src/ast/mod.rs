@@ -2,4 +2,4 @@
 
 pub mod node;
 
-pub use node::{BinaryOp, Expression, Statement, UnaryOp};
+pub use node::{BinaryOp, Expression, MatchCase, MatchPattern, Statement, UnaryOp};

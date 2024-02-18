@@ -134,15 +134,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.5.7. Write unit tests for block construction
   - [x] 3.5.8. Create example file: `examples/parser/blocks.mx`
 
-- [ ] 3.6. Control Flow AST Nodes
-  - [ ] 3.6.1. Implement `IfStmt` (condition, then_block, else_block)
-  - [ ] 3.6.2. Handle `else if` chain parsing
-  - [ ] 3.6.3. Implement `WhileStmt` (condition, body)
-  - [ ] 3.6.4. Implement `ForStmt` (variable, iterable, body)
-  - [ ] 3.6.5. Implement `MatchStmt` for pattern matching
-  - [ ] 3.6.6. Write unit tests for control flow
-  - [ ] 3.6.7. Create example file: `examples/parser/control_flow.mx`
-  - [ ] 3.6.8. Create test file: `tests/control_flow_tests.rs`
+- [x] 3.6. Control Flow AST Nodes
+  - [x] 3.6.1. Implement `IfStmt` (condition, then_block, else_block)
+  - [x] 3.6.2. Handle `else if` chain parsing
+  - [x] 3.6.3. Implement `WhileStmt` (condition, body)
+  - [x] 3.6.4. Implement `ForStmt` (variable, iterable, body)
+  - [x] 3.6.5. Implement `MatchStmt` for pattern matching
+  - [x] 3.6.6. Write unit tests for control flow
+  - [x] 3.6.7. Create example file: `examples/parser/control_flow.mx`
+  - [x] 3.6.8. Create test file: `tests/control_flow_tests.rs`
 
 - [ ] 3.7. Exception Handling AST Nodes
   - [ ] 3.7.1. Implement `TryStmt` (try_block, catch_clauses, finally_block)
