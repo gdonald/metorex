@@ -186,6 +186,15 @@ pub struct MatchCase {
     pub position: Position,
 }
 
+/// A rescue clause in a begin/rescue/ensure block
+#[derive(Debug, Clone, PartialEq)]
+pub struct RescueClause {
+    pub exception_types: Vec<String>, // Exception types to catch (empty means catch all)
+    pub variable_name: Option<String>, // Variable to bind the exception to (e.g., "=> e")
+    pub body: Vec<Statement>,
+    pub position: Position,
+}
+
 /// Statements in Metorex - instructions that can be executed
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -267,6 +276,21 @@ pub enum Statement {
     // Block statement
     Block {
         statements: Vec<Statement>,
+        position: Position,
+    },
+
+    // Exception handling: begin/rescue/else/ensure/end
+    Begin {
+        body: Vec<Statement>,
+        rescue_clauses: Vec<RescueClause>,
+        else_clause: Option<Vec<Statement>>, // Runs if no exception occurred
+        ensure_block: Option<Vec<Statement>>, // Always runs (like finally)
+        position: Position,
+    },
+
+    // Raise statement (throw exception)
+    Raise {
+        exception: Option<Expression>, // None means re-raise current exception
         position: Position,
     },
 }
@@ -372,7 +396,9 @@ impl Statement {
             | Statement::Return { position, .. }
             | Statement::Break { position, .. }
             | Statement::Continue { position, .. }
-            | Statement::Block { position, .. } => *position,
+            | Statement::Block { position, .. }
+            | Statement::Begin { position, .. }
+            | Statement::Raise { position, .. } => *position,
         }
     }
 
@@ -395,6 +421,8 @@ impl Statement {
                 | Statement::Return { .. }
                 | Statement::Break { .. }
                 | Statement::Continue { .. }
+                | Statement::Begin { .. }
+                | Statement::Raise { .. }
         )
     }
 }

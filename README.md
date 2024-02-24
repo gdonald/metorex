@@ -24,7 +24,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 ## Key Features
 
 ### Core Language Features
-- **Exception Handling**: Full try/catch/finally with exception hierarchies and stack traces
+- **Exception Handling**: Full begin/rescue/ensure with exception hierarchies and stack traces
 - **Pattern Matching**: Powerful pattern matching with destructuring and guards
 - **Built-in Testing**: Integrated test framework with assertions and test discovery
 - **Traits/Interfaces**: Flexible polymorphism through trait system

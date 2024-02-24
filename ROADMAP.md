@@ -144,16 +144,16 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.6.7. Create example file: `examples/parser/control_flow.mx`
   - [x] 3.6.8. Create test file: `tests/control_flow_tests.rs`
 
-- [ ] 3.7. Exception Handling AST Nodes
-  - [ ] 3.7.1. Implement `TryStmt` (try_block, catch_clauses, finally_block)
-  - [ ] 3.7.2. Implement `CatchClause` (exception_type, variable_name, handler_block)
-  - [ ] 3.7.3. Implement `RaiseStmt` (exception expression)
-  - [ ] 3.7.4. Parse `try...catch...finally` syntax
-  - [ ] 3.7.5. Parse multiple catch clauses for different exception types
-  - [ ] 3.7.6. Parse bare `raise` for re-raising exceptions
-  - [ ] 3.7.7. Write unit tests for exception handling AST
-  - [ ] 3.7.8. Create example file: `examples/parser/exceptions.mx`
-  - [ ] 3.7.9. Create test file: `tests/exception_parsing_tests.rs`
+- [x] 3.7. Exception Handling AST Nodes
+  - [x] 3.7.1. Implement `BeginStmt` (body, rescue_clauses, else_clause, ensure_block)
+  - [x] 3.7.2. Implement `RescueClause` (exception_type, variable_name, handler_block)
+  - [x] 3.7.3. Implement `RaiseStmt` (exception expression)
+  - [x] 3.7.4. Parse `begin...rescue...else...ensure...end` syntax
+  - [x] 3.7.5. Parse multiple rescue clauses for different exception types
+  - [x] 3.7.6. Parse bare `raise` for re-raising exceptions
+  - [x] 3.7.7. Write unit tests for exception handling AST
+  - [x] 3.7.8. Create example file: `examples/parser/exceptions.mx`
+  - [x] 3.7.9. Create test file: `tests/exception_parsing_tests.rs`
 
 - [ ] 3.8. Pattern Matching AST Nodes
   - [ ] 3.8.1. Expand `MatchStmt` with arms and patterns
