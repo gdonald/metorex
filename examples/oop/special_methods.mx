@@ -36,7 +36,7 @@ class SimpleIterator
   end
 end
 
-book = Book.new("Python Guide")
+book = Book.new("Ruby Guide")
 puts book
 
 magazine = Magazine.new("Tech Monthly")

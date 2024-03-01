@@ -1,6 +1,6 @@
 # Metorex Programming Language
 
-**METOREX** (**M**eta **O**bject **R**untime **E**xecution) is a modern, production-ready programming language that combines the expressiveness of Ruby and Python with the performance and safety of Rust. It features a unique **Code-as-Object** meta-programming system that exposes the AST as first-class runtime objects, enabling powerful DSL construction and runtime code manipulation.
+**METOREX** (**M**eta **O**bject **R**untime **E**xecution) is a programming language that combines the expressiveness of Ruby with the performance and safety of Rust. It features a unique **Code-as-Object** meta-programming system that exposes the AST as first-class runtime objects, enabling powerful DSL construction and runtime code manipulation.
 
 ⚠️ &nbsp;It's still very early in development.
 
@@ -12,7 +12,7 @@
 
 ## Project Status
 
-METOREX is currently in **active development** following a comprehensive 4-phase roadmap:
+METOREX is currently in **active development** following a 4-phase roadmap:
 
 - **Phase 1 (MVP)**: AST Interpreter with meta-programming core - *In Progress*
 - **Phase 2**: Bytecode VM with reflection maturity - *Planned*
@@ -57,7 +57,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 | Element                 | Description                                                                                                                       |
 | :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
 | **Foundation Language** | **Rust** (for VM safety and speed)                                                                                                |
-| **Syntax Heritage**     | **Ruby** (block structure, optional parentheses), **Python** (readability, minimal syntax noise)                                  |
+| **Syntax Heritage**     | **Ruby** (block structure, optional parentheses), **Python** (readability, minimal syntax)                                        |
 | **Primary Paradigms**   | **Full Object-Oriented**, **Imperative**, **Functional** (with ADTs and immutable structures)                                     |
 | **Key Differentiator**  | **Code-as-Object (The Meta Core)**: The Abstract Syntax Tree (AST) is directly exposed as native, manipulable objects at runtime. |
 | **Typing**              | **Dynamic by default**, with **optional static typing** and gradual type inference                                                |

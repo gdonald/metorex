@@ -155,18 +155,18 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.7.8. Create example file: `examples/parser/exceptions.mx`
   - [x] 3.7.9. Create test file: `tests/exception_parsing_tests.rs`
 
-- [ ] 3.8. Pattern Matching AST Nodes
-  - [ ] 3.8.1. Expand `MatchStmt` with arms and patterns
-  - [ ] 3.8.2. Implement `MatchArm` (pattern, guard, body)
-  - [ ] 3.8.3. Implement `LiteralPattern` (match literal values)
-  - [ ] 3.8.4. Implement `IdentifierPattern` (bind to variable)
-  - [ ] 3.8.5. Implement `ArrayPattern` (destructure arrays `[a, b, ...rest]`)
-  - [ ] 3.8.6. Implement `ObjectPattern` (destructure objects `{x, y}`)
-  - [ ] 3.8.7. Implement `WildcardPattern` (underscore `_`)
-  - [ ] 3.8.8. Implement `GuardClause` (when conditions)
-  - [ ] 3.8.9. Write unit tests for pattern matching
-  - [ ] 3.8.10. Create example file: `examples/parser/pattern_matching.mx`
-  - [ ] 3.8.11. Create test file: `tests/pattern_matching_tests.rs`
+- [x] 3.8. Pattern Matching AST Nodes
+  - [x] 3.8.1. Expand `MatchStmt` with arms and patterns
+  - [x] 3.8.2. Implement `MatchArm` (pattern, guard, body)
+  - [x] 3.8.3. Implement `LiteralPattern` (match literal values)
+  - [x] 3.8.4. Implement `IdentifierPattern` (bind to variable)
+  - [x] 3.8.5. Implement `ArrayPattern` (destructure arrays `[a, b, ...rest]`)
+  - [x] 3.8.6. Implement `ObjectPattern` (destructure objects `{x, y}`)
+  - [x] 3.8.7. Implement `WildcardPattern` (underscore `_`)
+  - [x] 3.8.8. Implement `GuardClause` (when conditions)
+  - [x] 3.8.9. Write unit tests for pattern matching
+  - [x] 3.8.10. Create example file: `examples/parser/pattern_matching.mx`
+  - [x] 3.8.11. Create test file: `tests/pattern_matching_tests.rs`
 
 - [ ] 3.9. Function and Method Definition Nodes
   - [ ] 3.9.1. Implement `FunctionDefStmt` (name, parameters, body)

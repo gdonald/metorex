@@ -170,8 +170,14 @@ pub enum MatchPattern {
     // Wildcard pattern (matches anything)
     Wildcard,
 
-    // Array pattern
+    // Array pattern with optional rest
     Array(Vec<MatchPattern>),
+
+    // Array rest pattern (e.g., [first, ...rest])
+    Rest(String), // Variable name to bind remaining elements
+
+    // Object/Dictionary pattern for destructuring
+    Object(Vec<(String, MatchPattern)>), // key-pattern pairs
 
     // Type pattern (for future use)
     Type(String),
