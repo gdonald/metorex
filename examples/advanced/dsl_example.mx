@@ -1,3 +1,13 @@
+class Calculator
+  def self.add(a, b)
+    a + b
+  end
+
+  def multiply(a, b)
+    a * b
+  end
+end
+
 describe "Calculator" do
   it "adds numbers" do
     expect(Calculator.add(2, 3)).to_equal(5)

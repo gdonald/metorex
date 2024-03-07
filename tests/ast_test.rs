@@ -1,6 +1,6 @@
 // Unit tests for AST node creation and manipulation
 
-use metorex::ast::{BinaryOp, Expression, Statement, UnaryOp};
+use metorex::ast::{BinaryOp, Expression, Parameter, Statement, UnaryOp};
 use metorex::lexer::Position;
 
 // Helper function to create a test position
@@ -421,7 +421,10 @@ fn test_assignment_statement() {
 fn test_method_def() {
     let stmt = Statement::MethodDef {
         name: "add".to_string(),
-        parameters: vec!["x".to_string(), "y".to_string()],
+        parameters: vec![
+            Parameter::simple("x".to_string(), pos(1, 9)),
+            Parameter::simple("y".to_string(), pos(1, 12)),
+        ],
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Add,

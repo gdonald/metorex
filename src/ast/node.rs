@@ -201,6 +201,72 @@ pub struct RescueClause {
     pub position: Position,
 }
 
+/// Function parameter definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    pub name: String,
+    pub default_value: Option<Expression>, // Default value for the parameter
+    pub is_variadic: bool,                 // True if this is a *args parameter
+    pub is_keyword: bool,                  // True if this is a **kwargs parameter
+    pub position: Position,
+}
+
+impl Parameter {
+    /// Create a new simple parameter (no default, not variadic/keyword)
+    pub fn simple(name: String, position: Position) -> Self {
+        Parameter {
+            name,
+            default_value: None,
+            is_variadic: false,
+            is_keyword: false,
+            position,
+        }
+    }
+
+    /// Create a new parameter with a default value
+    pub fn with_default(name: String, default_value: Expression, position: Position) -> Self {
+        Parameter {
+            name,
+            default_value: Some(default_value),
+            is_variadic: false,
+            is_keyword: false,
+            position,
+        }
+    }
+
+    /// Create a new variadic parameter (*args)
+    pub fn variadic(name: String, position: Position) -> Self {
+        Parameter {
+            name,
+            default_value: None,
+            is_variadic: true,
+            is_keyword: false,
+            position,
+        }
+    }
+
+    /// Create a new keyword parameter (**kwargs)
+    pub fn keyword(name: String, position: Position) -> Self {
+        Parameter {
+            name,
+            default_value: None,
+            is_variadic: false,
+            is_keyword: true,
+            position,
+        }
+    }
+
+    /// Check if this is a simple parameter (no default, not variadic/keyword)
+    pub fn is_simple(&self) -> bool {
+        self.default_value.is_none() && !self.is_variadic && !self.is_keyword
+    }
+
+    /// Check if this parameter has a default value
+    pub fn has_default(&self) -> bool {
+        self.default_value.is_some()
+    }
+}
+
 /// Statements in Metorex - instructions that can be executed
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
@@ -217,10 +283,18 @@ pub enum Statement {
         position: Position,
     },
 
-    // Method definition
+    // Function definition (standalone function)
+    FunctionDef {
+        name: String,
+        parameters: Vec<Parameter>,
+        body: Vec<Statement>,
+        position: Position,
+    },
+
+    // Method definition (function within a class)
     MethodDef {
         name: String,
-        parameters: Vec<String>,
+        parameters: Vec<Parameter>,
         body: Vec<Statement>,
         position: Position,
     },
@@ -393,6 +467,7 @@ impl Statement {
         match self {
             Statement::Expression { position, .. }
             | Statement::Assignment { position, .. }
+            | Statement::FunctionDef { position, .. }
             | Statement::MethodDef { position, .. }
             | Statement::ClassDef { position, .. }
             | Statement::If { position, .. }
@@ -408,11 +483,13 @@ impl Statement {
         }
     }
 
-    /// Check if this statement is a definition (method or class)
+    /// Check if this statement is a definition (function, method, or class)
     pub fn is_definition(&self) -> bool {
         matches!(
             self,
-            Statement::MethodDef { .. } | Statement::ClassDef { .. }
+            Statement::FunctionDef { .. }
+                | Statement::MethodDef { .. }
+                | Statement::ClassDef { .. }
         )
     }
 

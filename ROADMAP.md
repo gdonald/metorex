@@ -168,15 +168,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.8.10. Create example file: `examples/parser/pattern_matching.mx`
   - [x] 3.8.11. Create test file: `tests/pattern_matching_tests.rs`
 
-- [ ] 3.9. Function and Method Definition Nodes
-  - [ ] 3.9.1. Implement `FunctionDefStmt` (name, parameters, body)
-  - [ ] 3.9.2. Handle parameter list parsing
-  - [ ] 3.9.3. Handle default parameter values
-  - [ ] 3.9.4. Handle variable argument lists (`*args`)
-  - [ ] 3.9.5. Handle keyword arguments (`kwargs`)
-  - [ ] 3.9.6. Implement `MethodDefStmt` (extends FunctionDefStmt)
-  - [ ] 3.9.7. Write unit tests for function definitions
-  - [ ] 3.9.8. Create example file: `examples/parser/functions.mx`
+- [x] 3.9. Function and Method Definition Nodes
+  - [x] 3.9.1. Implement `FunctionDefStmt` (name, parameters, body)
+  - [x] 3.9.2. Handle parameter list parsing
+  - [x] 3.9.3. Handle default parameter values
+  - [x] 3.9.4. Handle variable argument lists (`*args`)
+  - [x] 3.9.5. Handle keyword arguments (`kwargs`)
+  - [x] 3.9.6. Implement `MethodDefStmt` (extends FunctionDefStmt)
+  - [x] 3.9.7. Write unit tests for function definitions
+  - [x] 3.9.8. Create example file: `examples/parser/functions.mx`
 
 - [ ] 3.10. Class Definition Nodes
   - [ ] 3.10.1. Implement `ClassDefStmt` (name, superclass, body)

@@ -2,4 +2,6 @@
 
 pub mod node;
 
-pub use node::{BinaryOp, Expression, MatchCase, MatchPattern, RescueClause, Statement, UnaryOp};
+pub use node::{
+    BinaryOp, Expression, MatchCase, MatchPattern, Parameter, RescueClause, Statement, UnaryOp,
+};

@@ -1,7 +1,15 @@
+
+def risky_operation()
+  puts 'risky operation!'
+  raise 'Oops...'
+end
+
+def cleanup()
+  puts 'cleanup'
+end
+
 begin
   result = risky_operation()
-rescue TypeError => e
-  puts "Type error: #{e.message}"
 rescue StandardError => e
   puts "General error: #{e.message}"
 ensure
