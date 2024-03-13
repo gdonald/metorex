@@ -78,7 +78,7 @@ impl fmt::Display for StackFrame {
 }
 
 /// Main error type for Metorex
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Clone)]
 pub enum MetorexError {
     /// Syntax errors encountered during parsing
     #[error("Syntax error at {location}: {message}")]
@@ -106,11 +106,18 @@ pub enum MetorexError {
 
     /// IO errors (file operations, etc.)
     #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
+    IoError(String),
 
     /// Generic internal errors
     #[error("Internal error: {0}")]
     InternalError(String),
+}
+
+// Custom From implementation for std::io::Error
+impl From<std::io::Error> for MetorexError {
+    fn from(err: std::io::Error) -> Self {
+        MetorexError::IoError(err.to_string())
+    }
 }
 
 impl MetorexError {

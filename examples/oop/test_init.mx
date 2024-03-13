@@ -1,6 +1,6 @@
 class Test
   def initialize
-    puts "init called"
+    puts "initialize called"
   end
 end
 

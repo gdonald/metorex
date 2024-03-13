@@ -1,0 +1,66 @@
+# Example: Control Flow Structures
+# Demonstrates if statements, while loops, and other control flow
+
+# Simple if statement
+if true
+  x = 1
+end
+
+# If with else
+if false
+  x = 1
+else
+  x = 2
+end
+
+# If with comparison
+age = 25
+if age >= 18
+  status = "adult"
+else
+  status = "minor"
+end
+
+# Nested if statements
+score = 85
+if score >= 90
+  grade = "A"
+else
+  if score >= 80
+    grade = "B"
+  else
+    if score >= 70
+      grade = "C"
+    else
+      grade = "F"
+    end
+  end
+end
+
+# While loop
+counter = 0
+while counter < 10
+  counter = counter + 1
+end
+
+# While with do keyword
+i = 0
+while i < 5 do
+  i = i + 1
+end
+
+# While with condition
+running = true
+while running
+  running = false
+end
+
+# Nested loops
+x = 0
+while x < 3
+  y = 0
+  while y < 3
+    y = y + 1
+  end
+  x = x + 1
+end

@@ -178,33 +178,33 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.9.7. Write unit tests for function definitions
   - [x] 3.9.8. Create example file: `examples/parser/functions.mx`
 
-- [ ] 3.10. Class Definition Nodes
-  - [ ] 3.10.1. Implement `ClassDefStmt` (name, superclass, body)
-  - [ ] 3.10.2. Parse class body (methods and instance variables)
-  - [ ] 3.10.3. Handle inheritance syntax (`class Dog < Animal`)
-  - [ ] 3.10.4. Handle `__init__` constructor parsing
-  - [ ] 3.10.5. Parse instance variable declarations
-  - [ ] 3.10.6. Write unit tests for class definitions
-  - [ ] 3.10.7. Create example file: `examples/parser/classes.mx`
-  - [ ] 3.10.8. Create test file: `tests/class_parsing_tests.rs`
+- [x] 3.10. Class Definition Nodes
+  - [x] 3.10.1. Implement `ClassDefStmt` (name, superclass, body)
+  - [x] 3.10.2. Parse class body (methods and instance variables)
+  - [x] 3.10.3. Handle inheritance syntax (`class Dog < Animal`)
+  - [x] 3.10.4. Handle `initialize` constructor parsing
+  - [x] 3.10.5. Parse instance variable declarations
+  - [x] 3.10.6. Write unit tests for class definitions
+  - [x] 3.10.7. Create example file: `examples/parser/classes.mx`
+  - [x] 3.10.8. Create test file: `tests/class_parsing_tests.rs`
 
-- [ ] 3.11. Parser Core Implementation
-  - [ ] 3.11.1. Create `Parser` struct with token stream
-  - [ ] 3.11.2. Implement `advance()`, `peek()`, `expect()` methods
-  - [ ] 3.11.3. Implement error recovery and synchronization
-  - [ ] 3.11.4. Add panic mode recovery
-  - [ ] 3.11.5. Implement operator precedence climbing
-  - [ ] 3.11.6. Create parse methods for each AST node type
-  - [ ] 3.11.7. Handle block delimiters (`do...end`, `if...end`)
-  - [ ] 3.11.8. Implement newline handling (statement terminators)
+- [x] 3.11. Parser Core Implementation
+  - [x] 3.11.1. Create `Parser` struct with token stream
+  - [x] 3.11.2. Implement `advance()`, `peek()`, `expect()` methods
+  - [x] 3.11.3. Implement error recovery and synchronization
+  - [x] 3.11.4. Add panic mode recovery
+  - [x] 3.11.5. Implement operator precedence climbing
+  - [x] 3.11.6. Create parse methods for each AST node type
+  - [x] 3.11.7. Handle block delimiters (`do...end`, `if...end`)
+  - [x] 3.11.8. Implement newline handling (statement terminators)
 
-- [ ] 3.12. Parser Testing and Examples
-  - [ ] 3.12.1. Write unit tests for each parse method
-  - [ ] 3.12.2. Create integration tests with full programs
-  - [ ] 3.12.3. Test error recovery scenarios
-  - [ ] 3.12.4. Create example: `examples/parser/complete_program.mx`
-  - [ ] 3.12.5. Create test file: `tests/parser_tests.rs`
-  - [ ] 3.12.6. Create test file: `tests/parser_error_recovery_tests.rs`
+- [x] 3.12. Parser Testing and Examples
+  - [x] 3.12.1. Write unit tests for each parse method
+  - [x] 3.12.2. Create integration tests with full programs
+  - [x] 3.12.3. Test error recovery scenarios
+  - [x] 3.12.4. Create example: `examples/parser/complete_program.mx`
+  - [x] 3.12.5. Create test file: `tests/parser_tests.rs`
+  - [x] 3.12.6. Create test file: `tests/parser_error_recovery_tests.rs`
 
 ### 4. Runtime Object System
 
@@ -400,7 +400,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 6.7.1. Implement class definition execution
   - [ ] 6.7.2. Register class in global registry
   - [ ] 6.7.3. Implement instance creation (`Class.new`)
-  - [ ] 6.7.4. Call `__init__` constructor
+  - [ ] 6.7.4. Call `initialize` constructor
   - [ ] 6.7.5. Initialize instance variables
   - [ ] 6.7.6. Write unit tests for class instantiation
   - [ ] 6.7.7. Create example file: `examples/runtime/class_instantiation.mx`
@@ -1113,7 +1113,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.10.7. Create test file: `tests/relative_import_tests.rs`
 
 - [ ] 16.11. Package Support (Optional)
-  - [ ] 16.11.1. Implement package semantics with `__init__.mx` files
+  - [ ] 16.11.1. Implement package semantics with `initialize.mx` files
   - [ ] 16.11.2. Support hierarchical module namespaces (`package.submodule`)
   - [ ] 16.11.3. Implement package initialization on first import
   - [ ] 16.11.4. Handle package-level imports
