@@ -208,32 +208,32 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 ### 4. Runtime Object System
 
-- [ ] 4.1. Core Object Representation
-  - [ ] 4.1.1. Define `Object` enum in `src/object.rs`
-  - [ ] 4.1.2. Add `Nil` variant
-  - [ ] 4.1.3. Add `Bool(bool)` variant
-  - [ ] 4.1.4. Add `Int(i64)` variant
-  - [ ] 4.1.5. Add `Float(f64)` variant
-  - [ ] 4.1.6. Add `String(Rc<String>)` variant
-  - [ ] 4.1.7. Add `Array(Rc<RefCell<Vec<Object>>>)` variant
-  - [ ] 4.1.8. Add `Dict(Rc<RefCell<HashMap<String, Object>>>)` variant
-  - [ ] 4.1.9. Add `Instance(Rc<RefCell<Instance>>)` variant
-  - [ ] 4.1.10. Add `Class(Rc<Class>)` variant
-  - [ ] 4.1.11. Add `Method(Rc<Method>)` variant
-  - [ ] 4.1.12. Add `Block(Rc<BlockStatement>)` variant (critical for meta-programming)
-  - [ ] 4.1.13. Add `Exception(Rc<RefCell<Exception>>)` variant
-  - [ ] 4.1.14. Add `Set(Rc<RefCell<HashSet<Object>>>)` variant
-  - [ ] 4.1.15. Add `Result(Result<Object, Object>)` variant (for explicit error handling)
+- [x] 4.1. Core Object Representation
+  - [x] 4.1.1. Define `Object` enum in `src/object.rs`
+  - [x] 4.1.2. Add `Nil` variant
+  - [x] 4.1.3. Add `Bool(bool)` variant
+  - [x] 4.1.4. Add `Int(i64)` variant
+  - [x] 4.1.5. Add `Float(f64)` variant
+  - [x] 4.1.6. Add `String(Rc<String>)` variant
+  - [x] 4.1.7. Add `Array(Rc<RefCell<Vec<Object>>>)` variant
+  - [x] 4.1.8. Add `Dict(Rc<RefCell<HashMap<String, Object>>>)` variant
+  - [x] 4.1.9. Add `Instance(Rc<RefCell<Instance>>)` variant
+  - [x] 4.1.10. Add `Class(Rc<Class>)` variant
+  - [x] 4.1.11. Add `Method(Rc<Method>)` variant
+  - [x] 4.1.12. Add `Block(Rc<BlockClosure>)` variant (critical for meta-programming)
+  - [x] 4.1.13. Add `Exception(Rc<RefCell<Exception>>)` variant
+  - [x] 4.1.14. Add `Set(Rc<RefCell<HashSet<Object>>>)` variant
+  - [x] 4.1.15. Add `Result(Result<Object, Object>)` variant (for explicit error handling)
 
-- [ ] 4.2. Object Type System
-  - [ ] 4.2.1. Implement `type_of()` method for objects
-  - [ ] 4.2.2. Implement `is_truthy()` method
-  - [ ] 4.2.3. Implement `to_string()` method for all types
-  - [ ] 4.2.4. Implement `equals()` method with deep comparison
-  - [ ] 4.2.5. Implement `hash()` method for hashable types
-  - [ ] 4.2.6. Write unit tests for type checking
-  - [ ] 4.2.7. Create example file: `examples/runtime/types.mx`
-  - [ ] 4.2.8. Create test file: `tests/type_system_tests.rs`
+- [x] 4.2. Object Type System
+  - [x] 4.2.1. Implement `type_of()` method for objects
+  - [x] 4.2.2. Implement `is_truthy()` method
+  - [x] 4.2.3. Implement `to_string()` method for all types
+  - [x] 4.2.4. Implement `equals()` method with deep comparison
+  - [x] 4.2.5. Implement `hash()` method for hashable types
+  - [x] 4.2.6. Write unit tests for type checking
+  - [x] 4.2.7. Create example file: `examples/runtime/types.mx`
+  - [x] 4.2.8. Create test file: `tests/type_system_tests.rs`
 
 - [ ] 4.3. Class Structure
   - [ ] 4.3.1. Define `Class` struct in `src/class.rs`
