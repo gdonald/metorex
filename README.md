@@ -30,6 +30,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Traits/Interfaces**: Flexible polymorphism through trait system
 - **Optional Type System**: Gradual typing with type inference for performance and safety
 - **Advanced Collections**: Set, Deque, PriorityQueue, TreeMap, and immutable structures
+- **Runtime Class System**: Classes support inheritance, runtime method definition, instance variables, and class-level state
 
 ### Meta-Programming (Core Innovation)
 - **Code-as-Object**: AST nodes are first-class objects manipulable at runtime

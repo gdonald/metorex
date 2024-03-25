@@ -91,7 +91,7 @@ fn test_empty_dict() {
 
 #[test]
 fn test_class_object() {
-    let class = Rc::new(Class::new("MyClass".to_string(), None));
+    let class = Rc::new(Class::new("MyClass", None));
     let obj = Object::Class(class);
     assert_eq!(obj.type_name(), "Class");
     assert_eq!(format!("{}", obj), "<class MyClass>");
@@ -99,7 +99,7 @@ fn test_class_object() {
 
 #[test]
 fn test_instance_object() {
-    let class = Rc::new(Class::new("MyClass".to_string(), None));
+    let class = Rc::new(Class::new("MyClass", None));
     let obj = Object::instance(class);
     assert_eq!(obj.type_name(), "Instance");
     assert_eq!(format!("{}", obj), "<MyClass instance>");
@@ -135,7 +135,7 @@ fn test_set_object() {
 
 #[test]
 fn test_instance_variables() {
-    let class = Rc::new(Class::new("Person".to_string(), None));
+    let class = Rc::new(Class::new("Person", None));
     let obj = Object::instance(Rc::clone(&class));
 
     if let Object::Instance(inst) = obj {
@@ -153,13 +153,13 @@ fn test_instance_variables() {
 
 #[test]
 fn test_class_methods() {
-    let mut class = Class::new("Calculator".to_string(), None);
+    let class = Class::new("Calculator", None);
     let method = Rc::new(Method::new(
         "add".to_string(),
         vec!["x".to_string(), "y".to_string()],
         vec![],
     ));
-    class.add_method("add".to_string(), method);
+    class.define_method("add", method);
 
     assert!(class.find_method("add").is_some());
     assert!(class.find_method("nonexistent").is_none());
@@ -167,8 +167,8 @@ fn test_class_methods() {
 
 #[test]
 fn test_class_variables() {
-    let class = Class::new("Counter".to_string(), None);
-    class.set_class_var("count".to_string(), Object::Int(0));
+    let class = Class::new("Counter", None);
+    class.set_class_var("count", Object::Int(0));
 
     assert_eq!(class.get_class_var("count"), Some(Object::Int(0)));
     assert_eq!(class.get_class_var("nonexistent"), None);
@@ -319,12 +319,7 @@ fn test_equals_dict_nested() {
 
 #[test]
 fn test_equals_instance() {
-    let class = Rc::new(Class {
-        name: "TestClass".to_string(),
-        superclass: None,
-        methods: HashMap::new(),
-        class_vars: RefCell::new(HashMap::new()),
-    });
+    let class = Rc::new(Class::new("TestClass", None));
 
     let inst1 = Rc::new(RefCell::new(Instance {
         class: Rc::clone(&class),
@@ -346,19 +341,9 @@ fn test_equals_instance() {
 
 #[test]
 fn test_equals_class() {
-    let class1 = Rc::new(Class {
-        name: "Class1".to_string(),
-        superclass: None,
-        methods: HashMap::new(),
-        class_vars: RefCell::new(HashMap::new()),
-    });
+    let class1 = Rc::new(Class::new("Class1", None));
     let class2 = Rc::clone(&class1);
-    let class3 = Rc::new(Class {
-        name: "Class1".to_string(),
-        superclass: None,
-        methods: HashMap::new(),
-        class_vars: RefCell::new(HashMap::new()),
-    });
+    let class3 = Rc::new(Class::new("Class1", None));
 
     let obj1 = Object::Class(class1);
     let obj2 = Object::Class(class2);
@@ -550,12 +535,7 @@ fn test_hash_non_hashable() {
     assert!(dict.hash().is_none());
 
     // Instances are not hashable
-    let class = Rc::new(Class {
-        name: "Test".to_string(),
-        superclass: None,
-        methods: HashMap::new(),
-        class_vars: RefCell::new(HashMap::new()),
-    });
+    let class = Rc::new(Class::new("Test", None));
     let inst = Object::Instance(Rc::new(RefCell::new(Instance {
         class,
         instance_vars: HashMap::new(),
@@ -609,12 +589,7 @@ fn test_to_string_dict() {
 
 #[test]
 fn test_to_string_class() {
-    let class = Rc::new(Class {
-        name: "MyClass".to_string(),
-        superclass: None,
-        methods: HashMap::new(),
-        class_vars: RefCell::new(HashMap::new()),
-    });
+    let class = Rc::new(Class::new("MyClass", None));
     let obj = Object::Class(class);
     assert_eq!(obj.to_string(), "<class MyClass>");
 }

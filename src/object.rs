@@ -7,6 +7,8 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
+pub use crate::class::Class;
+
 /// Core object type representing all runtime values in Metorex
 #[derive(Debug, Clone, PartialEq)]
 pub enum Object {
@@ -80,59 +82,10 @@ impl Instance {
     pub fn set_var(&mut self, name: String, value: Object) {
         self.instance_vars.insert(name, value);
     }
-}
 
-/// Class definition containing methods and class variables
-#[derive(Debug, Clone, PartialEq)]
-pub struct Class {
-    /// Name of the class
-    pub name: String,
-    /// Optional superclass
-    pub superclass: Option<Rc<Class>>,
-    /// Instance methods
-    pub methods: HashMap<String, Rc<Method>>,
-    /// Class variables (@@variable)
-    pub class_vars: RefCell<HashMap<String, Object>>,
-}
-
-impl Class {
-    /// Create a new class
-    pub fn new(name: String, superclass: Option<Rc<Class>>) -> Self {
-        Self {
-            name,
-            superclass,
-            methods: HashMap::new(),
-            class_vars: RefCell::new(HashMap::new()),
-        }
-    }
-
-    /// Add a method to the class
-    pub fn add_method(&mut self, name: String, method: Rc<Method>) {
-        self.methods.insert(name, method);
-    }
-
-    /// Look up a method (checking superclasses)
-    pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
-        if let Some(method) = self.methods.get(name) {
-            return Some(Rc::clone(method));
-        }
-
-        // Check superclass
-        if let Some(ref superclass) = self.superclass {
-            return superclass.find_method(name);
-        }
-
-        None
-    }
-
-    /// Get a class variable
-    pub fn get_class_var(&self, name: &str) -> Option<Object> {
-        self.class_vars.borrow().get(name).cloned()
-    }
-
-    /// Set a class variable
-    pub fn set_class_var(&self, name: String, value: Object) {
-        self.class_vars.borrow_mut().insert(name, value);
+    /// Check if this instance's class (or a superclass) knows about the variable.
+    pub fn is_var_declared(&self, name: &str) -> bool {
+        self.class.has_instance_var(name)
     }
 }
 
@@ -293,9 +246,9 @@ impl fmt::Display for Object {
             }
             Object::Instance(inst) => {
                 let instance = inst.borrow();
-                write!(f, "<{} instance>", instance.class.name)
+                write!(f, "<{} instance>", instance.class.name())
             }
-            Object::Class(class) => write!(f, "<class {}>", class.name),
+            Object::Class(class) => write!(f, "<class {}>", class.name()),
             Object::Method(method) => write!(f, "<method {}>", method.name),
             Object::Block(_) => write!(f, "<block>"),
             Object::Exception(exc) => {
