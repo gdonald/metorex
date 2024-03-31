@@ -87,6 +87,16 @@ impl Instance {
     pub fn is_var_declared(&self, name: &str) -> bool {
         self.class.has_instance_var(name)
     }
+
+    /// Find a method on this instance's class (walks the inheritance chain)
+    pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
+        self.class.find_method(name)
+    }
+
+    /// Get the class name of this instance
+    pub fn class_name(&self) -> &str {
+        self.class.name()
+    }
 }
 
 /// Method definition (function bound to a class)

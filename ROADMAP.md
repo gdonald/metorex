@@ -246,14 +246,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.3.8. Write unit tests for class structure
   - [x] 4.3.9. Create test file: `tests/class_system_tests.rs`
 
-- [ ] 4.4. Instance Structure
-  - [ ] 4.4.1. Define `Instance` struct in `src/instance.rs`
-  - [ ] 4.4.2. Add class reference
-  - [ ] 4.4.3. Add instance variable storage (HashMap<String, Object>)
-  - [ ] 4.4.4. Implement instance variable get/set methods
-  - [ ] 4.4.5. Implement method dispatch to class
-  - [ ] 4.4.6. Write unit tests for instances
-  - [ ] 4.4.7. Create example file: `examples/runtime/instances.mx`
+- [x] 4.4. Instance Structure
+  - [x] 4.4.1. Define `Instance` struct in `src/instance.rs`
+  - [x] 4.4.2. Add class reference
+  - [x] 4.4.3. Add instance variable storage (HashMap<String, Object>)
+  - [x] 4.4.4. Implement instance variable get/set methods
+  - [x] 4.4.5. Implement method dispatch to class
+  - [x] 4.4.6. Write unit tests for instances
+  - [x] 4.4.7. Create example file: `examples/runtime/instances.mx`
 
 - [ ] 4.5. Method Structure
   - [ ] 4.5.1. Define `Method` struct in `src/method.rs`
@@ -263,7 +263,6 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 4.5.5. Add closure scope capture
   - [ ] 4.5.6. Implement `Callable` trait
   - [ ] 4.5.7. Write unit tests for methods
-  - [ ] 4.5.8. Create example file: `examples/runtime/methods.mx`
 
 - [ ] 4.6. Exception Structure
   - [ ] 4.6.1. Define `Exception` struct in `src/exception.rs`
@@ -274,7 +273,6 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 4.6.6. Add cause chain (wrapped exceptions)
   - [ ] 4.6.7. Implement exception hierarchy (base exception classes)
   - [ ] 4.6.8. Write unit tests for exceptions
-  - [ ] 4.6.9. Create example file: `examples/runtime/exceptions.mx`
   - [ ] 4.6.10. Create test file: `tests/exception_objects_tests.rs`
 
 - [ ] 4.7. Built-in Base Classes

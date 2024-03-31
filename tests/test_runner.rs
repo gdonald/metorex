@@ -177,6 +177,42 @@ fn test_example_file_structure() {
     );
 }
 
+#[test]
+fn test_runtime_instances_example_exists() {
+    // Ensure the instances example file exists and is readable
+    let path = Path::new("examples/runtime/instances.mx");
+    assert!(
+        path.exists(),
+        "Example file should exist: examples/runtime/instances.mx"
+    );
+
+    let contents = fs::read_to_string(path).expect("Should be able to read example file");
+
+    assert!(!contents.is_empty(), "Example file should not be empty");
+
+    // Verify it contains instance-related content
+    assert!(
+        contents.contains("class ") || contents.contains("Class"),
+        "Example file should contain class definitions"
+    );
+
+    assert!(
+        contents.contains("def initialize") || contents.contains("def "),
+        "Example file should contain method definitions"
+    );
+
+    assert!(
+        contents.contains("@") || contents.contains("instance"),
+        "Example file should contain instance variables or instance references"
+    );
+
+    // Verify it demonstrates basic instance functionality
+    assert!(
+        contents.contains("Instance Creation") || contents.contains("instance"),
+        "Should demonstrate instance creation"
+    );
+}
+
 // Integration test infrastructure for future use
 // This will be expanded once we have the interpreter
 
