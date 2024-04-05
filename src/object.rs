@@ -99,6 +99,23 @@ impl Instance {
     }
 }
 
+/// Trait for callable objects (methods, functions, blocks)
+pub trait Callable {
+    /// Get the name of the callable
+    fn name(&self) -> &str;
+
+    /// Get the parameter names
+    fn parameters(&self) -> &[String];
+
+    /// Get the body statements
+    fn body(&self) -> &[Statement];
+
+    /// Get the arity (number of required parameters)
+    fn arity(&self) -> usize {
+        self.parameters().len()
+    }
+}
+
 /// Method definition (function bound to a class)
 #[derive(Debug, Clone, PartialEq)]
 pub struct Method {
@@ -132,6 +149,30 @@ impl Method {
             receiver: Some(Box::new(receiver)),
         }
     }
+
+    /// Check if this method is bound to a receiver
+    pub fn is_bound(&self) -> bool {
+        self.receiver.is_some()
+    }
+
+    /// Get the receiver if this method is bound
+    pub fn receiver(&self) -> Option<&Object> {
+        self.receiver.as_deref()
+    }
+}
+
+impl Callable for Method {
+    fn name(&self) -> &str {
+        &self.name
+    }
+
+    fn parameters(&self) -> &[String] {
+        &self.parameters
+    }
+
+    fn body(&self) -> &[Statement] {
+        &self.body
+    }
 }
 
 /// Block/lambda/closure with captured variables
@@ -158,6 +199,43 @@ impl BlockClosure {
             captured_vars,
         }
     }
+
+    /// Get the captured variables
+    pub fn captured_vars(&self) -> &HashMap<String, Object> {
+        &self.captured_vars
+    }
+}
+
+impl Callable for BlockClosure {
+    fn name(&self) -> &str {
+        "<block>"
+    }
+
+    fn parameters(&self) -> &[String] {
+        &self.parameters
+    }
+
+    fn body(&self) -> &[Statement] {
+        &self.body
+    }
+}
+
+/// Source location for exceptions
+#[derive(Debug, Clone, PartialEq)]
+pub struct SourceLocation {
+    /// File name or path
+    pub file: String,
+    /// Line number (1-based)
+    pub line: usize,
+    /// Column number (1-based)
+    pub column: usize,
+}
+
+impl SourceLocation {
+    /// Create a new source location
+    pub fn new(file: String, line: usize, column: usize) -> Self {
+        Self { file, line, column }
+    }
 }
 
 /// Exception object for error handling
@@ -169,6 +247,10 @@ pub struct Exception {
     pub message: String,
     /// Optional backtrace
     pub backtrace: Option<Vec<String>>,
+    /// Source location where the exception occurred
+    pub location: Option<SourceLocation>,
+    /// Cause chain (wrapped exception)
+    pub cause: Option<Box<Object>>,
 }
 
 impl Exception {
@@ -178,6 +260,8 @@ impl Exception {
             exception_type,
             message,
             backtrace: None,
+            location: None,
+            cause: None,
         }
     }
 
@@ -187,7 +271,66 @@ impl Exception {
             exception_type,
             message,
             backtrace: Some(backtrace),
+            location: None,
+            cause: None,
         }
+    }
+
+    /// Create an exception with source location
+    pub fn with_location(
+        exception_type: String,
+        message: String,
+        location: SourceLocation,
+    ) -> Self {
+        Self {
+            exception_type,
+            message,
+            backtrace: None,
+            location: Some(location),
+            cause: None,
+        }
+    }
+
+    /// Create an exception with a cause
+    pub fn with_cause(exception_type: String, message: String, cause: Object) -> Self {
+        Self {
+            exception_type,
+            message,
+            backtrace: None,
+            location: None,
+            cause: Some(Box::new(cause)),
+        }
+    }
+
+    /// Create an exception with all fields
+    pub fn with_all(
+        exception_type: String,
+        message: String,
+        backtrace: Option<Vec<String>>,
+        location: Option<SourceLocation>,
+        cause: Option<Object>,
+    ) -> Self {
+        Self {
+            exception_type,
+            message,
+            backtrace,
+            location,
+            cause: cause.map(Box::new),
+        }
+    }
+
+    /// Get the full exception chain
+    pub fn exception_chain(&self) -> Vec<String> {
+        let mut chain = vec![format!("{}: {}", self.exception_type, self.message)];
+
+        if let Some(ref cause_obj) = self.cause
+            && let Object::Exception(cause_exc) = cause_obj.as_ref()
+        {
+            let cause = cause_exc.borrow();
+            chain.extend(cause.exception_chain());
+        }
+
+        chain
     }
 }
 

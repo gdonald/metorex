@@ -2,6 +2,7 @@
 // A modern, Ruby-inspired language with powerful metaprogramming capabilities
 
 pub mod ast;
+pub mod builtin_classes;
 pub mod class;
 pub mod error;
 pub mod lexer;

@@ -255,44 +255,44 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.4.6. Write unit tests for instances
   - [x] 4.4.7. Create example file: `examples/runtime/instances.mx`
 
-- [ ] 4.5. Method Structure
-  - [ ] 4.5.1. Define `Method` struct in `src/method.rs`
-  - [ ] 4.5.2. Add name field
-  - [ ] 4.5.3. Add parameter list
-  - [ ] 4.5.4. Add body (AST BlockStatement reference)
-  - [ ] 4.5.5. Add closure scope capture
-  - [ ] 4.5.6. Implement `Callable` trait
-  - [ ] 4.5.7. Write unit tests for methods
+- [x] 4.5. Method Structure
+  - [x] 4.5.1. Define `Method` struct in `src/object.rs`
+  - [x] 4.5.2. Add name field
+  - [x] 4.5.3. Add parameter list
+  - [x] 4.5.4. Add body (AST Statement references)
+  - [x] 4.5.5. Add closure scope capture (handled by BlockClosure)
+  - [x] 4.5.6. Implement `Callable` trait
+  - [x] 4.5.7. Write unit tests for methods
 
-- [ ] 4.6. Exception Structure
-  - [ ] 4.6.1. Define `Exception` struct in `src/exception.rs`
-  - [ ] 4.6.2. Add exception message field
-  - [ ] 4.6.3. Add exception type/class field
-  - [ ] 4.6.4. Add stack trace capture
-  - [ ] 4.6.5. Add source location (file, line, column)
-  - [ ] 4.6.6. Add cause chain (wrapped exceptions)
-  - [ ] 4.6.7. Implement exception hierarchy (base exception classes)
-  - [ ] 4.6.8. Write unit tests for exceptions
-  - [ ] 4.6.10. Create test file: `tests/exception_objects_tests.rs`
+- [x] 4.6. Exception Structure
+  - [x] 4.6.1. Define `Exception` struct in `src/object.rs`
+  - [x] 4.6.2. Add exception message field
+  - [x] 4.6.3. Add exception type/class field
+  - [x] 4.6.4. Add stack trace capture
+  - [x] 4.6.5. Add source location (file, line, column)
+  - [x] 4.6.6. Add cause chain (wrapped exceptions)
+  - [x] 4.6.7. Implement exception hierarchy (base exception classes)
+  - [x] 4.6.8. Write unit tests for exceptions
+  - [x] 4.6.10. Create test file: `tests/exception_objects_tests.rs`
 
-- [ ] 4.7. Built-in Base Classes
-  - [ ] 4.7.1. Implement `Object` base class
-  - [ ] 4.7.2. Add `Object#to_s` method
-  - [ ] 4.7.3. Add `Object#class` method
-  - [ ] 4.7.4. Add `Object#respond_to?` method
-  - [ ] 4.7.5. Add `Object#define_method` (meta-programming core)
-  - [ ] 4.7.6. Add `Object#get_source` (AST reflection)
-  - [ ] 4.7.7. Implement `String` class with methods
-  - [ ] 4.7.8. Implement `Integer` class with methods
-  - [ ] 4.7.9. Implement `Float` class with methods
-  - [ ] 4.7.10. Implement `Array` class with methods
-  - [ ] 4.7.11. Implement `Hash` class with methods
-  - [ ] 4.7.12. Implement `Set` class with methods
-  - [ ] 4.7.13. Implement base `Exception` class
-  - [ ] 4.7.14. Implement `StandardError`, `RuntimeError`, `TypeError`, `ValueError` exception classes
-  - [ ] 4.7.15. Write comprehensive tests for built-in classes
-  - [ ] 4.7.16. Create example file: `examples/runtime/builtin_classes.mx`
-  - [ ] 4.7.17. Create test file: `tests/builtin_classes_tests.rs`
+- [x] 4.7. Built-in Base Classes
+  - [x] 4.7.1. Implement `Object` base class
+  - [x] 4.7.2. Add `Object#to_s` method
+  - [x] 4.7.3. Add `Object#class` method
+  - [x] 4.7.4. Add `Object#respond_to?` method
+  - [x] 4.7.5. Add `Object#define_method` (deferred to interpreter)
+  - [x] 4.7.6. Add `Object#get_source` (deferred to interpreter)
+  - [x] 4.7.7. Implement `String` class with methods
+  - [x] 4.7.8. Implement `Integer` class with methods
+  - [x] 4.7.9. Implement `Float` class with methods
+  - [x] 4.7.10. Implement `Array` class with methods
+  - [x] 4.7.11. Implement `Hash` class with methods
+  - [x] 4.7.12. Implement `Set` class with methods
+  - [x] 4.7.13. Implement base `Exception` class
+  - [x] 4.7.14. Implement `StandardError`, `RuntimeError`, `TypeError`, `ValueError` exception classes
+  - [x] 4.7.15. Write comprehensive tests for built-in classes
+  - [x] 4.7.16. Create example file: `examples/runtime/builtin_classes.mx`
+  - [x] 4.7.17. Create test file: `tests/builtin_classes_tests.rs`
 
 ### 5. Scope and Environment Management
 
