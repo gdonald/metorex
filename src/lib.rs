@@ -9,6 +9,7 @@ pub mod lexer;
 pub mod object;
 pub mod parser;
 pub mod runtime;
+pub mod scope;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")

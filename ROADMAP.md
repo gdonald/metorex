@@ -296,16 +296,16 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 ### 5. Scope and Environment Management
 
-- [ ] 5.1. Scope Implementation
-  - [ ] 5.1.1. Define `Scope` struct in `src/scope.rs`
-  - [ ] 5.1.2. Add variable storage (HashMap<String, Object>)
-  - [ ] 5.1.3. Add parent scope reference (Option<Rc<RefCell<Scope>>>)
-  - [ ] 5.1.4. Implement `define()` method for new variables
-  - [ ] 5.1.5. Implement `get()` method with scope chain lookup
-  - [ ] 5.1.6. Implement `set()` method with scope chain traversal
-  - [ ] 5.1.7. Implement `get_at()` and `set_at()` for closure resolution
-  - [ ] 5.1.8. Write unit tests for scope operations
-  - [ ] 5.1.9. Create test file: `tests/scope_tests.rs`
+- [x] 5.1. Scope Implementation
+  - [x] 5.1.1. Define `Scope` struct in `src/scope.rs`
+  - [x] 5.1.2. Add variable storage (HashMap<String, Object>)
+  - [x] 5.1.3. Add parent scope reference (Option<Rc<RefCell<Scope>>>)
+  - [x] 5.1.4. Implement `define()` method for new variables
+  - [x] 5.1.5. Implement `get()` method with scope chain lookup
+  - [x] 5.1.6. Implement `set()` method with scope chain traversal
+  - [x] 5.1.7. Implement `get_at()` and `set_at()` for closure resolution
+  - [x] 5.1.8. Write unit tests for scope operations
+  - [x] 5.1.9. Create test file: `tests/scope_tests.rs`
 
 - [ ] 5.2. Environment Stack
   - [ ] 5.2.1. Create `Environment` struct managing scope stack
