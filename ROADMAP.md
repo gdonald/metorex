@@ -307,15 +307,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 5.1.8. Write unit tests for scope operations
   - [x] 5.1.9. Create test file: `tests/scope_tests.rs`
 
-- [ ] 5.2. Environment Stack
-  - [ ] 5.2.1. Create `Environment` struct managing scope stack
-  - [ ] 5.2.2. Implement `push_scope()` method
-  - [ ] 5.2.3. Implement `pop_scope()` method
-  - [ ] 5.2.4. Implement `current_scope()` accessor
-  - [ ] 5.2.5. Add global scope initialization
-  - [ ] 5.2.6. Add scope depth tracking
-  - [ ] 5.2.7. Write unit tests for environment
-  - [ ] 5.2.8. Create test file: `tests/environment_tests.rs`
+- [x] 5.2. Environment Stack
+  - [x] 5.2.1. Create `Environment` struct managing scope stack
+  - [x] 5.2.2. Implement `push_scope()` method
+  - [x] 5.2.3. Implement `pop_scope()` method
+  - [x] 5.2.4. Implement `current_scope()` accessor
+  - [x] 5.2.5. Add global scope initialization
+  - [x] 5.2.6. Add scope depth tracking
+  - [x] 5.2.7. Write unit tests for environment
+  - [x] 5.2.8. Create test file: `tests/environment_tests.rs`
 
 - [ ] 5.3. Variable Resolution
   - [ ] 5.3.1. Implement static variable resolution pass

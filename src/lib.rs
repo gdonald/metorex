@@ -4,6 +4,7 @@
 pub mod ast;
 pub mod builtin_classes;
 pub mod class;
+pub mod environment;
 pub mod error;
 pub mod lexer;
 pub mod object;
