@@ -10,7 +10,7 @@ pub enum InterpolationPart {
 }
 
 /// Represents the position of a token in the source code
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Position {
     pub line: usize,
     pub column: usize,

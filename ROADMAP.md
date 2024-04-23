@@ -317,14 +317,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 5.2.7. Write unit tests for environment
   - [x] 5.2.8. Create test file: `tests/environment_tests.rs`
 
-- [ ] 5.3. Variable Resolution
-  - [ ] 5.3.1. Implement static variable resolution pass
-  - [ ] 5.3.2. Track variable declaration depths
-  - [ ] 5.3.3. Detect undefined variable access
-  - [ ] 5.3.4. Detect variable shadowing
-  - [ ] 5.3.5. Write unit tests for resolution
-  - [ ] 5.3.6. Create example file: `examples/runtime/variable_scope.mx`
-  - [ ] 5.3.7. Create test file: `tests/variable_resolution_tests.rs`
+- [x] 5.3. Variable Resolution
+  - [x] 5.3.1. Implement static variable resolution pass
+  - [x] 5.3.2. Track variable declaration depths
+  - [x] 5.3.3. Detect undefined variable access
+  - [x] 5.3.4. Detect variable shadowing
+  - [x] 5.3.5. Write unit tests for resolution
+  - [x] 5.3.6. Create example file: `examples/runtime/variable_scope.mx`
+  - [x] 5.3.7. Create test file: `tests/variable_resolution_tests.rs`
 
 ### 6. Virtual Machine (AST Interpreter)
 
