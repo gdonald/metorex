@@ -125,6 +125,10 @@ See [examples/dsl_example.mx](examples/advanced/dsl_example.mx)
    - Full meta-programming capabilities
    - Exception handling, pattern matching, testing
 
+### Runtime Components (MVP)
+
+- `VirtualMachine` (`src/vm.rs`) seeds the AST interpreter with the environment stack, global object registry, call stack, heap placeholder, and built-in class initialization.
+
 2. **Phase 2**: Bytecode compilation for performance
    - AST → Bytecode Compiler → VM
    - Reflection and runtime definition

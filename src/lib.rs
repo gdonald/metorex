@@ -12,6 +12,7 @@ pub mod parser;
 pub mod resolver;
 pub mod runtime;
 pub mod scope;
+pub mod vm;
 
 pub fn version() -> &'static str {
     env!("CARGO_PKG_VERSION")
