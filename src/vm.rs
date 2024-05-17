@@ -1,8 +1,11 @@
 // Virtual machine core structure for the Metorex AST interpreter.
 // This module defines the runtime scaffolding that powers execution.
 
+use crate::ast::{Expression, Statement};
 use crate::builtin_classes::{self, BuiltinClasses};
 use crate::environment::Environment;
+use crate::error::{MetorexError, SourceLocation};
+use crate::lexer::Position;
 use crate::object::Object;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -166,6 +169,122 @@ impl VirtualMachine {
     pub fn call_stack(&self) -> &[CallFrame] {
         &self.call_stack
     }
+
+    /// Execute a sequence of statements and return an optional result (from return statements).
+    pub fn execute_program(
+        &mut self,
+        statements: &[Statement],
+    ) -> Result<Option<Object>, MetorexError> {
+        match self.execute_statements_internal(statements)? {
+            ControlFlow::Next => Ok(None),
+            ControlFlow::Return { value, .. } => Ok(Some(value)),
+            ControlFlow::Break { position } => Err(loop_control_error("break", position)),
+            ControlFlow::Continue { position } => Err(loop_control_error("continue", position)),
+        }
+    }
+
+    /// Evaluate a statement and produce control-flow information for the caller.
+    fn execute_statement(&mut self, statement: &Statement) -> Result<ControlFlow, MetorexError> {
+        match statement {
+            Statement::Expression { expression, .. } => {
+                self.evaluate_expression(expression)?;
+                Ok(ControlFlow::Next)
+            }
+            Statement::Assignment {
+                target,
+                value,
+                position: _,
+            } => {
+                let evaluated = self.evaluate_expression(value)?;
+                self.assign_value(target, evaluated)?;
+                Ok(ControlFlow::Next)
+            }
+            Statement::Return { value, position } => {
+                let result = match value {
+                    Some(expr) => self.evaluate_expression(expr)?,
+                    None => Object::Nil,
+                };
+                Ok(ControlFlow::Return {
+                    value: result,
+                    position: *position,
+                })
+            }
+            Statement::Break { position } => Ok(ControlFlow::Break {
+                position: *position,
+            }),
+            Statement::Continue { position } => Ok(ControlFlow::Continue {
+                position: *position,
+            }),
+            Statement::Block {
+                statements,
+                position: _,
+            } => self.execute_block(statements),
+            Statement::If { .. }
+            | Statement::While { .. }
+            | Statement::For { .. }
+            | Statement::Match { .. }
+            | Statement::FunctionDef { .. }
+            | Statement::MethodDef { .. }
+            | Statement::ClassDef { .. }
+            | Statement::Begin { .. }
+            | Statement::Raise { .. } => Err(unimplemented_statement_error(statement)),
+        }
+    }
+
+    /// Execute statements within a new lexical scope.
+    fn execute_block(&mut self, statements: &[Statement]) -> Result<ControlFlow, MetorexError> {
+        self.environment.push_scope();
+        let result = self.execute_statements_internal(statements);
+        self.environment.pop_scope();
+        result
+    }
+
+    /// Core statement execution loop used by program and block execution.
+    fn execute_statements_internal(
+        &mut self,
+        statements: &[Statement],
+    ) -> Result<ControlFlow, MetorexError> {
+        for statement in statements {
+            match self.execute_statement(statement)? {
+                ControlFlow::Next => continue,
+                flow => return Ok(flow),
+            }
+        }
+        Ok(ControlFlow::Next)
+    }
+
+    /// Assign a value to the given target expression.
+    fn assign_value(&mut self, target: &Expression, value: Object) -> Result<(), MetorexError> {
+        match target {
+            Expression::Identifier { name, .. } => {
+                if !self.environment.set(name, value.clone()) {
+                    self.environment.define(name.clone(), value);
+                }
+                Ok(())
+            }
+            Expression::InstanceVariable { .. }
+            | Expression::ClassVariable { .. }
+            | Expression::Index { .. } => Err(invalid_assignment_target_error(target)),
+            _ => Err(invalid_assignment_target_error(target)),
+        }
+    }
+
+    /// Evaluate an expression to a runtime value.
+    fn evaluate_expression(&mut self, expression: &Expression) -> Result<Object, MetorexError> {
+        match expression {
+            Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
+            Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
+            Expression::StringLiteral { value, .. } => Ok(Object::String(Rc::new(value.clone()))),
+            Expression::BoolLiteral { value, .. } => Ok(Object::Bool(*value)),
+            Expression::NilLiteral { .. } => Ok(Object::Nil),
+            Expression::Identifier { name, position } => self
+                .environment
+                .get(name)
+                .ok_or_else(|| undefined_variable_error(name, *position)),
+            Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
+            _ => Err(unsupported_expression_error(expression)),
+        }
+    }
 }
 
 impl Default for VirtualMachine {
@@ -196,4 +315,62 @@ fn seed_environment_with_globals(environment: &mut Environment, globals: &Global
     for (name, value) in globals.iter() {
         environment.define(name.clone(), value.clone());
     }
+}
+
+/// Represents control-flow signals produced during statement execution.
+#[derive(Debug, Clone, PartialEq)]
+enum ControlFlow {
+    /// Normal execution, continue with next statement.
+    Next,
+    /// A return statement was encountered with an associated value.
+    Return { value: Object, position: Position },
+    /// A break statement was encountered.
+    Break { position: Position },
+    /// A continue statement was encountered.
+    Continue { position: Position },
+}
+
+/// Convert a lexer position into a runtime source location.
+fn position_to_location(position: Position) -> SourceLocation {
+    SourceLocation::new(position.line, position.column, position.offset)
+}
+
+/// Produce a runtime error for unsupported control-flow usage (e.g., break outside loop).
+fn loop_control_error(keyword: &str, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!("{keyword} cannot be used outside of a loop"),
+        position_to_location(position),
+    )
+}
+
+/// Produce a runtime error when attempting to assign to an invalid target.
+fn invalid_assignment_target_error(target: &Expression) -> MetorexError {
+    MetorexError::runtime_error(
+        "Invalid assignment target",
+        position_to_location(target.position()),
+    )
+}
+
+/// Produce a runtime error for referencing an undefined variable.
+fn undefined_variable_error(name: &str, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!("Undefined variable '{name}'"),
+        position_to_location(position),
+    )
+}
+
+/// Produce an internal error for statements that are not yet implemented.
+fn unimplemented_statement_error(statement: &Statement) -> MetorexError {
+    MetorexError::internal_error(format!(
+        "Statement execution not implemented for {:?}",
+        statement
+    ))
+}
+
+/// Produce a runtime error for expressions that are not yet supported.
+fn unsupported_expression_error(expression: &Expression) -> MetorexError {
+    MetorexError::runtime_error(
+        format!("Expression execution not implemented for {:?}", expression),
+        position_to_location(expression.position()),
+    )
 }
