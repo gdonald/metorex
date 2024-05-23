@@ -180,6 +180,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 ### Phase 1: MVP (In Progress)
 - Lexer and Parser
 - AST Interpreter
+- Expression evaluation (arithmetic, collections, indexing)
 - Meta-programming core
 - Exception handling
 - Pattern matching

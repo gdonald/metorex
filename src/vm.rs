@@ -1,7 +1,7 @@
 // Virtual machine core structure for the Metorex AST interpreter.
 // This module defines the runtime scaffolding that powers execution.
 
-use crate::ast::{Expression, Statement};
+use crate::ast::{BinaryOp, Expression, InterpolationPart, Statement, UnaryOp};
 use crate::builtin_classes::{self, BuiltinClasses};
 use crate::environment::Environment;
 use crate::error::{MetorexError, SourceLocation};
@@ -275,6 +275,9 @@ impl VirtualMachine {
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
             Expression::StringLiteral { value, .. } => Ok(Object::String(Rc::new(value.clone()))),
+            Expression::InterpolatedString { parts, .. } => self
+                .evaluate_interpolated_string(parts)
+                .map(|s| Object::String(Rc::new(s))),
             Expression::BoolLiteral { value, .. } => Ok(Object::Bool(*value)),
             Expression::NilLiteral { .. } => Ok(Object::Nil),
             Expression::Identifier { name, position } => self
@@ -282,7 +285,327 @@ impl VirtualMachine {
                 .get(name)
                 .ok_or_else(|| undefined_variable_error(name, *position)),
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
+            Expression::UnaryOp {
+                op,
+                operand,
+                position,
+            } => {
+                let value = self.evaluate_expression(operand)?;
+                self.evaluate_unary_operation(op, value, *position)
+            }
+            Expression::BinaryOp {
+                op,
+                left,
+                right,
+                position,
+            } => {
+                let left_value = self.evaluate_expression(left)?;
+                let right_value = self.evaluate_expression(right)?;
+                self.evaluate_binary_operation(op, left_value, right_value, *position)
+            }
+            Expression::Array { elements, .. } => self.evaluate_array_literal(elements),
+            Expression::Dictionary { entries, .. } => self.evaluate_dictionary_literal(entries),
+            Expression::Index {
+                array,
+                index,
+                position,
+            } => {
+                let collection = self.evaluate_expression(array)?;
+                let key = self.evaluate_expression(index)?;
+                self.evaluate_index_operation(collection, key, *position)
+            }
             _ => Err(unsupported_expression_error(expression)),
+        }
+    }
+
+    /// Evaluate string interpolation parts into a single owned string.
+    fn evaluate_interpolated_string(
+        &mut self,
+        parts: &[InterpolationPart],
+    ) -> Result<String, MetorexError> {
+        let mut buffer = String::new();
+
+        for part in parts {
+            match part {
+                InterpolationPart::Text(text) => buffer.push_str(text),
+                InterpolationPart::Expression(expr) => {
+                    let value = self.evaluate_expression(expr)?;
+                    buffer.push_str(&value.to_string());
+                }
+            }
+        }
+
+        Ok(buffer)
+    }
+
+    /// Evaluate a unary operation (`+` or `-`).
+    fn evaluate_unary_operation(
+        &self,
+        op: &UnaryOp,
+        value: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match op {
+            UnaryOp::Plus => match value {
+                Object::Int(_) | Object::Float(_) => Ok(value),
+                _ => Err(unary_type_error(op, &value, position)),
+            },
+            UnaryOp::Minus => match value {
+                Object::Int(v) => Ok(Object::Int(-v)),
+                Object::Float(v) => Ok(Object::Float(-v)),
+                _ => Err(unary_type_error(op, &value, position)),
+            },
+        }
+    }
+
+    /// Evaluate a binary operation across runtime values.
+    fn evaluate_binary_operation(
+        &self,
+        op: &BinaryOp,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        use BinaryOp::*;
+
+        match op {
+            Add => self.evaluate_addition(left, right, position),
+            Subtract | Multiply | Divide | Modulo => {
+                self.evaluate_numeric_binary(op, left, right, position)
+            }
+            Equal => Ok(Object::Bool(left.equals(&right))),
+            NotEqual => Ok(Object::Bool(!left.equals(&right))),
+            Less | Greater | LessEqual | GreaterEqual => {
+                self.evaluate_comparison(op, left, right, position)
+            }
+            Assign | AddAssign | SubtractAssign | MultiplyAssign | DivideAssign => {
+                Err(MetorexError::internal_error(format!(
+                    "Assignment operation '{:?}' should be handled by statement execution",
+                    op
+                )))
+            }
+        }
+    }
+
+    /// Handle addition across supported operand types.
+    fn evaluate_addition(
+        &self,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match (left, right) {
+            (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a + b)),
+            (Object::Float(a), Object::Float(b)) => Ok(Object::Float(a + b)),
+            (Object::Int(a), Object::Float(b)) => Ok(Object::Float((a as f64) + b)),
+            (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + (b as f64))),
+            (Object::String(a), Object::String(b)) => {
+                let mut combined = a.as_ref().clone();
+                combined.push_str(b.as_ref());
+                Ok(Object::String(Rc::new(combined)))
+            }
+            (lhs, rhs) => Err(binary_type_error(BinaryOp::Add, &lhs, &rhs, position)),
+        }
+    }
+
+    /// Evaluate numeric binary operations (`-`, `*`, `/`, `%`).
+    fn evaluate_numeric_binary(
+        &self,
+        op: &BinaryOp,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match (left, right) {
+            (Object::Int(a), Object::Int(b)) => match op {
+                BinaryOp::Subtract => Ok(Object::Int(a - b)),
+                BinaryOp::Multiply => Ok(Object::Int(a * b)),
+                BinaryOp::Divide => {
+                    if b == 0 {
+                        Err(divide_by_zero_error(position))
+                    } else if a % b == 0 {
+                        Ok(Object::Int(a / b))
+                    } else {
+                        Ok(Object::Float((a as f64) / (b as f64)))
+                    }
+                }
+                BinaryOp::Modulo => {
+                    if b == 0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Int(a % b))
+                    }
+                }
+                _ => unreachable!(),
+            },
+            (Object::Float(a), Object::Float(b)) => match op {
+                BinaryOp::Subtract => Ok(Object::Float(a - b)),
+                BinaryOp::Multiply => Ok(Object::Float(a * b)),
+                BinaryOp::Divide => {
+                    if b == 0.0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Float(a / b))
+                    }
+                }
+                BinaryOp::Modulo => {
+                    if b == 0.0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Float(a % b))
+                    }
+                }
+                _ => unreachable!(),
+            },
+            (Object::Int(a), Object::Float(b)) => match op {
+                BinaryOp::Subtract => Ok(Object::Float((a as f64) - b)),
+                BinaryOp::Multiply => Ok(Object::Float((a as f64) * b)),
+                BinaryOp::Divide => {
+                    if b == 0.0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Float((a as f64) / b))
+                    }
+                }
+                BinaryOp::Modulo => {
+                    if b == 0.0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Float((a as f64) % b))
+                    }
+                }
+                _ => unreachable!(),
+            },
+            (Object::Float(a), Object::Int(b)) => match op {
+                BinaryOp::Subtract => Ok(Object::Float(a - (b as f64))),
+                BinaryOp::Multiply => Ok(Object::Float(a * (b as f64))),
+                BinaryOp::Divide => {
+                    if b == 0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Float(a / (b as f64)))
+                    }
+                }
+                BinaryOp::Modulo => {
+                    if b == 0 {
+                        Err(divide_by_zero_error(position))
+                    } else {
+                        Ok(Object::Float(a % (b as f64)))
+                    }
+                }
+                _ => unreachable!(),
+            },
+            (lhs, rhs) => Err(binary_type_error(op.clone(), &lhs, &rhs, position)),
+        }
+    }
+
+    /// Evaluate comparison operations on numeric operands.
+    fn evaluate_comparison(
+        &self,
+        op: &BinaryOp,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (lhs, rhs) = match (&left, &right) {
+            (Object::Int(a), Object::Int(b)) => (*a as f64, *b as f64),
+            (Object::Float(a), Object::Float(b)) => (*a, *b),
+            (Object::Int(a), Object::Float(b)) => (*a as f64, *b),
+            (Object::Float(a), Object::Int(b)) => (*a, *b as f64),
+            (lhs, rhs) => {
+                return Err(binary_type_error(op.clone(), lhs, rhs, position));
+            }
+        };
+
+        let result = match op {
+            BinaryOp::Less => lhs < rhs,
+            BinaryOp::Greater => lhs > rhs,
+            BinaryOp::LessEqual => lhs <= rhs,
+            BinaryOp::GreaterEqual => lhs >= rhs,
+            _ => unreachable!(),
+        };
+
+        Ok(Object::Bool(result))
+    }
+
+    /// Evaluate array literal expressions.
+    fn evaluate_array_literal(&mut self, elements: &[Expression]) -> Result<Object, MetorexError> {
+        let mut evaluated = Vec::with_capacity(elements.len());
+        for element in elements {
+            evaluated.push(self.evaluate_expression(element)?);
+        }
+        Ok(Object::Array(Rc::new(RefCell::new(evaluated))))
+    }
+
+    /// Evaluate dictionary literal expressions.
+    fn evaluate_dictionary_literal(
+        &mut self,
+        entries: &[(Expression, Expression)],
+    ) -> Result<Object, MetorexError> {
+        let mut map = HashMap::with_capacity(entries.len());
+
+        for (key_expr, value_expr) in entries {
+            let key_value = self.evaluate_expression(key_expr)?;
+            let key_string = object_to_dict_key(&key_value).ok_or_else(|| {
+                MetorexError::type_error(
+                    format!(
+                        "Dictionary keys must be String, Symbol, Integer, Float, Bool, or Nil, found {}",
+                        key_value.type_name()
+                    ),
+                    position_to_location(key_expr.position()),
+                )
+            })?;
+
+            let value = self.evaluate_expression(value_expr)?;
+            map.insert(key_string, value);
+        }
+
+        Ok(Object::Dict(Rc::new(RefCell::new(map))))
+    }
+
+    /// Evaluate indexing operations on arrays and dictionaries.
+    fn evaluate_index_operation(
+        &self,
+        collection: Object,
+        key: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match collection {
+            Object::Array(elements_rc) => match key {
+                Object::Int(index) => {
+                    let elements = elements_rc.borrow();
+                    if index < 0 || (index as usize) >= elements.len() {
+                        Err(index_out_of_bounds_error(index, elements.len(), position))
+                    } else {
+                        Ok(elements[index as usize].clone())
+                    }
+                }
+                _ => Err(MetorexError::type_error(
+                    format!("Array index must be an Integer, found {}", key.type_name()),
+                    position_to_location(position),
+                )),
+            },
+            Object::Dict(dict_rc) => {
+                let key_string = object_to_dict_key(&key).ok_or_else(|| {
+                    MetorexError::type_error(
+                        format!(
+                            "Dictionary index must be String, Symbol, Integer, Float, Bool, or Nil, found {}",
+                            key.type_name()
+                        ),
+                        position_to_location(position),
+                    )
+                })?;
+
+                let dict = dict_rc.borrow();
+                dict.get(&key_string)
+                    .cloned()
+                    .ok_or_else(|| undefined_dictionary_key_error(&key_string, position))
+            }
+
+            other => Err(MetorexError::type_error(
+                format!("Cannot index into type '{}'", other.type_name()),
+                position_to_location(position),
+            )),
         }
     }
 }
@@ -373,4 +696,70 @@ fn unsupported_expression_error(expression: &Expression) -> MetorexError {
         format!("Expression execution not implemented for {:?}", expression),
         position_to_location(expression.position()),
     )
+}
+
+/// Produce a type error for unary operations.
+fn unary_type_error(op: &UnaryOp, value: &Object, position: Position) -> MetorexError {
+    MetorexError::type_error(
+        format!(
+            "Cannot apply unary operator '{:?}' to type '{}'",
+            op,
+            value.type_name()
+        ),
+        position_to_location(position),
+    )
+}
+
+/// Produce a type error for binary operations.
+fn binary_type_error(
+    op: BinaryOp,
+    left: &Object,
+    right: &Object,
+    position: Position,
+) -> MetorexError {
+    MetorexError::type_error(
+        format!(
+            "Cannot apply operator '{:?}' to types '{}' and '{}'",
+            op,
+            left.type_name(),
+            right.type_name()
+        ),
+        position_to_location(position),
+    )
+}
+
+/// Produce a divide-by-zero runtime error.
+fn divide_by_zero_error(position: Position) -> MetorexError {
+    MetorexError::runtime_error("Division by zero", position_to_location(position))
+}
+
+/// Produce an index out of bounds runtime error.
+fn index_out_of_bounds_error(index: i64, length: usize, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!(
+            "Index {} is out of bounds for array of length {}",
+            index, length
+        ),
+        position_to_location(position),
+    )
+}
+
+/// Produce a runtime error when a dictionary key is missing.
+fn undefined_dictionary_key_error(key: &str, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!("Key '{}' not found in dictionary", key),
+        position_to_location(position),
+    )
+}
+
+/// Convert an object into a dictionary key string representation.
+fn object_to_dict_key(value: &Object) -> Option<String> {
+    match value {
+        Object::String(s) => Some((**s).clone()),
+        Object::Int(i) => Some(i.to_string()),
+        Object::Float(f) => Some(f.to_string()),
+        Object::Bool(b) => Some(b.to_string()),
+        Object::Nil => Some("nil".to_string()),
+        _ => None,
+    }
 }
