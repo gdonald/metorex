@@ -181,6 +181,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Lexer and Parser
 - AST Interpreter
 - Expression evaluation (arithmetic, collections, indexing)
+- Method dispatch for built-in objects
 - Meta-programming core
 - Exception handling
 - Pattern matching

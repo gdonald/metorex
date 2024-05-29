@@ -359,18 +359,18 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.3.8. Write unit tests for expression evaluation
   - [x] 6.3.9. Create test file: `tests/vm_expression_tests.rs`
 
-- [ ] 6.4. Method Call Implementation
-  - [ ] 6.4.1. Implement method lookup on receiver object
-  - [ ] 6.4.2. Handle method not found errors
-  - [ ] 6.4.3. Bind `self` to receiver
-  - [ ] 6.4.4. Evaluate and bind arguments
-  - [ ] 6.4.5. Create new scope for method execution
-  - [ ] 6.4.6. Execute method body
-  - [ ] 6.4.7. Handle return values
-  - [ ] 6.4.8. Implement native method calls
-  - [ ] 6.4.9. Write unit tests for method dispatch
-  - [ ] 6.4.10. Create example file: `examples/runtime/method_dispatch.mx`
-  - [ ] 6.4.11. Create test file: `tests/method_dispatch_tests.rs`
+- [x] 6.4. Method Call Implementation
+  - [x] 6.4.1. Implement method lookup on receiver object
+  - [x] 6.4.2. Handle method not found errors
+  - [x] 6.4.3. Bind `self` to receiver
+  - [x] 6.4.4. Evaluate and bind arguments
+  - [x] 6.4.5. Create new scope for method execution
+  - [x] 6.4.6. Execute method body
+  - [x] 6.4.7. Handle return values
+  - [x] 6.4.8. Implement native method calls
+  - [x] 6.4.9. Write unit tests for method dispatch
+  - [x] 6.4.10. Create example file: `examples/runtime/method_dispatch.mx`
+  - [x] 6.4.11. Create test file: `tests/method_dispatch_tests.rs`
 
 - [ ] 6.5. Block Execution (Critical Meta-Programming Feature)
   - [ ] 6.5.1. Define `Callable` trait in `src/callable.rs`
@@ -1780,7 +1780,6 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 30.3.3. Implement serverless deployment support
   - [ ] 30.3.4. Add container orchestration configs (K8s, Docker Compose)
   - [ ] 30.3.5. Write deployment guides
-
 
 
 

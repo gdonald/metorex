@@ -3,10 +3,11 @@
 
 use crate::ast::{BinaryOp, Expression, InterpolationPart, Statement, UnaryOp};
 use crate::builtin_classes::{self, BuiltinClasses};
+use crate::class::Class;
 use crate::environment::Environment;
-use crate::error::{MetorexError, SourceLocation};
+use crate::error::{MetorexError, SourceLocation, StackFrame};
 use crate::lexer::Position;
-use crate::object::Object;
+use crate::object::{Callable, Method, Object};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -314,6 +315,16 @@ impl VirtualMachine {
                 let key = self.evaluate_expression(index)?;
                 self.evaluate_index_operation(collection, key, *position)
             }
+            Expression::MethodCall {
+                receiver,
+                method,
+                arguments,
+                position,
+            } => self.evaluate_method_call(receiver, method, arguments, *position),
+            Expression::SelfExpr { position } => self
+                .environment
+                .get("self")
+                .ok_or_else(|| undefined_self_error(*position)),
             _ => Err(unsupported_expression_error(expression)),
         }
     }
@@ -563,6 +574,336 @@ impl VirtualMachine {
         Ok(Object::Dict(Rc::new(RefCell::new(map))))
     }
 
+    /// Evaluate a method call expression on a receiver object.
+    fn evaluate_method_call(
+        &mut self,
+        receiver_expr: &Expression,
+        method_name: &str,
+        argument_exprs: &[Expression],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let receiver = self.evaluate_expression(receiver_expr)?;
+        let mut arguments = Vec::with_capacity(argument_exprs.len());
+        for argument in argument_exprs {
+            arguments.push(self.evaluate_expression(argument)?);
+        }
+
+        match self.lookup_method(&receiver, method_name) {
+            Some((class, method)) => {
+                self.invoke_method(class, method, receiver, arguments, position)
+            }
+            None => Err(undefined_method_error(method_name, &receiver, position)),
+        }
+    }
+
+    /// Look up a method on the receiver and return its class and method definition.
+    fn lookup_method(
+        &self,
+        receiver: &Object,
+        method_name: &str,
+    ) -> Option<(Rc<Class>, Rc<Method>)> {
+        match receiver {
+            Object::Instance(instance_rc) => {
+                let instance_ref = instance_rc.borrow();
+                let class = Rc::clone(&instance_ref.class);
+                drop(instance_ref);
+                class.find_method(method_name).map(|method| (class, method))
+            }
+            Object::Class(class_rc) => class_rc
+                .find_method(method_name)
+                .map(|method| (Rc::clone(class_rc), method)),
+            _ => {
+                let class = self.builtins.class_of(receiver);
+                class.find_method(method_name).map(|method| (class, method))
+            }
+        }
+    }
+
+    /// Invoke a resolved method with evaluated arguments.
+    fn invoke_method(
+        &mut self,
+        class: Rc<Class>,
+        method: Rc<Method>,
+        receiver: Object,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let method_name = method.name.clone();
+
+        if let Some(result) = self.call_native_method(
+            class.as_ref(),
+            &receiver,
+            &method_name,
+            &arguments,
+            position,
+        )? {
+            return Ok(result);
+        }
+
+        let expected = method.parameters.len();
+        let found = arguments.len();
+        if expected != found {
+            return Err(method_argument_error(
+                &method_name,
+                expected,
+                found,
+                position,
+            ));
+        }
+
+        let frame_name = format!("{}#{}", class.name(), method_name);
+        let frame_location = position_to_location(position);
+        let frame_location_string = Some(format!("{}", frame_location));
+
+        let method_for_body = Rc::clone(&method);
+        let self_for_body = method
+            .receiver()
+            .cloned()
+            .unwrap_or_else(|| receiver.clone());
+        let arguments_for_body = arguments.clone();
+        let execution_result = self.with_call_frame(
+            CallFrame::new(frame_name.clone(), frame_location_string),
+            move |vm| {
+                vm.execute_method_body(
+                    method_for_body.as_ref(),
+                    self_for_body.clone(),
+                    arguments_for_body.clone(),
+                )
+            },
+        );
+
+        match execution_result {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
+        }
+    }
+
+    /// Execute the body of a method within a fresh scope.
+    fn execute_method_body(
+        &mut self,
+        method: &Method,
+        self_value: Object,
+        arguments: Vec<Object>,
+    ) -> Result<Object, MetorexError> {
+        self.environment.push_scope();
+
+        let result = (|| -> Result<Object, MetorexError> {
+            self.environment
+                .define("self".to_string(), self_value.clone());
+
+            for (param, value) in method.parameters.iter().zip(arguments.into_iter()) {
+                self.environment.define(param.clone(), value);
+            }
+
+            match self.execute_statements_internal(method.body())? {
+                ControlFlow::Next => Ok(Object::Nil),
+                ControlFlow::Return { value, .. } => Ok(value),
+                ControlFlow::Break { position } => Err(loop_control_error("break", position)),
+                ControlFlow::Continue { position } => Err(loop_control_error("continue", position)),
+            }
+        })();
+
+        self.environment.pop_scope();
+        result
+    }
+
+    /// Attempt to execute a native (built-in) method implementation.
+    fn call_native_method(
+        &mut self,
+        class: &Class,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        match class.name() {
+            "Object" => match method_name {
+                "to_s" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    Ok(Some(Object::string(receiver.to_string())))
+                }
+                "class" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    Ok(Some(Object::Class(self.builtins.class_of(receiver))))
+                }
+                "respond_to?" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let method_query = match &arguments[0] {
+                        Object::String(name) => name.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    Ok(Some(Object::Bool(
+                        self.lookup_method(receiver, &method_query).is_some(),
+                    )))
+                }
+                _ => Ok(None),
+            },
+            "String" => match method_name {
+                "length" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        Ok(Some(Object::Int(string_value.chars().count() as i64)))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "upcase" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        Ok(Some(Object::string(string_value.to_uppercase())))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "downcase" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        Ok(Some(Object::string(string_value.to_lowercase())))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "+" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let (Object::String(lhs), Object::String(rhs)) = (receiver, &arguments[0]) {
+                        let mut combined = lhs.as_ref().clone();
+                        combined.push_str(rhs);
+                        Ok(Some(Object::string(combined)))
+                    } else {
+                        Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            &arguments[0],
+                            position,
+                        ))
+                    }
+                }
+                _ => Ok(None),
+            },
+            "Array" => match method_name {
+                "length" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "push" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        array_rc.borrow_mut().push(arguments[0].clone());
+                        Ok(Some(receiver.clone()))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "pop" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        Ok(Some(array_rc.borrow_mut().pop().unwrap_or(Object::Nil)))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "[]" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    Ok(Some(self.evaluate_index_operation(
+                        receiver.clone(),
+                        arguments[0].clone(),
+                        position,
+                    )?))
+                }
+                _ => Ok(None),
+            },
+            _ => Ok(None),
+        }
+    }
+
     /// Evaluate indexing operations on arrays and dictionaries.
     fn evaluate_index_operation(
         &self,
@@ -671,6 +1012,60 @@ fn invalid_assignment_target_error(target: &Expression) -> MetorexError {
     MetorexError::runtime_error(
         "Invalid assignment target",
         position_to_location(target.position()),
+    )
+}
+
+/// Produce a runtime error when accessing `self` outside of a method context.
+fn undefined_self_error(position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        "Undefined self in current context",
+        position_to_location(position),
+    )
+}
+
+/// Produce a runtime error when invoking an undefined method on a receiver.
+fn undefined_method_error(method: &str, receiver: &Object, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!(
+            "Undefined method '{}' for type '{}'",
+            method,
+            receiver.type_name()
+        ),
+        position_to_location(position),
+    )
+}
+
+/// Produce a runtime error when a method receives the wrong number of arguments.
+fn method_argument_error(
+    method: &str,
+    expected: usize,
+    found: usize,
+    position: Position,
+) -> MetorexError {
+    MetorexError::runtime_error(
+        format!(
+            "Method '{}' expected {} argument(s) but received {}",
+            method, expected, found
+        ),
+        position_to_location(position),
+    )
+}
+
+/// Produce a type error for invalid method argument type.
+fn method_argument_type_error(
+    method: &str,
+    expected: &str,
+    found: &Object,
+    position: Position,
+) -> MetorexError {
+    MetorexError::type_error(
+        format!(
+            "Method '{}' expected argument of type '{}' but found '{}'",
+            method,
+            expected,
+            found.type_name()
+        ),
+        position_to_location(position),
     )
 }
 
