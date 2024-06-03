@@ -2,11 +2,15 @@
 // This module defines the core Object type that represents all runtime values
 
 use crate::ast::Statement;
+use crate::error::MetorexError;
+use crate::lexer::Position;
+use crate::vm::VirtualMachine;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::Rc;
 
+pub use crate::callable::Callable;
 pub use crate::class::Class;
 
 /// Core object type representing all runtime values in Metorex
@@ -43,7 +47,7 @@ pub enum Object {
     Method(Rc<Method>),
 
     /// Block/lambda/closure (critical for meta-programming)
-    Block(Rc<BlockClosure>),
+    Block(Rc<BlockStatement>),
 
     /// Exception object
     Exception(Rc<RefCell<Exception>>),
@@ -96,23 +100,6 @@ impl Instance {
     /// Get the class name of this instance
     pub fn class_name(&self) -> &str {
         self.class.name()
-    }
-}
-
-/// Trait for callable objects (methods, functions, blocks)
-pub trait Callable {
-    /// Get the name of the callable
-    fn name(&self) -> &str;
-
-    /// Get the parameter names
-    fn parameters(&self) -> &[String];
-
-    /// Get the body statements
-    fn body(&self) -> &[Statement];
-
-    /// Get the arity (number of required parameters)
-    fn arity(&self) -> usize {
-        self.parameters().len()
     }
 }
 
@@ -177,7 +164,7 @@ impl Callable for Method {
 
 /// Block/lambda/closure with captured variables
 #[derive(Debug, Clone, PartialEq)]
-pub struct BlockClosure {
+pub struct BlockStatement {
     /// Parameter names
     pub parameters: Vec<String>,
     /// Block body (AST statements)
@@ -186,7 +173,7 @@ pub struct BlockClosure {
     pub captured_vars: HashMap<String, Object>,
 }
 
-impl BlockClosure {
+impl BlockStatement {
     /// Create a new block closure
     pub fn new(
         parameters: Vec<String>,
@@ -204,9 +191,19 @@ impl BlockClosure {
     pub fn captured_vars(&self) -> &HashMap<String, Object> {
         &self.captured_vars
     }
+
+    /// Invoke the block within the provided virtual machine context.
+    pub fn call(
+        &self,
+        vm: &mut VirtualMachine,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        vm.execute_block_callable(self, arguments, position)
+    }
 }
 
-impl Callable for BlockClosure {
+impl Callable for BlockStatement {
     fn name(&self) -> &str {
         "<block>"
     }

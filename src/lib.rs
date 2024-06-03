@@ -3,6 +3,7 @@
 
 pub mod ast;
 pub mod builtin_classes;
+pub mod callable;
 pub mod class;
 pub mod environment;
 pub mod error;

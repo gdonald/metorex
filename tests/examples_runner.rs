@@ -235,3 +235,12 @@ example_test!(
 example_test!(test_advanced_serialization, "advanced/serialization.mx");
 // example_test!(test_advanced_traits, "advanced/traits.mx");
 // example_test!(test_advanced_type_annotations, "advanced/type_annotations.mx");
+
+// ==========================================
+// Metaprogramming Examples
+// ==========================================
+
+example_test!(
+    test_metaprogramming_block_call,
+    "metaprogramming/block_call.mx"
+);

@@ -1,0 +1,5 @@
+# Block execution placeholder example.
+# Once parser support for lambdas lands, this file should be updated to
+# demonstrate creating a block object and invoking it with `.call`.
+
+result = 42

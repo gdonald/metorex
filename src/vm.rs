@@ -3,11 +3,12 @@
 
 use crate::ast::{BinaryOp, Expression, InterpolationPart, Statement, UnaryOp};
 use crate::builtin_classes::{self, BuiltinClasses};
+use crate::callable::Callable;
 use crate::class::Class;
 use crate::environment::Environment;
 use crate::error::{MetorexError, SourceLocation, StackFrame};
 use crate::lexer::Position;
-use crate::object::{Callable, Method, Object};
+use crate::object::{BlockStatement, Method, Object};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -285,6 +286,23 @@ impl VirtualMachine {
                 .environment
                 .get(name)
                 .ok_or_else(|| undefined_variable_error(name, *position)),
+            Expression::Lambda {
+                parameters,
+                body,
+                captured_vars,
+                ..
+            } => {
+                let mut captured = HashMap::new();
+                if let Some(names) = captured_vars {
+                    for name in names {
+                        if let Some(value) = self.environment().get(name) {
+                            captured.insert(name.clone(), value);
+                        }
+                    }
+                }
+                let block = BlockStatement::new(parameters.clone(), body.clone(), captured);
+                Ok(Object::Block(Rc::new(block)))
+            }
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
             Expression::UnaryOp {
                 op,
@@ -321,6 +339,18 @@ impl VirtualMachine {
                 arguments,
                 position,
             } => self.evaluate_method_call(receiver, method, arguments, *position),
+            Expression::Call {
+                callee,
+                arguments,
+                position,
+            } => {
+                let callable = self.evaluate_expression(callee)?;
+                let mut evaluated_args = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    evaluated_args.push(self.evaluate_expression(argument)?);
+                }
+                self.invoke_callable(callable, evaluated_args, *position)
+            }
             Expression::SelfExpr { position } => self
                 .environment
                 .get("self")
@@ -617,6 +647,100 @@ impl VirtualMachine {
                 class.find_method(method_name).map(|method| (class, method))
             }
         }
+    }
+
+    /// Invoke a resolved method with evaluated arguments.
+    fn invoke_callable(
+        &mut self,
+        callable: Object,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match callable {
+            Object::Block(block) => block.call(self, arguments, position),
+            other => Err(not_callable_error(&other, position)),
+        }
+    }
+
+    /// Execute a block callable within the VM, handling scope capture and return semantics.
+    pub(crate) fn execute_block_callable(
+        &mut self,
+        block: &BlockStatement,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let expected = block.arity();
+        let found = arguments.len();
+
+        if expected != found {
+            return Err(callable_argument_error(
+                block.name(),
+                expected,
+                found,
+                position,
+            ));
+        }
+
+        let frame_name = block.name().to_string();
+        let frame_location = position_to_location(position);
+        let frame_location_string = Some(format!("{}", frame_location));
+
+        let execution_result = self.with_call_frame(
+            CallFrame::new(frame_name.clone(), frame_location_string),
+            move |vm| vm.execute_block_body(block, arguments),
+        );
+
+        match execution_result {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
+        }
+    }
+
+    /// Execute the statements inside a block object with its captured scope.
+    fn execute_block_body(
+        &mut self,
+        block: &BlockStatement,
+        arguments: Vec<Object>,
+    ) -> Result<Object, MetorexError> {
+        self.environment.push_scope();
+
+        let result = (|| -> Result<Object, MetorexError> {
+            for (name, value) in block.captured_vars() {
+                self.environment.define(name.clone(), value.clone());
+            }
+
+            for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
+                self.environment.define(param.clone(), argument);
+            }
+
+            let mut last_value = Object::Nil;
+
+            for statement in block.body() {
+                if let Statement::Expression { expression, .. } = statement {
+                    last_value = self.evaluate_expression(expression)?;
+                    continue;
+                }
+
+                match self.execute_statement(statement)? {
+                    ControlFlow::Next => {}
+                    ControlFlow::Return { value, .. } => {
+                        last_value = value;
+                        break;
+                    }
+                    ControlFlow::Break { position } => {
+                        return Err(loop_control_error("break", position));
+                    }
+                    ControlFlow::Continue { position } => {
+                        return Err(loop_control_error("continue", position));
+                    }
+                }
+            }
+
+            Ok(last_value)
+        })();
+
+        self.environment.pop_scope();
+        result
     }
 
     /// Invoke a resolved method with evaluated arguments.
@@ -1064,6 +1188,30 @@ fn method_argument_type_error(
             method,
             expected,
             found.type_name()
+        ),
+        position_to_location(position),
+    )
+}
+
+/// Produce a runtime error when attempting to call a non-callable object.
+fn not_callable_error(value: &Object, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!("Object of type '{}' is not callable", value.type_name()),
+        position_to_location(position),
+    )
+}
+
+/// Produce a runtime error when a callable receives the wrong number of arguments.
+fn callable_argument_error(
+    callable_name: &str,
+    expected: usize,
+    found: usize,
+    position: Position,
+) -> MetorexError {
+    MetorexError::runtime_error(
+        format!(
+            "Callable '{}' expected {} argument(s) but received {}",
+            callable_name, expected, found
         ),
         position_to_location(position),
     )

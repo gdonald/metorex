@@ -220,7 +220,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.1.9. Add `Instance(Rc<RefCell<Instance>>)` variant
   - [x] 4.1.10. Add `Class(Rc<Class>)` variant
   - [x] 4.1.11. Add `Method(Rc<Method>)` variant
-  - [x] 4.1.12. Add `Block(Rc<BlockClosure>)` variant (critical for meta-programming)
+  - [x] 4.1.12. Add `Block(Rc<BlockStatement>)` variant (critical for meta-programming)
   - [x] 4.1.13. Add `Exception(Rc<RefCell<Exception>>)` variant
   - [x] 4.1.14. Add `Set(Rc<RefCell<HashSet<Object>>>)` variant
   - [x] 4.1.15. Add `Result(Result<Object, Object>)` variant (for explicit error handling)
@@ -260,7 +260,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.5.2. Add name field
   - [x] 4.5.3. Add parameter list
   - [x] 4.5.4. Add body (AST Statement references)
-  - [x] 4.5.5. Add closure scope capture (handled by BlockClosure)
+  - [x] 4.5.5. Add closure scope capture (handled by BlockStatement)
   - [x] 4.5.6. Implement `Callable` trait
   - [x] 4.5.7. Write unit tests for methods
 
@@ -372,17 +372,17 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.4.10. Create example file: `examples/runtime/method_dispatch.mx`
   - [x] 6.4.11. Create test file: `tests/method_dispatch_tests.rs`
 
-- [ ] 6.5. Block Execution (Critical Meta-Programming Feature)
-  - [ ] 6.5.1. Define `Callable` trait in `src/callable.rs`
-  - [ ] 6.5.2. Implement `Callable` for `BlockStatement`
-  - [ ] 6.5.3. Implement `BlockStatement::call()` method
-  - [ ] 6.5.4. Capture closure scope on block creation
-  - [ ] 6.5.5. Bind block parameters on call
-  - [ ] 6.5.6. Execute block body in captured scope
-  - [ ] 6.5.7. Return last expression value
-  - [ ] 6.5.8. Write unit tests for block execution
-  - [ ] 6.5.9. Create example file: `examples/metaprogramming/block_call.mx`
-  - [ ] 6.5.10. Create test file: `tests/block_execution_tests.rs`
+- [x] 6.5. Block Execution (Critical Meta-Programming Feature)
+  - [x] 6.5.1. Define `Callable` trait in `src/callable.rs`
+  - [x] 6.5.2. Implement `Callable` for `BlockStatement`
+  - [x] 6.5.3. Implement `BlockStatement::call()` method
+  - [x] 6.5.4. Capture closure scope on block creation
+  - [x] 6.5.5. Bind block parameters on call
+  - [x] 6.5.6. Execute block body in captured scope
+  - [x] 6.5.7. Return last expression value
+  - [x] 6.5.8. Write unit tests for block execution
+  - [x] 6.5.9. Create example file: `examples/metaprogramming/block_call.mx`
+  - [x] 6.5.10. Create test file: `tests/block_execution_tests.rs`
 
 - [ ] 6.6. Control Flow Execution
   - [ ] 6.6.1. Implement if/else execution
@@ -1780,8 +1780,6 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 30.3.3. Implement serverless deployment support
   - [ ] 30.3.4. Add container orchestration configs (K8s, Docker Compose)
   - [ ] 30.3.5. Write deployment guides
-
-
 
 
 

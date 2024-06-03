@@ -1,7 +1,7 @@
 // Unit tests for Metorex runtime Object system
 // Tests object creation, type checking, equality, hashing, and string representation
 
-use metorex::object::{BlockClosure, Class, Exception, Instance, Method, Object, ObjectHash};
+use metorex::object::{BlockStatement, Class, Exception, Instance, Method, Object, ObjectHash};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -379,13 +379,13 @@ fn test_equals_method() {
 
 #[test]
 fn test_equals_block() {
-    let block1 = Rc::new(BlockClosure {
+    let block1 = Rc::new(BlockStatement {
         parameters: vec![],
         body: vec![],
         captured_vars: HashMap::new(),
     });
     let block2 = Rc::clone(&block1);
-    let block3 = Rc::new(BlockClosure {
+    let block3 = Rc::new(BlockStatement {
         parameters: vec![],
         body: vec![],
         captured_vars: HashMap::new(),
@@ -853,7 +853,7 @@ fn test_block_closure_callable_trait() {
     use metorex::object::Callable;
 
     let params = vec!["x".to_string()];
-    let block = BlockClosure::new(params.clone(), vec![], HashMap::new());
+    let block = BlockStatement::new(params.clone(), vec![], HashMap::new());
 
     assert_eq!(block.name(), "<block>");
     assert_eq!(block.parameters(), &params[..]);
@@ -867,7 +867,7 @@ fn test_block_closure_captured_vars() {
     captured.insert("outer".to_string(), Object::Int(10));
     captured.insert("count".to_string(), Object::Int(0));
 
-    let block = BlockClosure::new(vec![], vec![], captured.clone());
+    let block = BlockStatement::new(vec![], vec![], captured.clone());
 
     assert_eq!(block.captured_vars(), &captured);
     assert_eq!(block.captured_vars().get("outer"), Some(&Object::Int(10)));
@@ -876,7 +876,7 @@ fn test_block_closure_captured_vars() {
 
 #[test]
 fn test_block_closure_empty_captures() {
-    let block = BlockClosure::new(vec!["x".to_string()], vec![], HashMap::new());
+    let block = BlockStatement::new(vec!["x".to_string()], vec![], HashMap::new());
 
     assert!(block.captured_vars().is_empty());
 }
