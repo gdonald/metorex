@@ -157,6 +157,7 @@ example_test!(
 // TODO: Re-enable once parser is fixed
 
 example_test!(test_runtime_method_dispatch, "runtime/method_dispatch.mx");
+example_test!(test_runtime_loops, "runtime/loops.mx");
 
 // example_test!(test_runtime_builtin_classes, "runtime/builtin_classes.mx");
 // example_test!(test_runtime_instances, "runtime/instances.mx");

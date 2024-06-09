@@ -384,15 +384,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.5.9. Create example file: `examples/metaprogramming/block_call.mx`
   - [x] 6.5.10. Create test file: `tests/block_execution_tests.rs`
 
-- [ ] 6.6. Control Flow Execution
-  - [ ] 6.6.1. Implement if/else execution
-  - [ ] 6.6.2. Implement while loop execution
-  - [ ] 6.6.3. Implement for loop execution
-  - [ ] 6.6.4. Handle break statements with loop unwinding
-  - [ ] 6.6.5. Handle continue statements
-  - [ ] 6.6.6. Write unit tests for control flow
-  - [ ] 6.6.7. Create example file: `examples/runtime/loops.mx`
-  - [ ] 6.6.8. Create test file: `tests/control_flow_execution_tests.rs`
+- [x] 6.6. Control Flow Execution
+  - [x] 6.6.1. Implement if/else execution
+  - [x] 6.6.2. Implement while loop execution
+  - [x] 6.6.3. Implement for loop execution
+  - [x] 6.6.4. Handle break statements with loop unwinding
+  - [x] 6.6.5. Handle continue statements
+  - [x] 6.6.6. Write unit tests for control flow
+  - [x] 6.6.7. Create example file: `examples/runtime/loops.mx`
+  - [x] 6.6.8. Create test file: `tests/control_flow_execution_tests.rs`
 
 - [ ] 6.7. Class and Instance Creation
   - [ ] 6.7.1. Implement class definition execution
