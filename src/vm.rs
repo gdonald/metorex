@@ -238,10 +238,18 @@ impl VirtualMachine {
                 body,
                 position,
             } => self.execute_for(variable, iterable, body, *position),
+            Statement::ClassDef {
+                name,
+                superclass,
+                body,
+                position,
+            } => self.execute_class_def(name, superclass.as_deref(), body, *position),
+            Statement::MethodDef { .. } => {
+                // MethodDef should only appear inside ClassDef bodies, not at top level
+                Err(unimplemented_statement_error(statement))
+            }
             Statement::Match { .. }
             | Statement::FunctionDef { .. }
-            | Statement::MethodDef { .. }
-            | Statement::ClassDef { .. }
             | Statement::Begin { .. }
             | Statement::Raise { .. } => Err(unimplemented_statement_error(statement)),
         }
@@ -360,6 +368,94 @@ impl VirtualMachine {
         Ok(ControlFlow::Next)
     }
 
+    /// Execute class definition - create a Class object and register it in the environment.
+    fn execute_class_def(
+        &mut self,
+        name: &str,
+        superclass_name: Option<&str>,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        // Resolve superclass if specified
+        let superclass = if let Some(super_name) = superclass_name {
+            match self.environment.get(super_name) {
+                Some(Object::Class(class)) => Some(class),
+                Some(_) => {
+                    return Err(MetorexError::runtime_error(
+                        format!("Superclass '{}' must be a class", super_name),
+                        position_to_location(position),
+                    ));
+                }
+                None => {
+                    return Err(MetorexError::runtime_error(
+                        format!("Undefined superclass '{}'", super_name),
+                        position_to_location(position),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
+        // Create the class object
+        let class = Rc::new(Class::new(name, superclass));
+
+        // Process the class body to extract methods and instance variable declarations
+        for statement in body {
+            match statement {
+                Statement::MethodDef {
+                    name: method_name,
+                    parameters,
+                    body: method_body,
+                    ..
+                } => {
+                    // Create a Method object
+                    let param_names: Vec<String> =
+                        parameters.iter().map(|p| p.name.clone()).collect();
+                    let method = Rc::new(Method::new(
+                        method_name.clone(),
+                        param_names,
+                        method_body.clone(),
+                    ));
+                    class.define_method(method_name, method);
+                }
+                Statement::Assignment {
+                    target: Expression::InstanceVariable { name: var_name, .. },
+                    ..
+                } => {
+                    // Declaring an instance variable (e.g., @x = nil in class body)
+                    class.declare_instance_var(var_name);
+                }
+                Statement::Assignment {
+                    target: Expression::ClassVariable { name: var_name, .. },
+                    value,
+                    ..
+                } => {
+                    // Class variable initialization (e.g., @@count = 0 in class body)
+                    let initial_value = self.evaluate_expression(value)?;
+                    class.set_class_var(var_name, initial_value);
+                }
+                Statement::Expression {
+                    expression: Expression::InstanceVariable { name: var_name, .. },
+                    ..
+                } => {
+                    // Instance variable declaration without assignment
+                    class.declare_instance_var(var_name);
+                }
+                _ => {
+                    // For now, we ignore other statements in the class body
+                    // In the future, we might support class-level code execution
+                }
+            }
+        }
+
+        // Register the class in the environment
+        self.environment
+            .define(name.to_string(), Object::Class(class));
+
+        Ok(ControlFlow::Next)
+    }
+
     /// Assign a value to the given target expression.
     fn assign_value(&mut self, target: &Expression, value: Object) -> Result<(), MetorexError> {
         match target {
@@ -369,9 +465,54 @@ impl VirtualMachine {
                 }
                 Ok(())
             }
-            Expression::InstanceVariable { .. }
-            | Expression::ClassVariable { .. }
-            | Expression::Index { .. } => Err(invalid_assignment_target_error(target)),
+            Expression::InstanceVariable { name, position } => {
+                // Instance variables can only be set within a method (where 'self' is defined)
+                match self.environment.get("self") {
+                    Some(Object::Instance(instance_rc)) => {
+                        let mut instance = instance_rc.borrow_mut();
+                        instance.set_var(name.clone(), value);
+                        Ok(())
+                    }
+                    Some(_) => Err(MetorexError::runtime_error(
+                        format!("Cannot set instance variable @{} on non-instance", name),
+                        position_to_location(*position),
+                    )),
+                    None => Err(MetorexError::runtime_error(
+                        format!(
+                            "Instance variable @{} can only be used within a method",
+                            name
+                        ),
+                        position_to_location(*position),
+                    )),
+                }
+            }
+            Expression::ClassVariable { name, position } => {
+                // Class variables can only be set within a method or class context
+                // For now, we'll look for 'self' to get the class
+                match self.environment.get("self") {
+                    Some(Object::Instance(instance_rc)) => {
+                        let instance = instance_rc.borrow();
+                        instance.class.set_class_var(name.clone(), value);
+                        Ok(())
+                    }
+                    Some(Object::Class(class)) => {
+                        class.set_class_var(name.clone(), value);
+                        Ok(())
+                    }
+                    Some(_) => Err(MetorexError::runtime_error(
+                        format!("Cannot set class variable @@{} in this context", name),
+                        position_to_location(*position),
+                    )),
+                    None => Err(MetorexError::runtime_error(
+                        format!(
+                            "Class variable @@{} can only be used within a class or method",
+                            name
+                        ),
+                        position_to_location(*position),
+                    )),
+                }
+            }
+            Expression::Index { .. } => Err(invalid_assignment_target_error(target)),
             _ => Err(invalid_assignment_target_error(target)),
         }
     }
@@ -460,7 +601,49 @@ impl VirtualMachine {
                 .environment
                 .get("self")
                 .ok_or_else(|| undefined_self_error(*position)),
-            _ => Err(unsupported_expression_error(expression)),
+            Expression::InstanceVariable { name, position } => {
+                // Instance variables can only be read within a method (where 'self' is defined)
+                match self.environment.get("self") {
+                    Some(Object::Instance(instance_rc)) => {
+                        let instance = instance_rc.borrow();
+                        Ok(instance.get_var(name).cloned().unwrap_or(Object::Nil))
+                    }
+                    Some(_) => Err(MetorexError::runtime_error(
+                        format!("Cannot read instance variable @{} on non-instance", name),
+                        position_to_location(*position),
+                    )),
+                    None => Err(MetorexError::runtime_error(
+                        format!(
+                            "Instance variable @{} can only be used within a method",
+                            name
+                        ),
+                        position_to_location(*position),
+                    )),
+                }
+            }
+            Expression::ClassVariable { name, position } => {
+                // Class variables can be read within a method or class context
+                match self.environment.get("self") {
+                    Some(Object::Instance(instance_rc)) => {
+                        let instance = instance_rc.borrow();
+                        Ok(instance.class.get_class_var(name).unwrap_or(Object::Nil))
+                    }
+                    Some(Object::Class(class)) => {
+                        Ok(class.get_class_var(name).unwrap_or(Object::Nil))
+                    }
+                    Some(_) => Err(MetorexError::runtime_error(
+                        format!("Cannot read class variable @@{} in this context", name),
+                        position_to_location(*position),
+                    )),
+                    None => Err(MetorexError::runtime_error(
+                        format!(
+                            "Class variable @@{} can only be used within a class or method",
+                            name
+                        ),
+                        position_to_location(*position),
+                    )),
+                }
+            }
         }
     }
 
@@ -763,6 +946,35 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         match callable {
             Object::Block(block) => block.call(self, arguments, position),
+            Object::Class(class) => {
+                // Create a new instance of the class
+                let instance = Rc::new(RefCell::new(crate::object::Instance::new(Rc::clone(
+                    &class,
+                ))));
+                let instance_obj = Object::Instance(Rc::clone(&instance));
+
+                // Look for an 'initialize' method and call it if present
+                if let Some(init_method) = class.find_method("initialize") {
+                    self.invoke_method(
+                        class,
+                        init_method,
+                        instance_obj.clone(),
+                        arguments,
+                        position,
+                    )?;
+                } else if !arguments.is_empty() {
+                    // If no initialize method exists, reject non-empty arguments
+                    return Err(MetorexError::runtime_error(
+                        format!(
+                            "No initialize method defined, but {} argument(s) provided",
+                            arguments.len()
+                        ),
+                        position_to_location(position),
+                    ));
+                }
+
+                Ok(instance_obj)
+            }
             other => Err(not_callable_error(&other, position)),
         }
     }
@@ -1336,14 +1548,6 @@ fn unimplemented_statement_error(statement: &Statement) -> MetorexError {
         "Statement execution not implemented for {:?}",
         statement
     ))
-}
-
-/// Produce a runtime error for expressions that are not yet supported.
-fn unsupported_expression_error(expression: &Expression) -> MetorexError {
-    MetorexError::runtime_error(
-        format!("Expression execution not implemented for {:?}", expression),
-        position_to_location(expression.position()),
-    )
 }
 
 /// Produce a type error for unary operations.

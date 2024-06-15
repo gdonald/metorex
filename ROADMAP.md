@@ -394,24 +394,24 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.6.7. Create example file: `examples/runtime/loops.mx`
   - [x] 6.6.8. Create test file: `tests/control_flow_execution_tests.rs`
 
-- [ ] 6.7. Class and Instance Creation
-  - [ ] 6.7.1. Implement class definition execution
-  - [ ] 6.7.2. Register class in global registry
-  - [ ] 6.7.3. Implement instance creation (`Class.new`)
-  - [ ] 6.7.4. Call `initialize` constructor
-  - [ ] 6.7.5. Initialize instance variables
-  - [ ] 6.7.6. Write unit tests for class instantiation
-  - [ ] 6.7.7. Create example file: `examples/runtime/class_instantiation.mx`
-  - [ ] 6.7.8. Create test file: `tests/class_instantiation_tests.rs`
+- [x] 6.7. Class and Instance Creation
+  - [x] 6.7.1. Implement class definition execution
+  - [x] 6.7.2. Register class in global registry
+  - [x] 6.7.3. Implement instance creation (`Class.new`)
+  - [x] 6.7.4. Call `initialize` constructor
+  - [x] 6.7.5. Initialize instance variables
+  - [x] 6.7.6. Write unit tests for class instantiation
+  - [x] 6.7.7. Create example file: `examples/runtime/class_instantiation.mx`
+  - [x] 6.7.8. Create test file: `tests/class_instantiation_tests.rs`
 
-- [ ] 6.8. Inheritance Implementation
-  - [ ] 6.8.1. Implement superclass method lookup
-  - [ ] 6.8.2. Implement method overriding
-  - [ ] 6.8.3. Implement `super` keyword
-  - [ ] 6.8.4. Handle constructor chaining
-  - [ ] 6.8.5. Write unit tests for inheritance
-  - [ ] 6.8.6. Create example file: `examples/runtime/inheritance.mx`
-  - [ ] 6.8.7. Create test file: `tests/inheritance_tests.rs`
+- [x] 6.8. Inheritance Implementation (Partial: method lookup & overriding complete)
+  - [x] 6.8.1. Implement superclass method lookup
+  - [x] 6.8.2. Implement method overriding
+  - [ ] 6.8.3. Implement `super` keyword (requires lexer, parser, AST, VM changes)
+  - [ ] 6.8.4. Handle constructor chaining (requires `super` keyword)
+  - [x] 6.8.5. Write unit tests for inheritance
+  - [x] 6.8.6. Create example file: `examples/runtime/inheritance.mx`
+  - [x] 6.8.7. Create test file: `tests/inheritance_tests.rs`
 
 - [ ] 6.9. Exception Handling Execution
   - [ ] 6.9.1. Implement try block execution
