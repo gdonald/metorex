@@ -204,6 +204,10 @@ impl<'a> Lexer<'a> {
             "while" => TokenKind::While,
             "end" => TokenKind::End,
             "do" => TokenKind::Do,
+            "begin" => TokenKind::Begin,
+            "rescue" => TokenKind::Rescue,
+            "ensure" => TokenKind::Ensure,
+            "raise" => TokenKind::Raise,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
@@ -475,6 +479,9 @@ impl<'a> Lexer<'a> {
                     if self.peek() == Some('=') {
                         self.advance();
                         Token::new(TokenKind::EqualEqual, position)
+                    } else if self.peek() == Some('>') {
+                        self.advance();
+                        Token::new(TokenKind::FatArrow, position)
                     } else {
                         Token::new(TokenKind::Equal, position)
                     }

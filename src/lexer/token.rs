@@ -38,6 +38,10 @@ pub enum TokenKind {
     While,
     End,
     Do,
+    Begin,
+    Rescue,
+    Ensure,
+    Raise,
 
     // Literals
     Int(i64),
@@ -82,6 +86,7 @@ pub enum TokenKind {
     Dot,      // .
     Colon,    // :
     Arrow,    // ->
+    FatArrow, // =>
 
     // Special tokens
     Newline,
@@ -114,6 +119,10 @@ impl fmt::Display for TokenKind {
             TokenKind::While => write!(f, "while"),
             TokenKind::End => write!(f, "end"),
             TokenKind::Do => write!(f, "do"),
+            TokenKind::Begin => write!(f, "begin"),
+            TokenKind::Rescue => write!(f, "rescue"),
+            TokenKind::Ensure => write!(f, "ensure"),
+            TokenKind::Raise => write!(f, "raise"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),
@@ -167,6 +176,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Dot => write!(f, "."),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Arrow => write!(f, "->"),
+            TokenKind::FatArrow => write!(f, "=>"),
 
             // Special tokens
             TokenKind::Newline => write!(f, "\\n"),
