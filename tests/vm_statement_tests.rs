@@ -25,7 +25,7 @@ fn expression_statement_executes_without_error() {
     }];
 
     let result = vm.execute_program(&statements);
-    assert!(matches!(result, Ok(None)));
+    assert!(matches!(result, Ok(Some(Object::Int(5)))));
 }
 
 #[test]

@@ -177,19 +177,38 @@ impl VirtualMachine {
         &mut self,
         statements: &[Statement],
     ) -> Result<Option<Object>, MetorexError> {
-        match self.execute_statements_internal(statements)? {
-            ControlFlow::Next => Ok(None),
-            ControlFlow::Return { value, .. } => Ok(Some(value)),
-            ControlFlow::Exception {
-                exception,
-                position,
-            } => Err(MetorexError::runtime_error(
-                format!("Uncaught exception: {}", format_exception(&exception)),
-                position_to_location(position),
-            )),
-            ControlFlow::Break { position } => Err(loop_control_error("break", position)),
-            ControlFlow::Continue { position } => Err(loop_control_error("continue", position)),
+        let mut last_value = None;
+
+        for statement in statements {
+            // If it's an expression statement, track its value
+            if let Statement::Expression { expression, .. } = statement {
+                last_value = Some(self.evaluate_expression(expression)?);
+                continue;
+            }
+
+            // Execute other statements
+            match self.execute_statement(statement)? {
+                ControlFlow::Next => {}
+                ControlFlow::Return { value, .. } => return Ok(Some(value)),
+                ControlFlow::Exception {
+                    exception,
+                    position,
+                } => {
+                    return Err(MetorexError::runtime_error(
+                        format!("Uncaught exception: {}", format_exception(&exception)),
+                        position_to_location(position),
+                    ));
+                }
+                ControlFlow::Break { position } => {
+                    return Err(loop_control_error("break", position));
+                }
+                ControlFlow::Continue { position } => {
+                    return Err(loop_control_error("continue", position));
+                }
+            }
         }
+
+        Ok(last_value)
     }
 
     /// Evaluate a statement and produce control-flow information for the caller.
