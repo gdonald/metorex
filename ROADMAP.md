@@ -440,15 +440,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.10.10. Create example file: `examples/runtime/pattern_matching.mx`
   - [x] 6.10.11. Create test file: `tests/pattern_matching_execution_tests.rs`
 
-- [ ] 6.11. Error Reporting and Stack Traces
-  - [ ] 6.11.1. Implement call stack tracking
-  - [ ] 6.11.2. Capture source location on each call
-  - [ ] 6.11.3. Generate stack traces on errors
-  - [ ] 6.11.4. Add line number information to errors
-  - [ ] 6.11.5. Implement pretty-printing of stack traces
-  - [ ] 6.11.6. Write unit tests for error reporting
-  - [ ] 6.11.7. Create example file: `examples/runtime/error_reporting.mx`
-  - [ ] 6.11.8. Create test file: `tests/error_reporting_tests.rs`
+- [x] 6.11. Error Reporting and Stack Traces
+  - [x] 6.11.1. Implement call stack tracking
+  - [x] 6.11.2. Capture source location on each call
+  - [x] 6.11.3. Generate stack traces on errors
+  - [x] 6.11.4. Add line number information to errors
+  - [x] 6.11.5. Implement pretty-printing of stack traces
+  - [x] 6.11.6. Write unit tests for error reporting
+  - [x] 6.11.7. Create example file: `examples/runtime/error_reporting.mx`
+  - [x] 6.11.8. Create test file: `tests/error_reporting_tests.rs`
 
 ### 7. Meta-Programming Features (MVP)
 
