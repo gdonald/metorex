@@ -1,0 +1,236 @@
+# Blocks as First-Class Objects in Metorex
+# Demonstrates that blocks can be assigned, passed, returned, and manipulated like any other value
+
+puts "=== Blocks as First-Class Objects ==="
+puts ""
+
+# Example 1: Assigning blocks to variables
+puts "1. Assigning blocks to variables:"
+double = lambda |x| x * 2 end
+result = double.call(5)
+puts "double.call(5) = #{result}"  # Should print 10
+puts ""
+
+# Example 2: Multiple parameter blocks
+puts "2. Multiple parameter blocks:"
+add = lambda |a, b| a + b end
+sum = add.call(3, 7)
+puts "add.call(3, 7) = #{sum}"  # Should print 10
+puts ""
+
+# Example 3: Zero parameter blocks
+puts "3. Zero parameter blocks:"
+get_pi = lambda || 3.14159 end
+pi = get_pi.call
+puts "get_pi.call = #{pi}"
+puts ""
+
+# Example 4: Passing blocks as arguments
+puts "4. Passing blocks as arguments to functions:"
+def apply_twice(func, value)
+  result = func.call(value)
+  func.call(result)
+end
+
+increment = lambda |n| n + 1 end
+final = apply_twice(increment, 5)
+puts "apply_twice(increment, 5) = #{final}"  # Should print 7 (5 + 1 + 1)
+puts ""
+
+# Example 5: Returning blocks from functions
+puts "5. Returning blocks from functions (closures):"
+def make_multiplier(factor)
+  lambda |x| x * factor end
+end
+
+times_three = make_multiplier(3)
+times_ten = make_multiplier(10)
+
+result3 = times_three.call(4)
+result10 = times_ten.call(4)
+
+puts "times_three.call(4) = #{result3}"   # Should print 12
+puts "times_ten.call(4) = #{result10}"    # Should print 40
+puts ""
+
+# Example 6: Blocks capturing variables (closures)
+puts "6. Blocks capturing variables from outer scope:"
+counter_value = 0
+
+increment_counter = lambda ||
+  counter_value = counter_value + 1
+  counter_value
+end
+
+puts "First call: #{increment_counter.call}"   # 1
+puts "Second call: #{increment_counter.call}"  # 2
+puts "Third call: #{increment_counter.call}"   # 3
+puts ""
+
+# Example 7: Storing blocks in arrays
+puts "7. Storing blocks in data structures:"
+operations = [
+  lambda |x| x + 1 end,
+  lambda |x| x * 2 end,
+  lambda |x| x - 3 end,
+  lambda |x| x / 4 end
+]
+
+value = 20
+puts "Starting with value: #{value}"
+puts "After +1: #{operations[0].call(value)}"  # 21
+puts "After *2: #{operations[1].call(value)}"  # 40
+puts "After -3: #{operations[2].call(value)}"  # 17
+puts "After /4: #{operations[3].call(value)}"  # 5
+puts ""
+
+# Example 8: Higher-order functions (map-like behavior)
+puts "8. Higher-order function example:"
+def transform_array(array, transformer)
+  result = []
+  i = 0
+  while i < array.length
+    result.push(transformer.call(array[i]))
+    i = i + 1
+  end
+  result
+end
+
+numbers = [1, 2, 3, 4, 5]
+square = lambda |n| n * n end
+squared = transform_array(numbers, square)
+puts "Squares of [1,2,3,4,5]: #{squared}"
+puts ""
+
+# Example 9: Blocks returned from methods
+puts "9. Blocks returned from class methods:"
+class Calculator
+  def make_operation(op_name)
+    if op_name == "add"
+      lambda |a, b| a + b end
+    elsif op_name == "multiply"
+      lambda |a, b| a * b end
+    elsif op_name == "subtract"
+      lambda |a, b| a - b end
+    else
+      lambda |a, b| a / b end
+    end
+  end
+end
+
+calc = Calculator.new
+add_op = calc.make_operation("add")
+mul_op = calc.make_operation("multiply")
+
+puts "add_op.call(5, 3) = #{add_op.call(5, 3)}"      # 8
+puts "mul_op.call(5, 3) = #{mul_op.call(5, 3)}"      # 15
+puts ""
+
+# Example 10: Nested closures
+puts "10. Nested closures:"
+def make_adder(x)
+  lambda |y|
+    lambda |z| x + y + z end
+  end
+end
+
+add_one = make_adder(1)
+add_one_two = add_one.call(2)
+result = add_one_two.call(3)
+puts "Nested closure result: #{result}"  # 1 + 2 + 3 = 6
+puts ""
+
+# Example 11: Function composition
+puts "11. Function composition:"
+def compose(f, g)
+  lambda |x| f.call(g.call(x)) end
+end
+
+add_ten = lambda |x| x + 10 end
+double = lambda |x| x * 2 end
+
+# Compose: first double, then add ten
+composed = compose(add_ten, double)
+result = composed.call(5)  # (5 * 2) + 10 = 20
+puts "compose(add_ten, double).call(5) = #{result}"
+puts ""
+
+# Example 12: Partial application simulation
+puts "12. Partial application pattern:"
+def make_greeter(greeting)
+  lambda |name| "#{greeting}, #{name}!" end
+end
+
+say_hello = make_greeter("Hello")
+say_goodbye = make_greeter("Goodbye")
+
+puts say_hello.call("Alice")      # "Hello, Alice!"
+puts say_goodbye.call("Bob")      # "Goodbye, Bob!"
+puts ""
+
+# Example 13: Callback pattern
+puts "13. Callback pattern:"
+def process_data(data, on_success, on_error)
+  if data > 0
+    on_success.call(data)
+  else
+    on_error.call(data)
+  end
+end
+
+success_handler = lambda |d| puts "Success! Data: #{d}" end
+error_handler = lambda |d| puts "Error! Invalid data: #{d}" end
+
+process_data(42, success_handler, error_handler)
+process_data(-1, success_handler, error_handler)
+puts ""
+
+# Example 14: Memoization pattern
+puts "14. Simple memoization with closures:"
+def make_cached_fibonacci
+  cache = {}
+
+  lambda |n|
+    if cache.has_key?(n.to_s)
+      cache[n.to_s]
+    else
+      if n <= 1
+        result = n
+      else
+        # Note: This is simplified for demonstration
+        result = n  # In real implementation would recurse
+      end
+      cache[n.to_s] = result
+      result
+    end
+  end
+end
+
+fib = make_cached_fibonacci
+puts "fib.call(5) = #{fib.call(5)}"
+puts "fib.call(10) = #{fib.call(10)}"
+puts ""
+
+# Example 15: Builder pattern with blocks
+puts "15. Builder pattern:"
+class QueryBuilder
+  def initialize
+    @conditions = []
+  end
+
+  def where(condition)
+    @conditions.push(condition)
+    self
+  end
+
+  def build
+    lambda || "Query with: #{@conditions.join(' AND ')}" end
+  end
+end
+
+builder = QueryBuilder.new
+query = builder.where("age > 18").where("active = true").build
+puts query.call
+puts ""
+
+puts "=== Blocks are truly first-class objects! ==="

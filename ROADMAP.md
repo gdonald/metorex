@@ -452,14 +452,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 ### 7. Meta-Programming Features (MVP)
 
-- [ ] 7.1. Block as First-Class Object
-  - [ ] 7.1.1. Ensure blocks can be assigned to variables
-  - [ ] 7.1.2. Ensure blocks can be passed as arguments
-  - [ ] 7.1.3. Ensure blocks can be returned from methods
-  - [ ] 7.1.4. Implement block parameter syntax (`do |x, y|`)
-  - [ ] 7.1.5. Write unit tests for block objects
-  - [ ] 7.1.6. Create example file: `examples/metaprogramming/blocks_as_objects.mx`
-  - [ ] 7.1.7. Create test file: `tests/block_as_object_tests.rs`
+- [x] 7.1. Block as First-Class Object
+  - [x] 7.1.1. Ensure blocks can be assigned to variables
+  - [x] 7.1.2. Ensure blocks can be passed as arguments
+  - [x] 7.1.3. Ensure blocks can be returned from methods
+  - [x] 7.1.4. Implement block parameter syntax (`do |x, y|`)
+  - [x] 7.1.5. Write unit tests for block objects
+  - [x] 7.1.6. Create example file: `examples/metaprogramming/blocks_as_objects.mx`
+  - [x] 7.1.7. Create test file: `tests/block_as_object_tests.rs`
 
 - [ ] 7.2. Implicit Block Capture
   - [ ] 7.2.1. Modify method call parser to capture trailing blocks
