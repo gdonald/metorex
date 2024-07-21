@@ -366,6 +366,7 @@ fn test_method_call_resolution() {
                 }),
                 method: "length".to_string(),
                 arguments: vec![],
+                trailing_block: None,
                 position: Position::default(),
             },
             position: Position::default(),

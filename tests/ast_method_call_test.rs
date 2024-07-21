@@ -19,6 +19,7 @@ fn test_simple_method_call() {
         }),
         method: "foo".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -42,6 +43,7 @@ fn test_method_call_with_arguments() {
                 position: pos(1, 18),
             },
         ],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -57,6 +59,7 @@ fn test_method_call_zero_arguments() {
         }),
         method: "property".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -72,6 +75,7 @@ fn test_property_access() {
         }),
         method: "name".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -88,10 +92,12 @@ fn test_chained_method_calls() {
             }),
             method: "method1".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         method: "method2".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -109,14 +115,17 @@ fn test_triple_chained_method_calls() {
                 }),
                 method: "foo".to_string(),
                 arguments: vec![],
+                trailing_block: None,
                 position: pos(1, 1),
             }),
             method: "bar".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         method: "baz".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -131,6 +140,7 @@ fn test_method_call_on_instance_variable() {
         }),
         method: "upcase".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -145,6 +155,7 @@ fn test_method_call_on_class_variable() {
         }),
         method: "increment".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -184,6 +195,7 @@ fn test_method_call_with_complex_arguments() {
                 position: pos(1, 29),
             },
         ],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -206,6 +218,7 @@ fn test_method_call_on_array_element() {
         }),
         method: "method".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -221,6 +234,7 @@ fn test_method_call_on_literal() {
         }),
         method: "upcase".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -237,12 +251,14 @@ fn test_method_call_returning_callable() {
             }),
             method: "get_function".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         arguments: vec![Expression::Identifier {
             name: "args".to_string(),
             position: pos(1, 20),
         }],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -269,6 +285,7 @@ fn test_method_call_on_self() {
         }),
         method: "method".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -288,6 +305,7 @@ fn test_self_in_instance_variable_assignment() {
             }),
             method: "name".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 9),
         },
         position: pos(1, 1),
@@ -305,10 +323,12 @@ fn test_chained_method_on_self() {
             }),
             method: "foo".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         method: "bar".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -327,10 +347,12 @@ fn test_nested_property_access() {
             }),
             method: "property".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         method: "nested_property".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -351,6 +373,7 @@ fn test_method_chain_with_arguments() {
                     name: "x".to_string(),
                     position: pos(1, 13),
                 }],
+                trailing_block: None,
                 position: pos(1, 1),
             }),
             method: "method2".to_string(),
@@ -358,6 +381,7 @@ fn test_method_chain_with_arguments() {
                 name: "y".to_string(),
                 position: pos(1, 25),
             }],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         method: "method3".to_string(),
@@ -365,6 +389,7 @@ fn test_method_chain_with_arguments() {
             name: "z".to_string(),
             position: pos(1, 37),
         }],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -382,6 +407,7 @@ fn test_method_call_in_binary_operation() {
             }),
             method: "value".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         right: Box::new(Expression::IntLiteral {
@@ -405,6 +431,7 @@ fn test_array_of_method_calls() {
                 }),
                 method: "method".to_string(),
                 arguments: vec![],
+                trailing_block: None,
                 position: pos(1, 2),
             },
             Expression::MethodCall {
@@ -414,6 +441,7 @@ fn test_array_of_method_calls() {
                 }),
                 method: "method".to_string(),
                 arguments: vec![],
+                trailing_block: None,
                 position: pos(1, 17),
             },
             Expression::MethodCall {
@@ -423,6 +451,7 @@ fn test_array_of_method_calls() {
                 }),
                 method: "method".to_string(),
                 arguments: vec![],
+                trailing_block: None,
                 position: pos(1, 32),
             },
         ],

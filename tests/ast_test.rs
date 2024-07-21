@@ -234,6 +234,7 @@ fn test_call_expression() {
                 position: pos(1, 8),
             },
         ],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -248,6 +249,7 @@ fn test_method_call() {
         }),
         method: "foo".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -663,10 +665,12 @@ fn test_chained_method_calls() {
             }),
             method: "foo".to_string(),
             arguments: vec![],
+            trailing_block: None,
             position: pos(1, 1),
         }),
         method: "bar".to_string(),
         arguments: vec![],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -700,6 +704,7 @@ fn test_complex_expression() {
             }),
             position: pos(1, 19),
         }],
+        trailing_block: None,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));

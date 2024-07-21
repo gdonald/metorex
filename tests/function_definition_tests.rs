@@ -246,6 +246,7 @@ fn test_function_with_keyword_parameter() {
                     value: "Configuring...".to_string(),
                     position: pos(2, 8),
                 }],
+                trailing_block: None,
                 position: pos(2, 3),
             },
             position: pos(2, 3),

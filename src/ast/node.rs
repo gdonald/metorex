@@ -97,6 +97,8 @@ pub enum Expression {
     Call {
         callee: Box<Expression>,
         arguments: Vec<Expression>,
+        /// Optional trailing block (e.g., `foo(x) do |y| ... end`)
+        trailing_block: Option<Box<Expression>>,
         position: Position,
     },
 
@@ -105,6 +107,8 @@ pub enum Expression {
         receiver: Box<Expression>,
         method: String,
         arguments: Vec<Expression>,
+        /// Optional trailing block (e.g., `foo.bar(x) do |y| ... end`)
+        trailing_block: Option<Box<Expression>>,
         position: Position,
     },
 

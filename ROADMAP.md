@@ -462,13 +462,21 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 7.1.7. Create test file: `tests/block_as_object_tests.rs`
 
 - [ ] 7.2. Implicit Block Capture
-  - [ ] 7.2.1. Modify method call parser to capture trailing blocks
-  - [ ] 7.2.2. Pass block as implicit last argument
-  - [ ] 7.2.3. Make block available via special parameter name (`block`)
-  - [ ] 7.2.4. Handle methods with and without blocks
-  - [ ] 7.2.5. Write unit tests for implicit block passing
-  - [ ] 7.2.6. Create example file: `examples/metaprogramming/implicit_blocks.mx`
-  - [ ] 7.2.7. Create test file: `tests/implicit_block_tests.rs`
+  - [x] 7.2.1. AST Changes: Add `trailing_block` field to `Expression::MethodCall`
+  - [x] 7.2.2. AST Changes: Add `trailing_block` field to `Expression::Call` for function calls
+  - [ ] 7.2.3. Parser: Add `do...end` block literal parsing
+  - [ ] 7.2.4. Parser: Add `{...}` block literal parsing (alternative syntax)
+  - [ ] 7.2.5. Parser: Modify method call parser to capture trailing blocks after arguments
+  - [ ] 7.2.6. Parser: Handle precedence and associativity for block literals
+  - [ ] 7.2.7. Parser: Add tests for parsing method calls with trailing blocks
+  - [ ] 7.2.8. VM: Modify method execution to accept optional trailing block
+  - [ ] 7.2.9. VM: Pass trailing block as implicit last argument OR make available via `block` variable
+  - [ ] 7.2.10. VM: Implement `block_given?` or similar to check if block was passed
+  - [ ] 7.2.11. VM: Handle methods with explicit block parameter vs implicit block
+  - [ ] 7.2.12. Write unit tests for runtime behavior with implicit blocks
+  - [ ] 7.2.13. Create example file: `examples/metaprogramming/implicit_blocks.mx`
+  - [ ] 7.2.14. Create test file: `tests/implicit_block_tests.rs`
+  - [ ] 7.2.15. Document the implicit block capture feature
 
 - [ ] 7.3. `define_method` Implementation
   - [ ] 7.3.1. Add `define_method(name, block)` to Object class

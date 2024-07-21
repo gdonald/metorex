@@ -1104,11 +1104,13 @@ impl VirtualMachine {
                 method,
                 arguments,
                 position,
+                ..
             } => self.evaluate_method_call(receiver, method, arguments, *position),
             Expression::Call {
                 callee,
                 arguments,
                 position,
+                ..
             } => {
                 let callable = self.evaluate_expression(callee)?;
                 let mut evaluated_args = Vec::with_capacity(arguments.len());

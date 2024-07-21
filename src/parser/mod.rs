@@ -854,6 +854,7 @@ impl Parser {
                     receiver: Box::new(expr),
                     method: method_name,
                     arguments,
+                    trailing_block: None,
                     position,
                 };
             } else if self.match_token(&[TokenKind::LBracket]) {
@@ -882,6 +883,7 @@ impl Parser {
         Ok(Expression::Call {
             callee: Box::new(callee),
             arguments,
+            trailing_block: None,
             position,
         })
     }
