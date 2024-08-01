@@ -1,6 +1,8 @@
 // Virtual machine core structure for the Metorex AST interpreter.
 // This module defines the runtime scaffolding that powers execution.
 
+use super::{CallFrame, ControlFlow, GlobalRegistry, Heap};
+
 use crate::ast::{BinaryOp, Expression, InterpolationPart, Statement, UnaryOp};
 use crate::builtin_classes::{self, BuiltinClasses};
 use crate::callable::Callable;
@@ -12,87 +14,6 @@ use crate::object::{BlockStatement, Method, Object};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-
-/// Lightweight heap placeholder that will evolve with the runtime.
-#[derive(Debug, Default)]
-pub struct Heap {
-    /// Tracks allocated objects for future GC integration.
-    allocated: Vec<Object>,
-}
-
-impl Heap {
-    /// Allocate an object on the heap (no-op stub for now).
-    pub fn allocate(&mut self, object: Object) {
-        self.allocated.push(object);
-    }
-
-    /// Returns number of tracked allocations (for testing/introspection).
-    pub fn allocation_count(&self) -> usize {
-        self.allocated.len()
-    }
-}
-
-/// Call frame information stored on the VM call stack for debugging.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CallFrame {
-    /// Human-readable frame identifier (method/function name).
-    name: String,
-    /// Optional source location ("file:line") to aid debugging.
-    location: Option<String>,
-}
-
-impl CallFrame {
-    /// Create a new call frame description.
-    pub fn new(name: impl Into<String>, location: Option<String>) -> Self {
-        Self {
-            name: name.into(),
-            location,
-        }
-    }
-
-    /// Return the frame name.
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    /// Return the optional source location.
-    pub fn location(&self) -> Option<&str> {
-        self.location.as_deref()
-    }
-}
-
-/// Registry that owns global objects accessible throughout the VM.
-#[derive(Debug, Default)]
-pub struct GlobalRegistry {
-    objects: HashMap<String, Object>,
-}
-
-impl GlobalRegistry {
-    /// Create an empty registry.
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Insert or replace a named global object.
-    pub fn set(&mut self, name: impl Into<String>, object: Object) {
-        self.objects.insert(name.into(), object);
-    }
-
-    /// Fetch a named global object if present.
-    pub fn get(&self, name: &str) -> Option<Object> {
-        self.objects.get(name).cloned()
-    }
-
-    /// Determine whether a name exists in the registry.
-    pub fn contains(&self, name: &str) -> bool {
-        self.objects.contains_key(name)
-    }
-
-    /// Iterator over registered globals (useful for seeding environments).
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &Object)> {
-        self.objects.iter()
-    }
-}
 
 /// Core virtual machine responsible for executing Metorex programs.
 pub struct VirtualMachine {
@@ -1958,24 +1879,6 @@ fn seed_environment_with_globals(environment: &mut Environment, globals: &Global
     for (name, value) in globals.iter() {
         environment.define(name.clone(), value.clone());
     }
-}
-
-/// Represents control-flow signals produced during statement execution.
-#[derive(Debug, Clone, PartialEq)]
-enum ControlFlow {
-    /// Normal execution, continue with next statement.
-    Next,
-    /// A return statement was encountered with an associated value.
-    Return { value: Object, position: Position },
-    /// A break statement was encountered.
-    Break { position: Position },
-    /// A continue statement was encountered.
-    Continue { position: Position },
-    /// An exception was raised and is propagating.
-    Exception {
-        exception: Object,
-        position: Position,
-    },
 }
 
 /// Convert a lexer position into a runtime source location.

@@ -43,26 +43,28 @@ The `src/vm.rs` file is currently **2177 lines** and contains too many responsib
 ## Refactoring Plan
 
 ### Phase 1: Extract Support Structures
-**Priority: HIGH**
+**Priority: HIGH** - **STATUS: COMPLETED**
 
-- [ ] 1.1. Create `src/vm/mod.rs` as the main VM module entry point
-- [ ] 1.2. Create `src/vm/heap.rs`
-  - [ ] 1.2.1. Move `Heap` struct and implementation
-  - [ ] 1.2.2. Add proper documentation for future GC integration
-  - [ ] 1.2.3. Update imports in dependent files
+- [x] 1.1. Create `src/vm/mod.rs` as the main VM module entry point
+- [x] 1.2. Create `src/vm/heap.rs`
+  - [x] 1.2.1. Move `Heap` struct and implementation
+  - [x] 1.2.2. Add proper documentation for future GC integration
+  - [x] 1.2.3. Update imports in dependent files
 
-- [ ] 1.3. Create `src/vm/call_frame.rs`
-  - [ ] 1.3.1. Move `CallFrame` struct and implementation
-  - [ ] 1.3.2. Update imports in dependent files
+- [x] 1.3. Create `src/vm/call_frame.rs`
+  - [x] 1.3.1. Move `CallFrame` struct and implementation
+  - [x] 1.3.2. Update imports in dependent files
 
-- [ ] 1.4. Create `src/vm/global_registry.rs`
-  - [ ] 1.4.1. Move `GlobalRegistry` struct and implementation
-  - [ ] 1.4.2. Update imports in dependent files
+- [x] 1.4. Create `src/vm/global_registry.rs`
+  - [x] 1.4.1. Move `GlobalRegistry` struct and implementation
+  - [x] 1.4.2. Update imports in dependent files
 
-- [ ] 1.5. Create `src/vm/control_flow.rs`
-  - [ ] 1.5.1. Move `ControlFlow` enum
-  - [ ] 1.5.2. Add helper methods for control flow handling
-  - [ ] 1.5.3. Update imports in dependent files
+- [x] 1.5. Create `src/vm/control_flow.rs`
+  - [x] 1.5.1. Move `ControlFlow` enum
+  - [x] 1.5.2. Add helper methods for control flow handling (deferred - no helpers needed yet)
+  - [x] 1.5.3. Update imports in dependent files
+
+**Results**: Extracted 4 modules (~138 lines total), reduced core VM from 2177 to 2080 lines. All tests pass.
 
 ### Phase 2: Extract Error Handling
 **Priority: HIGH**
