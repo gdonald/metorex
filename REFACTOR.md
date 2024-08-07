@@ -67,10 +67,10 @@ The `src/vm.rs` file is currently **2177 lines** and contains too many responsib
 **Results**: Extracted 4 modules (~138 lines total), reduced core VM from 2177 to 2080 lines. All tests pass.
 
 ### Phase 2: Extract Error Handling
-**Priority: HIGH**
+**Priority: HIGH** - **STATUS: COMPLETED**
 
-- [ ] 2.1. Create `src/vm/errors.rs`
-  - [ ] 2.1.1. Move all error construction functions:
+- [x] 2.1. Create `src/vm/errors.rs`
+  - [x] 2.1.1. Move all error construction functions:
     - `loop_control_error()`
     - `invalid_assignment_target_error()`
     - `undefined_self_error()`
@@ -86,9 +86,12 @@ The `src/vm.rs` file is currently **2177 lines** and contains too many responsib
     - `divide_by_zero_error()`
     - `index_out_of_bounds_error()`
     - `undefined_dictionary_key_error()`
-  - [ ] 2.1.2. Group related errors together with module organization
-  - [ ] 2.1.3. Consider using a trait-based approach for extensibility
-  - [ ] 2.1.4. Update imports in dependent files
+    - `position_to_location()` (helper)
+  - [x] 2.1.2. Group related errors together with module organization
+  - [x] 2.1.3. Consider using a trait-based approach for extensibility (deferred - not needed yet)
+  - [x] 2.1.4. Update imports in dependent files
+
+**Results**: Extracted errors module (210 lines), reduced core VM from 2080 to 1912 lines. All tests pass.
 
 ### Phase 3: Extract Utility Functions
 **Priority: MEDIUM**

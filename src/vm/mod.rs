@@ -5,6 +5,7 @@
 mod call_frame;
 mod control_flow;
 mod core;
+mod errors;
 mod global_registry;
 mod heap;
 
