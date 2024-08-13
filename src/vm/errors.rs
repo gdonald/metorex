@@ -3,15 +3,11 @@
 //! This module provides helper functions for constructing various runtime, type,
 //! and internal errors that can occur during VM execution.
 
+use super::utils::position_to_location;
 use crate::ast::{BinaryOp, Expression, Statement, UnaryOp};
-use crate::error::{MetorexError, SourceLocation};
+use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
-
-/// Convert a lexer position into a runtime source location.
-pub(super) fn position_to_location(position: Position) -> SourceLocation {
-    SourceLocation::new(position.line, position.column, position.offset)
-}
 
 // ============================================================================
 // Control Flow Errors

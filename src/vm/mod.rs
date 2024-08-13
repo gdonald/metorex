@@ -8,6 +8,7 @@ mod core;
 mod errors;
 mod global_registry;
 mod heap;
+mod utils;
 
 pub use call_frame::CallFrame;
 pub use core::VirtualMachine;

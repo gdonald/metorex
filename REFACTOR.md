@@ -94,14 +94,16 @@ The `src/vm.rs` file is currently **2177 lines** and contains too many responsib
 **Results**: Extracted errors module (210 lines), reduced core VM from 2080 to 1912 lines. All tests pass.
 
 ### Phase 3: Extract Utility Functions
-**Priority: MEDIUM**
+**Priority: MEDIUM** - **STATUS: COMPLETED**
 
-- [ ] 3.1. Create `src/vm/utils.rs`
-  - [ ] 3.1.1. Move `position_to_location()`
-  - [ ] 3.1.2. Move `format_exception()`
-  - [ ] 3.1.3. Move `is_truthy()`
-  - [ ] 3.1.4. Move `object_to_dict_key()`
-  - [ ] 3.1.5. Update imports in dependent files
+- [x] 3.1. Create `src/vm/utils.rs`
+  - [x] 3.1.1. Move `position_to_location()` (from errors.rs)
+  - [x] 3.1.2. Move `format_exception()`
+  - [x] 3.1.3. Move `is_truthy()`
+  - [x] 3.1.4. Move `object_to_dict_key()`
+  - [x] 3.1.5. Update imports in dependent files (core.rs and errors.rs)
+
+**Results**: Extracted utils module (41 lines), reduced core VM from 1912 to 1884 lines. Refactored errors.rs to use shared utils. All tests pass.
 
 ### Phase 4: Extract Expression Evaluation
 **Priority: HIGH**

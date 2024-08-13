@@ -2,6 +2,7 @@
 // This module defines the runtime scaffolding that powers execution.
 
 use super::errors::*;
+use super::utils::*;
 use super::{CallFrame, ControlFlow, GlobalRegistry, Heap};
 
 use crate::ast::{BinaryOp, Expression, InterpolationPart, Statement, UnaryOp};
@@ -1880,33 +1881,4 @@ fn seed_environment_with_globals(environment: &mut Environment, globals: &Global
     for (name, value) in globals.iter() {
         environment.define(name.clone(), value.clone());
     }
-}
-
-/// Format an exception object for display.
-fn format_exception(exception: &Object) -> String {
-    match exception {
-        Object::Exception(ex) => {
-            let exc = ex.borrow();
-            format!("{}: {}", exc.exception_type, exc.message)
-        }
-        _ => format!("{:?}", exception),
-    }
-}
-
-/// Convert an object into a dictionary key string representation.
-fn object_to_dict_key(value: &Object) -> Option<String> {
-    match value {
-        Object::String(s) => Some((**s).clone()),
-        Object::Int(i) => Some(i.to_string()),
-        Object::Float(f) => Some(f.to_string()),
-        Object::Bool(b) => Some(b.to_string()),
-        Object::Nil => Some("nil".to_string()),
-        _ => None,
-    }
-}
-
-/// Determine if a value is truthy for conditional statements.
-/// In Metorex, only `false` and `nil` are falsy; everything else is truthy.
-fn is_truthy(value: &Object) -> bool {
-    !matches!(value, Object::Bool(false) | Object::Nil)
 }
