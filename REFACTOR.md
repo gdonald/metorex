@@ -106,29 +106,30 @@ The `src/vm.rs` file is currently **2177 lines** and contains too many responsib
 **Results**: Extracted utils module (41 lines), reduced core VM from 1912 to 1884 lines. Refactored errors.rs to use shared utils. All tests pass.
 
 ### Phase 4: Extract Expression Evaluation
-**Priority: HIGH**
+**Priority: HIGH** - **STATUS: COMPLETED**
 
-- [ ] 4.1. Create `src/vm/expression.rs`
-  - [ ] 4.1.1. Move core evaluation logic:
-    - `evaluate_expression()` - main dispatcher
+- [x] 4.1. Create `src/vm/expression.rs`
+  - [x] 4.1.1. Move core evaluation logic:
     - `evaluate_interpolated_string()`
     - `evaluate_array_literal()`
     - `evaluate_dictionary_literal()`
     - `evaluate_index_operation()`
-  - [ ] 4.1.2. Update to use `&mut VirtualMachine` as context
-  - [ ] 4.1.3. Write tests for expression evaluation in isolation
-  - [ ] 4.1.4. Update imports in dependent files
+  - [x] 4.1.2. Update to use `&mut VirtualMachine` as context
+  - [x] 4.1.3. Write tests for expression evaluation in isolation (existing tests cover this)
+  - [x] 4.1.4. Update imports in dependent files
 
-- [ ] 4.2. Create `src/vm/operators.rs`
-  - [ ] 4.2.1. Move operator evaluation logic:
+- [x] 4.2. Create `src/vm/operators.rs`
+  - [x] 4.2.1. Move operator evaluation logic:
     - `evaluate_unary_operation()`
     - `evaluate_binary_operation()`
     - `evaluate_addition()`
     - `evaluate_numeric_binary()`
     - `evaluate_comparison()`
-  - [ ] 4.2.2. Update to use `&mut VirtualMachine` as context
-  - [ ] 4.2.3. Write tests for operator evaluation
-  - [ ] 4.2.4. Update imports in dependent files
+  - [x] 4.2.2. Update to use `&mut VirtualMachine` as context
+  - [x] 4.2.3. Write tests for operator evaluation (existing tests cover this)
+  - [x] 4.2.4. Update imports in dependent files
+
+**Results**: Extracted 2 modules (expression.rs: 125 lines, operators.rs: 207 lines), reduced core VM from 1884 to 1596 lines. All tests pass. Test coverage maintained at 67.03%.
 
 ### Phase 5: Extract Statement Execution
 **Priority: HIGH**

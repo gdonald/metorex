@@ -6,8 +6,10 @@ mod call_frame;
 mod control_flow;
 mod core;
 mod errors;
+mod expression;
 mod global_registry;
 mod heap;
+mod operators;
 mod utils;
 
 pub use call_frame::CallFrame;
