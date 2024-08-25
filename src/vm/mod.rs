@@ -3,13 +3,18 @@
 //! This module contains the core virtual machine implementation and related support structures.
 
 mod call_frame;
+mod class_execution;
 mod control_flow;
+mod control_structures;
 mod core;
 mod errors;
+mod exceptions;
 mod expression;
 mod global_registry;
 mod heap;
 mod operators;
+mod pattern_matching;
+mod statement;
 mod utils;
 
 pub use call_frame::CallFrame;
