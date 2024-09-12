@@ -2,11 +2,12 @@
 // This module defines the runtime scaffolding that powers execution.
 
 use super::errors::*;
+use super::init::*;
 use super::utils::*;
 use super::{CallFrame, ControlFlow, GlobalRegistry, Heap};
 
 use crate::ast::{Expression, Statement};
-use crate::builtin_classes::{self, BuiltinClasses};
+use crate::builtin_classes::BuiltinClasses;
 use crate::environment::Environment;
 use crate::error::MetorexError;
 use crate::object::{BlockStatement, Object};
@@ -297,29 +298,5 @@ impl VirtualMachine {
 impl Default for VirtualMachine {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-fn initialize_builtin_methods(builtins: &BuiltinClasses) {
-    builtin_classes::init_object_methods(builtins.object_class.as_ref());
-    builtin_classes::init_string_methods(builtins.string_class.as_ref());
-    builtin_classes::init_array_methods(builtins.array_class.as_ref());
-}
-
-fn register_builtin_classes(globals: &mut GlobalRegistry, builtins: &BuiltinClasses) {
-    for (name, class) in builtins.all_classes() {
-        globals.set(name, Object::Class(class));
-    }
-}
-
-fn register_singletons(globals: &mut GlobalRegistry) {
-    globals.set("nil", Object::Nil);
-    globals.set("true", Object::Bool(true));
-    globals.set("false", Object::Bool(false));
-}
-
-fn seed_environment_with_globals(environment: &mut Environment, globals: &GlobalRegistry) {
-    for (name, value) in globals.iter() {
-        environment.define(name.clone(), value.clone());
     }
 }

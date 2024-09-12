@@ -12,6 +12,7 @@ mod exceptions;
 mod expression;
 mod global_registry;
 mod heap;
+mod init;
 mod method_invocation;
 mod method_lookup;
 mod native_methods;
