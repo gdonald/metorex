@@ -1,103 +1,66 @@
 // Parser module for Metorex
 // Converts a stream of tokens into an Abstract Syntax Tree (AST)
 
+mod error;
+mod token_stream;
+
 use crate::ast::{BinaryOp, Expression, Parameter, RescueClause, Statement, UnaryOp};
 use crate::error::{MetorexError, SourceLocation};
-use crate::lexer::{Position, Token, TokenKind};
+use crate::lexer::{Token, TokenKind};
+
+use error::ErrorHandler;
+use token_stream::TokenStream;
 
 /// The parser converts a token stream into an AST
 pub struct Parser {
-    /// The tokens to parse
-    tokens: Vec<Token>,
-    /// Current position in the token stream
-    current: usize,
-    /// Errors encountered during parsing
-    errors: Vec<MetorexError>,
-    /// Flag indicating if we're in panic mode (error recovery)
-    panic_mode: bool,
+    /// Token stream for navigation
+    stream: TokenStream,
+    /// Error handler for reporting and recovery
+    error_handler: ErrorHandler,
 }
 
 impl Parser {
     /// Create a new parser from a vector of tokens
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
-            tokens,
-            current: 0,
-            errors: Vec::new(),
-            panic_mode: false,
+            stream: TokenStream::new(tokens),
+            error_handler: ErrorHandler::new(),
         }
     }
 
     /// Get the current token without consuming it
     fn peek(&self) -> &Token {
-        self.tokens.get(self.current).unwrap_or_else(|| {
-            // If we're past the end, return the last token (should be EOF)
-            self.tokens.last().unwrap()
-        })
-    }
-
-    /// Get the token at an offset from the current position
-    #[allow(dead_code)]
-    fn peek_ahead(&self, offset: usize) -> &Token {
-        self.tokens
-            .get(self.current + offset)
-            .unwrap_or_else(|| self.tokens.last().unwrap())
+        self.stream.peek()
     }
 
     /// Get the previous token
     fn previous(&self) -> &Token {
-        if self.current > 0 {
-            &self.tokens[self.current - 1]
-        } else {
-            &self.tokens[0]
-        }
+        self.stream.previous()
     }
 
     /// Check if we're at the end of the token stream
     fn is_at_end(&self) -> bool {
-        matches!(self.peek().kind, TokenKind::EOF)
+        self.stream.is_at_end()
     }
 
     /// Advance to the next token and return the previous one
     fn advance(&mut self) -> Token {
-        if !self.is_at_end() {
-            self.current += 1;
-        }
-        self.previous().clone()
+        self.stream.advance()
     }
 
     /// Check if the current token matches any of the given kinds
     fn check(&self, kinds: &[TokenKind]) -> bool {
-        if self.is_at_end() {
-            return false;
-        }
-        kinds.iter().any(|kind| self.match_kind(kind))
+        self.stream.check(kinds)
     }
 
     /// Check if the current token matches a specific kind (handles complex matching)
     fn match_kind(&self, kind: &TokenKind) -> bool {
-        let current = &self.peek().kind;
-        match (kind, current) {
-            (TokenKind::Ident(_), TokenKind::Ident(_)) => true,
-            (TokenKind::Int(_), TokenKind::Int(_)) => true,
-            (TokenKind::Float(_), TokenKind::Float(_)) => true,
-            (TokenKind::String(_), TokenKind::String(_)) => true,
-            (TokenKind::InterpolatedString(_), TokenKind::InterpolatedString(_)) => true,
-            (TokenKind::InstanceVar(_), TokenKind::InstanceVar(_)) => true,
-            (TokenKind::ClassVar(_), TokenKind::ClassVar(_)) => true,
-            (TokenKind::Comment(_), TokenKind::Comment(_)) => true,
-            _ => kind == current,
-        }
+        self.stream.match_kind(kind)
     }
 
     /// Consume the current token if it matches any of the given kinds
     fn match_token(&mut self, kinds: &[TokenKind]) -> bool {
-        if self.check(kinds) {
-            self.advance();
-            true
-        } else {
-            false
-        }
+        self.stream.match_token(kinds)
     }
 
     /// Expect a specific token kind and consume it, or report an error
@@ -110,58 +73,31 @@ impl Parser {
         }
     }
 
-    /// Skip any newline tokens
-    #[allow(dead_code)]
-    fn skip_newlines(&mut self) {
-        while self.match_token(&[TokenKind::Newline]) {
-            // Keep consuming newlines
-        }
-    }
-
-    /// Skip any comment tokens
-    #[allow(dead_code)]
-    fn skip_comments(&mut self) {
-        while matches!(self.peek().kind, TokenKind::Comment(_)) {
-            self.advance();
-        }
-    }
-
     /// Skip newlines and comments
     fn skip_whitespace(&mut self) {
-        while let TokenKind::Newline | TokenKind::Comment(_) = &self.peek().kind {
-            self.advance();
-        }
-    }
-
-    /// Convert a Position to a SourceLocation
-    fn position_to_location(&self, position: Position) -> SourceLocation {
-        SourceLocation::new(position.line, position.column, position.offset)
+        self.stream.skip_whitespace()
     }
 
     /// Create an error at the current token
     fn error_at_current(&self, message: &str) -> MetorexError {
-        let location = self.position_to_location(self.peek().position);
-        MetorexError::syntax_error(message, location)
+        self.error_handler.error_at_current(message, self.peek())
     }
 
     /// Create an error at the previous token
     fn error_at_previous(&self, message: &str) -> MetorexError {
-        let location = self.position_to_location(self.previous().position);
-        MetorexError::syntax_error(message, location)
+        self.error_handler
+            .error_at_previous(message, self.previous())
     }
 
     /// Report an error and enter panic mode
     fn report_error(&mut self, error: MetorexError) {
-        if !self.panic_mode {
-            self.panic_mode = true;
-            self.errors.push(error);
-        }
+        self.error_handler.report_error(error);
     }
 
     /// Synchronize after an error (panic mode recovery)
     /// Skip tokens until we find a statement boundary
     fn synchronize(&mut self) {
-        self.panic_mode = false;
+        self.error_handler.start_synchronize();
 
         while !self.is_at_end() {
             // If we just passed a newline or semicolon, we're at a statement boundary
@@ -214,10 +150,10 @@ impl Parser {
             self.skip_whitespace();
         }
 
-        if self.errors.is_empty() {
-            Ok(statements)
+        if self.error_handler.has_errors() {
+            Err(self.error_handler.errors().to_vec())
         } else {
-            Err(self.errors.clone())
+            Ok(statements)
         }
     }
 
@@ -605,7 +541,8 @@ impl Parser {
         if self.check(&[TokenKind::Ident(String::new())]) {
             // Peek ahead to see if this looks like an exception type or an assignment
             // If the next token after the identifier is '=', it's an assignment, not an exception type
-            let next_is_assignment = if let Some(next) = self.tokens.get(self.current + 1) {
+            let current_pos = self.stream.current_position();
+            let next_is_assignment = if let Some(next) = self.stream.tokens().get(current_pos + 1) {
                 matches!(next.kind, TokenKind::Equal)
             } else {
                 false

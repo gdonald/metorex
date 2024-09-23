@@ -13,16 +13,16 @@
 
 ## Phase 1: Core Infrastructure
 
-- [ ] 1.1. Create `src/parser/token_stream.rs`
-  - [ ] 1.1.1. Move token navigation methods: `peek()`, `peek_ahead()`, `previous()`, `is_at_end()`, `advance()`
-  - [ ] 1.1.2. Move token matching methods: `check()`, `match_kind()`, `match_token()`, `expect()`
-  - [ ] 1.1.3. Move whitespace handling: `skip_newlines()`, `skip_comments()`, `skip_whitespace()`
-  - [ ] 1.1.4. Extract a `TokenStream` struct to encapsulate token navigation state
+- [x] 1.1. Create `src/parser/token_stream.rs`
+  - [x] 1.1.1. Move token navigation methods: `peek()`, `peek_ahead()`, `previous()`, `is_at_end()`, `advance()`
+  - [x] 1.1.2. Move token matching methods: `check()`, `match_kind()`, `match_token()`, `expect()`
+  - [x] 1.1.3. Move whitespace handling: `skip_newlines()`, `skip_comments()`, `skip_whitespace()`
+  - [x] 1.1.4. Extract a `TokenStream` struct to encapsulate token navigation state
 
-- [ ] 1.2. Create `src/parser/error.rs`
-  - [ ] 1.2.1. Move error handling methods: `error_at_current()`, `error_at_previous()`, `report_error()`, `synchronize()`
-  - [ ] 1.2.2. Move position conversion: `position_to_location()`
-  - [ ] 1.2.3. Extract error recovery logic into dedicated functions
+- [x] 1.2. Create `src/parser/error.rs`
+  - [x] 1.2.1. Move error handling methods: `error_at_current()`, `error_at_previous()`, `report_error()`, `synchronize()`
+  - [x] 1.2.2. Move position conversion: `position_to_location()`
+  - [x] 1.2.3. Extract error recovery logic into dedicated functions
 
 ## Phase 2: Statement Parsing
 
