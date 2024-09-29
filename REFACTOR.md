@@ -26,27 +26,27 @@
 
 ## Phase 2: Statement Parsing
 
-- [ ] 2.1. Create `src/parser/statements/mod.rs`
-  - [ ] 2.1.1. Move `parse_statement()` as the main entry point
-  - [ ] 2.1.2. Re-export statement parsing functions
+- [x] 2.1. Create `src/parser/statements/mod.rs`
+  - [x] 2.1.1. Move `parse_statement()` as the main entry point
+  - [x] 2.1.2. Re-export statement parsing functions
 
-- [ ] 2.2. Create `src/parser/statements/class.rs`
-  - [ ] 2.2.1. Move `parse_class_def()` function
-  - [ ] 2.2.2. Include any class-specific helper functions
+- [x] 2.2. Create `src/parser/statements/class.rs`
+  - [x] 2.2.1. Move `parse_class_def()` function
+  - [x] 2.2.2. Include any class-specific helper functions
 
-- [ ] 2.3. Create `src/parser/statements/function.rs`
-  - [ ] 2.3.1. Move `parse_function_def()` function
-  - [ ] 2.3.2. Move `parse_parameters()` function
-  - [ ] 2.3.3. Include parameter parsing helpers
+- [x] 2.3. Create `src/parser/statements/function.rs`
+  - [x] 2.3.1. Move `parse_function_def()` function
+  - [x] 2.3.2. Move `parse_parameters()` function
+  - [x] 2.3.3. Include parameter parsing helpers
 
-- [ ] 2.4. Create `src/parser/statements/control_flow.rs`
-  - [ ] 2.4.1. Move `parse_if_statement()` function
-  - [ ] 2.4.2. Move `parse_while_statement()` function
+- [x] 2.4. Create `src/parser/statements/control_flow.rs`
+  - [x] 2.4.1. Move `parse_if_statement()` function
+  - [x] 2.4.2. Move `parse_while_statement()` function
 
-- [ ] 2.5. Create `src/parser/statements/exception.rs`
-  - [ ] 2.5.1. Move `parse_begin_statement()` function
-  - [ ] 2.5.2. Move `parse_rescue_clause()` function
-  - [ ] 2.5.3. Move `parse_raise_statement()` function
+- [x] 2.5. Create `src/parser/statements/exception.rs`
+  - [x] 2.5.1. Move `parse_begin_statement()` function
+  - [x] 2.5.2. Move `parse_rescue_clause()` function
+  - [x] 2.5.3. Move `parse_raise_statement()` function
 
 ## Phase 3: Expression Parsing
 
