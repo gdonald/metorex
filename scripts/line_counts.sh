@@ -62,7 +62,7 @@ for idx in "${indices[@]}"; do
   total_lines=$((total_lines + count))
 
   # Only show files with 100+ lines
-  if [ "$count" -ge 100 ]; then
+  if [ "$count" -ge 500 ]; then
     printf "%-60s %10d\n" "$file" "$count"
   fi
 done

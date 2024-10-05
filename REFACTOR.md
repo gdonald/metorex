@@ -50,29 +50,29 @@
 
 ## Phase 3: Expression Parsing
 
-- [ ] 3.1. Create `src/parser/expressions/mod.rs`
-  - [ ] 3.1.1. Move `parse_expression()` as the main entry point
-  - [ ] 3.1.2. Move `parse_assignment()` function
-  - [ ] 3.1.3. Re-export expression parsing functions
+- [x] 3.1. Create `src/parser/expressions/mod.rs`
+  - [x] 3.1.1. Move `parse_expression()` as the main entry point
+  - [x] 3.1.2. Move `parse_assignment()` function
+  - [x] 3.1.3. Re-export expression parsing functions
 
-- [ ] 3.2. Create `src/parser/expressions/binary.rs`
-  - [ ] 3.2.1. Move `parse_equality()` function
-  - [ ] 3.2.2. Move `parse_comparison()` function
-  - [ ] 3.2.3. Move `parse_term()` function (addition/subtraction)
-  - [ ] 3.2.4. Move `parse_factor()` function (multiplication/division/modulo)
+- [x] 3.2. Create `src/parser/expressions/binary.rs`
+  - [x] 3.2.1. Move `parse_equality()` function
+  - [x] 3.2.2. Move `parse_comparison()` function
+  - [x] 3.2.3. Move `parse_term()` function (addition/subtraction)
+  - [x] 3.2.4. Move `parse_factor()` function (multiplication/division/modulo)
 
-- [ ] 3.3. Create `src/parser/expressions/unary.rs`
-  - [ ] 3.3.1. Move `parse_unary()` function
+- [x] 3.3. Create `src/parser/expressions/unary.rs`
+  - [x] 3.3.1. Move `parse_unary()` function
 
-- [ ] 3.4. Create `src/parser/expressions/call.rs`
-  - [ ] 3.4.1. Move `parse_call()` function
-  - [ ] 3.4.2. Move `finish_call()` function
-  - [ ] 3.4.3. Move `parse_arguments()` function
+- [x] 3.4. Create `src/parser/expressions/call.rs`
+  - [x] 3.4.1. Move `parse_call()` function
+  - [x] 3.4.2. Move `finish_call()` function
+  - [x] 3.4.3. Move `parse_arguments()` function
 
-- [ ] 3.5. Create `src/parser/expressions/primary.rs`
-  - [ ] 3.5.1. Move `parse_primary()` function
-  - [ ] 3.5.2. Handle all literal parsing (int, float, string, bool, nil, arrays, dictionaries)
-  - [ ] 3.5.3. Handle interpolated string parsing
+- [x] 3.5. Create `src/parser/expressions/primary.rs`
+  - [x] 3.5.1. Move `parse_primary()` function
+  - [x] 3.5.2. Handle all literal parsing (int, float, string, bool, nil, arrays, dictionaries)
+  - [x] 3.5.3. Handle interpolated string parsing
 
 ## Phase 4: Main Parser Module
 
