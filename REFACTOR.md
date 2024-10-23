@@ -18,33 +18,33 @@ The file contains:
 
 ## Phase 1: Create Object Module Directory Structure
 
-- [ ] 1.1. Create `src/object/` directory to hold the refactored modules
-- [ ] 1.2. Create `src/object/mod.rs` as the main module entry point
-- [ ] 1.3. Verify directory structure is correct
+- [x] 1.1. Create `src/object/` directory to hold the refactored modules
+- [x] 1.2. Create `src/object/mod.rs` as the main module entry point
+- [x] 1.3. Verify directory structure is correct
 
 ---
 
 ## Phase 2: Extract Core Type Modules
 
-- [ ] 2.1. Create `src/object/types.rs`
-  - [ ] 2.1.1. Move the `Object` enum definition
-  - [ ] 2.1.2. Move `Object::type_name()` method
-  - [ ] 2.1.3. Export publicly from types module
+- [x] 2.1. Create `src/object/types.rs`
+  - [x] 2.1.1. Move the `Object` enum definition
+  - [x] 2.1.2. Move `Object::type_name()` method
+  - [x] 2.1.3. Export publicly from types module
 
-- [ ] 2.2. Create `src/object/instance.rs`
-  - [ ] 2.2.1. Move `Instance` struct and all its implementations
-  - [ ] 2.2.2. Keep all instance-related methods together
-  - [ ] 2.2.3. Import necessary dependencies (Class, Object)
+- [x] 2.2. Create `src/object/instance.rs`
+  - [x] 2.2.1. Move `Instance` struct and all its implementations
+  - [x] 2.2.2. Keep all instance-related methods together
+  - [x] 2.2.3. Import necessary dependencies (Class, Object)
 
-- [ ] 2.3. Create `src/object/method.rs`
-  - [ ] 2.3.1. Move `Method` struct and implementations
-  - [ ] 2.3.2. Move `Callable` trait implementation for Method
-  - [ ] 2.3.3. Ensure binding and receiver methods are included
+- [x] 2.3. Create `src/object/method.rs`
+  - [x] 2.3.1. Move `Method` struct and implementations
+  - [x] 2.3.2. Move `Callable` trait implementation for Method
+  - [x] 2.3.3. Ensure binding and receiver methods are included
 
-- [ ] 2.4. Create `src/object/block.rs`
-  - [ ] 2.4.1. Move `BlockStatement` struct and implementations
-  - [ ] 2.4.2. Move `Callable` trait implementation for BlockStatement
-  - [ ] 2.4.3. Keep closure capture logic together
+- [x] 2.4. Create `src/object/block.rs`
+  - [x] 2.4.1. Move `BlockStatement` struct and implementations
+  - [x] 2.4.2. Move `Callable` trait implementation for BlockStatement
+  - [x] 2.4.3. Keep closure capture logic together
 
 ---
 
