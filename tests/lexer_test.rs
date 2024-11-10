@@ -557,7 +557,7 @@ fn test_lexer_string_with_unknown_escape() {
 
 #[test]
 fn test_lexer_interpolated_string_simple() {
-    let mut lexer = Lexer::new(r#""hello {name}""#);
+    let mut lexer = Lexer::new(r#""hello #{name}""#);
     let token = lexer.next_token();
 
     match token.kind {
@@ -572,7 +572,7 @@ fn test_lexer_interpolated_string_simple() {
 
 #[test]
 fn test_lexer_interpolated_string_multiple() {
-    let mut lexer = Lexer::new(r#""{x} + {y} = {z}""#);
+    let mut lexer = Lexer::new(r##""#{x} + #{y} = #{z}""##);
     let token = lexer.next_token();
 
     match token.kind {
@@ -590,7 +590,7 @@ fn test_lexer_interpolated_string_multiple() {
 
 #[test]
 fn test_lexer_interpolated_string_at_start() {
-    let mut lexer = Lexer::new(r#""{greeting}, world!""#);
+    let mut lexer = Lexer::new(r##""#{greeting}, world!""##);
     let token = lexer.next_token();
 
     match token.kind {
@@ -608,7 +608,7 @@ fn test_lexer_interpolated_string_at_start() {
 
 #[test]
 fn test_lexer_interpolated_string_at_end() {
-    let mut lexer = Lexer::new(r#""result: {value}""#);
+    let mut lexer = Lexer::new(r##""result: #{value}""##);
     let token = lexer.next_token();
 
     match token.kind {
@@ -623,7 +623,7 @@ fn test_lexer_interpolated_string_at_end() {
 
 #[test]
 fn test_lexer_interpolated_string_only_expression() {
-    let mut lexer = Lexer::new(r#""{value}""#);
+    let mut lexer = Lexer::new(r##""#{value}""##);
     let token = lexer.next_token();
 
     match token.kind {
@@ -637,26 +637,26 @@ fn test_lexer_interpolated_string_only_expression() {
 
 #[test]
 fn test_lexer_string_no_interpolation_single_quotes() {
-    let mut lexer = Lexer::new("'{name}'");
+    let mut lexer = Lexer::new(r##"'#{name}'"##);
     let token = lexer.next_token();
     // Single quotes don't support interpolation
-    assert_eq!(token.kind, TokenKind::String("{name}".to_string()));
+    assert_eq!(token.kind, TokenKind::String("#{name}".to_string()));
 }
 
 #[test]
-fn test_lexer_string_escaped_brace() {
-    let mut lexer = Lexer::new(r#""\{not_interpolated}""#);
+fn test_lexer_string_escaped_hash() {
+    let mut lexer = Lexer::new(r##""\#{not_interpolated}""##);
     let token = lexer.next_token();
-    // Escaped brace should not trigger interpolation
+    // Escaped hash should not trigger interpolation
     assert_eq!(
         token.kind,
-        TokenKind::String("{not_interpolated}".to_string())
+        TokenKind::String("#{not_interpolated}".to_string())
     );
 }
 
 #[test]
 fn test_lexer_interpolated_string_with_complex_expression() {
-    let mut lexer = Lexer::new(r#""result: {x + y * 2}""#);
+    let mut lexer = Lexer::new(r##""result: #{x + y * 2}""##);
     let token = lexer.next_token();
 
     match token.kind {
@@ -700,7 +700,7 @@ fn test_lexer_string_with_newline_unescaped() {
 
 #[test]
 fn test_lexer_unterminated_interpolation() {
-    let mut lexer = Lexer::new(r#""hello {name"#);
+    let mut lexer = Lexer::new(r##""hello #{name"##);
     let token = lexer.next_token();
     // Should return EOF on error
     assert_eq!(token.kind, TokenKind::EOF);
@@ -1795,7 +1795,7 @@ fn test_lexer_array_and_hash_syntax() {
 
 #[test]
 fn test_lexer_string_interpolation_complex() {
-    let source = r#""Hello {name}, you are {age} years old""#;
+    let source = r##""Hello #{name}, you are #{age} years old""##;
     let mut lexer = Lexer::new(source);
     let token = lexer.next_token();
 

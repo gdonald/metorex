@@ -54,6 +54,7 @@ impl VirtualMachine {
 
                 Ok(instance_obj)
             }
+            Object::NativeFunction(name) => self.call_native_function(&name, arguments, position),
             other => Err(not_callable_error(&other, position)),
         }
     }

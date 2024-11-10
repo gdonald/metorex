@@ -35,6 +35,11 @@ impl Parser {
         self.stream.peek()
     }
 
+    /// Peek ahead by offset tokens
+    fn peek_ahead(&self, offset: usize) -> &Token {
+        self.stream.peek_ahead(offset)
+    }
+
     /// Get the previous token
     fn previous(&self) -> &Token {
         self.stream.previous()

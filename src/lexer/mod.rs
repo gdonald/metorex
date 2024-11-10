@@ -280,9 +280,9 @@ impl<'a> Lexer<'a> {
                             current_text.push('\'');
                             self.advance();
                         }
-                        Some('{') => {
-                            // Escaped brace - not interpolation
-                            current_text.push('{');
+                        Some('#') => {
+                            // Escaped hash - allows literal #{
+                            current_text.push('#');
                             self.advance();
                         }
                         Some(ch) => {
@@ -299,55 +299,62 @@ impl<'a> Lexer<'a> {
                         }
                     }
                 }
-                Some('{') if has_interpolation => {
-                    // Start of interpolation
+                Some('#') if has_interpolation => {
+                    // Check if this is the start of interpolation (#{)
                     self.advance();
+                    if self.peek() == Some('{') {
+                        // Start of interpolation
+                        self.advance();
 
-                    // Save current text as a part
-                    if !current_text.is_empty() {
-                        parts.push(InterpolationPart::Text(current_text.clone()));
-                        current_text.clear();
-                    }
+                        // Save current text as a part
+                        if !current_text.is_empty() {
+                            parts.push(InterpolationPart::Text(current_text.clone()));
+                            current_text.clear();
+                        }
 
-                    // Read the expression until we find }
-                    let mut expr = String::new();
-                    let mut depth = 1; // Track nested braces
+                        // Read the expression until we find }
+                        let mut expr = String::new();
+                        let mut depth = 1; // Track nested braces
 
-                    loop {
-                        match self.peek() {
-                            None => {
-                                return Err(format!(
-                                    "Unterminated interpolation starting at line {}",
-                                    self.line
-                                ));
-                            }
-                            Some('\n') => {
-                                return Err(format!(
-                                    "Unterminated interpolation starting at line {}",
-                                    self.line
-                                ));
-                            }
-                            Some('{') => {
-                                depth += 1;
-                                expr.push('{');
-                                self.advance();
-                            }
-                            Some('}') => {
-                                depth -= 1;
-                                if depth == 0 {
+                        loop {
+                            match self.peek() {
+                                None => {
+                                    return Err(format!(
+                                        "Unterminated interpolation starting at line {}",
+                                        self.line
+                                    ));
+                                }
+                                Some('\n') => {
+                                    return Err(format!(
+                                        "Unterminated interpolation starting at line {}",
+                                        self.line
+                                    ));
+                                }
+                                Some('{') => {
+                                    depth += 1;
+                                    expr.push('{');
                                     self.advance();
-                                    parts.push(InterpolationPart::Expression(expr));
-                                    break;
-                                } else {
-                                    expr.push('}');
+                                }
+                                Some('}') => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        self.advance();
+                                        parts.push(InterpolationPart::Expression(expr));
+                                        break;
+                                    } else {
+                                        expr.push('}');
+                                        self.advance();
+                                    }
+                                }
+                                Some(ch) => {
+                                    expr.push(ch);
                                     self.advance();
                                 }
                             }
-                            Some(ch) => {
-                                expr.push(ch);
-                                self.advance();
-                            }
                         }
+                    } else {
+                        // Not interpolation, just a # character
+                        current_text.push('#');
                     }
                 }
                 Some(ch) => {

@@ -11,10 +11,10 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 1: Core String Features
 
 ### 1.1 String Interpolation
-- [ ] 1.1.1 Implement string interpolation parsing (`"Hello, #{name}!"`)
-- [ ] 1.1.2 Add string interpolation evaluation in VM
-- [ ] 1.1.3 Enable `examples/basics/greeting_line.mx` execution
-- [ ] 1.1.4 Add output capture and verification to test runner
+- [x] 1.1.1 Implement string interpolation parsing (`"Hello, #{name}!"`)
+- [x] 1.1.2 Add string interpolation evaluation in VM
+- [x] 1.1.3 Enable `examples/basics/greeting_line.mx` execution
+- [x] 1.1.4 Add output capture and verification to test runner
 
 ### 1.2 String Methods
 - [ ] 1.2.1 Implement basic string methods (upcase, downcase, trim, reverse)

@@ -102,6 +102,7 @@ impl BuiltinClasses {
             Object::Block(_) => Rc::clone(&self.object_class),
             Object::Exception(_) => Rc::clone(&self.exception_class),
             Object::Result(_) => Rc::clone(&self.object_class),
+            Object::NativeFunction(_) => Rc::clone(&self.object_class),
         }
     }
 

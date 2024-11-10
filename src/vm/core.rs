@@ -35,6 +35,7 @@ impl VirtualMachine {
         let mut globals = GlobalRegistry::new();
         register_builtin_classes(&mut globals, &builtins);
         register_singletons(&mut globals);
+        register_native_functions(&mut globals);
 
         seed_environment_with_globals(&mut environment, &globals);
 

@@ -61,6 +61,7 @@ impl fmt::Display for Object {
                 Ok(obj) => write!(f, "Ok({})", obj),
                 Err(obj) => write!(f, "Err({})", obj),
             },
+            Object::NativeFunction(name) => write!(f, "<native function {}>", name),
         }
     }
 }

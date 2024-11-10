@@ -51,6 +51,9 @@ pub enum Object {
 
     /// Result type for explicit error handling
     Result(Result<Box<Object>, Box<Object>>),
+
+    /// Native function (built-in function implemented in Rust)
+    NativeFunction(String),
 }
 
 impl Object {
@@ -71,6 +74,7 @@ impl Object {
             Object::Exception(_) => "Exception",
             Object::Set(_) => "Set",
             Object::Result(_) => "Result",
+            Object::NativeFunction(_) => "NativeFunction",
         }
     }
 }

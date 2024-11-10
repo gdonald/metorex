@@ -15,6 +15,7 @@ mod heap;
 mod init;
 mod method_invocation;
 mod method_lookup;
+mod native_functions;
 mod native_methods;
 mod operators;
 mod pattern_matching;
