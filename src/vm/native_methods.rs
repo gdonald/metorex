@@ -9,6 +9,8 @@ use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 impl VirtualMachine {
     /// Attempt to execute a native (built-in) method implementation.
@@ -140,6 +142,75 @@ impl VirtualMachine {
                             &arguments[0],
                             position,
                         ))
+                    }
+                }
+                "trim" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        Ok(Some(Object::string(string_value.trim().to_string())))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "reverse" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        let reversed: String = string_value.chars().rev().collect();
+                        Ok(Some(Object::string(reversed)))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "chars" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        let chars: Vec<Object> = string_value
+                            .chars()
+                            .map(|c| Object::string(c.to_string()))
+                            .collect();
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(chars)))))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "bytes" => {
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        let bytes: Vec<Object> = string_value
+                            .bytes()
+                            .map(|b| Object::Int(b as i64))
+                            .collect();
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(bytes)))))
+                    } else {
+                        Ok(None)
                     }
                 }
                 _ => Ok(None),

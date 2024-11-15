@@ -151,3 +151,145 @@ fn undefined_method_returns_runtime_error() {
     let result = vm.execute_program(&statements);
     assert!(matches!(result, Err(MetorexError::RuntimeError { .. })));
 }
+
+#[test]
+fn string_trim_removes_whitespace() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "trimmed".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(string_literal("  hello  ", pos(1, 1))),
+            method: "trim".to_string(),
+            arguments: vec![],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+    assert_eq!(
+        vm.environment().get("trimmed"),
+        Some(Object::String(Rc::new("hello".to_string())))
+    );
+}
+
+#[test]
+fn string_reverse_reverses_characters() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "reversed".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(string_literal("abc", pos(1, 1))),
+            method: "reverse".to_string(),
+            arguments: vec![],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+    assert_eq!(
+        vm.environment().get("reversed"),
+        Some(Object::String(Rc::new("cba".to_string())))
+    );
+}
+
+#[test]
+fn string_chars_returns_array_of_characters() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "chars".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(string_literal("Hi", pos(1, 1))),
+            method: "chars".to_string(),
+            arguments: vec![],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+
+    match vm.environment().get("chars") {
+        Some(Object::Array(array_rc)) => {
+            let array = array_rc.borrow();
+            assert_eq!(array.len(), 2);
+            assert_eq!(array[0], Object::String(Rc::new("H".to_string())));
+            assert_eq!(array[1], Object::String(Rc::new("i".to_string())));
+        }
+        other => panic!("expected array, got {:?}", other),
+    }
+}
+
+#[test]
+fn string_bytes_returns_array_of_byte_values() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "bytes".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(string_literal("AB", pos(1, 1))),
+            method: "bytes".to_string(),
+            arguments: vec![],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+
+    match vm.environment().get("bytes") {
+        Some(Object::Array(array_rc)) => {
+            let array = array_rc.borrow();
+            assert_eq!(array.len(), 2);
+            assert_eq!(array[0], Object::Int(65)); // 'A'
+            assert_eq!(array[1], Object::Int(66)); // 'B'
+        }
+        other => panic!("expected array, got {:?}", other),
+    }
+}
+
+#[test]
+fn string_reverse_handles_unicode() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "reversed".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(string_literal("こんにちは", pos(1, 1))),
+            method: "reverse".to_string(),
+            arguments: vec![],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+    assert_eq!(
+        vm.environment().get("reversed"),
+        Some(Object::String(Rc::new("はちにんこ".to_string())))
+    );
+}

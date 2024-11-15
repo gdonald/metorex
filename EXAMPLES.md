@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 27/88 examples executing (30.7%)
+**Current Status**: 28/88 examples executing (31.8%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -17,9 +17,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 1.1.4 Add output capture and verification to test runner
 
 ### 1.2 String Methods
-- [ ] 1.2.1 Implement basic string methods (upcase, downcase, trim, reverse)
-- [ ] 1.2.2 Add string inspection methods (length, chars, bytes)
-- [ ] 1.2.3 Enable string method examples execution
+- [x] 1.2.1 Implement basic string methods (upcase, downcase, trim, reverse)
+- [x] 1.2.2 Add string inspection methods (length, chars, bytes)
+- [x] 1.2.3 Enable string method examples execution
 
 ---
 

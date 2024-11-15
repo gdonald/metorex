@@ -201,6 +201,22 @@ pub fn init_string_methods(string_class: &Class) {
         vec![],
     ));
     string_class.define_method("+", concat_method);
+
+    // String#trim
+    let trim_method = Rc::new(Method::new("trim".to_string(), vec![], vec![]));
+    string_class.define_method("trim", trim_method);
+
+    // String#reverse
+    let reverse_method = Rc::new(Method::new("reverse".to_string(), vec![], vec![]));
+    string_class.define_method("reverse", reverse_method);
+
+    // String#chars
+    let chars_method = Rc::new(Method::new("chars".to_string(), vec![], vec![]));
+    string_class.define_method("chars", chars_method);
+
+    // String#bytes
+    let bytes_method = Rc::new(Method::new("bytes".to_string(), vec![], vec![]));
+    string_class.define_method("bytes", bytes_method);
 }
 
 /// Initialize built-in methods for the Array class

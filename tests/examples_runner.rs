@@ -1,27 +1,46 @@
-// Example runner tests for Metorex
-// These tests execute example files using the Metorex CLI and verify their output
+// Examples runner
 
 use std::process::Command;
 
-/// Test greeting_line example with execution
-#[test]
-fn test_basics_greeting_line_execution() {
-    let output = Command::new("./target/debug/metorex")
-        .arg("examples/basics/greeting_line.mx")
-        .output()
-        .expect("Failed to execute metorex");
+fn run_example(path: &str) -> String {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let mut cmd = Command::new(binary);
+    cmd.current_dir(manifest_dir).arg(path);
 
+    let output = cmd.output().expect("failed to execute example");
     assert!(
         output.status.success(),
-        "metorex exited with error: {}",
-        String::from_utf8_lossy(&output.stderr)
+        "example {} exited with status {:?}",
+        path,
+        output.status
     );
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert_eq!(
-        stdout.trim(),
-        "Hello, Ada!",
-        "Expected output 'Hello, Ada!' but got '{}'",
-        stdout.trim()
-    );
+    String::from_utf8(output.stdout).expect("stdout was not utf8")
+}
+
+#[test]
+fn test_basics_greeting_line_execution() {
+    let output = run_example("examples/basics/greeting_line.mx");
+    assert_eq!(output, "Hello, Ada!\n");
+}
+
+#[test]
+fn test_basics_string_methods_execution() {
+    let expected = r#"=== Basic String Methods ===
+ALICE
+alice
+Hello, World!
+xeroteM
+11
+
+=== String Inspection Methods ===
+H
+i
+65
+66
+"#;
+
+    let output = run_example("examples/basics/string_methods.mx");
+    assert_eq!(output, expected.to_string());
 }
