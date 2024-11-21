@@ -26,9 +26,9 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 2: Dictionary/Hash Support
 
 ### 2.1 Hash Literal Parsing
-- [ ] 2.1.1 Implement hash literal parsing (`{"key" => value}`)
-- [ ] 2.1.2 Add hash rocket operator (`=>`) support
-- [ ] 2.1.3 Enable `examples/data-structures/simple_dict.mx` parsing
+- [x] 2.1.1 Implement hash literal parsing (`{"key" => value}`)
+- [x] 2.1.2 Add hash rocket operator (`=>`) support
+- [x] 2.1.3 Enable `examples/data-structures/simple_dict.mx` parsing
 
 ### 2.2 Hash Runtime Operations
 - [ ] 2.2.1 Implement hash creation in VM

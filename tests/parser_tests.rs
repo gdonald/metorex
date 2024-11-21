@@ -157,3 +157,81 @@ fn test_parse_array_literal() {
         _ => panic!("Expected Expression statement"),
     }
 }
+
+#[test]
+fn test_parse_hash_literal_with_fat_arrow() {
+    let result = parse_source(r#"{"alice" => 30, "bob" => 25}"#);
+    assert!(result.is_ok());
+    let statements = result.unwrap();
+    assert_eq!(statements.len(), 1);
+
+    match &statements[0] {
+        Statement::Expression { expression, .. } => match expression {
+            Expression::Dictionary { entries, .. } => {
+                assert_eq!(entries.len(), 2);
+
+                // Check first entry
+                match &entries[0] {
+                    (
+                        Expression::StringLiteral { value: key, .. },
+                        Expression::IntLiteral { value: val, .. },
+                    ) => {
+                        assert_eq!(key, "alice");
+                        assert_eq!(*val, 30);
+                    }
+                    _ => panic!("Expected StringLiteral => IntLiteral"),
+                }
+
+                // Check second entry
+                match &entries[1] {
+                    (
+                        Expression::StringLiteral { value: key, .. },
+                        Expression::IntLiteral { value: val, .. },
+                    ) => {
+                        assert_eq!(key, "bob");
+                        assert_eq!(*val, 25);
+                    }
+                    _ => panic!("Expected StringLiteral => IntLiteral"),
+                }
+            }
+            _ => panic!("Expected Dictionary"),
+        },
+        _ => panic!("Expected Expression statement"),
+    }
+}
+
+#[test]
+fn test_parse_hash_literal_empty() {
+    let result = parse_source("{}");
+    assert!(result.is_ok());
+    let statements = result.unwrap();
+    assert_eq!(statements.len(), 1);
+
+    match &statements[0] {
+        Statement::Expression { expression, .. } => match expression {
+            Expression::Dictionary { entries, .. } => {
+                assert_eq!(entries.len(), 0);
+            }
+            _ => panic!("Expected Dictionary"),
+        },
+        _ => panic!("Expected Expression statement"),
+    }
+}
+
+#[test]
+fn test_parse_hash_literal_mixed_types() {
+    let result = parse_source(r#"{1 => "one", "two" => 2, true => nil}"#);
+    assert!(result.is_ok());
+    let statements = result.unwrap();
+    assert_eq!(statements.len(), 1);
+
+    match &statements[0] {
+        Statement::Expression { expression, .. } => match expression {
+            Expression::Dictionary { entries, .. } => {
+                assert_eq!(entries.len(), 3);
+            }
+            _ => panic!("Expected Dictionary"),
+        },
+        _ => panic!("Expected Expression statement"),
+    }
+}

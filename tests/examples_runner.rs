@@ -44,3 +44,18 @@ i
     let output = run_example("examples/basics/string_methods.mx");
     assert_eq!(output, expected.to_string());
 }
+
+#[test]
+fn test_data_structures_simple_dict_execution() {
+    let output = run_example("examples/data-structures/simple_dict.mx");
+    // Hash map iteration order is non-deterministic, so check both possible orders
+    let valid_output1 = "{bob: 25, alice: 30}\n30\n";
+    let valid_output2 = "{alice: 30, bob: 25}\n30\n";
+    assert!(
+        output == valid_output1 || output == valid_output2,
+        "Expected either '{}' or '{}', but got '{}'",
+        valid_output1,
+        valid_output2,
+        output
+    );
+}

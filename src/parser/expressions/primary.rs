@@ -123,7 +123,17 @@ impl Parser {
                         self.skip_whitespace();
                         let key = self.parse_expression()?;
                         self.skip_whitespace();
-                        self.expect(TokenKind::Colon, "Expected ':' after dictionary key")?;
+
+                        // Support both `:` and `=>` for hash syntax
+                        if self.check(&[TokenKind::FatArrow]) {
+                            self.advance(); // consume =>
+                        } else {
+                            self.expect(
+                                TokenKind::Colon,
+                                "Expected ':' or '=>' after dictionary key",
+                            )?;
+                        }
+
                         self.skip_whitespace();
                         let value = self.parse_expression()?;
                         entries.push((key, value));
