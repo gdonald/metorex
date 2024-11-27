@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 28/88 examples executing (31.8%)
+**Current Status**: 30/88 examples executing (34.1%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -31,10 +31,10 @@ This document tracks the implementation work needed to execute all example files
 - [x] 2.1.3 Enable `examples/data-structures/simple_dict.mx` parsing
 
 ### 2.2 Hash Runtime Operations
-- [ ] 2.2.1 Implement hash creation in VM
-- [ ] 2.2.2 Add hash indexing operations (`hash["key"]`)
-- [ ] 2.2.3 Implement hash methods (keys, values, has_key?, entries)
-- [ ] 2.2.4 Enable `examples/data-structures/dict_access.mx` execution
+- [x] 2.2.1 Implement hash creation in VM
+- [x] 2.2.2 Add hash indexing operations (`hash["key"]`)
+- [x] 2.2.3 Implement hash methods (keys, values, has_key?, entries)
+- [x] 2.2.4 Enable `examples/data-structures/dict_access.mx` execution
 - [ ] 2.2.5 Enable `examples/type-annotations/collection_types.mx` execution
 
 ---

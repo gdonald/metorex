@@ -59,3 +59,27 @@ fn test_data_structures_simple_dict_execution() {
         output
     );
 }
+
+#[test]
+fn test_data_structures_dict_access_execution() {
+    let output = run_example("examples/data-structures/dict_access.mx");
+    assert_eq!(output, "Ada lives in London\n");
+}
+
+#[test]
+fn test_data_structures_hash_methods_execution() {
+    let output = run_example("examples/data-structures/hash_methods.mx");
+    // Hash map iteration order is non-deterministic, so check for valid orderings
+    let fixed_part = "Has alice?\ntrue\nHas dave?\nfalse\nSize:\n3\n";
+    assert!(
+        output.contains(fixed_part)
+            && output.contains("alice")
+            && output.contains("bob")
+            && output.contains("charlie")
+            && output.contains("30")
+            && output.contains("25")
+            && output.contains("35"),
+        "Expected output to contain all keys, values, and fixed text, but got: {}",
+        output
+    );
+}

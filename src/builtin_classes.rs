@@ -245,3 +245,46 @@ pub fn init_array_methods(array_class: &Class) {
     ));
     array_class.define_method("[]", index_method);
 }
+
+/// Initialize built-in methods for the Hash class
+pub fn init_hash_methods(hash_class: &Class) {
+    // Hash#keys
+    let keys_method = Rc::new(Method::new("keys".to_string(), vec![], vec![]));
+    hash_class.define_method("keys", keys_method);
+
+    // Hash#values
+    let values_method = Rc::new(Method::new("values".to_string(), vec![], vec![]));
+    hash_class.define_method("values", values_method);
+
+    // Hash#has_key?
+    let has_key_method = Rc::new(Method::new(
+        "has_key?".to_string(),
+        vec!["key".to_string()],
+        vec![],
+    ));
+    hash_class.define_method("has_key?", has_key_method);
+
+    // Hash#entries
+    let entries_method = Rc::new(Method::new("entries".to_string(), vec![], vec![]));
+    hash_class.define_method("entries", entries_method);
+
+    // Hash#to_a (alias for entries)
+    let to_a_method = Rc::new(Method::new("to_a".to_string(), vec![], vec![]));
+    hash_class.define_method("to_a", to_a_method);
+
+    // Hash#length
+    let length_method = Rc::new(Method::new("length".to_string(), vec![], vec![]));
+    hash_class.define_method("length", length_method);
+
+    // Hash#size (alias for length)
+    let size_method = Rc::new(Method::new("size".to_string(), vec![], vec![]));
+    hash_class.define_method("size", size_method);
+
+    // Hash#[]
+    let index_method = Rc::new(Method::new(
+        "[]".to_string(),
+        vec!["key".to_string()],
+        vec![],
+    ));
+    hash_class.define_method("[]", index_method);
+}

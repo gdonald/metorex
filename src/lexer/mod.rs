@@ -156,6 +156,14 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        // Check for trailing ? or ! (Ruby-style method names)
+        if let Some(ch) = self.peek()
+            && (ch == '?' || ch == '!')
+        {
+            ident.push(ch);
+            self.advance();
+        }
+
         // Check if it's a keyword
         self.keyword_or_identifier(ident)
     }
