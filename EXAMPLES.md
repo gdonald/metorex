@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 30/88 examples executing (34.1%)
+**Current Status**: 31/88 examples executing (35.2%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -35,7 +35,7 @@ This document tracks the implementation work needed to execute all example files
 - [x] 2.2.2 Add hash indexing operations (`hash["key"]`)
 - [x] 2.2.3 Implement hash methods (keys, values, has_key?, entries)
 - [x] 2.2.4 Enable `examples/data-structures/dict_access.mx` execution
-- [ ] 2.2.5 Enable `examples/type-annotations/collection_types.mx` execution
+- [x] 2.2.5 Enable `examples/type-annotations/collection_types.mx` execution
 
 ---
 

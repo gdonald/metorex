@@ -1,5 +1,5 @@
-// Class definition execution for the Metorex VM.
-// This module handles class definition statements.
+// Class and function definition execution for the Metorex VM.
+// This module handles class and function definition statements.
 
 use super::ControlFlow;
 use super::core::VirtualMachine;
@@ -97,6 +97,27 @@ impl VirtualMachine {
         // Register the class in the environment
         self.environment_mut()
             .define(name.to_string(), Object::Class(class));
+
+        Ok(ControlFlow::Next)
+    }
+
+    /// Execute function definition - create a Method object and register it in the environment as a function.
+    pub(crate) fn execute_function_def(
+        &mut self,
+        name: &str,
+        parameters: &[crate::ast::Parameter],
+        body: &[Statement],
+    ) -> Result<ControlFlow, MetorexError> {
+        // Extract parameter names from the parameter definitions
+        let param_names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
+
+        // Create a Method object to represent the function
+        // (Method objects can represent both class methods and standalone functions)
+        let function = Rc::new(Method::new(name.to_string(), param_names, body.to_vec()));
+
+        // Register the function in the environment
+        self.environment_mut()
+            .define(name.to_string(), Object::Method(function));
 
         Ok(ControlFlow::Next)
     }

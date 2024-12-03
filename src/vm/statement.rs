@@ -93,7 +93,12 @@ impl VirtualMachine {
                 cases,
                 position,
             } => self.execute_match(expression, cases, *position),
-            Statement::FunctionDef { .. } => Err(unimplemented_statement_error(statement)),
+            Statement::FunctionDef {
+                name,
+                parameters,
+                body,
+                position: _,
+            } => self.execute_function_def(name, parameters, body),
         }
     }
 

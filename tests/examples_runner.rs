@@ -83,3 +83,18 @@ fn test_data_structures_hash_methods_execution() {
         output
     );
 }
+
+#[test]
+fn test_type_annotations_collection_types_execution() {
+    let output = run_example("examples/type-annotations/collection_types.mx");
+    // Hash map iteration order is non-deterministic, so check both possible orders
+    let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {Bob: 85, Alice: 90}\nlength of numbers: 5\nAlice's score: 90\n";
+    let valid_output2 = "numbers = [1, 2, 3, 4, 5]\nscores = {Alice: 90, Bob: 85}\nlength of numbers: 5\nAlice's score: 90\n";
+    assert!(
+        output == valid_output1 || output == valid_output2,
+        "Expected either '{}' or '{}', but got '{}'",
+        valid_output1,
+        valid_output2,
+        output
+    );
+}

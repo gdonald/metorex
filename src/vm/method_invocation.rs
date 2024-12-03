@@ -25,6 +25,22 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         match callable {
             Object::Block(block) => block.call(self, arguments, position),
+            Object::Method(method) => {
+                // Call standalone function (represented as Method object)
+                // Validate argument count
+                let expected = method.parameters.len();
+                let found = arguments.len();
+                if expected != found {
+                    return Err(method_argument_error(
+                        &method.name,
+                        expected,
+                        found,
+                        position,
+                    ));
+                }
+                // Execute function body without self
+                self.execute_function_body(&method, arguments)
+            }
             Object::Class(class) => {
                 // Create a new instance of the class
                 let instance = Rc::new(RefCell::new(crate::object::Instance::new(Rc::clone(
@@ -225,19 +241,96 @@ impl VirtualMachine {
                 self.environment_mut().define(param.clone(), value);
             }
 
-            match self.execute_statements_internal(method.body())? {
-                ControlFlow::Next => Ok(Object::Nil),
-                ControlFlow::Return { value, .. } => Ok(value),
-                ControlFlow::Exception {
-                    exception,
-                    position,
-                } => Err(MetorexError::runtime_error(
-                    format!("Uncaught exception: {}", format_exception(&exception)),
-                    position_to_location(position),
-                )),
-                ControlFlow::Break { position } => Err(loop_control_error("break", position)),
-                ControlFlow::Continue { position } => Err(loop_control_error("continue", position)),
+            // Execute all statements, tracking the last expression value
+            let body = method.body();
+            let mut last_value = Object::Nil;
+
+            for (i, statement) in body.iter().enumerate() {
+                let is_last = i == body.len() - 1;
+
+                // If this is the last statement and it's an expression, capture its value
+                if is_last && let Statement::Expression { expression, .. } = statement {
+                    last_value = self.evaluate_expression(expression)?;
+                    continue;
+                }
+
+                match self.execute_statement(statement)? {
+                    ControlFlow::Next => continue,
+                    ControlFlow::Return { value, .. } => return Ok(value),
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Err(MetorexError::runtime_error(
+                            format!("Uncaught exception: {}", format_exception(&exception)),
+                            position_to_location(position),
+                        ));
+                    }
+                    ControlFlow::Break { position } => {
+                        return Err(loop_control_error("break", position));
+                    }
+                    ControlFlow::Continue { position } => {
+                        return Err(loop_control_error("continue", position));
+                    }
+                }
             }
+
+            Ok(last_value)
+        })();
+
+        self.environment_mut().pop_scope();
+        result
+    }
+
+    /// Execute the body of a standalone function within a fresh scope (no self).
+    pub(crate) fn execute_function_body(
+        &mut self,
+        function: &Method,
+        arguments: Vec<Object>,
+    ) -> Result<Object, MetorexError> {
+        self.environment_mut().push_scope();
+
+        let result = (|| -> Result<Object, MetorexError> {
+            // Bind parameters to arguments (no self for standalone functions)
+            for (param, value) in function.parameters.iter().zip(arguments.into_iter()) {
+                self.environment_mut().define(param.clone(), value);
+            }
+
+            // Execute all statements, tracking the last expression value
+            let body = function.body();
+            let mut last_value = Object::Nil;
+
+            for (i, statement) in body.iter().enumerate() {
+                let is_last = i == body.len() - 1;
+
+                // If this is the last statement and it's an expression, capture its value
+                if is_last && let Statement::Expression { expression, .. } = statement {
+                    last_value = self.evaluate_expression(expression)?;
+                    continue;
+                }
+
+                match self.execute_statement(statement)? {
+                    ControlFlow::Next => continue,
+                    ControlFlow::Return { value, .. } => return Ok(value),
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Err(MetorexError::runtime_error(
+                            format!("Uncaught exception: {}", format_exception(&exception)),
+                            position_to_location(position),
+                        ));
+                    }
+                    ControlFlow::Break { position } => {
+                        return Err(loop_control_error("break", position));
+                    }
+                    ControlFlow::Continue { position } => {
+                        return Err(loop_control_error("continue", position));
+                    }
+                }
+            }
+
+            Ok(last_value)
         })();
 
         self.environment_mut().pop_scope();
