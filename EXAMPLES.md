@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 31/88 examples executing (35.2%)
+**Current Status**: 32/88 examples executing (36.4%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -42,9 +42,9 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 3: Range and Iterator Support
 
 ### 3.1 Range Objects
-- [ ] 3.1.1 Implement range literal parsing (`1..10`, `1...10`)
-- [ ] 3.1.2 Add range object creation in VM
-- [ ] 3.1.3 Implement range methods (each, to_a, include?)
+- [x] 3.1.1 Implement range literal parsing (`1..10`, `1...10`)
+- [x] 3.1.2 Add range object creation in VM
+- [x] 3.1.3 Implement range methods (each, to_a, include?)
 
 ### 3.2 Block Iteration with each
 - [ ] 3.2.1 Implement `.each do |var| ... end` parsing

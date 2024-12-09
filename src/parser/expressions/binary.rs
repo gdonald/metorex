@@ -32,7 +32,7 @@ impl Parser {
 
     /// Parse comparison operators (<, >, <=, >=)
     pub(crate) fn parse_comparison(&mut self) -> Result<Expression, MetorexError> {
-        let mut expr = self.parse_term()?;
+        let mut expr = self.parse_range()?;
 
         while self.check(&[
             TokenKind::Less,
@@ -48,11 +48,30 @@ impl Parser {
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
                 _ => unreachable!(),
             };
-            let right = self.parse_term()?;
+            let right = self.parse_range()?;
             expr = Expression::BinaryOp {
                 op,
                 left: Box::new(expr),
                 right: Box::new(right),
+                position: op_token.position,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Parse range operators (.., ...)
+    pub(crate) fn parse_range(&mut self) -> Result<Expression, MetorexError> {
+        let mut expr = self.parse_term()?;
+
+        if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
+            let op_token = self.advance();
+            let exclusive = op_token.kind == TokenKind::DotDotDot;
+            let end = self.parse_term()?;
+            expr = Expression::Range {
+                start: Box::new(expr),
+                end: Box::new(end),
+                exclusive,
                 position: op_token.position,
             };
         }

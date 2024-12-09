@@ -22,6 +22,8 @@ pub struct BuiltinClasses {
     pub hash_class: Rc<Class>,
     /// Set class
     pub set_class: Rc<Class>,
+    /// Range class
+    pub range_class: Rc<Class>,
     /// Base Exception class
     pub exception_class: Rc<Class>,
     /// StandardError class (inherits from Exception)
@@ -49,6 +51,7 @@ impl BuiltinClasses {
         let array_class = Rc::new(Class::new("Array", Some(Rc::clone(&object_class))));
         let hash_class = Rc::new(Class::new("Hash", Some(Rc::clone(&object_class))));
         let set_class = Rc::new(Class::new("Set", Some(Rc::clone(&object_class))));
+        let range_class = Rc::new(Class::new("Range", Some(Rc::clone(&object_class))));
 
         // Create exception hierarchy
         let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
@@ -77,6 +80,7 @@ impl BuiltinClasses {
             array_class,
             hash_class,
             set_class,
+            range_class,
             exception_class,
             standard_error_class,
             runtime_error_class,
@@ -103,6 +107,7 @@ impl BuiltinClasses {
             Object::Exception(_) => Rc::clone(&self.exception_class),
             Object::Result(_) => Rc::clone(&self.object_class),
             Object::NativeFunction(_) => Rc::clone(&self.object_class),
+            Object::Range { .. } => Rc::clone(&self.range_class),
         }
     }
 

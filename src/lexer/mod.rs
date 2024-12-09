@@ -93,10 +93,27 @@ impl<'a> Lexer<'a> {
                 number.push(ch);
                 self.advance();
             } else if ch == '.' {
-                // Check if next character is a digit to distinguish from method call
-                self.advance();
-                if let Some(next_ch) = self.peek() {
+                // Need to peek ahead to see if this is a float or a range/method call
+                // Save current state to peek ahead
+                let saved_chars = self.chars.clone();
+                let saved_line = self.line;
+                let saved_column = self.column;
+                let saved_offset = self.offset;
+
+                self.advance(); // consume the dot
+                let next_ch = self.peek();
+
+                // Restore state
+                self.chars = saved_chars;
+                self.line = saved_line;
+                self.column = saved_column;
+                self.offset = saved_offset;
+
+                // Check if next character is a digit (float) or not (method/range)
+                if let Some(next_ch) = next_ch {
                     if next_ch.is_ascii_digit() {
+                        // It's a float literal
+                        self.advance(); // consume the dot for real
                         is_float = true;
                         number.push('.');
                         // Read digits after decimal point
@@ -110,12 +127,7 @@ impl<'a> Lexer<'a> {
                         }
                         break;
                     } else {
-                        // Not a float, just a dot - we need to handle this case
-                        // For now, we'll treat the number as an integer and the dot will be lexed separately
-                        // We need to "put back" the dot by not consuming it
-                        // But we already advanced, so we need to create a mechanism to handle this
-                        // For simplicity in this implementation, if we see a dot not followed by a digit,
-                        // we'll just stop reading the number
+                        // Not a float - dot will be lexed separately
                         break;
                     }
                 }
@@ -561,7 +573,19 @@ impl<'a> Lexer<'a> {
                 }
                 '.' => {
                     self.advance();
-                    Token::new(TokenKind::Dot, position)
+                    // Check for .. or ...
+                    if self.peek() == Some('.') {
+                        self.advance();
+                        // Check for third dot
+                        if self.peek() == Some('.') {
+                            self.advance();
+                            Token::new(TokenKind::DotDotDot, position)
+                        } else {
+                            Token::new(TokenKind::DotDot, position)
+                        }
+                    } else {
+                        Token::new(TokenKind::Dot, position)
+                    }
                 }
                 ':' => {
                     self.advance();

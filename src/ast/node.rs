@@ -149,6 +149,14 @@ pub enum Expression {
     SelfExpr {
         position: Position,
     },
+
+    // Range literals
+    Range {
+        start: Box<Expression>,
+        end: Box<Expression>,
+        exclusive: bool, // true for ..., false for ..
+        position: Position,
+    },
 }
 
 /// Parts of an interpolated string
@@ -436,7 +444,8 @@ impl Expression {
             | Expression::Dictionary { position, .. }
             | Expression::Lambda { position, .. }
             | Expression::Grouped { position, .. }
-            | Expression::SelfExpr { position, .. } => *position,
+            | Expression::SelfExpr { position, .. }
+            | Expression::Range { position, .. } => *position,
         }
     }
 

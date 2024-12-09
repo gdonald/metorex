@@ -76,17 +76,19 @@ pub enum TokenKind {
     SlashEqual,   // /=
 
     // Delimiters
-    LParen,   // (
-    RParen,   // )
-    LBrace,   // {
-    RBrace,   // }
-    LBracket, // [
-    RBracket, // ]
-    Comma,    // ,
-    Dot,      // .
-    Colon,    // :
-    Arrow,    // ->
-    FatArrow, // =>
+    LParen,    // (
+    RParen,    // )
+    LBrace,    // {
+    RBrace,    // }
+    LBracket,  // [
+    RBracket,  // ]
+    Comma,     // ,
+    Dot,       // .
+    DotDot,    // ..
+    DotDotDot, // ...
+    Colon,     // :
+    Arrow,     // ->
+    FatArrow,  // =>
 
     // Special tokens
     Newline,
@@ -174,6 +176,8 @@ impl fmt::Display for TokenKind {
             TokenKind::RBracket => write!(f, "]"),
             TokenKind::Comma => write!(f, ","),
             TokenKind::Dot => write!(f, "."),
+            TokenKind::DotDot => write!(f, ".."),
+            TokenKind::DotDotDot => write!(f, "..."),
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Arrow => write!(f, "->"),
             TokenKind::FatArrow => write!(f, "=>"),

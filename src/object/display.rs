@@ -62,6 +62,17 @@ impl fmt::Display for Object {
                 Err(obj) => write!(f, "Err({})", obj),
             },
             Object::NativeFunction(name) => write!(f, "<native function {}>", name),
+            Object::Range {
+                start,
+                end,
+                exclusive,
+            } => {
+                if *exclusive {
+                    write!(f, "{}...{}", start, end)
+                } else {
+                    write!(f, "{}..{}", start, end)
+                }
+            }
         }
     }
 }

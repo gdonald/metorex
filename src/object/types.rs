@@ -54,6 +54,13 @@ pub enum Object {
 
     /// Native function (built-in function implemented in Rust)
     NativeFunction(String),
+
+    /// Range object (start..end or start...end)
+    Range {
+        start: Box<Object>,
+        end: Box<Object>,
+        exclusive: bool,
+    },
 }
 
 impl Object {
@@ -75,6 +82,7 @@ impl Object {
             Object::Set(_) => "Set",
             Object::Result(_) => "Result",
             Object::NativeFunction(_) => "NativeFunction",
+            Object::Range { .. } => "Range",
         }
     }
 }

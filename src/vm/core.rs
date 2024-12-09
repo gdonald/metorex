@@ -292,6 +292,20 @@ impl VirtualMachine {
                     )),
                 }
             }
+            Expression::Range {
+                start,
+                end,
+                exclusive,
+                ..
+            } => {
+                let start_value = self.evaluate_expression(start)?;
+                let end_value = self.evaluate_expression(end)?;
+                Ok(Object::Range {
+                    start: Box::new(start_value),
+                    end: Box::new(end_value),
+                    exclusive: *exclusive,
+                })
+            }
         }
     }
 }

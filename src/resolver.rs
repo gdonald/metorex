@@ -575,6 +575,11 @@ impl Resolver {
                 self.resolve_expression(expression);
             }
 
+            Expression::Range { start, end, .. } => {
+                self.resolve_expression(start);
+                self.resolve_expression(end);
+            }
+
             Expression::InterpolatedString { parts, .. } => {
                 for part in parts {
                     if let crate::ast::node::InterpolationPart::Expression(expr) = part {

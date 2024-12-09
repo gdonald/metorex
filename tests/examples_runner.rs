@@ -98,3 +98,10 @@ fn test_type_annotations_collection_types_execution() {
         output
     );
 }
+
+#[test]
+fn test_basics_simple_range_execution() {
+    let expected = "1..5\n1...5\n[1, 2, 3, 4, 5]\n[1, 2, 3, 4]\n";
+    let output = run_example("examples/basics/simple_range.mx");
+    assert_eq!(output, expected);
+}

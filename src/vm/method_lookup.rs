@@ -31,7 +31,17 @@ impl VirtualMachine {
             Some((class, method)) => {
                 self.invoke_method(class, method, receiver, arguments, position)
             }
-            None => Err(undefined_method_error(method_name, &receiver, position)),
+            None => {
+                // Try native method as fallback
+                let class = self.builtins().class_of(&receiver);
+                if let Some(result) =
+                    self.call_native_method(&class, &receiver, method_name, &arguments, position)?
+                {
+                    Ok(result)
+                } else {
+                    Err(undefined_method_error(method_name, &receiver, position))
+                }
+            }
         }
     }
 
