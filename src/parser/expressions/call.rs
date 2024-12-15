@@ -29,12 +29,19 @@ impl Parser {
                     Vec::new()
                 };
 
+                // Check for trailing block
+                let trailing_block = if self.check(&[TokenKind::Do]) {
+                    Some(Box::new(self.parse_block()?))
+                } else {
+                    None
+                };
+
                 let position = expr.position();
                 expr = Expression::MethodCall {
                     receiver: Box::new(expr),
                     method: method_name,
                     arguments,
-                    trailing_block: None,
+                    trailing_block,
                     position,
                 };
             } else if self.match_token(&[TokenKind::LBracket]) {
@@ -66,12 +73,20 @@ impl Parser {
     /// Finish parsing a function call
     pub(crate) fn finish_call(&mut self, callee: Expression) -> Result<Expression, MetorexError> {
         let arguments = self.parse_arguments()?;
+
+        // Check for trailing block
+        let trailing_block = if self.check(&[TokenKind::Do]) {
+            Some(Box::new(self.parse_block()?))
+        } else {
+            None
+        };
+
         let position = callee.position();
 
         Ok(Expression::Call {
             callee: Box::new(callee),
             arguments,
-            trailing_block: None,
+            trailing_block,
             position,
         })
     }

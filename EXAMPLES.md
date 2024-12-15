@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 32/88 examples executing (36.4%)
+**Current Status**: 34/88 examples executing (38.6%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -47,11 +47,11 @@ This document tracks the implementation work needed to execute all example files
 - [x] 3.1.3 Implement range methods (each, to_a, include?)
 
 ### 3.2 Block Iteration with each
-- [ ] 3.2.1 Implement `.each do |var| ... end` parsing
-- [ ] 3.2.2 Add block parameter binding in VM
-- [ ] 3.2.3 Implement iterator protocol for ranges and arrays
-- [ ] 3.2.4 Enable `examples/algorithms/factorial_iterative.mx` execution
-- [ ] 3.2.5 Enable `examples/algorithms/average_temperature.mx` execution
+- [x] 3.2.1 Implement `.each do |var| ... end` parsing
+- [x] 3.2.2 Add block parameter binding in VM
+- [x] 3.2.3 Implement iterator protocol for ranges and arrays
+- [x] 3.2.4 Enable `examples/algorithms/factorial_iterative.mx` execution
+- [ ] 3.2.5 Enable `examples/algorithms/average_temperature.mx` execution (needs Float.round method)
 - [ ] 3.2.6 Enable `examples/algorithms/primes_under_fifty.mx` execution
 
 ---

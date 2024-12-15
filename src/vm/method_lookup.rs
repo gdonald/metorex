@@ -19,12 +19,19 @@ impl VirtualMachine {
         receiver_expr: &Expression,
         method_name: &str,
         argument_exprs: &[Expression],
+        trailing_block: Option<&Expression>,
         position: Position,
     ) -> Result<Object, MetorexError> {
         let receiver = self.evaluate_expression(receiver_expr)?;
         let mut arguments = Vec::with_capacity(argument_exprs.len());
         for argument in argument_exprs {
             arguments.push(self.evaluate_expression(argument)?);
+        }
+
+        // If there's a trailing block, evaluate it and append to arguments
+        if let Some(block_expr) = trailing_block {
+            let block_obj = self.evaluate_expression(block_expr)?;
+            arguments.push(block_obj);
         }
 
         match self.lookup_method(&receiver, method_name) {

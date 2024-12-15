@@ -105,3 +105,17 @@ fn test_basics_simple_range_execution() {
     let output = run_example("examples/basics/simple_range.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_each_block_execution() {
+    let expected = "Range iteration:\n1\n2\n3\nArray iteration:\n10\n20\n30\n";
+    let output = run_example("examples/basics/each_block.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_algorithms_factorial_iterative_execution() {
+    let expected = "720\n";
+    let output = run_example("examples/algorithms/factorial_iterative.mx");
+    assert_eq!(output, expected);
+}

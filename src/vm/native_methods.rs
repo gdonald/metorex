@@ -278,6 +278,39 @@ impl VirtualMachine {
                         position,
                     )?))
                 }
+                "each" => {
+                    // each takes a block parameter
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        let block = match &arguments[0] {
+                            Object::Block(block) => block.clone(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "Block",
+                                    &arguments[0],
+                                    position,
+                                ));
+                            }
+                        };
+
+                        let array = array_rc.borrow();
+                        for element in array.iter() {
+                            let args = vec![element.clone()];
+                            block.call(self, args, position)?;
+                        }
+                        Ok(Some(receiver.clone()))
+                    } else {
+                        Ok(None)
+                    }
+                }
                 _ => Ok(None),
             },
             "Hash" => match method_name {

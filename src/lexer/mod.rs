@@ -595,6 +595,10 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     Token::new(TokenKind::Semicolon, position)
                 }
+                '|' => {
+                    self.advance();
+                    Token::new(TokenKind::Pipe, position)
+                }
                 _ => {
                     // Unknown character, consume and return EOF
                     self.advance();

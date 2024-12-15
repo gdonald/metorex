@@ -89,6 +89,7 @@ pub enum TokenKind {
     Colon,     // :
     Arrow,     // ->
     FatArrow,  // =>
+    Pipe,      // |
 
     // Special tokens
     Newline,
@@ -181,6 +182,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Colon => write!(f, ":"),
             TokenKind::Arrow => write!(f, "->"),
             TokenKind::FatArrow => write!(f, "=>"),
+            TokenKind::Pipe => write!(f, "|"),
 
             // Special tokens
             TokenKind::Newline => write!(f, "\\n"),

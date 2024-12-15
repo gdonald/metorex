@@ -229,9 +229,15 @@ impl VirtualMachine {
                 receiver,
                 method,
                 arguments,
+                trailing_block,
                 position,
-                ..
-            } => self.evaluate_method_call(receiver, method, arguments, *position),
+            } => self.evaluate_method_call(
+                receiver,
+                method,
+                arguments,
+                trailing_block.as_ref().map(|b| b.as_ref()),
+                *position,
+            ),
             Expression::Call {
                 callee,
                 arguments,
