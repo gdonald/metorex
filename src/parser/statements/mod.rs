@@ -25,6 +25,9 @@ impl Parser {
             TokenKind::While => self.parse_while_statement(),
             TokenKind::Begin => self.parse_begin_statement(),
             TokenKind::Raise => self.parse_raise_statement(),
+            TokenKind::Break => self.parse_break_statement(),
+            TokenKind::Continue => self.parse_continue_statement(),
+            TokenKind::Return => self.parse_return_statement(),
             _ => {
                 // Try to parse as an expression or assignment
                 let expr = self.parse_expression()?;

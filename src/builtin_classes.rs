@@ -242,6 +242,14 @@ pub fn init_array_methods(array_class: &Class) {
     let pop_method = Rc::new(Method::new("pop".to_string(), vec![], vec![]));
     array_class.define_method("pop", pop_method);
 
+    // Array#append (alias for push)
+    let append_method = Rc::new(Method::new(
+        "append".to_string(),
+        vec!["item".to_string()],
+        vec![],
+    ));
+    array_class.define_method("append", append_method);
+
     // Array#[]
     let index_method = Rc::new(Method::new(
         "[]".to_string(),
@@ -249,6 +257,17 @@ pub fn init_array_methods(array_class: &Class) {
         vec![],
     ));
     array_class.define_method("[]", index_method);
+}
+
+/// Initialize built-in methods for the Float class
+pub fn init_float_methods(float_class: &Class) {
+    // Float#round
+    let round_method = Rc::new(Method::new(
+        "round".to_string(),
+        vec!["precision".to_string()],
+        vec![],
+    ));
+    float_class.define_method("round", round_method);
 }
 
 /// Initialize built-in methods for the Hash class

@@ -119,3 +119,17 @@ fn test_algorithms_factorial_iterative_execution() {
     let output = run_example("examples/algorithms/factorial_iterative.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_algorithms_average_temperature_execution() {
+    let expected = "69.9\n";
+    let output = run_example("examples/algorithms/average_temperature.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_algorithms_primes_under_fifty_execution() {
+    let expected = "[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]\n";
+    let output = run_example("examples/algorithms/primes_under_fifty.mx");
+    assert_eq!(output, expected);
+}

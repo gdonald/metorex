@@ -134,6 +134,51 @@ fn array_push_and_pop_updates_collection() {
 }
 
 #[test]
+fn array_append_adds_element() {
+    let mut vm = VirtualMachine::new();
+
+    let setup = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "items".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::Array {
+            elements: vec![int_literal(1, pos(1, 9)), int_literal(2, pos(1, 12))],
+            position: pos(1, 9),
+        },
+        position: pos(1, 1),
+    };
+
+    let append_call = Statement::Expression {
+        expression: Expression::MethodCall {
+            receiver: Box::new(Expression::Identifier {
+                name: "items".to_string(),
+                position: pos(2, 1),
+            }),
+            method: "append".to_string(),
+            arguments: vec![int_literal(3, pos(2, 15))],
+            trailing_block: None,
+            position: pos(2, 7),
+        },
+        position: pos(2, 1),
+    };
+
+    vm.execute_program(&[setup, append_call])
+        .expect("execution failed");
+
+    match vm.environment().get("items") {
+        Some(Object::Array(array_rc)) => {
+            let array = array_rc.borrow();
+            assert_eq!(array.len(), 3);
+            assert_eq!(array[0], Object::Int(1));
+            assert_eq!(array[1], Object::Int(2));
+            assert_eq!(array[2], Object::Int(3));
+        }
+        other => panic!("expected array, got {:?}", other),
+    }
+}
+
+#[test]
 fn undefined_method_returns_runtime_error() {
     let mut vm = VirtualMachine::new();
 
@@ -292,4 +337,123 @@ fn string_reverse_handles_unicode() {
         vm.environment().get("reversed"),
         Some(Object::String(Rc::new("はちにんこ".to_string())))
     );
+}
+
+fn float_literal(value: f64, position: Position) -> Expression {
+    Expression::FloatLiteral { value, position }
+}
+
+#[test]
+fn float_round_rounds_to_precision() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "rounded".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(float_literal(69.85, pos(1, 1))),
+            method: "round".to_string(),
+            arguments: vec![int_literal(1, pos(1, 20))],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+    assert_eq!(vm.environment().get("rounded"), Some(Object::Float(69.9)));
+}
+
+#[test]
+fn float_round_with_zero_precision() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "rounded".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(float_literal(3.7, pos(1, 1))),
+            method: "round".to_string(),
+            arguments: vec![int_literal(0, pos(1, 20))],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+    assert_eq!(vm.environment().get("rounded"), Some(Object::Float(4.0)));
+}
+
+#[test]
+fn float_round_with_two_decimals() {
+    let mut vm = VirtualMachine::new();
+
+    let assign = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "rounded".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(float_literal(3.14159, pos(1, 1))),
+            method: "round".to_string(),
+            arguments: vec![int_literal(2, pos(1, 20))],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assign]).expect("execution failed");
+    assert_eq!(vm.environment().get("rounded"), Some(Object::Float(3.14)));
+}
+
+#[test]
+fn float_round_with_negative_precision_fails() {
+    let mut vm = VirtualMachine::new();
+
+    let statements = vec![Statement::Assignment {
+        target: Expression::Identifier {
+            name: "rounded".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(float_literal(3.7, pos(1, 1))),
+            method: "round".to_string(),
+            arguments: vec![int_literal(-1, pos(1, 20))],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    }];
+
+    let result = vm.execute_program(&statements);
+    assert!(matches!(result, Err(MetorexError::RuntimeError { .. })));
+}
+
+#[test]
+fn float_round_with_non_integer_precision_fails() {
+    let mut vm = VirtualMachine::new();
+
+    let statements = vec![Statement::Assignment {
+        target: Expression::Identifier {
+            name: "rounded".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(float_literal(3.7, pos(1, 1))),
+            method: "round".to_string(),
+            arguments: vec![string_literal("hello", pos(1, 20))],
+            trailing_block: None,
+            position: pos(1, 15),
+        },
+        position: pos(1, 1),
+    }];
+
+    let result = vm.execute_program(&statements);
+    assert!(matches!(result, Err(MetorexError::TypeError { .. })));
 }

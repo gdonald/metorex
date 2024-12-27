@@ -42,6 +42,9 @@ pub enum TokenKind {
     Rescue,
     Ensure,
     Raise,
+    Break,
+    Continue,
+    Return,
 
     // Literals
     Int(i64),
@@ -126,6 +129,9 @@ impl fmt::Display for TokenKind {
             TokenKind::Rescue => write!(f, "rescue"),
             TokenKind::Ensure => write!(f, "ensure"),
             TokenKind::Raise => write!(f, "raise"),
+            TokenKind::Break => write!(f, "break"),
+            TokenKind::Continue => write!(f, "continue"),
+            TokenKind::Return => write!(f, "return"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),

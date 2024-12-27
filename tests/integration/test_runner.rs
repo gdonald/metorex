@@ -8,6 +8,7 @@ use std::path::Path;
 
 /// Represents the expected outcome of running a Metorex file
 #[derive(Debug, Clone, PartialEq)]
+#[allow(dead_code)]
 pub enum ExpectedOutcome {
     /// File should parse and run successfully
     Success {
@@ -36,6 +37,7 @@ pub struct TestCase {
     /// Path to the .mx file relative to project root
     pub file_path: &'static str,
     /// Expected outcome when running this file
+    #[allow(dead_code)]
     pub expected: ExpectedOutcome,
     /// Description of what this test validates
     pub description: &'static str,

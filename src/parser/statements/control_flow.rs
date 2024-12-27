@@ -83,4 +83,40 @@ impl Parser {
             position: start_pos,
         })
     }
+
+    /// Parse a break statement
+    pub(crate) fn parse_break_statement(&mut self) -> Result<Statement, MetorexError> {
+        let pos = self.expect(TokenKind::Break, "Expected 'break'")?.position;
+        Ok(Statement::Break { position: pos })
+    }
+
+    /// Parse a continue statement
+    pub(crate) fn parse_continue_statement(&mut self) -> Result<Statement, MetorexError> {
+        let pos = self
+            .expect(TokenKind::Continue, "Expected 'continue'")?
+            .position;
+        Ok(Statement::Continue { position: pos })
+    }
+
+    /// Parse a return statement
+    pub(crate) fn parse_return_statement(&mut self) -> Result<Statement, MetorexError> {
+        let pos = self
+            .expect(TokenKind::Return, "Expected 'return'")?
+            .position;
+        self.skip_whitespace();
+
+        // Check if there's a return value
+        let value = if self.check(&[TokenKind::Newline, TokenKind::Semicolon, TokenKind::EOF])
+            || self.is_at_end()
+        {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        Ok(Statement::Return {
+            value,
+            position: pos,
+        })
+    }
 }

@@ -51,8 +51,8 @@ This document tracks the implementation work needed to execute all example files
 - [x] 3.2.2 Add block parameter binding in VM
 - [x] 3.2.3 Implement iterator protocol for ranges and arrays
 - [x] 3.2.4 Enable `examples/algorithms/factorial_iterative.mx` execution
-- [ ] 3.2.5 Enable `examples/algorithms/average_temperature.mx` execution (needs Float.round method)
-- [ ] 3.2.6 Enable `examples/algorithms/primes_under_fifty.mx` execution
+- [x] 3.2.5 Enable `examples/algorithms/average_temperature.mx` execution (needs Float.round method)
+- [x] 3.2.6 Enable `examples/algorithms/primes_under_fifty.mx` execution
 
 ---
 

@@ -165,6 +165,43 @@ impl VirtualMachine {
         result
     }
 
+    /// Execute a block body and return ControlFlow (for use in iterators like .each)
+    /// This version propagates Break/Continue instead of converting them to errors
+    pub(crate) fn execute_block_with_control_flow(
+        &mut self,
+        block: &BlockStatement,
+        arguments: Vec<Object>,
+    ) -> Result<ControlFlow, MetorexError> {
+        self.environment_mut().push_scope();
+
+        let result = (|| -> Result<ControlFlow, MetorexError> {
+            for (name, value) in block.captured_vars() {
+                self.environment_mut().define(name.clone(), value.clone());
+            }
+
+            for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
+                self.environment_mut().define(param.clone(), argument);
+            }
+
+            for statement in block.body() {
+                match self.execute_statement(statement)? {
+                    ControlFlow::Next => {}
+                    flow @ (ControlFlow::Return { .. }
+                    | ControlFlow::Break { .. }
+                    | ControlFlow::Continue { .. }
+                    | ControlFlow::Exception { .. }) => {
+                        return Ok(flow);
+                    }
+                }
+            }
+
+            Ok(ControlFlow::Next)
+        })();
+
+        self.environment_mut().pop_scope();
+        result
+    }
+
     /// Invoke a resolved method with evaluated arguments.
     pub(crate) fn invoke_method(
         &mut self,
