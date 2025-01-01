@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 34/88 examples executing (38.6%)
+**Current Status**: 36/88 examples executing (40.9%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -59,18 +59,18 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 4: Lambda and Closure Support
 
 ### 4.1 Lambda Syntax
-- [ ] 4.1.1 Implement `lambda do |params| ... end` parsing
-- [ ] 4.1.2 Implement arrow syntax `x -> expr` parsing
-- [ ] 4.1.3 Implement multi-param lambda `(x, y) -> expr` parsing
-- [ ] 4.1.4 Implement zero-param lambda `-> expr` parsing
+- [x] 4.1.1 Implement `lambda do |params| ... end` parsing
+- [x] 4.1.2 Implement arrow syntax `x -> expr` parsing
+- [x] 4.1.3 Implement multi-param lambda `(x, y) -> expr` parsing
+- [x] 4.1.4 Implement zero-param lambda `-> expr` parsing
 
 ### 4.2 Lambda Execution
-- [ ] 4.2.1 Create Lambda object type in VM
-- [ ] 4.2.2 Implement lambda `.call()` method
-- [ ] 4.2.3 Add closure variable capture
-- [ ] 4.2.4 Enable `examples/functions/closures_nested.mx` execution
-- [ ] 4.2.5 Enable `examples/functions/locals_scope.mx` execution
-- [ ] 4.2.6 Enable `examples/functions/nonlocal_counter.mx` execution
+- [x] 4.2.1 Create Lambda object type in VM
+- [x] 4.2.2 Implement lambda `.call()` method
+- [x] 4.2.3 Add closure variable capture
+- [x] 4.2.4 Enable `examples/functions/closures_nested.mx` execution
+- [ ] 4.2.5 Enable `examples/functions/locals_scope.mx` execution (requires `.map` with block)
+- [ ] 4.2.6 Enable `examples/functions/nonlocal_counter.mx` execution (requires mutable closure variables)
 
 ### 4.3 Advanced Block Support
 - [ ] 4.3.1 Implement standalone blocks as expressions

@@ -27,6 +27,13 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        // Special handling for Block/Lambda objects
+        if let Object::Block(block) = receiver
+            && method_name == "call"
+        {
+            return Ok(Some(block.call(self, arguments.to_vec(), position)?));
+        }
+
         match class.name() {
             "Object" => match method_name {
                 "to_s" => {

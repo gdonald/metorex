@@ -121,4 +121,9 @@ impl TokenStream {
     pub fn current_position(&self) -> usize {
         self.current
     }
+
+    /// Restore the position in the token stream (for backtracking)
+    pub fn restore_position(&mut self, position: usize) {
+        self.current = position;
+    }
 }

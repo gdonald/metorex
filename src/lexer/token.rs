@@ -45,6 +45,7 @@ pub enum TokenKind {
     Break,
     Continue,
     Return,
+    Lambda,
 
     // Literals
     Int(i64),
@@ -132,6 +133,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Break => write!(f, "break"),
             TokenKind::Continue => write!(f, "continue"),
             TokenKind::Return => write!(f, "return"),
+            TokenKind::Lambda => write!(f, "lambda"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),

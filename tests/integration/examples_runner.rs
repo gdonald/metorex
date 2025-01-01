@@ -133,3 +133,10 @@ fn test_algorithms_primes_under_fifty_execution() {
     let output = run_example("examples/algorithms/primes_under_fifty.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_functions_closures_nested_execution() {
+    let expected = "10\n12\n";
+    let output = run_example("examples/functions/closures_nested.mx");
+    assert_eq!(output, expected);
+}

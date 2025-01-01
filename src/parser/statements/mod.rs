@@ -41,7 +41,7 @@ impl Parser {
                     TokenKind::SlashEqual,
                 ]) {
                     let op_token = self.advance();
-                    let value = self.parse_expression()?;
+                    let value = self.parse_expression_with_lambda()?;
 
                     // Convert compound assignment to regular assignment with binary op
                     let final_value = match op_token.kind {

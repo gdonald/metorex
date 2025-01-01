@@ -186,12 +186,20 @@ impl VirtualMachine {
             } => {
                 let mut captured = HashMap::new();
                 if let Some(names) = captured_vars {
-                    for name in names {
-                        if let Some(value) = self.environment().get(name) {
-                            captured.insert(name.clone(), value);
+                    if names.is_empty() {
+                        // Empty vec signals automatic capture of all current scope variables
+                        //  This is used for true lambdas (lambda do ... end, arrow syntax)
+                        captured = self.environment().current_scope_vars();
+                    } else {
+                        // Explicit list of variables to capture
+                        for name in names {
+                            if let Some(value) = self.environment().get(name) {
+                                captured.insert(name.clone(), value);
+                            }
                         }
                     }
                 }
+                // If captured_vars is None, don't capture anything (regular blocks for .each, etc.)
                 let block = BlockStatement::new(parameters.clone(), body.clone(), captured);
                 Ok(Object::Block(Rc::new(block)))
             }

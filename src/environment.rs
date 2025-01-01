@@ -90,6 +90,12 @@ impl Environment {
     pub fn set_at(&mut self, depth: usize, name: &str, value: Object) -> bool {
         self.current_scope().borrow_mut().set_at(depth, name, value)
     }
+
+    /// Collects all variables from the current scope chain
+    /// This is used for lambda closure capture
+    pub fn current_scope_vars(&self) -> std::collections::HashMap<String, Object> {
+        self.current_scope().borrow().collect_all_vars()
+    }
 }
 
 impl Default for Environment {

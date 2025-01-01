@@ -109,6 +109,24 @@ impl Scope {
 
         false
     }
+
+    /// Collects all variables from the entire scope chain
+    /// Returns a HashMap with all visible variables (parent scope vars may be shadowed)
+    pub fn collect_all_vars(&self) -> HashMap<String, Object> {
+        let mut all_vars = HashMap::new();
+
+        // Start from parent and work backwards, so that closer scopes override farther ones
+        if let Some(parent) = &self.parent {
+            all_vars = parent.borrow().collect_all_vars();
+        }
+
+        // Now add this scope's variables (potentially overriding parent values)
+        for (name, value) in &self.variables {
+            all_vars.insert(name.clone(), value.clone());
+        }
+
+        all_vars
+    }
 }
 
 impl Default for Scope {
