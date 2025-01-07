@@ -340,6 +340,41 @@ impl VirtualMachine {
                         Ok(None)
                     }
                 }
+                "map" => {
+                    // map takes a block parameter
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        let block = match &arguments[0] {
+                            Object::Block(block) => block.clone(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "Block",
+                                    &arguments[0],
+                                    position,
+                                ));
+                            }
+                        };
+
+                        let array = array_rc.borrow();
+                        let mut results = Vec::new();
+                        for element in array.iter() {
+                            let args = vec![element.clone()];
+                            let value = self.execute_block_body(&block, args)?;
+                            results.push(value);
+                        }
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+                    } else {
+                        Ok(None)
+                    }
+                }
                 _ => Ok(None),
             },
             "Hash" => match method_name {
@@ -645,6 +680,57 @@ impl VirtualMachine {
                             }
                             _ => Err(MetorexError::runtime_error(
                                 "Range.include? only supports integer ranges".to_string(),
+                                position_to_location(position),
+                            )),
+                        }
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "map" => {
+                    // map takes a block parameter
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Range {
+                        start,
+                        end,
+                        exclusive,
+                    } = receiver
+                    {
+                        let block = match &arguments[0] {
+                            Object::Block(block) => block.clone(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "Block",
+                                    &arguments[0],
+                                    position,
+                                ));
+                            }
+                        };
+
+                        // Only support integer ranges for now
+                        match (start.as_ref(), end.as_ref()) {
+                            (Object::Int(start_val), Object::Int(end_val)) => {
+                                let end_inclusive =
+                                    if *exclusive { *end_val - 1 } else { *end_val };
+
+                                let mut results = Vec::new();
+                                for i in *start_val..=end_inclusive {
+                                    let args = vec![Object::Int(i)];
+                                    let value = self.execute_block_body(&block, args)?;
+                                    results.push(value);
+                                }
+                                Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+                            }
+                            _ => Err(MetorexError::runtime_error(
+                                "Range.map only supports integer ranges".to_string(),
                                 position_to_location(position),
                             )),
                         }

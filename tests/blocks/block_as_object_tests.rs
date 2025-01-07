@@ -732,3 +732,152 @@ fn test_nested_block_closures() {
     vm.execute_program(&program).expect("execution failed");
     assert_eq!(vm.environment().get("result"), Some(Object::Int(18)));
 }
+
+#[test]
+fn test_array_map_with_block() {
+    let mut vm = VirtualMachine::new();
+
+    // numbers = [1, 2, 3]
+    // doubled = numbers.map { |x| x * 2 }
+    let program = vec![
+        Statement::Assignment {
+            target: Expression::Identifier {
+                name: "numbers".to_string(),
+                position: pos(1, 1),
+            },
+            value: Expression::Array {
+                elements: vec![
+                    Expression::IntLiteral {
+                        value: 1,
+                        position: pos(1, 12),
+                    },
+                    Expression::IntLiteral {
+                        value: 2,
+                        position: pos(1, 15),
+                    },
+                    Expression::IntLiteral {
+                        value: 3,
+                        position: pos(1, 18),
+                    },
+                ],
+                position: pos(1, 11),
+            },
+            position: pos(1, 1),
+        },
+        Statement::Assignment {
+            target: Expression::Identifier {
+                name: "doubled".to_string(),
+                position: pos(2, 1),
+            },
+            value: Expression::MethodCall {
+                receiver: Box::new(Expression::Identifier {
+                    name: "numbers".to_string(),
+                    position: pos(2, 11),
+                }),
+                method: "map".to_string(),
+                arguments: vec![],
+                trailing_block: Some(Box::new(Expression::Lambda {
+                    parameters: vec!["x".to_string()],
+                    body: vec![Statement::Expression {
+                        expression: Expression::BinaryOp {
+                            op: BinaryOp::Multiply,
+                            left: Box::new(Expression::Identifier {
+                                name: "x".to_string(),
+                                position: pos(2, 28),
+                            }),
+                            right: Box::new(Expression::IntLiteral {
+                                value: 2,
+                                position: pos(2, 32),
+                            }),
+                            position: pos(2, 30),
+                        },
+                        position: pos(2, 28),
+                    }],
+                    captured_vars: None,
+                    position: pos(2, 24),
+                })),
+                position: pos(2, 11),
+            },
+            position: pos(2, 1),
+        },
+    ];
+
+    vm.execute_program(&program).expect("execution failed");
+
+    let doubled = vm.environment().get("doubled").expect("doubled not found");
+    if let Object::Array(arr) = doubled {
+        let arr = arr.borrow();
+        assert_eq!(arr.len(), 3);
+        assert_eq!(arr[0], Object::Int(2));
+        assert_eq!(arr[1], Object::Int(4));
+        assert_eq!(arr[2], Object::Int(6));
+    } else {
+        panic!("doubled is not an array");
+    }
+}
+
+#[test]
+fn test_range_map_with_block() {
+    let mut vm = VirtualMachine::new();
+
+    // doubled = (0...5).map { |i| i * 2 }
+    let program = vec![Statement::Assignment {
+        target: Expression::Identifier {
+            name: "doubled".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::MethodCall {
+            receiver: Box::new(Expression::Range {
+                start: Box::new(Expression::IntLiteral {
+                    value: 0,
+                    position: pos(1, 12),
+                }),
+                end: Box::new(Expression::IntLiteral {
+                    value: 5,
+                    position: pos(1, 17),
+                }),
+                exclusive: true,
+                position: pos(1, 11),
+            }),
+            method: "map".to_string(),
+            arguments: vec![],
+            trailing_block: Some(Box::new(Expression::Lambda {
+                parameters: vec!["i".to_string()],
+                body: vec![Statement::Expression {
+                    expression: Expression::BinaryOp {
+                        op: BinaryOp::Multiply,
+                        left: Box::new(Expression::Identifier {
+                            name: "i".to_string(),
+                            position: pos(1, 28),
+                        }),
+                        right: Box::new(Expression::IntLiteral {
+                            value: 2,
+                            position: pos(1, 32),
+                        }),
+                        position: pos(1, 30),
+                    },
+                    position: pos(1, 28),
+                }],
+                captured_vars: None,
+                position: pos(1, 24),
+            })),
+            position: pos(1, 11),
+        },
+        position: pos(1, 1),
+    }];
+
+    vm.execute_program(&program).expect("execution failed");
+
+    let doubled = vm.environment().get("doubled").expect("doubled not found");
+    if let Object::Array(arr) = doubled {
+        let arr = arr.borrow();
+        assert_eq!(arr.len(), 5);
+        assert_eq!(arr[0], Object::Int(0));
+        assert_eq!(arr[1], Object::Int(2));
+        assert_eq!(arr[2], Object::Int(4));
+        assert_eq!(arr[3], Object::Int(6));
+        assert_eq!(arr[4], Object::Int(8));
+    } else {
+        panic!("doubled is not an array");
+    }
+}

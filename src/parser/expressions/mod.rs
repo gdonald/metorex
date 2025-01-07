@@ -217,4 +217,61 @@ impl Parser {
             position: start_pos,
         })
     }
+
+    /// Parse a block with brace syntax: { |x| ... }
+    pub(crate) fn parse_brace_block(&mut self) -> Result<Expression, MetorexError> {
+        let start_pos = self.peek().position;
+
+        // Expect '{' to start block
+        self.expect(TokenKind::LBrace, "Expected '{' to start block")?;
+        self.skip_whitespace();
+
+        // Parse block parameters (e.g., |x, y|)
+        let parameters = if self.match_token(&[TokenKind::Pipe]) {
+            let mut params = Vec::new();
+            self.skip_whitespace();
+
+            if !self.check(&[TokenKind::Pipe]) {
+                loop {
+                    self.skip_whitespace();
+                    let param_token = self.advance();
+                    match param_token.kind {
+                        TokenKind::Ident(name) => params.push(name),
+                        _ => return Err(self.error_at_previous("Expected parameter name")),
+                    }
+                    self.skip_whitespace();
+
+                    if !self.match_token(&[TokenKind::Comma]) {
+                        break;
+                    }
+                }
+            }
+
+            self.skip_whitespace();
+            self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
+            params
+        } else {
+            Vec::new()
+        };
+
+        self.skip_whitespace();
+
+        // Parse block body (single expression or statements)
+        let mut body = Vec::new();
+        while !self.check(&[TokenKind::RBrace]) && !self.is_at_end() {
+            // For brace blocks, we typically expect a single expression
+            // but we'll parse statements to be flexible
+            body.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
+
+        Ok(Expression::Lambda {
+            parameters,
+            body,
+            captured_vars: None, // Will be filled by semantic analysis
+            position: start_pos,
+        })
+    }
 }

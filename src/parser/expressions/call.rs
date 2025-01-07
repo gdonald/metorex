@@ -29,9 +29,11 @@ impl Parser {
                     Vec::new()
                 };
 
-                // Check for trailing block
+                // Check for trailing block (both do...end and {...} syntax)
                 let trailing_block = if self.check(&[TokenKind::Do]) {
                     Some(Box::new(self.parse_block()?))
+                } else if self.check(&[TokenKind::LBrace]) {
+                    Some(Box::new(self.parse_brace_block()?))
                 } else {
                     None
                 };
@@ -74,9 +76,11 @@ impl Parser {
     pub(crate) fn finish_call(&mut self, callee: Expression) -> Result<Expression, MetorexError> {
         let arguments = self.parse_arguments()?;
 
-        // Check for trailing block
+        // Check for trailing block (both do...end and {...} syntax)
         let trailing_block = if self.check(&[TokenKind::Do]) {
             Some(Box::new(self.parse_block()?))
+        } else if self.check(&[TokenKind::LBrace]) {
+            Some(Box::new(self.parse_brace_block()?))
         } else {
             None
         };
