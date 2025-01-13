@@ -10,8 +10,9 @@ use std::rc::Rc;
 /// Each scope can have a parent scope, forming a chain for variable lookup
 #[derive(Debug)]
 pub struct Scope {
-    /// Variable storage: maps variable names to their values
-    variables: HashMap<String, Object>,
+    /// Variable storage: maps variable names to shared mutable references
+    /// This allows closures to mutate captured variables
+    variables: HashMap<String, Rc<RefCell<Object>>>,
 
     /// Reference to the parent scope (None for global scope)
     parent: Option<Rc<RefCell<Scope>>>,
@@ -37,6 +38,12 @@ impl Scope {
     /// Defines a new variable in the current scope
     /// If the variable already exists in this scope, it will be overwritten
     pub fn define(&mut self, name: String, value: Object) {
+        self.variables.insert(name, Rc::new(RefCell::new(value)));
+    }
+
+    /// Defines a new variable in the current scope with a shared reference
+    /// Used when a closure defines a captured variable
+    pub fn define_shared(&mut self, name: String, value: Rc<RefCell<Object>>) {
         self.variables.insert(name, value);
     }
 
@@ -44,8 +51,8 @@ impl Scope {
     /// Returns None if the variable is not found in any scope
     pub fn get(&self, name: &str) -> Option<Object> {
         // First, check if the variable exists in this scope
-        if let Some(value) = self.variables.get(name) {
-            return Some(value.clone());
+        if let Some(value_ref) = self.variables.get(name) {
+            return Some(value_ref.borrow().clone());
         }
 
         // If not found, check the parent scope recursively
@@ -57,13 +64,30 @@ impl Scope {
         None
     }
 
+    /// Gets a shared reference to a variable by traversing the scope chain
+    /// Used for closure capture to enable mutable closures
+    pub fn get_ref(&self, name: &str) -> Option<Rc<RefCell<Object>>> {
+        // First, check if the variable exists in this scope
+        if let Some(value_ref) = self.variables.get(name) {
+            return Some(value_ref.clone());
+        }
+
+        // If not found, check the parent scope recursively
+        if let Some(parent) = &self.parent {
+            return parent.borrow().get_ref(name);
+        }
+
+        // Variable not found in any scope
+        None
+    }
+
     /// Sets a variable value by traversing the scope chain
     /// Returns true if the variable was found and updated, false otherwise
     /// This method will NOT create a new variable if it doesn't exist
     pub fn set(&mut self, name: &str, value: Object) -> bool {
         // First, check if the variable exists in this scope
-        if self.variables.contains_key(name) {
-            self.variables.insert(name.to_string(), value);
+        if let Some(value_ref) = self.variables.get(name) {
+            *value_ref.borrow_mut() = value;
             return true;
         }
 
@@ -81,7 +105,7 @@ impl Scope {
     /// This is useful for closure resolution where we know the exact depth
     pub fn get_at(&self, depth: usize, name: &str) -> Option<Object> {
         if depth == 0 {
-            return self.variables.get(name).cloned();
+            return self.variables.get(name).map(|v| v.borrow().clone());
         }
 
         if let Some(parent) = &self.parent {
@@ -96,8 +120,8 @@ impl Scope {
     /// Returns true if successful, false if the depth is invalid or variable doesn't exist
     pub fn set_at(&mut self, depth: usize, name: &str, value: Object) -> bool {
         if depth == 0 {
-            if self.variables.contains_key(name) {
-                self.variables.insert(name.to_string(), value);
+            if let Some(value_ref) = self.variables.get(name) {
+                *value_ref.borrow_mut() = value;
                 return true;
             }
             return false;
@@ -121,8 +145,27 @@ impl Scope {
         }
 
         // Now add this scope's variables (potentially overriding parent values)
-        for (name, value) in &self.variables {
-            all_vars.insert(name.clone(), value.clone());
+        for (name, value_ref) in &self.variables {
+            all_vars.insert(name.clone(), value_ref.borrow().clone());
+        }
+
+        all_vars
+    }
+
+    /// Collects all variable references from the entire scope chain
+    /// Returns a HashMap with shared references to all visible variables
+    /// Used for closure capture to enable mutable closures
+    pub fn collect_all_var_refs(&self) -> HashMap<String, Rc<RefCell<Object>>> {
+        let mut all_vars = HashMap::new();
+
+        // Start from parent and work backwards, so that closer scopes override farther ones
+        if let Some(parent) = &self.parent {
+            all_vars = parent.borrow().collect_all_var_refs();
+        }
+
+        // Now add this scope's variables (potentially overriding parent values)
+        for (name, value_ref) in &self.variables {
+            all_vars.insert(name.clone(), value_ref.clone());
         }
 
         all_vars

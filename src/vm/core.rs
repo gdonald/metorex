@@ -103,8 +103,23 @@ impl VirtualMachine {
 
         for statement in statements {
             // If it's an expression statement, track its value
-            if let Statement::Expression { expression, .. } = statement {
-                last_value = Some(self.evaluate_expression(expression)?);
+            if let Statement::Expression {
+                expression,
+                position,
+            } = statement
+            {
+                let result = self.evaluate_expression(expression)?;
+
+                // Ruby-style auto-call: if expression statement evaluates to a Method
+                // and the expression is a bare identifier, auto-call it with zero args
+                if matches!(expression, Expression::Identifier { .. })
+                    && matches!(result, Object::Method(_))
+                {
+                    last_value = Some(self.invoke_callable(result, vec![], *position)?);
+                    continue;
+                }
+
+                last_value = Some(result);
                 continue;
             }
 
@@ -189,12 +204,12 @@ impl VirtualMachine {
                     if names.is_empty() {
                         // Empty vec signals automatic capture of all current scope variables
                         //  This is used for true lambdas (lambda do ... end, arrow syntax)
-                        captured = self.environment().current_scope_vars();
+                        captured = self.environment().current_scope_var_refs();
                     } else {
                         // Explicit list of variables to capture
                         for name in names {
-                            if let Some(value) = self.environment().get(name) {
-                                captured.insert(name.clone(), value);
+                            if let Some(value_ref) = self.environment().get_ref(name) {
+                                captured.insert(name.clone(), value_ref);
                             }
                         }
                     }

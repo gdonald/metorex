@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 36/88 examples executing (40.9%)
+**Current Status**: 38/90 examples executing (42.2%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -69,8 +69,8 @@ This document tracks the implementation work needed to execute all example files
 - [x] 4.2.2 Implement lambda `.call()` method
 - [x] 4.2.3 Add closure variable capture
 - [x] 4.2.4 Enable `examples/functions/closures_nested.mx` execution
-- [ ] 4.2.5 Enable `examples/functions/locals_scope.mx` execution (requires `.map` with block)
-- [ ] 4.2.6 Enable `examples/functions/nonlocal_counter.mx` execution (requires mutable closure variables)
+- [x] 4.2.5 Enable `examples/functions/locals_scope.mx` execution (requires `.map` with block)
+- [x] 4.2.6 Enable `examples/functions/nonlocal_counter.mx` execution (requires mutable closure variables)
 
 ### 4.3 Advanced Block Support
 - [ ] 4.3.1 Implement standalone blocks as expressions

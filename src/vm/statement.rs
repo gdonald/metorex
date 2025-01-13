@@ -17,8 +17,21 @@ impl VirtualMachine {
         statement: &Statement,
     ) -> Result<ControlFlow, MetorexError> {
         match statement {
-            Statement::Expression { expression, .. } => {
-                self.evaluate_expression(expression)?;
+            Statement::Expression {
+                expression,
+                position,
+            } => {
+                let result = self.evaluate_expression(expression)?;
+
+                // Ruby-style auto-call: if expression statement evaluates to a Method
+                // and the expression is a bare identifier, auto-call it with zero args
+                if matches!(expression, Expression::Identifier { .. })
+                    && matches!(result, Object::Method(_))
+                {
+                    self.invoke_callable(result, vec![], *position)?;
+                    return Ok(ControlFlow::Next);
+                }
+
                 Ok(ControlFlow::Next)
             }
             Statement::Assignment {

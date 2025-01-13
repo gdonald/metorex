@@ -863,15 +863,24 @@ fn test_block_closure_callable_trait() {
 
 #[test]
 fn test_block_closure_captured_vars() {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
     let mut captured = HashMap::new();
-    captured.insert("outer".to_string(), Object::Int(10));
-    captured.insert("count".to_string(), Object::Int(0));
+    captured.insert("outer".to_string(), Rc::new(RefCell::new(Object::Int(10))));
+    captured.insert("count".to_string(), Rc::new(RefCell::new(Object::Int(0))));
 
     let block = BlockStatement::new(vec![], vec![], captured.clone());
 
-    assert_eq!(block.captured_vars(), &captured);
-    assert_eq!(block.captured_vars().get("outer"), Some(&Object::Int(10)));
-    assert_eq!(block.captured_vars().get("count"), Some(&Object::Int(0)));
+    assert_eq!(block.captured_vars().len(), 2);
+    assert_eq!(
+        *block.captured_vars().get("outer").unwrap().borrow(),
+        Object::Int(10)
+    );
+    assert_eq!(
+        *block.captured_vars().get("count").unwrap().borrow(),
+        Object::Int(0)
+    );
 }
 
 #[test]

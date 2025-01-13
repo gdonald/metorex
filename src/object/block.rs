@@ -5,7 +5,9 @@ use crate::callable::Callable;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::vm::VirtualMachine;
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::Object;
 
@@ -16,8 +18,8 @@ pub struct BlockStatement {
     pub parameters: Vec<String>,
     /// Block body (AST statements)
     pub body: Vec<Statement>,
-    /// Captured variables from outer scope
-    pub captured_vars: HashMap<String, Object>,
+    /// Captured variables from outer scope (shared mutable references)
+    pub captured_vars: HashMap<String, Rc<RefCell<Object>>>,
 }
 
 impl BlockStatement {
@@ -25,7 +27,7 @@ impl BlockStatement {
     pub fn new(
         parameters: Vec<String>,
         body: Vec<Statement>,
-        captured_vars: HashMap<String, Object>,
+        captured_vars: HashMap<String, Rc<RefCell<Object>>>,
     ) -> Self {
         Self {
             parameters,
@@ -35,7 +37,7 @@ impl BlockStatement {
     }
 
     /// Get the captured variables
-    pub fn captured_vars(&self) -> &HashMap<String, Object> {
+    pub fn captured_vars(&self) -> &HashMap<String, Rc<RefCell<Object>>> {
         &self.captured_vars
     }
 

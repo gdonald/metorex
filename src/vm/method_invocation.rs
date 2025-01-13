@@ -118,10 +118,13 @@ impl VirtualMachine {
         self.environment_mut().push_scope();
 
         let result = (|| -> Result<Object, MetorexError> {
-            for (name, value) in block.captured_vars() {
-                self.environment_mut().define(name.clone(), value.clone());
+            // Define captured variables using shared references
+            for (name, value_ref) in block.captured_vars() {
+                self.environment_mut()
+                    .define_shared(name.clone(), value_ref.clone());
             }
 
+            // Define parameters as regular variables
             for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
                 self.environment_mut().define(param.clone(), argument);
             }
@@ -175,10 +178,13 @@ impl VirtualMachine {
         self.environment_mut().push_scope();
 
         let result = (|| -> Result<ControlFlow, MetorexError> {
-            for (name, value) in block.captured_vars() {
-                self.environment_mut().define(name.clone(), value.clone());
+            // Define captured variables using shared references
+            for (name, value_ref) in block.captured_vars() {
+                self.environment_mut()
+                    .define_shared(name.clone(), value_ref.clone());
             }
 
+            // Define parameters as regular variables
             for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
                 self.environment_mut().define(param.clone(), argument);
             }

@@ -140,3 +140,17 @@ fn test_functions_closures_nested_execution() {
     let output = run_example("examples/functions/closures_nested.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_functions_nonlocal_counter_execution() {
+    let expected = "1\n2\n3\n3\n0\n1\n";
+    let output = run_example("examples/functions/nonlocal_counter.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_functions_locals_scope_execution() {
+    let expected = "20\n[0, 2, 4, 6, 8]\n";
+    let output = run_example("examples/functions/locals_scope.mx");
+    assert_eq!(output, expected);
+}

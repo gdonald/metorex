@@ -96,6 +96,25 @@ impl Environment {
     pub fn current_scope_vars(&self) -> std::collections::HashMap<String, Object> {
         self.current_scope().borrow().collect_all_vars()
     }
+
+    /// Collects all variable references from the current scope chain
+    /// This is used for lambda closure capture with mutable closures
+    pub fn current_scope_var_refs(
+        &self,
+    ) -> std::collections::HashMap<String, std::rc::Rc<std::cell::RefCell<Object>>> {
+        self.current_scope().borrow().collect_all_var_refs()
+    }
+
+    /// Defines a variable in the current scope with a shared reference
+    /// Used when a closure defines a captured variable
+    pub fn define_shared(&mut self, name: String, value: std::rc::Rc<std::cell::RefCell<Object>>) {
+        self.current_scope().borrow_mut().define_shared(name, value);
+    }
+
+    /// Gets a shared reference to a variable
+    pub fn get_ref(&self, name: &str) -> Option<std::rc::Rc<std::cell::RefCell<Object>>> {
+        self.current_scope().borrow().get_ref(name)
+    }
 }
 
 impl Default for Environment {
