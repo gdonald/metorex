@@ -220,17 +220,19 @@ pub struct Parameter {
     pub default_value: Option<Expression>, // Default value for the parameter
     pub is_variadic: bool,                 // True if this is a *args parameter
     pub is_keyword: bool,                  // True if this is a **kwargs parameter
+    pub is_block: bool,                    // True if this is a &block parameter
     pub position: Position,
 }
 
 impl Parameter {
-    /// Create a new simple parameter (no default, not variadic/keyword)
+    /// Create a new simple parameter (no default, not variadic/keyword/block)
     pub fn simple(name: String, position: Position) -> Self {
         Parameter {
             name,
             default_value: None,
             is_variadic: false,
             is_keyword: false,
+            is_block: false,
             position,
         }
     }
@@ -242,6 +244,7 @@ impl Parameter {
             default_value: Some(default_value),
             is_variadic: false,
             is_keyword: false,
+            is_block: false,
             position,
         }
     }
@@ -253,6 +256,7 @@ impl Parameter {
             default_value: None,
             is_variadic: true,
             is_keyword: false,
+            is_block: false,
             position,
         }
     }
@@ -264,13 +268,26 @@ impl Parameter {
             default_value: None,
             is_variadic: false,
             is_keyword: true,
+            is_block: false,
             position,
         }
     }
 
-    /// Check if this is a simple parameter (no default, not variadic/keyword)
+    /// Create a new block parameter (&block)
+    pub fn block(name: String, position: Position) -> Self {
+        Parameter {
+            name,
+            default_value: None,
+            is_variadic: false,
+            is_keyword: false,
+            is_block: true,
+            position,
+        }
+    }
+
+    /// Check if this is a simple parameter (no default, not variadic/keyword/block)
     pub fn is_simple(&self) -> bool {
-        self.default_value.is_none() && !self.is_variadic && !self.is_keyword
+        self.default_value.is_none() && !self.is_variadic && !self.is_keyword && !self.is_block
     }
 
     /// Check if this parameter has a default value

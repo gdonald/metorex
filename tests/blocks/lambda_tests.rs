@@ -223,3 +223,150 @@ sum.call(1, 2, 3)
         panic!("Expected Int(6), got {:?}", result);
     }
 }
+
+#[test]
+fn test_compact_lambda_no_params() {
+    let source = r#"
+l = lambda || 42 end
+l.call
+"#;
+
+    let lexer = Lexer::new(source);
+    let tokens = lexer.tokenize();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().expect("Parsing failed");
+
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&statements).expect("Execution failed");
+
+    assert!(result.is_some());
+    if let Some(Object::Int(val)) = result {
+        assert_eq!(val, 42);
+    } else {
+        panic!("Expected Int(42), got {:?}", result);
+    }
+}
+
+#[test]
+fn test_compact_lambda_single_param() {
+    let source = r#"
+double = lambda |x| x * 2 end
+double.call(5)
+"#;
+
+    let lexer = Lexer::new(source);
+    let tokens = lexer.tokenize();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().expect("Parsing failed");
+
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&statements).expect("Execution failed");
+
+    assert!(result.is_some());
+    if let Some(Object::Int(val)) = result {
+        assert_eq!(val, 10);
+    } else {
+        panic!("Expected Int(10), got {:?}", result);
+    }
+}
+
+#[test]
+fn test_compact_lambda_multi_params() {
+    let source = r#"
+add = lambda |a, b| a + b end
+add.call(3, 7)
+"#;
+
+    let lexer = Lexer::new(source);
+    let tokens = lexer.tokenize();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().expect("Parsing failed");
+
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&statements).expect("Execution failed");
+
+    assert!(result.is_some());
+    if let Some(Object::Int(val)) = result {
+        assert_eq!(val, 10);
+    } else {
+        panic!("Expected Int(10), got {:?}", result);
+    }
+}
+
+#[test]
+fn test_standalone_block_simple() {
+    let source = r#"
+result = do
+  42
+end
+result
+"#;
+
+    let lexer = Lexer::new(source);
+    let tokens = lexer.tokenize();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().expect("Parsing failed");
+
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&statements).expect("Execution failed");
+
+    // Standalone blocks create lambda objects
+    assert!(result.is_some());
+    assert!(matches!(result, Some(Object::Block(_))));
+}
+
+#[test]
+fn test_standalone_block_with_statements() {
+    let source = r#"
+result = do
+  x = 10
+  y = 20
+  x + y
+end
+result
+"#;
+
+    let lexer = Lexer::new(source);
+    let tokens = lexer.tokenize();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().expect("Parsing failed");
+
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&statements).expect("Execution failed");
+
+    // Standalone blocks create lambda objects
+    assert!(result.is_some());
+    assert!(matches!(result, Some(Object::Block(_))));
+}
+
+#[test]
+fn test_block_parameter_syntax() {
+    let source = r#"
+def times(n, &block)
+  i = 0
+  while i < n
+    block.call()
+    i = i + 1
+  end
+end
+
+count = 0
+times(3, lambda || count = count + 1 end)
+count
+"#;
+
+    let lexer = Lexer::new(source);
+    let tokens = lexer.tokenize();
+    let mut parser = Parser::new(tokens);
+    let statements = parser.parse().expect("Parsing failed");
+
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&statements).expect("Execution failed");
+
+    assert!(result.is_some());
+    if let Some(Object::Int(val)) = result {
+        assert_eq!(val, 3);
+    } else {
+        panic!("Expected Int(3), got {:?}", result);
+    }
+}

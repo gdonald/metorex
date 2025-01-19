@@ -63,8 +63,16 @@ impl Parser {
 
             let param_pos = self.peek().position;
 
+            // Check for block parameter (&block)
+            if self.match_token(&[TokenKind::Ampersand]) {
+                let name = match self.advance().kind {
+                    TokenKind::Ident(name) => name,
+                    _ => return Err(self.error_at_previous("Expected parameter name after '&'")),
+                };
+                params.push(Parameter::block(name, param_pos));
+            }
             // Check for variadic parameter (*args)
-            if self.match_token(&[TokenKind::Star]) {
+            else if self.match_token(&[TokenKind::Star]) {
                 let name = match self.advance().kind {
                     TokenKind::Ident(name) => name,
                     _ => return Err(self.error_at_previous("Expected parameter name after '*'")),

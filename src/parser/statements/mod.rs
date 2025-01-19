@@ -29,8 +29,8 @@ impl Parser {
             TokenKind::Continue => self.parse_continue_statement(),
             TokenKind::Return => self.parse_return_statement(),
             _ => {
-                // Try to parse as an expression or assignment
-                let expr = self.parse_expression()?;
+                // Try to parse as an expression or assignment (including arrow lambdas)
+                let expr = self.parse_expression_with_lambda()?;
 
                 // Check if this is an assignment
                 if self.check(&[

@@ -154,10 +154,12 @@ impl Parser {
                 })
             }
 
-            // Lambda literal: lambda do |params| ... end
+            // Lambda literal: lambda do |params| ... end or lambda |params| ... end
             TokenKind::Lambda => {
                 self.skip_whitespace();
-                self.expect(TokenKind::Do, "Expected 'do' after 'lambda'")?;
+
+                // Check for 'do' keyword (optional for compact syntax)
+                let _has_do = self.match_token(&[TokenKind::Do]);
                 self.skip_whitespace();
 
                 // Parse parameters: |param1, param2, ...|
@@ -204,6 +206,64 @@ impl Parser {
 
                 self.expect(TokenKind::End, "Expected 'end' after lambda body")?;
 
+                Ok(Expression::Lambda {
+                    parameters,
+                    body,
+                    captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
+                    position: token.position,
+                })
+            }
+
+            // Standalone block: do ... end
+            TokenKind::Do => {
+                self.skip_whitespace();
+
+                // Parse optional parameters: |param1, param2, ...|
+                let parameters = if self.match_token(&[TokenKind::Pipe]) {
+                    let mut params = Vec::new();
+                    self.skip_whitespace();
+
+                    if !self.check(&[TokenKind::Pipe]) {
+                        loop {
+                            self.skip_whitespace();
+                            if let TokenKind::Ident(name) = self.peek().kind.clone() {
+                                params.push(name);
+                                self.advance();
+                            } else {
+                                return Err(self.error_at_current("Expected parameter name"));
+                            }
+
+                            self.skip_whitespace();
+                            if !self.match_token(&[TokenKind::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.skip_whitespace();
+                    self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
+                    params
+                } else {
+                    Vec::new()
+                };
+
+                // Parse body statements
+                self.skip_whitespace();
+                let mut body = Vec::new();
+
+                while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                    self.skip_whitespace();
+                    if self.check(&[TokenKind::End]) {
+                        break;
+                    }
+                    body.push(self.parse_statement()?);
+                    self.skip_whitespace();
+                }
+
+                self.expect(TokenKind::End, "Expected 'end' after block body")?;
+
+                // A standalone block is essentially a lambda with no parameters
+                // that gets evaluated immediately (in this parser representation)
                 Ok(Expression::Lambda {
                     parameters,
                     body,

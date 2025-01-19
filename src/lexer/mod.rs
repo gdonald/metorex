@@ -603,6 +603,10 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     Token::new(TokenKind::Pipe, position)
                 }
+                '&' => {
+                    self.advance();
+                    Token::new(TokenKind::Ampersand, position)
+                }
                 _ => {
                     // Unknown character, consume and return EOF
                     self.advance();
