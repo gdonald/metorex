@@ -154,3 +154,10 @@ fn test_functions_locals_scope_execution() {
     let output = run_example("examples/functions/locals_scope.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_parser_lambdas_execution() {
+    let expected = "10\n10\n42\n30\n23\n13\n18\n11\n14\n21\n24\n10\n";
+    let output = run_example("examples/parser/lambdas.mx");
+    assert_eq!(output, expected);
+}
