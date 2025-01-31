@@ -40,12 +40,22 @@ impl Parser {
 
         self.expect(TokenKind::End, "Expected 'end' after function body")?;
 
-        Ok(Statement::FunctionDef {
-            name,
-            parameters,
-            body,
-            position: start_pos,
-        })
+        // Return MethodDef if we're inside a class, otherwise FunctionDef
+        if self.in_class_body {
+            Ok(Statement::MethodDef {
+                name,
+                parameters,
+                body,
+                position: start_pos,
+            })
+        } else {
+            Ok(Statement::FunctionDef {
+                name,
+                parameters,
+                body,
+                position: start_pos,
+            })
+        }
     }
 
     /// Parse function parameters

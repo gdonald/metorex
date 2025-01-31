@@ -161,3 +161,71 @@ fn test_parser_lambdas_execution() {
     let output = run_example("examples/parser/lambdas.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_blocks_as_objects_execution() {
+    let expected = r#"=== Blocks as First-Class Objects ===
+
+1. Assigning blocks to variables:
+double.call(5) = 10
+
+2. Multiple parameter blocks:
+add.call(3, 7) = 10
+
+3. Zero parameter blocks:
+get_pi.call = 3.14159
+
+4. Passing blocks as arguments to functions:
+apply_twice(increment, 5) = 7
+
+5. Returning blocks from functions (closures):
+times_three.call(4) = 12
+times_ten.call(4) = 40
+
+6. Blocks capturing variables from outer scope:
+First call: 1
+Second call: 2
+Third call: 3
+
+7. Storing blocks in data structures:
+Starting with value: 20
+After +1: 21
+After *2: 40
+After -3: 17
+After /4: 5
+
+8. Higher-order function example:
+Squares of [1,2,3,4,5]: [1, 4, 9, 16, 25]
+
+9. Blocks returned from class methods:
+add_op.call(5, 3) = 8
+mul_op.call(5, 3) = 15
+
+10. Nested closures:
+Nested closure result: 6
+
+11. Function composition:
+compose(add_ten, double).call(5) = 20
+
+12. Partial application pattern:
+Hello, Alice!
+Goodbye, Bob!
+
+13. Callback pattern:
+Success! Data: 42
+Error! Invalid data: -1
+
+14. Closure with captured state:
+counter.call = 5
+counter.call = 10
+counter.call = 15
+
+15. Method chaining and lambda returns:
+Query with 2 conditions
+
+=== Blocks are truly first-class objects! ===
+"#;
+
+    let output = run_example("examples/metaprogramming/blocks_as_objects.mx");
+    assert_eq!(output, expected);
+}

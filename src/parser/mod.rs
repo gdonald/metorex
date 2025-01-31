@@ -19,6 +19,8 @@ pub struct Parser {
     stream: TokenStream,
     /// Error handler for reporting and recovery
     error_handler: ErrorHandler,
+    /// Track if we're currently parsing inside a class body
+    in_class_body: bool,
 }
 
 impl Parser {
@@ -27,6 +29,7 @@ impl Parser {
         Self {
             stream: TokenStream::new(tokens),
             error_handler: ErrorHandler::new(),
+            in_class_body: false,
         }
     }
 

@@ -31,7 +31,10 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Parse class body
+        // Parse class body - set flag to indicate we're inside a class
+        let was_in_class = self.in_class_body;
+        self.in_class_body = true;
+
         let mut body = Vec::new();
         while !self.check(&[TokenKind::End]) && !self.is_at_end() {
             self.skip_whitespace();
@@ -41,6 +44,9 @@ impl Parser {
             body.push(self.parse_statement()?);
             self.skip_whitespace();
         }
+
+        // Restore the previous state
+        self.in_class_body = was_in_class;
 
         self.expect(TokenKind::End, "Expected 'end' after class body")?;
 

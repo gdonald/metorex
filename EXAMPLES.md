@@ -77,7 +77,7 @@ This document tracks the implementation work needed to execute all example files
 - [x] 4.3.2 Add block-to-lambda conversion (blocks are lambdas)
 - [x] 4.3.3 Implement method block parameters (`&block`)
 - [x] 4.3.4 Use `examples/parser/blocks.mx` in an actual test in examples_runner.rs (partial - requires arrow lambdas in arguments)
-- [ ] 4.3.5 Use `examples/metaprogramming/blocks_as_objects.mx` in an actual test in examples_runner.rs (partial - requires Class.new method)
+- [x] 4.3.5 Use `examples/metaprogramming/blocks_as_objects.mx` in an actual test in examples_runner.rs (partial - requires Class.new method)
 
 ---
 

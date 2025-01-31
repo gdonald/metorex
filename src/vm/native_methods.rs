@@ -34,6 +34,20 @@ impl VirtualMachine {
             return Ok(Some(block.call(self, arguments.to_vec(), position)?));
         }
 
+        // Special handling for Class objects
+        if let Object::Class(class_rc) = receiver
+            && method_name == "new"
+        {
+            // Delegate to invoke_callable which handles instance creation and initialize
+            return self
+                .invoke_callable(
+                    Object::Class(Rc::clone(class_rc)),
+                    arguments.to_vec(),
+                    position,
+                )
+                .map(Some);
+        }
+
         match class.name() {
             "Object" => match method_name {
                 "to_s" => {
