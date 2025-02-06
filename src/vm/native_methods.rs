@@ -235,6 +235,39 @@ impl VirtualMachine {
                         Ok(None)
                     }
                 }
+                "each_char" => {
+                    // each_char takes a block parameter
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::String(string_value) = receiver {
+                        let block = match &arguments[0] {
+                            Object::Block(block) => block.clone(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "Block",
+                                    &arguments[0],
+                                    position,
+                                ));
+                            }
+                        };
+
+                        for ch in string_value.chars() {
+                            let char_str = Object::string(ch.to_string());
+                            let args = vec![char_str];
+                            self.execute_block_body(&block, args)?;
+                        }
+                        Ok(Some(receiver.clone()))
+                    } else {
+                        Ok(None)
+                    }
+                }
                 _ => Ok(None),
             },
             "Array" => match method_name {
@@ -389,6 +422,156 @@ impl VirtualMachine {
                         Ok(None)
                     }
                 }
+                "select" | "filter" => {
+                    // select/filter takes a block parameter that returns a boolean
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        let block = match &arguments[0] {
+                            Object::Block(block) => block.clone(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "Block",
+                                    &arguments[0],
+                                    position,
+                                ));
+                            }
+                        };
+
+                        let array = array_rc.borrow();
+                        let mut results = Vec::new();
+                        for element in array.iter() {
+                            let args = vec![element.clone()];
+                            let value = self.execute_block_body(&block, args)?;
+                            // Check if the result is truthy
+                            let is_truthy = !matches!(value, Object::Bool(false) | Object::Nil);
+                            if is_truthy {
+                                results.push(element.clone());
+                            }
+                        }
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "reduce" => {
+                    // reduce takes a block parameter with 2 arguments (accumulator, element)
+                    // and optionally an initial value as the first argument
+                    if arguments.is_empty() || arguments.len() > 2 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        let array = array_rc.borrow();
+
+                        // Check if we have an initial value
+                        let (block, initial_value, start_index) = if arguments.len() == 2 {
+                            let block = match &arguments[1] {
+                                Object::Block(block) => block.clone(),
+                                _ => {
+                                    return Err(method_argument_type_error(
+                                        method_name,
+                                        "Block",
+                                        &arguments[1],
+                                        position,
+                                    ));
+                                }
+                            };
+                            (block, Some(arguments[0].clone()), 0)
+                        } else {
+                            let block = match &arguments[0] {
+                                Object::Block(block) => block.clone(),
+                                _ => {
+                                    return Err(method_argument_type_error(
+                                        method_name,
+                                        "Block",
+                                        &arguments[0],
+                                        position,
+                                    ));
+                                }
+                            };
+                            (block, None, 1)
+                        };
+
+                        if array.is_empty() {
+                            return Ok(Some(Object::Nil));
+                        }
+
+                        let mut accumulator = if let Some(init) = initial_value {
+                            init
+                        } else {
+                            array[0].clone()
+                        };
+
+                        for element in array.iter().skip(start_index) {
+                            let args = vec![accumulator.clone(), element.clone()];
+                            accumulator = self.execute_block_body(&block, args)?;
+                        }
+                        Ok(Some(accumulator))
+                    } else {
+                        Ok(None)
+                    }
+                }
+                "zip" => {
+                    // zip takes one or more arrays and returns an array of arrays
+                    if arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        let array = array_rc.borrow();
+
+                        // Convert all arguments to arrays
+                        let mut other_arrays = Vec::new();
+                        for arg in arguments {
+                            match arg {
+                                Object::Array(arr_rc) => {
+                                    other_arrays.push(arr_rc.borrow().clone());
+                                }
+                                _ => {
+                                    return Err(method_argument_type_error(
+                                        method_name,
+                                        "Array",
+                                        arg,
+                                        position,
+                                    ));
+                                }
+                            }
+                        }
+
+                        // Create the zipped result
+                        let mut results = Vec::new();
+                        for (i, element) in array.iter().enumerate() {
+                            let mut tuple = vec![element.clone()];
+                            for other_array in &other_arrays {
+                                if i < other_array.len() {
+                                    tuple.push(other_array[i].clone());
+                                } else {
+                                    tuple.push(Object::Nil);
+                                }
+                            }
+                            results.push(Object::Array(Rc::new(RefCell::new(tuple))));
+                        }
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+                    } else {
+                        Ok(None)
+                    }
+                }
                 _ => Ok(None),
             },
             "Hash" => match method_name {
@@ -427,7 +610,7 @@ impl VirtualMachine {
                         Ok(None)
                     }
                 }
-                "has_key?" => {
+                "has_key?" | "key?" => {
                     if arguments.len() != 1 {
                         return Err(method_argument_error(
                             method_name,

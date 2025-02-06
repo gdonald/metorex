@@ -229,3 +229,33 @@ Query with 2 conditions
     let output = run_example("examples/metaprogramming/blocks_as_objects.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_algorithms_filter_even_numbers_execution() {
+    let expected = "[2, 4, 6]\n";
+    let output = run_example("examples/algorithms/filter_even_numbers.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_algorithms_character_counter_execution() {
+    let output = run_example("examples/algorithms/character_counter.mx");
+    // Hash map iteration order is non-deterministic, so check for all expected keys and values
+    assert!(
+        output.contains("b")
+            && output.contains("a")
+            && output.contains("n")
+            && output.contains(": 1")
+            && output.contains(": 3")
+            && output.contains(": 2"),
+        "Expected output to contain all characters (b:1, a:3, n:2), but got: {}",
+        output
+    );
+}
+
+#[test]
+fn test_algorithms_zip_merger_execution() {
+    let expected = "[[Ann, 88], [Ben, 93]]\n";
+    let output = run_example("examples/algorithms/zip_merger.mx");
+    assert_eq!(output, expected);
+}

@@ -6,12 +6,9 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 
-# Check if src directory exists
 SRC_DIR="$PROJECT_ROOT/src"
-if [ ! -d "$SRC_DIR" ]; then
-  echo "Error: src directory not found"
-  exit 1
-fi
+TESTS_DIR="$PROJECT_ROOT/tests"
+SEARCH_DIRS=("$SRC_DIR" "$TESTS_DIR")
 
 # Find all .rs files and count lines
 declare -a files
@@ -24,11 +21,11 @@ while IFS= read -r file; do
     files+=("$relative_path")
     counts+=("$line_count")
   fi
-done < <(find "$SRC_DIR" -type f -name "*.rs" | sort)
+done < <(find "${SEARCH_DIRS[@]}" -type f -name "*.rs" | sort)
 
 # Check if any files were found
 if [ ${#files[@]} -eq 0 ]; then
-  echo "No Rust files found in src directory"
+  echo "No Rust files found in src or tests directories"
   exit 0
 fi
 

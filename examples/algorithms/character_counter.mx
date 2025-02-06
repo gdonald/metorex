@@ -3,7 +3,7 @@ counts = {}
 
 text.each_char do |char|
   if counts.key?(char)
-    counts[char] += 1
+    counts[char] = counts[char] + 1
   else
     counts[char] = 1
   end

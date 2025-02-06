@@ -84,12 +84,12 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 5: Advanced Collection Methods
 
 ### 5.1 Higher-Order Functions
-- [ ] 5.1.1 Implement `.map` for arrays
-- [ ] 5.1.2 Implement `.filter` for arrays
-- [ ] 5.1.3 Implement `.reduce` for arrays
-- [ ] 5.1.4 Use `examples/algorithms/filter_even_numbers.mx` in an actual test in examples_runner.rs
-- [ ] 5.1.5 Use `examples/algorithms/character_counter.mx` in an actual test in examples_runner.rs
-- [ ] 5.1.6 Use `examples/algorithms/zip_merger.mx` in an actual test in examples_runner.rs
+- [x] 5.1.1 Implement `.map` for arrays
+- [x] 5.1.2 Implement `.filter` for arrays
+- [x] 5.1.3 Implement `.reduce` for arrays
+- [x] 5.1.4 Use `examples/algorithms/filter_even_numbers.mx` in an actual test in examples_runner.rs
+- [x] 5.1.5 Use `examples/algorithms/character_counter.mx` in an actual test in examples_runner.rs
+- [x] 5.1.6 Use `examples/algorithms/zip_merger.mx` in an actual test in examples_runner.rs
 
 ### 5.2 Matrix and Nested Collections
 - [ ] 5.2.1 Add support for nested array operations

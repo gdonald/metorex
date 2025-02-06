@@ -200,7 +200,63 @@ impl VirtualMachine {
                     )),
                 }
             }
-            Expression::Index { .. } => Err(invalid_assignment_target_error(target)),
+            Expression::Index {
+                array,
+                index,
+                position,
+            } => {
+                // Evaluate the array/object and index
+                let obj = self.evaluate_expression(array)?;
+                let idx = self.evaluate_expression(index)?;
+
+                match obj {
+                    Object::Array(array_rc) => {
+                        // Array index assignment
+                        if let Object::Int(i) = idx {
+                            let mut array = array_rc.borrow_mut();
+                            let len = array.len() as i64;
+                            let actual_index = if i < 0 { len + i } else { i };
+
+                            if actual_index < 0 || actual_index >= len {
+                                return Err(MetorexError::runtime_error(
+                                    format!("Array index out of bounds: {}", i),
+                                    position_to_location(*position),
+                                ));
+                            }
+                            array[actual_index as usize] = value;
+                            Ok(())
+                        } else {
+                            Err(MetorexError::runtime_error(
+                                "Array index must be an integer",
+                                position_to_location(*position),
+                            ))
+                        }
+                    }
+                    Object::Dict(dict_rc) => {
+                        // Hash/Dict index assignment
+                        let key_str = match idx {
+                            Object::String(s) => s.as_str().to_string(),
+                            Object::Int(i) => i.to_string(),
+                            Object::Float(f) => f.to_string(),
+                            Object::Bool(b) => b.to_string(),
+                            Object::Nil => "nil".to_string(),
+                            _ => {
+                                return Err(MetorexError::runtime_error(
+                                    "Hash key must be a String, Integer, Float, Bool, or Nil",
+                                    position_to_location(*position),
+                                ));
+                            }
+                        };
+                        let mut dict = dict_rc.borrow_mut();
+                        dict.insert(key_str, value);
+                        Ok(())
+                    }
+                    _ => Err(MetorexError::runtime_error(
+                        "Cannot index assign on this type",
+                        position_to_location(*position),
+                    )),
+                }
+            }
             _ => Err(invalid_assignment_target_error(target)),
         }
     }
