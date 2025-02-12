@@ -1,2 +1,11 @@
-mod lexer_test;
+mod basics;
+mod errors;
+mod identifiers;
+mod integration;
+mod interpolation;
+mod iterators;
+mod mixed_tokens;
+mod numbers;
+mod operators;
+mod strings;
 mod token_test;
