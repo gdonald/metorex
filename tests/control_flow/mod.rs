@@ -1,4 +1,8 @@
-mod control_flow_execution_tests;
+mod complex_flow_execution_tests;
 mod control_flow_tests;
+mod for_execution_tests;
+mod if_else_execution_tests;
+mod loop_control_execution_tests;
 mod pattern_matching_execution_tests;
 mod pattern_matching_tests;
+mod while_execution_tests;
