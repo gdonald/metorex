@@ -259,3 +259,46 @@ fn test_algorithms_zip_merger_execution() {
     let output = run_example("examples/algorithms/zip_merger.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_algorithms_matrix_transpose_execution() {
+    let expected = "[[1, 4], [2, 5], [3, 6]]\n";
+    let output = run_example("examples/algorithms/matrix_transpose.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_algorithms_matrix_transpose_comprehensive_execution() {
+    let expected = r#"Basic 2x3 matrix:
+[[1, 4], [2, 5], [3, 6]]
+Double transpose (3x2 matrix):
+[[1, 2], [3, 4], [5, 6]]
+Single row matrix:
+[[1], [2], [3], [4]]
+Single column matrix:
+[[1, 2, 3]]
+Square 3x3 matrix:
+[[1, 4, 7], [2, 5, 8], [3, 6, 9]]
+"#;
+    let output = run_example("examples/algorithms/matrix_transpose_comprehensive.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_algorithms_matrix_nested_ops_execution() {
+    let expected = r#"Original matrix:
+[[1, 2, 3], [4, 5, 6]]
+Element at [0][0]:
+1
+Element at [1][2]:
+6
+Doubled matrix:
+[[2, 4, 6], [8, 10, 12]]
+Sum of each column:
+[5, 7, 9]
+Rows where first element > 2:
+[[3, 4], [5, 6]]
+"#;
+    let output = run_example("examples/algorithms/matrix_nested_ops.mx");
+    assert_eq!(output, expected);
+}

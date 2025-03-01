@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 38/90 examples executing (42.2%)
+**Current Status**: 41/90 examples executing (45.6%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -92,9 +92,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 5.1.6 Use `examples/algorithms/zip_merger.mx` in an actual test in examples_runner.rs
 
 ### 5.2 Matrix and Nested Collections
-- [ ] 5.2.1 Add support for nested array operations
-- [ ] 5.2.2 Implement transpose and matrix operations
-- [ ] 5.2.3 Use `examples/algorithms/matrix_transpose.mx` in an actual test in examples_runner.rs
+- [x] 5.2.1 Add support for nested array operations
+- [x] 5.2.2 Implement transpose and matrix operations
+- [x] 5.2.3 Use `examples/algorithms/matrix_transpose.mx` in an actual test in examples_runner.rs
 
 ---
 

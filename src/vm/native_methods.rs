@@ -572,6 +572,66 @@ impl VirtualMachine {
                         Ok(None)
                     }
                 }
+                "transpose" => {
+                    // transpose converts rows to columns and vice versa
+                    // expects an array of arrays (matrix)
+                    if !arguments.is_empty() {
+                        return Err(method_argument_error(
+                            method_name,
+                            0,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    if let Object::Array(array_rc) = receiver {
+                        let array = array_rc.borrow();
+
+                        // Handle empty array
+                        if array.is_empty() {
+                            return Ok(Some(Object::Array(Rc::new(RefCell::new(Vec::new())))));
+                        }
+
+                        // Verify all elements are arrays
+                        let mut row_arrays = Vec::new();
+                        for element in array.iter() {
+                            match element {
+                                Object::Array(arr_rc) => {
+                                    row_arrays.push(arr_rc.borrow().clone());
+                                }
+                                _ => {
+                                    return Err(MetorexError::runtime_error(
+                                        format!(
+                                            "transpose requires all elements to be arrays, found {}",
+                                            element.type_name()
+                                        ),
+                                        position_to_location(position),
+                                    ));
+                                }
+                            }
+                        }
+
+                        // Find the maximum row length
+                        let max_cols = row_arrays.iter().map(|row| row.len()).max().unwrap_or(0);
+
+                        // Build the transposed matrix
+                        let mut transposed = Vec::new();
+                        for col_idx in 0..max_cols {
+                            let mut new_row = Vec::new();
+                            for row in &row_arrays {
+                                if col_idx < row.len() {
+                                    new_row.push(row[col_idx].clone());
+                                } else {
+                                    new_row.push(Object::Nil);
+                                }
+                            }
+                            transposed.push(Object::Array(Rc::new(RefCell::new(new_row))));
+                        }
+
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(transposed)))))
+                    } else {
+                        Ok(None)
+                    }
+                }
                 _ => Ok(None),
             },
             "Hash" => match method_name {
