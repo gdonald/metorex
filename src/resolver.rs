@@ -594,7 +594,8 @@ impl Resolver {
             | Expression::StringLiteral { .. }
             | Expression::BoolLiteral { .. }
             | Expression::NilLiteral { .. }
-            | Expression::SelfExpr { .. } => {}
+            | Expression::SelfExpr { .. }
+            | Expression::Super { .. } => {}
         }
     }
 }

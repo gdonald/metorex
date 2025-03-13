@@ -302,3 +302,24 @@ Rows where first element > 2:
     let output = run_example("examples/algorithms/matrix_nested_ops.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_super_basic_execution() {
+    let expected = "Buddy\nGolden Retriever\nSome sound -> Woof!\nI am an animal named Buddy\n";
+    let output = run_example("examples/oop/super_basic.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_super_chain_basic_execution() {
+    let expected = "GrandParent\nParent\nChild\n";
+    let output = run_example("examples/oop/super_chain_basic.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_super_simple_execution() {
+    let expected = "AB\n";
+    let output = run_example("examples/oop/test_super_simple.mx");
+    assert_eq!(output, expected);
+}

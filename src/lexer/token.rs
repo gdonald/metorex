@@ -46,6 +46,7 @@ pub enum TokenKind {
     Continue,
     Return,
     Lambda,
+    Super,
 
     // Literals
     Int(i64),
@@ -135,6 +136,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Continue => write!(f, "continue"),
             TokenKind::Return => write!(f, "return"),
             TokenKind::Lambda => write!(f, "lambda"),
+            TokenKind::Super => write!(f, "super"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),

@@ -272,6 +272,43 @@ impl Parser {
                 })
             }
 
+            // Super call: super() or super(args)
+            TokenKind::Super => {
+                self.skip_whitespace();
+                let position = token.position;
+
+                // Parse optional arguments
+                let arguments = if self.check(&[TokenKind::LParen]) {
+                    self.advance(); // consume (
+                    let mut args = Vec::new();
+                    self.skip_whitespace();
+
+                    if !self.check(&[TokenKind::RParen]) {
+                        loop {
+                            self.skip_whitespace();
+                            args.push(self.parse_expression()?);
+                            self.skip_whitespace();
+
+                            if !self.match_token(&[TokenKind::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.skip_whitespace();
+                    self.expect(TokenKind::RParen, "Expected ')' after super arguments")?;
+                    args
+                } else {
+                    // super without parentheses - no arguments
+                    Vec::new()
+                };
+
+                Ok(Expression::Super {
+                    arguments,
+                    position,
+                })
+            }
+
             _ => Err(self.error_at_previous(&format!("Unexpected token: {:?}", token.kind))),
         }
     }

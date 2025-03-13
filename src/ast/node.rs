@@ -150,6 +150,12 @@ pub enum Expression {
         position: Position,
     },
 
+    // Super call - calls parent class method
+    Super {
+        arguments: Vec<Expression>,
+        position: Position,
+    },
+
     // Range literals
     Range {
         start: Box<Expression>,
@@ -462,6 +468,7 @@ impl Expression {
             | Expression::Lambda { position, .. }
             | Expression::Grouped { position, .. }
             | Expression::SelfExpr { position, .. }
+            | Expression::Super { position, .. }
             | Expression::Range { position, .. } => *position,
         }
     }

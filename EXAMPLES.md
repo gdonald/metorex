@@ -101,12 +101,12 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 6: OOP Special Methods
 
 ### 6.1 super Keyword
-- [ ] 6.1.1 Implement `super` keyword parsing
-- [ ] 6.1.2 Add parent method lookup in VM
-- [ ] 6.1.3 Implement `super()` with argument forwarding
-- [ ] 6.1.4 Use `examples/oop/super.mx` in an actual test in examples_runner.rs
-- [ ] 6.1.5 Use `examples/oop/super_chain.mx` in an actual test in examples_runner.rs
-- [ ] 6.1.6 Use `examples/oop/test_init_param.mx` in an actual test in examples_runner.rs
+- [x] 6.1.1 Implement `super` keyword parsing
+- [x] 6.1.2 Add parent method lookup in VM
+- [x] 6.1.3 Implement `super()` with argument forwarding
+- [x] 6.1.4 Use `examples/oop/super.mx` in an actual test in examples_runner.rs
+- [x] 6.1.5 Use `examples/oop/super_chain.mx` in an actual test in examples_runner.rs
+- [x] 6.1.6 Use `examples/oop/test_init_param.mx` in an actual test in examples_runner.rs
 
 ### 6.2 attr_reader/attr_writer/attr_accessor
 - [ ] 6.2.1 Implement `attr_reader` parsing

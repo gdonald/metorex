@@ -232,6 +232,7 @@ impl<'a> Lexer<'a> {
             "continue" => TokenKind::Continue,
             "return" => TokenKind::Return,
             "lambda" => TokenKind::Lambda,
+            "super" => TokenKind::Super,
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
