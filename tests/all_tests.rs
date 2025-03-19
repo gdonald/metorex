@@ -10,5 +10,6 @@ mod exceptions;
 mod integration;
 mod lexer;
 mod parser;
+mod repl;
 mod type_system;
 mod vm;

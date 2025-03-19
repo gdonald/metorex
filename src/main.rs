@@ -3,6 +3,7 @@
 
 use metorex::lexer::Lexer;
 use metorex::parser::Parser;
+use metorex::repl::Repl;
 use metorex::vm::VirtualMachine;
 use std::env;
 use std::fs;
@@ -11,11 +12,24 @@ use std::process;
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 {
-        eprintln!("Usage: metorex <file.mx>");
-        process::exit(1);
+    // No arguments or explicit REPL flag - start REPL mode
+    if args.len() == 1 || (args.len() == 2 && (args[1] == "repl" || args[1] == "--repl")) {
+        match Repl::new() {
+            Ok(mut repl) => {
+                if let Err(err) = repl.run() {
+                    eprintln!("REPL error: {}", err);
+                    process::exit(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("Failed to initialize REPL: {}", err);
+                process::exit(1);
+            }
+        }
+        return;
     }
 
+    // File execution mode
     let filename = &args[1];
 
     // Read the source file
