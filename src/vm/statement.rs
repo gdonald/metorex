@@ -9,6 +9,7 @@ use super::utils::*;
 use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
 use crate::object::Object;
+use std::rc::Rc;
 
 impl VirtualMachine {
     /// Evaluate a statement and produce control-flow information for the caller.
@@ -112,6 +113,15 @@ impl VirtualMachine {
                 body,
                 position: _,
             } => self.execute_function_def(name, parameters, body),
+            Statement::AttrReader { position, .. }
+            | Statement::AttrWriter { position, .. }
+            | Statement::AttrAccessor { position, .. } => {
+                // These are only processed during class definition, not as standalone statements
+                Err(MetorexError::runtime_error(
+                    "attr_reader, attr_writer, and attr_accessor can only be used inside a class definition",
+                    position_to_location(*position),
+                ))
+            }
         }
     }
 
@@ -255,6 +265,61 @@ impl VirtualMachine {
                         "Cannot index assign on this type",
                         position_to_location(*position),
                     )),
+                }
+            }
+            Expression::MethodCall {
+                receiver,
+                method,
+                arguments,
+                position,
+                ..
+            } => {
+                // Handle setter method calls (e.g., obj.name = value becomes obj.name=(value))
+                if arguments.is_empty() {
+                    // This is a setter method call: obj.method = value -> obj.method=(value)
+                    let setter_method = format!("{}=", method);
+                    let receiver_obj = self.evaluate_expression(receiver)?;
+
+                    // Look up the setter method and invoke it
+                    match receiver_obj {
+                        Object::Instance(instance_rc) => {
+                            let (class, method_obj) = {
+                                let instance = instance_rc.borrow();
+                                let class = instance.class.clone();
+                                let method_obj = instance.class.find_method(&setter_method);
+                                (class, method_obj)
+                            }; // Borrow is dropped here
+
+                            if let Some(method) = method_obj {
+                                self.invoke_method(
+                                    class,
+                                    method,
+                                    Object::Instance(Rc::clone(&instance_rc)),
+                                    vec![value],
+                                    *position,
+                                )?;
+                                Ok(())
+                            } else {
+                                Err(MetorexError::runtime_error(
+                                    format!("Undefined setter method '{}'", setter_method),
+                                    position_to_location(*position),
+                                ))
+                            }
+                        }
+                        _ => Err(MetorexError::runtime_error(
+                            format!(
+                                "Cannot call setter method '{}' on {}",
+                                setter_method,
+                                receiver_obj.type_name()
+                            ),
+                            position_to_location(*position),
+                        )),
+                    }
+                } else {
+                    Err(MetorexError::runtime_error(
+                        "Cannot assign to method call with arguments",
+                        position_to_location(*position),
+                    ))
                 }
             }
             _ => Err(invalid_assignment_target_error(target)),

@@ -323,3 +323,24 @@ fn test_oop_super_simple_execution() {
     let output = run_example("examples/oop/test_super_simple.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_attr_reader_execution() {
+    let expected = "Alice\n30\n";
+    let output = run_example("examples/oop/attr_reader.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_attr_writer_execution() {
+    let expected = "Unknown\n0\nBob\n25\n";
+    let output = run_example("examples/oop/attr_writer.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_attr_accessor_execution() {
+    let expected = "Charlie\n35\ncharlie@example.com\nCharles\n36\ncharles@example.com\n";
+    let output = run_example("examples/oop/attr_accessor.mx");
+    assert_eq!(output, expected);
+}

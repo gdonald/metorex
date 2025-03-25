@@ -1,6 +1,7 @@
 // Statement parsing module
 // Handles parsing of all statement types
 
+mod attributes;
 mod class;
 mod control_flow;
 mod exception;
@@ -28,6 +29,9 @@ impl Parser {
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
             TokenKind::Return => self.parse_return_statement(),
+            TokenKind::AttrReader => self.parse_attr_reader(),
+            TokenKind::AttrWriter => self.parse_attr_writer(),
+            TokenKind::AttrAccessor => self.parse_attr_accessor(),
             _ => {
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;

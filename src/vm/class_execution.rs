@@ -87,6 +87,81 @@ impl VirtualMachine {
                     // Instance variable declaration without assignment
                     class.declare_instance_var(var_name);
                 }
+                Statement::AttrReader { attributes, .. } => {
+                    // Generate getter methods for each attribute
+                    for attr_name in attributes {
+                        let getter_body = vec![Statement::Return {
+                            value: Some(Expression::InstanceVariable {
+                                name: attr_name.clone(),
+                                position,
+                            }),
+                            position,
+                        }];
+                        let method = Rc::new(Method::new(attr_name.clone(), vec![], getter_body));
+                        class.define_method(attr_name, method);
+                        class.declare_instance_var(attr_name);
+                    }
+                }
+                Statement::AttrWriter { attributes, .. } => {
+                    // Generate setter methods for each attribute
+                    for attr_name in attributes {
+                        let setter_body = vec![Statement::Assignment {
+                            target: Expression::InstanceVariable {
+                                name: attr_name.clone(),
+                                position,
+                            },
+                            value: Expression::Identifier {
+                                name: "value".to_string(),
+                                position,
+                            },
+                            position,
+                        }];
+                        let method = Rc::new(Method::new(
+                            format!("{}=", attr_name),
+                            vec!["value".to_string()],
+                            setter_body,
+                        ));
+                        class.define_method(format!("{}=", attr_name), method);
+                        class.declare_instance_var(attr_name);
+                    }
+                }
+                Statement::AttrAccessor { attributes, .. } => {
+                    // Generate both getter and setter methods for each attribute
+                    for attr_name in attributes {
+                        // Getter
+                        let getter_body = vec![Statement::Return {
+                            value: Some(Expression::InstanceVariable {
+                                name: attr_name.clone(),
+                                position,
+                            }),
+                            position,
+                        }];
+                        let getter_method =
+                            Rc::new(Method::new(attr_name.clone(), vec![], getter_body));
+                        class.define_method(attr_name, getter_method);
+
+                        // Setter
+                        let setter_body = vec![Statement::Assignment {
+                            target: Expression::InstanceVariable {
+                                name: attr_name.clone(),
+                                position,
+                            },
+                            value: Expression::Identifier {
+                                name: "value".to_string(),
+                                position,
+                            },
+                            position,
+                        }];
+                        let setter_method = Rc::new(Method::new(
+                            format!("{}=", attr_name),
+                            vec!["value".to_string()],
+                            setter_body,
+                        ));
+                        class.define_method(format!("{}=", attr_name), setter_method);
+
+                        class.declare_instance_var(attr_name);
+                    }
+                }
                 _ => {
                     // For now, we ignore other statements in the class body
                     // In the future, we might support class-level code execution

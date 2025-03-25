@@ -430,6 +430,12 @@ impl Resolver {
                 }
                 self.pop_scope();
             }
+
+            Statement::AttrReader { .. }
+            | Statement::AttrWriter { .. }
+            | Statement::AttrAccessor { .. } => {
+                // These are class-level declarations, no variable resolution needed
+            }
         }
     }
 

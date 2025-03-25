@@ -109,10 +109,10 @@ This document tracks the implementation work needed to execute all example files
 - [x] 6.1.6 Use `examples/oop/test_init_param.mx` in an actual test in examples_runner.rs
 
 ### 6.2 attr_reader/attr_writer/attr_accessor
-- [ ] 6.2.1 Implement `attr_reader` parsing
-- [ ] 6.2.2 Implement `attr_writer` parsing
-- [ ] 6.2.3 Implement `attr_accessor` parsing
-- [ ] 6.2.4 Add automatic getter/setter generation in VM
+- [x] 6.2.1 Implement `attr_reader` parsing
+- [x] 6.2.2 Implement `attr_writer` parsing
+- [x] 6.2.3 Implement `attr_accessor` parsing
+- [x] 6.2.4 Add automatic getter/setter generation in VM
 
 ### 6.3 Special String Methods
 - [ ] 6.3.1 Implement `to_s` special method

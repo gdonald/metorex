@@ -408,6 +408,24 @@ pub enum Statement {
         exception: Option<Expression>, // None means re-raise current exception
         position: Position,
     },
+
+    // attr_reader - creates getter methods for instance variables
+    AttrReader {
+        attributes: Vec<String>, // List of attribute names (without @)
+        position: Position,
+    },
+
+    // attr_writer - creates setter methods for instance variables
+    AttrWriter {
+        attributes: Vec<String>, // List of attribute names (without @)
+        position: Position,
+    },
+
+    // attr_accessor - creates both getter and setter methods for instance variables
+    AttrAccessor {
+        attributes: Vec<String>, // List of attribute names (without @)
+        position: Position,
+    },
 }
 
 // Implement Display for BinaryOp
@@ -516,7 +534,10 @@ impl Statement {
             | Statement::Continue { position, .. }
             | Statement::Block { position, .. }
             | Statement::Begin { position, .. }
-            | Statement::Raise { position, .. } => *position,
+            | Statement::Raise { position, .. }
+            | Statement::AttrReader { position, .. }
+            | Statement::AttrWriter { position, .. }
+            | Statement::AttrAccessor { position, .. } => *position,
         }
     }
 

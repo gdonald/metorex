@@ -47,6 +47,9 @@ pub enum TokenKind {
     Return,
     Lambda,
     Super,
+    AttrReader,
+    AttrWriter,
+    AttrAccessor,
 
     // Literals
     Int(i64),
@@ -137,6 +140,9 @@ impl fmt::Display for TokenKind {
             TokenKind::Return => write!(f, "return"),
             TokenKind::Lambda => write!(f, "lambda"),
             TokenKind::Super => write!(f, "super"),
+            TokenKind::AttrReader => write!(f, "attr_reader"),
+            TokenKind::AttrWriter => write!(f, "attr_writer"),
+            TokenKind::AttrAccessor => write!(f, "attr_accessor"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),
