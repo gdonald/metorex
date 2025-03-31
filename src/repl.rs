@@ -208,7 +208,7 @@ impl Repl {
     }
 
     /// Format an object for display
-    fn format_object(obj: &Object) -> String {
+    pub fn format_object(obj: &Object) -> String {
         match obj {
             Object::Nil => "nil".to_string(),
             Object::Bool(b) => b.to_string(),
@@ -288,58 +288,5 @@ impl Repl {
 impl Default for Repl {
     fn default() -> Self {
         Self::new().expect("Failed to initialize REPL")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_repl_creation() {
-        let result = Repl::new();
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_format_object_primitives() {
-        assert_eq!(Repl::format_object(&Object::Nil), "nil");
-        assert_eq!(Repl::format_object(&Object::Bool(true)), "true");
-        assert_eq!(Repl::format_object(&Object::Bool(false)), "false");
-        assert_eq!(Repl::format_object(&Object::Int(42)), "42");
-        assert_eq!(Repl::format_object(&Object::Float(3.14)), "3.14");
-        assert_eq!(
-            Repl::format_object(&Object::String(std::rc::Rc::new("hello".to_string()))),
-            "\"hello\""
-        );
-    }
-
-    #[test]
-    fn test_format_object_array() {
-        use std::cell::RefCell;
-        use std::rc::Rc;
-
-        let array = Object::Array(Rc::new(RefCell::new(vec![
-            Object::Int(1),
-            Object::Int(2),
-            Object::Int(3),
-        ])));
-        assert_eq!(Repl::format_object(&array), "[1, 2, 3]");
-    }
-
-    #[test]
-    fn test_format_object_range() {
-        let range_inclusive = Object::Range {
-            start: Box::new(Object::Int(1)),
-            end: Box::new(Object::Int(10)),
-            exclusive: false,
-        };
-        let range_exclusive = Object::Range {
-            start: Box::new(Object::Int(1)),
-            end: Box::new(Object::Int(10)),
-            exclusive: true,
-        };
-        assert_eq!(Repl::format_object(&range_inclusive), "1..10");
-        assert_eq!(Repl::format_object(&range_exclusive), "1...10");
     }
 }

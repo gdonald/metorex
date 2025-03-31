@@ -5,6 +5,8 @@ use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::repl::Repl;
 use metorex::vm::VirtualMachine;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Helper function to evaluate a single expression in a fresh VM
 fn eval_expr(source: &str) -> Result<Option<Object>, String> {
@@ -321,4 +323,43 @@ fn test_repl_super_keyword() {
         Some(Object::String(s)) if s.as_str() == "Some sound and woof" => (),
         other => panic!("Expected String(\"Some sound and woof\"), got {:?}", other),
     }
+}
+
+#[test]
+fn test_format_object_primitives() {
+    assert_eq!(Repl::format_object(&Object::Nil), "nil");
+    assert_eq!(Repl::format_object(&Object::Bool(true)), "true");
+    assert_eq!(Repl::format_object(&Object::Bool(false)), "false");
+    assert_eq!(Repl::format_object(&Object::Int(42)), "42");
+    assert_eq!(Repl::format_object(&Object::Float(3.14)), "3.14");
+    assert_eq!(
+        Repl::format_object(&Object::String(Rc::new("hello".to_string()))),
+        "\"hello\""
+    );
+}
+
+#[test]
+fn test_format_object_array() {
+    let array = Object::Array(Rc::new(RefCell::new(vec![
+        Object::Int(1),
+        Object::Int(2),
+        Object::Int(3),
+    ])));
+    assert_eq!(Repl::format_object(&array), "[1, 2, 3]");
+}
+
+#[test]
+fn test_format_object_range() {
+    let range_inclusive = Object::Range {
+        start: Box::new(Object::Int(1)),
+        end: Box::new(Object::Int(10)),
+        exclusive: false,
+    };
+    let range_exclusive = Object::Range {
+        start: Box::new(Object::Int(1)),
+        end: Box::new(Object::Int(10)),
+        exclusive: true,
+    };
+    assert_eq!(Repl::format_object(&range_inclusive), "1..10");
+    assert_eq!(Repl::format_object(&range_exclusive), "1...10");
 }
