@@ -115,12 +115,12 @@ This document tracks the implementation work needed to execute all example files
 - [x] 6.2.4 Add automatic getter/setter generation in VM
 
 ### 6.3 Special String Methods
-- [ ] 6.3.1 Implement `to_s` special method
-- [ ] 6.3.2 Implement `inspect` special method (alias for `to_s`)
-- [ ] 6.3.3 Implement automatic `to_s` calling in puts
-- [ ] 6.3.4 Use `examples/oop/special_methods.mx` in an actual test in examples_runner.rs
-- [ ] 6.3.5 Use `examples/oop/test_str.mx` in an actual test in examples_runner.rs
-- [ ] 6.3.6 Use `examples/oop/test_repr.mx` in an actual test in examples_runner.rs
+- [x] 6.3.1 Implement `to_s` special method
+- [x] 6.3.2 Implement `inspect` special method (alias for `to_s`)
+- [x] 6.3.3 Implement automatic `to_s` calling in puts
+- [x] 6.3.4 Use `examples/oop/special_methods.mx` in an actual test in examples_runner.rs
+- [x] 6.3.5 Use `examples/oop/test_str.mx` in an actual test in examples_runner.rs
+- [x] 6.3.6 Use `examples/oop/test_repr.mx` in an actual test in examples_runner.rs
 
 ### 6.4 Iterator Protocol
 - [ ] 6.4.1 Implement `each` special method for custom iterators

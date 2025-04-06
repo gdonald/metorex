@@ -344,3 +344,24 @@ fn test_oop_attr_accessor_execution() {
     let output = run_example("examples/oop/attr_accessor.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_test_str_execution() {
+    let expected = "Person: Alice\n";
+    let output = run_example("examples/oop/test_str.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_test_repr_execution() {
+    let expected = "Point(0, 0)\n";
+    let output = run_example("examples/oop/test_repr.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_special_methods_execution() {
+    let expected = "Book: Ruby Guide\nMagazine: Tech Monthly\nnext_value\n";
+    let output = run_example("examples/oop/special_methods.mx");
+    assert_eq!(output, expected);
+}
