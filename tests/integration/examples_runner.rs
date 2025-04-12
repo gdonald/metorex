@@ -365,3 +365,10 @@ fn test_oop_special_methods_execution() {
     let output = run_example("examples/oop/special_methods.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_test_iter_execution() {
+    let expected = "next\n";
+    let output = run_example("examples/oop/test_iter.mx");
+    assert_eq!(output, expected);
+}

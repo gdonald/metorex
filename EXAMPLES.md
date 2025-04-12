@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 41/90 examples executing (45.6%)
+**Current Status**: 42/90 examples executing (46.7%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -123,9 +123,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 6.3.6 Use `examples/oop/test_repr.mx` in an actual test in examples_runner.rs
 
 ### 6.4 Iterator Protocol
-- [ ] 6.4.1 Implement `each` special method for custom iterators
-- [ ] 6.4.2 Implement `next` method for iterators
-- [ ] 6.4.3 Use `examples/oop/test_iter.mx` in an actual test in examples_runner.rs
+- [x] 6.4.1 Implement `each` special method for custom iterators
+- [x] 6.4.2 Implement `next` method for iterators
+- [x] 6.4.3 Use `examples/oop/test_iter.mx` in an actual test in examples_runner.rs
 
 ### 6.5 Attribute Access Methods
 - [ ] 6.5.1 Implement `__getattr__` special method
