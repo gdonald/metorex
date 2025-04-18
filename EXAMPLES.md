@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 42/90 examples executing (46.7%)
+**Current Status**: 43/90 examples executing (47.8%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -128,9 +128,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 6.4.3 Use `examples/oop/test_iter.mx` in an actual test in examples_runner.rs
 
 ### 6.5 Attribute Access Methods
-- [ ] 6.5.1 Implement `__getattr__` special method
-- [ ] 6.5.2 Implement dynamic attribute lookup
-- [ ] 6.5.3 Use `examples/oop/test_getattr.mx` in an actual test in examples_runner.rs
+- [x] 6.5.1 Implement `method_missing` special method
+- [x] 6.5.2 Implement dynamic attribute lookup
+- [x] 6.5.3 Use `examples/oop/test_method_missing.mx` in an actual test in examples_runner.rs
 
 ---
 

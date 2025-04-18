@@ -372,3 +372,10 @@ fn test_oop_test_iter_execution() {
     let output = run_example("examples/oop/test_iter.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_test_method_missing_execution() {
+    let expected = "bar\n42\n1\n2\n3\n";
+    let output = run_example("examples/oop/test_method_missing.mx");
+    assert_eq!(output, expected);
+}

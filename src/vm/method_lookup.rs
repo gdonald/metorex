@@ -46,7 +46,22 @@ impl VirtualMachine {
                 {
                     Ok(result)
                 } else {
-                    Err(undefined_method_error(method_name, &receiver, position))
+                    // Try method_missing as a final fallback
+                    if let Some((method_missing_class, method_missing_method)) =
+                        self.lookup_method(&receiver, "method_missing")
+                    {
+                        // Call method_missing with the method name as a string argument
+                        let method_name_obj = Object::String(Rc::new(method_name.to_string()));
+                        self.invoke_method(
+                            method_missing_class,
+                            method_missing_method,
+                            receiver,
+                            vec![method_name_obj],
+                            position,
+                        )
+                    } else {
+                        Err(undefined_method_error(method_name, &receiver, position))
+                    }
                 }
             }
         }
