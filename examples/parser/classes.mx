@@ -275,7 +275,7 @@ class DataStore
   end
 
   def add_item(item)
-    @items.append(item)
+    @items.push(item)
   end
 
   def set_metadata(key, value)

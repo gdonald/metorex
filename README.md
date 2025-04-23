@@ -58,7 +58,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 | Element                 | Description                                                                                                                       |
 | :---------------------- | :-------------------------------------------------------------------------------------------------------------------------------- |
 | **Foundation Language** | **Rust** (for VM safety and speed)                                                                                                |
-| **Syntax Heritage**     | **Ruby** (block structure, optional parentheses), **Python** (readability, minimal syntax)                                        |
+| **Syntax Heritage**     | **Ruby** (block structure, optional parentheses)                                                                                  |
 | **Primary Paradigms**   | **Full Object-Oriented**, **Imperative**, **Functional** (with ADTs and immutable structures)                                     |
 | **Key Differentiator**  | **Code-as-Object (The Meta Core)**: The Abstract Syntax Tree (AST) is directly exposed as native, manipulable objects at runtime. |
 | **Typing**              | **Dynamic by default**, with **optional static typing** and gradual type inference                                                |
@@ -66,7 +66,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 
 ## Syntax Overview
 
-METOREX syntax prioritizes readability while minimizing keystrokes, combining elements from Ruby and Python.
+METOREX syntax prioritizes readability while minimizing keystrokes, combining elements from Ruby.
 
 ### Basic Syntax
 
@@ -239,7 +239,7 @@ See [LICENSE](LICENSE) for details.
 
 **For DSL Creators**: Build domain-specific languages naturally with first-class AST access.
 
-**For Scripters**: Ruby/Python-like syntax with powerful built-in libraries.
+**For Scripters**: Ruby-like syntax with powerful built-in libraries.
 
 **For Systems Programmers**: Rust-based VM with performance and safety guarantees.
 

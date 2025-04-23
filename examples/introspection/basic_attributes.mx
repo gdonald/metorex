@@ -6,7 +6,7 @@ def calculate(x, y)
   x + y
 end
 
-puts "greet.__name__ = #{method(:greet).name}"
-puts "calculate.__name__ = #{method(:calculate).name}"
-puts "greet.__doc__ = #{nil}"
-puts "calculate.__doc__ = #{nil}"
+puts "greet.name = #{method(:greet).name}"
+puts "calculate.name = #{method(:calculate).name}"
+puts "greet.doc = #{nil}"
+puts "calculate.doc = #{nil}"

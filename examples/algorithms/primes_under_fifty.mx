@@ -10,7 +10,7 @@ primes = []
     end
   end
   if is_prime
-    primes.append(candidate)
+    primes.push(candidate)
   end
 end
 

@@ -13,7 +13,7 @@ product.price
 # Method calls with single argument
 arr.push(1)
 string.concat("hello")
-list.append(item)
+list.push(item)
 
 # Method calls with multiple arguments
 calculator.add(1, 2)
@@ -63,7 +63,7 @@ api.fetch_data().parse()
 42.to_string()
 3.14.round()
 [1, 2, 3].length()
-{x: 1, y: 2}.keys()
+{x: 1, y: 2}.keys
 
 # Self references
 self

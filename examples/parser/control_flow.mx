@@ -216,7 +216,7 @@ for item in items
 end
 
 # For loop over dictionary keys
-for key in hash.keys()
+for key in hash.keys
   value = hash[key]
   process(key, value)
 end

@@ -220,7 +220,7 @@ match value
   case Integer -> value * 2
   case Float -> value.round()
   case Array -> value.length()
-  case Hash -> value.keys()
+  case Hash -> value.keys
   case _ -> nil
 end
 

@@ -2,7 +2,7 @@ text = "racecar"
 chars = []
 
 text.each_char do |char|
-  chars.append(char)
+  chars.push(char)
 end
 
 reversed_text = ""

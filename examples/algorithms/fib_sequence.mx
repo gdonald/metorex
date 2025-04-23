@@ -2,7 +2,7 @@ count = 8
 numbers = [0, 1]
 
 while numbers.length < count
-  numbers.append(numbers[-1] + numbers[-2])
+  numbers.push(numbers[-1] + numbers[-2])
 end
 
 puts numbers[0...count]
