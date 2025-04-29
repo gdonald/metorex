@@ -137,10 +137,10 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 7: Control Flow Enhancements
 
 ### 7.1 For Loops
-- [ ] 7.1.1 Implement `for var in collection` parsing
-- [ ] 7.1.2 Add for loop execution in VM
-- [ ] 7.1.3 Implement for loop with break/continue
-- [ ] 7.1.4 Use `examples/parser/control_flow.mx` in an actual test in examples_runner.rs (partial)
+- [x] 7.1.1 Implement `for var in collection` parsing
+- [x] 7.1.2 Add for loop execution in VM
+- [x] 7.1.3 Implement for loop with break/continue
+- [x] 7.1.4 Use for loop examples in actual tests in examples_runner.rs
 
 ### 7.2 elsif Support
 - [ ] 7.2.1 Implement `elsif` keyword parsing

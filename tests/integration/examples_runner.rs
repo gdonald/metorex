@@ -379,3 +379,31 @@ fn test_oop_test_method_missing_execution() {
     let output = run_example("examples/oop/test_method_missing.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_for_loop_array_execution() {
+    let expected = "1\n2\n3\n";
+    let output = run_example("examples/basics/for_loop_array.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_for_loop_range_execution() {
+    let expected = "1\n2\n3\n4\n5\n";
+    let output = run_example("examples/basics/for_loop_range.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_for_loop_break_execution() {
+    let expected = "1\n2\n3\n4\n";
+    let output = run_example("examples/basics/for_loop_break.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_for_loop_continue_execution() {
+    let expected = "1\n2\n4\n5\n";
+    let output = run_example("examples/basics/for_loop_continue.mx");
+    assert_eq!(output, expected);
+}

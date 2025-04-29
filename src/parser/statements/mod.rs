@@ -24,6 +24,7 @@ impl Parser {
             TokenKind::Def => self.parse_function_def(),
             TokenKind::If => self.parse_if_statement(),
             TokenKind::While => self.parse_while_statement(),
+            TokenKind::For => self.parse_for_statement(),
             TokenKind::Begin => self.parse_begin_statement(),
             TokenKind::Raise => self.parse_raise_statement(),
             TokenKind::Break => self.parse_break_statement(),

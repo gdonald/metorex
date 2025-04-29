@@ -79,10 +79,41 @@ impl VirtualMachine {
                 let arr = array_rc.borrow();
                 arr.clone()
             }
+            Object::Range {
+                start,
+                end,
+                exclusive,
+            } => {
+                // Convert range to array of integers
+                match (*start, *end) {
+                    (Object::Int(start_val), Object::Int(end_val)) => {
+                        let mut elements = Vec::new();
+                        let end_inclusive = if exclusive { end_val - 1 } else { end_val };
+
+                        if start_val <= end_inclusive {
+                            for i in start_val..=end_inclusive {
+                                elements.push(Object::Int(i));
+                            }
+                        } else {
+                            // Reverse range
+                            for i in (end_inclusive..=start_val).rev() {
+                                elements.push(Object::Int(i));
+                            }
+                        }
+                        elements
+                    }
+                    _ => {
+                        return Err(MetorexError::type_error(
+                            "Range bounds must be integers for iteration",
+                            position_to_location(position),
+                        ));
+                    }
+                }
+            }
             other => {
                 return Err(MetorexError::type_error(
                     format!(
-                        "Cannot iterate over type '{}', expected Array",
+                        "Cannot iterate over type '{}', expected Array or Range",
                         other.type_name()
                     ),
                     position_to_location(position),

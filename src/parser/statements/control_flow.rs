@@ -1,7 +1,7 @@
-// Control flow statement parsing (if, while)
+// Control flow statement parsing (if, while, for)
 
 use crate::ast::Statement;
-use crate::error::MetorexError;
+use crate::error::{MetorexError, SourceLocation};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
@@ -79,6 +79,62 @@ impl Parser {
 
         Ok(Statement::While {
             condition,
+            body,
+            position: start_pos,
+        })
+    }
+
+    /// Parse a for loop
+    pub(crate) fn parse_for_statement(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self.expect(TokenKind::For, "Expected 'for'")?.position;
+        self.skip_whitespace();
+
+        // Parse the loop variable
+        let variable = if let TokenKind::Ident(name) = &self.peek().kind {
+            let var_name = name.clone();
+            self.advance();
+            var_name
+        } else {
+            return Err(MetorexError::syntax_error(
+                "Expected identifier after 'for'",
+                SourceLocation::new(
+                    self.peek().position.line,
+                    self.peek().position.column,
+                    self.peek().position.offset,
+                ),
+            ));
+        };
+
+        self.skip_whitespace();
+
+        // Expect 'in' keyword
+        self.expect(TokenKind::In, "Expected 'in' after loop variable")?;
+        self.skip_whitespace();
+
+        // Parse the iterable expression
+        let iterable = self.parse_expression()?;
+        self.skip_whitespace();
+
+        // Optionally consume 'do'
+        self.match_token(&[TokenKind::Do]);
+        self.skip_whitespace();
+
+        // Parse loop body
+        let mut body = Vec::new();
+        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::End]) {
+                break;
+            }
+            body.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        self.expect(TokenKind::End, "Expected 'end' after for loop")?;
+
+        Ok(Statement::For {
+            variable,
+            iterable,
             body,
             position: start_pos,
         })
