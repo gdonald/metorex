@@ -24,6 +24,7 @@ fn test_if_statement_simple() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     };
@@ -46,6 +47,7 @@ fn test_if_statement_with_else() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: Some(vec![Statement::Expression {
             expression: Expression::IntLiteral {
                 value: 2,
@@ -81,6 +83,7 @@ fn test_if_statement_with_comparison() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     };
@@ -101,6 +104,7 @@ fn test_nested_if_statements() {
             },
             position: pos(3, 5),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(2, 3),
     };
@@ -111,6 +115,7 @@ fn test_nested_if_statements() {
             position: pos(1, 4),
         },
         then_branch: vec![inner_if],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     };
@@ -628,6 +633,7 @@ fn test_for_loop_with_break() {
                 then_branch: vec![Statement::Break {
                     position: pos(3, 5),
                 }],
+                elsif_branches: vec![],
                 else_branch: None,
                 position: pos(2, 3),
             },
@@ -747,6 +753,7 @@ fn test_nested_control_flow() {
             position: pos(1, 4),
         },
         then_branch: vec![for_stmt],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     };

@@ -317,6 +317,7 @@ impl Resolver {
             Statement::If {
                 condition,
                 then_branch,
+                elsif_branches,
                 else_branch,
                 ..
             } => {
@@ -327,6 +328,15 @@ impl Resolver {
                     self.resolve_statement(stmt);
                 }
                 self.pop_scope();
+
+                for elsif in elsif_branches {
+                    self.resolve_expression(&elsif.condition);
+                    self.push_scope();
+                    for stmt in &elsif.body {
+                        self.resolve_statement(stmt);
+                    }
+                    self.pop_scope();
+                }
 
                 if let Some(else_body) = else_branch {
                     self.push_scope();

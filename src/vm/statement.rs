@@ -67,9 +67,10 @@ impl VirtualMachine {
             Statement::If {
                 condition,
                 then_branch,
+                elsif_branches,
                 else_branch,
                 position: _,
-            } => self.execute_if(condition, then_branch, else_branch),
+            } => self.execute_if(condition, then_branch, elsif_branches, else_branch),
             Statement::While {
                 condition,
                 body,

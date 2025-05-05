@@ -182,6 +182,7 @@ fn test_while_loop_with_break() {
                     then_branch: vec![Statement::Break {
                         position: pos(4, 5),
                     }],
+                    elsif_branches: vec![],
                     else_branch: None,
                     position: pos(3, 3),
                 },
@@ -299,6 +300,7 @@ fn test_while_loop_with_continue() {
                     then_branch: vec![Statement::Continue {
                         position: pos(6, 5),
                     }],
+                    elsif_branches: vec![],
                     else_branch: None,
                     position: pos(5, 3),
                 },

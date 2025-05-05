@@ -32,6 +32,7 @@ fn test_if_with_true_condition() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     }];
@@ -74,6 +75,7 @@ fn test_if_with_false_condition() {
                 },
                 position: pos(3, 3),
             }],
+            elsif_branches: vec![],
             else_branch: None,
             position: pos(2, 1),
         },
@@ -105,6 +107,7 @@ fn test_if_else_with_true_condition() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: Some(vec![Statement::Assignment {
             target: Expression::Identifier {
                 name: "result".to_string(),
@@ -145,6 +148,7 @@ fn test_if_else_with_false_condition() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: Some(vec![Statement::Assignment {
             target: Expression::Identifier {
                 name: "result".to_string(),
@@ -205,6 +209,7 @@ fn test_if_with_comparison_condition() {
                 },
                 position: pos(3, 3),
             }],
+            elsif_branches: vec![],
             else_branch: None,
             position: pos(2, 1),
         },
@@ -269,9 +274,11 @@ fn test_nested_if_statements() {
                     },
                     position: pos(4, 5),
                 }],
+                elsif_branches: vec![],
                 else_branch: None,
                 position: pos(3, 3),
             }],
+            elsif_branches: vec![],
             else_branch: None,
             position: pos(2, 1),
         },
@@ -304,6 +311,7 @@ fn test_if_truthiness_values() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     }];
@@ -333,6 +341,7 @@ fn test_if_nil_is_falsy() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: Some(vec![Statement::Assignment {
             target: Expression::Identifier {
                 name: "result".to_string(),

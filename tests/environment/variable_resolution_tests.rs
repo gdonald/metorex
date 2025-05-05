@@ -243,6 +243,7 @@ fn test_if_statement_scope() {
             },
             position: Position::default(),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: Position::default(),
     };

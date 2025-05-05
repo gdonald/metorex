@@ -553,6 +553,7 @@ fn test_class_method_with_conditional() {
                     }),
                     position: pos(4, 7),
                 }],
+                elsif_branches: vec![],
                 else_branch: Some(vec![Statement::Return {
                     value: Some(Expression::BoolLiteral {
                         value: false,

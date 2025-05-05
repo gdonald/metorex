@@ -3,6 +3,6 @@
 pub mod node;
 
 pub use node::{
-    BinaryOp, Expression, InterpolationPart, MatchCase, MatchPattern, Parameter, RescueClause,
-    Statement, UnaryOp,
+    BinaryOp, ElsifBranch, Expression, InterpolationPart, MatchCase, MatchPattern, Parameter,
+    RescueClause, Statement, UnaryOp,
 };

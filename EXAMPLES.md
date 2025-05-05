@@ -143,9 +143,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 7.1.4 Use for loop examples in actual tests in examples_runner.rs
 
 ### 7.2 elsif Support
-- [ ] 7.2.1 Implement `elsif` keyword parsing
-- [ ] 7.2.2 Add elsif branching in VM
-- [ ] 7.2.3 Enable multi-branch conditionals
+- [x] 7.2.1 Implement `elsif` keyword parsing
+- [x] 7.2.2 Add elsif branching in VM
+- [x] 7.2.3 Enable multi-branch conditionals
 
 ### 7.3 unless Support
 - [ ] 7.3.1 Implement `unless` keyword parsing

@@ -219,6 +219,14 @@ pub struct RescueClause {
     pub position: Position,
 }
 
+/// An elsif branch in an if statement
+#[derive(Debug, Clone, PartialEq)]
+pub struct ElsifBranch {
+    pub condition: Expression,
+    pub body: Vec<Statement>,
+    pub position: Position,
+}
+
 /// Function parameter definition
 #[derive(Debug, Clone, PartialEq)]
 pub struct Parameter {
@@ -346,6 +354,7 @@ pub enum Statement {
     If {
         condition: Expression,
         then_branch: Vec<Statement>,
+        elsif_branches: Vec<ElsifBranch>,
         else_branch: Option<Vec<Statement>>,
         position: Position,
     },

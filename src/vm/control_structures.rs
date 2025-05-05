@@ -5,27 +5,39 @@ use super::ControlFlow;
 use super::core::VirtualMachine;
 use super::utils::*;
 
-use crate::ast::{Expression, Statement};
+use crate::ast::{ElsifBranch, Expression, Statement};
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
 
 impl VirtualMachine {
-    /// Execute an if/else statement.
+    /// Execute an if/elsif/else statement.
     pub(crate) fn execute_if(
         &mut self,
         condition: &Expression,
         then_branch: &[Statement],
+        elsif_branches: &[ElsifBranch],
         else_branch: &Option<Vec<Statement>>,
     ) -> Result<ControlFlow, MetorexError> {
         let condition_value = self.evaluate_expression(condition)?;
 
         if is_truthy(&condition_value) {
             self.execute_statements_internal(then_branch)
-        } else if let Some(else_stmts) = else_branch {
-            self.execute_statements_internal(else_stmts)
         } else {
-            Ok(ControlFlow::Next)
+            // Try each elsif branch
+            for elsif in elsif_branches {
+                let elsif_condition_value = self.evaluate_expression(&elsif.condition)?;
+                if is_truthy(&elsif_condition_value) {
+                    return self.execute_statements_internal(&elsif.body);
+                }
+            }
+
+            // If no elsif matched, try else branch
+            if let Some(else_stmts) = else_branch {
+                self.execute_statements_internal(else_stmts)
+            } else {
+                Ok(ControlFlow::Next)
+            }
         }
     }
 

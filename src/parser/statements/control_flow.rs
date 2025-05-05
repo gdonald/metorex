@@ -1,6 +1,6 @@
 // Control flow statement parsing (if, while, for)
 
-use crate::ast::Statement;
+use crate::ast::{ElsifBranch, Statement};
 use crate::error::{MetorexError, SourceLocation};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -16,13 +16,42 @@ impl Parser {
 
         // Parse then branch
         let mut then_branch = Vec::new();
-        while !self.check(&[TokenKind::Else, TokenKind::End]) && !self.is_at_end() {
+        while !self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End]) && !self.is_at_end()
+        {
             self.skip_whitespace();
-            if self.check(&[TokenKind::Else, TokenKind::End]) {
+            if self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End]) {
                 break;
             }
             then_branch.push(self.parse_statement()?);
             self.skip_whitespace();
+        }
+
+        // Parse optional elsif branches
+        let mut elsif_branches = Vec::new();
+        while self.match_token(&[TokenKind::Elsif]) {
+            let elsif_pos = self.previous().position;
+            self.skip_whitespace();
+
+            let elsif_condition = self.parse_expression()?;
+            self.skip_whitespace();
+
+            let mut elsif_body = Vec::new();
+            while !self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End])
+                && !self.is_at_end()
+            {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End]) {
+                    break;
+                }
+                elsif_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+
+            elsif_branches.push(ElsifBranch {
+                condition: elsif_condition,
+                body: elsif_body,
+                position: elsif_pos,
+            });
         }
 
         // Parse optional else branch
@@ -47,6 +76,7 @@ impl Parser {
         Ok(Statement::If {
             condition,
             then_branch,
+            elsif_branches,
             else_branch,
             position: start_pos,
         })

@@ -99,6 +99,7 @@ fn test_if_statement_no_else() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: None,
         position: pos(1, 1),
     };
@@ -121,6 +122,7 @@ fn test_if_statement_with_else() {
             },
             position: pos(2, 3),
         }],
+        elsif_branches: vec![],
         else_branch: Some(vec![Statement::Expression {
             expression: Expression::IntLiteral {
                 value: 2,

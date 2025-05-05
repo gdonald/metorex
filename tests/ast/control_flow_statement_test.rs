@@ -86,6 +86,7 @@ fn test_while_with_continue() {
                 then_branch: vec![Statement::Continue {
                     position: pos(3, 5),
                 }],
+                elsif_branches: vec![],
                 else_branch: None,
                 position: pos(2, 3),
             },

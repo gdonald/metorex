@@ -220,6 +220,7 @@ impl<'a> Lexer<'a> {
             "def" => TokenKind::Def,
             "class" => TokenKind::Class,
             "if" => TokenKind::If,
+            "elsif" => TokenKind::Elsif,
             "else" => TokenKind::Else,
             "while" => TokenKind::While,
             "for" => TokenKind::For,

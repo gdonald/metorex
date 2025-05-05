@@ -407,3 +407,24 @@ fn test_basics_for_loop_continue_execution() {
     let output = run_example("examples/basics/for_loop_continue.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_elsif_basic_execution() {
+    let expected = "small positive\n";
+    let output = run_example("examples/basics/elsif_basic.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_elsif_without_else_execution() {
+    let expected = "C\n";
+    let output = run_example("examples/basics/elsif_without_else.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_elsif_no_parens_execution() {
+    let expected = "warm\n";
+    let output = run_example("examples/basics/elsif_no_parens.mx");
+    assert_eq!(output, expected);
+}

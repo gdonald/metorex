@@ -401,6 +401,7 @@ fn test_function_with_conditional_body() {
                 }),
                 position: pos(3, 5),
             }],
+            elsif_branches: vec![],
             else_branch: Some(vec![Statement::Return {
                 value: Some(Expression::Identifier {
                     name: "b".to_string(),
