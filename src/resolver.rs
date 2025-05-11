@@ -347,6 +347,29 @@ impl Resolver {
                 }
             }
 
+            Statement::Unless {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.resolve_expression(condition);
+
+                self.push_scope();
+                for stmt in then_branch {
+                    self.resolve_statement(stmt);
+                }
+                self.pop_scope();
+
+                if let Some(else_body) = else_branch {
+                    self.push_scope();
+                    for stmt in else_body {
+                        self.resolve_statement(stmt);
+                    }
+                    self.pop_scope();
+                }
+            }
+
             Statement::While {
                 condition, body, ..
             } => {

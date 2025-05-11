@@ -222,6 +222,7 @@ impl<'a> Lexer<'a> {
             "if" => TokenKind::If,
             "elsif" => TokenKind::Elsif,
             "else" => TokenKind::Else,
+            "unless" => TokenKind::Unless,
             "while" => TokenKind::While,
             "for" => TokenKind::For,
             "in" => TokenKind::In,

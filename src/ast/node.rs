@@ -359,6 +359,14 @@ pub enum Statement {
         position: Position,
     },
 
+    // Unless statement (inverted if)
+    Unless {
+        condition: Expression,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
+        position: Position,
+    },
+
     // While loop
     While {
         condition: Expression,
@@ -535,6 +543,7 @@ impl Statement {
             | Statement::MethodDef { position, .. }
             | Statement::ClassDef { position, .. }
             | Statement::If { position, .. }
+            | Statement::Unless { position, .. }
             | Statement::While { position, .. }
             | Statement::For { position, .. }
             | Statement::Match { position, .. }

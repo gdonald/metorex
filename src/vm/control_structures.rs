@@ -41,6 +41,24 @@ impl VirtualMachine {
         }
     }
 
+    /// Execute an unless statement (inverted if).
+    pub(crate) fn execute_unless(
+        &mut self,
+        condition: &Expression,
+        then_branch: &[Statement],
+        else_branch: &Option<Vec<Statement>>,
+    ) -> Result<ControlFlow, MetorexError> {
+        let condition_value = self.evaluate_expression(condition)?;
+
+        if !is_truthy(&condition_value) {
+            self.execute_statements_internal(then_branch)
+        } else if let Some(else_stmts) = else_branch {
+            self.execute_statements_internal(else_stmts)
+        } else {
+            Ok(ControlFlow::Next)
+        }
+    }
+
     /// Execute a while loop.
     pub(crate) fn execute_while(
         &mut self,

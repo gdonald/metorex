@@ -148,8 +148,8 @@ This document tracks the implementation work needed to execute all example files
 - [x] 7.2.3 Enable multi-branch conditionals
 
 ### 7.3 unless Support
-- [ ] 7.3.1 Implement `unless` keyword parsing
-- [ ] 7.3.2 Add unless evaluation in VM
+- [x] 7.3.1 Implement `unless` keyword parsing
+- [x] 7.3.2 Add unless evaluation in VM
 
 ---
 

@@ -184,6 +184,54 @@ impl Parser {
         Ok(Statement::Continue { position: pos })
     }
 
+    /// Parse an unless statement
+    pub(crate) fn parse_unless_statement(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self
+            .expect(TokenKind::Unless, "Expected 'unless'")?
+            .position;
+        self.skip_whitespace();
+
+        let condition = self.parse_expression()?;
+        self.skip_whitespace();
+
+        // Parse then branch
+        let mut then_branch = Vec::new();
+        while !self.check(&[TokenKind::Else, TokenKind::End]) && !self.is_at_end() {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::Else, TokenKind::End]) {
+                break;
+            }
+            then_branch.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        // Parse optional else branch
+        let else_branch = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            let mut else_stmts = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                else_stmts.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(else_stmts)
+        } else {
+            None
+        };
+
+        self.expect(TokenKind::End, "Expected 'end' after unless statement")?;
+
+        Ok(Statement::Unless {
+            condition,
+            then_branch,
+            else_branch,
+            position: start_pos,
+        })
+    }
+
     /// Parse a return statement
     pub(crate) fn parse_return_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self

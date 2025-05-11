@@ -71,6 +71,12 @@ impl VirtualMachine {
                 else_branch,
                 position: _,
             } => self.execute_if(condition, then_branch, elsif_branches, else_branch),
+            Statement::Unless {
+                condition,
+                then_branch,
+                else_branch,
+                position: _,
+            } => self.execute_unless(condition, then_branch, else_branch),
             Statement::While {
                 condition,
                 body,
