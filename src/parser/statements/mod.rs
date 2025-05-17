@@ -26,6 +26,7 @@ impl Parser {
             TokenKind::Unless => self.parse_unless_statement(),
             TokenKind::While => self.parse_while_statement(),
             TokenKind::For => self.parse_for_statement(),
+            TokenKind::Case => self.parse_case_statement(),
             TokenKind::Begin => self.parse_begin_statement(),
             TokenKind::Raise => self.parse_raise_statement(),
             TokenKind::Break => self.parse_break_statement(),

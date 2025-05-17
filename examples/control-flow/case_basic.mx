@@ -1,0 +1,13 @@
+# Basic case statement with integer matching
+x = 2
+
+case x
+  when 0
+    puts "zero"
+  when 1
+    puts "one"
+  when 2
+    puts "two"
+  else
+    puts "other"
+  end

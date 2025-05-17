@@ -1,6 +1,6 @@
-// Control flow statement parsing (if, while, for)
+// Control flow statement parsing (if, while, for, case)
 
-use crate::ast::{ElsifBranch, Statement};
+use crate::ast::{ElsifBranch, MatchCase, MatchPattern, Statement};
 use crate::error::{MetorexError, SourceLocation};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -252,5 +252,151 @@ impl Parser {
             value,
             position: pos,
         })
+    }
+
+    /// Parse a case statement (Ruby-style case/when)
+    /// Syntax:
+    ///   case expression
+    ///   when pattern1
+    ///     body1
+    ///   when pattern2
+    ///     body2
+    ///   else
+    ///     else_body
+    ///   end
+    pub(crate) fn parse_case_statement(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self.expect(TokenKind::Case, "Expected 'case'")?.position;
+        self.skip_whitespace();
+
+        // Parse the expression to match against
+        let expression = self.parse_expression()?;
+        self.skip_whitespace();
+
+        // Parse when clauses
+        let mut cases = Vec::new();
+        loop {
+            self.skip_whitespace(); // Skip whitespace before checking for when
+            if !self.match_token(&[TokenKind::When]) {
+                break;
+            }
+            let when_pos = self.previous().position;
+            self.skip_whitespace();
+
+            // Parse the pattern (for basic case statements, this is just a literal)
+            let pattern = self.parse_case_pattern()?;
+            self.skip_whitespace();
+
+            // Parse the body
+            let mut body = Vec::new();
+            while !self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End])
+                && !self.is_at_end()
+            {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End]) {
+                    break;
+                }
+                body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+
+            cases.push(MatchCase {
+                pattern,
+                guard: None,
+                body,
+                position: when_pos,
+            });
+        }
+
+        // Parse optional else clause (as a wildcard pattern)
+        self.skip_whitespace(); // Skip whitespace before checking for else
+        if self.match_token(&[TokenKind::Else]) {
+            let else_pos = self.previous().position;
+            self.skip_whitespace();
+
+            let mut else_body = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                else_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+
+            // Add an else clause as a wildcard case
+            cases.push(MatchCase {
+                pattern: MatchPattern::Wildcard,
+                guard: None,
+                body: else_body,
+                position: else_pos,
+            });
+        }
+
+        self.skip_whitespace(); // Skip whitespace before end
+        self.expect(TokenKind::End, "Expected 'end' after case statement")?;
+
+        Ok(Statement::Match {
+            expression,
+            cases,
+            position: start_pos,
+        })
+    }
+
+    /// Parse a pattern for a case statement
+    /// For basic case statements, we support:
+    /// - Literal patterns (integers, strings, booleans, nil)
+    /// - Wildcard pattern (_)
+    fn parse_case_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
+        let token = self.peek().clone();
+
+        match &token.kind {
+            // Literal patterns
+            TokenKind::Int(n) => {
+                let value = *n;
+                self.advance();
+                Ok(MatchPattern::IntLiteral(value))
+            }
+            TokenKind::Float(f) => {
+                let value = *f;
+                self.advance();
+                Ok(MatchPattern::FloatLiteral(value))
+            }
+            TokenKind::String(s) => {
+                let value = s.clone();
+                self.advance();
+                Ok(MatchPattern::StringLiteral(value))
+            }
+            TokenKind::True => {
+                self.advance();
+                Ok(MatchPattern::BoolLiteral(true))
+            }
+            TokenKind::False => {
+                self.advance();
+                Ok(MatchPattern::BoolLiteral(false))
+            }
+            TokenKind::Nil => {
+                self.advance();
+                Ok(MatchPattern::NilLiteral)
+            }
+            // Wildcard pattern
+            TokenKind::Ident(name) if name == "_" => {
+                self.advance();
+                Ok(MatchPattern::Wildcard)
+            }
+            // Variable binding pattern (for future use)
+            TokenKind::Ident(name) => {
+                let var_name = name.clone();
+                self.advance();
+                Ok(MatchPattern::Identifier(var_name))
+            }
+            _ => Err(MetorexError::syntax_error(
+                format!("Expected pattern, found {:?}", token.kind),
+                SourceLocation::new(
+                    token.position.line,
+                    token.position.column,
+                    token.position.offset,
+                ),
+            )),
+        }
     }
 }

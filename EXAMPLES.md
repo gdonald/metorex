@@ -155,14 +155,14 @@ This document tracks the implementation work needed to execute all example files
 
 ## Phase 8: Pattern Matching
 
-### 8.1 Basic Match Statements
-- [ ] 8.1.1 Implement `match/when` statement parsing
-- [ ] 8.1.2 Add literal pattern matching in VM
-- [ ] 8.1.3 Implement wildcard pattern (`_`)
+### 8.1 Basic Case Statements
+- [x] 8.1.1 Implement `case/when` statement parsing
+- [x] 8.1.2 Add literal pattern matching in VM
+- [x] 8.1.3 Implement wildcard pattern (`_`)
 - [ ] 8.1.4 Use `examples/parser/pattern_matching.mx` in an actual test in examples_runner.rs (partial)
 
 ### 8.2 Advanced Patterns
-- [ ] 8.2.1 Implement guard clauses (`when x if condition`)
+- [ ] 8.2.1 Implement guard clauses (`in x if condition`)
 - [ ] 8.2.2 Add variable binding in patterns
 - [ ] 8.2.3 Implement array destructuring patterns
 - [ ] 8.2.4 Implement hash destructuring patterns

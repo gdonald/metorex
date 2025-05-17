@@ -1,3 +1,5 @@
+mod case_execution_tests;
+mod case_parsing_tests;
 mod complex_flow_execution_tests;
 mod control_flow_tests;
 mod elsif_execution_tests;

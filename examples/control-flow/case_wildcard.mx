@@ -1,0 +1,11 @@
+# Case statement with wildcard pattern
+value = 42
+
+case value
+  when 1
+    puts "one"
+  when 2
+    puts "two"
+  when _
+    puts "many"
+  end

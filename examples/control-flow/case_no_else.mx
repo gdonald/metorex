@@ -1,0 +1,11 @@
+# Case statement without else clause
+x = 1
+
+case x
+  when 0
+    puts "zero"
+  when 1
+    puts "one"
+  when 2
+    puts "two"
+  end
