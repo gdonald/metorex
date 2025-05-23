@@ -428,3 +428,10 @@ fn test_basics_elsif_no_parens_execution() {
     let output = run_example("examples/basics/elsif_no_parens.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_parser_pattern_matching_execution() {
+    let expected = "two\nstopping\nother number\none point zero\nfive\n";
+    let output = run_example("examples/parser/pattern_matching.mx");
+    assert_eq!(output, expected);
+}

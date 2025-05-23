@@ -159,7 +159,7 @@ This document tracks the implementation work needed to execute all example files
 - [x] 8.1.1 Implement `case/when` statement parsing
 - [x] 8.1.2 Add literal pattern matching in VM
 - [x] 8.1.3 Implement wildcard pattern (`_`)
-- [ ] 8.1.4 Use `examples/parser/pattern_matching.mx` in an actual test in examples_runner.rs (partial)
+- [x] 8.1.4 Use `examples/parser/pattern_matching.mx` in an actual test in examples_runner.rs
 
 ### 8.2 Advanced Patterns
 - [ ] 8.2.1 Implement guard clauses (`in x if condition`)
