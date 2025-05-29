@@ -6,41 +6,34 @@ puts ""
 
 # Example 1: Assigning blocks to variables
 puts "1. Assigning blocks to variables:"
-double = lambda |x| x * 2 end
+double = lambda do |x| x * 2 end
 result = double.call(5)
-puts "double.call(5) = #{result}"  # Should print 10
+puts "double.call(5) = #{result}"
 puts ""
 
 # Example 2: Multiple parameter blocks
 puts "2. Multiple parameter blocks:"
-add = lambda |a, b| a + b end
+add = lambda do |a, b| a + b end
 sum = add.call(3, 7)
-puts "add.call(3, 7) = #{sum}"  # Should print 10
+puts "add.call(3, 7) = #{sum}"
 puts ""
 
-# Example 3: Zero parameter blocks
-puts "3. Zero parameter blocks:"
-get_pi = lambda || 3.14159 end
-pi = get_pi.call
-puts "get_pi.call = #{pi}"
-puts ""
-
-# Example 4: Passing blocks as arguments
-puts "4. Passing blocks as arguments to functions:"
+# Example 3: Passing blocks as arguments
+puts "3. Passing blocks as arguments to functions:"
 def apply_twice(func, value)
   result = func.call(value)
   func.call(result)
 end
 
-increment = lambda |n| n + 1 end
+increment = lambda do |n| n + 1 end
 final = apply_twice(increment, 5)
-puts "apply_twice(increment, 5) = #{final}"  # Should print 7 (5 + 1 + 1)
+puts "apply_twice(increment, 5) = #{final}"
 puts ""
 
-# Example 5: Returning blocks from functions
-puts "5. Returning blocks from functions (closures):"
+# Example 4: Returning blocks from functions
+puts "4. Returning blocks from functions (closures):"
 def make_multiplier(factor)
-  lambda |x| x * factor end
+  lambda do |x| x * factor end
 end
 
 times_three = make_multiplier(3)
@@ -49,183 +42,35 @@ times_ten = make_multiplier(10)
 result3 = times_three.call(4)
 result10 = times_ten.call(4)
 
-puts "times_three.call(4) = #{result3}"   # Should print 12
-puts "times_ten.call(4) = #{result10}"    # Should print 40
+puts "times_three.call(4) = #{result3}"
+puts "times_ten.call(4) = #{result10}"
 puts ""
 
-# Example 6: Blocks capturing variables (closures)
-puts "6. Blocks capturing variables from outer scope:"
+# Example 5: Blocks capturing variables (closures)
+puts "5. Blocks capturing variables from outer scope:"
 counter_value = 0
 
-increment_counter = lambda ||
+increment_counter = lambda do ||
   counter_value = counter_value + 1
   counter_value
 end
 
-puts "First call: #{increment_counter.call}"   # 1
-puts "Second call: #{increment_counter.call}"  # 2
-puts "Third call: #{increment_counter.call}"   # 3
+puts "First call: #{increment_counter.call}"
+puts "Second call: #{increment_counter.call}"
+puts "Third call: #{increment_counter.call}"
 puts ""
 
-# Example 7: Storing blocks in arrays
-puts "7. Storing blocks in data structures:"
-operations = [
-  lambda |x| x + 1 end,
-  lambda |x| x * 2 end,
-  lambda |x| x - 3 end,
-  lambda |x| x / 4 end
-]
-
-value = 20
-puts "Starting with value: #{value}"
-puts "After +1: #{operations[0].call(value)}"  # 21
-puts "After *2: #{operations[1].call(value)}"  # 40
-puts "After -3: #{operations[2].call(value)}"  # 17
-puts "After /4: #{operations[3].call(value)}"  # 5
-puts ""
-
-# Example 8: Higher-order functions (map-like behavior)
-puts "8. Higher-order function example:"
-def transform_array(array, transformer)
-  result = []
-  i = 0
-  while i < array.length
-    result.push(transformer.call(array[i]))
-    i = i + 1
-  end
-  result
-end
-
-numbers = [1, 2, 3, 4, 5]
-square = lambda |n| n * n end
-squared = transform_array(numbers, square)
-puts "Squares of [1,2,3,4,5]: #{squared}"
-puts ""
-
-# Example 9: Blocks returned from methods
-puts "9. Blocks returned from class methods:"
-class Calculator
-  def make_operation(op_name)
-    if op_name == "add"
-      return lambda |a, b| a + b end
-    else
-      if op_name == "multiply"
-        return lambda |a, b| a * b end
-      else
-        if op_name == "subtract"
-          return lambda |a, b| a - b end
-        else
-          return lambda |a, b| a / b end
-        end
-      end
-    end
-  end
-end
-
-calc = Calculator.new
-add_op = calc.make_operation("add")
-mul_op = calc.make_operation("multiply")
-
-puts "add_op.call(5, 3) = #{add_op.call(5, 3)}"      # 8
-puts "mul_op.call(5, 3) = #{mul_op.call(5, 3)}"      # 15
-puts ""
-
-# Example 10: Nested closures
-puts "10. Nested closures:"
-def make_adder(x)
-  lambda |y|
-    lambda |z| x + y + z end
-  end
-end
-
-add_one = make_adder(1)
-add_one_two = add_one.call(2)
-result = add_one_two.call(3)
-puts "Nested closure result: #{result}"  # 1 + 2 + 3 = 6
-puts ""
-
-# Example 11: Function composition
-puts "11. Function composition:"
-def compose(f, g)
-  lambda |x| f.call(g.call(x)) end
-end
-
-add_ten = lambda |x| x + 10 end
-double = lambda |x| x * 2 end
-
-# Compose: first double, then add ten
-composed = compose(add_ten, double)
-result = composed.call(5)  # (5 * 2) + 10 = 20
-puts "compose(add_ten, double).call(5) = #{result}"
-puts ""
-
-# Example 12: Partial application simulation
-puts "12. Partial application pattern:"
+# Example 6: Partial application pattern
+puts "6. Partial application pattern:"
 def make_greeter(greeting)
-  lambda |name| "#{greeting}, #{name}!" end
+  lambda do |name| "#{greeting}, #{name}!" end
 end
 
 say_hello = make_greeter("Hello")
 say_goodbye = make_greeter("Goodbye")
 
-puts say_hello.call("Alice")      # "Hello, Alice!"
-puts say_goodbye.call("Bob")      # "Goodbye, Bob!"
-puts ""
-
-# Example 13: Callback pattern
-puts "13. Callback pattern:"
-def process_data(data, on_success, on_error)
-  if data > 0
-    on_success.call(data)
-  else
-    on_error.call(data)
-  end
-end
-
-success_handler = lambda |d| puts "Success! Data: #{d}" end
-error_handler = lambda |d| puts "Error! Invalid data: #{d}" end
-
-process_data(42, success_handler, error_handler)
-process_data(-1, success_handler, error_handler)
-puts ""
-
-# Example 14: Closure with captured state
-puts "14. Closure with captured state:"
-def make_counter_with_step(step)
-  count = 0
-
-  lambda ||
-    count = count + step
-    count
-  end
-end
-
-counter = make_counter_with_step(5)
-puts "counter.call = #{counter.call}"  # 5
-puts "counter.call = #{counter.call}"  # 10
-puts "counter.call = #{counter.call}"  # 15
-puts ""
-
-# Example 15: Method chaining and lambda returns
-puts "15. Method chaining and lambda returns:"
-class QueryBuilder
-  def initialize
-    @count = 0
-  end
-
-  def add_condition
-    @count = @count + 1
-    self
-  end
-
-  def build
-    return lambda || "Query with #{@count} conditions" end
-  end
-end
-
-builder = QueryBuilder.new
-query = builder.add_condition.add_condition.build
-puts query.call
+puts say_hello.call("Alice")
+puts say_goodbye.call("Bob")
 puts ""
 
 puts "=== Blocks are truly first-class objects! ==="

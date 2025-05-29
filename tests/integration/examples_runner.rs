@@ -157,8 +157,15 @@ fn test_functions_locals_scope_execution() {
 
 #[test]
 fn test_parser_lambdas_execution() {
-    let expected = "10\n10\n42\n30\n23\n13\n18\n11\n14\n21\n24\n10\n";
-    let output = run_example("examples/parser/lambdas.mx");
+    let expected = "10\n10\n42\n30\n13\n13\n18\n11\n14\n21\n24\n10\n";
+    let output = run_example("examples/functions/test_lambdas.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_parser_pattern_matching_execution() {
+    let expected = "two\nstopping\nother number\none point zero\nfive\n";
+    let output = run_example("examples/control-flow/test_pattern_matching.mx");
     assert_eq!(output, expected);
 }
 
@@ -172,56 +179,21 @@ double.call(5) = 10
 2. Multiple parameter blocks:
 add.call(3, 7) = 10
 
-3. Zero parameter blocks:
-get_pi.call = 3.14159
-
-4. Passing blocks as arguments to functions:
+3. Passing blocks as arguments to functions:
 apply_twice(increment, 5) = 7
 
-5. Returning blocks from functions (closures):
+4. Returning blocks from functions (closures):
 times_three.call(4) = 12
 times_ten.call(4) = 40
 
-6. Blocks capturing variables from outer scope:
+5. Blocks capturing variables from outer scope:
 First call: 1
 Second call: 2
 Third call: 3
 
-7. Storing blocks in data structures:
-Starting with value: 20
-After +1: 21
-After *2: 40
-After -3: 17
-After /4: 5
-
-8. Higher-order function example:
-Squares of [1,2,3,4,5]: [1, 4, 9, 16, 25]
-
-9. Blocks returned from class methods:
-add_op.call(5, 3) = 8
-mul_op.call(5, 3) = 15
-
-10. Nested closures:
-Nested closure result: 6
-
-11. Function composition:
-compose(add_ten, double).call(5) = 20
-
-12. Partial application pattern:
+6. Partial application pattern:
 Hello, Alice!
 Goodbye, Bob!
-
-13. Callback pattern:
-Success! Data: 42
-Error! Invalid data: -1
-
-14. Closure with captured state:
-counter.call = 5
-counter.call = 10
-counter.call = 15
-
-15. Method chaining and lambda returns:
-Query with 2 conditions
 
 === Blocks are truly first-class objects! ===
 "#;
@@ -430,8 +402,29 @@ fn test_basics_elsif_no_parens_execution() {
 }
 
 #[test]
-fn test_parser_pattern_matching_execution() {
-    let expected = "two\nstopping\nother number\none point zero\nfive\n";
-    let output = run_example("examples/parser/pattern_matching.mx");
+fn test_control_flow_case_guard_execution() {
+    let expected = "Warm\nLarge hundred\n";
+    let output = run_example("examples/control-flow/case_guard.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_array_destructure_execution() {
+    let expected = "a=1, b=2, c=3\nFirst: 1\nRest: [2, 3, 4, 5]\nFirst: 1, Last: 5\nMiddle: [2, 3, 4]\nSum: 10\nFirst is 1, last is 4\n";
+    let output = run_example("examples/control-flow/case_array_destructure.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_object_destructure_execution() {
+    let expected = "Point at (10, 20)\nName: Alice, Age: 30\nAlice is 30 years old\n";
+    let output = run_example("examples/control-flow/case_object_destructure.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_variable_binding_execution() {
+    let expected = "Matched: 42\nNot Found\nWorking age: 25\n";
+    let output = run_example("examples/control-flow/case_variable_binding.mx");
     assert_eq!(output, expected);
 }

@@ -9,7 +9,7 @@ def cleanup()
 end
 
 begin
-  result = risky_operation()
+  risky_operation()
 rescue StandardError => e
   puts "General error: #{e.message}"
 ensure

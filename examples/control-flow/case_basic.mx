@@ -10,4 +10,4 @@ case x
     puts "two"
   else
     puts "other"
-  end
+end

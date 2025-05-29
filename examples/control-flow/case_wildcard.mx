@@ -8,4 +8,4 @@ case value
     puts "two"
   when _
     puts "many"
-  end
+end

@@ -76,7 +76,7 @@ This document tracks the implementation work needed to execute all example files
 - [x] 4.3.1 Implement standalone blocks as expressions
 - [x] 4.3.2 Add block-to-lambda conversion (blocks are lambdas)
 - [x] 4.3.3 Implement method block parameters (`&block`)
-- [x] 4.3.4 Use `examples/parser/blocks.mx` in an actual test in examples_runner.rs (partial - requires arrow lambdas in arguments)
+- [x] 4.3.4 Use `examples/functions/test_lambdas.mx` in an actual test in examples_runner.rs
 - [x] 4.3.5 Use `examples/metaprogramming/blocks_as_objects.mx` in an actual test in examples_runner.rs (partial - requires Class.new method)
 
 ---
@@ -159,15 +159,17 @@ This document tracks the implementation work needed to execute all example files
 - [x] 8.1.1 Implement `case/when` statement parsing
 - [x] 8.1.2 Add literal pattern matching in VM
 - [x] 8.1.3 Implement wildcard pattern (`_`)
-- [x] 8.1.4 Use `examples/parser/pattern_matching.mx` in an actual test in examples_runner.rs
+- [x] 8.1.4 Use `examples/control-flow/test_pattern_matching.mx` in an actual test in examples_runner.rs
 
 ### 8.2 Advanced Patterns
-- [ ] 8.2.1 Implement guard clauses (`in x if condition`)
-- [ ] 8.2.2 Add variable binding in patterns
-- [ ] 8.2.3 Implement array destructuring patterns
-- [ ] 8.2.4 Implement hash destructuring patterns
-- [ ] 8.2.5 Use `examples/advanced/pattern_matching.mx` in an actual test in examples_runner.rs
-- [ ] 8.2.6 Use `examples/runtime/pattern_matching.mx` in an actual test in examples_runner.rs
+- [x] 8.2.1 Implement guard clauses (`when x if condition`)
+- [x] 8.2.2 Add variable binding in patterns
+- [x] 8.2.3 Implement array destructuring patterns
+- [x] 8.2.4 Implement hash destructuring patterns
+- [x] 8.2.5 Use `examples/control-flow/case_guard.mx` in an actual test in examples_runner.rs
+- [x] 8.2.6 Use `examples/control-flow/case_array_destructure.mx` in an actual test in examples_runner.rs
+- [x] 8.2.7 Use `examples/control-flow/case_object_destructure.mx` in an actual test in examples_runner.rs
+- [x] 8.2.8 Use `examples/control-flow/case_variable_binding.mx` in an actual test in examples_runner.rs
 
 ### 8.3 Type Patterns
 - [ ] 8.3.1 Implement type-based pattern matching
@@ -190,8 +192,7 @@ This document tracks the implementation work needed to execute all example files
 - [ ] 9.2.4 Implement `ensure` clause
 - [ ] 9.2.5 Implement `raise` statement
 - [ ] 9.2.6 Add exception re-raising
-- [ ] 9.2.7 Use `examples/parser/exceptions.mx` in an actual test in examples_runner.rs
-- [ ] 9.2.8 Use `examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
+- [ ] 9.2.7 Use `examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
 
 ### 9.3 Exception Types
 - [ ] 9.3.1 Implement standard exception hierarchy
@@ -202,7 +203,6 @@ This document tracks the implementation work needed to execute all example files
 - [ ] 9.4.1 Implement stack trace generation
 - [ ] 9.4.2 Add source location tracking
 - [ ] 9.4.3 Implement formatted error messages
-- [ ] 9.4.4 Use `examples/runtime/error_reporting.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -238,28 +238,22 @@ This document tracks the implementation work needed to execute all example files
 ### 11.1 Expression Enhancements
 - [ ] 11.1.1 Fix remaining expression parsing issues
 - [ ] 11.1.2 Add support for complex nested expressions
-- [ ] 11.1.3 Use `examples/parser/expressions.mx` in an actual test in examples_runner.rs
 
 ### 11.2 Statement Completeness
 - [ ] 11.2.1 Fix remaining statement parsing issues
 - [ ] 11.2.2 Add support for all statement types
-- [ ] 11.2.3 Use `examples/parser/statements.mx` in an actual test in examples_runner.rs
 
 ### 11.3 Method Call Enhancements
 - [ ] 11.3.1 Fix trailing block support in method calls
 - [ ] 11.3.2 Add operator overloading support
-- [ ] 11.3.3 Use `examples/parser/method_calls.mx` in an actual test in examples_runner.rs
-- [ ] 11.3.4 Use `examples/lexer/operators.mx` in an actual test in examples_runner.rs
 
 ### 11.4 Class Parsing
 - [ ] 11.4.1 Fix remaining class parsing issues
 - [ ] 11.4.2 Add module/mixin support parsing
-- [ ] 11.4.3 Use `examples/parser/classes.mx` in an actual test in examples_runner.rs
 
 ### 11.5 Function Parsing
 - [ ] 11.5.1 Fix remaining function parsing issues
 - [ ] 11.5.2 Add keyword argument support
-- [ ] 11.5.3 Use `examples/parser/functions.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -268,7 +262,6 @@ This document tracks the implementation work needed to execute all example files
 ### 12.1 Identifier Edge Cases
 - [ ] 12.1.1 Fix identifier tokenization edge cases
 - [ ] 12.1.2 Handle all variable prefix types correctly
-- [ ] 12.1.3 Use `examples/lexer/identifiers.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -277,18 +270,14 @@ This document tracks the implementation work needed to execute all example files
 ### 13.1 Built-in Classes
 - [ ] 13.1.1 Implement type() function
 - [ ] 13.1.2 Add class hierarchy inspection
-- [ ] 13.1.3 Use `examples/runtime/builtin_classes.mx` in an actual test in examples_runner.rs
-- [ ] 13.1.4 Use `examples/runtime/types.mx` in an actual test in examples_runner.rs
 
 ### 13.2 Instance Management
 - [ ] 13.2.1 Implement instance variable inspection
 - [ ] 13.2.2 Add instance copying/cloning
-- [ ] 13.2.3 Use `examples/runtime/instances.mx` in an actual test in examples_runner.rs
 
 ### 13.3 Variable Scoping
 - [ ] 13.3.1 Fix variable scope edge cases
 - [ ] 13.3.2 Add nonlocal/global keyword support
-- [ ] 13.3.3 Use `examples/runtime/variable_scope.mx` in an actual test in examples_runner.rs
 
 ---
 

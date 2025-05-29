@@ -3,9 +3,6 @@ name = "Symbol Table Demo"  # str
 pi = 3.14159  # float
 active = true  # bool
 
-temp = 100
-message = "Hello"
-
 def process_data(x, y)  # int, int -> int
   local_sum = x + y  # int
   local_product = x * y  # int

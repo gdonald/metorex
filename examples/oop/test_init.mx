@@ -4,4 +4,4 @@ class Test
   end
 end
 
-t = Test.new
+Test.new

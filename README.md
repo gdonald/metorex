@@ -106,7 +106,7 @@ The parser converts source code into an in-memory graph of objects, defined in t
 
 Methods can accept code blocks as objects.
 
-See [examples/metaprogramming/block_call.mx](examples/metaprogramming/block_call.mx)
+See [examples/metaprogramming/blocks_as_objects.mx](examples/metaprogramming/blocks_as_objects.mx)
 
 ### Dynamic Method Definition
 

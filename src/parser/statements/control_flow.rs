@@ -286,6 +286,15 @@ impl Parser {
             let pattern = self.parse_case_pattern()?;
             self.skip_whitespace();
 
+            // Parse optional guard clause (if ...)
+            let guard = if self.match_token(&[TokenKind::If]) {
+                self.skip_whitespace();
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            self.skip_whitespace();
+
             // Parse the body
             let mut body = Vec::new();
             while !self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End])
@@ -301,7 +310,7 @@ impl Parser {
 
             cases.push(MatchCase {
                 pattern,
-                guard: None,
+                guard,
                 body,
                 position: when_pos,
             });
@@ -343,13 +352,121 @@ impl Parser {
     }
 
     /// Parse a pattern for a case statement
-    /// For basic case statements, we support:
+    /// Supports:
     /// - Literal patterns (integers, strings, booleans, nil)
     /// - Wildcard pattern (_)
+    /// - Variable binding pattern (identifier)
+    /// - Array destructuring ([a, b, c] or [first, ...rest])
+    /// - Object destructuring ({x, y} or {x: a, y: b})
     fn parse_case_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
         let token = self.peek().clone();
 
         match &token.kind {
+            // Array pattern
+            TokenKind::LBracket => {
+                self.advance(); // consume '['
+                self.skip_whitespace();
+
+                let mut patterns = Vec::new();
+
+                // Parse patterns inside the array
+                while !self.check(&[TokenKind::RBracket]) && !self.is_at_end() {
+                    self.skip_whitespace();
+
+                    // Check for rest pattern (...)
+                    if self.match_token(&[TokenKind::DotDotDot]) {
+                        self.skip_whitespace();
+
+                        // Next token should be an identifier for the rest binding
+                        if let TokenKind::Ident(name) = &self.peek().kind {
+                            let rest_name = name.clone();
+                            self.advance();
+                            patterns.push(MatchPattern::Rest(rest_name));
+                        } else {
+                            return Err(MetorexError::syntax_error(
+                                "Expected identifier after ... in array pattern".to_string(),
+                                SourceLocation::new(
+                                    self.peek().position.line,
+                                    self.peek().position.column,
+                                    self.peek().position.offset,
+                                ),
+                            ));
+                        }
+                    } else {
+                        // Parse a regular pattern
+                        patterns.push(self.parse_case_pattern()?);
+                    }
+
+                    self.skip_whitespace();
+
+                    // Check for comma
+                    if !self.check(&[TokenKind::RBracket]) {
+                        self.expect(TokenKind::Comma, "Expected ',' or ']' in array pattern")?;
+                        self.skip_whitespace();
+                    }
+                }
+
+                self.expect(TokenKind::RBracket, "Expected ']' after array pattern")?;
+                Ok(MatchPattern::Array(patterns))
+            }
+
+            // Object/Dictionary pattern
+            TokenKind::LBrace => {
+                self.advance(); // consume '{'
+                self.skip_whitespace();
+
+                let mut key_patterns = Vec::new();
+
+                // Parse key-pattern pairs inside the object
+                while !self.check(&[TokenKind::RBrace]) && !self.is_at_end() {
+                    self.skip_whitespace();
+
+                    // Expect an identifier as the key
+                    let key = if let TokenKind::Ident(name) = &self.peek().kind {
+                        let k = name.clone();
+                        self.advance();
+                        k
+                    } else if let TokenKind::String(s) = &self.peek().kind {
+                        let k = s.clone();
+                        self.advance();
+                        k
+                    } else {
+                        return Err(MetorexError::syntax_error(
+                            "Expected identifier or string key in object pattern".to_string(),
+                            SourceLocation::new(
+                                self.peek().position.line,
+                                self.peek().position.column,
+                                self.peek().position.offset,
+                            ),
+                        ));
+                    };
+
+                    self.skip_whitespace();
+
+                    // Check if there's a colon for explicit pattern (e.g., {x: a, y: b})
+                    let pattern = if self.match_token(&[TokenKind::Colon]) {
+                        self.skip_whitespace();
+                        self.parse_case_pattern()?
+                    } else {
+                        // Shorthand: {x, y} means {x: x, y: y}
+                        MatchPattern::Identifier(key.clone())
+                    };
+
+                    key_patterns.push((key, pattern));
+
+                    self.skip_whitespace();
+
+                    // Check for comma
+                    if !self.check(&[TokenKind::RBrace]) {
+                        self.expect(TokenKind::Comma, "Expected ',' or '}' in object pattern")?;
+                        self.skip_whitespace();
+                    }
+                }
+
+                self.expect(TokenKind::RBrace, "Expected '}' after object pattern")?;
+                Ok(MatchPattern::Object(key_patterns))
+            }
+
             // Literal patterns
             TokenKind::Int(n) => {
                 let value = *n;
@@ -383,7 +500,7 @@ impl Parser {
                 self.advance();
                 Ok(MatchPattern::Wildcard)
             }
-            // Variable binding pattern (for future use)
+            // Variable binding pattern
             TokenKind::Ident(name) => {
                 let var_name = name.clone();
                 self.advance();

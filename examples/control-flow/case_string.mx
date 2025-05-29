@@ -10,4 +10,4 @@ case command
     puts "Restarting server"
   else
     puts "Unknown command"
-  end
+end
