@@ -428,3 +428,25 @@ fn test_control_flow_case_variable_binding_execution() {
     let output = run_example("examples/control-flow/case_variable_binding.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_control_flow_case_type_basic_execution() {
+    let expected = "It's an integer\nIt's a string\nIt's an array\nIt's a hash\nFloat\n";
+    let output = run_example("examples/control-flow/case_type_basic.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_type_custom_class_execution() {
+    let expected =
+        "It's a dog!\nBuddy says woof!\nIt's a cat!\nWhiskers says meow!\nIt's just a string\n";
+    let output = run_example("examples/control-flow/case_type_custom_class.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_type_mixed_execution() {
+    let expected = "It's an integer: 42\nGeneric string\nProcessing integer: 20\nProcessing float: 4.71\nProcessing string: TEST\nProcessing array of 3 elements\nProcessing hash with 2 keys\n";
+    let output = run_example("examples/control-flow/case_type_mixed.mx");
+    assert_eq!(output, expected);
+}

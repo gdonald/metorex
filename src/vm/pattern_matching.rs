@@ -156,11 +156,42 @@ impl VirtualMachine {
                 _ => Ok(false),
             },
 
-            // Type pattern - not yet implemented
-            MatchPattern::Type(_type_name) => Err(MetorexError::runtime_error(
-                "Type patterns are not yet implemented".to_string(),
-                position_to_location(position),
-            )),
+            // Type pattern - match based on object type
+            MatchPattern::Type(type_name) => {
+                let actual_type = value.type_name();
+
+                // Support both Ruby-style names (Integer, Hash) and internal names (Int, Dict)
+                let matches = match type_name.as_str() {
+                    // Direct type name matches
+                    name if name == actual_type => true,
+
+                    // Ruby-style aliases
+                    "Integer" => matches!(value, Object::Int(_)),
+                    "Float" => matches!(value, Object::Float(_)),
+                    "String" => matches!(value, Object::String(_)),
+                    "Array" => matches!(value, Object::Array(_)),
+                    "Hash" | "Dict" => matches!(value, Object::Dict(_)),
+                    "TrueClass" | "FalseClass" | "Boolean" => matches!(value, Object::Bool(_)),
+                    "NilClass" => matches!(value, Object::Nil),
+                    "Class" => matches!(value, Object::Class(_)),
+                    "Method" => matches!(value, Object::Method(_)),
+                    "Exception" => matches!(value, Object::Exception(_)),
+                    "Set" => matches!(value, Object::Set(_)),
+                    "Range" => matches!(value, Object::Range { .. }),
+
+                    // Check for class instances
+                    _ => {
+                        if let Object::Instance(instance_rc) = value {
+                            let instance = instance_rc.borrow();
+                            instance.class_name() == *type_name
+                        } else {
+                            false
+                        }
+                    }
+                };
+
+                Ok(matches)
+            }
         }
     }
 

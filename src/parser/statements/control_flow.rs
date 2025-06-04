@@ -500,6 +500,12 @@ impl Parser {
                 self.advance();
                 Ok(MatchPattern::Wildcard)
             }
+            // Type pattern (capitalized identifiers like Integer, String, Hash, Array)
+            TokenKind::Ident(name) if name.chars().next().is_some_and(|c| c.is_uppercase()) => {
+                let type_name = name.clone();
+                self.advance();
+                Ok(MatchPattern::Type(type_name))
+            }
             // Variable binding pattern
             TokenKind::Ident(name) => {
                 let var_name = name.clone();

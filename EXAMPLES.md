@@ -172,8 +172,8 @@ This document tracks the implementation work needed to execute all example files
 - [x] 8.2.8 Use `examples/control-flow/case_variable_binding.mx` in an actual test in examples_runner.rs
 
 ### 8.3 Type Patterns
-- [ ] 8.3.1 Implement type-based pattern matching
-- [ ] 8.3.2 Add pattern matching for custom classes
+- [x] 8.3.1 Implement type-based pattern matching
+- [x] 8.3.2 Add pattern matching for custom classes
 
 ---
 
