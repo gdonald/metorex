@@ -450,3 +450,10 @@ fn test_control_flow_case_type_mixed_execution() {
     let output = run_example("examples/control-flow/case_type_mixed.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_errors_simple_rescue_execution() {
+    let expected = "Before exception\nCaught an exception\nAfter rescue block\nCaught exception with message: RuntimeError: An error message\nIn try block\nIn rescue block\nIn ensure block\n";
+    let output = run_example("examples/errors/simple_rescue.mx");
+    assert_eq!(output, expected);
+}

@@ -88,6 +88,11 @@ impl Parser {
     /// Parse a rescue clause
     pub(crate) fn parse_rescue_clause(&mut self) -> Result<RescueClause, MetorexError> {
         let start_pos = self.previous().position;
+
+        // Don't skip whitespace yet - we need to check if there's a newline after rescue
+        // If there's a newline, then no exception types are specified
+        let has_newline = self.check(&[TokenKind::Newline]);
+
         self.skip_whitespace();
 
         // Parse exception types (comma-separated identifiers)
@@ -95,9 +100,10 @@ impl Parser {
         let mut variable_name = None;
 
         // Check if there's an exception type specified
-        // An exception type is present if we see an identifier that's NOT followed by '='
-        // (which would indicate an assignment statement in the rescue body)
-        if self.check(&[TokenKind::Ident(String::new())]) {
+        // An exception type is present if:
+        // 1. There's no newline after rescue
+        // 2. We see an identifier that's NOT followed by '=' (which would be an assignment)
+        if !has_newline && self.check(&[TokenKind::Ident(String::new())]) {
             // Peek ahead to see if this looks like an exception type or an assignment
             // If the next token after the identifier is '=', it's an assignment, not an exception type
             let current_pos = self.stream().current_position();

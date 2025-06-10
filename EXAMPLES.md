@@ -180,10 +180,10 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 9: Exception Handling
 
 ### 9.1 Basic Exceptions
-- [ ] 9.1.1 Implement `begin/rescue/end` parsing
-- [ ] 9.1.2 Add exception raising in VM
-- [ ] 9.1.3 Implement basic exception catching
-- [ ] 9.1.4 Use `examples/errors/basic_error.mx` in an actual test in examples_runner.rs
+- [x] 9.1.1 Implement `begin/rescue/end` parsing
+- [x] 9.1.2 Add exception raising in VM
+- [x] 9.1.3 Implement basic exception catching
+- [x] 9.1.4 Use `examples/errors/simple_rescue.mx` in an actual test in examples_runner.rs
 
 ### 9.2 Advanced Exception Features
 - [ ] 9.2.1 Implement `rescue ExceptionType => var` syntax
