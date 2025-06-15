@@ -2,7 +2,7 @@
 
 This document tracks the implementation work needed to execute all example files with verified output testing.
 
-**Current Status**: 43/90 examples executing (47.8%)
+**Current Status**: 44/90 examples executing (48.9%)
 
 **Note**: This plan orders implementation from easiest (basic features) to most complex (advanced features). Each phase builds on previous phases.
 
@@ -186,13 +186,13 @@ This document tracks the implementation work needed to execute all example files
 - [x] 9.1.4 Use `examples/errors/simple_rescue.mx` in an actual test in examples_runner.rs
 
 ### 9.2 Advanced Exception Features
-- [ ] 9.2.1 Implement `rescue ExceptionType => var` syntax
-- [ ] 9.2.2 Add multiple rescue clauses
-- [ ] 9.2.3 Implement `else` clause for rescue
-- [ ] 9.2.4 Implement `ensure` clause
-- [ ] 9.2.5 Implement `raise` statement
-- [ ] 9.2.6 Add exception re-raising
-- [ ] 9.2.7 Use `examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
+- [x] 9.2.1 Implement `rescue ExceptionType => e` syntax
+- [x] 9.2.2 Add multiple rescue clauses
+- [x] 9.2.3 Implement `else` clause for rescue
+- [x] 9.2.4 Implement `ensure` clause
+- [x] 9.2.5 Implement `raise` statement
+- [x] 9.2.6 Add exception re-raising
+- [x] 9.2.7 Use `examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
 
 ### 9.3 Exception Types
 - [ ] 9.3.1 Implement standard exception hierarchy

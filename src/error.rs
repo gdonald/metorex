@@ -111,6 +111,14 @@ pub enum MetorexError {
     /// Generic internal errors
     #[error("Internal error: {0}")]
     InternalError(String),
+
+    /// Uncaught exception that needs to be propagated as ControlFlow
+    #[error("Runtime error at {location}: Uncaught exception: {message}")]
+    UncaughtException {
+        exception: crate::object::Object,
+        location: SourceLocation,
+        message: String,
+    },
 }
 
 // Custom From implementation for std::io::Error

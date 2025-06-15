@@ -4,6 +4,7 @@
 //! standard classes like Object, String, and Array.
 
 mod array_methods;
+mod exception_methods;
 mod float_methods;
 mod hash_methods;
 mod object_methods;
@@ -60,6 +61,7 @@ impl VirtualMachine {
             "Hash" => self.call_hash_method(receiver, method_name, arguments, position),
             "Float" => self.call_float_method(receiver, method_name, arguments, position),
             "Range" => self.call_range_method(receiver, method_name, arguments, position),
+            "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
             _ => Ok(None),
         }
     }

@@ -457,3 +457,10 @@ fn test_errors_simple_rescue_execution() {
     let output = run_example("examples/errors/simple_rescue.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_advanced_exception_handling_execution() {
+    let expected = "risky operation!\nGeneral error: Oops...\ncleanup\n";
+    let output = run_example("examples/advanced/exception_handling.mx");
+    assert_eq!(output, expected);
+}

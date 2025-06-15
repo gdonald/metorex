@@ -82,6 +82,23 @@ impl VirtualMachine {
         let mut handled_exception = false;
         let mut final_result = body_result;
 
+        // Convert UncaughtException errors to ControlFlow::Exception
+        if let Err(MetorexError::UncaughtException {
+            exception,
+            location,
+            ..
+        }) = &final_result
+        {
+            final_result = Ok(ControlFlow::Exception {
+                exception: exception.clone(),
+                position: Position {
+                    line: location.line,
+                    column: location.column,
+                    offset: 0,
+                },
+            });
+        }
+
         // If an exception occurred, try to match rescue clauses
         if let Ok(ControlFlow::Exception {
             exception,

@@ -147,10 +147,11 @@ impl VirtualMachine {
                         exception,
                         position,
                     } => {
-                        return Err(MetorexError::runtime_error(
-                            format!("Uncaught exception: {}", format_exception(&exception)),
-                            position_to_location(position),
-                        ));
+                        return Err(MetorexError::UncaughtException {
+                            exception: exception.clone(),
+                            location: position_to_location(position),
+                            message: format_exception(&exception),
+                        });
                     }
                     ControlFlow::Break { position } => {
                         return Err(loop_control_error("break", position));
@@ -304,10 +305,11 @@ impl VirtualMachine {
                         exception,
                         position,
                     } => {
-                        return Err(MetorexError::runtime_error(
-                            format!("Uncaught exception: {}", format_exception(&exception)),
-                            position_to_location(position),
-                        ));
+                        return Err(MetorexError::UncaughtException {
+                            exception: exception.clone(),
+                            location: position_to_location(position),
+                            message: format_exception(&exception),
+                        });
                     }
                     ControlFlow::Break { position } => {
                         return Err(loop_control_error("break", position));
@@ -359,10 +361,11 @@ impl VirtualMachine {
                         exception,
                         position,
                     } => {
-                        return Err(MetorexError::runtime_error(
-                            format!("Uncaught exception: {}", format_exception(&exception)),
-                            position_to_location(position),
-                        ));
+                        return Err(MetorexError::UncaughtException {
+                            exception: exception.clone(),
+                            location: position_to_location(position),
+                            message: format_exception(&exception),
+                        });
                     }
                     ControlFlow::Break { position } => {
                         return Err(loop_control_error("break", position));
