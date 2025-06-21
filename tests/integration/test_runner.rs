@@ -6,6 +6,13 @@
 use std::fs;
 use std::path::Path;
 
+use super::common::EXAMPLES_DIR;
+
+/// Helper function to create a full path from a relative example path
+fn example_path(path: &str) -> String {
+    format!("{}/{}", EXAMPLES_DIR, path)
+}
+
 /// Represents the expected outcome of running a Metorex file
 #[derive(Debug, Clone, PartialEq)]
 #[allow(dead_code)]
@@ -35,7 +42,7 @@ pub enum ExpectedOutcome {
 /// Test case for a Metorex example file
 pub struct TestCase {
     /// Path to the .mx file relative to project root
-    pub file_path: &'static str,
+    pub file_path: String,
     /// Expected outcome when running this file
     #[allow(dead_code)]
     pub expected: ExpectedOutcome,
@@ -50,7 +57,7 @@ impl TestCase {
     /// Will execute the file and validate output once interpreter is ready.
     pub fn run(&self) -> Result<(), String> {
         // Validate file exists
-        let path = Path::new(self.file_path);
+        let path = Path::new(&self.file_path);
         if !path.exists() {
             return Err(format!("File not found: {}", self.file_path));
         }
@@ -118,7 +125,7 @@ macro_rules! run_test_case {
 #[ignore] // Temporarily disabled until more of the language is up and running
 fn test_errors_basic_error() {
     let test = TestCase {
-        file_path: "examples/errors/basic_error.mx",
+        file_path: example_path("errors/basic_error.mx"),
         expected: ExpectedOutcome::Success {
             output: None, // Will add expected output once interpreter runs
         },
@@ -133,11 +140,9 @@ fn test_errors_basic_error() {
 #[ignore] // Temporarily disabled until more of the language is up and running
 fn test_example_file_exists() {
     // Ensure our example file exists and is readable
-    let path = Path::new("examples/errors/basic_error.mx");
-    assert!(
-        path.exists(),
-        "Example file should exist: examples/errors/basic_error.mx"
-    );
+    let path_str = example_path("errors/basic_error.mx");
+    let path = Path::new(&path_str);
+    assert!(path.exists(), "Example file should exist: {}", path_str);
 
     let contents = fs::read_to_string(path).expect("Should be able to read example file");
 
@@ -153,7 +158,8 @@ fn test_example_file_exists() {
 #[test]
 #[ignore] // Temporarily disabled until more of the language is up and running
 fn test_example_file_structure() {
-    let path = Path::new("examples/errors/basic_error.mx");
+    let path_str = example_path("errors/basic_error.mx");
+    let path = Path::new(&path_str);
     let contents = fs::read_to_string(path).expect("Should be able to read example file");
 
     // Verify it demonstrates various error types
@@ -210,14 +216,14 @@ mod future_tests {
 
     // #[test]
     // fn test_syntax_error_detection() {
-    //     let result = run_metorex_file_expect_error("examples/errors/basic_error.mx");
+    //     let result = run_metorex_file_expect_error(&example_path("errors/basic_error.mx"));
     //     assert!(result.is_ok());
     //     assert!(result.unwrap().contains("SyntaxError"));
     // }
 
     // #[test]
     // fn test_runtime_error_with_stack_trace() {
-    //     let result = run_metorex_file_expect_error("examples/errors/runtime_error.mx");
+    //     let result = run_metorex_file_expect_error(&example_path("errors/runtime_error.mx"));
     //     assert!(result.is_ok());
     //     let error = result.unwrap();
     //     assert!(error.contains("RuntimeError"));

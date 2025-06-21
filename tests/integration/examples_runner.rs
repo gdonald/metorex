@@ -2,11 +2,14 @@
 
 use std::process::Command;
 
+use super::common::EXAMPLES_DIR;
+
 fn run_example(path: &str) -> String {
     let binary = env!("CARGO_BIN_EXE_metorex");
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let full_path = format!("{}/{}", EXAMPLES_DIR, path);
     let mut cmd = Command::new(binary);
-    cmd.current_dir(manifest_dir).arg(path);
+    cmd.current_dir(manifest_dir).arg(&full_path);
 
     let output = cmd.output().expect("failed to execute example");
     assert!(
@@ -21,7 +24,7 @@ fn run_example(path: &str) -> String {
 
 #[test]
 fn test_basics_greeting_line_execution() {
-    let output = run_example("examples/basics/greeting_line.mx");
+    let output = run_example("basics/greeting_line.mx");
     assert_eq!(output, "Hello, Ada!\n");
 }
 
@@ -41,13 +44,13 @@ i
 66
 "#;
 
-    let output = run_example("examples/basics/string_methods.mx");
+    let output = run_example("basics/string_methods.mx");
     assert_eq!(output, expected.to_string());
 }
 
 #[test]
 fn test_data_structures_simple_dict_execution() {
-    let output = run_example("examples/data-structures/simple_dict.mx");
+    let output = run_example("data-structures/simple_dict.mx");
     // Hash map iteration order is non-deterministic, so check both possible orders
     let valid_output1 = "{bob: 25, alice: 30}\n30\n";
     let valid_output2 = "{alice: 30, bob: 25}\n30\n";
@@ -62,13 +65,13 @@ fn test_data_structures_simple_dict_execution() {
 
 #[test]
 fn test_data_structures_dict_access_execution() {
-    let output = run_example("examples/data-structures/dict_access.mx");
+    let output = run_example("data-structures/dict_access.mx");
     assert_eq!(output, "Ada lives in London\n");
 }
 
 #[test]
 fn test_data_structures_hash_methods_execution() {
-    let output = run_example("examples/data-structures/hash_methods.mx");
+    let output = run_example("data-structures/hash_methods.mx");
     // Hash map iteration order is non-deterministic, so check for valid orderings
     let fixed_part = "Has alice?\ntrue\nHas dave?\nfalse\nSize:\n3\n";
     assert!(
@@ -86,7 +89,7 @@ fn test_data_structures_hash_methods_execution() {
 
 #[test]
 fn test_type_annotations_collection_types_execution() {
-    let output = run_example("examples/type-annotations/collection_types.mx");
+    let output = run_example("type-annotations/collection_types.mx");
     // Hash map iteration order is non-deterministic, so check both possible orders
     let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {Bob: 85, Alice: 90}\nlength of numbers: 5\nAlice's score: 90\n";
     let valid_output2 = "numbers = [1, 2, 3, 4, 5]\nscores = {Alice: 90, Bob: 85}\nlength of numbers: 5\nAlice's score: 90\n";
@@ -102,70 +105,70 @@ fn test_type_annotations_collection_types_execution() {
 #[test]
 fn test_basics_simple_range_execution() {
     let expected = "1..5\n1...5\n[1, 2, 3, 4, 5]\n[1, 2, 3, 4]\n";
-    let output = run_example("examples/basics/simple_range.mx");
+    let output = run_example("basics/simple_range.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_each_block_execution() {
     let expected = "Range iteration:\n1\n2\n3\nArray iteration:\n10\n20\n30\n";
-    let output = run_example("examples/basics/each_block.mx");
+    let output = run_example("basics/each_block.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_algorithms_factorial_iterative_execution() {
     let expected = "720\n";
-    let output = run_example("examples/algorithms/factorial_iterative.mx");
+    let output = run_example("algorithms/factorial_iterative.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_algorithms_average_temperature_execution() {
     let expected = "69.9\n";
-    let output = run_example("examples/algorithms/average_temperature.mx");
+    let output = run_example("algorithms/average_temperature.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_algorithms_primes_under_fifty_execution() {
     let expected = "[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]\n";
-    let output = run_example("examples/algorithms/primes_under_fifty.mx");
+    let output = run_example("algorithms/primes_under_fifty.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_functions_closures_nested_execution() {
     let expected = "10\n12\n";
-    let output = run_example("examples/functions/closures_nested.mx");
+    let output = run_example("functions/closures_nested.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_functions_nonlocal_counter_execution() {
     let expected = "1\n2\n3\n3\n0\n1\n";
-    let output = run_example("examples/functions/nonlocal_counter.mx");
+    let output = run_example("functions/nonlocal_counter.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_functions_locals_scope_execution() {
     let expected = "20\n[0, 2, 4, 6, 8]\n";
-    let output = run_example("examples/functions/locals_scope.mx");
+    let output = run_example("functions/locals_scope.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_parser_lambdas_execution() {
     let expected = "10\n10\n42\n30\n13\n13\n18\n11\n14\n21\n24\n10\n";
-    let output = run_example("examples/functions/test_lambdas.mx");
+    let output = run_example("functions/test_lambdas.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_parser_pattern_matching_execution() {
     let expected = "two\nstopping\nother number\none point zero\nfive\n";
-    let output = run_example("examples/control-flow/test_pattern_matching.mx");
+    let output = run_example("control-flow/test_pattern_matching.mx");
     assert_eq!(output, expected);
 }
 
@@ -198,20 +201,20 @@ Goodbye, Bob!
 === Blocks are truly first-class objects! ===
 "#;
 
-    let output = run_example("examples/metaprogramming/blocks_as_objects.mx");
+    let output = run_example("metaprogramming/blocks_as_objects.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_algorithms_filter_even_numbers_execution() {
     let expected = "[2, 4, 6]\n";
-    let output = run_example("examples/algorithms/filter_even_numbers.mx");
+    let output = run_example("algorithms/filter_even_numbers.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_algorithms_character_counter_execution() {
-    let output = run_example("examples/algorithms/character_counter.mx");
+    let output = run_example("algorithms/character_counter.mx");
     // Hash map iteration order is non-deterministic, so check for all expected keys and values
     assert!(
         output.contains("b")
@@ -228,14 +231,14 @@ fn test_algorithms_character_counter_execution() {
 #[test]
 fn test_algorithms_zip_merger_execution() {
     let expected = "[[Ann, 88], [Ben, 93]]\n";
-    let output = run_example("examples/algorithms/zip_merger.mx");
+    let output = run_example("algorithms/zip_merger.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_algorithms_matrix_transpose_execution() {
     let expected = "[[1, 4], [2, 5], [3, 6]]\n";
-    let output = run_example("examples/algorithms/matrix_transpose.mx");
+    let output = run_example("algorithms/matrix_transpose.mx");
     assert_eq!(output, expected);
 }
 
@@ -252,7 +255,7 @@ Single column matrix:
 Square 3x3 matrix:
 [[1, 4, 7], [2, 5, 8], [3, 6, 9]]
 "#;
-    let output = run_example("examples/algorithms/matrix_transpose_comprehensive.mx");
+    let output = run_example("algorithms/matrix_transpose_comprehensive.mx");
     assert_eq!(output, expected);
 }
 
@@ -271,168 +274,168 @@ Sum of each column:
 Rows where first element > 2:
 [[3, 4], [5, 6]]
 "#;
-    let output = run_example("examples/algorithms/matrix_nested_ops.mx");
+    let output = run_example("algorithms/matrix_nested_ops.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_super_basic_execution() {
     let expected = "Buddy\nGolden Retriever\nSome sound -> Woof!\nI am an animal named Buddy\n";
-    let output = run_example("examples/oop/super_basic.mx");
+    let output = run_example("oop/super_basic.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_super_chain_basic_execution() {
     let expected = "GrandParent\nParent\nChild\n";
-    let output = run_example("examples/oop/super_chain_basic.mx");
+    let output = run_example("oop/super_chain_basic.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_super_simple_execution() {
     let expected = "AB\n";
-    let output = run_example("examples/oop/test_super_simple.mx");
+    let output = run_example("oop/test_super_simple.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_attr_reader_execution() {
     let expected = "Alice\n30\n";
-    let output = run_example("examples/oop/attr_reader.mx");
+    let output = run_example("oop/attr_reader.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_attr_writer_execution() {
     let expected = "Unknown\n0\nBob\n25\n";
-    let output = run_example("examples/oop/attr_writer.mx");
+    let output = run_example("oop/attr_writer.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_attr_accessor_execution() {
     let expected = "Charlie\n35\ncharlie@example.com\nCharles\n36\ncharles@example.com\n";
-    let output = run_example("examples/oop/attr_accessor.mx");
+    let output = run_example("oop/attr_accessor.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_test_str_execution() {
     let expected = "Person: Alice\n";
-    let output = run_example("examples/oop/test_str.mx");
+    let output = run_example("oop/test_str.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_test_repr_execution() {
     let expected = "Point(0, 0)\n";
-    let output = run_example("examples/oop/test_repr.mx");
+    let output = run_example("oop/test_repr.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_special_methods_execution() {
     let expected = "Book: Ruby Guide\nMagazine: Tech Monthly\nnext_value\n";
-    let output = run_example("examples/oop/special_methods.mx");
+    let output = run_example("oop/special_methods.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_test_iter_execution() {
     let expected = "next\n";
-    let output = run_example("examples/oop/test_iter.mx");
+    let output = run_example("oop/test_iter.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_test_method_missing_execution() {
     let expected = "bar\n42\n1\n2\n3\n";
-    let output = run_example("examples/oop/test_method_missing.mx");
+    let output = run_example("oop/test_method_missing.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_for_loop_array_execution() {
     let expected = "1\n2\n3\n";
-    let output = run_example("examples/basics/for_loop_array.mx");
+    let output = run_example("basics/for_loop_array.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_for_loop_range_execution() {
     let expected = "1\n2\n3\n4\n5\n";
-    let output = run_example("examples/basics/for_loop_range.mx");
+    let output = run_example("basics/for_loop_range.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_for_loop_break_execution() {
     let expected = "1\n2\n3\n4\n";
-    let output = run_example("examples/basics/for_loop_break.mx");
+    let output = run_example("basics/for_loop_break.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_for_loop_continue_execution() {
     let expected = "1\n2\n4\n5\n";
-    let output = run_example("examples/basics/for_loop_continue.mx");
+    let output = run_example("basics/for_loop_continue.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_elsif_basic_execution() {
     let expected = "small positive\n";
-    let output = run_example("examples/basics/elsif_basic.mx");
+    let output = run_example("basics/elsif_basic.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_elsif_without_else_execution() {
     let expected = "C\n";
-    let output = run_example("examples/basics/elsif_without_else.mx");
+    let output = run_example("basics/elsif_without_else.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_elsif_no_parens_execution() {
     let expected = "warm\n";
-    let output = run_example("examples/basics/elsif_no_parens.mx");
+    let output = run_example("basics/elsif_no_parens.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_guard_execution() {
     let expected = "Warm\nLarge hundred\n";
-    let output = run_example("examples/control-flow/case_guard.mx");
+    let output = run_example("control-flow/case_guard.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_array_destructure_execution() {
     let expected = "a=1, b=2, c=3\nFirst: 1\nRest: [2, 3, 4, 5]\nFirst: 1, Last: 5\nMiddle: [2, 3, 4]\nSum: 10\nFirst is 1, last is 4\n";
-    let output = run_example("examples/control-flow/case_array_destructure.mx");
+    let output = run_example("control-flow/case_array_destructure.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_object_destructure_execution() {
     let expected = "Point at (10, 20)\nName: Alice, Age: 30\nAlice is 30 years old\n";
-    let output = run_example("examples/control-flow/case_object_destructure.mx");
+    let output = run_example("control-flow/case_object_destructure.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_variable_binding_execution() {
     let expected = "Matched: 42\nNot Found\nWorking age: 25\n";
-    let output = run_example("examples/control-flow/case_variable_binding.mx");
+    let output = run_example("control-flow/case_variable_binding.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_type_basic_execution() {
     let expected = "It's an integer\nIt's a string\nIt's an array\nIt's a hash\nFloat\n";
-    let output = run_example("examples/control-flow/case_type_basic.mx");
+    let output = run_example("control-flow/case_type_basic.mx");
     assert_eq!(output, expected);
 }
 
@@ -440,27 +443,27 @@ fn test_control_flow_case_type_basic_execution() {
 fn test_control_flow_case_type_custom_class_execution() {
     let expected =
         "It's a dog!\nBuddy says woof!\nIt's a cat!\nWhiskers says meow!\nIt's just a string\n";
-    let output = run_example("examples/control-flow/case_type_custom_class.mx");
+    let output = run_example("control-flow/case_type_custom_class.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_type_mixed_execution() {
     let expected = "It's an integer: 42\nGeneric string\nProcessing integer: 20\nProcessing float: 4.71\nProcessing string: TEST\nProcessing array of 3 elements\nProcessing hash with 2 keys\n";
-    let output = run_example("examples/control-flow/case_type_mixed.mx");
+    let output = run_example("control-flow/case_type_mixed.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_errors_simple_rescue_execution() {
     let expected = "Before exception\nCaught an exception\nAfter rescue block\nCaught exception with message: RuntimeError: An error message\nIn try block\nIn rescue block\nIn ensure block\n";
-    let output = run_example("examples/errors/simple_rescue.mx");
+    let output = run_example("errors/simple_rescue.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_advanced_exception_handling_execution() {
     let expected = "risky operation!\nGeneral error: Oops...\ncleanup\n";
-    let output = run_example("examples/advanced/exception_handling.mx");
+    let output = run_example("advanced/exception_handling.mx");
     assert_eq!(output, expected);
 }
