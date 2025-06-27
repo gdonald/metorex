@@ -42,33 +42,60 @@ impl VirtualMachine {
                 self.execute_function_body(&method, arguments)
             }
             Object::Class(class) => {
-                // Create a new instance of the class
-                let instance = Rc::new(RefCell::new(crate::object::Instance::new(Rc::clone(
-                    &class,
-                ))));
-                let instance_obj = Object::Instance(Rc::clone(&instance));
+                // Check if this is an exception class
+                let is_exception_class = self.is_exception_class(&class);
 
-                // Look for an 'initialize' method and call it if present
-                if let Some(init_method) = class.find_method("initialize") {
-                    self.invoke_method(
-                        class,
-                        init_method,
-                        instance_obj.clone(),
-                        arguments,
-                        position,
-                    )?;
-                } else if !arguments.is_empty() {
-                    // If no initialize method exists, reject non-empty arguments
-                    return Err(MetorexError::runtime_error(
-                        format!(
-                            "No initialize method defined, but {} argument(s) provided",
-                            arguments.len()
-                        ),
-                        position_to_location(position),
-                    ));
+                if is_exception_class {
+                    // Create an Exception object instead of a regular Instance
+                    let message = if arguments.is_empty() {
+                        String::new()
+                    } else if arguments.len() == 1 {
+                        // Extract message from first argument
+                        match &arguments[0] {
+                            Object::String(s) => (**s).clone(),
+                            other => format!("{:?}", other),
+                        }
+                    } else {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "Exception.new takes 0 or 1 argument, got {}",
+                                arguments.len()
+                            ),
+                            position_to_location(position),
+                        ));
+                    };
+
+                    let exception_obj = Object::exception(class.name(), message);
+                    Ok(exception_obj)
+                } else {
+                    // Create a new instance of the class
+                    let instance = Rc::new(RefCell::new(crate::object::Instance::new(Rc::clone(
+                        &class,
+                    ))));
+                    let instance_obj = Object::Instance(Rc::clone(&instance));
+
+                    // Look for an 'initialize' method and call it if present
+                    if let Some(init_method) = class.find_method("initialize") {
+                        self.invoke_method(
+                            class,
+                            init_method,
+                            instance_obj.clone(),
+                            arguments,
+                            position,
+                        )?;
+                    } else if !arguments.is_empty() {
+                        // If no initialize method exists, reject non-empty arguments
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "No initialize method defined, but {} argument(s) provided",
+                                arguments.len()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
+
+                    Ok(instance_obj)
                 }
-
-                Ok(instance_obj)
             }
             Object::NativeFunction(name) => self.call_native_function(&name, arguments, position),
             other => Err(not_callable_error(&other, position)),
@@ -381,5 +408,33 @@ impl VirtualMachine {
 
         self.environment_mut().pop_scope();
         result
+    }
+
+    /// Check if a class is an exception class (Exception or its subclasses)
+    pub(crate) fn is_exception_class(&self, class: &Class) -> bool {
+        Self::is_exception_class_static(class)
+    }
+
+    /// Static helper to check if a class is an exception class
+    fn is_exception_class_static(class: &Class) -> bool {
+        let exception_classes = [
+            "Exception",
+            "StandardError",
+            "RuntimeError",
+            "TypeError",
+            "ValueError",
+        ];
+
+        // Check if the class name matches any exception class
+        if exception_classes.contains(&class.name()) {
+            return true;
+        }
+
+        // Check if any parent class is an exception class
+        if let Some(superclass) = class.superclass() {
+            return Self::is_exception_class_static(&superclass);
+        }
+
+        false
     }
 }

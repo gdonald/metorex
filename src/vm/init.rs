@@ -14,6 +14,7 @@ pub(super) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
     builtin_classes::init_string_methods(builtins.string_class.as_ref());
     builtin_classes::init_array_methods(builtins.array_class.as_ref());
     builtin_classes::init_hash_methods(builtins.hash_class.as_ref());
+    builtin_classes::init_exception_methods(builtins.exception_class.as_ref());
 }
 
 /// Register all built-in classes in the global registry.

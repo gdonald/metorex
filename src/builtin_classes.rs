@@ -312,3 +312,30 @@ pub fn init_hash_methods(hash_class: &Class) {
     ));
     hash_class.define_method("[]", index_method);
 }
+
+/// Initialize built-in methods for the Exception class
+pub fn init_exception_methods(exception_class: &Class) {
+    // Exception#initialize(message = "")
+    let initialize_method = Rc::new(Method::new(
+        "initialize".to_string(),
+        vec!["message".to_string()],
+        vec![],
+    ));
+    exception_class.define_method("initialize", initialize_method);
+
+    // Exception#message
+    let message_method = Rc::new(Method::new("message".to_string(), vec![], vec![]));
+    exception_class.define_method("message", message_method);
+
+    // Exception#backtrace
+    let backtrace_method = Rc::new(Method::new("backtrace".to_string(), vec![], vec![]));
+    exception_class.define_method("backtrace", backtrace_method);
+
+    // Exception#to_s
+    let to_s_method = Rc::new(Method::new("to_s".to_string(), vec![], vec![]));
+    exception_class.define_method("to_s", to_s_method);
+
+    // Exception#cause
+    let cause_method = Rc::new(Method::new("cause".to_string(), vec![], vec![]));
+    exception_class.define_method("cause", cause_method);
+}

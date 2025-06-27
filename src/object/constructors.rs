@@ -51,6 +51,19 @@ impl Object {
         ))))
     }
 
+    /// Create an exception with a cause
+    pub fn exception_with_cause(
+        exception_type: impl Into<String>,
+        message: impl Into<String>,
+        cause: Object,
+    ) -> Self {
+        Object::Exception(Rc::new(RefCell::new(Exception::with_cause(
+            exception_type.into(),
+            message.into(),
+            cause,
+        ))))
+    }
+
     /// Create an Ok result
     pub fn ok(value: Object) -> Self {
         Object::Result(Ok(Box::new(value)))

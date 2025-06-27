@@ -195,9 +195,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 9.2.7 Use `examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
 
 ### 9.3 Exception Types
-- [ ] 9.3.1 Implement standard exception hierarchy
-- [ ] 9.3.2 Add custom exception classes
-- [ ] 9.3.3 Implement exception chaining
+- [x] 9.3.1 Implement standard exception hierarchy
+- [x] 9.3.2 Add custom exception classes
+- [x] 9.3.3 Implement exception chaining
 
 ### 9.4 Error Reporting
 - [ ] 9.4.1 Implement stack trace generation
