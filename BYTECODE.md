@@ -20,6 +20,16 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
 - Supporting runtime method definition and reflection
 - Ensuring all existing tests continue to pass
 
+**Critical Implementation Risks** (Addressed in Phase 1.4 and 1.5):
+1. **Meta-Programming Support** (Phase 1.4): Runtime code compilation via `eval`, `define_method`, etc. Must design early.
+2. **Closure/Upvalue Management** (Phase 1.5): Most complex part of bytecode VMs - variables must "close over" when scopes end
+3. **Garbage Collection Integration** (Phase 1.5): Stack, call frames, and constant pool must properly integrate with GC root scanning
+4. **Block Yield Semantics** (Phase 1.5): Ruby-like yield behavior with non-local returns is tricky
+5. **Method Resolution Caching** (Phase 1.5): Performance depends on efficient method lookup with cache invalidation
+6. **Operator Overloading** (Phase 1.5): Custom operators must work seamlessly while keeping built-in types fast
+
+These risks are addressed early (Phase 1.4-1.5) because they affect the fundamental VM design and cannot be easily retrofitted later.
+
 ---
 
 ## Phase 1: Foundation - Bytecode Instruction Set Design
@@ -84,8 +94,18 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
 - [ ] 1.1.10. Define meta-programming instructions
   - [ ] 1.1.10.1. `BUILD_LAMBDA <code_index>` - Create lambda/block object
   - [ ] 1.1.10.2. `CAPTURE_VAR <name_index>` - Capture variable for closure
-  - [ ] 1.1.10.3. `CALL_BLOCK` - Call block object
-  - [ ] 1.1.10.4. `DEFINE_METHOD_RUNTIME <name_index>` - Runtime method definition
+  - [ ] 1.1.10.3. `GET_UPVALUE <index>` - Load value from upvalue
+  - [ ] 1.1.10.4. `SET_UPVALUE <index>` - Store value to upvalue
+  - [ ] 1.1.10.5. `CLOSE_UPVALUE <stack_index>` - Close upvalue when scope ends
+  - [ ] 1.1.10.6. `CALL_BLOCK` - Call block object
+  - [ ] 1.1.10.7. `YIELD <arg_count>` - Yield to block with arguments
+  - [ ] 1.1.10.8. `BLOCK_GIVEN` - Check if block was passed to current method
+  - [ ] 1.1.10.9. `DEFINE_METHOD_RUNTIME <name_index>` - Runtime method definition
+  - [ ] 1.1.10.10. `EVAL_STRING` - Pop string, parse to AST, compile to bytecode, execute
+  - [ ] 1.1.10.11. `GET_METHOD_AST <method_name_index>` - Push method's AST onto stack
+  - [ ] 1.1.10.12. `GET_CLASS_AST <class_name_index>` - Push class definition AST onto stack
+  - [ ] 1.1.10.13. `SET_METHOD_AST <method_name_index>` - Pop AST, recompile and replace method
+  - [ ] 1.1.10.14. `REMOVE_METHOD <class_name_index> <method_name_index>` - Remove method from class
 - [ ] 1.1.11. Define pattern matching instructions
   - [ ] 1.1.11.1. `MATCH_START` - Begin pattern matching
   - [ ] 1.1.11.2. `MATCH_CASE <pattern_type> <jump_offset>` - Test pattern
@@ -154,6 +174,261 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
   - [ ] 1.3.2.1. Add `--disassemble` flag to main.rs
   - [ ] 1.3.2.2. Compile and print bytecode instead of executing
   - [ ] 1.3.2.3. **TEST**: Manually test with example .mx files
+
+---
+
+## Phase 1.4: Runtime Compilation for Meta-Programming
+
+**Context**: Meta-programming requires compiling and executing code at runtime. The compiler must be callable from the VM.
+
+### 1.4.1 Add Runtime Compilation Instructions
+
+- [ ] 1.4.1.1. Implement EVAL_STRING instruction
+  - [ ] 1.4.1.1.1. **TEST**: Write test for eval("puts 'Hello'")
+  - [ ] 1.4.1.1.2. Pop string from stack
+  - [ ] 1.4.1.1.3. Parse string → AST using existing parser
+  - [ ] 1.4.1.1.4. Compile AST → bytecode chunk using compiler
+  - [ ] 1.4.1.1.5. Execute chunk in current scope context
+  - [ ] 1.4.1.1.6. Push result onto stack
+  - [ ] 1.4.1.1.7. Verify test passes
+
+### 1.4.2 Design Compiler API for Runtime Use
+
+- [ ] 1.4.2.1. Make compiler callable from VM
+  - [ ] 1.4.2.1.1. **TEST**: Write test that calls compiler at runtime
+  - [ ] 1.4.2.1.2. Add `Compiler::compile_in_context(ast, scope, globals)`
+  - [ ] 1.4.2.1.3. Allow compiler to access current VM state (for variable resolution)
+  - [ ] 1.4.2.1.4. **TEST**: Verify eval can access local variables in scope
+  - [ ] 1.4.2.1.5. **TEST**: Verify eval can define new variables in scope
+  - [ ] 1.4.2.1.6. Verify all tests pass
+
+### 1.4.3 Handle define_method and Runtime Method Definition
+
+- [ ] 1.4.3.1. Support define_method with blocks
+  - [ ] 1.4.3.1.1. **TEST**: Write test for define_method(:foo) { |x| x * 2 }
+  - [ ] 1.4.3.1.2. Block already has AST (from BUILD_LAMBDA)
+  - [ ] 1.4.3.1.3. Compile block body to bytecode chunk
+  - [ ] 1.4.3.1.4. Add method to class with compiled chunk
+  - [ ] 1.4.3.1.5. **TEST**: Verify dynamically defined method works
+  - [ ] 1.4.3.1.6. Verify test passes
+
+- [ ] 1.4.3.2. Support class_eval and instance_eval
+  - [ ] 1.4.3.2.1. **TEST**: Write test for MyClass.class_eval("def foo; 42; end")
+  - [ ] 1.4.3.2.2. Parse string → AST
+  - [ ] 1.4.3.2.3. Compile with appropriate self context (class or instance)
+  - [ ] 1.4.3.2.4. Execute in that context
+  - [ ] 1.4.3.2.5. Verify test passes
+
+### 1.4.4 Full AST Preservation for Introspection
+
+**Context**: Full meta-programming requires storing AST for all methods/classes to allow runtime introspection and modification.
+
+- [ ] 1.4.4.1. Design AST storage in Method objects
+  - [ ] 1.4.4.1.1. **DECISION**: Store original AST for every method (accept memory cost)
+  - [ ] 1.4.4.1.2. Add `source_ast: Option<Rc<Vec<Statement>>>` to Method struct
+  - [ ] 1.4.4.1.3. Compiler populates source_ast when creating methods
+  - [ ] 1.4.4.1.4. AST is immutable (wrapped in Rc), clone before modification
+  - [ ] 1.4.4.1.5. Document memory tradeoff: ~2x memory per method
+
+- [ ] 1.4.4.2. Design AST storage in Class objects
+  - [ ] 1.4.4.2.1. Add `class_definition_ast: Option<Rc<Statement>>` to Class struct
+  - [ ] 1.4.4.2.2. Store entire class definition AST (includes all methods)
+  - [ ] 1.4.4.2.3. Update when class is modified (method added/removed)
+  - [ ] 1.4.4.2.4. **TEST**: Write test for class AST retrieval
+
+- [ ] 1.4.4.3. Add AST retrieval instructions
+  - [ ] 1.4.4.3.1. Add `GET_METHOD_AST <method_name>` instruction
+  - [ ] 1.4.4.3.2. Add `GET_CLASS_AST <class_name>` instruction
+  - [ ] 1.4.4.3.3. Both push AST as Object::AST variant onto stack
+  - [ ] 1.4.4.3.4. Document AST object type in object model
+
+- [ ] 1.4.4.4. Add AST modification support
+  - [ ] 1.4.4.4.1. **TEST**: Write test for modifying method AST
+  - [ ] 1.4.4.4.2. Add `SET_METHOD_AST <method_name>` instruction
+  - [ ] 1.4.4.4.3. Pop AST from stack, recompile to bytecode
+  - [ ] 1.4.4.4.4. Replace method's bytecode with new version
+  - [ ] 1.4.4.4.5. Update method's stored AST to new version
+  - [ ] 1.4.4.4.6. Invalidate method cache (trigger recompilation on next call)
+  - [ ] 1.4.4.4.7. **TEST**: Verify modified method executes with new behavior
+
+- [ ] 1.4.4.5. Support runtime method removal
+  - [ ] 1.4.4.5.1. **TEST**: Write test for removing method from class
+  - [ ] 1.4.4.5.2. Add `REMOVE_METHOD <class_name> <method_name>` instruction
+  - [ ] 1.4.4.5.3. Remove method from class's method table
+  - [ ] 1.4.4.5.4. Update class AST (remove method definition node)
+  - [ ] 1.4.4.5.5. Invalidate method cache
+  - [ ] 1.4.4.5.6. Verify method no longer callable
+
+### 1.4.5 Document Meta-Programming Strategy
+
+- [ ] 1.4.5.1. Write META_PROGRAMMING.md design doc
+  - [ ] 1.4.5.1.1. **DECISION**: Full AST preservation for all methods/classes
+  - [ ] 1.4.5.1.2. Document memory cost: ~2x per method (acceptable tradeoff)
+  - [ ] 1.4.5.1.3. Explain AST modification → recompilation workflow
+  - [ ] 1.4.5.1.4. Document Object::AST type and manipulation APIs
+  - [ ] 1.4.5.1.5. Provide examples of AST introspection patterns
+
+---
+
+## Phase 1.5: Critical Infrastructure - GC, Closures, and Runtime Integration
+
+### 1.5.1 Garbage Collection Integration
+
+**Context**: The bytecode VM must properly integrate with the existing heap/GC system to ensure objects referenced by the stack, call frames, and constant pool are kept alive.
+
+- [ ] 1.5.1.1. Design GC root set for bytecode VM
+  - [ ] 1.5.1.1.1. **TEST**: Write test that GC doesn't collect objects on value stack
+  - [ ] 1.5.1.1.2. Identify all GC roots: value stack, call frame locals, globals, constant pool
+  - [ ] 1.5.1.1.3. Document root scanning strategy
+  - [ ] 1.5.1.1.4. Verify test passes with manual GC trigger
+- [ ] 1.5.1.2. Implement value stack GC integration
+  - [ ] 1.5.1.2.1. **TEST**: Write test for stack-held objects surviving GC
+  - [ ] 1.5.1.2.2. Ensure stack holds proper Rc<RefCell<Object>> references
+  - [ ] 1.5.1.2.3. Implement stack scanning during GC mark phase
+  - [ ] 1.5.1.2.4. Verify test passes with GC pressure
+- [ ] 1.5.1.3. Implement call frame locals GC integration
+  - [ ] 1.5.1.3.1. **TEST**: Write test for locals surviving across GC
+  - [ ] 1.5.1.3.2. Store locals as GC-tracked references in CallFrame
+  - [ ] 1.5.1.3.3. Scan all call frames during GC mark
+  - [ ] 1.5.1.3.4. Verify test passes
+- [ ] 1.5.1.4. Implement constant pool GC integration
+  - [ ] 1.5.1.4.1. **TEST**: Write test for constants surviving GC
+  - [ ] 1.5.1.4.2. Decide: are constants immortal or GC-tracked?
+  - [ ] 1.5.1.4.3. If GC-tracked, scan constant pool during mark
+  - [ ] 1.5.1.4.4. Verify test passes
+- [ ] 1.5.1.5. Handle GC during bytecode execution
+  - [ ] 1.5.1.5.1. **TEST**: Write test that triggers GC mid-execution
+  - [ ] 1.5.1.5.2. Ensure VM state is always GC-safe (no dangling pointers)
+  - [ ] 1.5.1.5.3. Test allocation-heavy bytecode doesn't crash
+  - [ ] 1.5.1.5.4. Verify all tests pass
+
+### 1.5.2 Closure and Upvalue Management
+
+**Context**: Closures capture variables from outer scopes. When those scopes return, captured variables must "close over" - moving from stack to heap. This is one of the most complex parts of bytecode VMs.
+
+- [ ] 1.5.2.1. Design upvalue system
+  - [ ] 1.5.2.1.1. **TEST**: Write test for simple closure capturing local variable
+  - [ ] 1.5.2.1.2. Design Upvalue type: Open (points to stack) vs Closed (owns value)
+  - [ ] 1.5.2.1.3. Document upvalue lifecycle: creation → closing → access
+  - [ ] 1.5.2.1.4. Create src/bytecode/upvalue.rs
+- [ ] 1.5.2.2. Implement open upvalues
+  - [ ] 1.5.2.2.1. **TEST**: Write test where closure accesses variable while frame is active
+  - [ ] 1.5.2.2.2. Define OpenUpvalue { stack_index: usize, frame_id: usize }
+  - [ ] 1.5.2.2.3. Implement upvalue lookup in active stack frames
+  - [ ] 1.5.2.2.4. Verify test passes
+- [ ] 1.5.2.3. Implement upvalue closing
+  - [ ] 1.5.2.3.1. **TEST**: Write test where closure outlives creating frame
+  - [ ] 1.5.2.3.2. On function return, close all upvalues pointing to returned frame
+  - [ ] 1.5.2.3.3. Copy stack value to heap-allocated ClosedUpvalue
+  - [ ] 1.5.2.3.4. Update all references to point to closed value
+  - [ ] 1.5.2.3.5. Verify test passes (closure still works after return)
+- [ ] 1.5.2.4. Implement CLOSE_UPVALUE instruction
+  - [ ] 1.5.2.4.1. **TEST**: Write test for explicit upvalue closing at scope end
+  - [ ] 1.5.2.4.2. Add CLOSE_UPVALUE <stack_index> instruction
+  - [ ] 1.5.2.4.3. Close upvalues when local scope ends (not just function return)
+  - [ ] 1.5.2.4.4. Verify test passes
+- [ ] 1.5.2.5. Implement upvalue sharing
+  - [ ] 1.5.2.5.1. **TEST**: Write test with multiple closures sharing same variable
+  - [ ] 1.5.2.5.2. Track open upvalues per VM to deduplicate
+  - [ ] 1.5.2.5.3. When creating upvalue, check if one already exists for that slot
+  - [ ] 1.5.2.5.4. Share single upvalue across multiple closures
+  - [ ] 1.5.2.5.5. **TEST**: Verify mutations through one closure visible in another
+  - [ ] 1.5.2.5.6. Verify all tests pass
+- [ ] 1.5.2.6. Update BUILD_LAMBDA to capture upvalues
+  - [ ] 1.5.2.6.1. **TEST**: Write test for nested closures (closure in closure)
+  - [ ] 1.5.2.6.2. Modify BUILD_LAMBDA to create upvalue list
+  - [ ] 1.5.2.6.3. Store upvalues in Block/Lambda object
+  - [ ] 1.5.2.6.4. Test nested closures work correctly
+  - [ ] 1.5.2.6.5. Verify 100% coverage for upvalue.rs
+- [ ] 1.5.2.7. Implement upvalue GC integration
+  - [ ] 1.5.2.7.1. **TEST**: Write test that upvalues survive GC
+  - [ ] 1.5.2.7.2. Scan open upvalues during GC mark
+  - [ ] 1.5.2.7.3. Scan closed upvalue values during GC mark
+  - [ ] 1.5.2.7.4. Verify test passes
+
+### 1.5.3 Block Yield Support
+
+**Context**: Metorex has blocks and yield (based on existing code). Bytecode must support yielding to blocks.
+
+- [ ] 1.5.3.1. Design yield mechanism
+  - [ ] 1.5.3.1.1. **TEST**: Write test for method that yields to block
+  - [ ] 1.5.3.1.2. Add YIELD <arg_count> instruction
+  - [ ] 1.5.3.1.3. Design block calling convention (stored where in frame?)
+  - [ ] 1.5.3.1.4. Document yield control flow
+- [ ] 1.5.3.2. Implement YIELD instruction handler
+  - [ ] 1.5.3.2.1. **TEST**: Write test for yield with arguments
+  - [ ] 1.5.3.2.2. Pop N arguments from stack
+  - [ ] 1.5.3.2.3. Get current block from call frame
+  - [ ] 1.5.3.2.4. Call block with arguments
+  - [ ] 1.5.3.2.5. Push block's return value
+  - [ ] 1.5.3.2.6. Verify test passes
+- [ ] 1.5.3.3. Implement BLOCK_GIVEN instruction
+  - [ ] 1.5.3.3.1. **TEST**: Write test for block_given? conditional
+  - [ ] 1.5.3.3.2. Add BLOCK_GIVEN instruction (pushes bool)
+  - [ ] 1.5.3.3.3. Check if current call frame has a block
+  - [ ] 1.5.3.3.4. Verify test passes
+- [ ] 1.5.3.4. Implement implicit block passing
+  - [ ] 1.5.3.4.1. **TEST**: Write test for method call with trailing block
+  - [ ] 1.5.3.4.2. Modify CALL_METHOD to accept optional block
+  - [ ] 1.5.3.4.3. Store block in new call frame
+  - [ ] 1.5.3.4.4. Verify block accessible via yield
+- [ ] 1.5.3.5. Handle block return semantics
+  - [ ] 1.5.3.5.1. **TEST**: Write test that return in block returns from method
+  - [ ] 1.5.3.5.2. Distinguish block return from method return
+  - [ ] 1.5.3.5.3. Implement non-local return (return from enclosing method)
+  - [ ] 1.5.3.5.4. Verify Ruby-like block return behavior
+
+### 1.5.4 Method Resolution and Caching
+
+**Context**: Dynamic method lookup is expensive. Need efficient resolution with support for method_missing.
+
+- [ ] 1.5.4.1. Implement basic method lookup
+  - [ ] 1.5.4.1.1. **TEST**: Write test for method lookup in class hierarchy
+  - [ ] 1.5.4.1.2. Search instance methods in class
+  - [ ] 1.5.4.1.3. Walk superclass chain if not found
+  - [ ] 1.5.4.1.4. Verify test passes
+- [ ] 1.5.4.2. Implement method_missing support
+  - [ ] 1.5.4.2.1. **TEST**: Write test that method_missing gets called
+  - [ ] 1.5.4.2.2. If method not found, look for method_missing
+  - [ ] 1.5.4.2.3. Call method_missing with original method name + args
+  - [ ] 1.5.4.2.4. Verify test passes
+- [ ] 1.5.4.3. Implement inline caching (basic)
+  - [ ] 1.5.4.3.1. **TEST**: Write benchmark for repeated method calls
+  - [ ] 1.5.4.3.2. Add cache slot to CALL_METHOD instruction
+  - [ ] 1.5.4.3.3. Cache last lookup result (class → method mapping)
+  - [ ] 1.5.4.3.4. Check cache before full lookup
+  - [ ] 1.5.4.3.5. Measure performance improvement (should be significant)
+- [ ] 1.5.4.4. Implement cache invalidation
+  - [ ] 1.5.4.4.1. **TEST**: Write test that redefines method, calls again
+  - [ ] 1.5.4.4.2. Add global method cache version counter
+  - [ ] 1.5.4.4.3. Increment version on any method definition
+  - [ ] 1.5.4.4.4. Invalidate cached entries if version changed
+  - [ ] 1.5.4.4.5. Verify test shows new behavior
+- [ ] 1.5.4.5. Handle visibility (private/protected/public)
+  - [ ] 1.5.4.5.1. **TEST**: Write test for private method enforcement
+  - [ ] 1.5.4.5.2. Check method visibility during lookup
+  - [ ] 1.5.4.5.3. Raise error if calling private method from outside
+  - [ ] 1.5.4.5.4. Verify test passes
+
+### 1.5.5 Operator Overloading Support
+
+**Context**: Metorex allows custom +, -, [], etc. Bytecode must call these methods.
+
+- [ ] 1.5.5.1. Map operators to method calls
+  - [ ] 1.5.5.1.1. **TEST**: Write test for custom + operator
+  - [ ] 1.5.5.1.2. ADD instruction: try native add first, fall back to calling + method
+  - [ ] 1.5.5.1.3. Implement for all binary operators
+  - [ ] 1.5.5.1.4. Verify test passes
+- [ ] 1.5.5.2. Implement index operator overloading
+  - [ ] 1.5.5.2.1. **TEST**: Write test for custom [] method
+  - [ ] 1.5.5.2.2. INDEX_GET: call [] method if defined
+  - [ ] 1.5.5.2.3. INDEX_SET: call []= method if defined
+  - [ ] 1.5.5.2.4. Verify test passes
+- [ ] 1.5.5.3. Optimize built-in type operators
+  - [ ] 1.5.5.3.1. **TEST**: Benchmark int + int performance
+  - [ ] 1.5.5.3.2. Fast path for Int, Float, String native operations
+  - [ ] 1.5.5.3.3. Only call method for custom classes
+  - [ ] 1.5.5.3.4. Verify performance is good
 
 ---
 
@@ -524,36 +799,94 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
 
 ### 3.6 Implement Meta-Programming Support
 
-- [ ] 3.6.1. Implement BUILD_LAMBDA instruction handler
-  - [ ] 3.6.1.1. Read chunk index from constant pool
-  - [ ] 3.6.1.2. Get lambda chunk
-  - [ ] 3.6.1.3. Capture variables (read capture list)
-  - [ ] 3.6.1.4. Create Block object with chunk and captures
-  - [ ] 3.6.1.5. Push block onto stack
-  - [ ] 3.6.1.6. Write tests for lambda creation
-- [ ] 3.6.2. Implement CAPTURE_VAR instruction handler
-  - [ ] 3.6.2.1. Read variable name from constant pool
-  - [ ] 3.6.2.2. Look up variable in current scope
-  - [ ] 3.6.2.3. Store reference in closure's capture map
-  - [ ] 3.6.2.4. Write tests for variable capture
-- [ ] 3.6.3. Implement CALL_BLOCK instruction handler
-  - [ ] 3.6.3.1. Pop block object
-  - [ ] 3.6.3.2. Pop arguments
-  - [ ] 3.6.3.3. Create call frame with block's chunk
-  - [ ] 3.6.3.4. Bind captured variables in new frame
-  - [ ] 3.6.3.5. Execute block
-  - [ ] 3.6.3.6. Write tests for block calls
-- [ ] 3.6.4. Implement DEFINE_METHOD_RUNTIME instruction handler
-  - [ ] 3.6.4.1. Read method name
-  - [ ] 3.6.4.2. Pop block from stack (method body)
-  - [ ] 3.6.4.3. Get target class (from self or explicit)
-  - [ ] 3.6.4.4. Add method to class at runtime
-  - [ ] 3.6.4.5. Write tests for define_method
-- [ ] 3.6.5. Implement GET_AST instruction handler (for reflection)
-  - [ ] 3.6.5.1. Get current method's bytecode chunk
-  - [ ] 3.6.5.2. Reconstruct AST from bytecode (or store original AST)
-  - [ ] 3.6.5.3. Push AST object onto stack
-  - [ ] 3.6.5.4. Write tests for AST retrieval
+- [ ] 3.6.1. Implement EVAL_STRING instruction handler
+  - [ ] 3.6.1.1. **TEST**: Write test for eval("x = 5; x * 2")
+  - [ ] 3.6.1.2. Pop string value from stack
+  - [ ] 3.6.1.3. Create parser instance with string source
+  - [ ] 3.6.1.4. Parse string → AST
+  - [ ] 3.6.1.5. Create compiler instance with current VM context
+  - [ ] 3.6.1.6. Compile AST → bytecode chunk
+  - [ ] 3.6.1.7. Execute chunk in current scope (access to locals/globals)
+  - [ ] 3.6.1.8. Push return value onto stack
+  - [ ] 3.6.1.9. **TEST**: Verify eval can access existing variables
+  - [ ] 3.6.1.10. **TEST**: Verify eval can define new variables
+  - [ ] 3.6.1.11. Write tests for eval with syntax errors
+  - [ ] 3.6.1.12. Verify all tests pass
+
+- [ ] 3.6.2. Implement BUILD_LAMBDA instruction handler
+  - [ ] 3.6.2.1. Read chunk index from constant pool
+  - [ ] 3.6.2.2. Get lambda chunk
+  - [ ] 3.6.2.3. Capture variables (read capture list)
+  - [ ] 3.6.2.4. Create Block object with chunk and captures
+  - [ ] 3.6.2.5. Push block onto stack
+  - [ ] 3.6.2.6. Write tests for lambda creation
+- [ ] 3.6.3. Implement CAPTURE_VAR instruction handler
+  - [ ] 3.6.3.1. Read variable name from constant pool
+  - [ ] 3.6.3.2. Look up variable in current scope
+  - [ ] 3.6.3.3. Store reference in closure's capture map
+  - [ ] 3.6.3.4. Write tests for variable capture
+- [ ] 3.6.4. Implement CALL_BLOCK instruction handler
+  - [ ] 3.6.4.1. Pop block object
+  - [ ] 3.6.4.2. Pop arguments
+  - [ ] 3.6.4.3. Create call frame with block's chunk
+  - [ ] 3.6.4.4. Bind captured variables in new frame
+  - [ ] 3.6.4.5. Execute block
+  - [ ] 3.6.4.6. Write tests for block calls
+- [ ] 3.6.5. Implement DEFINE_METHOD_RUNTIME instruction handler
+  - [ ] 3.6.5.1. Read method name
+  - [ ] 3.6.5.2. Pop block from stack (method body)
+  - [ ] 3.6.5.3. Get target class (from self or explicit)
+  - [ ] 3.6.5.4. Add method to class at runtime
+  - [ ] 3.6.5.5. Write tests for define_method
+
+- [ ] 3.6.6. Implement GET_METHOD_AST instruction handler
+  - [ ] 3.6.6.1. **TEST**: Write test for method.get_ast()
+  - [ ] 3.6.6.2. Read method name from constant pool
+  - [ ] 3.6.6.3. Look up method in current class/global scope
+  - [ ] 3.6.6.4. Retrieve source_ast from Method object
+  - [ ] 3.6.6.5. Wrap AST in Object::AST variant
+  - [ ] 3.6.6.6. Push onto stack
+  - [ ] 3.6.6.7. **TEST**: Verify AST structure matches original definition
+  - [ ] 3.6.6.8. Handle case where AST is None (error or return nil)
+
+- [ ] 3.6.7. Implement GET_CLASS_AST instruction handler
+  - [ ] 3.6.7.1. **TEST**: Write test for MyClass.get_ast()
+  - [ ] 3.6.7.2. Read class name from constant pool
+  - [ ] 3.6.7.3. Look up class in globals
+  - [ ] 3.6.7.4. Retrieve class_definition_ast from Class object
+  - [ ] 3.6.7.5. Wrap in Object::AST, push onto stack
+  - [ ] 3.6.7.6. Verify test passes
+
+- [ ] 3.6.8. Implement SET_METHOD_AST instruction handler
+  - [ ] 3.6.8.1. **TEST**: Write test for modifying method via AST
+  - [ ] 3.6.8.2. Read method name from constant pool
+  - [ ] 3.6.8.3. Pop Object::AST from stack
+  - [ ] 3.6.8.4. Unwrap to get Vec<Statement>
+  - [ ] 3.6.8.5. Invoke compiler to generate new bytecode chunk
+  - [ ] 3.6.8.6. Look up existing method in class
+  - [ ] 3.6.8.7. Replace method's bytecode chunk with new version
+  - [ ] 3.6.8.8. Update method's source_ast to new AST
+  - [ ] 3.6.8.9. Invalidate method cache (increment global version)
+  - [ ] 3.6.8.10. **TEST**: Call modified method, verify new behavior
+  - [ ] 3.6.8.11. Verify all tests pass
+
+- [ ] 3.6.9. Implement REMOVE_METHOD instruction handler
+  - [ ] 3.6.9.1. **TEST**: Write test for removing method from class
+  - [ ] 3.6.9.2. Read class name and method name from constant pool
+  - [ ] 3.6.9.3. Look up class in globals
+  - [ ] 3.6.9.4. Remove method from class's method table
+  - [ ] 3.6.9.5. Update class_definition_ast (remove method node)
+  - [ ] 3.6.9.6. Invalidate method cache
+  - [ ] 3.6.9.7. **TEST**: Verify method no longer callable (NoMethodError)
+  - [ ] 3.6.9.8. Verify test passes
+
+- [ ] 3.6.10. Add Object::AST variant to object model
+  - [ ] 3.6.10.1. Add `AST(Rc<Vec<Statement>>)` to Object enum
+  - [ ] 3.6.10.2. Implement Display for Object::AST (show AST structure)
+  - [ ] 3.6.10.3. Implement Clone for Object::AST
+  - [ ] 3.6.10.4. Add AST manipulation methods (modify nodes, traverse, etc.)
+  - [ ] 3.6.10.5. **TEST**: Write tests for AST object operations
+  - [ ] 3.6.10.6. Document Object::AST API in code comments
 
 ### 3.7 Implement Pattern Matching
 
@@ -595,11 +928,19 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
   - [ ] 4.1.2.3. Compile and execute each line in bytecode mode by default
   - [ ] 4.1.2.4. Show compilation errors clearly
   - [ ] 4.1.2.5. Test REPL in both modes
-- [ ] 4.1.3. Ensure feature parity
-  - [ ] 4.1.3.1. Run all existing tests in both modes
-  - [ ] 4.1.3.2. Document features only available in one mode (if any)
-  - [ ] 4.1.3.3. Add warning message when using deprecated --ast flag
-  - [ ] 4.1.3.4. Create migration checklist for eventual AST mode removal
+- [ ] 4.1.3. Handle REPL-specific challenges
+  - [ ] 4.1.3.1. **TEST**: Write test for incremental global definitions in REPL
+  - [ ] 4.1.3.2. Design persistent state across REPL inputs (global registry, classes)
+  - [ ] 4.1.3.3. Allow redefining classes/methods in REPL without restart
+  - [ ] 4.1.3.4. **TEST**: Write test for class redefinition in REPL
+  - [ ] 4.1.3.5. Implement constant pool growth across REPL lines
+  - [ ] 4.1.3.6. **TEST**: Write test for multi-line input compilation (begin...end across prompts)
+  - [ ] 4.1.3.7. Verify all REPL tests pass
+- [ ] 4.1.4. Ensure feature parity
+  - [ ] 4.1.4.1. Run all existing tests in both modes
+  - [ ] 4.1.4.2. Document features only available in one mode (if any)
+  - [ ] 4.1.4.3. Add warning message when using deprecated --ast flag
+  - [ ] 4.1.4.4. Create migration checklist for eventual AST mode removal
 
 ### 4.2 Test Migration
 
@@ -690,6 +1031,48 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
   - [ ] 4.5.5.3. Document any breaking changes or behavioral differences
   - [ ] 4.5.5.4. Provide examples of using --ast flag for debugging
   - [ ] 4.5.5.5. Explain when AST mode might eventually be removed
+
+---
+
+## Phase 4.6: Module and Import System (Future-Proofing)
+
+**Context**: While not implemented yet, the bytecode design should support a future module/import system without requiring major refactoring.
+
+### 4.6.1 Design Module Loading Strategy
+
+- [ ] 4.6.1.1. Design module representation
+  - [ ] 4.6.1.1.1. Document module concept: separate namespace, exports
+  - [ ] 4.6.1.1.2. Decide: module = separate bytecode chunk or namespace in globals?
+  - [ ] 4.6.1.1.3. Design Module object structure
+  - [ ] 4.6.1.1.4. Write design doc for future implementation
+- [ ] 4.6.1.2. Reserve bytecode instructions for modules
+  - [ ] 4.6.1.2.1. Add LOAD_MODULE <path> instruction to opcode enum (unimplemented)
+  - [ ] 4.6.1.2.2. Add IMPORT <module> <name> instruction (unimplemented)
+  - [ ] 4.6.1.2.3. Add EXPORT <name> instruction (unimplemented)
+  - [ ] 4.6.1.2.4. Document intended semantics in comments
+  - [ ] 4.6.1.2.5. Emit error if these instructions are encountered in Phase 2
+
+### 4.6.2 Cross-Module Constant Pool Strategy
+
+- [ ] 4.6.2.1. Design constant pool sharing
+  - [ ] 4.6.2.1.1. Document options: shared global pool vs per-module pools
+  - [ ] 4.6.2.1.2. Consider implications for bytecode caching
+  - [ ] 4.6.2.1.3. Decide on approach for Phase 3 implementation
+- [ ] 4.6.2.2. Ensure bytecode format supports module references
+  - [ ] 4.6.2.2.1. Add module ID field to chunk metadata
+  - [ ] 4.6.2.2.2. Add module version to serialization format
+  - [ ] 4.6.2.2.3. Test round-trip with module metadata
+
+### 4.6.3 Global Resolution Scope
+
+- [ ] 4.6.3.1. Document current global resolution behavior
+  - [ ] 4.6.3.1.1. **TEST**: Write test for undefined global access
+  - [ ] 4.6.3.1.2. Implement error for undefined globals in bytecode mode
+  - [ ] 4.6.3.1.3. Verify consistent with AST mode behavior
+- [ ] 4.6.3.2. Design module-aware global lookup
+  - [ ] 4.6.3.2.1. Document how LOAD_GLOBAL will search module scope
+  - [ ] 4.6.3.2.2. Plan for module import aliases
+  - [ ] 4.6.3.2.3. Write design doc for future work
 
 ---
 
@@ -819,6 +1202,73 @@ This document outlines the comprehensive plan for transitioning Metorex from a t
   - [ ] 6.3.3.2. Implement method/loop hotness detection
   - [ ] 6.3.3.3. Trigger compilation on hot code
   - [ ] 6.3.3.4. Test JIT trigger mechanism
+
+---
+
+## Phase 4.7: Comprehensive Testing for Complex Features
+
+**Context**: Closures, GC integration, and yield semantics are notoriously bug-prone. Comprehensive testing beyond basic functionality is critical.
+
+### 4.7.1 Closure Edge Case Testing
+
+- [ ] 4.7.1.1. **TEST**: Closure capturing multiple variables at different nesting levels
+- [ ] 4.7.1.2. **TEST**: Closure returned from closure (nested closures)
+- [ ] 4.7.1.3. **TEST**: Multiple closures sharing same captured variable
+- [ ] 4.7.1.4. **TEST**: Closure accessing variables after frame has returned
+- [ ] 4.7.1.5. **TEST**: Closure modifying captured variable, visible in outer scope
+- [ ] 4.7.1.6. **TEST**: Closure in loop capturing loop variable (classic closure bug)
+- [ ] 4.7.1.7. **TEST**: Recursive function creating closures
+- [ ] 4.7.1.8. Verify all closure edge cases pass
+
+### 4.7.2 GC Stress Testing
+
+- [ ] 4.7.2.1. **TEST**: Create many objects during bytecode execution, trigger GC
+- [ ] 4.7.2.2. **TEST**: Deep call stack with GC in middle of execution
+- [ ] 4.7.2.3. **TEST**: Closures surviving GC cycles
+- [ ] 4.7.2.4. **TEST**: Exceptions thrown during GC don't corrupt VM state
+- [ ] 4.7.2.5. **TEST**: Large constant pool with GC
+- [ ] 4.7.2.6. Create GC stress test suite (runs with frequent GC triggers)
+- [ ] 4.7.2.7. Verify no memory leaks with valgrind/ASAN
+
+### 4.7.3 Yield and Block Testing
+
+- [ ] 4.7.3.1. **TEST**: Yield with 0, 1, many arguments
+- [ ] 4.7.3.2. **TEST**: Nested yields (method yields to block that yields to another block)
+- [ ] 4.7.3.3. **TEST**: Return from within block returns from enclosing method
+- [ ] 4.7.3.4. **TEST**: Exception in block propagates correctly
+- [ ] 4.7.3.5. **TEST**: Block with block_given? checks
+- [ ] 4.7.3.6. **TEST**: Iterator methods (.each, .map) using yield
+- [ ] 4.7.3.7. Verify all yield semantics match Ruby behavior
+
+### 4.7.4 Exception Handling Stress Testing
+
+- [ ] 4.7.4.1. **TEST**: Deeply nested try/rescue blocks
+- [ ] 4.7.4.2. **TEST**: Exception in ensure block
+- [ ] 4.7.4.3. **TEST**: Re-raise from rescue
+- [ ] 4.7.4.4. **TEST**: Exception during method lookup
+- [ ] 4.7.4.5. **TEST**: Exception in native method propagates correctly
+- [ ] 4.7.4.6. **TEST**: Stack unwinding through multiple frames
+- [ ] 4.7.4.7. **TEST**: Ensure blocks run during unwinding
+- [ ] 4.7.4.8. Verify all exception tests pass
+
+### 4.7.5 Property-Based Testing
+
+- [ ] 4.7.5.1. Set up property-based testing framework (proptest crate)
+- [ ] 4.7.5.2. **PROPERTY**: Bytecode mode output == AST mode output for all valid programs
+- [ ] 4.7.5.3. **PROPERTY**: All bytecode instructions maintain valid stack depth
+- [ ] 4.7.5.4. **PROPERTY**: Constant pool indices are always in bounds
+- [ ] 4.7.5.5. **PROPERTY**: GC never collects reachable objects
+- [ ] 4.7.5.6. Run property tests with 10000+ generated cases
+- [ ] 4.7.5.7. Fix any failures discovered
+
+### 4.7.6 Fuzzing
+
+- [ ] 4.7.6.1. Set up cargo-fuzz for compiler
+- [ ] 4.7.6.2. Fuzz AST → bytecode compiler (should never crash)
+- [ ] 4.7.6.3. Fuzz bytecode verifier
+- [ ] 4.7.6.4. Fuzz bytecode deserializer (.mxc file loading)
+- [ ] 4.7.6.5. Run fuzzer for 24 hours, fix all crashes
+- [ ] 4.7.6.6. Add regression tests for all fuzzer-discovered issues
 
 ---
 
