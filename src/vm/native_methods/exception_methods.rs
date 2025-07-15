@@ -5,6 +5,7 @@ use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
 use crate::vm::utils::*;
+use std::cell::RefCell;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -36,6 +37,43 @@ impl VirtualMachine {
                 // Return the exception type as a String
                 let exception_type = exception.borrow().exception_type.clone();
                 Ok(Some(Object::String(Rc::new(exception_type))))
+            }
+            "backtrace" => {
+                // Return the backtrace as an Array of Strings
+                let backtrace = exception.borrow().backtrace.clone();
+                match backtrace {
+                    Some(trace) => {
+                        let trace_objects: Vec<Object> = trace
+                            .iter()
+                            .map(|line| Object::String(Rc::new(line.clone())))
+                            .collect();
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(trace_objects)))))
+                    }
+                    None => Ok(Some(Object::Array(Rc::new(RefCell::new(Vec::new()))))),
+                }
+            }
+            "to_s" => {
+                // Return a formatted error message with stack trace
+                let exc = exception.borrow();
+                let mut result = format!("{}: {}", exc.exception_type, exc.message);
+
+                // Add location if available
+                if let Some(ref location) = exc.location {
+                    result = format!("{} (at {}:{})", result, location.file, location.line);
+                }
+
+                // Add backtrace if available
+                if let Some(ref backtrace) = exc.backtrace
+                    && !backtrace.is_empty()
+                {
+                    result.push_str("\nBacktrace:\n");
+                    for line in backtrace {
+                        result.push_str(line);
+                        result.push('\n');
+                    }
+                }
+
+                Ok(Some(Object::String(Rc::new(result))))
             }
             _ => Ok(None), // No native method found, let it fall through
         }

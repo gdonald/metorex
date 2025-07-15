@@ -488,3 +488,35 @@ fn test_errors_exception_chaining_execution() {
     let output = run_example("errors/exception_chaining.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_errors_stack_trace_basic_execution() {
+    let output = run_example("errors/stack_trace_basic.mx");
+    // Check that the output contains the error message and backtrace info
+    assert!(output.contains("RuntimeError: Division by zero!"));
+    assert!(output.contains("Backtrace:"));
+}
+
+#[test]
+fn test_errors_stack_trace_deep_execution() {
+    let output = run_example("errors/stack_trace_deep.mx");
+    assert!(output.contains("Error at level 4!"));
+    // Check that there are multiple stack frames
+    assert!(output.contains("Stack trace has"));
+}
+
+#[test]
+fn test_errors_error_location_execution() {
+    let output = run_example("errors/error_location.mx");
+    // Division by zero should be caught
+    assert!(output.contains("Error:"));
+    assert!(output.contains("Type:"));
+}
+
+#[test]
+fn test_errors_backtrace_method_execution() {
+    let output = run_example("errors/backtrace_method.mx");
+    assert!(output.contains("Caught: Error in inner method"));
+    assert!(output.contains("Backtrace array length:"));
+    assert!(output.contains("First frame:"));
+}

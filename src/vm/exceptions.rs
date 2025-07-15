@@ -60,10 +60,53 @@ impl VirtualMachine {
             }
         };
 
+        // Capture stack trace and add source location to exception
+        let exception_obj = self.add_stack_trace_to_exception(exception_obj, position);
+
         Ok(ControlFlow::Exception {
             exception: exception_obj,
             position,
         })
+    }
+
+    /// Add stack trace and source location to an exception object
+    fn add_stack_trace_to_exception(&self, exception: Object, position: Position) -> Object {
+        if let Object::Exception(exc_ref) = exception {
+            let mut exc = exc_ref.borrow_mut();
+
+            // Add source location if not already set
+            if exc.location.is_none() {
+                exc.location = Some(crate::object::SourceLocation::new(
+                    "script".to_string(),
+                    position.line,
+                    position.column,
+                ));
+            }
+
+            // Generate stack trace from call stack
+            let backtrace: Vec<String> = self
+                .call_stack()
+                .iter()
+                .map(|frame| {
+                    if let Some(loc) = frame.location() {
+                        format!("  at {} ({})", frame.name(), loc)
+                    } else {
+                        format!("  at {}", frame.name())
+                    }
+                })
+                .collect();
+
+            // Add current position to backtrace
+            let mut full_backtrace = vec![format!("  at {}:{}", position.line, position.column)];
+            full_backtrace.extend(backtrace);
+
+            exc.backtrace = Some(full_backtrace);
+
+            drop(exc); // Release the borrow before returning
+            Object::Exception(exc_ref)
+        } else {
+            exception
+        }
     }
 
     /// Execute a begin/rescue/else/ensure block.

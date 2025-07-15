@@ -200,9 +200,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 9.3.3 Implement exception chaining
 
 ### 9.4 Error Reporting
-- [ ] 9.4.1 Implement stack trace generation
-- [ ] 9.4.2 Add source location tracking
-- [ ] 9.4.3 Implement formatted error messages
+- [x] 9.4.1 Implement stack trace generation
+- [x] 9.4.2 Add source location tracking
+- [x] 9.4.3 Implement formatted error messages
 
 ---
 
