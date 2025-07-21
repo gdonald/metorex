@@ -222,6 +222,7 @@ impl Repl {
                 }
             }
             Object::String(s) => format!("\"{}\"", s),
+            Object::Symbol(s) => format!(":{}", s),
             Object::Array(items) => {
                 let items_borrowed = items.borrow();
                 let formatted_items: Vec<String> =

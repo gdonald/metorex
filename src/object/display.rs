@@ -13,6 +13,7 @@ impl fmt::Display for Object {
             Object::Int(i) => write!(f, "{}", i),
             Object::Float(fl) => write!(f, "{}", fl),
             Object::String(s) => write!(f, "{}", s),
+            Object::Symbol(s) => write!(f, ":{}", s),
             Object::Array(arr) => {
                 write!(f, "[")?;
                 let elements = arr.borrow();

@@ -26,6 +26,7 @@ pub(super) fn format_exception(exception: &Object) -> String {
 pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
     match value {
         Object::String(s) => Some((**s).clone()),
+        Object::Symbol(s) => Some(format!(":{}", s)),
         Object::Int(i) => Some(i.to_string()),
         Object::Float(f) => Some(f.to_string()),
         Object::Bool(b) => Some(b.to_string()),

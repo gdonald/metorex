@@ -53,6 +53,20 @@ impl VirtualMachine {
                 .map(Some);
         }
 
+        // Special handling for Method objects
+        if let Object::Method(method_obj) = receiver {
+            match method_name {
+                "name" => {
+                    return Ok(Some(Object::String(Rc::new(method_obj.name.clone()))));
+                }
+                "owner" => {
+                    let owner_name = method_obj.owner.as_deref().unwrap_or("main");
+                    return Ok(Some(Object::String(Rc::new(owner_name.to_string()))));
+                }
+                _ => {}
+            }
+        }
+
         // Dispatch to the appropriate class-specific method implementation
         match class.name() {
             "Object" => self.call_object_method(receiver, method_name, arguments, position),

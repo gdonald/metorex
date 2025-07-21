@@ -63,6 +63,10 @@ pub enum Expression {
     NilLiteral {
         position: Position,
     },
+    Symbol {
+        value: String,
+        position: Position,
+    },
 
     // Identifiers and variables
     Identifier {
@@ -487,6 +491,7 @@ impl Expression {
             Expression::IntLiteral { position, .. }
             | Expression::FloatLiteral { position, .. }
             | Expression::StringLiteral { position, .. }
+            | Expression::Symbol { position, .. }
             | Expression::InterpolatedString { position, .. }
             | Expression::BoolLiteral { position, .. }
             | Expression::NilLiteral { position, .. }

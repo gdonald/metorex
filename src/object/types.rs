@@ -25,6 +25,9 @@ pub enum Object {
     /// String value (reference counted for efficient copying)
     String(Rc<String>),
 
+    /// Symbol value (interned string identifier, like :name)
+    Symbol(Rc<String>),
+
     /// Array/list of objects (mutable, reference counted)
     Array(Rc<RefCell<Vec<Object>>>),
 
@@ -72,6 +75,7 @@ impl Object {
             Object::Int(_) => "Int",
             Object::Float(_) => "Float",
             Object::String(_) => "String",
+            Object::Symbol(_) => "Symbol",
             Object::Array(_) => "Array",
             Object::Dict(_) => "Dict",
             Object::Instance(_) => "Instance",

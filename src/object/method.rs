@@ -16,6 +16,8 @@ pub struct Method {
     pub body: Vec<Statement>,
     /// Optional receiver (for bound methods)
     pub receiver: Option<Box<Object>>,
+    /// Owner of the method (class name or "main" for top-level functions)
+    pub owner: Option<String>,
 }
 
 impl Method {
@@ -26,6 +28,23 @@ impl Method {
             parameters,
             body,
             receiver: None,
+            owner: None,
+        }
+    }
+
+    /// Create a new method with an owner
+    pub fn with_owner(
+        name: String,
+        parameters: Vec<String>,
+        body: Vec<Statement>,
+        owner: String,
+    ) -> Self {
+        Self {
+            name,
+            parameters,
+            body,
+            receiver: None,
+            owner: Some(owner),
         }
     }
 
@@ -36,6 +55,7 @@ impl Method {
             parameters: self.parameters.clone(),
             body: self.body.clone(),
             receiver: Some(Box::new(receiver)),
+            owner: self.owner.clone(),
         }
     }
 

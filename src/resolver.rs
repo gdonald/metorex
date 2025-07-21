@@ -631,6 +631,7 @@ impl Resolver {
             Expression::IntLiteral { .. }
             | Expression::FloatLiteral { .. }
             | Expression::StringLiteral { .. }
+            | Expression::Symbol { .. }
             | Expression::BoolLiteral { .. }
             | Expression::NilLiteral { .. }
             | Expression::SelfExpr { .. }

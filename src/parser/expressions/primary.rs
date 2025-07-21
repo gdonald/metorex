@@ -77,6 +77,18 @@ impl Parser {
                 position: token.position,
             }),
 
+            // Symbol literal (:name)
+            TokenKind::Colon => {
+                let symbol_position = token.position;
+                match self.advance().kind {
+                    TokenKind::Ident(name) => Ok(Expression::Symbol {
+                        value: name,
+                        position: symbol_position,
+                    }),
+                    _ => Err(self.error_at_previous("Expected identifier after ':' for symbol")),
+                }
+            }
+
             // Grouped expression
             TokenKind::LParen => {
                 let expr = self.parse_expression()?;

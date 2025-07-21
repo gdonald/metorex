@@ -520,3 +520,21 @@ fn test_errors_backtrace_method_execution() {
     assert!(output.contains("Backtrace array length:"));
     assert!(output.contains("First frame:"));
 }
+
+#[test]
+fn test_introspection_function_name_execution() {
+    let expected = r#"greet
+calculate
+"#;
+    let output = run_example("introspection/function_name.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_function_module_execution() {
+    let expected = r#"main
+main
+"#;
+    let output = run_example("introspection/function_module.mx");
+    assert_eq!(output, expected);
+}

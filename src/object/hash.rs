@@ -28,6 +28,9 @@ impl ObjectHash {
             Object::String(s) => Some(Self {
                 hash_value: s.to_string(),
             }),
+            Object::Symbol(s) => Some(Self {
+                hash_value: format!(":{}", s),
+            }),
             // Arrays, Dicts, Instances, etc. are not hashable
             _ => None,
         }

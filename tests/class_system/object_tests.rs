@@ -360,6 +360,7 @@ fn test_equals_method() {
         parameters: vec![],
         body: vec![],
         receiver: None,
+        owner: None,
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -367,6 +368,7 @@ fn test_equals_method() {
         parameters: vec![],
         body: vec![],
         receiver: None,
+        owner: None,
     });
 
     let obj1 = Object::Method(method1);

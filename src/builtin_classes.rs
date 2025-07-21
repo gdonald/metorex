@@ -97,6 +97,7 @@ impl BuiltinClasses {
             Object::Int(_) => Rc::clone(&self.integer_class),
             Object::Float(_) => Rc::clone(&self.float_class),
             Object::String(_) => Rc::clone(&self.string_class),
+            Object::Symbol(_) => Rc::clone(&self.string_class), // Symbols are like strings
             Object::Array(_) => Rc::clone(&self.array_class),
             Object::Dict(_) => Rc::clone(&self.hash_class),
             Object::Set(_) => Rc::clone(&self.set_class),

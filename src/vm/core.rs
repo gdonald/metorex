@@ -189,6 +189,7 @@ impl VirtualMachine {
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
             Expression::StringLiteral { value, .. } => Ok(Object::String(Rc::new(value.clone()))),
+            Expression::Symbol { value, .. } => Ok(Object::Symbol(Rc::new(value.clone()))),
             Expression::InterpolatedString { parts, .. } => self
                 .evaluate_interpolated_string(parts)
                 .map(|s| Object::String(Rc::new(s))),

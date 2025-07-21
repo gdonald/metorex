@@ -13,7 +13,7 @@ This document tracks the implementation work needed to execute all example files
 ### 1.1 String Interpolation
 - [x] 1.1.1 Implement string interpolation parsing (`"Hello, #{name}!"`)
 - [x] 1.1.2 Add string interpolation evaluation in VM
-- [x] 1.1.3 Use `examples/basics/greeting_line.mx` in an actual test in examples_runner.rs
+- [x] 1.1.3 Use `tests/_examples/basics/greeting_line.mx` in an actual test in examples_runner.rs
 - [x] 1.1.4 Add output capture and verification to test runner
 
 ### 1.2 String Methods
@@ -28,14 +28,14 @@ This document tracks the implementation work needed to execute all example files
 ### 2.1 Hash Literal Parsing
 - [x] 2.1.1 Implement hash literal parsing (`{"key" => value}`)
 - [x] 2.1.2 Add hash rocket operator (`=>`) support
-- [x] 2.1.3 Use `examples/data-structures/simple_dict.mx` in an actual test in examples_runner.rs
+- [x] 2.1.3 Use `tests/_examples/data-structures/simple_dict.mx` in an actual test in examples_runner.rs
 
 ### 2.2 Hash Runtime Operations
 - [x] 2.2.1 Implement hash creation in VM
 - [x] 2.2.2 Add hash indexing operations (`hash["key"]`)
 - [x] 2.2.3 Implement hash methods (keys, values, has_key?, entries)
-- [x] 2.2.4 Use `examples/data-structures/dict_access.mx` in an actual test in examples_runner.rs
-- [x] 2.2.5 Use `examples/type-annotations/collection_types.mx` in an actual test in examples_runner.rs
+- [x] 2.2.4 Use `tests/_examples/data-structures/dict_access.mx` in an actual test in examples_runner.rs
+- [x] 2.2.5 Use `tests/_examples/type-annotations/collection_types.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -50,9 +50,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 3.2.1 Implement `.each do |var| ... end` parsing
 - [x] 3.2.2 Add block parameter binding in VM
 - [x] 3.2.3 Implement iterator protocol for ranges and arrays
-- [x] 3.2.4 Use `examples/algorithms/factorial_iterative.mx` in an actual test in examples_runner.rs
-- [x] 3.2.5 Use `examples/algorithms/average_temperature.mx` in an actual test in examples_runner.rs (needs Float.round method)
-- [x] 3.2.6 Use `examples/algorithms/primes_under_fifty.mx` in an actual test in examples_runner.rs
+- [x] 3.2.4 Use `tests/_examples/algorithms/factorial_iterative.mx` in an actual test in examples_runner.rs
+- [x] 3.2.5 Use `tests/_examples/algorithms/average_temperature.mx` in an actual test in examples_runner.rs (needs Float.round method)
+- [x] 3.2.6 Use `tests/_examples/algorithms/primes_under_fifty.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -68,16 +68,16 @@ This document tracks the implementation work needed to execute all example files
 - [x] 4.2.1 Create Lambda object type in VM
 - [x] 4.2.2 Implement lambda `.call()` method
 - [x] 4.2.3 Add closure variable capture
-- [x] 4.2.4 Use `examples/functions/closures_nested.mx` in an actual test in examples_runner.rs
-- [x] 4.2.5 Use `examples/functions/locals_scope.mx` in an actual test in examples_runner.rs (requires `.map` with block)
-- [x] 4.2.6 Use `examples/functions/nonlocal_counter.mx` in an actual test in examples_runner.rs (requires mutable closure variables)
+- [x] 4.2.4 Use `tests/_examples/functions/closures_nested.mx` in an actual test in examples_runner.rs
+- [x] 4.2.5 Use `tests/_examples/functions/locals_scope.mx` in an actual test in examples_runner.rs (requires `.map` with block)
+- [x] 4.2.6 Use `tests/_examples/functions/nonlocal_counter.mx` in an actual test in examples_runner.rs (requires mutable closure variables)
 
 ### 4.3 Advanced Block Support
 - [x] 4.3.1 Implement standalone blocks as expressions
 - [x] 4.3.2 Add block-to-lambda conversion (blocks are lambdas)
 - [x] 4.3.3 Implement method block parameters (`&block`)
-- [x] 4.3.4 Use `examples/functions/test_lambdas.mx` in an actual test in examples_runner.rs
-- [x] 4.3.5 Use `examples/metaprogramming/blocks_as_objects.mx` in an actual test in examples_runner.rs (partial - requires Class.new method)
+- [x] 4.3.4 Use `tests/_examples/functions/test_lambdas.mx` in an actual test in examples_runner.rs
+- [x] 4.3.5 Use `tests/_examples/metaprogramming/blocks_as_objects.mx` in an actual test in examples_runner.rs (partial - requires Class.new method)
 
 ---
 
@@ -87,14 +87,14 @@ This document tracks the implementation work needed to execute all example files
 - [x] 5.1.1 Implement `.map` for arrays
 - [x] 5.1.2 Implement `.filter` for arrays
 - [x] 5.1.3 Implement `.reduce` for arrays
-- [x] 5.1.4 Use `examples/algorithms/filter_even_numbers.mx` in an actual test in examples_runner.rs
-- [x] 5.1.5 Use `examples/algorithms/character_counter.mx` in an actual test in examples_runner.rs
-- [x] 5.1.6 Use `examples/algorithms/zip_merger.mx` in an actual test in examples_runner.rs
+- [x] 5.1.4 Use `tests/_examples/algorithms/filter_even_numbers.mx` in an actual test in examples_runner.rs
+- [x] 5.1.5 Use `tests/_examples/algorithms/character_counter.mx` in an actual test in examples_runner.rs
+- [x] 5.1.6 Use `tests/_examples/algorithms/zip_merger.mx` in an actual test in examples_runner.rs
 
 ### 5.2 Matrix and Nested Collections
 - [x] 5.2.1 Add support for nested array operations
 - [x] 5.2.2 Implement transpose and matrix operations
-- [x] 5.2.3 Use `examples/algorithms/matrix_transpose.mx` in an actual test in examples_runner.rs
+- [x] 5.2.3 Use `tests/_examples/algorithms/matrix_transpose.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -104,9 +104,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 6.1.1 Implement `super` keyword parsing
 - [x] 6.1.2 Add parent method lookup in VM
 - [x] 6.1.3 Implement `super()` with argument forwarding
-- [x] 6.1.4 Use `examples/oop/super.mx` in an actual test in examples_runner.rs
-- [x] 6.1.5 Use `examples/oop/super_chain.mx` in an actual test in examples_runner.rs
-- [x] 6.1.6 Use `examples/oop/test_init_param.mx` in an actual test in examples_runner.rs
+- [x] 6.1.4 Use `tests/_examples/oop/super.mx` in an actual test in examples_runner.rs
+- [x] 6.1.5 Use `tests/_examples/oop/super_chain.mx` in an actual test in examples_runner.rs
+- [x] 6.1.6 Use `tests/_examples/oop/test_init_param.mx` in an actual test in examples_runner.rs
 
 ### 6.2 attr_reader/attr_writer/attr_accessor
 - [x] 6.2.1 Implement `attr_reader` parsing
@@ -118,19 +118,19 @@ This document tracks the implementation work needed to execute all example files
 - [x] 6.3.1 Implement `to_s` special method
 - [x] 6.3.2 Implement `inspect` special method (alias for `to_s`)
 - [x] 6.3.3 Implement automatic `to_s` calling in puts
-- [x] 6.3.4 Use `examples/oop/special_methods.mx` in an actual test in examples_runner.rs
-- [x] 6.3.5 Use `examples/oop/test_str.mx` in an actual test in examples_runner.rs
-- [x] 6.3.6 Use `examples/oop/test_repr.mx` in an actual test in examples_runner.rs
+- [x] 6.3.4 Use `tests/_examples/oop/special_methods.mx` in an actual test in examples_runner.rs
+- [x] 6.3.5 Use `tests/_examples/oop/test_str.mx` in an actual test in examples_runner.rs
+- [x] 6.3.6 Use `tests/_examples/oop/test_repr.mx` in an actual test in examples_runner.rs
 
 ### 6.4 Iterator Protocol
 - [x] 6.4.1 Implement `each` special method for custom iterators
 - [x] 6.4.2 Implement `next` method for iterators
-- [x] 6.4.3 Use `examples/oop/test_iter.mx` in an actual test in examples_runner.rs
+- [x] 6.4.3 Use `tests/_examples/oop/test_iter.mx` in an actual test in examples_runner.rs
 
 ### 6.5 Attribute Access Methods
 - [x] 6.5.1 Implement `method_missing` special method
 - [x] 6.5.2 Implement dynamic attribute lookup
-- [x] 6.5.3 Use `examples/oop/test_method_missing.mx` in an actual test in examples_runner.rs
+- [x] 6.5.3 Use `tests/_examples/oop/test_method_missing.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -159,17 +159,17 @@ This document tracks the implementation work needed to execute all example files
 - [x] 8.1.1 Implement `case/when` statement parsing
 - [x] 8.1.2 Add literal pattern matching in VM
 - [x] 8.1.3 Implement wildcard pattern (`_`)
-- [x] 8.1.4 Use `examples/control-flow/test_pattern_matching.mx` in an actual test in examples_runner.rs
+- [x] 8.1.4 Use `tests/_examples/control-flow/test_pattern_matching.mx` in an actual test in examples_runner.rs
 
 ### 8.2 Advanced Patterns
 - [x] 8.2.1 Implement guard clauses (`when x if condition`)
 - [x] 8.2.2 Add variable binding in patterns
 - [x] 8.2.3 Implement array destructuring patterns
 - [x] 8.2.4 Implement hash destructuring patterns
-- [x] 8.2.5 Use `examples/control-flow/case_guard.mx` in an actual test in examples_runner.rs
-- [x] 8.2.6 Use `examples/control-flow/case_array_destructure.mx` in an actual test in examples_runner.rs
-- [x] 8.2.7 Use `examples/control-flow/case_object_destructure.mx` in an actual test in examples_runner.rs
-- [x] 8.2.8 Use `examples/control-flow/case_variable_binding.mx` in an actual test in examples_runner.rs
+- [x] 8.2.5 Use `tests/_examples/control-flow/case_guard.mx` in an actual test in examples_runner.rs
+- [x] 8.2.6 Use `tests/_examples/control-flow/case_array_destructure.mx` in an actual test in examples_runner.rs
+- [x] 8.2.7 Use `tests/_examples/control-flow/case_object_destructure.mx` in an actual test in examples_runner.rs
+- [x] 8.2.8 Use `tests/_examples/control-flow/case_variable_binding.mx` in an actual test in examples_runner.rs
 
 ### 8.3 Type Patterns
 - [x] 8.3.1 Implement type-based pattern matching
@@ -183,7 +183,7 @@ This document tracks the implementation work needed to execute all example files
 - [x] 9.1.1 Implement `begin/rescue/end` parsing
 - [x] 9.1.2 Add exception raising in VM
 - [x] 9.1.3 Implement basic exception catching
-- [x] 9.1.4 Use `examples/errors/simple_rescue.mx` in an actual test in examples_runner.rs
+- [x] 9.1.4 Use `tests/_examples/errors/simple_rescue.mx` in an actual test in examples_runner.rs
 
 ### 9.2 Advanced Exception Features
 - [x] 9.2.1 Implement `rescue ExceptionType => e` syntax
@@ -192,7 +192,7 @@ This document tracks the implementation work needed to execute all example files
 - [x] 9.2.4 Implement `ensure` clause
 - [x] 9.2.5 Implement `raise` statement
 - [x] 9.2.6 Add exception re-raising
-- [x] 9.2.7 Use `examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
+- [x] 9.2.7 Use `tests/_examples/advanced/exception_handling.mx` in an actual test in examples_runner.rs
 
 ### 9.3 Exception Types
 - [x] 9.3.1 Implement standard exception hierarchy
@@ -209,27 +209,27 @@ This document tracks the implementation work needed to execute all example files
 ## Phase 10: Introspection and Reflection
 
 ### 10.1 Method Introspection
-- [ ] 10.1.1 Implement `method(:name)` function
-- [ ] 10.1.2 Add method object with `.name` attribute
-- [ ] 10.1.3 Use `examples/introspection/function_name.mx` in an actual test in examples_runner.rs
-- [ ] 10.1.4 Use `examples/introspection/function_module.mx` in an actual test in examples_runner.rs
+- [x] 10.1.1 Implement `method(:name)` function
+- [x] 10.1.2 Add method object with `.name` attribute
+- [x] 10.1.3 Use `tests/_examples/introspection/function_name.mx` in an actual test in examples_runner.rs
+- [x] 10.1.4 Use `tests/_examples/introspection/function_module.mx` in an actual test in examples_runner.rs
 
 ### 10.2 Code Object Introspection
 - [ ] 10.2.1 Implement code object access
 - [ ] 10.2.2 Add bytecode/AST inspection
-- [ ] 10.2.3 Use `examples/introspection/code_object.mx` in an actual test in examples_runner.rs
+- [ ] 10.2.3 Use `tests/_examples/introspection/code_object.mx` in an actual test in examples_runner.rs
 
 ### 10.3 Namespace Introspection
 - [ ] 10.3.1 Implement namespace/scope inspection
 - [ ] 10.3.2 Add closure variable inspection
-- [ ] 10.3.3 Use `examples/introspection/closure_namespace.mx` in an actual test in examples_runner.rs
+- [ ] 10.3.3 Use `tests/_examples/introspection/closure_namespace.mx` in an actual test in examples_runner.rs
 
 ### 10.4 Attribute Introspection
 - [ ] 10.4.1 Implement attribute listing
 - [ ] 10.4.2 Add dynamic attribute access
-- [ ] 10.4.3 Use `examples/introspection/basic_attributes.mx` in an actual test in examples_runner.rs
-- [ ] 10.4.4 Use `examples/introspection/annotations.mx` in an actual test in examples_runner.rs
-- [ ] 10.4.5 Use `examples/introspection/default_parameters.mx` in an actual test in examples_runner.rs
+- [ ] 10.4.3 Use `tests/_examples/introspection/basic_attributes.mx` in an actual test in examples_runner.rs
+- [ ] 10.4.4 Use `tests/_examples/introspection/annotations.mx` in an actual test in examples_runner.rs
+- [ ] 10.4.5 Use `tests/_examples/introspection/default_parameters.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -287,12 +287,12 @@ This document tracks the implementation work needed to execute all example files
 - [ ] 14.1.1 Implement `define_method`
 - [ ] 14.1.2 Add `method_missing`
 - [ ] 14.1.3 Implement class instance variables
-- [ ] 14.1.4 Use `examples/advanced/dynamic_method_definition.mx` in an actual test in examples_runner.rs
+- [ ] 14.1.4 Use `tests/_examples/advanced/dynamic_method_definition.mx` in an actual test in examples_runner.rs
 
 ### 14.2 Implicit Block Capture
 - [ ] 14.2.1 Implement Ruby-style block capture
 - [ ] 14.2.2 Add yield keyword
-- [ ] 14.2.3 Use `examples/advanced/implicit_block_capture.mx` in an actual test in examples_runner.rs
+- [ ] 14.2.3 Use `tests/_examples/advanced/implicit_block_capture.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -302,17 +302,17 @@ This document tracks the implementation work needed to execute all example files
 - [ ] 15.1.1 Implement trait definition syntax
 - [ ] 15.1.2 Add trait implementation checking
 - [ ] 15.1.3 Implement trait method requirements
-- [ ] 15.1.4 Use `examples/advanced/traits.mx` in an actual test in examples_runner.rs
+- [ ] 15.1.4 Use `tests/_examples/advanced/traits.mx` in an actual test in examples_runner.rs
 
 ### 15.2 DSL Support
 - [ ] 15.2.1 Implement method chaining optimizations
 - [ ] 15.2.2 Add builder pattern support
-- [ ] 15.2.3 Use `examples/advanced/dsl_example.mx` in an actual test in examples_runner.rs
+- [ ] 15.2.3 Use `tests/_examples/advanced/dsl_example.mx` in an actual test in examples_runner.rs
 
 ### 15.3 Serialization
 - [ ] 15.3.1 Verify JSON serialization works
 - [ ] 15.3.2 Add additional format support
-- [ ] 15.3.3 Use `examples/advanced/serialization.mx` in an actual test in examples_runner.rs
+- [ ] 15.3.3 Use `tests/_examples/advanced/serialization.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -322,7 +322,7 @@ This document tracks the implementation work needed to execute all example files
 - [ ] 16.1.1 Implement thread creation
 - [ ] 16.1.2 Add mutex/lock support
 - [ ] 16.1.3 Implement channels
-- [ ] 16.1.4 Use `examples/advanced/concurrency.mx` in an actual test in examples_runner.rs
+- [ ] 16.1.4 Use `tests/_examples/advanced/concurrency.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -332,7 +332,7 @@ This document tracks the implementation work needed to execute all example files
 - [ ] 17.1.1 Implement HTTP client
 - [ ] 17.1.2 Implement HTTP server
 - [ ] 17.1.3 Add WebSocket support
-- [ ] 17.1.4 Use `examples/advanced/networking.mx` in an actual test in examples_runner.rs
+- [ ] 17.1.4 Use `tests/_examples/advanced/networking.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -341,7 +341,7 @@ This document tracks the implementation work needed to execute all example files
 ### 18.1 Type Introspection
 - [ ] 18.1.1 Implement type checking functions
 - [ ] 18.1.2 Add runtime type inspection
-- [ ] 18.1.3 Use `examples/builtins/type_introspection.mx` in an actual test in examples_runner.rs
+- [ ] 18.1.3 Use `tests/_examples/builtins/type_introspection.mx` in an actual test in examples_runner.rs
 
 ---
 
@@ -358,7 +358,7 @@ For each enabled example:
    - Compare against expected output file
 
 3. **Expected Output Files**
-   - Create `examples/{category}/{file}.expected` files
+   - Create `tests/_examples/{category}/{file}.expected` files
    - Contains expected stdout for each example
    - Update test runner to compare actual vs expected
 
