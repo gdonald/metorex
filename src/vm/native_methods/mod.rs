@@ -63,6 +63,13 @@ impl VirtualMachine {
                     let owner_name = method_obj.owner.as_deref().unwrap_or("main");
                     return Ok(Some(Object::String(Rc::new(owner_name.to_string()))));
                 }
+                "source_location" => {
+                    if let Some(loc) = &method_obj.source_location {
+                        return Ok(Some(Object::String(Rc::new(loc.to_string()))));
+                    } else {
+                        return Ok(Some(Object::String(Rc::new("unknown".to_string()))));
+                    }
+                }
                 _ => {}
             }
         }

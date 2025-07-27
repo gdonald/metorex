@@ -2,6 +2,7 @@
 
 use crate::ast::Statement;
 use crate::callable::Callable;
+use crate::error::SourceLocation;
 
 use super::Object;
 
@@ -18,6 +19,8 @@ pub struct Method {
     pub receiver: Option<Box<Object>>,
     /// Owner of the method (class name or "main" for top-level functions)
     pub owner: Option<String>,
+    /// Source location where the method is defined
+    pub source_location: Option<SourceLocation>,
 }
 
 impl Method {
@@ -29,6 +32,7 @@ impl Method {
             body,
             receiver: None,
             owner: None,
+            source_location: None,
         }
     }
 
@@ -45,6 +49,42 @@ impl Method {
             body,
             receiver: None,
             owner: Some(owner),
+            source_location: None,
+        }
+    }
+
+    /// Create a new method with a source location
+    pub fn with_source_location(
+        name: String,
+        parameters: Vec<String>,
+        body: Vec<Statement>,
+        source_location: SourceLocation,
+    ) -> Self {
+        Self {
+            name,
+            parameters,
+            body,
+            receiver: None,
+            owner: None,
+            source_location: Some(source_location),
+        }
+    }
+
+    /// Create a new method with both owner and source location
+    pub fn with_owner_and_location(
+        name: String,
+        parameters: Vec<String>,
+        body: Vec<Statement>,
+        owner: String,
+        source_location: SourceLocation,
+    ) -> Self {
+        Self {
+            name,
+            parameters,
+            body,
+            receiver: None,
+            owner: Some(owner),
+            source_location: Some(source_location),
         }
     }
 
@@ -56,6 +96,7 @@ impl Method {
             body: self.body.clone(),
             receiver: Some(Box::new(receiver)),
             owner: self.owner.clone(),
+            source_location: self.source_location.clone(),
         }
     }
 

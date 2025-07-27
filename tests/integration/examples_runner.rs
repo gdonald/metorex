@@ -538,3 +538,12 @@ main
     let output = run_example("introspection/function_module.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_introspection_code_object_execution() {
+    let expected = r#"greet.source_location = 1:1
+calculate.source_location = 5:1
+"#;
+    let output = run_example("introspection/code_object.mx");
+    assert_eq!(output, expected);
+}

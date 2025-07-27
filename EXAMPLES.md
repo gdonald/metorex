@@ -215,9 +215,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 10.1.4 Use `tests/_examples/introspection/function_module.mx` in an actual test in examples_runner.rs
 
 ### 10.2 Code Object Introspection
-- [ ] 10.2.1 Implement code object access
-- [ ] 10.2.2 Add bytecode/AST inspection
-- [ ] 10.2.3 Use `tests/_examples/introspection/code_object.mx` in an actual test in examples_runner.rs
+- [x] 10.2.1 Implement code object access
+- [x] 10.2.2 Add bytecode/AST inspection
+- [x] 10.2.3 Use `tests/_examples/introspection/code_object.mx` in an actual test in examples_runner.rs
 
 ### 10.3 Namespace Introspection
 - [ ] 10.3.1 Implement namespace/scope inspection

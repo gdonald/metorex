@@ -118,8 +118,8 @@ impl VirtualMachine {
                 name,
                 parameters,
                 body,
-                position: _,
-            } => self.execute_function_def(name, parameters, body),
+                position,
+            } => self.execute_function_def(name, parameters, body, *position),
             Statement::AttrReader { position, .. }
             | Statement::AttrWriter { position, .. }
             | Statement::AttrAccessor { position, .. } => {

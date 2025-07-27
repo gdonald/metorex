@@ -182,13 +182,23 @@ impl VirtualMachine {
         name: &str,
         parameters: &[crate::ast::Parameter],
         body: &[Statement],
+        position: crate::lexer::Position,
     ) -> Result<ControlFlow, MetorexError> {
         // Extract parameter names from the parameter definitions
         let param_names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
 
+        // Create source location from position
+        let source_location =
+            crate::error::SourceLocation::new(position.line, position.column, position.offset);
+
         // Create a Method object to represent the function
         // (Method objects can represent both class methods and standalone functions)
-        let function = Rc::new(Method::new(name.to_string(), param_names, body.to_vec()));
+        let function = Rc::new(Method::with_source_location(
+            name.to_string(),
+            param_names,
+            body.to_vec(),
+            source_location,
+        ));
 
         // Register the function in the environment
         self.environment_mut()
