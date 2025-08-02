@@ -220,9 +220,9 @@ This document tracks the implementation work needed to execute all example files
 - [x] 10.2.3 Use `tests/_examples/introspection/code_object.mx` in an actual test in examples_runner.rs
 
 ### 10.3 Namespace Introspection
-- [ ] 10.3.1 Implement namespace/scope inspection
-- [ ] 10.3.2 Add closure variable inspection
-- [ ] 10.3.3 Use `tests/_examples/introspection/closure_namespace.mx` in an actual test in examples_runner.rs
+- [x] 10.3.1 Implement namespace/scope inspection
+- [x] 10.3.2 Add closure variable inspection
+- [x] 10.3.3 Use `tests/_examples/introspection/closure_namespace.mx` in an actual test in examples_runner.rs
 
 ### 10.4 Attribute Introspection
 - [ ] 10.4.1 Implement attribute listing

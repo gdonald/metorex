@@ -74,6 +74,9 @@ impl fmt::Display for Object {
                     write!(f, "{}..{}", start, end)
                 }
             }
+            Object::Binding(binding) => {
+                write!(f, "<Binding with {} vars>", binding.variables.len())
+            }
         }
     }
 }

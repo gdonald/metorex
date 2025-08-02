@@ -547,3 +547,17 @@ calculate.source_location = 5:1
     let output = run_example("introspection/code_object.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_introspection_closure_namespace_execution() {
+    let expected = r#"simple_func
+simple_func
+nil
+Object
+Object
+<Binding with 21 vars>
+18
+"#;
+    let output = run_example("introspection/closure_namespace.mx");
+    assert_eq!(output, expected);
+}

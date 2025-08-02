@@ -19,6 +19,29 @@ impl Parser {
                 // Method call
                 let method_name = match self.advance().kind {
                     TokenKind::Ident(name) => name,
+                    // Allow keywords as method names (e.g., obj.class, obj.if, etc.)
+                    TokenKind::Class => "class".to_string(),
+                    TokenKind::If => "if".to_string(),
+                    TokenKind::Def => "def".to_string(),
+                    TokenKind::End => "end".to_string(),
+                    TokenKind::Do => "do".to_string(),
+                    TokenKind::Else => "else".to_string(),
+                    TokenKind::Elsif => "elsif".to_string(),
+                    TokenKind::Unless => "unless".to_string(),
+                    TokenKind::While => "while".to_string(),
+                    TokenKind::For => "for".to_string(),
+                    TokenKind::In => "in".to_string(),
+                    TokenKind::Begin => "begin".to_string(),
+                    TokenKind::Rescue => "rescue".to_string(),
+                    TokenKind::Ensure => "ensure".to_string(),
+                    TokenKind::Raise => "raise".to_string(),
+                    TokenKind::Break => "break".to_string(),
+                    TokenKind::Continue => "continue".to_string(),
+                    TokenKind::Return => "return".to_string(),
+                    TokenKind::Lambda => "lambda".to_string(),
+                    TokenKind::Super => "super".to_string(),
+                    TokenKind::Case => "case".to_string(),
+                    TokenKind::When => "when".to_string(),
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
 

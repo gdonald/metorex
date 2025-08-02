@@ -60,11 +60,12 @@ impl Object {
                 (Err(a_err), Err(b_err)) => a_err.equals(b_err),
                 _ => false,
             },
-            // Instance, Class, Method, Block, and Exception comparisons by reference
+            // Instance, Class, Method, Block, Binding, and Exception comparisons by reference
             (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
             (Object::Class(a), Object::Class(b)) => Rc::ptr_eq(a, b),
             (Object::Method(a), Object::Method(b)) => Rc::ptr_eq(a, b),
             (Object::Block(a), Object::Block(b)) => Rc::ptr_eq(a, b),
+            (Object::Binding(a), Object::Binding(b)) => Rc::ptr_eq(a, b),
             (Object::Exception(a), Object::Exception(b)) => Rc::ptr_eq(a, b),
             // Different types are not equal
             _ => false,

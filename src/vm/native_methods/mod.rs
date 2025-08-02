@@ -33,24 +33,39 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         // Special handling for Block/Lambda objects
-        if let Object::Block(block) = receiver
-            && method_name == "call"
-        {
-            return Ok(Some(block.call(self, arguments.to_vec(), position)?));
+        if let Object::Block(block) = receiver {
+            match method_name {
+                "call" => {
+                    return Ok(Some(block.call(self, arguments.to_vec(), position)?));
+                }
+                "binding" => {
+                    use crate::object::Binding;
+                    // Create a Binding object from the block's captured variables
+                    let binding = Binding::new(block.captured_vars().clone());
+                    return Ok(Some(Object::Binding(Rc::new(binding))));
+                }
+                _ => {}
+            }
         }
 
         // Special handling for Class objects
-        if let Object::Class(class_rc) = receiver
-            && method_name == "new"
-        {
-            // Delegate to invoke_callable which handles instance creation and initialize
-            return self
-                .invoke_callable(
-                    Object::Class(Rc::clone(class_rc)),
-                    arguments.to_vec(),
-                    position,
-                )
-                .map(Some);
+        if let Object::Class(class_rc) = receiver {
+            match method_name {
+                "new" => {
+                    // Delegate to invoke_callable which handles instance creation and initialize
+                    return self
+                        .invoke_callable(
+                            Object::Class(Rc::clone(class_rc)),
+                            arguments.to_vec(),
+                            position,
+                        )
+                        .map(Some);
+                }
+                "name" => {
+                    return Ok(Some(Object::String(Rc::new(class_rc.name().to_string()))));
+                }
+                _ => {}
+            }
         }
 
         // Special handling for Method objects

@@ -277,6 +277,9 @@ impl Repl {
                 Ok(v) => format!("<Ok: {}>", Self::format_object(v)),
                 Err(e) => format!("<Err: {}>", Self::format_object(e)),
             },
+            Object::Binding(binding) => {
+                format!("<Binding with {} vars>", binding.variables.len())
+            }
         }
     }
 

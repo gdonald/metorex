@@ -2,6 +2,7 @@
 // This module defines the core Object type that represents all runtime values
 
 // Declare submodules
+mod binding;
 mod block;
 mod constructors;
 mod display;
@@ -13,6 +14,7 @@ mod operations;
 mod types;
 
 // Re-export core types and traits
+pub use binding::Binding;
 pub use block::BlockStatement;
 pub use exception::{Exception, SourceLocation};
 pub use hash::ObjectHash;

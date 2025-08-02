@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
-use super::{BlockStatement, Exception, Instance, Method, ObjectHash};
+use super::{Binding, BlockStatement, Exception, Instance, Method, ObjectHash};
 
 /// Core object type representing all runtime values in Metorex
 #[derive(Debug, Clone, PartialEq)]
@@ -64,6 +64,9 @@ pub enum Object {
         end: Box<Object>,
         exclusive: bool,
     },
+
+    /// Binding object (represents a namespace/scope with captured variables)
+    Binding(Rc<Binding>),
 }
 
 impl Object {
@@ -87,6 +90,7 @@ impl Object {
             Object::Result(_) => "Result",
             Object::NativeFunction(_) => "NativeFunction",
             Object::Range { .. } => "Range",
+            Object::Binding(_) => "Binding",
         }
     }
 }
