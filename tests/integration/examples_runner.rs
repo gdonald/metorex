@@ -561,3 +561,40 @@ Object
     let output = run_example("introspection/closure_namespace.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_introspection_basic_attributes_execution() {
+    let expected = r#"greet.name = greet
+calculate.name = calculate
+greet.doc = nil
+calculate.doc = nil
+"#;
+    let output = run_example("introspection/basic_attributes.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_annotations_execution() {
+    let expected = r#"add.parameters = [x, y]
+greet.parameters = [name]
+process.parameters = [data, count, flag]
+no_annotations.parameters = [a, b]
+"#;
+    let output = run_example("introspection/annotations.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_default_parameters_execution() {
+    let expected = r#"no_defaults
+[a, b]
+with_defaults
+[a, b, c]
+all_defaults
+[x, y, z]
+greet
+[name, greeting, punctuation]
+"#;
+    let output = run_example("introspection/default_parameters.mx");
+    assert_eq!(output, expected);
+}

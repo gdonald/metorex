@@ -225,11 +225,11 @@ This document tracks the implementation work needed to execute all example files
 - [x] 10.3.3 Use `tests/_examples/introspection/closure_namespace.mx` in an actual test in examples_runner.rs
 
 ### 10.4 Attribute Introspection
-- [ ] 10.4.1 Implement attribute listing
-- [ ] 10.4.2 Add dynamic attribute access
-- [ ] 10.4.3 Use `tests/_examples/introspection/basic_attributes.mx` in an actual test in examples_runner.rs
-- [ ] 10.4.4 Use `tests/_examples/introspection/annotations.mx` in an actual test in examples_runner.rs
-- [ ] 10.4.5 Use `tests/_examples/introspection/default_parameters.mx` in an actual test in examples_runner.rs
+- [x] 10.4.1 Implement attribute listing
+- [x] 10.4.2 Add dynamic attribute access
+- [x] 10.4.3 Use `tests/_examples/introspection/basic_attributes.mx` in an actual test in examples_runner.rs
+- [x] 10.4.4 Use `tests/_examples/introspection/annotations.mx` in an actual test in examples_runner.rs
+- [x] 10.4.5 Use `tests/_examples/introspection/default_parameters.mx` in an actual test in examples_runner.rs
 
 ---
 

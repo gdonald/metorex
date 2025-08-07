@@ -85,6 +85,17 @@ impl VirtualMachine {
                         return Ok(Some(Object::String(Rc::new("unknown".to_string()))));
                     }
                 }
+                "parameters" => {
+                    // Return an array of parameter names
+                    let params: Vec<Object> = method_obj
+                        .parameters
+                        .iter()
+                        .map(|p| Object::String(Rc::new(p.clone())))
+                        .collect();
+                    return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                        params,
+                    )))));
+                }
                 _ => {}
             }
         }
