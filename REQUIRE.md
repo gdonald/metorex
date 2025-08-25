@@ -11,11 +11,11 @@ This document breaks down the implementation of `require_relative` into small, g
 ## Phase 1: File Path Tracking Infrastructure
 
 ### 1.1 Add Current File Tracking to VM
-- [ ] 1.1.1 Add `current_file: Option<PathBuf>` field to `VirtualMachine` struct in [src/vm/core.rs](src/vm/core.rs)
-- [ ] 1.1.2 Add `set_current_file()` method to `VirtualMachine` to update current file path
-- [ ] 1.1.3 Add `get_current_file()` method to `VirtualMachine` to retrieve current file path
-- [ ] 1.1.4 Import `std::path::PathBuf` in [src/vm/core.rs](src/vm/core.rs)
-- [ ] 1.1.5 Write tests for `set_current_file()` and `get_current_file()` methods
+- [x] 1.1.1 Add `current_file: Option<PathBuf>` field to `VirtualMachine` struct in [src/vm/core.rs](src/vm/core.rs)
+- [x] 1.1.2 Add `set_current_file()` method to `VirtualMachine` to update current file path
+- [x] 1.1.3 Add `get_current_file()` method to `VirtualMachine` to retrieve current file path
+- [x] 1.1.4 Import `std::path::PathBuf` in [src/vm/core.rs](src/vm/core.rs)
+- [x] 1.1.5 Write tests for `set_current_file()` and `get_current_file()` methods
 
 ### 1.2 Add Loaded Files Registry
 - [ ] 1.2.1 Add `loaded_files: HashSet<PathBuf>` field to `VirtualMachine` struct to track loaded files

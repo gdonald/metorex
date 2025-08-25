@@ -1,5 +1,6 @@
 use metorex::object::Object;
 use metorex::vm::{CallFrame, VirtualMachine};
+use std::path::PathBuf;
 
 #[test]
 fn vm_initializes_with_builtins_in_global_scope() {
@@ -44,4 +45,32 @@ fn call_frame_helper_manages_stack() {
 
     assert_eq!(result.as_deref(), Some("main"));
     assert!(vm.call_stack().is_empty());
+}
+
+#[test]
+fn vm_initializes_with_no_current_file() {
+    let vm = VirtualMachine::new();
+    assert!(vm.get_current_file().is_none());
+}
+
+#[test]
+fn vm_can_set_and_get_current_file() {
+    let mut vm = VirtualMachine::new();
+    let test_path = PathBuf::from("/tmp/test.mx");
+
+    vm.set_current_file(test_path.clone());
+    assert_eq!(vm.get_current_file(), Some(&test_path));
+}
+
+#[test]
+fn vm_can_update_current_file() {
+    let mut vm = VirtualMachine::new();
+    let path1 = PathBuf::from("/tmp/test1.mx");
+    let path2 = PathBuf::from("/tmp/test2.mx");
+
+    vm.set_current_file(path1.clone());
+    assert_eq!(vm.get_current_file(), Some(&path1));
+
+    vm.set_current_file(path2.clone());
+    assert_eq!(vm.get_current_file(), Some(&path2));
 }

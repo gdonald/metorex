@@ -13,6 +13,7 @@ use crate::error::MetorexError;
 use crate::object::{BlockStatement, Object};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::rc::Rc;
 
 /// Core virtual machine responsible for executing Metorex programs.
@@ -22,6 +23,7 @@ pub struct VirtualMachine {
     globals: GlobalRegistry,
     heap: Rc<RefCell<Heap>>,
     builtins: BuiltinClasses,
+    current_file: Option<PathBuf>,
 }
 
 impl VirtualMachine {
@@ -45,6 +47,7 @@ impl VirtualMachine {
             globals,
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
+            current_file: None,
         }
     }
 
@@ -76,6 +79,16 @@ impl VirtualMachine {
     /// Borrow the heap allocator.
     pub fn heap(&self) -> Rc<RefCell<Heap>> {
         Rc::clone(&self.heap)
+    }
+
+    /// Set the current file being executed.
+    pub fn set_current_file(&mut self, path: PathBuf) {
+        self.current_file = Some(path);
+    }
+
+    /// Get the current file being executed.
+    pub fn get_current_file(&self) -> Option<&PathBuf> {
+        self.current_file.as_ref()
     }
 
     /// Run a closure with a new call frame pushed onto the stack.
