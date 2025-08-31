@@ -74,3 +74,47 @@ fn vm_can_update_current_file() {
     vm.set_current_file(path2.clone());
     assert_eq!(vm.get_current_file(), Some(&path2));
 }
+
+#[test]
+fn vm_initializes_with_no_loaded_files() {
+    let vm = VirtualMachine::new();
+    let test_path = PathBuf::from("/tmp/test.mx");
+    assert!(!vm.is_file_loaded(&test_path));
+}
+
+#[test]
+fn vm_can_mark_file_as_loaded() {
+    let mut vm = VirtualMachine::new();
+    let test_path = PathBuf::from("/tmp/test.mx");
+
+    assert!(!vm.is_file_loaded(&test_path));
+    vm.mark_file_loaded(test_path.clone());
+    assert!(vm.is_file_loaded(&test_path));
+}
+
+#[test]
+fn vm_tracks_multiple_loaded_files() {
+    let mut vm = VirtualMachine::new();
+    let path1 = PathBuf::from("/tmp/test1.mx");
+    let path2 = PathBuf::from("/tmp/test2.mx");
+    let path3 = PathBuf::from("/tmp/test3.mx");
+
+    vm.mark_file_loaded(path1.clone());
+    vm.mark_file_loaded(path2.clone());
+
+    assert!(vm.is_file_loaded(&path1));
+    assert!(vm.is_file_loaded(&path2));
+    assert!(!vm.is_file_loaded(&path3));
+}
+
+#[test]
+fn vm_mark_file_loaded_is_idempotent() {
+    let mut vm = VirtualMachine::new();
+    let test_path = PathBuf::from("/tmp/test.mx");
+
+    vm.mark_file_loaded(test_path.clone());
+    vm.mark_file_loaded(test_path.clone());
+    vm.mark_file_loaded(test_path.clone());
+
+    assert!(vm.is_file_loaded(&test_path));
+}

@@ -18,12 +18,12 @@ This document breaks down the implementation of `require_relative` into small, g
 - [x] 1.1.5 Write tests for `set_current_file()` and `get_current_file()` methods
 
 ### 1.2 Add Loaded Files Registry
-- [ ] 1.2.1 Add `loaded_files: HashSet<PathBuf>` field to `VirtualMachine` struct to track loaded files
-- [ ] 1.2.2 Import `std::collections::HashSet` in [src/vm/core.rs](src/vm/core.rs)
-- [ ] 1.2.3 Add `mark_file_loaded()` method to record a file as loaded
-- [ ] 1.2.4 Add `is_file_loaded()` method to check if a file was already loaded
-- [ ] 1.2.5 Initialize `loaded_files` as empty HashSet in `VirtualMachine::new()`
-- [ ] 1.2.6 Write tests for `mark_file_loaded()` and `is_file_loaded()` methods
+- [x] 1.2.1 Add `loaded_files: HashSet<PathBuf>` field to `VirtualMachine` struct to track loaded files
+- [x] 1.2.2 Import `std::collections::HashSet` in [src/vm/core.rs](src/vm/core.rs)
+- [x] 1.2.3 Add `mark_file_loaded()` method to record a file as loaded
+- [x] 1.2.4 Add `is_file_loaded()` method to check if a file was already loaded
+- [x] 1.2.5 Initialize `loaded_files` as empty HashSet in `VirtualMachine::new()`
+- [x] 1.2.6 Write tests for `mark_file_loaded()` and `is_file_loaded()` methods
 
 ### 1.3 Update Main Entry Point
 - [ ] 1.3.1 Update [src/main.rs](src/main.rs) to call `vm.set_current_file()` before executing a program

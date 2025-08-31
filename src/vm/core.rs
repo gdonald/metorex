@@ -12,7 +12,7 @@ use crate::environment::Environment;
 use crate::error::MetorexError;
 use crate::object::{BlockStatement, Object};
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -24,6 +24,7 @@ pub struct VirtualMachine {
     heap: Rc<RefCell<Heap>>,
     builtins: BuiltinClasses,
     current_file: Option<PathBuf>,
+    loaded_files: HashSet<PathBuf>,
 }
 
 impl VirtualMachine {
@@ -48,6 +49,7 @@ impl VirtualMachine {
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
             current_file: None,
+            loaded_files: HashSet::new(),
         }
     }
 
@@ -89,6 +91,16 @@ impl VirtualMachine {
     /// Get the current file being executed.
     pub fn get_current_file(&self) -> Option<&PathBuf> {
         self.current_file.as_ref()
+    }
+
+    /// Mark a file as loaded in the registry.
+    pub fn mark_file_loaded(&mut self, path: PathBuf) {
+        self.loaded_files.insert(path);
+    }
+
+    /// Check if a file has already been loaded.
+    pub fn is_file_loaded(&self, path: &PathBuf) -> bool {
+        self.loaded_files.contains(path)
     }
 
     /// Run a closure with a new call frame pushed onto the stack.
