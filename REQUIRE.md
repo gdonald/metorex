@@ -26,11 +26,11 @@ This document breaks down the implementation of `require_relative` into small, g
 - [x] 1.2.6 Write tests for `mark_file_loaded()` and `is_file_loaded()` methods
 
 ### 1.3 Update Main Entry Point
-- [ ] 1.3.1 Update [src/main.rs](src/main.rs) to call `vm.set_current_file()` before executing a program
-- [ ] 1.3.2 Convert filename to absolute `PathBuf` using `std::fs::canonicalize()`
-- [ ] 1.3.3 Add error handling for invalid file paths in main.rs
-- [ ] 1.3.4 Mark the entry point file as loaded in main.rs
-- [ ] 1.3.5 Write integration test for main.rs file path tracking
+- [x] 1.3.1 Update [src/main.rs](src/main.rs) to call `vm.set_current_file()` before executing a program
+- [x] 1.3.2 Convert filename to absolute `PathBuf` using `std::fs::canonicalize()`
+- [x] 1.3.3 Add error handling for invalid file paths in main.rs
+- [x] 1.3.4 Mark the entry point file as loaded in main.rs
+- [x] 1.3.5 Write integration test for main.rs file path tracking
 
 ---
 

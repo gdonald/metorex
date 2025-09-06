@@ -598,3 +598,9 @@ greet
     let output = run_example("introspection/default_parameters.mx");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_file_tracking_simple_execution() {
+    let output = run_example("file_tracking/simple.mx");
+    assert_eq!(output, "File tracking works\n");
+}

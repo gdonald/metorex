@@ -32,11 +32,20 @@ fn main() {
     // File execution mode
     let filename = &args[1];
 
+    // Convert filename to absolute path
+    let absolute_path = match fs::canonicalize(filename) {
+        Ok(path) => path,
+        Err(err) => {
+            eprintln!("Error resolving file path '{}': {}", filename, err);
+            process::exit(1);
+        }
+    };
+
     // Read the source file
-    let source = match fs::read_to_string(filename) {
+    let source = match fs::read_to_string(&absolute_path) {
         Ok(content) => content,
         Err(err) => {
-            eprintln!("Error reading file '{}': {}", filename, err);
+            eprintln!("Error reading file '{}': {}", absolute_path.display(), err);
             process::exit(1);
         }
     };
@@ -60,6 +69,11 @@ fn main() {
 
     // Execute
     let mut vm = VirtualMachine::new();
+
+    // Set the current file path and mark it as loaded
+    vm.set_current_file(absolute_path.clone());
+    vm.mark_file_loaded(absolute_path);
+
     if let Err(err) = vm.execute_program(&program) {
         eprintln!("Runtime error: {}", err);
         process::exit(1);
