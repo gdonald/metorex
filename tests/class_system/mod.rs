@@ -1,3 +1,4 @@
+mod attr_methods_tests;
 mod builtin_classes_tests;
 mod class_instantiation_tests;
 mod class_parsing_tests;

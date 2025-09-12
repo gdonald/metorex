@@ -37,17 +37,17 @@ This document breaks down the implementation of `require_relative` into small, g
 ## Phase 2: File Loading and Parsing Infrastructure
 
 ### 2.1 Create File Loader Module
-- [ ] 2.1.1 Create new file [src/file_loader.rs](src/file_loader.rs)
-- [ ] 2.1.2 Add `pub mod file_loader;` to [src/lib.rs](src/lib.rs)
-- [ ] 2.1.3 Import necessary types (`PathBuf`, `MetorexError`, etc.) in file_loader.rs
+- [x] 2.1.1 Create new file [src/file_loader.rs](src/file_loader.rs)
+- [x] 2.1.2 Add `pub mod file_loader;` to [src/lib.rs](src/lib.rs)
+- [x] 2.1.3 Import necessary types (`PathBuf`, `MetorexError`, etc.) in file_loader.rs
 
 ### 2.2 Implement File Reading Function
-- [ ] 2.2.1 Create `load_file_source(path: &Path) -> Result<String, MetorexError>` function
-- [ ] 2.2.2 Add file extension validation (.rb, .mx, or no extension)
-- [ ] 2.2.3 Try reading with given extension first, fall back to .rb, then .mx
-- [ ] 2.2.4 Return appropriate error if file doesn't exist with any extension
-- [ ] 2.2.5 Write tests for `load_file_source()` with various file extensions
-- [ ] 2.2.6 Write tests for `load_file_source()` error cases (non-existent files)
+- [x] 2.2.1 Create `load_file_source(path: &Path) -> Result<String, MetorexError>` function
+- [x] 2.2.2 Add file extension validation (.rb, .mx, or no extension)
+- [x] 2.2.3 Try reading with given extension first, fall back to .rb, then .mx
+- [x] 2.2.4 Return appropriate error if file doesn't exist with any extension
+- [x] 2.2.5 Write tests for `load_file_source()` with various file extensions
+- [x] 2.2.6 Write tests for `load_file_source()` error cases (non-existent files)
 
 ### 2.3 Implement Path Resolution Function
 - [ ] 2.3.1 Create `resolve_relative_path(base_file: &Path, relative_path: &str) -> Result<PathBuf, MetorexError>` function

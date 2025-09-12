@@ -6,7 +6,7 @@
 use std::fs;
 use std::path::Path;
 
-use super::common::EXAMPLES_DIR;
+use crate::common::EXAMPLES_DIR;
 
 /// Helper function to create a full path from a relative example path
 fn example_path(path: &str) -> String {

@@ -3,10 +3,12 @@
 mod ast;
 mod blocks;
 mod class_system;
+pub mod common;
 mod control_flow;
 mod environment;
 mod errors;
 mod exceptions;
+mod file_loader;
 mod integration;
 mod lexer;
 mod parser;

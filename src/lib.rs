@@ -7,6 +7,7 @@ pub mod callable;
 pub mod class;
 pub mod environment;
 pub mod error;
+pub mod file_loader;
 pub mod lexer;
 pub mod object;
 pub mod parser;

@@ -2,7 +2,7 @@
 
 use std::process::Command;
 
-use super::common::EXAMPLES_DIR;
+use crate::common::EXAMPLES_DIR;
 
 fn run_example(path: &str) -> String {
     let binary = env!("CARGO_BIN_EXE_metorex");
