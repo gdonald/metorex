@@ -50,14 +50,14 @@ This document breaks down the implementation of `require_relative` into small, g
 - [x] 2.2.6 Write tests for `load_file_source()` error cases (non-existent files)
 
 ### 2.3 Implement Path Resolution Function
-- [ ] 2.3.1 Create `resolve_relative_path(base_file: &Path, relative_path: &str) -> Result<PathBuf, MetorexError>` function
-- [ ] 2.3.2 Get parent directory of base_file
-- [ ] 2.3.3 Join relative_path to parent directory
-- [ ] 2.3.4 Canonicalize the resulting path to resolve `..`, `.`, and symlinks
-- [ ] 2.3.5 Return error if path resolution fails or goes outside valid bounds
-- [ ] 2.3.6 Write tests for `resolve_relative_path()` with same directory
-- [ ] 2.3.7 Write tests for `resolve_relative_path()` with subdirectories
-- [ ] 2.3.8 Write tests for `resolve_relative_path()` with parent directories (`../`)
+- [x] 2.3.1 Create `resolve_relative_path(base_file: &Path, relative_path: &str) -> Result<PathBuf, MetorexError>` function
+- [x] 2.3.2 Get parent directory of base_file
+- [x] 2.3.3 Join relative_path to parent directory
+- [x] 2.3.4 Canonicalize the resulting path to resolve `..`, `.`, and symlinks
+- [x] 2.3.5 Return error if path resolution fails or goes outside valid bounds
+- [x] 2.3.6 Write tests for `resolve_relative_path()` with same directory
+- [x] 2.3.7 Write tests for `resolve_relative_path()` with subdirectories
+- [x] 2.3.8 Write tests for `resolve_relative_path()` with parent directories (`../`)
 
 ### 2.4 Implement File Parsing Function
 - [ ] 2.4.1 Create `parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, MetorexError>` function

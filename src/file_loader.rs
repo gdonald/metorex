@@ -6,7 +6,7 @@
 
 use crate::error::{MetorexError, SourceLocation};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Loads the source code from a file, with automatic file extension detection.
 ///
@@ -74,4 +74,59 @@ pub fn load_file_source(path: &Path) -> Result<String, MetorexError> {
         ),
         SourceLocation::new(0, 0, 0),
     ))
+}
+
+/// Resolves a relative path based on the location of a base file.
+///
+/// This function implements Ruby's `require_relative` path resolution logic:
+/// - Gets the parent directory of the base file
+/// - Joins the relative path to that directory
+/// - Canonicalizes the result to resolve `..`, `.`, and symlinks
+///
+/// # Arguments
+/// * `base_file` - The file from which the relative path is resolved
+/// * `relative_path` - The relative path to resolve
+///
+/// # Returns
+/// * `Ok(PathBuf)` - The absolute, canonicalized path
+/// * `Err(MetorexError)` - If path resolution fails
+///
+/// # Examples
+/// ```
+/// // If base_file is "/home/user/project/lib/helper.rb"
+/// // and relative_path is "../config/settings"
+/// // Result will be "/home/user/project/config/settings"
+/// ```
+pub fn resolve_relative_path(
+    base_file: &Path,
+    relative_path: &str,
+) -> Result<PathBuf, MetorexError> {
+    // Get the parent directory of the base file
+    let base_dir = base_file.parent().ok_or_else(|| {
+        MetorexError::runtime_error(
+            format!(
+                "Cannot determine parent directory of '{}'",
+                base_file.display()
+            ),
+            SourceLocation::new(0, 0, 0),
+        )
+    })?;
+
+    // Join the relative path to the base directory
+    let target_path = base_dir.join(relative_path);
+
+    // Canonicalize the path to resolve .., ., and symlinks
+    let canonical_path = target_path.canonicalize().map_err(|e| {
+        MetorexError::runtime_error(
+            format!(
+                "Failed to resolve path '{}' relative to '{}': {}",
+                relative_path,
+                base_file.display(),
+                e
+            ),
+            SourceLocation::new(0, 0, 0),
+        )
+    })?;
+
+    Ok(canonical_path)
 }
