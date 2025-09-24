@@ -4,7 +4,10 @@
 // in the Metorex language. It supports Ruby's file loading conventions including
 // automatic file extension detection (.rb, .mx, or no extension).
 
+use crate::ast::Statement;
 use crate::error::{MetorexError, SourceLocation};
+use crate::lexer::Lexer;
+use crate::parser::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -129,4 +132,47 @@ pub fn resolve_relative_path(
     })?;
 
     Ok(canonical_path)
+}
+
+/// Parses source code into an Abstract Syntax Tree (AST).
+///
+/// This function takes source code as a string and converts it into a vector of
+/// Statement nodes that can be executed by the VM. It handles the lexing and parsing
+/// process, converting any parse errors into MetorexError.
+///
+/// # Arguments
+/// * `source` - The source code to parse
+/// * `filename` - The name of the file being parsed (used in error messages)
+///
+/// # Returns
+/// * `Ok(Vec<Statement>)` - The parsed AST
+/// * `Err(MetorexError)` - If there are syntax errors in the source code
+pub fn parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, MetorexError> {
+    // Create lexer from source
+    let lexer = Lexer::new(source);
+
+    // Tokenize source code
+    let tokens = lexer.tokenize();
+
+    // Create parser from tokens
+    let mut parser = Parser::new(tokens);
+
+    // Parse and return AST, converting parse errors to MetorexError
+    parser.parse().map_err(|errors| {
+        // If there are multiple parse errors, we'll return the first one
+        // In the future, we might want to collect all errors
+        if let Some(first_error) = errors.first() {
+            // Create a new error with the filename context
+            MetorexError::runtime_error(
+                format!("Parse error in '{}': {}", filename, first_error),
+                SourceLocation::new(0, 0, 0),
+            )
+        } else {
+            // Shouldn't happen, but handle gracefully
+            MetorexError::runtime_error(
+                format!("Unknown parse error in '{}'", filename),
+                SourceLocation::new(0, 0, 0),
+            )
+        }
+    })
 }

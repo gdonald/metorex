@@ -60,13 +60,13 @@ This document breaks down the implementation of `require_relative` into small, g
 - [x] 2.3.8 Write tests for `resolve_relative_path()` with parent directories (`../`)
 
 ### 2.4 Implement File Parsing Function
-- [ ] 2.4.1 Create `parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, MetorexError>` function
-- [ ] 2.4.2 Create lexer from source
-- [ ] 2.4.3 Tokenize source code
-- [ ] 2.4.4 Create parser from tokens
-- [ ] 2.4.5 Parse and return AST, converting parse errors to MetorexError
-- [ ] 2.4.6 Write tests for `parse_file()` with valid source code
-- [ ] 2.4.7 Write tests for `parse_file()` with syntax errors
+- [x] 2.4.1 Create `parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, MetorexError>` function
+- [x] 2.4.2 Create lexer from source
+- [x] 2.4.3 Tokenize source code
+- [x] 2.4.4 Create parser from tokens
+- [x] 2.4.5 Parse and return AST, converting parse errors to MetorexError
+- [x] 2.4.6 Write tests for `parse_file()` with valid source code
+- [x] 2.4.7 Write tests for `parse_file()` with syntax errors
 
 ---
 
