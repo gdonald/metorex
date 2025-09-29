@@ -205,6 +205,81 @@ impl VirtualMachine {
         Ok(last_value)
     }
 
+    /// Execute a file with automatic deduplication and path tracking.
+    ///
+    /// This method loads and executes a file, handling:
+    /// - File deduplication (files are only executed once)
+    /// - Current file path tracking (for require_relative)
+    /// - Automatic path canonicalization
+    /// - Proper restoration of the previous current file
+    ///
+    /// # Arguments
+    /// * `path` - The path to the file to execute
+    ///
+    /// # Returns
+    /// * `Ok(Object)` - The result of executing the file (or Nil if already loaded)
+    /// * `Err(MetorexError)` - If loading, parsing, or execution fails
+    pub fn execute_file(&mut self, path: &std::path::Path) -> Result<Object, MetorexError> {
+        use crate::error::SourceLocation;
+        use crate::file_loader::{load_file_source, parse_file};
+
+        // Canonicalize the file path to absolute path for proper deduplication
+        let canonical_path = path.canonicalize().map_err(|e| {
+            MetorexError::runtime_error(
+                format!(
+                    "Failed to canonicalize file path '{}': {}",
+                    path.display(),
+                    e
+                ),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
+
+        // Check if file is already loaded (deduplication)
+        if self.is_file_loaded(&canonical_path) {
+            return Ok(Object::Nil);
+        }
+
+        // Mark file as loaded before executing to prevent circular dependencies
+        self.mark_file_loaded(canonical_path.clone());
+
+        // Save the current file path to restore later
+        let previous_file = self.current_file.clone();
+
+        // Load file source with error context
+        let source = load_file_source(&canonical_path).map_err(|e| {
+            MetorexError::runtime_error(
+                format!("Failed to load file '{}': {}", canonical_path.display(), e),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
+
+        // Parse file with error context
+        let statements = parse_file(&source, &canonical_path.to_string_lossy()).map_err(|e| {
+            MetorexError::runtime_error(
+                format!("Failed to parse file '{}': {}", canonical_path.display(), e),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
+
+        // Update current file path for require_relative calls within this file
+        self.set_current_file(canonical_path.clone());
+
+        // Execute the parsed statements
+        let result = self.execute_program(&statements).map_err(|e| {
+            MetorexError::runtime_error(
+                format!("Error executing file '{}': {}", canonical_path.display(), e),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
+
+        // Restore previous current file path
+        self.current_file = previous_file;
+
+        // Return the result or Nil if no return value
+        Ok(result.unwrap_or(Object::Nil))
+    }
+
     /// Evaluate an expression to a runtime value.
     pub(crate) fn evaluate_expression(
         &mut self,

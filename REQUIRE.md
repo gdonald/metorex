@@ -73,29 +73,29 @@ This document breaks down the implementation of `require_relative` into small, g
 ## Phase 3: VM File Execution Infrastructure
 
 ### 3.1 Add File Execution Method to VM
-- [ ] 3.1.1 Add `execute_file(&mut self, path: &Path) -> Result<Object, MetorexError>` method to VirtualMachine
-- [ ] 3.1.2 Save the current file path before executing
-- [ ] 3.1.3 Check if file is already loaded using `is_file_loaded()`
-- [ ] 3.1.4 Return `Object::Nil` early if file was already loaded (deduplication)
-- [ ] 3.1.5 Canonicalize the file path to absolute path
-- [ ] 3.1.6 Mark file as loaded using `mark_file_loaded()`
-- [ ] 3.1.7 Write test for `execute_file()` with simple file execution
+- [x] 3.1.1 Add `execute_file(&mut self, path: &Path) -> Result<Object, MetorexError>` method to VirtualMachine
+- [x] 3.1.2 Save the current file path before executing
+- [x] 3.1.3 Check if file is already loaded using `is_file_loaded()`
+- [x] 3.1.4 Return `Object::Nil` early if file was already loaded (deduplication)
+- [x] 3.1.5 Canonicalize the file path to absolute path
+- [x] 3.1.6 Mark file as loaded using `mark_file_loaded()`
+- [x] 3.1.7 Write test for `execute_file()` with simple file execution
 
 ### 3.2 Implement File Loading in execute_file
-- [ ] 3.2.1 Call `load_file_source()` to read file contents
-- [ ] 3.2.2 Call `parse_file()` to get AST
-- [ ] 3.2.3 Update current file path using `set_current_file()`
-- [ ] 3.2.4 Execute the parsed statements using `execute_program()`
-- [ ] 3.2.5 Restore previous current file path after execution
-- [ ] 3.2.6 Return the result (or `Object::Nil` if no return value)
-- [ ] 3.2.7 Write test for `execute_file()` deduplication (same file twice)
-- [ ] 3.2.8 Write test for `execute_file()` restoring previous file path
+- [x] 3.2.1 Call `load_file_source()` to read file contents
+- [x] 3.2.2 Call `parse_file()` to get AST
+- [x] 3.2.3 Update current file path using `set_current_file()`
+- [x] 3.2.4 Execute the parsed statements using `execute_program()`
+- [x] 3.2.5 Restore previous current file path after execution
+- [x] 3.2.6 Return the result (or `Object::Nil` if no return value)
+- [x] 3.2.7 Write test for `execute_file()` deduplication (same file twice)
+- [x] 3.2.8 Write test for `execute_file()` restoring previous file path
 
 ### 3.3 Add Error Context
-- [ ] 3.3.1 Wrap file loading errors with context about which file failed
-- [ ] 3.3.2 Wrap parsing errors with filename information
-- [ ] 3.3.3 Wrap execution errors with call stack context
-- [ ] 3.3.4 Write tests for error handling in `execute_file()`
+- [x] 3.3.1 Wrap file loading errors with context about which file failed
+- [x] 3.3.2 Wrap parsing errors with filename information
+- [x] 3.3.3 Wrap execution errors with call stack context
+- [x] 3.3.4 Write tests for error handling in `execute_file()`
 
 ---
 
