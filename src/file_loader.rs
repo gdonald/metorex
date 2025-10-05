@@ -11,6 +11,59 @@ use crate::parser::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Finds the actual file path with extension auto-detection.
+///
+/// This function supports Ruby's file loading conventions:
+/// - If the path has an extension (.rb, .mx, etc.), it tries that path first
+/// - If no extension or file not found, it tries adding .rb
+/// - If still not found, it tries adding .mx
+/// - Returns the path of the first file that exists
+///
+/// # Arguments
+/// * `path` - The file path to find (may or may not include extension)
+///
+/// # Returns
+/// * `Ok(PathBuf)` - The actual file path that exists
+/// * `Err(MetorexError)` - If the file doesn't exist with any extension
+pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
+    // Try the path as given first
+    if path.exists() {
+        return Ok(path.to_path_buf());
+    }
+
+    // If the path has an extension, don't try alternatives
+    if path.extension().is_some() {
+        return Err(MetorexError::runtime_error(
+            format!("File not found: '{}'", path.display()),
+            SourceLocation::new(0, 0, 0),
+        ));
+    }
+
+    // Try with .rb extension
+    let rb_path = path.with_extension("rb");
+    if rb_path.exists() {
+        return Ok(rb_path);
+    }
+
+    // Try with .mx extension
+    let mx_path = path.with_extension("mx");
+    if mx_path.exists() {
+        return Ok(mx_path);
+    }
+
+    // File not found with any extension
+    Err(MetorexError::runtime_error(
+        format!(
+            "File not found: '{}' (tried {}, {}.rb, {}.mx)",
+            path.display(),
+            path.display(),
+            path.display(),
+            path.display()
+        ),
+        SourceLocation::new(0, 0, 0),
+    ))
+}
+
 /// Loads the source code from a file, with automatic file extension detection.
 ///
 /// This function supports Ruby's file loading conventions:
@@ -26,57 +79,13 @@ use std::path::{Path, PathBuf};
 /// * `Ok(String)` - The file contents as a string
 /// * `Err(MetorexError)` - If the file cannot be found or read
 pub fn load_file_source(path: &Path) -> Result<String, MetorexError> {
-    // Try the path as given first
-    if path.exists() {
-        return fs::read_to_string(path).map_err(|e| {
-            MetorexError::runtime_error(
-                format!("Failed to read file '{}': {}", path.display(), e),
-                SourceLocation::new(0, 0, 0),
-            )
-        });
-    }
-
-    // If the path has an extension, don't try alternatives
-    if path.extension().is_some() {
-        return Err(MetorexError::runtime_error(
-            format!("File not found: '{}'", path.display()),
+    let actual_path = find_file_path(path)?;
+    fs::read_to_string(&actual_path).map_err(|e| {
+        MetorexError::runtime_error(
+            format!("Failed to read file '{}': {}", actual_path.display(), e),
             SourceLocation::new(0, 0, 0),
-        ));
-    }
-
-    // Try with .rb extension
-    let rb_path = path.with_extension("rb");
-    if rb_path.exists() {
-        return fs::read_to_string(&rb_path).map_err(|e| {
-            MetorexError::runtime_error(
-                format!("Failed to read file '{}': {}", rb_path.display(), e),
-                SourceLocation::new(0, 0, 0),
-            )
-        });
-    }
-
-    // Try with .mx extension
-    let mx_path = path.with_extension("mx");
-    if mx_path.exists() {
-        return fs::read_to_string(&mx_path).map_err(|e| {
-            MetorexError::runtime_error(
-                format!("Failed to read file '{}': {}", mx_path.display(), e),
-                SourceLocation::new(0, 0, 0),
-            )
-        });
-    }
-
-    // File not found with any extension
-    Err(MetorexError::runtime_error(
-        format!(
-            "File not found: '{}' (tried {}, {}.rb, {}.mx)",
-            path.display(),
-            path.display(),
-            path.display(),
-            path.display()
-        ),
-        SourceLocation::new(0, 0, 0),
-    ))
+        )
+    })
 }
 
 /// Resolves a relative path based on the location of a base file.
@@ -116,22 +125,11 @@ pub fn resolve_relative_path(
     })?;
 
     // Join the relative path to the base directory
+    // Note: We don't canonicalize here because the file may not exist yet (extension auto-detection)
+    // Canonicalization will happen in execute_file after load_file_source finds the actual file
     let target_path = base_dir.join(relative_path);
 
-    // Canonicalize the path to resolve .., ., and symlinks
-    let canonical_path = target_path.canonicalize().map_err(|e| {
-        MetorexError::runtime_error(
-            format!(
-                "Failed to resolve path '{}' relative to '{}': {}",
-                relative_path,
-                base_file.display(),
-                e
-            ),
-            SourceLocation::new(0, 0, 0),
-        )
-    })?;
-
-    Ok(canonical_path)
+    Ok(target_path)
 }
 
 /// Parses source code into an Abstract Syntax Tree (AST).

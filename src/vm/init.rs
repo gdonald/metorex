@@ -35,6 +35,10 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
 pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("puts", Object::NativeFunction("puts".to_string()));
     globals.set("method", Object::NativeFunction("method".to_string()));
+    globals.set(
+        "require_relative",
+        Object::NativeFunction("require_relative".to_string()),
+    );
 }
 
 /// Seed the environment with values from the global registry.

@@ -63,6 +63,85 @@ impl VirtualMachine {
                     ))
                 }
             }
+            "require_relative" => {
+                // require_relative(path) loads and executes a file relative to the current file
+                if arguments.len() != 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!(
+                            "require_relative() expects 1 argument, got {}",
+                            arguments.len()
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+
+                let relative_path = match &arguments[0] {
+                    Object::String(path) => path.as_ref(),
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "require_relative() expects a String argument, got {}",
+                                arguments[0].type_name()
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+
+                // Get current file path
+                let current_file = self.get_current_file().ok_or_else(|| {
+                    MetorexError::runtime_error(
+                        "require_relative cannot be used without a current file context (e.g., in REPL)"
+                            .to_string(),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+
+                // Resolve the relative path
+                let resolved_path =
+                    crate::file_loader::resolve_relative_path(current_file, relative_path)
+                        .map_err(|e| {
+                            MetorexError::runtime_error(
+                                format!("Failed to resolve path '{}': {}", relative_path, e),
+                                crate::vm::utils::position_to_location(position),
+                            )
+                        })?;
+
+                // Find the actual file path with extension auto-detection
+                let actual_path =
+                    crate::file_loader::find_file_path(&resolved_path).map_err(|e| {
+                        MetorexError::runtime_error(
+                            format!("Error in require_relative: {}", e),
+                            crate::vm::utils::position_to_location(position),
+                        )
+                    })?;
+
+                // Canonicalize to get the absolute path for deduplication checking
+                let canonical_path = actual_path.canonicalize().map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!(
+                            "Failed to canonicalize path '{}': {}",
+                            actual_path.display(),
+                            e
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+
+                // Check if file was already loaded BEFORE executing
+                let was_already_loaded = self.is_file_loaded(&canonical_path);
+
+                // Execute the file (it will handle its own deduplication)
+                self.execute_file(&resolved_path).map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!("Error in require_relative: {}", e),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+
+                // Return true if newly loaded, false if already loaded (Ruby behavior)
+                Ok(Object::Bool(!was_already_loaded))
+            }
             _ => Err(MetorexError::runtime_error(
                 format!("Unknown native function: {}", name),
                 crate::vm::utils::position_to_location(position),

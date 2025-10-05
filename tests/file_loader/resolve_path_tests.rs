@@ -60,7 +60,13 @@ fn test_resolve_path_parent_directory() {
 
     assert!(result.is_ok());
     let resolved = result.unwrap();
-    assert!(resolved.ends_with("file_loader/test_file.rb"));
+    // Path will contain ../ since we don't canonicalize anymore
+    assert!(
+        resolved
+            .to_string_lossy()
+            .contains("parent_test/../test_file.rb")
+            || resolved.ends_with("file_loader/test_file.rb")
+    );
 }
 
 #[test]
@@ -72,7 +78,13 @@ fn test_resolve_path_parent_then_subdirectory() {
 
     assert!(result.is_ok());
     let resolved = result.unwrap();
-    assert!(resolved.ends_with("file_loader/subdir/nested.rb"));
+    // Path will contain ../ since we don't canonicalize anymore
+    assert!(
+        resolved
+            .to_string_lossy()
+            .contains("parent_test/../subdir/nested.rb")
+            || resolved.ends_with("file_loader/subdir/nested.rb")
+    );
 }
 
 #[test]
@@ -94,10 +106,11 @@ fn test_resolve_path_nonexistent_file() {
     let base_file = Path::new(EXAMPLES_DIR).join("file_loader/test_file.rb");
     let result = resolve_relative_path(&base_file, "nonexistent.rb");
 
-    // Should fail because canonicalize requires the file to exist
-    assert!(result.is_err());
-    let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("Failed to resolve path"));
+    // Should succeed (we don't canonicalize anymore, just join paths)
+    // The file existence check happens later in find_file_path/execute_file
+    assert!(result.is_ok());
+    let resolved = result.unwrap();
+    assert!(resolved.ends_with("file_loader/nonexistent.rb"));
 }
 
 #[test]

@@ -221,14 +221,22 @@ impl VirtualMachine {
     /// * `Err(MetorexError)` - If loading, parsing, or execution fails
     pub fn execute_file(&mut self, path: &std::path::Path) -> Result<Object, MetorexError> {
         use crate::error::SourceLocation;
-        use crate::file_loader::{load_file_source, parse_file};
+        use crate::file_loader::{find_file_path, load_file_source, parse_file};
+
+        // Find the actual file path (with extension auto-detection)
+        let actual_path = find_file_path(path).map_err(|e| {
+            MetorexError::runtime_error(
+                format!("Failed to find file '{}': {}", path.display(), e),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
 
         // Canonicalize the file path to absolute path for proper deduplication
-        let canonical_path = path.canonicalize().map_err(|e| {
+        let canonical_path = actual_path.canonicalize().map_err(|e| {
             MetorexError::runtime_error(
                 format!(
                     "Failed to canonicalize file path '{}': {}",
-                    path.display(),
+                    actual_path.display(),
                     e
                 ),
                 SourceLocation::new(0, 0, 0),

@@ -102,36 +102,36 @@ This document breaks down the implementation of `require_relative` into small, g
 ## Phase 4: Native Function Implementation
 
 ### 4.1 Implement require_relative Native Function
-- [ ] 4.1.1 Add `"require_relative"` case to `call_native_function()` in [src/vm/native_functions.rs](src/vm/native_functions.rs)
-- [ ] 4.1.2 Validate that exactly 1 argument is provided
-- [ ] 4.1.3 Extract string argument (the relative path)
-- [ ] 4.1.4 Return error if argument is not a String
-- [ ] 4.1.5 Write test for require_relative with wrong number of arguments
-- [ ] 4.1.6 Write test for require_relative with non-string argument
+- [x] 4.1.1 Add `"require_relative"` case to `call_native_function()` in [src/vm/native_functions.rs](src/vm/native_functions.rs)
+- [x] 4.1.2 Validate that exactly 1 argument is provided
+- [x] 4.1.3 Extract string argument (the relative path)
+- [x] 4.1.4 Return error if argument is not a String
+- [x] 4.1.5 Write test for require_relative with wrong number of arguments
+- [x] 4.1.6 Write test for require_relative with non-string argument
 
 ### 4.2 Implement Path Resolution in require_relative
-- [ ] 4.2.1 Get current file path using `get_current_file()`
-- [ ] 4.2.2 Return error if no current file is set (REPL context)
-- [ ] 4.2.3 Call `resolve_relative_path()` to get absolute path
-- [ ] 4.2.4 Handle path resolution errors
-- [ ] 4.2.5 Write test for require_relative in REPL context (no current file)
-- [ ] 4.2.6 Write test for require_relative with invalid path
+- [x] 4.2.1 Get current file path using `get_current_file()`
+- [x] 4.2.2 Return error if no current file is set (REPL context)
+- [x] 4.2.3 Call `resolve_relative_path()` to get absolute path
+- [x] 4.2.4 Handle path resolution errors
+- [x] 4.2.5 Write test for require_relative in REPL context (no current file)
+- [x] 4.2.6 Write test for require_relative with invalid path
 
 ### 4.3 Implement File Execution in require_relative
-- [ ] 4.3.1 Call `execute_file()` with resolved path
-- [ ] 4.3.2 Handle execution errors
-- [ ] 4.3.3 Return `Object::Boolean(true)` if file was newly loaded
-- [ ] 4.3.4 Return `Object::Boolean(false)` if file was already loaded (matching Ruby behavior)
-- [ ] 4.3.5 Write test for require_relative with simple file in same directory
-- [ ] 4.3.6 Write test for require_relative with file in subdirectory
-- [ ] 4.3.7 Write test for require_relative with file in parent directory (`../`)
-- [ ] 4.3.8 Write test for require_relative return values (true/false)
+- [x] 4.3.1 Call `execute_file()` with resolved path
+- [x] 4.3.2 Handle execution errors
+- [x] 4.3.3 Return `Object::Boolean(true)` if file was newly loaded
+- [x] 4.3.4 Return `Object::Boolean(false)` if file was already loaded (matching Ruby behavior)
+- [x] 4.3.5 Write test for require_relative with simple file in same directory
+- [x] 4.3.6 Write test for require_relative with file in subdirectory
+- [x] 4.3.7 Write test for require_relative with file in parent directory (`../`)
+- [x] 4.3.8 Write test for require_relative return values (true/false)
 
 ### 4.4 Register require_relative Function
-- [ ] 4.4.1 Add `require_relative` to global registry in [src/vm/init.rs](src/vm/init.rs)
-- [ ] 4.4.2 Register it as a native function in `register_native_functions()`
-- [ ] 4.4.3 Create `Object::NativeFunction` for require_relative
-- [ ] 4.4.4 Write test verifying require_relative is registered globally
+- [x] 4.4.1 Add `require_relative` to global registry in [src/vm/init.rs](src/vm/init.rs)
+- [x] 4.4.2 Register it as a native function in `register_native_functions()`
+- [x] 4.4.3 Create `Object::NativeFunction` for require_relative
+- [x] 4.4.4 Write test verifying require_relative is registered globally
 
 ---
 

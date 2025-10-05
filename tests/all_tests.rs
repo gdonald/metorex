@@ -13,5 +13,6 @@ mod integration;
 mod lexer;
 mod parser;
 mod repl;
+mod require_relative;
 mod type_system;
 mod vm;
