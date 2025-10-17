@@ -20,19 +20,19 @@ Convert the current `case` statement implementation to also work as an expressio
 ## Phase 1: AST Structure Changes
 
 ### 1.1 Add Case Expression Variant to AST
-- [ ] 1.1.1 Add `Expression::Case` variant to `Expression` enum in [src/ast/node.rs](src/ast/node.rs)
-- [ ] 1.1.2 Define `ExprMatchCase` struct for expression-based cases
-  - [ ] 1.1.2.1 Include `pattern: MatchPattern`
-  - [ ] 1.1.2.2 Include `guard: Option<Expression>`
-  - [ ] 1.1.2.3 Include `body: Expression` (NOT `Vec<Statement>`)
-  - [ ] 1.1.2.4 Include `position: Position`
-- [ ] 1.1.3 Add `Expression::Case` variant with fields:
-  - [ ] 1.1.3.1 `expression: Box<Expression>` - value to match against
-  - [ ] 1.1.3.2 `cases: Vec<ExprMatchCase>` - when branches
-  - [ ] 1.1.3.3 `else_case: Option<Box<Expression>>` - optional else branch
-  - [ ] 1.1.3.4 `position: Position`
-- [ ] 1.1.4 Keep existing `Statement::Match` for statement form
-- [ ] 1.1.5 Document the difference between expression and statement forms
+- [x] 1.1.1 Add `Expression::Case` variant to `Expression` enum in [src/ast/node.rs](src/ast/node.rs)
+- [x] 1.1.2 Define `ExprMatchCase` struct for expression-based cases
+  - [x] 1.1.2.1 Include `pattern: MatchPattern`
+  - [x] 1.1.2.2 Include `guard: Option<Expression>`
+  - [x] 1.1.2.3 Include `body: Expression` (NOT `Vec<Statement>`)
+  - [x] 1.1.2.4 Include `position: Position`
+- [x] 1.1.3 Add `Expression::Case` variant with fields:
+  - [x] 1.1.3.1 `expression: Box<Expression>` - value to match against
+  - [x] 1.1.3.2 `cases: Vec<ExprMatchCase>` - when branches
+  - [x] 1.1.3.3 `else_case: Option<Box<Expression>>` - optional else branch
+  - [x] 1.1.3.4 `position: Position`
+- [x] 1.1.4 Keep existing `Statement::Match` for statement form
+- [x] 1.1.5 Document the difference between expression and statement forms
 
 ### 1.2 Consider Unified Representation (Alternative Approach)
 - [ ] 1.2.1 Evaluate whether to merge `ExprMatchCase` and `MatchCase` structures

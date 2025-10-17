@@ -555,6 +555,16 @@ impl VirtualMachine {
                     exclusive: *exclusive,
                 })
             }
+            Expression::Case {
+                expression,
+                cases,
+                else_case,
+                position,
+            } => {
+                // This will be implemented in Phase 3
+                // For now, delegate to the pattern matching module
+                self.evaluate_case_expression(expression, cases, else_case.as_deref(), *position)
+            }
         }
     }
 }

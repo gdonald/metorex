@@ -5,6 +5,7 @@ use super::ControlFlow;
 use super::core::VirtualMachine;
 use super::utils::*;
 
+use crate::ast::node::ExprMatchCase;
 use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
 use crate::lexer::Position;
@@ -294,5 +295,21 @@ impl VirtualMachine {
         }
 
         Ok(true)
+    }
+
+    /// Evaluate a case expression (pattern matching in expression context).
+    /// This is a placeholder stub that will be fully implemented in Phase 3.
+    pub(crate) fn evaluate_case_expression(
+        &mut self,
+        _expression: &Expression,
+        _cases: &[ExprMatchCase],
+        _else_case: Option<&Expression>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        // Placeholder implementation - will be completed in Phase 3
+        Err(MetorexError::runtime_error(
+            "Case expressions are not yet implemented (Phase 3)".to_string(),
+            position_to_location(position),
+        ))
     }
 }

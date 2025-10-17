@@ -627,6 +627,40 @@ impl Resolver {
                 }
             }
 
+            Expression::Case {
+                expression,
+                cases,
+                else_case,
+                ..
+            } => {
+                // Resolve the match expression
+                self.resolve_expression(expression);
+
+                // Resolve each case
+                for case in cases {
+                    // Push a new scope for this case
+                    self.push_scope();
+
+                    // Declare variables from pattern
+                    self.resolve_pattern(&case.pattern);
+
+                    // Resolve guard if present
+                    if let Some(guard) = &case.guard {
+                        self.resolve_expression(guard);
+                    }
+
+                    // Resolve body expression
+                    self.resolve_expression(&case.body);
+
+                    self.pop_scope();
+                }
+
+                // Resolve else case if present
+                if let Some(else_expr) = else_case {
+                    self.resolve_expression(else_expr);
+                }
+            }
+
             // Literals don't need resolution
             Expression::IntLiteral { .. }
             | Expression::FloatLiteral { .. }

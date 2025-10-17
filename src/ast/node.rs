@@ -167,6 +167,17 @@ pub enum Expression {
         exclusive: bool, // true for ..., false for ..
         position: Position,
     },
+
+    // Case expression (pattern matching in expression context)
+    // Unlike Statement::Match which is used for statement context,
+    // Expression::Case can be used anywhere an expression is expected
+    // (e.g., assignments, method arguments, return values)
+    Case {
+        expression: Box<Expression>,        // Value to match against
+        cases: Vec<ExprMatchCase>,          // When branches
+        else_case: Option<Box<Expression>>, // Optional else branch
+        position: Position,
+    },
 }
 
 /// Parts of an interpolated string
@@ -211,6 +222,17 @@ pub struct MatchCase {
     pub pattern: MatchPattern,
     pub guard: Option<Expression>, // Optional guard condition (if ...)
     pub body: Vec<Statement>,
+    pub position: Position,
+}
+
+/// A single case in a case expression (expression context)
+/// Unlike MatchCase which uses Vec<Statement> for body,
+/// ExprMatchCase uses a single Expression for the body.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExprMatchCase {
+    pub pattern: MatchPattern,
+    pub guard: Option<Expression>, // Optional guard condition (if ...)
+    pub body: Expression,          // Single expression (NOT Vec<Statement>)
     pub position: Position,
 }
 
@@ -509,7 +531,8 @@ impl Expression {
             | Expression::Grouped { position, .. }
             | Expression::SelfExpr { position, .. }
             | Expression::Super { position, .. }
-            | Expression::Range { position, .. } => *position,
+            | Expression::Range { position, .. }
+            | Expression::Case { position, .. } => *position,
         }
     }
 
