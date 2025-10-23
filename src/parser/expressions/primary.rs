@@ -2,6 +2,7 @@
 // Handles parsing of literals, identifiers, and compound expressions
 
 use crate::ast::Expression;
+use crate::ast::node::ExprMatchCase;
 use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -321,7 +322,94 @@ impl Parser {
                 })
             }
 
+            // Case expression: case value when pattern then expr ... end
+            TokenKind::Case => self.parse_case_expression(token.position),
+
             _ => Err(self.error_at_previous(&format!("Unexpected token: {:?}", token.kind))),
         }
+    }
+
+    /// Parse a case expression (pattern matching in expression context)
+    ///
+    /// Syntax:
+    ///   case expression
+    ///   when pattern
+    ///     expr
+    ///   when pattern
+    ///     expr
+    ///   else
+    ///     expr
+    ///   end
+    ///
+    /// Note: The 'then' keyword for inline syntax (when pattern then expr)
+    /// is not yet supported. This will be added in a future enhancement.
+    pub(crate) fn parse_case_expression(
+        &mut self,
+        start_pos: crate::lexer::Position,
+    ) -> Result<Expression, MetorexError> {
+        self.skip_whitespace();
+
+        // Parse the expression to match against
+        let expression = Box::new(self.parse_expression()?);
+        self.skip_whitespace();
+
+        // Parse when clauses
+        let mut cases = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if !self.match_token(&[TokenKind::When]) {
+                break;
+            }
+            let when_pos = self.previous().position;
+            self.skip_whitespace();
+
+            // Parse the pattern using the shared pattern parser
+            let pattern = self.parse_case_pattern()?;
+            self.skip_whitespace();
+
+            // Parse optional guard clause (if ...)
+            let guard = if self.match_token(&[TokenKind::If]) {
+                self.skip_whitespace();
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            self.skip_whitespace();
+
+            // Parse the body expression
+            // The body continues until we hit when/else/end
+            self.skip_whitespace();
+
+            // For case expressions, the body is a single expression
+            // If multiple statements are needed, they should be wrapped in begin...end
+            let body = self.parse_expression()?;
+
+            cases.push(ExprMatchCase {
+                pattern,
+                guard,
+                body,
+                position: when_pos,
+            });
+
+            self.skip_whitespace();
+        }
+
+        // Parse optional else clause
+        let else_case = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            Some(Box::new(self.parse_expression()?))
+        } else {
+            None
+        };
+
+        self.skip_whitespace();
+        self.expect(TokenKind::End, "Expected 'end' after case expression")?;
+
+        Ok(Expression::Case {
+            expression,
+            cases,
+            else_case,
+            position: start_pos,
+        })
     }
 }

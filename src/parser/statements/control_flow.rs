@@ -358,7 +358,10 @@ impl Parser {
     /// - Variable binding pattern (identifier)
     /// - Array destructuring ([a, b, c] or [first, ...rest])
     /// - Object destructuring ({x, y} or {x: a, y: b})
-    fn parse_case_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
+    ///
+    /// This method is public within the parser module so it can be used
+    /// by both statement parsing (case statements) and expression parsing (case expressions)
+    pub(in crate::parser) fn parse_case_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
         let token = self.peek().clone();
 
         match &token.kind {

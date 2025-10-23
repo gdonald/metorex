@@ -35,21 +35,21 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 1.1.5 Document the difference between expression and statement forms
 
 ### 1.2 Consider Unified Representation (Alternative Approach)
-- [ ] 1.2.1 Evaluate whether to merge `ExprMatchCase` and `MatchCase` structures
-- [ ] 1.2.2 Consider using `enum CaseBody { Statements(Vec<Statement>), Expression(Box<Expression>) }`
-- [ ] 1.2.3 Document decision and rationale
-- [ ] 1.2.4 If unified: implement shared structure
-- [ ] 1.2.5 If separate: ensure pattern matching logic can be shared
+- [x] 1.2.1 Evaluate whether to merge `ExprMatchCase` and `MatchCase` structures
+- [x] 1.2.2 Consider using `enum CaseBody { Statements(Vec<Statement>), Expression(Box<Expression>) }`
+- [x] 1.2.3 Document decision and rationale
+- [x] 1.2.4 **Decision: Keep separate structures** (see [CASE_EXPR_DECISION.md](CASE_EXPR_DECISION.md))
+- [x] 1.2.5 Ensure pattern matching logic can be shared (already shared via `MatchPattern` and `match_pattern()`)
 
 ---
 
 ## Phase 2: Parser Changes for Expression Context
 
 ### 2.1 Add Case Expression Parsing
-- [ ] 2.1.1 Create `parse_case_expression()` method in [src/parser/expressions/primary.rs](src/parser/expressions/primary.rs)
-- [ ] 2.1.2 Add `TokenKind::Case` handling to `parse_primary()` method
-- [ ] 2.1.3 Parse the value expression after `case` keyword
-- [ ] 2.1.4 Skip whitespace and newlines appropriately
+- [x] 2.1.1 Create `parse_case_expression()` method in [src/parser/expressions/primary.rs](src/parser/expressions/primary.rs)
+- [x] 2.1.2 Add `TokenKind::Case` handling to `parse_primary()` method
+- [x] 2.1.3 Parse the value expression after `case` keyword
+- [x] 2.1.4 Skip whitespace and newlines appropriately
 
 ### 2.2 Parse When Clauses for Expressions
 - [ ] 2.2.1 Loop through `when` keywords (use `TokenKind::When`)
