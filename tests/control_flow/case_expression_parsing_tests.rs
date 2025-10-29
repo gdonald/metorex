@@ -496,3 +496,183 @@ end
         _ => panic!("Expected Expression::Case"),
     }
 }
+
+#[test]
+fn test_parse_case_expression_with_then_keyword_inline() {
+    let source = r#"
+case x when 1 then "one" when 2 then "two" else "other" end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 2);
+            assert!(matches!(cases[0].pattern, MatchPattern::IntLiteral(1)));
+            assert!(matches!(cases[1].pattern, MatchPattern::IntLiteral(2)));
+
+            assert!(matches!(cases[0].body, Expression::StringLiteral { .. }));
+            assert!(matches!(cases[1].body, Expression::StringLiteral { .. }));
+
+            assert!(else_case.is_some());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_with_then_keyword_multiline() {
+    let source = r#"
+case x
+when 1 then "one"
+when 2 then "two"
+else "other"
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 2);
+            assert!(else_case.is_some());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_mixed_then_and_block_syntax() {
+    let source = r#"
+case val
+when 1 then "one"
+when 2
+  "two"
+when 3 then "three"
+else
+  "other"
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 3);
+            assert!(matches!(cases[0].pattern, MatchPattern::IntLiteral(1)));
+            assert!(matches!(cases[1].pattern, MatchPattern::IntLiteral(2)));
+            assert!(matches!(cases[2].pattern, MatchPattern::IntLiteral(3)));
+            assert!(else_case.is_some());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_with_then_and_guards() {
+    let source = r#"
+case val
+when x if x > 0 then "positive"
+when x if x < 0 then "negative"
+else "zero"
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case { cases, .. } => {
+            assert_eq!(cases.len(), 2);
+            assert!(cases[0].guard.is_some());
+            assert!(cases[1].guard.is_some());
+            assert!(matches!(cases[0].body, Expression::StringLiteral { .. }));
+            assert!(matches!(cases[1].body, Expression::StringLiteral { .. }));
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_inline_without_else() {
+    let source = r#"
+case x when 1 then "one" when 2 then "two" end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 2);
+            assert!(else_case.is_none());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_then_with_complex_expressions() {
+    let source = r#"
+case x
+when 1 then a + b
+when 2 then foo.bar
+when 3 then [1, 2, 3]
+else {"x" => 10}
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 3);
+            assert!(matches!(cases[0].body, Expression::BinaryOp { .. }));
+            assert!(matches!(cases[1].body, Expression::MethodCall { .. }));
+            assert!(matches!(cases[2].body, Expression::Array { .. }));
+            assert!(matches!(
+                else_case.unwrap().as_ref(),
+                Expression::Dictionary { .. }
+            ));
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_then_with_array_destructuring() {
+    let source = r#"
+case arr when [a, b] then a + b when [x] then x else 0 end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case { cases, .. } => {
+            assert_eq!(cases.len(), 2);
+
+            match &cases[0].pattern {
+                MatchPattern::Array(patterns) => {
+                    assert_eq!(patterns.len(), 2);
+                }
+                _ => panic!("Expected Array pattern"),
+            }
+
+            match &cases[1].pattern {
+                MatchPattern::Array(patterns) => {
+                    assert_eq!(patterns.len(), 1);
+                }
+                _ => panic!("Expected Array pattern"),
+            }
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}

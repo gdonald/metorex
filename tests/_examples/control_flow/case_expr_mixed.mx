@@ -1,0 +1,41 @@
+# Case expression with mixed inline/block syntax
+
+# String pattern matching with inline then
+name = "Alice"
+greeting = case name
+when "Alice" then "Hello, Alice!"
+when "Bob" then "Hi, Bob!"
+else "Hello, stranger!"
+end
+puts greeting
+
+# Numeric matching with mixed syntax
+value = 2
+msg = case value
+when 1 then "one"
+when 2
+  "two"
+when 3 then "three"
+else
+  "other"
+end
+puts msg
+
+# Range matching
+score = 85
+grade = case score
+when 90..100 then "A"
+when 80..89 then "B"
+when 70..79 then "C"
+else "F"
+end
+puts grade
+
+# Multiple values in when clause
+day = 6
+day_type = case day
+when 1, 2, 3, 4, 5 then "weekday"
+when 6, 7 then "weekend"
+else "invalid"
+end
+puts day_type

@@ -239,6 +239,7 @@ impl<'a> Lexer<'a> {
             "super" => TokenKind::Super,
             "case" => TokenKind::Case,
             "when" => TokenKind::When,
+            "then" => TokenKind::Then,
             "attr_reader" => TokenKind::AttrReader,
             "attr_writer" => TokenKind::AttrWriter,
             "attr_accessor" => TokenKind::AttrAccessor,

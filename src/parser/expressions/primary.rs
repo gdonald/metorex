@@ -331,18 +331,29 @@ impl Parser {
 
     /// Parse a case expression (pattern matching in expression context)
     ///
-    /// Syntax:
-    ///   case expression
-    ///   when pattern
-    ///     expr
-    ///   when pattern
-    ///     expr
-    ///   else
-    ///     expr
-    ///   end
+    /// Supports two syntaxes:
     ///
-    /// Note: The 'then' keyword for inline syntax (when pattern then expr)
-    /// is not yet supported. This will be added in a future enhancement.
+    /// # Block syntax
+    /// ```text
+    /// case expression
+    /// when pattern
+    ///   expr
+    /// when pattern
+    ///   expr
+    /// else
+    ///   expr
+    /// end
+    /// ```
+    ///
+    /// # Inline syntax
+    /// ```text
+    /// case expression when pattern then expr when pattern then expr else expr end
+    /// ```
+    ///
+    /// # Guard clauses
+    /// ```text
+    /// when pattern if guard_expr then expr
+    /// ```
     pub(crate) fn parse_case_expression(
         &mut self,
         start_pos: crate::lexer::Position,
@@ -377,12 +388,18 @@ impl Parser {
             self.skip_whitespace();
 
             // Parse the body expression
-            // The body continues until we hit when/else/end
-            self.skip_whitespace();
-
-            // For case expressions, the body is a single expression
-            // If multiple statements are needed, they should be wrapped in begin...end
-            let body = self.parse_expression()?;
+            // Two syntaxes supported:
+            // 1. Inline: when pattern then expression
+            // 2. Block: when pattern newline expression(s)
+            let body = if self.match_token(&[TokenKind::Then]) {
+                // Inline syntax: parse expression after 'then'
+                self.skip_whitespace();
+                self.parse_expression()?
+            } else {
+                // Block syntax: parse expression after whitespace
+                self.skip_whitespace();
+                self.parse_expression()?
+            };
 
             cases.push(ExprMatchCase {
                 pattern,

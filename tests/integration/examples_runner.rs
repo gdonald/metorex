@@ -50,7 +50,7 @@ i
 
 #[test]
 fn test_data_structures_simple_dict_execution() {
-    let output = run_example("data-structures/simple_dict.mx");
+    let output = run_example("data_structures/simple_dict.mx");
     // Hash map iteration order is non-deterministic, so check both possible orders
     let valid_output1 = "{bob: 25, alice: 30}\n30\n";
     let valid_output2 = "{alice: 30, bob: 25}\n30\n";
@@ -65,13 +65,13 @@ fn test_data_structures_simple_dict_execution() {
 
 #[test]
 fn test_data_structures_dict_access_execution() {
-    let output = run_example("data-structures/dict_access.mx");
+    let output = run_example("data_structures/dict_access.mx");
     assert_eq!(output, "Ada lives in London\n");
 }
 
 #[test]
 fn test_data_structures_hash_methods_execution() {
-    let output = run_example("data-structures/hash_methods.mx");
+    let output = run_example("data_structures/hash_methods.mx");
     // Hash map iteration order is non-deterministic, so check for valid orderings
     let fixed_part = "Has alice?\ntrue\nHas dave?\nfalse\nSize:\n3\n";
     assert!(
@@ -89,7 +89,7 @@ fn test_data_structures_hash_methods_execution() {
 
 #[test]
 fn test_type_annotations_collection_types_execution() {
-    let output = run_example("type-annotations/collection_types.mx");
+    let output = run_example("type_annotations/collection_types.mx");
     // Hash map iteration order is non-deterministic, so check both possible orders
     let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {Bob: 85, Alice: 90}\nlength of numbers: 5\nAlice's score: 90\n";
     let valid_output2 = "numbers = [1, 2, 3, 4, 5]\nscores = {Alice: 90, Bob: 85}\nlength of numbers: 5\nAlice's score: 90\n";
@@ -168,7 +168,7 @@ fn test_parser_lambdas_execution() {
 #[test]
 fn test_parser_pattern_matching_execution() {
     let expected = "two\nstopping\nother number\none point zero\nfive\n";
-    let output = run_example("control-flow/test_pattern_matching.mx");
+    let output = run_example("control_flow/test_pattern_matching.mx");
     assert_eq!(output, expected);
 }
 
@@ -407,35 +407,35 @@ fn test_basics_elsif_no_parens_execution() {
 #[test]
 fn test_control_flow_case_guard_execution() {
     let expected = "Warm\nLarge hundred\n";
-    let output = run_example("control-flow/case_guard.mx");
+    let output = run_example("control_flow/case_guard.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_array_destructure_execution() {
     let expected = "a=1, b=2, c=3\nFirst: 1\nRest: [2, 3, 4, 5]\nFirst: 1, Last: 5\nMiddle: [2, 3, 4]\nSum: 10\nFirst is 1, last is 4\n";
-    let output = run_example("control-flow/case_array_destructure.mx");
+    let output = run_example("control_flow/case_array_destructure.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_object_destructure_execution() {
     let expected = "Point at (10, 20)\nName: Alice, Age: 30\nAlice is 30 years old\n";
-    let output = run_example("control-flow/case_object_destructure.mx");
+    let output = run_example("control_flow/case_object_destructure.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_variable_binding_execution() {
     let expected = "Matched: 42\nNot Found\nWorking age: 25\n";
-    let output = run_example("control-flow/case_variable_binding.mx");
+    let output = run_example("control_flow/case_variable_binding.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_type_basic_execution() {
     let expected = "It's an integer\nIt's a string\nIt's an array\nIt's a hash\nFloat\n";
-    let output = run_example("control-flow/case_type_basic.mx");
+    let output = run_example("control_flow/case_type_basic.mx");
     assert_eq!(output, expected);
 }
 
@@ -443,16 +443,38 @@ fn test_control_flow_case_type_basic_execution() {
 fn test_control_flow_case_type_custom_class_execution() {
     let expected =
         "It's a dog!\nBuddy says woof!\nIt's a cat!\nWhiskers says meow!\nIt's just a string\n";
-    let output = run_example("control-flow/case_type_custom_class.mx");
+    let output = run_example("control_flow/case_type_custom_class.mx");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_case_type_mixed_execution() {
     let expected = "It's an integer: 42\nGeneric string\nProcessing integer: 20\nProcessing float: 4.71\nProcessing string: TEST\nProcessing array of 3 elements\nProcessing hash with 2 keys\n";
-    let output = run_example("control-flow/case_type_mixed.mx");
+    let output = run_example("control_flow/case_type_mixed.mx");
     assert_eq!(output, expected);
 }
+
+// TODO: Enable these tests once Phase 3 (VM execution) is implemented
+// #[test]
+// fn test_control_flow_case_expr_inline_execution() {
+//     let expected = "two\nten\nfirst\n";
+//     let output = run_example("control_flow/case_expr_inline.mx");
+//     assert_eq!(output, expected);
+// }
+//
+// #[test]
+// fn test_control_flow_case_expr_block_execution() {
+//     let expected = "two\ngreeting\nnegative\n";
+//     let output = run_example("control_flow/case_expr_block.mx");
+//     assert_eq!(output, expected);
+// }
+//
+// #[test]
+// fn test_control_flow_case_expr_mixed_execution() {
+//     let expected = "Hello, Alice!\ntwo\nB\nweekend\n";
+//     let output = run_example("control_flow/case_expr_mixed.mx");
+//     assert_eq!(output, expected);
+// }
 
 #[test]
 fn test_errors_simple_rescue_execution() {

@@ -52,16 +52,16 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 2.1.4 Skip whitespace and newlines appropriately
 
 ### 2.2 Parse When Clauses for Expressions
-- [ ] 2.2.1 Loop through `when` keywords (use `TokenKind::When`)
-- [ ] 2.2.2 Reuse `parse_case_pattern()` for pattern parsing (already exists in control_flow.rs)
-  - [ ] 2.2.2.1 Consider moving pattern parsing to shared parser utility module
-  - [ ] 2.2.2.2 Or make `parse_case_pattern()` public within parser module
-- [ ] 2.2.3 Parse optional guard clause (if `TokenKind::If` follows pattern)
-- [ ] 2.2.4 Handle body parsing with two syntaxes:
-  - [ ] 2.2.4.1 Inline syntax: `when pattern then expression`
-  - [ ] 2.2.4.2 Block syntax: `when pattern` followed by newline and expression(s)
-- [ ] 2.2.5 For block syntax, parse body as single expression or implicit begin-end block
-- [ ] 2.2.6 Collect all when cases into `Vec<ExprMatchCase>`
+- [x] 2.2.1 Loop through `when` keywords (use `TokenKind::When`)
+- [x] 2.2.2 Reuse `parse_case_pattern()` for pattern parsing (already exists in control_flow.rs)
+  - [x] 2.2.2.1 Consider moving pattern parsing to shared parser utility module
+  - [x] 2.2.2.2 Or make `parse_case_pattern()` public within parser module (chose this approach)
+- [x] 2.2.3 Parse optional guard clause (if `TokenKind::If` follows pattern)
+- [x] 2.2.4 Handle body parsing with two syntaxes:
+  - [x] 2.2.4.1 Inline syntax: `when pattern then expression`
+  - [x] 2.2.4.2 Block syntax: `when pattern` followed by newline and expression(s)
+- [x] 2.2.5 For block syntax, parse body as single expression or implicit begin-end block
+- [x] 2.2.6 Collect all when cases into `Vec<ExprMatchCase>`
 
 ### 2.3 Parse Else Clause
 - [ ] 2.3.1 Check for `TokenKind::Else` keyword
