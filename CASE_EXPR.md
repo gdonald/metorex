@@ -64,10 +64,10 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 2.2.6 Collect all when cases into `Vec<ExprMatchCase>`
 
 ### 2.3 Parse Else Clause
-- [ ] 2.3.1 Check for `TokenKind::Else` keyword
-- [ ] 2.3.2 Parse else body as expression (with `then` or newline)
-- [ ] 2.3.3 Store as `Option<Box<Expression>>`
-- [ ] 2.3.4 Handle case where no else clause exists (should return nil if no match)
+- [x] 2.3.1 Check for `TokenKind::Else` keyword
+- [x] 2.3.2 Parse else body as expression (with `then` or newline)
+- [x] 2.3.3 Store as `Option<Box<Expression>>`
+- [x] 2.3.4 Handle case where no else clause exists (should return nil if no match)
 
 ### 2.4 Parse End Keyword
 - [ ] 2.4.1 Expect `TokenKind::End` to close the case expression
