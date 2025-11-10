@@ -70,8 +70,8 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 2.3.4 Handle case where no else clause exists (should return nil if no match)
 
 ### 2.4 Parse End Keyword
-- [ ] 2.4.1 Expect `TokenKind::End` to close the case expression
-- [ ] 2.4.2 Return `Expression::Case` with all collected data
+- [x] 2.4.1 Expect `TokenKind::End` to close the case expression
+- [x] 2.4.2 Return `Expression::Case` with all collected data
 
 ### 2.5 Handle Multi-line vs Single-line Syntax
 - [ ] 2.5.1 Support `case x when 1 then "one" when 2 then "two" else "other" end`
