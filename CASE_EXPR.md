@@ -74,22 +74,22 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 2.4.2 Return `Expression::Case` with all collected data
 
 ### 2.5 Handle Multi-line vs Single-line Syntax
-- [ ] 2.5.1 Support `case x when 1 then "one" when 2 then "two" else "other" end`
-- [ ] 2.5.2 Support traditional multi-line format with newlines
-- [ ] 2.5.3 Ensure proper whitespace/newline handling in both modes
-- [ ] 2.5.4 Write tests for both syntaxes
+- [x] 2.5.1 Support `case x when 1 then "one" when 2 then "two" else "other" end`
+- [x] 2.5.2 Support traditional multi-line format with newlines
+- [x] 2.5.3 Ensure proper whitespace/newline handling in both modes
+- [x] 2.5.4 Write tests for both syntaxes
 
 ### 2.6 Refactor Pattern Parsing (Shared Logic)
-- [ ] 2.6.1 Move `parse_case_pattern()` to shared location or make accessible to expression parser
-- [ ] 2.6.2 Ensure both statement and expression parsers use same pattern logic
-- [ ] 2.6.3 Test that all pattern types work in expression context:
-  - [ ] 2.6.3.1 Literals (int, float, string, bool, nil)
-  - [ ] 2.6.3.2 Wildcards (`_`)
-  - [ ] 2.6.3.3 Variable bindings (identifiers)
-  - [ ] 2.6.3.4 Type patterns (Integer, String, Hash, etc.)
-  - [ ] 2.6.3.5 Array destructuring patterns
-  - [ ] 2.6.3.6 Object destructuring patterns
-  - [ ] 2.6.3.7 Rest patterns (`...rest`)
+- [x] 2.6.1 Move `parse_case_pattern()` to shared location or make accessible to expression parser
+- [x] 2.6.2 Ensure both statement and expression parsers use same pattern logic
+- [x] 2.6.3 Test that all pattern types work in expression context:
+  - [x] 2.6.3.1 Literals (int, float, string, bool, nil)
+  - [x] 2.6.3.2 Wildcards (`_`)
+  - [x] 2.6.3.3 Variable bindings (identifiers)
+  - [x] 2.6.3.4 Type patterns (Integer, String, Hash, etc.)
+  - [x] 2.6.3.5 Array destructuring patterns
+  - [x] 2.6.3.6 Object destructuring patterns
+  - [x] 2.6.3.7 Rest patterns (`...rest`)
 
 ---
 
