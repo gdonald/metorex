@@ -504,6 +504,13 @@ fn test_control_flow_case_expression_nested_execution() {
 }
 
 #[test]
+fn test_case_multi_value_execution() {
+    let expected = "small\nmedium\nlarge\nGood\nsuccess\n";
+    let output = run_example("control_flow/case_multi_value.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_errors_simple_rescue_execution() {
     let expected = "Before exception\nCaught an exception\nAfter rescue block\nCaught exception with message: RuntimeError: An error message\nIn try block\nIn rescue block\nIn ensure block\n";
     let output = run_example("errors/simple_rescue.mx");

@@ -214,6 +214,10 @@ pub enum MatchPattern {
 
     // Type pattern (for future use)
     Type(String),
+
+    // Multiple patterns (OR matching) - matches if any pattern matches
+    // Used for: when 1, 2, 3 then "small"
+    Multiple(Vec<MatchPattern>),
 }
 
 /// A single case in a match statement

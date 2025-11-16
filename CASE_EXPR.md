@@ -137,7 +137,7 @@ Convert the current `case` statement implementation to also work as an expressio
 ## Phase 4: Testing - Parser Tests
 
 ### 4.1 Basic Case Expression Parsing Tests
-- [ ] 4.1.1 Test basic case expression with literal patterns
+- [x] 4.1.1 Test basic case expression with literal patterns
   ```ruby
   x = case val
   when 1
@@ -148,10 +148,10 @@ Convert the current `case` statement implementation to also work as an expressio
     "other"
   end
   ```
-- [ ] 4.1.2 Test inline syntax: `x = case val when 1 then "one" when 2 then "two" else "other" end`
-- [ ] 4.1.3 Test case without else clause
-- [ ] 4.1.4 Test case with single when clause
-- [ ] 4.1.5 Test case with multiple values in when: `when 1, 2, 3 then "small"`
+- [x] 4.1.2 Test inline syntax: `x = case val when 1 then "one" when 2 then "two" else "other" end`
+- [x] 4.1.3 Test case without else clause
+- [x] 4.1.4 Test case with single when clause
+- [x] 4.1.5 Test case with multiple values in when: `when 1, 2, 3 then "small"`
 
 ### 4.2 Pattern Type Tests
 - [ ] 4.2.1 Test with integer literal patterns

@@ -374,8 +374,8 @@ impl Parser {
             let when_pos = self.previous().position;
             self.skip_whitespace();
 
-            // Parse the pattern using the shared pattern parser
-            let pattern = self.parse_case_pattern()?;
+            // Parse the pattern using the shared pattern parser (may include comma-separated alternatives)
+            let pattern = self.parse_case_pattern_with_alternatives()?;
             self.skip_whitespace();
 
             // Parse optional guard clause (if ...)

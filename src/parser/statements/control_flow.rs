@@ -282,8 +282,8 @@ impl Parser {
             let when_pos = self.previous().position;
             self.skip_whitespace();
 
-            // Parse the pattern (for basic case statements, this is just a literal)
-            let pattern = self.parse_case_pattern()?;
+            // Parse the pattern (may include comma-separated alternatives)
+            let pattern = self.parse_case_pattern_with_alternatives()?;
             self.skip_whitespace();
 
             // Parse optional guard clause (if ...)
@@ -361,6 +361,52 @@ impl Parser {
     ///
     /// This method is public within the parser module so it can be used
     /// by both statement parsing (case statements) and expression parsing (case expressions)
+    /// Parse a pattern that may include comma-separated alternatives
+    /// Returns a MatchPattern::Multiple if multiple patterns are found, otherwise a single pattern
+    pub(in crate::parser) fn parse_case_pattern_with_alternatives(
+        &mut self,
+    ) -> Result<MatchPattern, MetorexError> {
+        // Parse the first pattern
+        let first_pattern = self.parse_case_pattern()?;
+        self.skip_whitespace();
+
+        // Check if there's a comma indicating multiple patterns
+        if !self.check(&[TokenKind::Comma]) {
+            // Single pattern, return as-is
+            return Ok(first_pattern);
+        }
+
+        // Multiple patterns: collect all comma-separated patterns
+        let mut patterns = vec![first_pattern];
+
+        while self.match_token(&[TokenKind::Comma]) {
+            self.skip_whitespace();
+
+            // Check if we've hit a terminal token (then, if, newline context)
+            // This prevents consuming commas from other constructs
+            if self.check(&[
+                TokenKind::Then,
+                TokenKind::If,
+                TokenKind::When,
+                TokenKind::Else,
+                TokenKind::End,
+            ]) {
+                break;
+            }
+
+            patterns.push(self.parse_case_pattern()?);
+            self.skip_whitespace();
+        }
+
+        // If we only collected one pattern, return it directly
+        if patterns.len() == 1 {
+            Ok(patterns.into_iter().next().unwrap())
+        } else {
+            Ok(MatchPattern::Multiple(patterns))
+        }
+    }
+
+    /// Parse a single case pattern (internal helper)
     pub(in crate::parser) fn parse_case_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
         let token = self.peek().clone();
 

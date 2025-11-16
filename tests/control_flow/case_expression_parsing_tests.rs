@@ -648,6 +648,87 @@ end
 }
 
 #[test]
+fn test_parse_case_expression_with_multiple_values_in_when() {
+    let source = r#"
+case val
+when 1, 2, 3
+  "small"
+when 4, 5
+  "medium"
+else
+  "large"
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 2);
+
+            // First case should have Multiple pattern with 3 values
+            match &cases[0].pattern {
+                MatchPattern::Multiple(patterns) => {
+                    assert_eq!(patterns.len(), 3);
+                    assert!(matches!(patterns[0], MatchPattern::IntLiteral(1)));
+                    assert!(matches!(patterns[1], MatchPattern::IntLiteral(2)));
+                    assert!(matches!(patterns[2], MatchPattern::IntLiteral(3)));
+                }
+                _ => panic!("Expected Multiple pattern for first case"),
+            }
+
+            // Second case should have Multiple pattern with 2 values
+            match &cases[1].pattern {
+                MatchPattern::Multiple(patterns) => {
+                    assert_eq!(patterns.len(), 2);
+                    assert!(matches!(patterns[0], MatchPattern::IntLiteral(4)));
+                    assert!(matches!(patterns[1], MatchPattern::IntLiteral(5)));
+                }
+                _ => panic!("Expected Multiple pattern for second case"),
+            }
+
+            // Else should exist
+            assert!(else_case.is_some());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_with_multiple_values_inline() {
+    let source = r#"
+case x when 1, 2, 3 then "small" when 4, 5 then "medium" else "large" end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case { cases, .. } => {
+            assert_eq!(cases.len(), 2);
+
+            // Verify first Multiple pattern
+            match &cases[0].pattern {
+                MatchPattern::Multiple(patterns) => {
+                    assert_eq!(patterns.len(), 3);
+                }
+                _ => panic!("Expected Multiple pattern"),
+            }
+
+            // Verify second Multiple pattern
+            match &cases[1].pattern {
+                MatchPattern::Multiple(patterns) => {
+                    assert_eq!(patterns.len(), 2);
+                }
+                _ => panic!("Expected Multiple pattern"),
+            }
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
 fn test_parse_case_expression_then_with_array_destructuring() {
     let source = r#"
 case arr when [a, b] then a + b when [x] then x else 0 end

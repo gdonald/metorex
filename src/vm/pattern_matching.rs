@@ -179,6 +179,23 @@ impl VirtualMachine {
 
                 Ok(matches)
             }
+
+            // Multiple pattern - OR matching (matches if any sub-pattern matches)
+            // Used for: when 1, 2, 3 then "small"
+            MatchPattern::Multiple(patterns) => {
+                for pattern in patterns {
+                    // Try each pattern - if any matches, the whole Multiple pattern matches
+                    // Important: we need to preserve bindings only from the matching pattern
+                    let mut temp_bindings = HashMap::new();
+                    if self.match_pattern(pattern, value, &mut temp_bindings, position)? {
+                        // This pattern matched - merge bindings and return true
+                        bindings.extend(temp_bindings);
+                        return Ok(true);
+                    }
+                }
+                // None of the patterns matched
+                Ok(false)
+            }
         }
     }
 
