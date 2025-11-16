@@ -1,5 +1,9 @@
 mod case_execution_tests;
-mod case_expression_execution_tests;
+mod case_expr_basic_tests;
+mod case_expr_destructuring_tests;
+mod case_expr_guard_tests;
+mod case_expr_multiple_patterns_tests;
+mod case_expr_nested_tests;
 mod case_expression_parsing_tests;
 mod case_parsing_tests;
 mod complex_flow_execution_tests;
