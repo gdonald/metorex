@@ -117,14 +117,14 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 3.2.6 Ensure proper scope management (push/pop scopes correctly)
 
 ### 3.3 Refactor Pattern Matching (Shared Logic)
-- [ ] 3.3.1 Verify `match_pattern()` can be reused for both statement and expression forms
-- [ ] 3.3.2 Verify guard evaluation can be shared
-- [ ] 3.3.3 Extract common logic into helper methods if needed
-- [ ] 3.3.4 Ensure all pattern types work correctly:
-  - [ ] 3.3.4.1 Variable binding creates correct scope entries
-  - [ ] 3.3.4.2 Array destructuring with rest patterns
-  - [ ] 3.3.4.3 Object destructuring with various key forms
-  - [ ] 3.3.4.4 Type checking patterns
+- [x] 3.3.1 Verify `match_pattern()` can be reused for both statement and expression forms
+- [x] 3.3.2 Verify guard evaluation can be shared
+- [x] 3.3.3 Extract common logic into helper methods if needed
+- [x] 3.3.4 Ensure all pattern types work correctly:
+  - [x] 3.3.4.1 Variable binding creates correct scope entries
+  - [x] 3.3.4.2 Array destructuring with rest patterns
+  - [x] 3.3.4.3 Object destructuring with various key forms
+  - [x] 3.3.4.4 Type checking patterns
 
 ### 3.4 Handle Nested Case Expressions
 - [ ] 3.4.1 Test case expressions inside other case expressions

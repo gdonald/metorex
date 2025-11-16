@@ -31,27 +31,13 @@ impl VirtualMachine {
             let mut bindings: HashMap<String, Object> = HashMap::new();
             if self.match_pattern(&case.pattern, &match_value, &mut bindings, position)? {
                 // Pattern matched! Now check guard if present
-                if let Some(guard_expr) = &case.guard {
-                    // Push a new scope for guard evaluation with bindings
-                    self.environment_mut().push_scope();
-                    for (name, value) in &bindings {
-                        self.environment_mut().define(name.clone(), value.clone());
-                    }
-
-                    let guard_result = self.evaluate_expression(guard_expr)?;
-                    self.environment_mut().pop_scope();
-
-                    // If guard evaluates to false, skip this case
-                    if !is_truthy(&guard_result) {
-                        continue;
-                    }
+                if !self.evaluate_guard_with_bindings(case.guard.as_ref(), &bindings)? {
+                    continue;
                 }
 
                 // Pattern and guard matched! Execute the body with bindings
                 self.environment_mut().push_scope();
-                for (name, value) in bindings {
-                    self.environment_mut().define(name, value);
-                }
+                self.apply_pattern_bindings(&bindings);
 
                 // Execute the body and track the last expression value
                 let mut last_value = Object::Nil;
@@ -297,6 +283,39 @@ impl VirtualMachine {
         Ok(true)
     }
 
+    /// Apply variable bindings from pattern matching to the current scope.
+    /// Helper method to reduce code duplication between match statement and case expression.
+    fn apply_pattern_bindings(&mut self, bindings: &HashMap<String, Object>) {
+        for (name, value) in bindings {
+            self.environment_mut().define(name.clone(), value.clone());
+        }
+    }
+
+    /// Evaluate a guard expression with pattern bindings in a new scope.
+    /// Returns true if the guard passes (is truthy) or if there's no guard.
+    /// Returns false if the guard fails (is not truthy).
+    /// Helper method to reduce code duplication between match statement and case expression.
+    fn evaluate_guard_with_bindings(
+        &mut self,
+        guard_expr: Option<&Expression>,
+        bindings: &HashMap<String, Object>,
+    ) -> Result<bool, MetorexError> {
+        if let Some(guard) = guard_expr {
+            // Push a new scope for guard evaluation with bindings
+            self.environment_mut().push_scope();
+            self.apply_pattern_bindings(bindings);
+
+            let guard_result = self.evaluate_expression(guard)?;
+            self.environment_mut().pop_scope();
+
+            // Return whether the guard is truthy
+            Ok(is_truthy(&guard_result))
+        } else {
+            // No guard means it always passes
+            Ok(true)
+        }
+    }
+
     /// Evaluate a case expression (pattern matching in expression context).
     /// Returns the value of the first matching case's body expression.
     pub(crate) fn evaluate_case_expression(
@@ -315,27 +334,13 @@ impl VirtualMachine {
             let mut bindings: HashMap<String, Object> = HashMap::new();
             if self.match_pattern(&case.pattern, &match_value, &mut bindings, case.position)? {
                 // Pattern matched! Now check guard if present
-                if let Some(guard_expr) = &case.guard {
-                    // Push a new scope for guard evaluation with bindings
-                    self.environment_mut().push_scope();
-                    for (name, value) in &bindings {
-                        self.environment_mut().define(name.clone(), value.clone());
-                    }
-
-                    let guard_result = self.evaluate_expression(guard_expr)?;
-                    self.environment_mut().pop_scope();
-
-                    // If guard evaluates to false, skip this case
-                    if !is_truthy(&guard_result) {
-                        continue;
-                    }
+                if !self.evaluate_guard_with_bindings(case.guard.as_ref(), &bindings)? {
+                    continue;
                 }
 
                 // Pattern and guard matched! Evaluate the body expression with bindings
                 self.environment_mut().push_scope();
-                for (name, value) in bindings {
-                    self.environment_mut().define(name, value);
-                }
+                self.apply_pattern_bindings(&bindings);
 
                 let result = self.evaluate_expression(&case.body)?;
                 self.environment_mut().pop_scope();
