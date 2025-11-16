@@ -757,3 +757,125 @@ case arr when [a, b] then a + b when [x] then x else 0 end
         _ => panic!("Expected Expression::Case"),
     }
 }
+
+#[test]
+fn test_parse_case_expression_with_string_literal_patterns() {
+    let source = r#"
+case command
+when "start"
+  "Starting"
+when "stop"
+  "Stopping"
+when "restart"
+  "Restarting"
+else
+  "Unknown command"
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 3);
+
+            // Check string literal patterns
+            match &cases[0].pattern {
+                MatchPattern::StringLiteral(s) => assert_eq!(s, "start"),
+                _ => panic!("Expected StringLiteral pattern for first case"),
+            }
+
+            match &cases[1].pattern {
+                MatchPattern::StringLiteral(s) => assert_eq!(s, "stop"),
+                _ => panic!("Expected StringLiteral pattern for second case"),
+            }
+
+            match &cases[2].pattern {
+                MatchPattern::StringLiteral(s) => assert_eq!(s, "restart"),
+                _ => panic!("Expected StringLiteral pattern for third case"),
+            }
+
+            // Check else case exists
+            assert!(else_case.is_some());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_with_float_literal_patterns() {
+    let source = r#"
+case value
+when 1.5
+  "one and a half"
+when 2.0
+  "two"
+when 3.14
+  "pi"
+else
+  "other"
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case {
+            cases, else_case, ..
+        } => {
+            assert_eq!(cases.len(), 3);
+
+            // Check float literal patterns
+            match &cases[0].pattern {
+                MatchPattern::FloatLiteral(f) => assert_eq!(*f, 1.5),
+                _ => panic!("Expected FloatLiteral pattern for first case"),
+            }
+
+            match &cases[1].pattern {
+                MatchPattern::FloatLiteral(f) => assert_eq!(*f, 2.0),
+                _ => panic!("Expected FloatLiteral pattern for second case"),
+            }
+
+            match &cases[2].pattern {
+                MatchPattern::FloatLiteral(f) => assert_eq!(*f, 3.14),
+                _ => panic!("Expected FloatLiteral pattern for third case"),
+            }
+
+            // Check else case exists
+            assert!(else_case.is_some());
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}
+
+#[test]
+fn test_parse_case_expression_with_identifier_binding_pattern() {
+    let source = r#"
+case value
+when x
+  x * 2
+else
+  0
+end
+"#;
+
+    let expr = parse_case_expr(source);
+
+    match expr {
+        Expression::Case { cases, .. } => {
+            assert_eq!(cases.len(), 1);
+
+            // Check identifier pattern
+            match &cases[0].pattern {
+                MatchPattern::Identifier(name) => assert_eq!(name, "x"),
+                _ => panic!("Expected Identifier pattern"),
+            }
+
+            // Body should use the bound variable
+            assert!(matches!(cases[0].body, Expression::BinaryOp { .. }));
+        }
+        _ => panic!("Expected Expression::Case"),
+    }
+}

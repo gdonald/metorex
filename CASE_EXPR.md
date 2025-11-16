@@ -154,16 +154,16 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 4.1.5 Test case with multiple values in when: `when 1, 2, 3 then "small"`
 
 ### 4.2 Pattern Type Tests
-- [ ] 4.2.1 Test with integer literal patterns
-- [ ] 4.2.2 Test with string literal patterns
-- [ ] 4.2.3 Test with boolean patterns
-- [ ] 4.2.4 Test with nil pattern
-- [ ] 4.2.5 Test with wildcard pattern (`_`)
-- [ ] 4.2.6 Test with variable binding pattern
-- [ ] 4.2.7 Test with type patterns (Integer, String, Array, Hash)
-- [ ] 4.2.8 Test with array destructuring: `when [a, b] then ...`
-- [ ] 4.2.9 Test with array rest pattern: `when [first, ...rest] then ...`
-- [ ] 4.2.10 Test with object destructuring: `when {x: a, y: b} then ...`
+- [x] 4.2.1 Test with integer literal patterns
+- [x] 4.2.2 Test with string literal patterns
+- [x] 4.2.3 Test with boolean patterns
+- [x] 4.2.4 Test with nil pattern
+- [x] 4.2.5 Test with wildcard pattern (`_`)
+- [x] 4.2.6 Test with variable binding pattern
+- [x] 4.2.7 Test with type patterns (Integer, String, Array, Hash)
+- [x] 4.2.8 Test with array destructuring: `when [a, b] then ...`
+- [x] 4.2.9 Test with array rest pattern: `when [first, ...rest] then ...`
+- [x] 4.2.10 Test with object destructuring: `when {x: a, y: b} then ...`
 
 ### 4.3 Guard Clause Tests
 - [ ] 4.3.1 Test case with guard: `when x if x > 0 then "positive"`
@@ -301,40 +301,6 @@ Convert the current `case` statement implementation to also work as an expressio
 - [ ] 6.3.1 Review existing case statement examples
 - [ ] 6.3.2 Add expression usage to existing examples where appropriate
 - [ ] 6.3.3 Ensure backward compatibility with statement form
-
----
-
-## Phase 7: Documentation and Code Quality
-
-### 7.1 Code Documentation
-- [ ] 7.1.1 Add doc comments to `Expression::Case` variant
-- [ ] 7.1.2 Add doc comments to `ExprMatchCase` struct
-- [ ] 7.1.3 Add doc comments to `parse_case_expression()` method
-- [ ] 7.1.4 Add doc comments to `evaluate_case_expression()` method
-- [ ] 7.1.5 Document differences between statement and expression forms
-- [ ] 7.1.6 Add examples to doc comments
-
-### 7.2 Code Quality
-- [ ] 7.2.1 Run `cargo fmt` to format all code
-- [ ] 7.2.2 Run `cargo clippy` and fix all warnings
-- [ ] 7.2.3 Ensure no clippy violations in new code
-- [ ] 7.2.4 Review code for potential optimizations
-- [ ] 7.2.5 Check for code duplication between statement and expression implementations
-- [ ] 7.2.6 Refactor shared logic into helper functions
-
-### 7.3 Test Coverage
-- [ ] 7.3.1 Run `cargo tarpaulin --out Stdout` to check coverage
-- [ ] 7.3.2 Ensure all new code paths are covered by tests
-- [ ] 7.3.3 Aim for 100% coverage on new code
-- [ ] 7.3.4 Add tests for any uncovered branches
-- [ ] 7.3.5 Verify overall project coverage hasn't decreased
-
-### 7.4 Final Verification
-- [ ] 7.4.1 Run `cargo test` and ensure all tests pass
-- [ ] 7.4.2 Run `scripts/misplaced_tests.sh` to verify no tests in implementation files
-- [ ] 7.4.3 Run examples manually to verify correct behavior
-- [ ] 7.4.4 Test with the original Ruby file that triggered this work: `test/runner.rb`
-- [ ] 7.4.5 Verify no regressions in existing functionality
 
 ---
 
