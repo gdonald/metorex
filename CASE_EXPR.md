@@ -127,10 +127,10 @@ Convert the current `case` statement implementation to also work as an expressio
   - [x] 3.3.4.4 Type checking patterns
 
 ### 3.4 Handle Nested Case Expressions
-- [ ] 3.4.1 Test case expressions inside other case expressions
-- [ ] 3.4.2 Test case expressions inside if/unless expressions (if those exist)
-- [ ] 3.4.3 Verify scope handling for nested cases
-- [ ] 3.4.4 Verify guard expressions can reference outer scope variables
+- [x] 3.4.1 Test case expressions inside other case expressions
+- [x] 3.4.2 Test case expressions inside if/unless expressions (if those exist)
+- [x] 3.4.3 Verify scope handling for nested cases
+- [x] 3.4.4 Verify guard expressions can reference outer scope variables
 
 ---
 

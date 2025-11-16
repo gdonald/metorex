@@ -498,7 +498,7 @@ fn test_control_flow_case_expression_guards_execution() {
 
 #[test]
 fn test_control_flow_case_expression_nested_execution() {
-    let expected = "25\nall match\n1\n20\n3\n30\n";
+    let expected = "25\nall match\n1\n20\n3\n30\nfruit\n120\n150\nundefined state\n";
     let output = run_example("control_flow/case_expression_nested.mx");
     assert_eq!(output, expected);
 }
