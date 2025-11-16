@@ -1,5 +1,27 @@
 # Case Expression Implementation Plan
 
+## ⚠️ IMPORTANT: Ruby Syntax Compliance Issue
+
+**PROBLEM**: Large portions of this document describe features that are NOT valid Ruby syntax for `case...when`:
+- Guards (`when x if x > 0`) only work in `case...in` (pattern matching), not `case...when`
+- Variable binding (`when x`) doesn't bind variables in `case...when`
+- Array destructuring (`when [a, b]`) doesn't destructure in `case...when`
+- Type patterns (`when Integer`) don't exist in `case...when`
+- Wildcard patterns (`when _`) don't exist in `case...when`
+
+**Ruby `case...when` supports ONLY:**
+- Literal value matching: `when 1, 2, 3`
+- Equality comparison using `===`
+- Multiple values per when clause
+
+**Pattern matching features require:**
+- Ruby's `case...in` syntax (Ruby 2.7+), OR
+- Metorex's `match...when` syntax (not valid Ruby)
+
+**ACTION NEEDED**: This document needs to be split into:
+1. `CASE_EXPR.md` - for simple `case...when` expressions (valid Ruby)
+2. `MATCH_EXPR.md` - for pattern matching with `match...when` (Metorex-specific)
+
 ## Overview
 
 Convert the current `case` statement implementation to also work as an expression. This allows `case` to be used in expression contexts like assignments, method arguments, return values, etc.
@@ -158,18 +180,21 @@ Convert the current `case` statement implementation to also work as an expressio
 - [x] 4.2.2 Test with string literal patterns
 - [x] 4.2.3 Test with boolean patterns
 - [x] 4.2.4 Test with nil pattern
-- [x] 4.2.5 Test with wildcard pattern (`_`)
-- [x] 4.2.6 Test with variable binding pattern
-- [x] 4.2.7 Test with type patterns (Integer, String, Array, Hash)
-- [x] 4.2.8 Test with array destructuring: `when [a, b] then ...`
-- [x] 4.2.9 Test with array rest pattern: `when [first, ...rest] then ...`
-- [x] 4.2.10 Test with object destructuring: `when {x: a, y: b} then ...`
+- [ ] 4.2.5 ~~Test with wildcard pattern (`_`)~~ INVALID - `_` wildcard not in Ruby `case...when`
+- [ ] 4.2.6 ~~Test with variable binding pattern~~ INVALID - variable binding not in Ruby `case...when`
+- [ ] 4.2.7 ~~Test with type patterns~~ INVALID - type patterns not in Ruby `case...when`
+- [ ] 4.2.8 ~~Test with array destructuring~~ INVALID - destructuring not in Ruby `case...when`
+- [ ] 4.2.9 ~~Test with array rest pattern~~ INVALID - rest patterns not in Ruby `case...when`
+- [ ] 4.2.10 ~~Test with object destructuring~~ INVALID - destructuring not in Ruby `case...when`
 
 ### 4.3 Guard Clause Tests
-- [ ] 4.3.1 Test case with guard: `when x if x > 0 then "positive"`
-- [ ] 4.3.2 Test multiple guards on different when clauses
-- [ ] 4.3.3 Test guard referencing pattern-bound variables
-- [ ] 4.3.4 Test guard with complex expressions
+**NOTE: Guards (`when x if x > 0`) are NOT valid Ruby syntax with `case...when`.**
+**Guards only work with `case...in` (pattern matching), not `case...when`.**
+**This section should be removed or moved to a separate pattern matching feature.**
+- [ ] 4.3.1 ~~Test case with guard~~: INVALID - not supported in Ruby `case...when`
+- [ ] 4.3.2 ~~Test multiple guards~~ INVALID - not supported in Ruby `case...when`
+- [ ] 4.3.3 ~~Test guard referencing pattern-bound variables~~ INVALID - not supported in Ruby `case...when`
+- [ ] 4.3.4 ~~Test guard with complex expressions~~ INVALID - not supported in Ruby `case...when`
 
 ### 4.4 Expression Context Tests
 - [ ] 4.4.1 Test case in variable assignment
@@ -207,53 +232,30 @@ Convert the current `case` statement implementation to also work as an expressio
 - [ ] 5.1.5 Test multiple literal patterns in one when clause
 
 ### 5.2 Pattern Matching Execution Tests
-- [ ] 5.2.1 Test literal pattern matching (int, float, string, bool, nil)
-- [ ] 5.2.2 Test wildcard pattern matches any value
-- [ ] 5.2.3 Test variable binding captures the value
-  ```ruby
-  result = case [1, 2]
-  when [a, b] then a + b
-  end
-  # result should be 3
-  ```
-- [ ] 5.2.4 Test type pattern matching (Integer, String, Array, Hash)
-- [ ] 5.2.5 Test array destructuring with exact length match
-- [ ] 5.2.6 Test array destructuring with rest pattern
-  ```ruby
-  result = case [1, 2, 3, 4]
-  when [first, ...rest] then rest
-  end
-  # result should be [2, 3, 4]
-  ```
-- [ ] 5.2.7 Test object/hash destructuring
-  ```ruby
-  result = case {"x" => 10, "y" => 20}
-  when {x: a, y: b} then a + b
-  end
-  # result should be 30
-  ```
+**NOTE: These tests are INVALID for Ruby `case...when`. They require `case...in` or `match...when`**
+- [ ] 5.2.1 Test literal pattern matching (int, float, string, bool, nil) - OK for `case...when`
+- [ ] 5.2.2 ~~Test wildcard pattern~~ INVALID - not in Ruby `case...when`
+- [ ] 5.2.3 ~~Test variable binding~~ INVALID - not in Ruby `case...when`
+- [ ] 5.2.4 ~~Test type pattern matching~~ INVALID - not in Ruby `case...when`
+- [ ] 5.2.5 ~~Test array destructuring~~ INVALID - not in Ruby `case...when`
+- [ ] 5.2.6 ~~Test array destructuring with rest~~ INVALID - not in Ruby `case...when`
+- [ ] 5.2.7 ~~Test object/hash destructuring~~ INVALID - not in Ruby `case...when`
 
 ### 5.3 Guard Execution Tests
-- [ ] 5.3.1 Test guard prevents match when false
-  ```ruby
-  result = case 5
-  when x if x < 0 then "negative"
-  when x if x > 0 then "positive"
-  else "zero"
-  end
-  # result should be "positive"
-  ```
-- [ ] 5.3.2 Test guard has access to pattern bindings
-- [ ] 5.3.3 Test guard with complex boolean expressions
-- [ ] 5.3.4 Test multiple patterns with guards
+**NOTE: ALL guard tests are INVALID - guards don't exist in Ruby `case...when`**
+- [ ] 5.3.1 ~~Test guard prevents match~~ INVALID - not in Ruby `case...when`
+- [ ] 5.3.2 ~~Test guard has access to bindings~~ INVALID - not in Ruby `case...when`
+- [ ] 5.3.3 ~~Test guard with complex expressions~~ INVALID - not in Ruby `case...when`
+- [ ] 5.3.4 ~~Test multiple patterns with guards~~ INVALID - not in Ruby `case...when`
 
 ### 5.4 Scope and Binding Tests
-- [ ] 5.4.1 Test pattern bindings are available in body
-- [ ] 5.4.2 Test pattern bindings are available in guard
-- [ ] 5.4.3 Test bindings don't leak outside case expression
-- [ ] 5.4.4 Test body can access outer scope variables
-- [ ] 5.4.5 Test nested case expressions have separate scopes
-- [ ] 5.4.6 Test shadowing of outer variables by pattern bindings
+**NOTE: Most binding tests are INVALID - bindings don't exist in Ruby `case...when`**
+- [ ] 5.4.1 ~~Test pattern bindings in body~~ INVALID - not in Ruby `case...when`
+- [ ] 5.4.2 ~~Test pattern bindings in guard~~ INVALID - not in Ruby `case...when`
+- [ ] 5.4.3 ~~Test bindings don't leak~~ INVALID - not in Ruby `case...when`
+- [ ] 5.4.4 Test body can access outer scope variables - OK for `case...when`
+- [ ] 5.4.5 Test nested case expressions have separate scopes - OK for `case...when`
+- [ ] 5.4.6 ~~Test shadowing by pattern bindings~~ INVALID - not in Ruby `case...when`
 
 ### 5.5 Complex Expression Tests
 - [ ] 5.5.1 Test case expression in arithmetic: `x = 1 + (case y when 1 then 2 else 3 end)`
