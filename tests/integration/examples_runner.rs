@@ -454,27 +454,54 @@ fn test_control_flow_case_type_mixed_execution() {
     assert_eq!(output, expected);
 }
 
-// TODO: Enable these tests once Phase 3 (VM execution) is implemented
-// #[test]
-// fn test_control_flow_case_expr_inline_execution() {
-//     let expected = "two\nten\nfirst\n";
-//     let output = run_example("control_flow/case_expr_inline.mx");
-//     assert_eq!(output, expected);
-// }
-//
-// #[test]
-// fn test_control_flow_case_expr_block_execution() {
-//     let expected = "two\ngreeting\nnegative\n";
-//     let output = run_example("control_flow/case_expr_block.mx");
-//     assert_eq!(output, expected);
-// }
-//
-// #[test]
-// fn test_control_flow_case_expr_mixed_execution() {
-//     let expected = "Hello, Alice!\ntwo\nB\nweekend\n";
-//     let output = run_example("control_flow/case_expr_mixed.mx");
-//     assert_eq!(output, expected);
-// }
+#[test]
+fn test_control_flow_case_expr_inline_execution() {
+    let expected = "two\nten\nfirst\n";
+    let output = run_example("control_flow/case_expr_inline.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_expr_block_execution() {
+    let expected = "two\ngreeting\nit's an integer\n";
+    let output = run_example("control_flow/case_expr_block.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_expr_mixed_execution() {
+    let expected = "Hello, Alice!\ntwo\nB\nweekend\n";
+    let output = run_example("control_flow/case_expr_mixed.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_expression_basic_execution() {
+    let expected = "two\nThe answer!\nnil\na=1, b=2\n";
+    let output = run_example("control_flow/case_expression_basic.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_expression_patterns_execution() {
+    let expected = "6\n10\n84\nIt's an integer\nmatches anything\n30\n";
+    let output = run_example("control_flow/case_expression_patterns.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_expression_guards_execution() {
+    let expected = "five\nthree and seven\nit's an integer\nexact match\n";
+    let output = run_example("control_flow/case_expression_guards.mx");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_expression_nested_execution() {
+    let expected = "25\nall match\n1\n20\n3\n30\n";
+    let output = run_example("control_flow/case_expression_nested.mx");
+    assert_eq!(output, expected);
+}
 
 #[test]
 fn test_errors_simple_rescue_execution() {

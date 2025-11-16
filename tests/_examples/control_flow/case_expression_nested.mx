@@ -1,0 +1,39 @@
+# Nested case expressions and complex contexts
+
+# Case expression in arithmetic
+x = 2
+computed = 10 + case x
+when 1 then 5
+when 2 then 15
+else 0
+end
+puts computed
+
+# Deeply nested case expressions
+a = 1
+b = 2
+c = 3
+nested_result = case a
+when 1 then case b
+  when 2 then case c
+    when 3 then "all match"
+    else "c no match"
+    end
+  else "b no match"
+  end
+else "a no match"
+end
+puts nested_result
+
+# Case expression in array literal
+val = 2
+arr = [1, case val when 2 then 20 else 0 end, 3]
+puts arr[0]
+puts arr[1]
+puts arr[2]
+
+# Case expression used multiple times in one expression
+x = 1
+y = 2
+sum = (case x when 1 then 10 else 0 end) + (case y when 2 then 20 else 0 end)
+puts sum

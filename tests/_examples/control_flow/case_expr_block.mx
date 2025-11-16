@@ -25,14 +25,12 @@ else
 end
 puts output
 
-# Case expression with numeric comparison
+# Case expression with type matching
 num = -5
-sign = case
-when num > 0
-  "positive"
-when num < 0
-  "negative"
+sign = case num
+when Integer
+  "it's an integer"
 else
-  "zero"
+  "not an integer"
 end
 puts sign

@@ -298,18 +298,57 @@ impl VirtualMachine {
     }
 
     /// Evaluate a case expression (pattern matching in expression context).
-    /// This is a placeholder stub that will be fully implemented in Phase 3.
+    /// Returns the value of the first matching case's body expression.
     pub(crate) fn evaluate_case_expression(
         &mut self,
-        _expression: &Expression,
-        _cases: &[ExprMatchCase],
-        _else_case: Option<&Expression>,
-        position: Position,
+        expression: &Expression,
+        cases: &[ExprMatchCase],
+        else_case: Option<&Expression>,
+        _position: Position,
     ) -> Result<Object, MetorexError> {
-        // Placeholder implementation - will be completed in Phase 3
-        Err(MetorexError::runtime_error(
-            "Case expressions are not yet implemented (Phase 3)".to_string(),
-            position_to_location(position),
-        ))
+        // Evaluate the value to match against
+        let match_value = self.evaluate_expression(expression)?;
+
+        // Try each case in order
+        for case in cases {
+            // Try to match the pattern
+            let mut bindings: HashMap<String, Object> = HashMap::new();
+            if self.match_pattern(&case.pattern, &match_value, &mut bindings, case.position)? {
+                // Pattern matched! Now check guard if present
+                if let Some(guard_expr) = &case.guard {
+                    // Push a new scope for guard evaluation with bindings
+                    self.environment_mut().push_scope();
+                    for (name, value) in &bindings {
+                        self.environment_mut().define(name.clone(), value.clone());
+                    }
+
+                    let guard_result = self.evaluate_expression(guard_expr)?;
+                    self.environment_mut().pop_scope();
+
+                    // If guard evaluates to false, skip this case
+                    if !is_truthy(&guard_result) {
+                        continue;
+                    }
+                }
+
+                // Pattern and guard matched! Evaluate the body expression with bindings
+                self.environment_mut().push_scope();
+                for (name, value) in bindings {
+                    self.environment_mut().define(name, value);
+                }
+
+                let result = self.evaluate_expression(&case.body)?;
+                self.environment_mut().pop_scope();
+
+                return Ok(result);
+            }
+        }
+
+        // No pattern matched - evaluate else case if present, otherwise return nil
+        if let Some(else_expr) = else_case {
+            self.evaluate_expression(else_expr)
+        } else {
+            Ok(Object::Nil)
+        }
     }
 }

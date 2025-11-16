@@ -21,21 +21,18 @@ else
 end
 puts msg
 
-# Range matching
+# Type pattern matching
 score = 85
 grade = case score
-when 90..100 then "A"
-when 80..89 then "B"
-when 70..79 then "C"
+when Integer then "B"
 else "F"
 end
 puts grade
 
-# Multiple values in when clause
+# Wildcard pattern
 day = 6
 day_type = case day
-when 1, 2, 3, 4, 5 then "weekday"
-when 6, 7 then "weekend"
-else "invalid"
+when 6 then "weekend"
+when _ then "other"
 end
 puts day_type

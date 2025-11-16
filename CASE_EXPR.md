@@ -96,25 +96,25 @@ Convert the current `case` statement implementation to also work as an expressio
 ## Phase 3: VM Execution for Case Expressions
 
 ### 3.1 Add Case Expression Evaluation
-- [ ] 3.1.1 Add `Expression::Case` handling in `evaluate_expression()` in [src/vm/expression.rs](src/vm/expression.rs)
-- [ ] 3.1.2 Create `evaluate_case_expression()` method in VM
-- [ ] 3.1.3 Place implementation in [src/vm/pattern_matching.rs](src/vm/pattern_matching.rs) (alongside execute_match)
+- [x] 3.1.1 Add `Expression::Case` handling in `evaluate_expression()` in [src/vm/core.rs](src/vm/core.rs)
+- [x] 3.1.2 Create `evaluate_case_expression()` method in VM
+- [x] 3.1.3 Place implementation in [src/vm/pattern_matching.rs](src/vm/pattern_matching.rs) (alongside execute_match)
 
 ### 3.2 Implement Case Expression Logic
-- [ ] 3.2.1 Evaluate the match value expression
-- [ ] 3.2.2 Iterate through each `ExprMatchCase` in order
-- [ ] 3.2.3 For each case:
-  - [ ] 3.2.3.1 Call `match_pattern()` (reuse existing pattern matching logic)
-  - [ ] 3.2.3.2 Collect variable bindings from pattern matching
-  - [ ] 3.2.3.3 If pattern matches, check guard expression (if present)
-  - [ ] 3.2.3.4 Evaluate guard in new scope with pattern bindings
-  - [ ] 3.2.3.5 If guard fails (not truthy), continue to next case
-  - [ ] 3.2.3.6 If guard passes (or no guard), evaluate body expression
-  - [ ] 3.2.3.7 Evaluate body in new scope with pattern bindings
-  - [ ] 3.2.3.8 Return the resulting value immediately
-- [ ] 3.2.4 If no case matches, evaluate else expression (if present)
-- [ ] 3.2.5 If no case matches and no else, return `Object::Nil`
-- [ ] 3.2.6 Ensure proper scope management (push/pop scopes correctly)
+- [x] 3.2.1 Evaluate the match value expression
+- [x] 3.2.2 Iterate through each `ExprMatchCase` in order
+- [x] 3.2.3 For each case:
+  - [x] 3.2.3.1 Call `match_pattern()` (reuse existing pattern matching logic)
+  - [x] 3.2.3.2 Collect variable bindings from pattern matching
+  - [x] 3.2.3.3 If pattern matches, check guard expression (if present)
+  - [x] 3.2.3.4 Evaluate guard in new scope with pattern bindings
+  - [x] 3.2.3.5 If guard fails (not truthy), continue to next case
+  - [x] 3.2.3.6 If guard passes (or no guard), evaluate body expression
+  - [x] 3.2.3.7 Evaluate body in new scope with pattern bindings
+  - [x] 3.2.3.8 Return the resulting value immediately
+- [x] 3.2.4 If no case matches, evaluate else expression (if present)
+- [x] 3.2.5 If no case matches and no else, return `Object::Nil`
+- [x] 3.2.6 Ensure proper scope management (push/pop scopes correctly)
 
 ### 3.3 Refactor Pattern Matching (Shared Logic)
 - [ ] 3.3.1 Verify `match_pattern()` can be reused for both statement and expression forms
