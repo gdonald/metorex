@@ -10,6 +10,10 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/gdonald/metorex/blob/main/LICENSE) [![CI](https://github.com/gdonald/metorex/workflows/CI/badge.svg)](https://github.com/gdonald/metorex/actions) [![codecov](https://codecov.io/gh/gdonald/metorex/graph/badge.svg?token=GQ4LA1VMRE)](https://codecov.io/gh/gdonald/metorex)
 
+###
+
+![https://gdonald.github.io/88x31/i/vibe_coded.gif](https://gdonald.github.io/88x31/i/vibe_coded.gif)
+
 ## Project Status
 
 METOREX is currently in **active development** following a 4-phase roadmap:
