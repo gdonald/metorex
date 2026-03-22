@@ -661,6 +661,10 @@ impl Resolver {
                 }
             }
 
+            Expression::ScopeResolution { namespace, .. } => {
+                self.resolve_expression(namespace);
+            }
+
             // Literals don't need resolution
             Expression::IntLiteral { .. }
             | Expression::FloatLiteral { .. }

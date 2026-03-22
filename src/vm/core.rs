@@ -6,7 +6,7 @@ use super::init::*;
 use super::utils::*;
 use super::{CallFrame, ControlFlow, GlobalRegistry, Heap};
 
-use crate::ast::{Expression, Statement};
+use crate::ast::{BinaryOp, Expression, Statement};
 use crate::builtin_classes::BuiltinClasses;
 use crate::environment::Environment;
 use crate::error::MetorexError;
@@ -347,6 +347,26 @@ impl VirtualMachine {
                 right,
                 position,
             } => {
+                // Short-circuit evaluation for logical operators
+                match op {
+                    BinaryOp::And => {
+                        let left_value = self.evaluate_expression(left)?;
+                        return if !is_truthy(&left_value) {
+                            Ok(left_value)
+                        } else {
+                            self.evaluate_expression(right)
+                        };
+                    }
+                    BinaryOp::Or => {
+                        let left_value = self.evaluate_expression(left)?;
+                        return if is_truthy(&left_value) {
+                            Ok(left_value)
+                        } else {
+                            self.evaluate_expression(right)
+                        };
+                    }
+                    _ => {}
+                }
                 let left_value = self.evaluate_expression(left)?;
                 let right_value = self.evaluate_expression(right)?;
                 self.evaluate_binary_operation(op, left_value, right_value, *position)
@@ -564,6 +584,25 @@ impl VirtualMachine {
                 // This will be implemented in Phase 3
                 // For now, delegate to the pattern matching module
                 self.evaluate_case_expression(expression, cases, else_case.as_deref(), *position)
+            }
+            Expression::ScopeResolution {
+                namespace,
+                name,
+                position,
+            } => {
+                let ns_value = self.evaluate_expression(namespace)?;
+                match ns_value {
+                    Object::Class(class_rc) => class_rc.get_class_var(name).ok_or_else(|| {
+                        MetorexError::runtime_error(
+                            format!("Uninitialized constant {}::{}", class_rc.name(), name),
+                            position_to_location(*position),
+                        )
+                    }),
+                    _ => Err(MetorexError::runtime_error(
+                        "'::' scope resolution requires a class or module as namespace".to_string(),
+                        position_to_location(*position),
+                    )),
+                }
             }
         }
     }

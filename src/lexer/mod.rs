@@ -604,7 +604,12 @@ impl<'a> Lexer<'a> {
                 }
                 ':' => {
                     self.advance();
-                    Token::new(TokenKind::Colon, position)
+                    if self.peek() == Some(':') {
+                        self.advance();
+                        Token::new(TokenKind::ColonColon, position)
+                    } else {
+                        Token::new(TokenKind::Colon, position)
+                    }
                 }
                 ';' => {
                     self.advance();
@@ -612,11 +617,21 @@ impl<'a> Lexer<'a> {
                 }
                 '|' => {
                     self.advance();
-                    Token::new(TokenKind::Pipe, position)
+                    if self.peek() == Some('|') {
+                        self.advance();
+                        Token::new(TokenKind::LogicalOr, position)
+                    } else {
+                        Token::new(TokenKind::Pipe, position)
+                    }
                 }
                 '&' => {
                     self.advance();
-                    Token::new(TokenKind::Ampersand, position)
+                    if self.peek() == Some('&') {
+                        self.advance();
+                        Token::new(TokenKind::LogicalAnd, position)
+                    } else {
+                        Token::new(TokenKind::Ampersand, position)
+                    }
                 }
                 _ => {
                     // Unknown character, consume and return EOF

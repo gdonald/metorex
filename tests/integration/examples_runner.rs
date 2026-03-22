@@ -681,3 +681,31 @@ fn test_require_return_values_execution() {
     let output = run_example("require/return_values.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_control_flow_logical_operators_execution() {
+    let expected = "false\ntrue\nfalse\ntrue\n42\nnil\ntrue\nfalse\ntrue\n";
+    let output = run_example("control_flow/logical_operators.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_logical_operators_parens_execution() {
+    let expected = "false\ntrue\nfalse\ntrue\n42\nnil\ntrue\nfalse\ntrue\n";
+    let output = run_example("control_flow/logical_operators_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_scope_resolution_execution() {
+    let expected = "1\n100\n";
+    let output = run_example("oop/scope_resolution.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_scope_resolution_parens_execution() {
+    let expected = "1\n100\n";
+    let output = run_example("oop/scope_resolution_parens.rb");
+    assert_eq!(output, expected);
+}

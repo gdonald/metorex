@@ -76,6 +76,8 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.5.4. Handle operator precedence table preparation
   - [x] 2.5.5. Write unit tests for all operators
   - [x] 2.5.6. Create example file: `examples/lexer/operators.mx`
+  - [x] 2.5.7. Add `LogicalAnd` token (`&&`) and `LogicalOr` token (`||`)
+  - [x] 2.5.8. Add `ColonColon` token (`::`) for scope resolution
 
 - [x] 2.6. Lexer Integration and Testing
   - [x] 2.6.1. Implement `Iterator` trait for `Lexer`
@@ -83,6 +85,8 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.6.3. Write comprehensive integration tests
   - [x] 2.6.4. Test error recovery on invalid tokens
   - [x] 2.6.6. Create test file: `tests/lexer_tests.rs`
+  - [ ] 2.6.7. Fix identifier tokenization edge cases (predicate `?` and bang `!` suffixes)
+  - [ ] 2.6.8. Handle all variable prefix types correctly (`$global`, `@@class`, `@instance`)
 
 ### 3. Parser and AST Construction
 
@@ -106,6 +110,8 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.2.8. Implement `IndexExpr` (array/dict access `arr[0]`)
   - [x] 3.2.9. Write unit tests for expression nodes
   - [x] 3.2.10. Create example file: `examples/parser/expressions.mx`
+  - [x] 3.2.11. Implement `LogicalAndExpr` / `LogicalOrExpr` (`&&`, `||`) with short-circuit semantics
+  - [x] 3.2.12. Implement `ScopeResolutionExpr` (`Math::PI`, `Module::Constant`)
 
 - [x] 3.3. Method Call and Access Expressions
   - [x] 3.3.1. Implement `MethodCallExpr` (receiver, method_name, arguments)
@@ -167,6 +173,11 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.8.9. Write unit tests for pattern matching
   - [x] 3.8.10. Create example file: `examples/parser/pattern_matching.mx`
   - [x] 3.8.11. Create test file: `tests/pattern_matching_tests.rs`
+  - **Ruby compliance note**: Guards (`when x if x > 0`), variable binding (`when x`), array/hash destructuring, and wildcards (`_`) in `case...when` are NOT valid Ruby syntax. These features require `case...in` (Ruby 2.7+ pattern matching). The current Metorex `case...when` extended syntax is Metorex-specific.
+  - [ ] 3.8.12. Add `case...in` pattern matching AST node (Ruby 2.7+ compatible)
+  - [ ] 3.8.13. Add `if`/`unless` expression form (assign result of if: `x = if cond then a else b end`)
+  - [ ] 3.8.14. Consider regex patterns: `when /pattern/ then ...`
+  - [ ] 3.8.15. Consider range patterns as when values: `when 1..10 then ...`
 
 - [x] 3.9. Function and Method Definition Nodes
   - [x] 3.9.1. Implement `FunctionDefStmt` (name, parameters, body)
@@ -177,6 +188,9 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.9.6. Implement `MethodDefStmt` (extends FunctionDefStmt)
   - [x] 3.9.7. Write unit tests for function definitions
   - [x] 3.9.8. Create example file: `examples/parser/functions.mx`
+  - [ ] 3.9.9. Implement keyword argument syntax in definitions (`def method(name:, age: 10)`)
+  - [ ] 3.9.10. Implement keyword argument syntax in calls (`method(name: "Bob")`)
+  - [ ] 3.9.11. Allow operator method names (`def +(other)`, `def ==(other)`, `def [](key)`)
 
 - [x] 3.10. Class Definition Nodes
   - [x] 3.10.1. Implement `ClassDefStmt` (name, superclass, body)
@@ -205,6 +219,17 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.12.4. Create example: `examples/parser/complete_program.mx`
   - [x] 3.12.5. Create test file: `tests/parser_tests.rs`
   - [x] 3.12.6. Create test file: `tests/parser_error_recovery_tests.rs`
+
+- [ ] 3.13. Module and Mixin Support
+  - [ ] 3.13.1. Add `Module`, `Include`, `Extend` keyword tokens
+  - [ ] 3.13.2. Implement `ModuleDefStmt` AST node (`module Name ... end`)
+  - [ ] 3.13.3. Implement `IncludeStmt` and `ExtendStmt` AST nodes
+  - [ ] 3.13.4. VM: Create module objects in global registry
+  - [ ] 3.13.5. VM: `include` copies module methods into class instance method table
+  - [ ] 3.13.6. VM: `extend` adds module methods as class-level (singleton) methods
+  - [ ] 3.13.7. Write unit tests for module parsing and execution
+  - [ ] 3.13.8. Create example file: `examples/oop/modules.rb`
+  - [ ] 3.13.9. Create test file: `tests/module_tests.rs`
 
 ### 4. Runtime Object System
 
@@ -358,6 +383,8 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.3.7. Implement indexing operations
   - [x] 6.3.8. Write unit tests for expression evaluation
   - [x] 6.3.9. Create test file: `tests/vm_expression_tests.rs`
+  - [x] 6.3.10. Implement `&&` / `||` short-circuit evaluation
+  - [x] 6.3.11. Implement scope resolution evaluation (`Math::PI`, `ClassName::CONST`)
 
 - [x] 6.4. Method Call Implementation
   - [x] 6.4.1. Implement method lookup on receiver object
@@ -371,6 +398,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.4.9. Write unit tests for method dispatch
   - [x] 6.4.10. Create example file: `examples/runtime/method_dispatch.mx`
   - [x] 6.4.11. Create test file: `tests/method_dispatch_tests.rs`
+  - [ ] 6.4.12. Implement operator overloading: before evaluating built-in binary ops, check if receiver class defines the operator as a method (`+`, `-`, `*`, `/`, `==`, `<`, `>`, `[]`)
 
 - [x] 6.5. Block Execution (Critical Meta-Programming Feature)
   - [x] 6.5.1. Define `Callable` trait in `src/callable.rs`
@@ -439,6 +467,12 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.10.9. Write unit tests for pattern matching
   - [x] 6.10.10. Create example file: `examples/runtime/pattern_matching.mx`
   - [x] 6.10.11. Create test file: `tests/pattern_matching_execution_tests.rs`
+  - [ ] 6.10.12. Test `case` as expression in assignment: `x = case val when 1 then "one" end`
+  - [ ] 6.10.13. Test `case` expression in method call arguments and string interpolation
+  - [ ] 6.10.14. Test nested case expressions with separate scopes
+  - [ ] 6.10.15. Test `case` returns nil when no match and no else clause
+  - [ ] 6.10.16. Test multiple literal patterns per when clause: `when 1, 2, 3 then "small"`
+  - [ ] 6.10.17. Test `case` expression in arithmetic context: `1 + (case y when 1 then 2 else 3 end)`
 
 - [x] 6.11. Error Reporting and Stack Traces
   - [x] 6.11.1. Implement call stack tracking
@@ -569,6 +603,15 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.4.8. Create example file: `examples/stdlib/numbers.mx`
   - [ ] 8.4.9. Create test file: `tests/numeric_methods_tests.rs`
 
+- [ ] 8.4b. Type Introspection Built-ins
+  - [ ] 8.4b.1. Implement `type()` / `.class` function returning class name string
+  - [ ] 8.4b.2. Implement `is_a?` / `kind_of?` type checking
+  - [ ] 8.4b.3. Add class hierarchy inspection (`superclass`, `ancestors`)
+  - [ ] 8.4b.4. Implement instance variable inspection (`instance_variables`, `instance_variable_get`)
+  - [ ] 8.4b.5. Add instance copying/cloning (`dup`, `clone`)
+  - [ ] 8.4b.6. Write unit tests for type introspection
+  - [ ] 8.4b.7. Use `tests/_examples/builtins/type_introspection.rb` in an actual test in `examples_runner.rs`
+
 - [ ] 8.5. IO and Print Functions
   - [ ] 8.5.1. Implement `print` function
   - [ ] 8.5.2. Implement `puts`/`println` function
@@ -630,6 +673,24 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 9.2.10. Write tests for REPL
   - [x] 9.2.11. Create test file: `tests/repl/repl_test.rs`
 
+- [x] 9.3. `require_relative` File Loading (Phases 1–4 complete)
+  - [x] 9.3.1. VM: `current_file` tracking and `loaded_files` deduplication registry
+  - [x] 9.3.2. `src/file_loader.rs`: `load_file_source()`, `resolve_relative_path()`, `parse_file()`
+  - [x] 9.3.3. VM: `execute_file()` with deduplication and path restore
+  - [x] 9.3.4. Native function `require_relative` registered in global scope
+  - [ ] 9.3.5. Test file extension auto-detection: `.rb`, `.mx`, and no extension
+  - [ ] 9.3.6. Test scope/variable sharing: variables, functions, and classes defined in required files are accessible in requiring file
+  - [ ] 9.3.7. Test nested requires (A → B → C execute in correct order)
+  - [ ] 9.3.8. Test circular requires are handled gracefully (no infinite loop)
+  - [ ] 9.3.9. Test diamond dependency (D loads only once when required by both B and C)
+  - [ ] 9.3.10. Review error messages for clarity; use absolute paths in errors
+  - [ ] 9.3.11. Add suggestions in error messages (e.g., "did you mean file.rb?")
+  - [ ] 9.3.12. Future: implement `require` (non-relative, uses `$LOAD_PATH`)
+  - [ ] 9.3.13. Future: implement `load` (always re-loads file)
+  - [ ] 9.3.14. Future: implement `autoload` (lazy loading)
+  - [ ] 9.3.15. Future: add `__FILE__` and `__LINE__` magic constants
+  - [ ] 9.3.16. Future: move `require_relative` into a proper `Kernel` module
+
 ### 10. End-to-End Testing and Examples
 
 - [ ] 10.1. Comprehensive Language Examples
@@ -658,7 +719,123 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 10.3.3. Test full compilation pipeline
   - [ ] 10.3.4. Test all language features together
   - [ ] 10.3.5. Create test file: `tests/integration_tests.rs`
-  - [ ] 10.3.6. Achieve 80%+ code coverage
+  - [ ] 10.3.6. Achieve 100% code coverage
+
+- [x] 10.4. Examples Runner Coverage (`tests/integration/examples_runner.rs`)
+
+  Tracks which `tests/_examples/` scripts are wired into the integration test runner with verified output. **Current status: 76/90 tests active.**
+
+  - [x] 10.4.1. Core String Features
+    - [x] Use `tests/_examples/basics/greeting_line.rb`
+    - [x] Use `tests/_examples/basics/string_methods.rb`
+    - [x] Use `tests/_examples/type_annotations/collection_types.rb`
+    - [x] Use `tests/_examples/basics/simple_range.rb`
+    - [x] Use `tests/_examples/basics/each_block.rb`
+
+  - [x] 10.4.2. Data Structures
+    - [x] Use `tests/_examples/data_structures/simple_dict.rb`
+    - [x] Use `tests/_examples/data_structures/dict_access.rb`
+    - [x] Use `tests/_examples/data_structures/hash_methods.rb`
+
+  - [x] 10.4.3. Algorithms
+    - [x] Use `tests/_examples/algorithms/factorial_iterative.rb`
+    - [x] Use `tests/_examples/algorithms/average_temperature.rb`
+    - [x] Use `tests/_examples/algorithms/primes_under_fifty.rb`
+    - [x] Use `tests/_examples/algorithms/filter_even_numbers.rb`
+    - [x] Use `tests/_examples/algorithms/character_counter.rb`
+    - [x] Use `tests/_examples/algorithms/zip_merger.rb`
+    - [x] Use `tests/_examples/algorithms/matrix_transpose.rb`
+    - [x] Use `tests/_examples/algorithms/matrix_transpose_comprehensive.rb`
+    - [x] Use `tests/_examples/algorithms/matrix_nested_ops.rb`
+
+  - [x] 10.4.4. Functions and Closures
+    - [x] Use `tests/_examples/functions/closures_nested.rb`
+    - [x] Use `tests/_examples/functions/locals_scope.rb`
+    - [x] Use `tests/_examples/functions/nonlocal_counter.rb`
+    - [x] Use `tests/_examples/functions/test_lambdas.rb`
+    - [x] Use `tests/_examples/metaprogramming/blocks_as_objects.rb`
+
+  - [x] 10.4.5. OOP
+    - [x] Use `tests/_examples/oop/super_basic.rb`
+    - [x] Use `tests/_examples/oop/super_chain_basic.rb`
+    - [x] Use `tests/_examples/oop/test_super_simple.rb`
+    - [x] Use `tests/_examples/oop/attr_reader.rb`
+    - [x] Use `tests/_examples/oop/attr_writer.rb`
+    - [x] Use `tests/_examples/oop/attr_accessor.rb`
+    - [x] Use `tests/_examples/oop/test_str.rb`
+    - [x] Use `tests/_examples/oop/test_repr.rb`
+    - [x] Use `tests/_examples/oop/special_methods.rb`
+    - [x] Use `tests/_examples/oop/test_iter.rb`
+    - [x] Use `tests/_examples/oop/test_method_missing.rb`
+
+  - [x] 10.4.6. Control Flow
+    - [x] Use `tests/_examples/basics/for_loop_array.rb`
+    - [x] Use `tests/_examples/basics/for_loop_range.rb`
+    - [x] Use `tests/_examples/basics/for_loop_break.rb`
+    - [x] Use `tests/_examples/basics/for_loop_continue.rb`
+    - [x] Use `tests/_examples/basics/elsif_basic.rb`
+    - [x] Use `tests/_examples/basics/elsif_without_else.rb`
+    - [x] Use `tests/_examples/basics/elsif_no_parens.rb`
+    - [x] Use `tests/_examples/control_flow/test_pattern_matching.rb`
+    - [x] Use `tests/_examples/control_flow/case_guard.rb`
+    - [x] Use `tests/_examples/control_flow/case_array_destructure.rb`
+    - [x] Use `tests/_examples/control_flow/case_object_destructure.rb`
+    - [x] Use `tests/_examples/control_flow/case_variable_binding.rb`
+    - [x] Use `tests/_examples/control_flow/case_type_basic.rb`
+    - [x] Use `tests/_examples/control_flow/case_type_custom_class.rb`
+    - [x] Use `tests/_examples/control_flow/case_type_mixed.rb`
+    - [x] Use `tests/_examples/control_flow/case_expr_inline.rb`
+    - [x] Use `tests/_examples/control_flow/case_expr_block.rb`
+    - [x] Use `tests/_examples/control_flow/case_expr_mixed.rb`
+    - [x] Use `tests/_examples/control_flow/case_expression_basic.rb`
+    - [x] Use `tests/_examples/control_flow/case_expression_patterns.rb`
+    - [x] Use `tests/_examples/control_flow/case_expression_nested.rb`
+    - [x] Use `tests/_examples/control_flow/case_multi_value.rb`
+
+  - [x] 10.4.7. Exceptions
+    - [x] Use `tests/_examples/errors/simple_rescue.rb`
+    - [x] Use `tests/_examples/advanced/exception_handling.rb`
+    - [x] Use `tests/_examples/errors/exception_hierarchy.rb`
+    - [x] Use `tests/_examples/errors/custom_exceptions.rb`
+    - [x] Use `tests/_examples/errors/exception_chaining.rb`
+    - [x] Use `tests/_examples/errors/stack_trace_basic.rb`
+    - [x] Use `tests/_examples/errors/stack_trace_deep.rb`
+    - [x] Use `tests/_examples/errors/error_location.rb`
+    - [x] Use `tests/_examples/errors/backtrace_method.rb`
+
+  - [x] 10.4.8. Introspection
+    - [x] Use `tests/_examples/introspection/function_name.rb`
+    - [x] Use `tests/_examples/introspection/function_module.rb`
+    - [x] Use `tests/_examples/introspection/code_object.rb`
+    - [x] Use `tests/_examples/introspection/closure_namespace.rb`
+    - [x] Use `tests/_examples/introspection/basic_attributes.rb`
+    - [x] Use `tests/_examples/introspection/annotations.rb`
+    - [x] Use `tests/_examples/introspection/default_parameters.rb`
+
+  - [x] 10.4.9. File Loading
+    - [x] Use `tests/_examples/file_tracking/simple.rb`
+    - [x] Use `tests/_examples/require/basic.rb`
+    - [x] Use `tests/_examples/require/deduplication.rb`
+    - [x] Use `tests/_examples/require/nested.rb`
+    - [x] Use `tests/_examples/require/return_values.rb`
+
+  - [ ] 10.4.10. Advanced OOP (pending section 7.2–7.3 completion)
+    - [ ] Use `tests/_examples/advanced/dynamic_method_definition.rb`
+    - [ ] Use `tests/_examples/advanced/implicit_block_capture.rb`
+
+  - [ ] 10.4.11. Advanced Features (pending section 3.13, 7.6 completion)
+    - [ ] Use `tests/_examples/advanced/traits.rb`
+    - [ ] Use `tests/_examples/advanced/dsl_example.rb`
+    - [ ] Use `tests/_examples/advanced/serialization.rb`
+
+  - [ ] 10.4.12. Builtins (pending section 8.4b completion)
+    - [ ] Use `tests/_examples/builtins/type_introspection.rb`
+
+  - [ ] 10.4.13. Concurrency (pending Phase 3)
+    - [ ] Use `tests/_examples/advanced/concurrency.rb`
+
+  - [ ] 10.4.14. Networking (pending Phase 3)
+    - [ ] Use `tests/_examples/advanced/networking.rb`
 
 ---
 
@@ -723,6 +900,29 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 11.3.7. Add CLI flag `--disassemble` to show bytecode
   - [ ] 11.3.8. Write tests for disassembler
   - [ ] 11.3.9. Create test file: `tests/disassembler_tests.rs`
+
+- [ ] 11.4. Critical Infrastructure: Runtime Compilation for Meta-Programming
+  - [ ] 11.4.1. Add `EVAL_STRING` instruction (parse string → AST → bytecode → execute at runtime)
+  - [ ] 11.4.2. Add `BUILD_LAMBDA` instruction (create lambda/block object with bytecode body)
+  - [ ] 11.4.3. Add `DEFINE_METHOD_RUNTIME` instruction (runtime method definition via `define_method`)
+  - [ ] 11.4.4. Add `GET_METHOD_AST` / `GET_CLASS_AST` instructions (expose AST for meta-programming)
+  - [ ] 11.4.5. Add `SET_METHOD_AST` instruction (recompile and replace method from AST)
+  - [ ] 11.4.6. Design compiler API for runtime use (must be callable from within the VM)
+  - [ ] 11.4.7. Preserve full AST alongside bytecode to support `get_source` and introspection
+  - [ ] 11.4.8. Write tests for runtime compilation and method AST access
+
+- [ ] 11.5. Critical Infrastructure: Closures, GC, and Yield
+  - [ ] 11.5.1. Design upvalue/closure model: open upvalues on stack, closed upvalues on heap
+  - [ ] 11.5.2. Add `CAPTURE_VAR`, `GET_UPVALUE`, `SET_UPVALUE`, `CLOSE_UPVALUE` instructions
+  - [ ] 11.5.3. Implement upvalue closing when scope exits
+  - [ ] 11.5.4. Integrate stack, call frames, and constant pool with GC root scanning
+  - [ ] 11.5.5. Add `YIELD` instruction: suspend current method, pass values to block, resume on return
+  - [ ] 11.5.6. Add `CALL_BLOCK` and `BLOCK_GIVEN` instructions
+  - [ ] 11.5.7. Implement non-local return semantics for blocks (break/next/return from yield)
+  - [ ] 11.5.8. Add inline method resolution cache with class-hierarchy invalidation
+  - [ ] 11.5.9. Write closure edge-case tests (closed-over mutables, nested closures)
+  - [ ] 11.5.10. Write yield/block stress tests (deep nesting, non-local returns)
+  - [ ] 11.5.11. Write GC stress tests (short-lived objects, circular references)
 
 ### 12. Compiler (AST to Bytecode)
 

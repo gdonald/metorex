@@ -21,6 +21,10 @@ pub enum BinaryOp {
     LessEqual,    // <=
     GreaterEqual, // >=
 
+    // Logical operators
+    And, // &&
+    Or,  // ||
+
     // Assignment operators
     Assign,         // =
     AddAssign,      // +=
@@ -176,6 +180,13 @@ pub enum Expression {
         expression: Box<Expression>,        // Value to match against
         cases: Vec<ExprMatchCase>,          // When branches
         else_case: Option<Box<Expression>>, // Optional else branch
+        position: Position,
+    },
+
+    // Scope resolution (e.g., Math::PI, Foo::Bar)
+    ScopeResolution {
+        namespace: Box<Expression>,
+        name: String,
         position: Position,
     },
 }
@@ -495,6 +506,8 @@ impl fmt::Display for BinaryOp {
             BinaryOp::SubtractAssign => write!(f, "-="),
             BinaryOp::MultiplyAssign => write!(f, "*="),
             BinaryOp::DivideAssign => write!(f, "/="),
+            BinaryOp::And => write!(f, "&&"),
+            BinaryOp::Or => write!(f, "||"),
         }
     }
 }
@@ -536,7 +549,8 @@ impl Expression {
             | Expression::SelfExpr { position, .. }
             | Expression::Super { position, .. }
             | Expression::Range { position, .. }
-            | Expression::Case { position, .. } => *position,
+            | Expression::Case { position, .. }
+            | Expression::ScopeResolution { position, .. } => *position,
         }
     }
 

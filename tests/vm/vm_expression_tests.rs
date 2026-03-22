@@ -381,3 +381,189 @@ fn evaluates_interpolated_string() {
         Some(Object::String(Rc::new("Hello, Metorex!".to_string())))
     );
 }
+
+#[test]
+fn evaluates_logical_and_true_true() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::BinaryOp {
+            op: BinaryOp::And,
+            left: Box::new(Expression::BoolLiteral {
+                value: true,
+                position: pos(1, 1),
+            }),
+            right: Box::new(Expression::BoolLiteral {
+                value: true,
+                position: pos(1, 8),
+            }),
+            position: pos(1, 6),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn evaluates_logical_and_true_false() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::BinaryOp {
+            op: BinaryOp::And,
+            left: Box::new(Expression::BoolLiteral {
+                value: true,
+                position: pos(1, 1),
+            }),
+            right: Box::new(Expression::BoolLiteral {
+                value: false,
+                position: pos(1, 8),
+            }),
+            position: pos(1, 6),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn evaluates_logical_and_short_circuits_on_false() {
+    let mut vm = VirtualMachine::new();
+    // false && (x = 99) — right side must NOT be evaluated
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::BinaryOp {
+            op: BinaryOp::And,
+            left: Box::new(Expression::BoolLiteral {
+                value: false,
+                position: pos(1, 1),
+            }),
+            right: Box::new(Expression::BinaryOp {
+                op: BinaryOp::Assign,
+                left: Box::new(Expression::Identifier {
+                    name: "side_effect".to_string(),
+                    position: pos(1, 9),
+                }),
+                right: Box::new(Expression::IntLiteral {
+                    value: 99,
+                    position: pos(1, 23),
+                }),
+                position: pos(1, 9),
+            }),
+            position: pos(1, 6),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    // Short-circuit: side_effect should not have been set
+    assert_eq!(vm.environment().get("side_effect"), None);
+    // Result is the falsy left side
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn evaluates_logical_or_false_true() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::BinaryOp {
+            op: BinaryOp::Or,
+            left: Box::new(Expression::BoolLiteral {
+                value: false,
+                position: pos(1, 1),
+            }),
+            right: Box::new(Expression::BoolLiteral {
+                value: true,
+                position: pos(1, 9),
+            }),
+            position: pos(1, 7),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn evaluates_logical_or_short_circuits_on_true() {
+    let mut vm = VirtualMachine::new();
+    // true || (x = 99) — right side must NOT be evaluated
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::BinaryOp {
+            op: BinaryOp::Or,
+            left: Box::new(Expression::BoolLiteral {
+                value: true,
+                position: pos(1, 1),
+            }),
+            right: Box::new(Expression::BinaryOp {
+                op: BinaryOp::Assign,
+                left: Box::new(Expression::Identifier {
+                    name: "side_effect".to_string(),
+                    position: pos(1, 8),
+                }),
+                right: Box::new(Expression::IntLiteral {
+                    value: 99,
+                    position: pos(1, 22),
+                }),
+                position: pos(1, 8),
+            }),
+            position: pos(1, 6),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    // Short-circuit: side_effect should not have been set
+    assert_eq!(vm.environment().get("side_effect"), None);
+    // Result is the truthy left side
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn evaluates_logical_or_nil_fallback() {
+    let mut vm = VirtualMachine::new();
+    // nil || 42 -> 42
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::BinaryOp {
+            op: BinaryOp::Or,
+            left: Box::new(Expression::NilLiteral {
+                position: pos(1, 1),
+            }),
+            right: Box::new(Expression::IntLiteral {
+                value: 42,
+                position: pos(1, 8),
+            }),
+            position: pos(1, 5),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Int(42)));
+}

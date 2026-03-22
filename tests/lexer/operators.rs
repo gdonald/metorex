@@ -234,6 +234,92 @@ fn test_lexer_balanced_brackets() {
     assert_eq!(token2.kind, TokenKind::RBracket);
 }
 
+// ===== Logical Operator Tests =====
+
+#[test]
+fn test_lexer_operator_logical_and() {
+    let mut lexer = Lexer::new("&&");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LogicalAnd);
+}
+
+#[test]
+fn test_lexer_operator_logical_or() {
+    let mut lexer = Lexer::new("||");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LogicalOr);
+}
+
+#[test]
+fn test_lexer_operator_colon_colon() {
+    let mut lexer = Lexer::new("::");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::ColonColon);
+}
+
+#[test]
+fn test_lexer_single_ampersand_not_logical_and() {
+    let mut lexer = Lexer::new("&");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Ampersand);
+}
+
+#[test]
+fn test_lexer_single_pipe_not_logical_or() {
+    let mut lexer = Lexer::new("|");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Pipe);
+}
+
+#[test]
+fn test_lexer_single_colon_not_colon_colon() {
+    let mut lexer = Lexer::new(":");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Colon);
+}
+
+#[test]
+fn test_lexer_logical_and_expression() {
+    let mut lexer = Lexer::new("x && y");
+
+    let token1 = lexer.next_token();
+    assert_eq!(token1.kind, TokenKind::Ident("x".to_string()));
+
+    let token2 = lexer.next_token();
+    assert_eq!(token2.kind, TokenKind::LogicalAnd);
+
+    let token3 = lexer.next_token();
+    assert_eq!(token3.kind, TokenKind::Ident("y".to_string()));
+}
+
+#[test]
+fn test_lexer_logical_or_expression() {
+    let mut lexer = Lexer::new("x || y");
+
+    let token1 = lexer.next_token();
+    assert_eq!(token1.kind, TokenKind::Ident("x".to_string()));
+
+    let token2 = lexer.next_token();
+    assert_eq!(token2.kind, TokenKind::LogicalOr);
+
+    let token3 = lexer.next_token();
+    assert_eq!(token3.kind, TokenKind::Ident("y".to_string()));
+}
+
+#[test]
+fn test_lexer_scope_resolution_expression() {
+    let mut lexer = Lexer::new("Math::PI");
+
+    let token1 = lexer.next_token();
+    assert_eq!(token1.kind, TokenKind::Ident("Math".to_string()));
+
+    let token2 = lexer.next_token();
+    assert_eq!(token2.kind, TokenKind::ColonColon);
+
+    let token3 = lexer.next_token();
+    assert_eq!(token3.kind, TokenKind::Ident("PI".to_string()));
+}
+
 // ===== Mixed Operator and Delimiter Tests =====
 
 #[test]

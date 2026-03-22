@@ -160,7 +160,7 @@ impl Parser {
 
     /// Parse assignment (lowest precedence)
     pub(crate) fn parse_assignment(&mut self) -> Result<Expression, MetorexError> {
-        self.parse_equality()
+        self.parse_logical_or()
     }
 
     /// Parse a block: `do |param1, param2| ... end`
@@ -171,8 +171,11 @@ impl Parser {
         self.expect(TokenKind::Do, "Expected 'do' to start block")?;
         self.skip_whitespace();
 
-        // Parse block parameters (e.g., |x, y|)
-        let parameters = if self.match_token(&[TokenKind::Pipe]) {
+        // Parse block parameters (e.g., |x, y| or || for empty params)
+        let parameters = if self.match_token(&[TokenKind::LogicalOr]) {
+            // Empty parameter list: ||
+            Vec::new()
+        } else if self.match_token(&[TokenKind::Pipe]) {
             let mut params = Vec::new();
             self.skip_whitespace();
 
@@ -226,8 +229,11 @@ impl Parser {
         self.expect(TokenKind::LBrace, "Expected '{' to start block")?;
         self.skip_whitespace();
 
-        // Parse block parameters (e.g., |x, y|)
-        let parameters = if self.match_token(&[TokenKind::Pipe]) {
+        // Parse block parameters (e.g., |x, y| or || for empty params)
+        let parameters = if self.match_token(&[TokenKind::LogicalOr]) {
+            // Empty parameter list: ||
+            Vec::new()
+        } else if self.match_token(&[TokenKind::Pipe]) {
             let mut params = Vec::new();
             self.skip_whitespace();
 

@@ -175,8 +175,11 @@ impl Parser {
                 let _has_do = self.match_token(&[TokenKind::Do]);
                 self.skip_whitespace();
 
-                // Parse parameters: |param1, param2, ...|
-                let parameters = if self.match_token(&[TokenKind::Pipe]) {
+                // Parse parameters: |param1, param2, ...| or || for empty params
+                let parameters = if self.match_token(&[TokenKind::LogicalOr]) {
+                    // Empty parameter list: ||
+                    Vec::new()
+                } else if self.match_token(&[TokenKind::Pipe]) {
                     let mut params = Vec::new();
                     self.skip_whitespace();
 

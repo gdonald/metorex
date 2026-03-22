@@ -162,6 +162,18 @@ impl VirtualMachine {
                         class.declare_instance_var(attr_name);
                     }
                 }
+                Statement::Assignment {
+                    target:
+                        Expression::Identifier {
+                            name: const_name, ..
+                        },
+                    value,
+                    ..
+                } => {
+                    // Constant assignment in class body (e.g., PI = 3.14159)
+                    let const_value = self.evaluate_expression(value)?;
+                    class.set_class_var(const_name, const_value);
+                }
                 _ => {
                     // For now, we ignore other statements in the class body
                     // In the future, we might support class-level code execution

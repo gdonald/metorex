@@ -7,6 +7,42 @@ use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
 impl Parser {
+    /// Parse logical OR (||)
+    pub(crate) fn parse_logical_or(&mut self) -> Result<Expression, MetorexError> {
+        let mut expr = self.parse_logical_and()?;
+
+        while self.check(&[TokenKind::LogicalOr]) {
+            let op_token = self.advance();
+            let right = self.parse_logical_and()?;
+            expr = Expression::BinaryOp {
+                op: BinaryOp::Or,
+                left: Box::new(expr),
+                right: Box::new(right),
+                position: op_token.position,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Parse logical AND (&&)
+    pub(crate) fn parse_logical_and(&mut self) -> Result<Expression, MetorexError> {
+        let mut expr = self.parse_equality()?;
+
+        while self.check(&[TokenKind::LogicalAnd]) {
+            let op_token = self.advance();
+            let right = self.parse_equality()?;
+            expr = Expression::BinaryOp {
+                op: BinaryOp::And,
+                left: Box::new(expr),
+                right: Box::new(right),
+                position: op_token.position,
+            };
+        }
+
+        Ok(expr)
+    }
+
     /// Parse equality operators (==, !=)
     pub(crate) fn parse_equality(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_comparison()?;

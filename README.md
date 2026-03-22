@@ -185,6 +185,8 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Lexer and Parser
 - AST Interpreter
 - Expression evaluation (arithmetic, collections, indexing)
+- Logical operators (`&&`, `||`) with short-circuit evaluation
+- Scope resolution (`::`) for class constants
 - Method dispatch for built-in objects
 - Meta-programming core
 - Exception handling

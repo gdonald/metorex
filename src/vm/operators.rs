@@ -55,6 +55,10 @@ impl VirtualMachine {
             Less | Greater | LessEqual | GreaterEqual => {
                 self.evaluate_comparison(op, left, right, position)
             }
+            And | Or => Err(MetorexError::internal_error(format!(
+                "Logical operation '{:?}' should be handled by short-circuit evaluation",
+                op
+            ))),
             Assign | AddAssign | SubtractAssign | MultiplyAssign | DivideAssign => {
                 Err(MetorexError::internal_error(format!(
                     "Assignment operation '{:?}' should be handled by statement execution",

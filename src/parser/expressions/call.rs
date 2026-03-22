@@ -79,6 +79,19 @@ impl Parser {
                     index: Box::new(index),
                     position,
                 };
+            } else if self.match_token(&[TokenKind::ColonColon]) {
+                // Scope resolution (e.g., Math::PI, Foo::Bar)
+                let position = expr.position();
+                let name_token = self.advance();
+                let name = match name_token.kind {
+                    TokenKind::Ident(name) => name,
+                    _ => return Err(self.error_at_previous("Expected constant name after '::'")),
+                };
+                expr = Expression::ScopeResolution {
+                    namespace: Box::new(expr),
+                    name,
+                    position,
+                };
             } else if self.can_start_argument_for_call(&expr) {
                 // Ruby-style function call without parentheses
                 // Only parse this if we have an identifier as the callee
@@ -228,9 +241,10 @@ impl Parser {
         let mut arguments = Vec::new();
         let position = callee.position();
 
-        // Parse first argument
+        // Parse first argument using full expression precedence so that
+        // e.g. `puts x && y` is parsed as `puts(x && y)` not `puts(x) && y`
         self.skip_whitespace();
-        arguments.push(self.parse_call()?);
+        arguments.push(self.parse_expression()?);
         self.skip_whitespace();
 
         // After parsing the first argument, check if we see a colon
@@ -261,7 +275,7 @@ impl Parser {
                 break;
             }
 
-            arguments.push(self.parse_call()?);
+            arguments.push(self.parse_expression()?);
             self.skip_whitespace();
         }
 
