@@ -77,6 +77,10 @@ impl Parser {
                 name,
                 position: token.position,
             }),
+            TokenKind::GlobalVar(name) => Ok(Expression::GlobalVariable {
+                name,
+                position: token.position,
+            }),
 
             // Symbol literal (:name)
             TokenKind::Colon => {

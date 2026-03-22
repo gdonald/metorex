@@ -39,32 +39,32 @@ fn test_lexer_unterminated_interpolation() {
 // ===== Error Recovery Tests =====
 
 #[test]
-fn test_lexer_invalid_character() {
+fn test_lexer_standalone_dollar_is_global_var() {
     let mut lexer = Lexer::new("$");
     let token = lexer.next_token();
-    // Invalid characters return EOF
-    assert_eq!(token.kind, TokenKind::EOF);
+    // $ with no name produces an empty global variable token
+    assert_eq!(token.kind, TokenKind::GlobalVar("".to_string()));
 }
 
 #[test]
-fn test_lexer_invalid_character_in_stream() {
-    let source = "x = 1 $ y = 2";
+fn test_lexer_dollar_in_stream() {
+    let source = "x = 1 $y z = 2";
     let lexer = Lexer::new(source);
     let tokens: Vec<_> = lexer.collect();
 
-    // Should lex valid tokens and skip invalid character
     assert_eq!(tokens[0].kind, TokenKind::Ident("x".to_string()));
     assert_eq!(tokens[1].kind, TokenKind::Equal);
     assert_eq!(tokens[2].kind, TokenKind::Int(1));
-    // $ returns EOF, so iteration stops
+    assert_eq!(tokens[3].kind, TokenKind::GlobalVar("y".to_string()));
+    assert_eq!(tokens[4].kind, TokenKind::Ident("z".to_string()));
 }
 
 #[test]
 fn test_lexer_standalone_bang() {
     let mut lexer = Lexer::new("!");
     let token = lexer.next_token();
-    // Standalone ! returns EOF (not yet implemented as unary operator)
-    assert_eq!(token.kind, TokenKind::EOF);
+    // Standalone ! is the logical NOT operator
+    assert_eq!(token.kind, TokenKind::Bang);
 }
 
 #[test]

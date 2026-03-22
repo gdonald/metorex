@@ -357,3 +357,77 @@ fn test_lexer_empty_class_variable() {
     // Class variable with empty name
     assert_eq!(token.kind, TokenKind::ClassVar("".to_string()));
 }
+
+// ===== Global Variable Tests =====
+
+#[test]
+fn test_lexer_global_variable() {
+    let mut lexer = Lexer::new("$foo");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::GlobalVar("foo".to_string()));
+}
+
+#[test]
+fn test_lexer_global_variable_with_underscores() {
+    let mut lexer = Lexer::new("$global_count");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::GlobalVar("global_count".to_string()));
+}
+
+#[test]
+fn test_lexer_global_variable_with_numbers() {
+    let mut lexer = Lexer::new("$var123");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::GlobalVar("var123".to_string()));
+}
+
+#[test]
+fn test_lexer_global_variable_single_char() {
+    let mut lexer = Lexer::new("$x");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::GlobalVar("x".to_string()));
+}
+
+#[test]
+fn test_lexer_multiple_global_variables() {
+    let mut lexer = Lexer::new("$a $b $c");
+
+    let token1 = lexer.next_token();
+    assert_eq!(token1.kind, TokenKind::GlobalVar("a".to_string()));
+
+    let token2 = lexer.next_token();
+    assert_eq!(token2.kind, TokenKind::GlobalVar("b".to_string()));
+
+    let token3 = lexer.next_token();
+    assert_eq!(token3.kind, TokenKind::GlobalVar("c".to_string()));
+}
+
+// ===== Predicate and Bang Method Name Tests =====
+
+#[test]
+fn test_lexer_predicate_method_name() {
+    let mut lexer = Lexer::new("valid?");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Ident("valid?".to_string()));
+}
+
+#[test]
+fn test_lexer_bang_method_name() {
+    let mut lexer = Lexer::new("save!");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Ident("save!".to_string()));
+}
+
+#[test]
+fn test_lexer_predicate_method_complex() {
+    let mut lexer = Lexer::new("is_valid?");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Ident("is_valid?".to_string()));
+}
+
+#[test]
+fn test_lexer_bang_method_complex() {
+    let mut lexer = Lexer::new("update_all!");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Ident("update_all!".to_string()));
+}

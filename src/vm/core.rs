@@ -432,6 +432,9 @@ impl VirtualMachine {
                     )),
                 }
             }
+            Expression::GlobalVariable { name, .. } => {
+                Ok(self.globals.get(name).unwrap_or(Object::Nil))
+            }
             Expression::ClassVariable { name, position } => {
                 // Class variables can be read within a method or class context
                 match self.environment.get("self") {

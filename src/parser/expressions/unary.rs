@@ -7,13 +7,14 @@ use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
 impl Parser {
-    /// Parse unary operators (+, -)
+    /// Parse unary operators (+, -, !)
     pub(crate) fn parse_unary(&mut self) -> Result<Expression, MetorexError> {
-        if self.check(&[TokenKind::Plus, TokenKind::Minus]) {
+        if self.check(&[TokenKind::Plus, TokenKind::Minus, TokenKind::Bang]) {
             let op_token = self.advance();
             let op = match op_token.kind {
                 TokenKind::Plus => UnaryOp::Plus,
                 TokenKind::Minus => UnaryOp::Minus,
+                TokenKind::Bang => UnaryOp::Not,
                 _ => unreachable!(),
             };
             let operand = self.parse_unary()?;

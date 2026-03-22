@@ -214,6 +214,22 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Read a global variable ($var)
+    fn read_global_variable(&mut self) -> TokenKind {
+        // Skip the $
+        self.advance();
+        let mut ident = String::new();
+        while let Some(ch) = self.peek() {
+            if Self::is_identifier_continue(ch) {
+                ident.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        TokenKind::GlobalVar(ident)
+    }
+
     /// Convert a string to a keyword token or identifier
     fn keyword_or_identifier(&self, ident: String) -> TokenKind {
         match ident.as_str() {
@@ -468,6 +484,10 @@ impl<'a> Lexer<'a> {
                     let kind = self.read_variable();
                     Token::new(kind, position)
                 }
+                '$' => {
+                    let kind = self.read_global_variable();
+                    Token::new(kind, position)
+                }
                 ch if Self::is_identifier_start(ch) => {
                     let kind = self.read_identifier();
                     Token::new(kind, position)
@@ -534,9 +554,7 @@ impl<'a> Lexer<'a> {
                         self.advance();
                         Token::new(TokenKind::BangEqual, position)
                     } else {
-                        // For now, return EOF if ! is not followed by =
-                        // TODO: Add Bang token if needed for unary not operator
-                        Token::new(TokenKind::EOF, position)
+                        Token::new(TokenKind::Bang, position)
                     }
                 }
                 '<' => {

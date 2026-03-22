@@ -186,7 +186,9 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - AST Interpreter
 - Expression evaluation (arithmetic, collections, indexing)
 - Logical operators (`&&`, `||`) with short-circuit evaluation
+- Logical NOT operator (`!`)
 - Scope resolution (`::`) for class constants
+- Global variables (`$variable`)
 - Method dispatch for built-in objects
 - Meta-programming core
 - Exception handling

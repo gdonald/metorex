@@ -567,3 +567,139 @@ fn evaluates_logical_or_nil_fallback() {
     vm.execute_program(&[assignment]).expect("execution failed");
     assert_eq!(vm.environment().get("result"), Some(Object::Int(42)));
 }
+
+#[test]
+fn evaluates_not_true_to_false() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(Expression::BoolLiteral {
+                value: true,
+                position: pos(1, 2),
+            }),
+            position: pos(1, 1),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn evaluates_not_false_to_true() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(Expression::BoolLiteral {
+                value: false,
+                position: pos(1, 2),
+            }),
+            position: pos(1, 1),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn evaluates_not_nil_to_true() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(Expression::NilLiteral {
+                position: pos(1, 2),
+            }),
+            position: pos(1, 1),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn evaluates_not_integer_to_false() {
+    let mut vm = VirtualMachine::new();
+    let assignment = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::UnaryOp {
+            op: UnaryOp::Not,
+            operand: Box::new(int_literal(42, 1, 2)),
+            position: pos(1, 1),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[assignment]).expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn evaluates_global_variable_assignment_and_read() {
+    let mut vm = VirtualMachine::new();
+    let set_global = Statement::Assignment {
+        target: Expression::GlobalVariable {
+            name: "count".to_string(),
+            position: pos(1, 1),
+        },
+        value: int_literal(99, 1, 10),
+        position: pos(1, 1),
+    };
+    let read_global = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(2, 1),
+        },
+        value: Expression::GlobalVariable {
+            name: "count".to_string(),
+            position: pos(2, 10),
+        },
+        position: pos(2, 1),
+    };
+
+    vm.execute_program(&[set_global, read_global])
+        .expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Int(99)));
+}
+
+#[test]
+fn global_variable_defaults_to_nil_when_unset() {
+    let mut vm = VirtualMachine::new();
+    let read_global = Statement::Assignment {
+        target: Expression::Identifier {
+            name: "result".to_string(),
+            position: pos(1, 1),
+        },
+        value: Expression::GlobalVariable {
+            name: "unset_global".to_string(),
+            position: pos(1, 10),
+        },
+        position: pos(1, 1),
+    };
+
+    vm.execute_program(&[read_global])
+        .expect("execution failed");
+    assert_eq!(vm.environment().get("result"), Some(Object::Nil));
+}

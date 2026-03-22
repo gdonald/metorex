@@ -206,6 +206,8 @@ impl Parser {
                 | TokenKind::LBracket
                 | TokenKind::InstanceVar(_)
                 | TokenKind::ClassVar(_)
+                | TokenKind::GlobalVar(_)
+                | TokenKind::Bang
         );
 
         if !can_be_arg {

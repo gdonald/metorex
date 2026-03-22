@@ -329,6 +329,10 @@ impl VirtualMachine {
                     ))
                 }
             }
+            Expression::GlobalVariable { name, .. } => {
+                self.globals_mut().set(name.clone(), value);
+                Ok(())
+            }
             _ => Err(invalid_assignment_target_error(target)),
         }
     }

@@ -32,6 +32,10 @@ impl VirtualMachine {
                 Object::Float(v) => Ok(Object::Float(-v)),
                 _ => Err(unary_type_error(op, &value, position)),
             },
+            UnaryOp::Not => Ok(Object::Bool(matches!(
+                value,
+                Object::Bool(false) | Object::Nil
+            ))),
         }
     }
 

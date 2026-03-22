@@ -85,8 +85,8 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.6.3. Write comprehensive integration tests
   - [x] 2.6.4. Test error recovery on invalid tokens
   - [x] 2.6.6. Create test file: `tests/lexer_tests.rs`
-  - [ ] 2.6.7. Fix identifier tokenization edge cases (predicate `?` and bang `!` suffixes)
-  - [ ] 2.6.8. Handle all variable prefix types correctly (`$global`, `@@class`, `@instance`)
+  - [x] 2.6.7. Fix identifier tokenization edge cases (predicate `?` and bang `!` suffixes)
+  - [x] 2.6.8. Handle all variable prefix types correctly (`$global`, `@@class`, `@instance`)
 
 ### 3. Parser and AST Construction
 

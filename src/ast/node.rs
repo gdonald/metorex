@@ -38,6 +38,7 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Plus,  // +
     Minus, // -
+    Not,   // !
 }
 
 /// Expressions in Metorex - values that can be evaluated
@@ -82,6 +83,10 @@ pub enum Expression {
         position: Position,
     },
     ClassVariable {
+        name: String,
+        position: Position,
+    },
+    GlobalVariable {
         name: String,
         position: Position,
     },
@@ -518,6 +523,7 @@ impl fmt::Display for UnaryOp {
         match self {
             UnaryOp::Plus => write!(f, "+"),
             UnaryOp::Minus => write!(f, "-"),
+            UnaryOp::Not => write!(f, "!"),
         }
     }
 }
@@ -537,6 +543,7 @@ impl Expression {
             | Expression::Identifier { position, .. }
             | Expression::InstanceVariable { position, .. }
             | Expression::ClassVariable { position, .. }
+            | Expression::GlobalVariable { position, .. }
             | Expression::BinaryOp { position, .. }
             | Expression::UnaryOp { position, .. }
             | Expression::Call { position, .. }

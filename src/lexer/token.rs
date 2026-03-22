@@ -71,6 +71,7 @@ pub enum TokenKind {
     Ident(String),
     InstanceVar(String), // @variable
     ClassVar(String),    // @@variable
+    GlobalVar(String),   // $variable
 
     // Operators
     Plus,         // +
@@ -79,6 +80,7 @@ pub enum TokenKind {
     Slash,        // /
     Percent,      // %
     Equal,        // =
+    Bang,         // !
     EqualEqual,   // ==
     BangEqual,    // !=
     Less,         // <
@@ -183,6 +185,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Ident(s) => write!(f, "{}", s),
             TokenKind::InstanceVar(s) => write!(f, "@{}", s),
             TokenKind::ClassVar(s) => write!(f, "@@{}", s),
+            TokenKind::GlobalVar(s) => write!(f, "${}", s),
 
             // Operators
             TokenKind::Plus => write!(f, "+"),
@@ -191,6 +194,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Slash => write!(f, "/"),
             TokenKind::Percent => write!(f, "%"),
             TokenKind::Equal => write!(f, "="),
+            TokenKind::Bang => write!(f, "!"),
             TokenKind::EqualEqual => write!(f, "=="),
             TokenKind::BangEqual => write!(f, "!="),
             TokenKind::Less => write!(f, "<"),

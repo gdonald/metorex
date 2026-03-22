@@ -234,6 +234,33 @@ fn test_lexer_balanced_brackets() {
     assert_eq!(token2.kind, TokenKind::RBracket);
 }
 
+// ===== Bang Operator Tests =====
+
+#[test]
+fn test_lexer_operator_bang() {
+    let mut lexer = Lexer::new("!");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Bang);
+}
+
+#[test]
+fn test_lexer_operator_bang_not_bang_equal() {
+    let mut lexer = Lexer::new("!");
+    let token = lexer.next_token();
+    assert_ne!(token.kind, TokenKind::BangEqual);
+}
+
+#[test]
+fn test_lexer_bang_expression() {
+    let mut lexer = Lexer::new("!x");
+
+    let token1 = lexer.next_token();
+    assert_eq!(token1.kind, TokenKind::Bang);
+
+    let token2 = lexer.next_token();
+    assert_eq!(token2.kind, TokenKind::Ident("x".to_string()));
+}
+
 // ===== Logical Operator Tests =====
 
 #[test]

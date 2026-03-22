@@ -665,6 +665,10 @@ impl Resolver {
                 self.resolve_expression(namespace);
             }
 
+            Expression::GlobalVariable { .. } => {
+                // Global variables don't need scope resolution
+            }
+
             // Literals don't need resolution
             Expression::IntLiteral { .. }
             | Expression::FloatLiteral { .. }
