@@ -291,6 +291,10 @@ impl Parser {
             let pattern = self.parse_case_pattern_with_alternatives()?;
             self.skip_whitespace();
 
+            // Consume optional 'then' keyword (allows inline: when 1, 2 then body)
+            self.match_token(&[TokenKind::Then]);
+            self.skip_whitespace();
+
             // Parse optional guard clause (if ...)
             let guard = if self.match_token(&[TokenKind::If]) {
                 self.skip_whitespace();

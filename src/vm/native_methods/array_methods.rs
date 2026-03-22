@@ -381,6 +381,41 @@ impl VirtualMachine {
                     Ok(None)
                 }
             }
+            "join" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Array(array_rc) = receiver {
+                    let sep = if arguments.is_empty() {
+                        String::new()
+                    } else {
+                        match &arguments[0] {
+                            Object::String(s) => s.as_ref().clone(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "String",
+                                    &arguments[0],
+                                    position,
+                                ));
+                            }
+                        }
+                    };
+                    let parts: Vec<String> = array_rc
+                        .borrow()
+                        .iter()
+                        .map(|obj| format!("{obj}"))
+                        .collect();
+                    Ok(Some(Object::string(parts.join(&sep))))
+                } else {
+                    Ok(None)
+                }
+            }
             _ => Ok(None),
         }
     }

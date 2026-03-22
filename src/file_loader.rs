@@ -2,7 +2,7 @@
 //
 // This module provides utilities for loading, parsing, and resolving file paths
 // in the Metorex language. It supports Ruby's file loading conventions including
-// automatic file extension detection (.rb, .mx, or no extension).
+// automatic file extension detection (.rb, .rb, or no extension).
 
 use crate::ast::Statement;
 use crate::error::{MetorexError, SourceLocation};
@@ -14,9 +14,9 @@ use std::path::{Path, PathBuf};
 /// Finds the actual file path with extension auto-detection.
 ///
 /// This function supports Ruby's file loading conventions:
-/// - If the path has an extension (.rb, .mx, etc.), it tries that path first
+/// - If the path has an extension (.rb, .rb, etc.), it tries that path first
 /// - If no extension or file not found, it tries adding .rb
-/// - If still not found, it tries adding .mx
+/// - If still not found, it tries adding .rb
 /// - Returns the path of the first file that exists
 ///
 /// # Arguments
@@ -45,7 +45,7 @@ pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
         return Ok(rb_path);
     }
 
-    // Try with .mx extension
+    // Try with .rb extension
     let mx_path = path.with_extension("mx");
     if mx_path.exists() {
         return Ok(mx_path);
@@ -54,7 +54,7 @@ pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
     // File not found with any extension
     Err(MetorexError::runtime_error(
         format!(
-            "File not found: '{}' (tried {}, {}.rb, {}.mx)",
+            "File not found: '{}' (tried {}, {}.rb, {}.rb)",
             path.display(),
             path.display(),
             path.display(),
@@ -67,9 +67,9 @@ pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
 /// Loads the source code from a file, with automatic file extension detection.
 ///
 /// This function supports Ruby's file loading conventions:
-/// - If the path has an extension (.rb, .mx, etc.), it tries that path first
+/// - If the path has an extension (.rb, .rb, etc.), it tries that path first
 /// - If no extension or file not found, it tries adding .rb
-/// - If still not found, it tries adding .mx
+/// - If still not found, it tries adding .rb
 /// - Returns an error if the file doesn't exist with any extension
 ///
 /// # Arguments

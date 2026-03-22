@@ -41,7 +41,7 @@ Metorex is organized as a single Rust crate with the following structure:
   - `error_test.rs` - Error handling tests
   - `test_runner.rs` - Example file test harness
   - `version_test.rs` - Version tests
-- **`examples/`** - Example `.mx` files demonstrating language features
+- **`examples/`** - Example `.rb` files demonstrating language features
 
 ## Development Guidelines
 

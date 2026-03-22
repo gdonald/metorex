@@ -43,10 +43,10 @@ def level1
 end
 
 # Calling level1 would produce a stack trace:
-# RuntimeError at examples/errors/basic_error.mx:33:5: Division by zero
-#   at level3 (examples/errors/basic_error.mx:33:5)
-#   at level2 (examples/errors/basic_error.mx:37:5)
-#   at level1 (examples/errors/basic_error.mx:41:5)
+# RuntimeError at examples/errors/basic_error.rb:33:5: Division by zero
+#   at level3 (examples/errors/basic_error.rb:33:5)
+#   at level2 (examples/errors/basic_error.rb:37:5)
+#   at level1 (examples/errors/basic_error.rb:41:5)
 
 # Example 5: Proper Error Handling (when implemented)
 def safe_divide(a, b)

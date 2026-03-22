@@ -795,6 +795,34 @@ fn test_control_flow_case_range_pattern_parens_execution() {
 }
 
 #[test]
+fn test_control_flow_case_as_expression_execution() {
+    let expected = "two\n2\ntrue\n31\n";
+    let output = run_example("control_flow/case_as_expression.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_as_expression_parens_execution() {
+    let expected = "two\n2\ntrue\n31\n";
+    let output = run_example("control_flow/case_as_expression_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_multi_when_execution() {
+    let expected = "small\nsmall\nmedium\nlarge\nother\n";
+    let output = run_example("control_flow/case_multi_when.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_multi_when_parens_execution() {
+    let expected = "small\nsmall\nmedium\nlarge\nother\n";
+    let output = run_example("control_flow/case_multi_when_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_methods_keyword_args_execution() {
     let expected = "Hello, Alice!\nHi, Bob!\nHey, Carol!\n";
     let output = run_example("methods/keyword_args.rb");
@@ -861,5 +889,33 @@ fn test_oop_modules_execution() {
 fn test_oop_modules_parens_execution() {
     let expected = "Hello, I am Alice\nGoodbye from Alice\nI am a class with module methods\n";
     let output = run_example("oop/modules_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_super_keyword_execution() {
+    let expected = "Rex makes a sound\nRex barks\nAnimal: Rex, Breed: Labrador\n";
+    let output = run_example("oop/super_keyword.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_super_keyword_parens_execution() {
+    let expected = "Rex makes a sound\nRex barks\nAnimal: Rex, Breed: Labrador\n";
+    let output = run_example("oop/super_keyword_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_strings_execution() {
+    let expected = "11\n11\nHELLO WORLD\nhello world\ndlrow olleh\nhello\nhello\n2\nhello\nworld\none, two, three\nonetwothree\nhello\nworld\nworld\ntrue\nfalse\ntrue\ntrue\nfalse\ntrue\nfalse\n";
+    let output = run_example("stdlib/strings.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_strings_parens_execution() {
+    let expected = "11\n11\nHELLO WORLD\nhello world\ndlrow olleh\nhello\nhello\n2\nhello\nworld\none, two, three\nonetwothree\nhello\nworld\nworld\ntrue\nfalse\ntrue\ntrue\nfalse\ntrue\nfalse\n";
+    let output = run_example("stdlib/strings_parens.rb");
     assert_eq!(output, expected);
 }

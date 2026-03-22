@@ -22,7 +22,7 @@ fn require_relative_with_wrong_number_of_arguments() {
     use std::path::Path;
 
     let temp_dir = std::env::temp_dir();
-    let test_file = temp_dir.join("require_test_args.mx");
+    let test_file = temp_dir.join("require_test_args.rb");
 
     // Test with 2 arguments - since require_relative uses call syntax, we need to test
     // by actually calling it as a function
@@ -41,7 +41,7 @@ fn require_relative_with_non_string_argument() {
     use std::path::Path;
 
     let temp_dir = std::env::temp_dir();
-    let test_file = temp_dir.join("require_test_type.mx");
+    let test_file = temp_dir.join("require_test_type.rb");
 
     // Test with integer
     fs::write(&test_file, "require_relative(42)").unwrap();
@@ -68,11 +68,11 @@ fn require_relative_with_invalid_path() {
     use std::path::Path;
 
     let temp_dir = std::env::temp_dir();
-    let test_file = temp_dir.join("require_test_invalid.mx");
+    let test_file = temp_dir.join("require_test_invalid.rb");
 
     fs::write(
         &test_file,
-        "require_relative(\"nonexistent_file_12345.mx\")",
+        "require_relative(\"nonexistent_file_12345.rb\")",
     )
     .unwrap();
     let mut vm = VirtualMachine::new();
@@ -88,8 +88,8 @@ fn require_relative_returns_true_for_new_file() {
 
     // Create a temporary test file
     let temp_dir = std::env::temp_dir();
-    let main_file = temp_dir.join("require_test_main.mx");
-    let helper_file = temp_dir.join("require_test_helper.mx");
+    let main_file = temp_dir.join("require_test_main.rb");
+    let helper_file = temp_dir.join("require_test_helper.rb");
 
     fs::write(&main_file, "require_relative(\"require_test_helper\")").unwrap();
     fs::write(&helper_file, "x = 1").unwrap();
@@ -113,8 +113,8 @@ fn require_relative_returns_false_for_already_loaded_file() {
 
     // Create a temporary test file
     let temp_dir = std::env::temp_dir();
-    let main_file = temp_dir.join("require_test_main2.mx");
-    let helper_file = temp_dir.join("require_test_helper2.mx");
+    let main_file = temp_dir.join("require_test_main2.rb");
+    let helper_file = temp_dir.join("require_test_helper2.rb");
 
     fs::write(
         &main_file,
@@ -147,8 +147,8 @@ fn require_relative_makes_variables_accessible() {
 
     // Create a temporary test file
     let temp_dir = std::env::temp_dir();
-    let main_file = temp_dir.join("require_test_main3.mx");
-    let helper_file = temp_dir.join("require_test_helper3.mx");
+    let main_file = temp_dir.join("require_test_main3.rb");
+    let helper_file = temp_dir.join("require_test_helper3.rb");
 
     fs::write(&main_file, "require_relative(\"require_test_helper3\")").unwrap();
     fs::write(&helper_file, "shared_var = \"from helper\"").unwrap();

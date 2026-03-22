@@ -17,9 +17,9 @@ fn test_load_file_with_rb_extension() {
 
 #[test]
 fn test_load_file_with_mx_extension() {
-    let result = load_example("test_file.mx");
+    let result = load_example("test_file.rb");
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), "puts \"Hello from .mx file\"\n");
+    assert_eq!(result.unwrap(), "puts \"Hello from .rb file\"\n");
 }
 
 #[test]
@@ -50,11 +50,11 @@ fn test_load_file_explicit_rb_extension() {
 
 #[test]
 fn test_load_file_explicit_mx_extension() {
-    let result = load_example("explicit.mx");
+    let result = load_example("explicit.rb");
     assert!(result.is_ok());
     assert_eq!(
         result.unwrap(),
-        "puts \"File with explicit .mx extension\"\n"
+        "puts \"File with explicit .rb extension\"\n"
     );
 }
 

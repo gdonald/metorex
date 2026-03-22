@@ -74,23 +74,23 @@ METOREX syntax prioritizes readability while minimizing keystrokes, combining el
 
 ### Basic Syntax
 
-See [examples/basic_syntax.mx](examples/oop/basic_syntax.mx)
+See [examples/basic_syntax.rb](examples/oop/basic_syntax.rb)
 
 ### Exception Handling
 
-See [examples/exception_handling.mx](examples/advanced/exception_handling.mx)
+See [examples/exception_handling.rb](examples/advanced/exception_handling.rb)
 
 ### Pattern Matching
 
-See [examples/pattern_matching.mx](examples/advanced/pattern_matching.mx)
+See [examples/pattern_matching.rb](examples/advanced/pattern_matching.rb)
 
 ### Traits (Interfaces)
 
-See [examples/traits.mx](examples/advanced/traits.mx)
+See [examples/traits.rb](examples/advanced/traits.rb)
 
 ### Optional Type Annotations
 
-See [examples/type_annotations.mx](examples/advanced/type_annotations.mx)
+See [examples/type_annotations.rb](examples/advanced/type_annotations.rb)
 
 ## Meta-Programming: The Core Innovation
 
@@ -110,15 +110,15 @@ The parser converts source code into an in-memory graph of objects, defined in t
 
 Methods can accept code blocks as objects.
 
-See [examples/metaprogramming/blocks_as_objects.mx](examples/metaprogramming/blocks_as_objects.mx)
+See [examples/metaprogramming/blocks_as_objects.rb](examples/metaprogramming/blocks_as_objects.rb)
 
 ### Dynamic Method Definition
 
-See [examples/dynamic_method_definition.mx](examples/advanced/dynamic_method_definition.mx)
+See [examples/dynamic_method_definition.rb](examples/advanced/dynamic_method_definition.rb)
 
 ### Building DSLs
 
-See [examples/dsl_example.mx](examples/advanced/dsl_example.mx)
+See [examples/dsl_example.rb](examples/advanced/dsl_example.rb)
 
 ## Architecture
 
@@ -167,15 +167,15 @@ See [examples/dsl_example.mx](examples/advanced/dsl_example.mx)
 
 ### Networking
 
-See [examples/networking.mx](examples/advanced/networking.mx)
+See [examples/networking.rb](examples/advanced/networking.rb)
 
 ### Concurrency
 
-See [examples/concurrency.mx](examples/advanced/concurrency.mx)
+See [examples/concurrency.rb](examples/advanced/concurrency.rb)
 
 ### Serialization
 
-See [examples/serialization.mx](examples/advanced/serialization.mx)
+See [examples/serialization.rb](examples/advanced/serialization.rb)
 
 ## Roadmap Highlights
 
@@ -240,6 +240,12 @@ cargo test
 
 # Run the REPL
 cargo run
+
+# Install code coverage tool (required for cargo tarpaulin)
+cargo install cargo-tarpaulin
+
+# Run code coverage
+cargo tarpaulin --out Stdout
 ```
 
 ## License

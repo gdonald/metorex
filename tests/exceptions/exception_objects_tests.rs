@@ -26,8 +26,8 @@ fn test_exception_new() {
 #[test]
 fn test_exception_with_backtrace() {
     let backtrace = vec![
-        "at main (main.mx:10)".to_string(),
-        "at foo (lib.mx:25)".to_string(),
+        "at main (main.rb:10)".to_string(),
+        "at foo (lib.rb:25)".to_string(),
     ];
 
     let exc = Exception::with_backtrace(
@@ -43,7 +43,7 @@ fn test_exception_with_backtrace() {
 
 #[test]
 fn test_exception_with_location() {
-    let location = SourceLocation::new("test.mx".to_string(), 42, 10);
+    let location = SourceLocation::new("test.rb".to_string(), 42, 10);
     let exc = Exception::with_location(
         "TypeError".to_string(),
         "Type mismatch".to_string(),
@@ -71,8 +71,8 @@ fn test_exception_with_cause() {
 
 #[test]
 fn test_exception_with_all() {
-    let backtrace = vec!["at test (test.mx:1)".to_string()];
-    let location = SourceLocation::new("test.mx".to_string(), 1, 1);
+    let backtrace = vec!["at test (test.rb:1)".to_string()];
+    let location = SourceLocation::new("test.rb".to_string(), 1, 1);
     let cause = Object::exception("ValueError", "Root cause");
 
     let exc = Exception::with_all(
@@ -96,18 +96,18 @@ fn test_exception_with_all() {
 
 #[test]
 fn test_source_location_new() {
-    let loc = SourceLocation::new("main.mx".to_string(), 10, 5);
+    let loc = SourceLocation::new("main.rb".to_string(), 10, 5);
 
-    assert_eq!(loc.file, "main.mx");
+    assert_eq!(loc.file, "main.rb");
     assert_eq!(loc.line, 10);
     assert_eq!(loc.column, 5);
 }
 
 #[test]
 fn test_source_location_equality() {
-    let loc1 = SourceLocation::new("test.mx".to_string(), 1, 1);
-    let loc2 = SourceLocation::new("test.mx".to_string(), 1, 1);
-    let loc3 = SourceLocation::new("test.mx".to_string(), 2, 1);
+    let loc1 = SourceLocation::new("test.rb".to_string(), 1, 1);
+    let loc2 = SourceLocation::new("test.rb".to_string(), 1, 1);
+    let loc3 = SourceLocation::new("test.rb".to_string(), 2, 1);
 
     assert_eq!(loc1, loc2);
     assert_ne!(loc1, loc3);
@@ -208,12 +208,12 @@ fn test_exception_object_display() {
 #[test]
 fn test_exception_with_full_context() {
     let backtrace = vec![
-        "at function_c (file.mx:30)".to_string(),
-        "at function_b (file.mx:20)".to_string(),
-        "at function_a (file.mx:10)".to_string(),
+        "at function_c (file.rb:30)".to_string(),
+        "at function_b (file.rb:20)".to_string(),
+        "at function_a (file.rb:10)".to_string(),
     ];
 
-    let location = SourceLocation::new("file.mx".to_string(), 30, 15);
+    let location = SourceLocation::new("file.rb".to_string(), 30, 15);
 
     let root_cause = Object::exception("ValueError", "Invalid parameter");
 
@@ -264,8 +264,8 @@ fn test_exception_long_message() {
 
 #[test]
 fn test_source_location_different_files() {
-    let loc1 = SourceLocation::new("file1.mx".to_string(), 10, 5);
-    let loc2 = SourceLocation::new("file2.mx".to_string(), 10, 5);
+    let loc1 = SourceLocation::new("file1.rb".to_string(), 10, 5);
+    let loc2 = SourceLocation::new("file2.rb".to_string(), 10, 5);
 
     assert_ne!(loc1.file, loc2.file);
     assert_ne!(loc1, loc2);

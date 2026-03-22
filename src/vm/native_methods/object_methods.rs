@@ -62,6 +62,17 @@ impl VirtualMachine {
                     self.lookup_method(receiver, &method_query).is_some(),
                 )))
             }
+            "nil?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(matches!(receiver, Object::Nil))))
+            }
             _ => Ok(None),
         }
     }

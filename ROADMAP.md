@@ -21,11 +21,11 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 1.2.5. Add `Display` and `Error` trait implementations
   - [x] 1.2.6. Create error reporting utilities with source code snippets
   - [x] 1.2.7. Write unit tests for error formatting
-  - [x] 1.2.8. Create example file: `examples/errors/basic_error.mx`
+  - [x] 1.2.8. Create example file: `examples/errors/basic_error.rb`
 
 - [x] 1.3. Testing Infrastructure
   - [x] 1.3.1. Set up `tests/` directory structure
-  - [x] 1.3.2. Create test harness for running `.mx` files
+  - [x] 1.3.2. Create test harness for running `.rb` files
   - [x] 1.3.6. Configure code coverage reporting
 
 ### 2. Lexer (Tokenization)
@@ -58,7 +58,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.3.5. Implement string interpolation syntax (`"Hello {name}"`)
   - [x] 2.3.6. Add error handling for unterminated strings
   - [x] 2.3.7. Write unit tests for all literal types
-  - [x] 2.3.8. Create example file: `examples/lexer/literals.mx`
+  - [x] 2.3.8. Create example file: `examples/lexer/literals.rb`
 
 - [x] 2.4. Identifier and Keyword Tokenization
   - [x] 2.4.1. Implement identifier parsing (alphanumeric + underscore)
@@ -67,7 +67,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.4.4. Handle instance variables (@ prefix)
   - [x] 2.4.5. Handle class variables (@@ prefix)
   - [x] 2.4.6. Write unit tests for identifiers and keywords
-  - [x] 2.4.7. Create example file: `examples/lexer/identifiers.mx`
+  - [x] 2.4.7. Create example file: `examples/lexer/identifiers.rb`
 
 - [x] 2.5. Operator and Delimiter Tokenization
   - [x] 2.5.1. Implement single-character operators
@@ -75,7 +75,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 2.5.3. Implement compound assignment operators (`+=`, `-=`, `*=`, `/=`)
   - [x] 2.5.4. Handle operator precedence table preparation
   - [x] 2.5.5. Write unit tests for all operators
-  - [x] 2.5.6. Create example file: `examples/lexer/operators.mx`
+  - [x] 2.5.6. Create example file: `examples/lexer/operators.rb`
   - [x] 2.5.7. Add `LogicalAnd` token (`&&`) and `LogicalOr` token (`||`)
   - [x] 2.5.8. Add `ColonColon` token (`::`) for scope resolution
 
@@ -109,7 +109,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.2.7. Implement `DictLiteralExpr` (`{key: value}`)
   - [x] 3.2.8. Implement `IndexExpr` (array/dict access `arr[0]`)
   - [x] 3.2.9. Write unit tests for expression nodes
-  - [x] 3.2.10. Create example file: `examples/parser/expressions.mx`
+  - [x] 3.2.10. Create example file: `examples/parser/expressions.rb`
   - [x] 3.2.11. Implement `LogicalAndExpr` / `LogicalOrExpr` (`&&`, `||`) with short-circuit semantics
   - [x] 3.2.12. Implement `ScopeResolutionExpr` (`Math::PI`, `Module::Constant`)
 
@@ -120,7 +120,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.3.4. Implement `SelfExpr` (implicit self reference)
   - [x] 3.3.5. Handle method chaining (receiver.method1.method2)
   - [x] 3.3.6. Write unit tests for method calls
-  - [x] 3.3.7. Create example file: `examples/parser/method_calls.mx`
+  - [x] 3.3.7. Create example file: `examples/parser/method_calls.rb`
 
 - [x] 3.4. Statement AST Nodes
   - [x] 3.4.1. Implement `AssignmentStmt` (target, value)
@@ -128,7 +128,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.4.3. Implement `ReturnStmt` (optional return value)
   - [x] 3.4.4. Implement `BreakStmt` and `ContinueStmt`
   - [x] 3.4.5. Write unit tests for statement nodes
-  - [x] 3.4.6. Create example file: `examples/parser/statements.mx`
+  - [x] 3.4.6. Create example file: `examples/parser/statements.rb`
 
 - [x] 3.5. Block Statement (Core Meta-Object)
   - [x] 3.5.1. Define `BlockStmt` struct with `Vec<Box<dyn Statement>>`
@@ -138,7 +138,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.5.5. Add implicit return value (last expression)
   - [x] 3.5.6. Implement `Clone` for blocks
   - [x] 3.5.7. Write unit tests for block construction
-  - [x] 3.5.8. Create example file: `examples/parser/blocks.mx`
+  - [x] 3.5.8. Create example file: `examples/parser/blocks.rb`
 
 - [x] 3.6. Control Flow AST Nodes
   - [x] 3.6.1. Implement `IfStmt` (condition, then_block, else_block)
@@ -147,7 +147,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.6.4. Implement `ForStmt` (variable, iterable, body)
   - [x] 3.6.5. Implement `MatchStmt` for pattern matching
   - [x] 3.6.6. Write unit tests for control flow
-  - [x] 3.6.7. Create example file: `examples/parser/control_flow.mx`
+  - [x] 3.6.7. Create example file: `examples/parser/control_flow.rb`
   - [x] 3.6.8. Create test file: `tests/control_flow_tests.rs`
 
 - [x] 3.7. Exception Handling AST Nodes
@@ -158,7 +158,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.7.5. Parse multiple rescue clauses for different exception types
   - [x] 3.7.6. Parse bare `raise` for re-raising exceptions
   - [x] 3.7.7. Write unit tests for exception handling AST
-  - [x] 3.7.8. Create example file: `examples/parser/exceptions.mx`
+  - [x] 3.7.8. Create example file: `examples/parser/exceptions.rb`
   - [x] 3.7.9. Create test file: `tests/exception_parsing_tests.rs`
 
 - [x] 3.8. Pattern Matching AST Nodes
@@ -171,7 +171,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.8.7. Implement `WildcardPattern` (underscore `_`)
   - [x] 3.8.8. Implement `GuardClause` (when conditions)
   - [x] 3.8.9. Write unit tests for pattern matching
-  - [x] 3.8.10. Create example file: `examples/parser/pattern_matching.mx`
+  - [x] 3.8.10. Create example file: `examples/parser/pattern_matching.rb`
   - [x] 3.8.11. Create test file: `tests/pattern_matching_tests.rs`
   - **Ruby compliance note**: Guards (`when x if x > 0`), variable binding (`when x`), array/hash destructuring, and wildcards (`_`) in `case...when` are NOT valid Ruby syntax. These features require `case...in` (Ruby 2.7+ pattern matching). The current Metorex `case...when` extended syntax is Metorex-specific.
   - [x] 3.8.12. Add `case...in` pattern matching AST node (Ruby 2.7+ compatible)
@@ -187,7 +187,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.9.5. Handle keyword arguments (`kwargs`)
   - [x] 3.9.6. Implement `MethodDefStmt` (extends FunctionDefStmt)
   - [x] 3.9.7. Write unit tests for function definitions
-  - [x] 3.9.8. Create example file: `examples/parser/functions.mx`
+  - [x] 3.9.8. Create example file: `examples/parser/functions.rb`
   - [x] 3.9.9. Implement keyword argument syntax in definitions (`def method(name:, age: 10)`)
   - [x] 3.9.10. Implement keyword argument syntax in calls (`method(name: "Bob")`)
   - [x] 3.9.11. Allow operator method names (`def +(other)`, `def ==(other)`, `def [](key)`)
@@ -199,7 +199,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.10.4. Handle `initialize` constructor parsing
   - [x] 3.10.5. Parse instance variable declarations
   - [x] 3.10.6. Write unit tests for class definitions
-  - [x] 3.10.7. Create example file: `examples/parser/classes.mx`
+  - [x] 3.10.7. Create example file: `examples/parser/classes.rb`
   - [x] 3.10.8. Create test file: `tests/class_parsing_tests.rs`
 
 - [x] 3.11. Parser Core Implementation
@@ -216,7 +216,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.12.1. Write unit tests for each parse method
   - [x] 3.12.2. Create integration tests with full programs
   - [x] 3.12.3. Test error recovery scenarios
-  - [x] 3.12.4. Create example: `examples/parser/complete_program.mx`
+  - [x] 3.12.4. Create example: `examples/parser/complete_program.rb`
   - [x] 3.12.5. Create test file: `tests/parser_tests.rs`
   - [x] 3.12.6. Create test file: `tests/parser_error_recovery_tests.rs`
 
@@ -257,7 +257,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.2.4. Implement `equals()` method with deep comparison
   - [x] 4.2.5. Implement `hash()` method for hashable types
   - [x] 4.2.6. Write unit tests for type checking
-  - [x] 4.2.7. Create example file: `examples/runtime/types.mx`
+  - [x] 4.2.7. Create example file: `examples/runtime/types.rb`
   - [x] 4.2.8. Create test file: `tests/type_system_tests.rs`
 
 - [x] 4.3. Class Structure
@@ -278,7 +278,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.4.4. Implement instance variable get/set methods
   - [x] 4.4.5. Implement method dispatch to class
   - [x] 4.4.6. Write unit tests for instances
-  - [x] 4.4.7. Create example file: `examples/runtime/instances.mx`
+  - [x] 4.4.7. Create example file: `examples/runtime/instances.rb`
 
 - [x] 4.5. Method Structure
   - [x] 4.5.1. Define `Method` struct in `src/object.rs`
@@ -316,7 +316,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 4.7.13. Implement base `Exception` class
   - [x] 4.7.14. Implement `StandardError`, `RuntimeError`, `TypeError`, `ValueError` exception classes
   - [x] 4.7.15. Write comprehensive tests for built-in classes
-  - [x] 4.7.16. Create example file: `examples/runtime/builtin_classes.mx`
+  - [x] 4.7.16. Create example file: `examples/runtime/builtin_classes.rb`
   - [x] 4.7.17. Create test file: `tests/builtin_classes_tests.rs`
 
 ### 5. Scope and Environment Management
@@ -348,7 +348,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 5.3.3. Detect undefined variable access
   - [x] 5.3.4. Detect variable shadowing
   - [x] 5.3.5. Write unit tests for resolution
-  - [x] 5.3.6. Create example file: `examples/runtime/variable_scope.mx`
+  - [x] 5.3.6. Create example file: `examples/runtime/variable_scope.rb`
   - [x] 5.3.7. Create test file: `tests/variable_resolution_tests.rs`
 
 ### 6. Virtual Machine (AST Interpreter)
@@ -363,7 +363,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.1.7. Implement VM constructor
   - [x] 6.1.8. Write unit tests for VM initialization
 
-- [ ] 6.2. Statement Execution
+- [x] 6.2. Statement Execution
   - [x] 6.2.1. Implement `execute_statement()` dispatcher
   - [x] 6.2.2. Implement expression statement execution
   - [x] 6.2.3. Implement assignment statement execution
@@ -396,9 +396,9 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.4.7. Handle return values
   - [x] 6.4.8. Implement native method calls
   - [x] 6.4.9. Write unit tests for method dispatch
-  - [x] 6.4.10. Create example file: `examples/runtime/method_dispatch.mx`
+  - [x] 6.4.10. Create example file: `examples/runtime/method_dispatch.rb`
   - [x] 6.4.11. Create test file: `tests/method_dispatch_tests.rs`
-  - [ ] 6.4.12. Implement operator overloading: before evaluating built-in binary ops, check if receiver class defines the operator as a method (`+`, `-`, `*`, `/`, `==`, `<`, `>`, `[]`)
+  - [x] 6.4.12. Implement operator overloading: before evaluating built-in binary ops, check if receiver class defines the operator as a method (`+`, `-`, `*`, `/`, `==`, `<`, `>`, `[]`)
 
 - [x] 6.5. Block Execution (Critical Meta-Programming Feature)
   - [x] 6.5.1. Define `Callable` trait in `src/callable.rs`
@@ -409,7 +409,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.5.6. Execute block body in captured scope
   - [x] 6.5.7. Return last expression value
   - [x] 6.5.8. Write unit tests for block execution
-  - [x] 6.5.9. Create example file: `examples/metaprogramming/block_call.mx`
+  - [x] 6.5.9. Create example file: `examples/metaprogramming/block_call.rb`
   - [x] 6.5.10. Create test file: `tests/block_execution_tests.rs`
 
 - [x] 6.6. Control Flow Execution
@@ -419,7 +419,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.6.4. Handle break statements with loop unwinding
   - [x] 6.6.5. Handle continue statements
   - [x] 6.6.6. Write unit tests for control flow
-  - [x] 6.6.7. Create example file: `examples/runtime/loops.mx`
+  - [x] 6.6.7. Create example file: `examples/runtime/loops.rb`
   - [x] 6.6.8. Create test file: `tests/control_flow_execution_tests.rs`
 
 - [x] 6.7. Class and Instance Creation
@@ -429,16 +429,16 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.7.4. Call `initialize` constructor
   - [x] 6.7.5. Initialize instance variables
   - [x] 6.7.6. Write unit tests for class instantiation
-  - [x] 6.7.7. Create example file: `examples/runtime/class_instantiation.mx`
+  - [x] 6.7.7. Create example file: `examples/runtime/class_instantiation.rb`
   - [x] 6.7.8. Create test file: `tests/class_instantiation_tests.rs`
 
-- [x] 6.8. Inheritance Implementation (Partial: method lookup & overriding complete)
+- [x] 6.8. Inheritance Implementation
   - [x] 6.8.1. Implement superclass method lookup
   - [x] 6.8.2. Implement method overriding
-  - [ ] 6.8.3. Implement `super` keyword (requires lexer, parser, AST, VM changes)
-  - [ ] 6.8.4. Handle constructor chaining (requires `super` keyword)
+  - [x] 6.8.3. Implement `super` keyword (requires lexer, parser, AST, VM changes)
+  - [x] 6.8.4. Handle constructor chaining (requires `super` keyword)
   - [x] 6.8.5. Write unit tests for inheritance
-  - [x] 6.8.6. Create example file: `examples/runtime/inheritance.mx`
+  - [x] 6.8.6. Create example file: `examples/runtime/inheritance.rb`
   - [x] 6.8.7. Create test file: `tests/inheritance_tests.rs`
 
 - [x] 6.9. Exception Handling Execution
@@ -452,7 +452,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.9.8. Handle uncaught exceptions (converted to MetorexError at top level)
   - [x] 6.9.9. Implement bare raise (re-raises current exception from $!)
   - [x] 6.9.10. Write unit tests for exception handling (tests/exception_execution_tests.rs created, requires parser implementation to run)
-  - [ ] 6.9.11. Create example file: `examples/runtime/exception_handling.mx` (requires parser implementation)
+  - [x] 6.9.11. Create example file: `examples/runtime/exception_handling.rb` (requires parser implementation)
   - [x] 6.9.12. Create test file: `tests/exception_handling_tests.rs` (requires parser to activate)
 
 - [x] 6.10. Pattern Matching Execution
@@ -465,14 +465,14 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.10.7. Implement guard clause evaluation
   - [x] 6.10.8. Ensure exhaustiveness or provide default case
   - [x] 6.10.9. Write unit tests for pattern matching
-  - [x] 6.10.10. Create example file: `examples/runtime/pattern_matching.mx`
+  - [x] 6.10.10. Create example file: `examples/runtime/pattern_matching.rb`
   - [x] 6.10.11. Create test file: `tests/pattern_matching_execution_tests.rs`
-  - [ ] 6.10.12. Test `case` as expression in assignment: `x = case val when 1 then "one" end`
-  - [ ] 6.10.13. Test `case` expression in method call arguments and string interpolation
-  - [ ] 6.10.14. Test nested case expressions with separate scopes
-  - [ ] 6.10.15. Test `case` returns nil when no match and no else clause
-  - [ ] 6.10.16. Test multiple literal patterns per when clause: `when 1, 2, 3 then "small"`
-  - [ ] 6.10.17. Test `case` expression in arithmetic context: `1 + (case y when 1 then 2 else 3 end)`
+  - [x] 6.10.12. Test `case` as expression in assignment: `x = case val when 1 then "one" end`
+  - [x] 6.10.13. Test `case` expression in method call arguments and string interpolation
+  - [x] 6.10.14. Test nested case expressions with separate scopes
+  - [x] 6.10.15. Test `case` returns nil when no match and no else clause
+  - [x] 6.10.16. Test multiple literal patterns per when clause: `when 1, 2, 3 then "small"`
+  - [x] 6.10.17. Test `case` expression in arithmetic context: `1 + (case y when 1 then 2 else 3 end)`
 
 - [x] 6.11. Error Reporting and Stack Traces
   - [x] 6.11.1. Implement call stack tracking
@@ -481,7 +481,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.11.4. Add line number information to errors
   - [x] 6.11.5. Implement pretty-printing of stack traces
   - [x] 6.11.6. Write unit tests for error reporting
-  - [x] 6.11.7. Create example file: `examples/runtime/error_reporting.mx`
+  - [x] 6.11.7. Create example file: `examples/runtime/error_reporting.rb`
   - [x] 6.11.8. Create test file: `tests/error_reporting_tests.rs`
 
 ### 7. Meta-Programming Features (MVP)
@@ -492,7 +492,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 7.1.3. Ensure blocks can be returned from methods
   - [x] 7.1.4. Implement block parameter syntax (`do |x, y|`)
   - [x] 7.1.5. Write unit tests for block objects
-  - [x] 7.1.6. Create example file: `examples/metaprogramming/blocks_as_objects.mx`
+  - [x] 7.1.6. Create example file: `examples/metaprogramming/blocks_as_objects.rb`
   - [x] 7.1.7. Create test file: `tests/block_as_object_tests.rs`
 
 - [ ] 7.2. Implicit Block Capture
@@ -508,7 +508,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 7.2.10. VM: Implement `block_given?` or similar to check if block was passed
   - [ ] 7.2.11. VM: Handle methods with explicit block parameter vs implicit block
   - [ ] 7.2.12. Write unit tests for runtime behavior with implicit blocks
-  - [ ] 7.2.13. Create example file: `examples/metaprogramming/implicit_blocks.mx`
+  - [ ] 7.2.13. Create example file: `examples/metaprogramming/implicit_blocks.rb`
   - [ ] 7.2.14. Create test file: `tests/implicit_block_tests.rs`
   - [ ] 7.2.15. Document the implicit block capture feature
 
@@ -519,7 +519,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 7.3.4. Add method to class method table
   - [ ] 7.3.5. Ensure method is callable on instances
   - [ ] 7.3.6. Write unit tests for define_method
-  - [ ] 7.3.7. Create example file: `examples/metaprogramming/define_method.mx`
+  - [ ] 7.3.7. Create example file: `examples/metaprogramming/define_method.rb`
   - [ ] 7.3.8. Create test file: `tests/define_method_tests.rs`
 
 - [ ] 7.4. `get_source` Implementation
@@ -528,7 +528,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 7.4.3. Return BlockStatement object for method body
   - [ ] 7.4.4. Handle native methods (return nil or special marker)
   - [ ] 7.4.5. Write unit tests for get_source
-  - [ ] 7.4.6. Create example file: `examples/metaprogramming/get_source.mx`
+  - [ ] 7.4.6. Create example file: `examples/metaprogramming/get_source.rb`
   - [ ] 7.4.7. Create test file: `tests/get_source_tests.rs`
 
 - [ ] 7.5. AST Inspection API
@@ -538,7 +538,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 7.5.4. Implement `BlockStatement#statements` accessor
   - [ ] 7.5.5. Implement node type checking methods
   - [ ] 7.5.6. Write unit tests for AST inspection
-  - [ ] 7.5.7. Create example file: `examples/metaprogramming/ast_inspection.mx`
+  - [ ] 7.5.7. Create example file: `examples/metaprogramming/ast_inspection.rb`
   - [ ] 7.5.8. Create test file: `tests/ast_inspection_tests.rs`
 
 - [ ] 7.6. DSL Examples and Tests
@@ -548,23 +548,23 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 7.6.4. Create DSL example: configuration language
   - [ ] 7.6.5. Write tests for each DSL
   - [ ] 7.6.6. Document DSL patterns
-  - [ ] 7.6.7. Create example file: `examples/dsl/test_framework.mx`
-  - [ ] 7.6.8. Create example file: `examples/dsl/html_builder.mx`
+  - [ ] 7.6.7. Create example file: `examples/dsl/test_framework.rb`
+  - [ ] 7.6.8. Create example file: `examples/dsl/html_builder.rb`
 
 ### 8. Standard Library (Core)
 
-- [ ] 8.1. String Methods
-  - [ ] 8.1.1. Implement `length`/`size`
-  - [ ] 8.1.2. Implement `upcase`/`downcase`
-  - [ ] 8.1.3. Implement `split`
-  - [ ] 8.1.4. Implement `join`
-  - [ ] 8.1.5. Implement `substring`/`slice`
-  - [ ] 8.1.6. Implement `contains?`
-  - [ ] 8.1.7. Implement `starts_with?`/`ends_with?`
-  - [ ] 8.1.8. Implement string interpolation
-  - [ ] 8.1.9. Write unit tests for string methods
-  - [ ] 8.1.10. Create example file: `examples/stdlib/strings.mx`
-  - [ ] 8.1.11. Create test file: `tests/string_methods_tests.rs`
+- [x] 8.1. String Methods
+  - [x] 8.1.1. Implement `length`/`size`
+  - [x] 8.1.2. Implement `upcase`/`downcase`
+  - [x] 8.1.3. Implement `split`
+  - [x] 8.1.4. Implement `join`
+  - [x] 8.1.5. Implement `substring`/`slice`
+  - [x] 8.1.6. Implement `contains?`
+  - [x] 8.1.7. Implement `starts_with?`/`ends_with?`
+  - [x] 8.1.8. Implement string interpolation
+  - [x] 8.1.9. Write unit tests for string methods
+  - [x] 8.1.10. Create example file: `examples/stdlib/strings.rb`
+  - [x] 8.1.11. Create test file: `tests/string_methods_tests.rs`
 
 - [ ] 8.2. Array Methods
   - [ ] 8.2.1. Implement `length`/`size`
@@ -578,7 +578,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.2.9. Implement `sort`
   - [ ] 8.2.10. Implement `reverse`
   - [ ] 8.2.11. Write unit tests for array methods
-  - [ ] 8.2.12. Create example file: `examples/stdlib/arrays.mx`
+  - [ ] 8.2.12. Create example file: `examples/stdlib/arrays.rb`
   - [ ] 8.2.13. Create test file: `tests/array_methods_tests.rs`
 
 - [ ] 8.3. Hash/Dict Methods
@@ -589,7 +589,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.3.5. Implement `merge`
   - [ ] 8.3.6. Implement `each` (iterator)
   - [ ] 8.3.7. Write unit tests for hash methods
-  - [ ] 8.3.8. Create example file: `examples/stdlib/hashes.mx`
+  - [ ] 8.3.8. Create example file: `examples/stdlib/hashes.rb`
   - [ ] 8.3.9. Create test file: `tests/hash_methods_tests.rs`
 
 - [ ] 8.4. Numeric Methods
@@ -600,7 +600,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.4.5. Implement `to_i`/`to_f`/`to_s`
   - [ ] 8.4.6. Implement `times` iterator (for Int)
   - [ ] 8.4.7. Write unit tests for numeric methods
-  - [ ] 8.4.8. Create example file: `examples/stdlib/numbers.mx`
+  - [ ] 8.4.8. Create example file: `examples/stdlib/numbers.rb`
   - [ ] 8.4.9. Create test file: `tests/numeric_methods_tests.rs`
 
 - [ ] 8.4b. Type Introspection Built-ins
@@ -619,7 +619,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.5.4. Implement file reading (`File.read`)
   - [ ] 8.5.5. Implement file writing (`File.write`)
   - [ ] 8.5.6. Write unit tests for IO
-  - [ ] 8.5.7. Create example file: `examples/stdlib/io.mx`
+  - [ ] 8.5.7. Create example file: `examples/stdlib/io.rb`
   - [ ] 8.5.8. Create test file: `tests/io_tests.rs`
 
 - [ ] 8.6. Set Methods
@@ -630,7 +630,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.6.5. Implement `size`/`length` for sets
   - [ ] 8.6.6. Implement `each` iterator for sets
   - [ ] 8.6.7. Write unit tests for set methods
-  - [ ] 8.6.8. Create example file: `examples/stdlib/sets.mx`
+  - [ ] 8.6.8. Create example file: `examples/stdlib/sets.rb`
   - [ ] 8.6.9. Create test file: `tests/set_methods_tests.rs`
 
 - [ ] 8.7. Built-in Testing Framework
@@ -644,7 +644,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.7.8. Implement test filtering (run specific tests)
   - [ ] 8.7.9. Add colored output for test results
   - [ ] 8.7.10. Write tests for the testing framework (meta!)
-  - [ ] 8.7.11. Create example file: `examples/stdlib/testing_framework.mx`
+  - [ ] 8.7.11. Create example file: `examples/stdlib/testing_framework.rb`
   - [ ] 8.7.12. Create test file: `tests/testing_framework_tests.rs`
 
 ### 9. CLI and REPL
@@ -652,7 +652,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 - [ ] 9.1. Command Line Interface
   - [ ] 9.1.1. Create `cli` crate
   - [ ] 9.1.2. Implement argument parsing with clap
-  - [ ] 9.1.3. Add `metorex <file.mx>` command
+  - [ ] 9.1.3. Add `metorex <file.rb>` command
   - [ ] 9.1.4. Add `--version` flag
   - [ ] 9.1.5. Add `--help` flag
   - [ ] 9.1.6. Add `--ast` flag to dump AST
@@ -678,7 +678,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 9.3.2. `src/file_loader.rs`: `load_file_source()`, `resolve_relative_path()`, `parse_file()`
   - [x] 9.3.3. VM: `execute_file()` with deduplication and path restore
   - [x] 9.3.4. Native function `require_relative` registered in global scope
-  - [ ] 9.3.5. Test file extension auto-detection: `.rb`, `.mx`, and no extension
+  - [ ] 9.3.5. Test file extension auto-detection: `.rb`, `.rb`, and no extension
   - [ ] 9.3.6. Test scope/variable sharing: variables, functions, and classes defined in required files are accessible in requiring file
   - [ ] 9.3.7. Test nested requires (A → B → C execute in correct order)
   - [ ] 9.3.8. Test circular requires are handled gracefully (no infinite loop)
@@ -994,7 +994,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 12.7.4. Emit `OP_CLOSURE` with upvalue list
   - [ ] 12.7.5. Emit `OP_CLOSE_UPVALUE` when needed
   - [ ] 12.7.6. Write unit tests for closures
-  - [ ] 12.7.7. Create example file: `examples/compiler/closures.mx`
+  - [ ] 12.7.7. Create example file: `examples/compiler/closures.rb`
   - [ ] 12.7.8. Create test file: `tests/compiler_closure_tests.rs`
 
 - [ ] 12.8. Block Compilation (Meta-Programming)
@@ -1088,7 +1088,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 13.8.5. Implement `OP_CLOSE_UPVALUE` execution
   - [ ] 13.8.6. Close upvalues on scope exit
   - [ ] 13.8.7. Write unit tests for closures
-  - [ ] 13.8.8. Create example file: `examples/vm/closures.mx`
+  - [ ] 13.8.8. Create example file: `examples/vm/closures.rb`
   - [ ] 13.8.9. Create test file: `tests/vm_closure_tests.rs`
 
 - [ ] 13.9. Class and Object Execution
@@ -1119,7 +1119,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.1.4. Add to class method table
   - [ ] 14.1.5. Ensure callable from bytecode VM
   - [ ] 14.1.6. Write unit tests for runtime method definition
-  - [ ] 14.1.7. Create example file: `examples/metaprogramming/bytecode_define_method.mx`
+  - [ ] 14.1.7. Create example file: `examples/metaprogramming/bytecode_define_method.rb`
   - [ ] 14.1.8. Create test file: `tests/bytecode_define_method_tests.rs`
 
 - [ ] 14.2. Method Missing Hook
@@ -1127,7 +1127,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.2.2. Check for `method_missing` on lookup failure
   - [ ] 14.2.3. Call `method_missing` with method name and args
   - [ ] 14.2.4. Write unit tests for method_missing
-  - [ ] 14.2.5. Create example file: `examples/metaprogramming/method_missing.mx`
+  - [ ] 14.2.5. Create example file: `examples/metaprogramming/method_missing.rb`
   - [ ] 14.2.6. Create test file: `tests/method_missing_tests.rs`
 
 - [ ] 14.3. Runtime Class Modification
@@ -1136,7 +1136,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.3.3. Implement `alias_method`
   - [ ] 14.3.4. Implement `module_function`
   - [ ] 14.3.5. Write unit tests for class modification
-  - [ ] 14.3.6. Create example file: `examples/metaprogramming/class_modification.mx`
+  - [ ] 14.3.6. Create example file: `examples/metaprogramming/class_modification.rb`
   - [ ] 14.3.7. Create test file: `tests/class_modification_tests.rs`
 
 - [ ] 14.4. Reflection and Introspection
@@ -1147,7 +1147,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.4.5. Implement `instance_variables` method
   - [ ] 14.4.6. Implement `send` method (dynamic dispatch)
   - [ ] 14.4.7. Write unit tests for reflection
-  - [ ] 14.4.8. Create example file: `examples/metaprogramming/reflection.mx`
+  - [ ] 14.4.8. Create example file: `examples/metaprogramming/reflection.rb`
   - [ ] 14.4.9. Create test file: `tests/reflection_tests.rs`
 
 - [ ] 14.5. AST Manipulation
@@ -1156,7 +1156,7 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.5.3. Allow blocks to be modified at runtime
   - [ ] 14.5.4. Implement code generation helpers
   - [ ] 14.5.5. Write unit tests for AST manipulation
-  - [ ] 14.5.6. Create example file: `examples/metaprogramming/ast_manipulation.mx`
+  - [ ] 14.5.6. Create example file: `examples/metaprogramming/ast_manipulation.rb`
   - [ ] 14.5.7. Create test file: `tests/ast_manipulation_tests.rs`
 
 - [ ] 14.6. Trait/Interface System
@@ -1177,8 +1177,8 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 14.6.15. Implement trait objects (dynamic dispatch)
   - [ ] 14.6.16. Add `implements?` method to check trait implementation
   - [ ] 14.6.17. Write unit tests for trait system
-  - [ ] 14.6.18. Create example file: `examples/traits/basic_traits.mx`
-  - [ ] 14.6.19. Create example file: `examples/traits/trait_bounds.mx`
+  - [ ] 14.6.18. Create example file: `examples/traits/basic_traits.rb`
+  - [ ] 14.6.19. Create example file: `examples/traits/trait_bounds.rb`
   - [ ] 14.6.20. Create test file: `tests/trait_system_tests.rs`
 
 ### 15. Performance and Memory Management
@@ -1244,11 +1244,11 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.2.4. Add `ImportStmt` AST node with variants for different import types
   - [ ] 16.2.5. Parse multiple imports in one statement (`from x import a, b, c`)
   - [ ] 16.2.6. Write unit tests for import parsing
-  - [ ] 16.2.7. Create example file: `examples/modules/import_syntax.mx`
+  - [ ] 16.2.7. Create example file: `examples/modules/import_syntax.rb`
   - [ ] 16.2.8. Create test file: `tests/import_parsing_tests.rs`
 
 - [ ] 16.3. File Loading System
-  - [ ] 16.3.1. Implement file system layer to locate `.mx` files from disk
+  - [ ] 16.3.1. Implement file system layer to locate `.rb` files from disk
   - [ ] 16.3.2. Create module search path system (current directory, standard library paths)
   - [ ] 16.3.3. Implement module name to file path resolution
   - [ ] 16.3.4. Handle file not found errors gracefully
@@ -1290,7 +1290,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.7.4. Handle `import math as m` creating aliased binding
   - [ ] 16.7.5. Handle import name conflicts (error or warning)
   - [ ] 16.7.6. Write unit tests for namespace binding
-  - [ ] 16.7.7. Create example file: `examples/modules/namespace_binding.mx`
+  - [ ] 16.7.7. Create example file: `examples/modules/namespace_binding.rb`
   - [ ] 16.7.8. Create test file: `tests/namespace_binding_tests.rs`
 
 - [ ] 16.8. Attribute Access on Modules
@@ -1306,7 +1306,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.9.3. Prevent infinite loops in circular imports
   - [ ] 16.9.4. Provide clear error messages for circular imports
   - [ ] 16.9.5. Write unit tests for circular import detection
-  - [ ] 16.9.6. Create example file: `examples/modules/circular_imports.mx`
+  - [ ] 16.9.6. Create example file: `examples/modules/circular_imports.rb`
   - [ ] 16.9.7. Create test file: `tests/circular_import_tests.rs`
 
 - [ ] 16.10. Relative Imports (Optional)
@@ -1315,11 +1315,11 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.10.3. Implement package-aware module resolution
   - [ ] 16.10.4. Handle relative import depth tracking
   - [ ] 16.10.5. Write unit tests for relative imports
-  - [ ] 16.10.6. Create example file: `examples/modules/relative_imports.mx`
+  - [ ] 16.10.6. Create example file: `examples/modules/relative_imports.rb`
   - [ ] 16.10.7. Create test file: `tests/relative_import_tests.rs`
 
 - [ ] 16.11. Package Support (Optional)
-  - [ ] 16.11.1. Implement package semantics with `initialize.mx` files
+  - [ ] 16.11.1. Implement package semantics with `initialize.rb` files
   - [ ] 16.11.2. Support hierarchical module namespaces (`package.submodule`)
   - [ ] 16.11.3. Implement package initialization on first import
   - [ ] 16.11.4. Handle package-level imports
@@ -1352,9 +1352,9 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.13.13. Implement DNS resolution
   - [ ] 16.13.14. Add connection pooling for HTTP clients
   - [ ] 16.13.15. Write comprehensive tests for networking
-  - [ ] 16.13.16. Create example file: `examples/networking/http_client.mx`
-  - [ ] 16.13.17. Create example file: `examples/networking/http_server.mx`
-  - [ ] 16.13.18. Create example file: `examples/networking/websocket.mx`
+  - [ ] 16.13.16. Create example file: `examples/networking/http_client.rb`
+  - [ ] 16.13.17. Create example file: `examples/networking/http_server.rb`
+  - [ ] 16.13.18. Create example file: `examples/networking/websocket.rb`
   - [ ] 16.13.19. Create test file: `tests/networking_tests.rs`
 
 - [ ] 16.14. Serialization Library
@@ -1370,9 +1370,9 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.14.10. Implement native `Pickle` format for Metorex objects
   - [ ] 16.14.11. Add serialization traits for custom types
   - [ ] 16.14.12. Write tests for all serialization formats
-  - [ ] 16.14.13. Create example file: `examples/serialization/json_advanced.mx`
-  - [ ] 16.14.14. Create example file: `examples/serialization/xml.mx`
-  - [ ] 16.14.15. Create example file: `examples/serialization/yaml.mx`
+  - [ ] 16.14.13. Create example file: `examples/serialization/json_advanced.rb`
+  - [ ] 16.14.14. Create example file: `examples/serialization/xml.rb`
+  - [ ] 16.14.15. Create example file: `examples/serialization/yaml.rb`
   - [ ] 16.14.16. Create test file: `tests/serialization_tests.rs`
 
 - [ ] 16.15. Cryptography Library
@@ -1389,9 +1389,9 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.15.11. Add X.509 certificate parsing
   - [ ] 16.15.12. Add certificate validation
   - [ ] 16.15.13. Write comprehensive tests for cryptography
-  - [ ] 16.15.14. Create example file: `examples/crypto/hashing.mx`
-  - [ ] 16.15.15. Create example file: `examples/crypto/encryption.mx`
-  - [ ] 16.15.16. Create example file: `examples/crypto/secure_random.mx`
+  - [ ] 16.15.14. Create example file: `examples/crypto/hashing.rb`
+  - [ ] 16.15.15. Create example file: `examples/crypto/encryption.rb`
+  - [ ] 16.15.16. Create example file: `examples/crypto/secure_random.rb`
   - [ ] 16.15.17. Create test file: `tests/crypto_tests.rs`
 
 - [ ] 16.16. Advanced Collections
@@ -1407,7 +1407,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 16.16.10. Add persistent data structure implementations
   - [ ] 16.16.11. Implement `CircularBuffer` class
   - [ ] 16.16.12. Write comprehensive tests for collections
-  - [ ] 16.16.13. Create example file: `examples/collections/advanced.mx`
+  - [ ] 16.16.13. Create example file: `examples/collections/advanced.rb`
   - [ ] 16.16.14. Create test file: `tests/advanced_collections_tests.rs`
 
 ### 17. Foreign Function Interface (FFI)
@@ -1435,7 +1435,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 17.3.2. Generate C headers
   - [ ] 17.3.3. Implement C function calling
   - [ ] 17.3.4. Test with sample C library
-  - [ ] 17.3.5. Create example: `examples/ffi/c_interop.mx`
+  - [ ] 17.3.5. Create example: `examples/ffi/c_interop.rb`
 
 ### 18. Concurrency Support
 
@@ -1446,7 +1446,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 18.1.4. Implement `yield` function
   - [ ] 18.1.5. Implement fiber communication (channels)
   - [ ] 18.1.6. Write unit tests for fibers
-  - [ ] 18.1.7. Create example file: `examples/concurrency/fibers.mx`
+  - [ ] 18.1.7. Create example file: `examples/concurrency/fibers.rb`
   - [ ] 18.1.8. Create test file: `tests/fiber_tests.rs`
 
 - [ ] 18.2. Async/Await Support
@@ -1455,7 +1455,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 18.2.3. Implement await expression
   - [ ] 18.2.4. Integrate with Rust async runtime
   - [ ] 18.2.5. Write unit tests for async
-  - [ ] 18.2.6. Create example file: `examples/concurrency/async_await.mx`
+  - [ ] 18.2.6. Create example file: `examples/concurrency/async_await.rb`
   - [ ] 18.2.7. Create test file: `tests/async_await_tests.rs`
 
 - [ ] 18.3. Thread Safety
@@ -1480,7 +1480,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 18.4.11. Implement thread-local storage
   - [ ] 18.4.12. Add thread priority support
   - [ ] 18.4.13. Write comprehensive tests for threading
-  - [ ] 18.4.14. Create example file: `examples/concurrency/threads.mx`
+  - [ ] 18.4.14. Create example file: `examples/concurrency/threads.rb`
   - [ ] 18.4.15. Create test file: `tests/os_threads_tests.rs`
 
 - [ ] 18.5. Synchronization Primitives
@@ -1496,7 +1496,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 18.5.10. Implement `Barrier` for synchronizing multiple threads
   - [ ] 18.5.11. Implement deadlock detection (optional)
   - [ ] 18.5.12. Write comprehensive tests for synchronization
-  - [ ] 18.5.13. Create example file: `examples/concurrency/synchronization.mx`
+  - [ ] 18.5.13. Create example file: `examples/concurrency/synchronization.rb`
   - [ ] 18.5.14. Create test file: `tests/synchronization_tests.rs`
 
 - [ ] 18.6. Atomic Operations and Lock-Free Structures
@@ -1509,7 +1509,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 18.6.7. Implement lock-free stack
   - [ ] 18.6.8. Implement lock-free queue
   - [ ] 18.6.9. Write comprehensive tests for atomics
-  - [ ] 18.6.10. Create example file: `examples/concurrency/atomics.mx`
+  - [ ] 18.6.10. Create example file: `examples/concurrency/atomics.rb`
   - [ ] 18.6.11. Create test file: `tests/atomic_operations_tests.rs`
 
 - [ ] 18.7. Channels and Message Passing
@@ -1523,7 +1523,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 18.7.8. Implement MPSC (multi-producer, single-consumer) channels
   - [ ] 18.7.9. Implement MPMC (multi-producer, multi-consumer) channels
   - [ ] 18.7.10. Write comprehensive tests for channels
-  - [ ] 18.7.11. Create example file: `examples/concurrency/channels.mx`
+  - [ ] 18.7.11. Create example file: `examples/concurrency/channels.rb`
   - [ ] 18.7.12. Create test file: `tests/channels_tests.rs`
 
 ### 19. Advanced Optimization
@@ -1567,7 +1567,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 19.5.4. Runtime Switch: Implement the dynamic execution switch. When the VM reaches a JIT-compiled block, it calls the native machine code function generated by LLVM instead of interpreting the bytecode
   - [ ] 19.5.5. Write unit tests for JIT compilation
   - [ ] 19.5.6. Benchmark JIT vs interpreter performance
-  - [ ] 19.5.7. Create example file: `examples/optimization/jit_compilation.mx`
+  - [ ] 19.5.7. Create example file: `examples/optimization/jit_compilation.rb`
   - [ ] 19.5.8. Create test file: `tests/jit_compilation_tests.rs`
 
 - [ ] 19.6. Optional Type System
@@ -1587,8 +1587,8 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 19.6.14. Add configurable type checking modes (strict, gradual, dynamic)
   - [ ] 19.6.15. Implement type error reporting with suggestions
   - [ ] 19.6.16. Write comprehensive tests for type system
-  - [ ] 19.6.17. Create example file: `examples/types/type_annotations.mx`
-  - [ ] 19.6.18. Create example file: `examples/types/generics.mx`
+  - [ ] 19.6.17. Create example file: `examples/types/type_annotations.rb`
+  - [ ] 19.6.18. Create example file: `examples/types/generics.rb`
   - [ ] 19.6.19. Create test file: `tests/type_system_tests.rs`
 
 ### 20. Tooling and Developer Experience
@@ -1602,7 +1602,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 20.1.6. Create debugger REPL
   - [ ] 20.1.7. Integrate with VS Code (DAP)
   - [ ] 20.1.8. Write documentation for debugger
-  - [ ] 20.1.9. Create example: `examples/tools/debugging.mx`
+  - [ ] 20.1.9. Create example: `examples/tools/debugging.rb`
 
 - [ ] 20.2. Language Server Protocol (LSP)
   - [ ] 20.2.1. Implement LSP server
@@ -1657,11 +1657,11 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 20.6.13. Support multiple documentation formats (HTML, Markdown, JSON)
   - [ ] 20.6.14. Implement versioned documentation
   - [ ] 20.6.15. Write comprehensive tests for doc system
-  - [ ] 20.6.16. Create example file: `examples/docs/documented_module.mx`
+  - [ ] 20.6.16. Create example file: `examples/docs/documented_module.rb`
   - [ ] 20.6.17. Create test file: `tests/documentation_tests.rs`
 
 - [ ] 20.7. Build System Features
-  - [ ] 20.7.1. Implement build configuration file (`build.mx` or `Metorex.toml`)
+  - [ ] 20.7.1. Implement build configuration file (`build.rb` or `Metorex.toml`)
   - [ ] 20.7.2. Add build profiles (debug, release, custom)
   - [ ] 20.7.3. Implement incremental compilation
   - [ ] 20.7.4. Track file dependencies for incremental builds
@@ -1675,7 +1675,7 @@ Goal: Achieve production-ready performance, stability, and features necessary fo
   - [ ] 20.7.12. Add build progress reporting
   - [ ] 20.7.13. Implement clean build command
   - [ ] 20.7.14. Write comprehensive tests for build system
-  - [ ] 20.7.15. Create example file: `examples/build/build_config.mx`
+  - [ ] 20.7.15. Create example file: `examples/build/build_config.rb`
   - [ ] 20.7.16. Create test file: `tests/build_system_tests.rs`
 
 ### 21. Documentation and Release
@@ -1758,7 +1758,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 23.1.6. Implement repetition patterns (`$(...)*`, `$(...)+`)
   - [ ] 23.1.7. Add macro debugging tools
   - [ ] 23.1.8. Write comprehensive tests for macros
-  - [ ] 23.1.9. Create example file: `examples/macros/basic_macros.mx`
+  - [ ] 23.1.9. Create example file: `examples/macros/basic_macros.rb`
   - [ ] 23.1.10. Create test file: `tests/macro_tests.rs`
 
 - [ ] 23.2. Procedural Macros
@@ -1768,7 +1768,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 23.2.4. Implement attribute macros
   - [ ] 23.2.5. Provide AST manipulation API for macros
   - [ ] 23.2.6. Write tests for procedural macros
-  - [ ] 23.2.7. Create example file: `examples/macros/procedural.mx`
+  - [ ] 23.2.7. Create example file: `examples/macros/procedural.rb`
   - [ ] 23.2.8. Create test file: `tests/procedural_macro_tests.rs`
 
 - [ ] 23.3. Compile-Time Evaluation
@@ -1778,7 +1778,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 23.3.4. Add compile-time assertions (`static_assert`)
   - [ ] 23.3.5. Implement const generics (type-level integers)
   - [ ] 23.3.6. Write tests for compile-time features
-  - [ ] 23.3.7. Create example file: `examples/comptime/const_eval.mx`
+  - [ ] 23.3.7. Create example file: `examples/comptime/const_eval.rb`
   - [ ] 23.3.8. Create test file: `tests/comptime_tests.rs`
 
 ### 24. Functional Programming Features
@@ -1790,7 +1790,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 24.1.4. Implement pipe operator (`|>`)
   - [ ] 24.1.5. Add reverse pipe operator (`<|`)
   - [ ] 24.1.6. Write tests for function features
-  - [ ] 24.1.7. Create example file: `examples/functional/function_composition.mx`
+  - [ ] 24.1.7. Create example file: `examples/functional/function_composition.rb`
   - [ ] 24.1.8. Create test file: `tests/functional_features_tests.rs`
 
 - [ ] 24.2. Algebraic Data Types
@@ -1802,7 +1802,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 24.2.6. Implement `Result<T, E>` type (Ok/Err) - full implementation
   - [ ] 24.2.7. Add question mark operator (`?`) for error propagation
   - [ ] 24.2.8. Write comprehensive tests for ADTs
-  - [ ] 24.2.9. Create example file: `examples/functional/adt.mx`
+  - [ ] 24.2.9. Create example file: `examples/functional/adt.rb`
   - [ ] 24.2.10. Create test file: `tests/adt_tests.rs`
 
 - [ ] 24.3. Immutable Data Structures
@@ -1812,7 +1812,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 24.3.4. Add structural sharing for efficiency
   - [ ] 24.3.5. Implement transients for batch updates
   - [ ] 24.3.6. Write tests for persistent structures
-  - [ ] 24.3.7. Create example file: `examples/functional/immutable.mx`
+  - [ ] 24.3.7. Create example file: `examples/functional/immutable.rb`
   - [ ] 24.3.8. Create test file: `tests/persistent_structures_tests.rs`
 
 - [ ] 24.4. Lenses and Optics
@@ -1821,7 +1821,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 24.4.3. Implement traversal abstraction
   - [ ] 24.4.4. Add lens composition
   - [ ] 24.4.5. Write tests for optics
-  - [ ] 24.4.6. Create example file: `examples/functional/lenses.mx`
+  - [ ] 24.4.6. Create example file: `examples/functional/lenses.rb`
   - [ ] 24.4.7. Create test file: `tests/optics_tests.rs`
 
 ### 25. WebAssembly Support
@@ -1833,7 +1833,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 25.1.4. Add Wasm memory management
   - [ ] 25.1.5. Optimize for Wasm execution
   - [ ] 25.1.6. Write tests for Wasm compilation
-  - [ ] 25.1.7. Create example file: `examples/wasm/basic.mx`
+  - [ ] 25.1.7. Create example file: `examples/wasm/basic.rb`
   - [ ] 25.1.8. Create test file: `tests/wasm_compilation_tests.rs`
 
 - [ ] 25.2. WASI Support
@@ -1842,7 +1842,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 25.2.3. Add environment variable access
   - [ ] 25.2.4. Add command-line argument handling
   - [ ] 25.2.5. Write tests for WASI
-  - [ ] 25.2.6. Create example file: `examples/wasm/wasi.mx`
+  - [ ] 25.2.6. Create example file: `examples/wasm/wasi.rb`
   - [ ] 25.2.7. Create test file: `tests/wasi_tests.rs`
 
 - [ ] 25.3. Browser Integration
@@ -1851,7 +1851,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 25.3.3. Add event handling for browser
   - [ ] 25.3.4. Implement fetch API wrapper
   - [ ] 25.3.5. Write tests for browser integration
-  - [ ] 25.3.6. Create example file: `examples/wasm/browser_app.mx`
+  - [ ] 25.3.6. Create example file: `examples/wasm/browser_app.rb`
   - [ ] 25.3.7. Create test file: `tests/browser_integration_tests.rs`
 
 ### 26. Security Features
@@ -1863,7 +1863,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 26.1.4. Add filesystem sandboxing
   - [ ] 26.1.5. Implement network isolation
   - [ ] 26.1.6. Write tests for sandboxing
-  - [ ] 26.1.7. Create example file: `examples/security/sandbox.mx`
+  - [ ] 26.1.7. Create example file: `examples/security/sandbox.rb`
   - [ ] 26.1.8. Create test file: `tests/sandbox_tests.rs`
 
 - [ ] 26.2. Taint Checking
@@ -1872,7 +1872,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 26.2.3. Implement sanitization functions
   - [ ] 26.2.4. Add taint checking at dangerous operations
   - [ ] 26.2.5. Write tests for taint checking
-  - [ ] 26.2.6. Create example file: `examples/security/taint_checking.mx`
+  - [ ] 26.2.6. Create example file: `examples/security/taint_checking.rb`
   - [ ] 26.2.7. Create test file: `tests/taint_checking_tests.rs`
 
 - [ ] 26.3. Security Policies
@@ -1881,7 +1881,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 26.3.3. Implement safe mode (restricted features)
   - [ ] 26.3.4. Add security audit logging
   - [ ] 26.3.5. Write tests for security policies
-  - [ ] 26.3.6. Create example file: `examples/security/policies.mx`
+  - [ ] 26.3.6. Create example file: `examples/security/policies.rb`
   - [ ] 26.3.7. Create test file: `tests/security_policy_tests.rs`
 
 ### 27. Advanced Tooling
@@ -1893,7 +1893,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 27.1.4. Add call graph generation
   - [ ] 27.1.5. Implement profile-guided optimization
   - [ ] 27.1.6. Write tests for profiler
-  - [ ] 27.1.7. Create example file: `examples/profiling/cpu_profile.mx`
+  - [ ] 27.1.7. Create example file: `examples/profiling/cpu_profile.rb`
   - [ ] 27.1.8. Create test file: `tests/profiler_tests.rs`
 
 - [ ] 27.2. Memory Profiler
@@ -1903,7 +1903,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 27.2.4. Implement leak detector
   - [ ] 27.2.5. Add memory timeline visualization
   - [ ] 27.2.6. Write tests for memory profiler
-  - [ ] 27.2.7. Create example file: `examples/profiling/memory_profile.mx`
+  - [ ] 27.2.7. Create example file: `examples/profiling/memory_profile.rb`
   - [ ] 27.2.8. Create test file: `tests/memory_profiler_tests.rs`
 
 - [ ] 27.3. Static Analysis Tools
@@ -1922,7 +1922,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 28.1.2. Generate C header files from Metorex code
   - [ ] 28.1.3. Add struct layout control (`#[repr(C)]`)
   - [ ] 28.1.4. Write tests for C ABI
-  - [ ] 28.1.5. Create example file: `examples/interop/c_abi.mx`
+  - [ ] 28.1.5. Create example file: `examples/interop/c_abi.rb`
   - [ ] 28.1.6. Create test file: `tests/c_abi_tests.rs`
 
 - [ ] 28.2. Language Bridges
@@ -1931,7 +1931,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 28.2.3. Implement embedding API (use Metorex from other languages)
   - [ ] 28.2.4. Generate bindings for host languages
   - [ ] 28.2.5. Write tests for language bridges
-  - [ ] 28.2.6. Create example file: `examples/interop/python_bridge.mx`
+  - [ ] 28.2.6. Create example file: `examples/interop/python_bridge.rb`
   - [ ] 28.2.7. Create test file: `tests/language_bridge_tests.rs`
 
 - [ ] 28.3. Protocol Support
@@ -1939,7 +1939,7 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 28.3.2. Add GraphQL support
   - [ ] 28.3.3. Implement message queue support (AMQP, MQTT)
   - [ ] 28.3.4. Write tests for protocols
-  - [ ] 28.3.5. Create example file: `examples/interop/grpc.mx`
+  - [ ] 28.3.5. Create example file: `examples/interop/grpc.rb`
   - [ ] 28.3.6. Create test file: `tests/protocol_tests.rs`
 
 ### 29. Language Specification
@@ -2005,7 +2005,7 @@ Goal: Add an AOT transpilation pipeline that converts supported Metorex programs
   - [ ] 31.2.3. Implement AST-to-IR lowering for core expressions and statements
   - [ ] 31.2.4. Implement IR validation pass with clear diagnostics
   - [ ] 31.2.5. Add unit tests for lowering and IR validation
-  - [ ] 31.2.6. Create example file: `examples/transpiler/pipeline_demo.mx`
+  - [ ] 31.2.6. Create example file: `examples/transpiler/pipeline_demo.rb`
 
 - [ ] 31.3. Rust Code Generation
   - [ ] 31.3.1. Implement Rust code generation for literals, arithmetic, and variable bindings
@@ -2013,7 +2013,7 @@ Goal: Add an AOT transpilation pipeline that converts supported Metorex programs
   - [ ] 31.3.3. Implement control flow code generation (`if`, `while`, `for`, `case` subset)
   - [ ] 31.3.4. Generate a compilable Rust project layout for transpiled output
   - [ ] 31.3.5. Add golden tests for generated Rust source stability
-  - [ ] 31.3.6. Create example file: `examples/transpiler/basic_codegen.mx`
+  - [ ] 31.3.6. Create example file: `examples/transpiler/basic_codegen.rb`
 
 - [ ] 31.4. Runtime Support Layer
   - [ ] 31.4.1. Create a minimal runtime crate for dynamic object behavior used by generated code

@@ -152,12 +152,12 @@ fn test_parse_file_syntax_error_invalid_class() {
 #[test]
 fn test_parse_file_filename_in_error() {
     let source = "def foo(x\n  puts x\nend";
-    let result = parse_file(source, "my_special_file.mx");
+    let result = parse_file(source, "my_special_file.rb");
 
     assert!(result.is_err());
     let error = result.unwrap_err();
     let error_msg = error.to_string();
-    assert!(error_msg.contains("my_special_file.mx"));
+    assert!(error_msg.contains("my_special_file.rb"));
 }
 
 #[test]

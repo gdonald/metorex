@@ -7,8 +7,8 @@ fn test_source_location_display() {
     let loc = SourceLocation::new(10, 5, 120);
     assert_eq!(loc.to_string(), "10:5");
 
-    let loc_with_file = SourceLocation::with_filename(10, 5, 120, "test.mx".to_string());
-    assert_eq!(loc_with_file.to_string(), "test.mx:10:5");
+    let loc_with_file = SourceLocation::with_filename(10, 5, 120, "test.rb".to_string());
+    assert_eq!(loc_with_file.to_string(), "test.rb:10:5");
 }
 
 #[test]

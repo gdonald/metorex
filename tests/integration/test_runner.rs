@@ -1,6 +1,6 @@
 // Test runner for Metorex example files
 //
-// This test harness executes .mx example files and validates their output.
+// This test harness executes .rb example files and validates their output.
 // Currently, it validates file structure until the interpreter is implemented.
 
 use std::fs;
@@ -41,7 +41,7 @@ pub enum ExpectedOutcome {
 
 /// Test case for a Metorex example file
 pub struct TestCase {
-    /// Path to the .mx file relative to project root
+    /// Path to the .rb file relative to project root
     pub file_path: String,
     /// Expected outcome when running this file
     #[allow(dead_code)]

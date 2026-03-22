@@ -56,7 +56,7 @@ fn vm_initializes_with_no_current_file() {
 #[test]
 fn vm_can_set_and_get_current_file() {
     let mut vm = VirtualMachine::new();
-    let test_path = PathBuf::from("/tmp/test.mx");
+    let test_path = PathBuf::from("/tmp/test.rb");
 
     vm.set_current_file(test_path.clone());
     assert_eq!(vm.get_current_file(), Some(&test_path));
@@ -65,8 +65,8 @@ fn vm_can_set_and_get_current_file() {
 #[test]
 fn vm_can_update_current_file() {
     let mut vm = VirtualMachine::new();
-    let path1 = PathBuf::from("/tmp/test1.mx");
-    let path2 = PathBuf::from("/tmp/test2.mx");
+    let path1 = PathBuf::from("/tmp/test1.rb");
+    let path2 = PathBuf::from("/tmp/test2.rb");
 
     vm.set_current_file(path1.clone());
     assert_eq!(vm.get_current_file(), Some(&path1));
@@ -78,14 +78,14 @@ fn vm_can_update_current_file() {
 #[test]
 fn vm_initializes_with_no_loaded_files() {
     let vm = VirtualMachine::new();
-    let test_path = PathBuf::from("/tmp/test.mx");
+    let test_path = PathBuf::from("/tmp/test.rb");
     assert!(!vm.is_file_loaded(&test_path));
 }
 
 #[test]
 fn vm_can_mark_file_as_loaded() {
     let mut vm = VirtualMachine::new();
-    let test_path = PathBuf::from("/tmp/test.mx");
+    let test_path = PathBuf::from("/tmp/test.rb");
 
     assert!(!vm.is_file_loaded(&test_path));
     vm.mark_file_loaded(test_path.clone());
@@ -95,9 +95,9 @@ fn vm_can_mark_file_as_loaded() {
 #[test]
 fn vm_tracks_multiple_loaded_files() {
     let mut vm = VirtualMachine::new();
-    let path1 = PathBuf::from("/tmp/test1.mx");
-    let path2 = PathBuf::from("/tmp/test2.mx");
-    let path3 = PathBuf::from("/tmp/test3.mx");
+    let path1 = PathBuf::from("/tmp/test1.rb");
+    let path2 = PathBuf::from("/tmp/test2.rb");
+    let path3 = PathBuf::from("/tmp/test3.rb");
 
     vm.mark_file_loaded(path1.clone());
     vm.mark_file_loaded(path2.clone());
@@ -110,7 +110,7 @@ fn vm_tracks_multiple_loaded_files() {
 #[test]
 fn vm_mark_file_loaded_is_idempotent() {
     let mut vm = VirtualMachine::new();
-    let test_path = PathBuf::from("/tmp/test.mx");
+    let test_path = PathBuf::from("/tmp/test.rb");
 
     vm.mark_file_loaded(test_path.clone());
     vm.mark_file_loaded(test_path.clone());
@@ -170,7 +170,7 @@ fn execute_file_restores_current_file_path() {
     let mut vm = VirtualMachine::new();
 
     // Set an initial current file
-    let initial_path = PathBuf::from("/tmp/initial.mx");
+    let initial_path = PathBuf::from("/tmp/initial.rb");
     vm.set_current_file(initial_path.clone());
 
     // Execute another file
