@@ -29,6 +29,8 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("nil", Object::Nil);
     globals.set("true", Object::Bool(true));
     globals.set("false", Object::Bool(false));
+    // block_given? defaults to false at global scope (no block context)
+    globals.set("block_given?", Object::Bool(false));
 }
 
 /// Register native functions in the global registry.

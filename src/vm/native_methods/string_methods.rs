@@ -336,28 +336,33 @@ impl VirtualMachine {
                 }
             }
             "each_char" => {
-                // each_char takes a block parameter
-                if arguments.len() != 1 {
+                // each_char takes a trailing block (via pending_block)
+                if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "each_char requires a block",
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
                 if let Object::String(string_value) = receiver {
-                    let block = match &arguments[0] {
-                        Object::Block(block) => block.clone(),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Block",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-
                     for ch in string_value.chars() {
                         let char_str = Object::string(ch.to_string());
                         let args = vec![char_str];

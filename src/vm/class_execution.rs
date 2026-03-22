@@ -57,7 +57,7 @@ impl VirtualMachine {
                     // Create a Method object
                     let param_names: Vec<String> = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword)
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
                         .map(|p| p.name.clone())
                         .collect();
                     let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> =
@@ -66,8 +66,13 @@ impl VirtualMachine {
                             .filter(|p| p.is_named_keyword)
                             .map(|p| (p.name.clone(), p.default_value.clone()))
                             .collect();
+                    let block_parameter = parameters
+                        .iter()
+                        .find(|p| p.is_block)
+                        .map(|p| p.name.clone());
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.keyword_parameters = keyword_parameters;
+                    m.block_parameter = block_parameter;
                     let method = Rc::new(m);
                     class.define_method(method_name, method);
                 }
@@ -260,10 +265,10 @@ impl VirtualMachine {
         body: &[Statement],
         position: crate::lexer::Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // Extract positional parameter names (exclude named keyword params)
+        // Extract positional parameter names (exclude named keyword and block params)
         let param_names: Vec<String> = parameters
             .iter()
-            .filter(|p| !p.is_named_keyword)
+            .filter(|p| !p.is_named_keyword && !p.is_block)
             .map(|p| p.name.clone())
             .collect();
 
@@ -273,6 +278,12 @@ impl VirtualMachine {
             .filter(|p| p.is_named_keyword)
             .map(|p| (p.name.clone(), p.default_value.clone()))
             .collect();
+
+        // Extract block parameter name
+        let block_parameter = parameters
+            .iter()
+            .find(|p| p.is_block)
+            .map(|p| p.name.clone());
 
         // Create source location from position
         let source_location =
@@ -286,6 +297,7 @@ impl VirtualMachine {
             source_location,
         );
         function.keyword_parameters = keyword_parameters;
+        function.block_parameter = block_parameter;
         let function = Rc::new(function);
 
         // Register the function in the environment
@@ -314,7 +326,7 @@ impl VirtualMachine {
                 } => {
                     let param_names: Vec<String> = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword)
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
                         .map(|p| p.name.clone())
                         .collect();
                     let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> =
@@ -323,8 +335,13 @@ impl VirtualMachine {
                             .filter(|p| p.is_named_keyword)
                             .map(|p| (p.name.clone(), p.default_value.clone()))
                             .collect();
+                    let block_parameter = parameters
+                        .iter()
+                        .find(|p| p.is_block)
+                        .map(|p| p.name.clone());
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.keyword_parameters = keyword_parameters;
+                    m.block_parameter = block_parameter;
                     module.define_method(method_name, Rc::new(m));
                 }
                 _ => {

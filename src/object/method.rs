@@ -11,11 +11,13 @@ use super::Object;
 pub struct Method {
     /// Name of the method
     pub name: String,
-    /// Positional parameter names
+    /// Positional parameter names (excludes &block and keyword params)
     pub parameters: Vec<String>,
     /// Named keyword parameters: (name, optional_default_expression)
     /// e.g., `def f(name:, age: 10)` → [("name", None), ("age", Some(IntLiteral(10)))]
     pub keyword_parameters: Vec<(String, Option<Expression>)>,
+    /// Optional block parameter name (from `&block` syntax)
+    pub block_parameter: Option<String>,
     /// Method body (AST statements)
     pub body: Vec<Statement>,
     /// Optional receiver (for bound methods)
@@ -33,6 +35,7 @@ impl Method {
             name,
             parameters,
             keyword_parameters: vec![],
+            block_parameter: None,
             body,
             receiver: None,
             owner: None,
@@ -51,6 +54,7 @@ impl Method {
             name,
             parameters,
             keyword_parameters: vec![],
+            block_parameter: None,
             body,
             receiver: None,
             owner: Some(owner),
@@ -69,6 +73,7 @@ impl Method {
             name,
             parameters,
             keyword_parameters: vec![],
+            block_parameter: None,
             body,
             receiver: None,
             owner: None,
@@ -88,6 +93,7 @@ impl Method {
             name,
             parameters,
             keyword_parameters: vec![],
+            block_parameter: None,
             body,
             receiver: None,
             owner: Some(owner),
@@ -101,6 +107,7 @@ impl Method {
             name: self.name.clone(),
             parameters: self.parameters.clone(),
             keyword_parameters: self.keyword_parameters.clone(),
+            block_parameter: self.block_parameter.clone(),
             body: self.body.clone(),
             receiver: Some(Box::new(receiver)),
             owner: self.owner.clone(),

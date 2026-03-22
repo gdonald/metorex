@@ -351,7 +351,7 @@ def times(n, &block)
 end
 
 count = 0
-times(3, lambda || count = count + 1 end)
+times(3) { count = count + 1 }
 count
 "#;
 

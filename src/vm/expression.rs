@@ -17,7 +17,7 @@ use std::rc::Rc;
 
 use super::core::VirtualMachine;
 use super::errors::{index_out_of_bounds_error, undefined_dictionary_key_error};
-use super::utils::{is_truthy, object_to_dict_key, position_to_location};
+use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
     /// Evaluate string interpolation parts into a single owned string.
@@ -178,10 +178,19 @@ impl VirtualMachine {
                     self.environment_mut().pop_scope();
                     return Ok(value);
                 }
-                flow => {
+                ControlFlow::Exception {
+                    exception,
+                    position,
+                } => {
                     self.environment_mut().pop_scope();
-                    // Propagate breaks/continues/exceptions by re-executing (not ideal but safe)
-                    let _ = flow;
+                    return Err(MetorexError::UncaughtException {
+                        exception: exception.clone(),
+                        location: position_to_location(position),
+                        message: format_exception(&exception),
+                    });
+                }
+                _ => {
+                    // Break/Continue — fall through to pop_scope at end of function
                     break;
                 }
             }

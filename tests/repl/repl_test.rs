@@ -229,8 +229,7 @@ fn test_repl_persistent_state() {
 
 #[test]
 fn test_repl_method_chaining() {
-    let result =
-        eval_expr("[1, 2, 3, 4].map(lambda do |x| x * 2 end).filter(lambda do |x| x > 4 end)");
+    let result = eval_expr("[1, 2, 3, 4].map { |x| x * 2 }.filter { |x| x > 4 }");
     assert!(result.is_ok());
     match result.unwrap() {
         Some(Object::Array(arr)) => {

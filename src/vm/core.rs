@@ -25,6 +25,9 @@ pub struct VirtualMachine {
     builtins: BuiltinClasses,
     current_file: Option<PathBuf>,
     loaded_files: HashSet<PathBuf>,
+    /// Trailing block passed to the current call (e.g., `foo() do |x| ... end`).
+    /// Set before invoke_method/invoke_callable; taken at method body entry.
+    pub(crate) pending_block: Option<Object>,
 }
 
 impl VirtualMachine {
@@ -50,6 +53,7 @@ impl VirtualMachine {
             builtins,
             current_file: None,
             loaded_files: HashSet::new(),
+            pending_block: None,
         }
     }
 
@@ -429,13 +433,16 @@ impl VirtualMachine {
             Expression::Call {
                 callee,
                 arguments,
+                trailing_block,
                 position,
-                ..
             } => {
                 let callable = self.evaluate_expression(callee)?;
                 let mut evaluated_args = Vec::with_capacity(arguments.len());
                 for argument in arguments {
                     evaluated_args.push(self.evaluate_expression(argument)?);
+                }
+                if let Some(block_expr) = trailing_block {
+                    self.pending_block = Some(self.evaluate_expression(block_expr)?);
                 }
                 self.invoke_callable(callable, evaluated_args, *position)
             }

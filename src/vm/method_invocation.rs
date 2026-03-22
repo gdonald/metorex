@@ -305,6 +305,9 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         self.environment_mut().push_scope();
 
+        // Take the pending block now so nested calls don't see it.
+        let block = self.pending_block.take();
+
         let result = (|| -> Result<Object, MetorexError> {
             self.environment_mut()
                 .define("self".to_string(), self_value.clone());
@@ -315,6 +318,19 @@ impl VirtualMachine {
             }
             self.bind_keyword_params(&method.keyword_parameters, kwargs)?;
 
+            // Bind the block: define block_given? as a Bool, __block__ for internal use,
+            // and the named &block parameter if the method declared one.
+            self.environment_mut()
+                .define("block_given?".to_string(), Object::Bool(block.is_some()));
+            if let Some(block_value) = block {
+                self.environment_mut()
+                    .define("__block__".to_string(), block_value.clone());
+                if let Some(block_param) = &method.block_parameter {
+                    self.environment_mut()
+                        .define(block_param.clone(), block_value);
+                }
+            }
+
             // Execute all statements, tracking the last expression value
             let body = method.body();
             let mut last_value = Object::Nil;
@@ -322,10 +338,43 @@ impl VirtualMachine {
             for (i, statement) in body.iter().enumerate() {
                 let is_last = i == body.len() - 1;
 
-                // If this is the last statement and it's an expression, capture its value
-                if is_last && let Statement::Expression { expression, .. } = statement {
-                    last_value = self.evaluate_expression(expression)?;
-                    continue;
+                // If this is the last statement, capture its value
+                if is_last {
+                    match statement {
+                        Statement::Expression { expression, .. } => {
+                            last_value = self.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        Statement::If {
+                            condition,
+                            then_branch,
+                            elsif_branches,
+                            else_branch,
+                            ..
+                        } => {
+                            last_value = self.evaluate_if_expression(
+                                condition,
+                                then_branch,
+                                elsif_branches,
+                                else_branch,
+                            )?;
+                            continue;
+                        }
+                        Statement::Unless {
+                            condition,
+                            then_branch,
+                            else_branch,
+                            ..
+                        } => {
+                            last_value = self.evaluate_unless_expression(
+                                condition,
+                                then_branch,
+                                else_branch,
+                            )?;
+                            continue;
+                        }
+                        _ => {}
+                    }
                 }
 
                 match self.execute_statement(statement)? {
@@ -365,6 +414,9 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         self.environment_mut().push_scope();
 
+        // Take the pending block now so nested calls don't see it.
+        let block = self.pending_block.take();
+
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
             let (positional, kwargs) = split_keyword_args(arguments);
@@ -373,6 +425,19 @@ impl VirtualMachine {
             }
             self.bind_keyword_params(&function.keyword_parameters, kwargs)?;
 
+            // Bind the block: define block_given? as a Bool, __block__ for internal use,
+            // and the named &block parameter if the function declared one.
+            self.environment_mut()
+                .define("block_given?".to_string(), Object::Bool(block.is_some()));
+            if let Some(block_value) = block {
+                self.environment_mut()
+                    .define("__block__".to_string(), block_value.clone());
+                if let Some(block_param) = &function.block_parameter {
+                    self.environment_mut()
+                        .define(block_param.clone(), block_value);
+                }
+            }
+
             // Execute all statements, tracking the last expression value
             let body = function.body();
             let mut last_value = Object::Nil;
@@ -380,10 +445,43 @@ impl VirtualMachine {
             for (i, statement) in body.iter().enumerate() {
                 let is_last = i == body.len() - 1;
 
-                // If this is the last statement and it's an expression, capture its value
-                if is_last && let Statement::Expression { expression, .. } = statement {
-                    last_value = self.evaluate_expression(expression)?;
-                    continue;
+                // If this is the last statement, capture its value
+                if is_last {
+                    match statement {
+                        Statement::Expression { expression, .. } => {
+                            last_value = self.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        Statement::If {
+                            condition,
+                            then_branch,
+                            elsif_branches,
+                            else_branch,
+                            ..
+                        } => {
+                            last_value = self.evaluate_if_expression(
+                                condition,
+                                then_branch,
+                                elsif_branches,
+                                else_branch,
+                            )?;
+                            continue;
+                        }
+                        Statement::Unless {
+                            condition,
+                            then_branch,
+                            else_branch,
+                            ..
+                        } => {
+                            last_value = self.evaluate_unless_expression(
+                                condition,
+                                then_branch,
+                                else_branch,
+                            )?;
+                            continue;
+                        }
+                        _ => {}
+                    }
                 }
 
                 match self.execute_statement(statement)? {

@@ -40,7 +40,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Code-as-Object**: AST nodes are first-class objects manipulable at runtime
 - **Runtime Method Definition**: `define_method` for dynamic behavior
 - **AST Reflection**: Inspect and modify code structure at runtime
-- **Block Execution**: Blocks are objects with `.call()` method
+- **Block Execution**: Blocks are objects with `.call()` method; trailing `do...end` and `{...}` blocks captured implicitly via `&block` parameter with `block_given?` support
 - **DSL Construction**: Build domain-specific languages naturally
 
 ### Standard Library

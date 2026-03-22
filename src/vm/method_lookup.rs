@@ -28,10 +28,10 @@ impl VirtualMachine {
             arguments.push(self.evaluate_expression(argument)?);
         }
 
-        // If there's a trailing block, evaluate it and append to arguments
+        // If there's a trailing block, evaluate it and store as pending_block.
+        // Native methods (each, map, etc.) will take it from self.pending_block.
         if let Some(block_expr) = trailing_block {
-            let block_obj = self.evaluate_expression(block_expr)?;
-            arguments.push(block_obj);
+            self.pending_block = Some(self.evaluate_expression(block_expr)?);
         }
 
         match self.lookup_method(&receiver, method_name) {

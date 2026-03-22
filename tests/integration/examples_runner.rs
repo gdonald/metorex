@@ -173,6 +173,33 @@ fn test_parser_pattern_matching_execution() {
 }
 
 #[test]
+fn test_metaprogramming_implicit_blocks_execution() {
+    let expected = r#"Howdy, Alice!
+Hey, Bob!
+Hello, Charlie!
+Iteration: 0
+Iteration: 1
+Iteration: 2
+no block
+got a block
+10
+20
+1
+4
+9
+[1, 4, 9, 16]
+[2, 4, 6]
+1
+2
+3
+4
+5
+"#;
+    let output = run_example("metaprogramming/implicit_blocks.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_blocks_as_objects_execution() {
     let expected = r#"=== Blocks as First-Class Objects ===
 
@@ -604,7 +631,7 @@ simple_func
 nil
 Object
 Object
-<Binding with 22 vars>
+<Binding with 23 vars>
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");

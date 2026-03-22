@@ -20,29 +20,36 @@ impl VirtualMachine {
     ) -> Result<Option<Object>, MetorexError> {
         match method_name {
             "each" => {
-                // each takes a block parameter
-                if arguments.len() != 1 {
+                // each takes a trailing block (via pending_block)
+                if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let pending = self.pending_block.take();
                 if let Object::Range {
                     start,
                     end,
                     exclusive,
                 } = receiver
                 {
-                    let block = match &arguments[0] {
-                        Object::Block(block) => block.clone(),
-                        _ => {
+                    let block = match pending {
+                        Some(Object::Block(b)) => b,
+                        Some(other) => {
                             return Err(method_argument_type_error(
                                 method_name,
                                 "Block",
-                                &arguments[0],
+                                &other,
                                 position,
+                            ));
+                        }
+                        None => {
+                            return Err(MetorexError::runtime_error(
+                                "each requires a block",
+                                position_to_location(position),
                             ));
                         }
                     };
@@ -154,29 +161,36 @@ impl VirtualMachine {
                 }
             }
             "map" => {
-                // map takes a block parameter
-                if arguments.len() != 1 {
+                // map takes a trailing block (via pending_block)
+                if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let pending = self.pending_block.take();
                 if let Object::Range {
                     start,
                     end,
                     exclusive,
                 } = receiver
                 {
-                    let block = match &arguments[0] {
-                        Object::Block(block) => block.clone(),
-                        _ => {
+                    let block = match pending {
+                        Some(Object::Block(b)) => b,
+                        Some(other) => {
                             return Err(method_argument_type_error(
                                 method_name,
                                 "Block",
-                                &arguments[0],
+                                &other,
                                 position,
+                            ));
+                        }
+                        None => {
+                            return Err(MetorexError::runtime_error(
+                                "map requires a block",
+                                position_to_location(position),
                             ));
                         }
                     };

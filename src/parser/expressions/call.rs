@@ -100,6 +100,28 @@ impl Parser {
                 } else {
                     break;
                 }
+            } else if matches!(expr, Expression::Identifier { .. })
+                && !matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_))
+            {
+                // Check for trailing-block-only call: foo { block } or foo do block end
+                // (no arguments, but a trailing block on the same line)
+                self.skip_whitespace();
+                if self.check(&[TokenKind::LBrace]) || self.check(&[TokenKind::Do]) {
+                    let position = expr.position();
+                    let trailing_block = if self.check(&[TokenKind::Do]) {
+                        Some(Box::new(self.parse_block()?))
+                    } else {
+                        Some(Box::new(self.parse_brace_block()?))
+                    };
+                    expr = Expression::Call {
+                        callee: Box::new(expr),
+                        arguments: vec![],
+                        trailing_block,
+                        position,
+                    };
+                } else {
+                    break;
+                }
             } else {
                 break;
             }
@@ -301,10 +323,11 @@ impl Parser {
             keyword_pairs.push((name, value));
         } else {
             arguments.push(self.parse_expression()?);
-            self.skip_whitespace();
 
             // After parsing the first positional argument, check if we see a colon
-            // (which would indicate dict syntax, not a function call)
+            // (which would indicate dict syntax, not a function call).
+            // Do NOT call skip_whitespace() here — consuming a newline would make the
+            // next line's '[' look like array indexing on this call expression.
             if self.check(&[TokenKind::Colon]) {
                 return Err(self
                     .error_at_current("Expected function call but found dictionary-like syntax"));
@@ -366,10 +389,19 @@ impl Parser {
             });
         }
 
+        // Check for trailing block (both do...end and {...} syntax)
+        let trailing_block = if self.check(&[TokenKind::Do]) {
+            Some(Box::new(self.parse_block()?))
+        } else if self.check(&[TokenKind::LBrace]) {
+            Some(Box::new(self.parse_brace_block()?))
+        } else {
+            None
+        };
+
         Ok(Expression::Call {
             callee: Box::new(callee),
             arguments,
-            trailing_block: None,
+            trailing_block,
             position,
         })
     }

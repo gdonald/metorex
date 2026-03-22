@@ -81,28 +81,33 @@ impl VirtualMachine {
                 )?))
             }
             "each" => {
-                // each takes a block parameter
-                if arguments.len() != 1 {
+                // each takes a trailing block (via pending_block)
+                if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "each requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
                 if let Object::Array(array_rc) = receiver {
-                    let block = match &arguments[0] {
-                        Object::Block(block) => block.clone(),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Block",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-
                     let array = array_rc.borrow();
                     for element in array.iter() {
                         let args = vec![element.clone()];
@@ -137,28 +142,33 @@ impl VirtualMachine {
                 }
             }
             "map" => {
-                // map takes a block parameter
-                if arguments.len() != 1 {
+                // map takes a trailing block (via pending_block)
+                if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "map requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
                 if let Object::Array(array_rc) = receiver {
-                    let block = match &arguments[0] {
-                        Object::Block(block) => block.clone(),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Block",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-
                     let array = array_rc.borrow();
                     let mut results = Vec::new();
                     for element in array.iter() {
@@ -172,34 +182,38 @@ impl VirtualMachine {
                 }
             }
             "select" | "filter" => {
-                // select/filter takes a block parameter that returns a boolean
-                if arguments.len() != 1 {
+                // select/filter takes a trailing block (via pending_block)
+                if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "select requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
                 if let Object::Array(array_rc) = receiver {
-                    let block = match &arguments[0] {
-                        Object::Block(block) => block.clone(),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Block",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-
                     let array = array_rc.borrow();
                     let mut results = Vec::new();
                     for element in array.iter() {
                         let args = vec![element.clone()];
                         let value = self.execute_block_body(&block, args)?;
-                        // Check if the result is truthy
                         let is_truthy = !matches!(value, Object::Bool(false) | Object::Nil);
                         if is_truthy {
                             results.push(element.clone());
@@ -211,46 +225,40 @@ impl VirtualMachine {
                 }
             }
             "reduce" => {
-                // reduce takes a block parameter with 2 arguments (accumulator, element)
-                // and optionally an initial value as the first argument
-                if arguments.is_empty() || arguments.len() > 2 {
+                // reduce takes a trailing block (via pending_block) and an optional initial value
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        0,
                         arguments.len(),
                         position,
                     ));
                 }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "reduce requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
                 if let Object::Array(array_rc) = receiver {
                     let array = array_rc.borrow();
 
-                    // Check if we have an initial value
-                    let (block, initial_value, start_index) = if arguments.len() == 2 {
-                        let block = match &arguments[1] {
-                            Object::Block(block) => block.clone(),
-                            _ => {
-                                return Err(method_argument_type_error(
-                                    method_name,
-                                    "Block",
-                                    &arguments[1],
-                                    position,
-                                ));
-                            }
-                        };
-                        (block, Some(arguments[0].clone()), 0)
+                    // Optional initial value is the first positional argument
+                    let (initial_value, start_index) = if arguments.len() == 1 {
+                        (Some(arguments[0].clone()), 0)
                     } else {
-                        let block = match &arguments[0] {
-                            Object::Block(block) => block.clone(),
-                            _ => {
-                                return Err(method_argument_type_error(
-                                    method_name,
-                                    "Block",
-                                    &arguments[0],
-                                    position,
-                                ));
-                            }
-                        };
-                        (block, None, 1)
+                        (None, 1)
                     };
 
                     if array.is_empty() {
