@@ -276,18 +276,18 @@ Convert the current `case` statement implementation to also work as an expressio
 ## Phase 6: Integration and Examples
 
 ### 6.1 Create Example Files
-- [ ] 6.1.1 Create `tests/_examples/control-flow/case_expression_basic.mx`
+- [ ] 6.1.1 Create `tests/_examples/control-flow/case_expression_basic.rb`
   - [ ] 6.1.1.1 Show basic case expression with assignment
   - [ ] 6.1.1.2 Show inline vs multi-line syntax
   - [ ] 6.1.1.3 Show use in method arguments
-- [ ] 6.1.2 Create `tests/_examples/control-flow/case_expression_patterns.mx`
+- [ ] 6.1.2 Create `tests/_examples/control-flow/case_expression_patterns.rb`
   - [ ] 6.1.2.1 Demonstrate all pattern types
   - [ ] 6.1.2.2 Show array destructuring examples
   - [ ] 6.1.2.3 Show object destructuring examples
-- [ ] 6.1.3 Create `tests/_examples/control-flow/case_expression_guards.mx`
+- [ ] 6.1.3 Create `tests/_examples/control-flow/case_expression_guards.rb`
   - [ ] 6.1.3.1 Show guard clause usage
   - [ ] 6.1.3.2 Show guards with pattern bindings
-- [ ] 6.1.4 Create `tests/_examples/control-flow/case_expression_nested.mx`
+- [ ] 6.1.4 Create `tests/_examples/control-flow/case_expression_nested.rb`
   - [ ] 6.1.4.1 Show nested case expressions
   - [ ] 6.1.4.2 Show complex expression contexts
 

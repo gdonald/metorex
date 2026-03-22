@@ -169,19 +169,19 @@ This document breaks down the implementation of `require_relative` into small, g
 ### 6.1 Create Example Files
 - [ ] 6.1.1 Create directory [tests/_examples/require/](tests/_examples/require/)
 - [ ] 6.1.2 Create subdirectory [tests/_examples/require/lib/](tests/_examples/require/lib/)
-- [ ] 6.1.3 Create [tests/_examples/require/lib/helper.mx](tests/_examples/require/lib/helper.mx) with a simple function
-- [ ] 6.1.4 Create [tests/_examples/require/basic.mx](tests/_examples/require/basic.mx) using `require_relative "lib/helper"`
+- [ ] 6.1.3 Create [tests/_examples/require/lib/helper.rb](tests/_examples/require/lib/helper.rb) with a simple function
+- [ ] 6.1.4 Create [tests/_examples/require/basic.rb](tests/_examples/require/basic.rb) using `require_relative "lib/helper"`
 - [ ] 6.1.5 Add test case in examples_runner.rs for basic.mx with expected output
 
 ### 6.2 Create Deduplication Example
-- [ ] 6.2.1 Create [tests/_examples/require/lib/counter.mx](tests/_examples/require/lib/counter.mx) that prints on load
-- [ ] 6.2.2 Create [tests/_examples/require/deduplication.mx](tests/_examples/require/deduplication.mx) requiring counter.mx twice
+- [ ] 6.2.1 Create [tests/_examples/require/lib/counter.rb](tests/_examples/require/lib/counter.rb) that prints on load
+- [ ] 6.2.2 Create [tests/_examples/require/deduplication.rb](tests/_examples/require/deduplication.rb) requiring counter.rb twice
 - [ ] 6.2.3 Add test case in examples_runner.rs for deduplication.mx verifying counter loads once
 
 ### 6.3 Create Nested Require Example
-- [ ] 6.3.1 Create [tests/_examples/require/lib/util_a.mx](tests/_examples/require/lib/util_a.mx)
-- [ ] 6.3.2 Create [tests/_examples/require/lib/util_b.mx](tests/_examples/require/lib/util_b.mx) that requires util_a.mx
-- [ ] 6.3.3 Create [tests/_examples/require/nested.mx](tests/_examples/require/nested.mx) that requires util_b.mx
+- [ ] 6.3.1 Create [tests/_examples/require/lib/util_a.rb](tests/_examples/require/lib/util_a.rb)
+- [ ] 6.3.2 Create [tests/_examples/require/lib/util_b.rb](tests/_examples/require/lib/util_b.rb) that requires util_a.rb
+- [ ] 6.3.3 Create [tests/_examples/require/nested.rb](tests/_examples/require/nested.rb) that requires util_b.rb
 - [ ] 6.3.4 Add test case in examples_runner.rs for nested.mx with expected output
 
 ### 6.4 Test with Ruby Files

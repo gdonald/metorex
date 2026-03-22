@@ -344,7 +344,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 6.2.3. Implement assignment statement execution
   - [x] 6.2.4. Implement return statement execution
   - [x] 6.2.5. Implement break/continue handling
-  - [ ] 6.2.6. Implement control flow statements
+  - [x] 6.2.6. Implement control flow statements (covered by 6.6)
   - [x] 6.2.7. Write unit tests for statement execution
   - [x] 6.2.8. Create test file: `tests/vm_statement_tests.rs`
 
@@ -1788,6 +1788,53 @@ Goal: Implement advanced features that distinguish METOREX as a cutting-edge pro
   - [ ] 30.3.3. Implement serverless deployment support
   - [ ] 30.3.4. Add container orchestration configs (K8s, Docker Compose)
   - [ ] 30.3.5. Write deployment guides
+
+### 31. Metorex-to-Rust Transpiler (Experimental Track)
+
+Goal: Add an AOT transpilation pipeline that converts supported Metorex programs into Rust code plus a small runtime, while preserving current language behavior for the supported subset.
+
+- [ ] 31.1. Scope and Compatibility Contract
+  - [ ] 31.1.1. Define the v1 transpiler subset (literals, variables, functions, classes, control flow)
+  - [ ] 31.1.2. Define unsupported/deferred features (open classes, method_missing, runtime monkey patching, advanced metaprogramming)
+  - [ ] 31.1.3. Define behavior parity criteria between VM execution and transpiled execution
+  - [ ] 31.1.4. Document the transpiler architecture and tradeoffs in a dedicated design doc
+
+- [ ] 31.2. Transpiler Pipeline and IR
+  - [ ] 31.2.1. Add transpiler crate/module structure (`src/transpiler/`)
+  - [ ] 31.2.2. Define a backend-friendly intermediate representation for lowering from AST
+  - [ ] 31.2.3. Implement AST-to-IR lowering for core expressions and statements
+  - [ ] 31.2.4. Implement IR validation pass with clear diagnostics
+  - [ ] 31.2.5. Add unit tests for lowering and IR validation
+  - [ ] 31.2.6. Create example file: `examples/transpiler/pipeline_demo.mx`
+
+- [ ] 31.3. Rust Code Generation
+  - [ ] 31.3.1. Implement Rust code generation for literals, arithmetic, and variable bindings
+  - [ ] 31.3.2. Implement function/method code generation and call wiring
+  - [ ] 31.3.3. Implement control flow code generation (`if`, `while`, `for`, `case` subset)
+  - [ ] 31.3.4. Generate a compilable Rust project layout for transpiled output
+  - [ ] 31.3.5. Add golden tests for generated Rust source stability
+  - [ ] 31.3.6. Create example file: `examples/transpiler/basic_codegen.mx`
+
+- [ ] 31.4. Runtime Support Layer
+  - [ ] 31.4.1. Create a minimal runtime crate for dynamic object behavior used by generated code
+  - [ ] 31.4.2. Implement method dispatch helpers used by generated call sites
+  - [ ] 31.4.3. Implement exception/error bridging between language semantics and Rust results
+  - [ ] 31.4.4. Implement collection/object helpers required by transpiled output
+  - [ ] 31.4.5. Add unit tests for runtime primitives
+
+- [ ] 31.5. Correctness, Examples, and CLI Integration
+  - [ ] 31.5.1. Add parity tests: run script in VM and transpiled binary, compare output/errors
+  - [ ] 31.5.2. Add transpiler test scripts in `tests/_examples/` and include them in `examples_runner.rs`; add user-facing examples in `examples/transpiler/`
+  - [ ] 31.5.3. Add CLI command/flag for transpilation (`--transpile` or `metorex transpile`) — prerequisite: section 9.1 (CLI) must be complete
+  - [ ] 31.5.4. Add integration tests for end-to-end transpilation + execution
+  - [ ] 31.5.5. Document transpiler usage and subset limits in README/roadmap docs
+
+- [ ] 31.6. Optimization and Type-Aware Lowering
+  - [ ] 31.6.1. Add optional type-guided lowering for native Rust primitives where safe
+  - [ ] 31.6.2. Add fallback path to dynamic runtime calls when static lowering is unsafe
+  - [ ] 31.6.3. Implement basic optimization passes for generated code (constant folding, dead branch pruning)
+  - [ ] 31.6.4. Add benchmarks comparing VM vs transpiled execution on representative workloads
+  - [ ] 31.6.5. Define exit criteria for promoting transpiler from experimental to supported
 
 
 

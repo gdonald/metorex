@@ -125,7 +125,7 @@ macro_rules! run_test_case {
 #[ignore] // Temporarily disabled until more of the language is up and running
 fn test_errors_basic_error() {
     let test = TestCase {
-        file_path: example_path("errors/basic_error.mx"),
+        file_path: example_path("errors/basic_error.rb"),
         expected: ExpectedOutcome::Success {
             output: None, // Will add expected output once interpreter runs
         },
@@ -140,7 +140,7 @@ fn test_errors_basic_error() {
 #[ignore] // Temporarily disabled until more of the language is up and running
 fn test_example_file_exists() {
     // Ensure our example file exists and is readable
-    let path_str = example_path("errors/basic_error.mx");
+    let path_str = example_path("errors/basic_error.rb");
     let path = Path::new(&path_str);
     assert!(path.exists(), "Example file should exist: {}", path_str);
 
@@ -158,7 +158,7 @@ fn test_example_file_exists() {
 #[test]
 #[ignore] // Temporarily disabled until more of the language is up and running
 fn test_example_file_structure() {
-    let path_str = example_path("errors/basic_error.mx");
+    let path_str = example_path("errors/basic_error.rb");
     let path = Path::new(&path_str);
     let contents = fs::read_to_string(path).expect("Should be able to read example file");
 
@@ -216,14 +216,14 @@ mod future_tests {
 
     // #[test]
     // fn test_syntax_error_detection() {
-    //     let result = run_metorex_file_expect_error(&example_path("errors/basic_error.mx"));
+    //     let result = run_metorex_file_expect_error(&example_path("errors/basic_error.rb"));
     //     assert!(result.is_ok());
     //     assert!(result.unwrap().contains("SyntaxError"));
     // }
 
     // #[test]
     // fn test_runtime_error_with_stack_trace() {
-    //     let result = run_metorex_file_expect_error(&example_path("errors/runtime_error.mx"));
+    //     let result = run_metorex_file_expect_error(&example_path("errors/runtime_error.rb"));
     //     assert!(result.is_ok());
     //     let error = result.unwrap();
     //     assert!(error.contains("RuntimeError"));

@@ -123,7 +123,7 @@ fn vm_mark_file_loaded_is_idempotent() {
 fn execute_file_runs_simple_file() {
     use std::path::Path;
     let mut vm = VirtualMachine::new();
-    let test_file = Path::new("tests/_examples/execute_file/simple.mx");
+    let test_file = Path::new("tests/_examples/execute_file/simple.rb");
 
     let result = vm.execute_file(test_file);
     assert!(result.is_ok());
@@ -133,7 +133,7 @@ fn execute_file_runs_simple_file() {
 fn execute_file_makes_variables_accessible() {
     use std::path::Path;
     let mut vm = VirtualMachine::new();
-    let test_file = Path::new("tests/_examples/execute_file/defines_variable.mx");
+    let test_file = Path::new("tests/_examples/execute_file/defines_variable.rb");
 
     let result = vm.execute_file(test_file);
     assert!(result.is_ok());
@@ -152,7 +152,7 @@ fn execute_file_makes_variables_accessible() {
 fn execute_file_deduplicates_same_file() {
     use std::path::Path;
     let mut vm = VirtualMachine::new();
-    let test_file = Path::new("tests/_examples/execute_file/prints_on_load.mx");
+    let test_file = Path::new("tests/_examples/execute_file/prints_on_load.rb");
 
     // First execution should succeed
     let result1 = vm.execute_file(test_file);
@@ -174,7 +174,7 @@ fn execute_file_restores_current_file_path() {
     vm.set_current_file(initial_path.clone());
 
     // Execute another file
-    let test_file = Path::new("tests/_examples/execute_file/simple.mx");
+    let test_file = Path::new("tests/_examples/execute_file/simple.rb");
     let result = vm.execute_file(test_file);
     assert!(result.is_ok());
 
@@ -186,7 +186,7 @@ fn execute_file_restores_current_file_path() {
 fn execute_file_marks_file_as_loaded() {
     use std::path::Path;
     let mut vm = VirtualMachine::new();
-    let test_file = Path::new("tests/_examples/execute_file/simple.mx");
+    let test_file = Path::new("tests/_examples/execute_file/simple.rb");
 
     // Get canonical path to check
     let canonical = test_file.canonicalize().unwrap();
@@ -206,7 +206,7 @@ fn execute_file_marks_file_as_loaded() {
 fn execute_file_fails_on_nonexistent_file() {
     use std::path::Path;
     let mut vm = VirtualMachine::new();
-    let test_file = Path::new("tests/_examples/execute_file/nonexistent.mx");
+    let test_file = Path::new("tests/_examples/execute_file/nonexistent.rb");
 
     let result = vm.execute_file(test_file);
     assert!(result.is_err());
