@@ -6,13 +6,14 @@
 use super::errors::*;
 use super::utils::*;
 use super::{CallFrame, ControlFlow, VirtualMachine};
-use crate::ast::Statement;
+use crate::ast::{Expression, Statement};
 use crate::callable::Callable;
 use crate::class::Class;
 use crate::error::{MetorexError, StackFrame};
 use crate::lexer::Position;
 use crate::object::{BlockStatement, Method, Object};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -27,14 +28,14 @@ impl VirtualMachine {
             Object::Block(block) => block.call(self, arguments, position),
             Object::Method(method) => {
                 // Call standalone function (represented as Method object)
-                // Validate argument count
+                // Validate positional argument count (kwargs dict doesn't count)
                 let expected = method.parameters.len();
-                let found = arguments.len();
-                if expected != found {
+                let positional_count = positional_arg_count(&arguments);
+                if expected != positional_count {
                     return Err(method_argument_error(
                         &method.name,
                         expected,
-                        found,
+                        positional_count,
                         position,
                     ));
                 }
@@ -258,12 +259,12 @@ impl VirtualMachine {
         }
 
         let expected = method.parameters.len();
-        let found = arguments.len();
-        if expected != found {
+        let positional_count = positional_arg_count(&arguments);
+        if expected != positional_count {
             return Err(method_argument_error(
                 &method_name,
                 expected,
-                found,
+                positional_count,
                 position,
             ));
         }
@@ -308,9 +309,11 @@ impl VirtualMachine {
             self.environment_mut()
                 .define("self".to_string(), self_value.clone());
 
-            for (param, value) in method.parameters.iter().zip(arguments.into_iter()) {
+            let (positional, kwargs) = split_keyword_args(arguments);
+            for (param, value) in method.parameters.iter().zip(positional.into_iter()) {
                 self.environment_mut().define(param.clone(), value);
             }
+            self.bind_keyword_params(&method.keyword_parameters, kwargs)?;
 
             // Execute all statements, tracking the last expression value
             let body = method.body();
@@ -364,9 +367,11 @@ impl VirtualMachine {
 
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
-            for (param, value) in function.parameters.iter().zip(arguments.into_iter()) {
+            let (positional, kwargs) = split_keyword_args(arguments);
+            for (param, value) in function.parameters.iter().zip(positional.into_iter()) {
                 self.environment_mut().define(param.clone(), value);
             }
+            self.bind_keyword_params(&function.keyword_parameters, kwargs)?;
 
             // Execute all statements, tracking the last expression value
             let body = function.body();
@@ -437,4 +442,58 @@ impl VirtualMachine {
 
         false
     }
+
+    /// Bind named keyword parameters to the current scope.
+    /// `kwargs` is a HashMap of string key → Object extracted from the keyword-args dict.
+    pub(crate) fn bind_keyword_params(
+        &mut self,
+        keyword_parameters: &[(String, Option<Expression>)],
+        kwargs: HashMap<String, Object>,
+    ) -> Result<(), MetorexError> {
+        for (name, default_expr) in keyword_parameters {
+            let value = if let Some(v) = kwargs.get(name) {
+                v.clone()
+            } else if let Some(expr) = default_expr {
+                self.evaluate_expression(expr)?
+            } else {
+                return Err(MetorexError::runtime_error(
+                    format!("Missing required keyword argument: {}", name),
+                    crate::error::SourceLocation::new(0, 0, 0),
+                ));
+            };
+            self.environment_mut().define(name.clone(), value);
+        }
+        Ok(())
+    }
+}
+
+/// Count the number of positional arguments, excluding a trailing kwargs dict.
+fn positional_arg_count(arguments: &[Object]) -> usize {
+    if let Some(Object::Dict(dict_rc)) = arguments.last() {
+        let dict = dict_rc.borrow();
+        if !dict.is_empty() && dict.keys().all(|k| k.starts_with(':')) {
+            return arguments.len() - 1;
+        }
+    }
+    arguments.len()
+}
+
+/// Split a list of evaluated arguments into positional args and keyword args.
+/// If the last argument is a Dict with symbol-style keys, it's treated as keyword args.
+fn split_keyword_args(mut arguments: Vec<Object>) -> (Vec<Object>, HashMap<String, Object>) {
+    if let Some(Object::Dict(dict_rc)) = arguments.last() {
+        let dict = dict_rc.borrow();
+        // Keyword arg dicts use symbol-style keys (starting with ':')
+        let all_symbol_keys = !dict.is_empty() && dict.keys().all(|k| k.starts_with(':'));
+        if all_symbol_keys {
+            let kwargs: HashMap<String, Object> = dict
+                .iter()
+                .map(|(k, v)| (k[1..].to_string(), v.clone()))
+                .collect();
+            drop(dict);
+            arguments.pop();
+            return (arguments, kwargs);
+        }
+    }
+    (arguments, HashMap::new())
 }

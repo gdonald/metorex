@@ -55,13 +55,20 @@ impl VirtualMachine {
                     ..
                 } => {
                     // Create a Method object
-                    let param_names: Vec<String> =
-                        parameters.iter().map(|p| p.name.clone()).collect();
-                    let method = Rc::new(Method::new(
-                        method_name.clone(),
-                        param_names,
-                        method_body.clone(),
-                    ));
+                    let param_names: Vec<String> = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword)
+                        .map(|p| p.name.clone())
+                        .collect();
+                    let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> =
+                        parameters
+                            .iter()
+                            .filter(|p| p.is_named_keyword)
+                            .map(|p| (p.name.clone(), p.default_value.clone()))
+                            .collect();
+                    let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.keyword_parameters = keyword_parameters;
+                    let method = Rc::new(m);
                     class.define_method(method_name, method);
                 }
                 Statement::Assignment {
@@ -174,6 +181,63 @@ impl VirtualMachine {
                     let const_value = self.evaluate_expression(value)?;
                     class.set_class_var(const_name, const_value);
                 }
+                Statement::Include {
+                    module_name,
+                    position,
+                } => {
+                    // include ModuleName: copy module instance methods into this class
+                    match self.environment().get(module_name) {
+                        Some(Object::Module(module)) => {
+                            for method_name in module.method_names() {
+                                if let Some(method) = module.find_method(&method_name) {
+                                    class.define_method(&method_name, method);
+                                }
+                            }
+                        }
+                        Some(_) => {
+                            return Err(MetorexError::runtime_error(
+                                format!("'{}' is not a module", module_name),
+                                position_to_location(*position),
+                            ));
+                        }
+                        None => {
+                            return Err(MetorexError::runtime_error(
+                                format!("Undefined module '{}'", module_name),
+                                position_to_location(*position),
+                            ));
+                        }
+                    }
+                }
+                Statement::Extend {
+                    module_name,
+                    position,
+                } => {
+                    // extend ModuleName: add module methods as class-level methods
+                    match self.environment().get(module_name) {
+                        Some(Object::Module(module)) => {
+                            for method_name in module.method_names() {
+                                if let Some(method) = module.find_method(&method_name) {
+                                    class.set_class_var(
+                                        format!("__ext__{}", method_name),
+                                        Object::Method(method),
+                                    );
+                                }
+                            }
+                        }
+                        Some(_) => {
+                            return Err(MetorexError::runtime_error(
+                                format!("'{}' is not a module", module_name),
+                                position_to_location(*position),
+                            ));
+                        }
+                        None => {
+                            return Err(MetorexError::runtime_error(
+                                format!("Undefined module '{}'", module_name),
+                                position_to_location(*position),
+                            ));
+                        }
+                    }
+                }
                 _ => {
                     // For now, we ignore other statements in the class body
                     // In the future, we might support class-level code execution
@@ -196,26 +260,109 @@ impl VirtualMachine {
         body: &[Statement],
         position: crate::lexer::Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // Extract parameter names from the parameter definitions
-        let param_names: Vec<String> = parameters.iter().map(|p| p.name.clone()).collect();
+        // Extract positional parameter names (exclude named keyword params)
+        let param_names: Vec<String> = parameters
+            .iter()
+            .filter(|p| !p.is_named_keyword)
+            .map(|p| p.name.clone())
+            .collect();
+
+        // Extract named keyword parameters
+        let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> = parameters
+            .iter()
+            .filter(|p| p.is_named_keyword)
+            .map(|p| (p.name.clone(), p.default_value.clone()))
+            .collect();
 
         // Create source location from position
         let source_location =
             crate::error::SourceLocation::new(position.line, position.column, position.offset);
 
         // Create a Method object to represent the function
-        // (Method objects can represent both class methods and standalone functions)
-        let function = Rc::new(Method::with_source_location(
+        let mut function = Method::with_source_location(
             name.to_string(),
             param_names,
             body.to_vec(),
             source_location,
-        ));
+        );
+        function.keyword_parameters = keyword_parameters;
+        let function = Rc::new(function);
 
         // Register the function in the environment
         self.environment_mut()
             .define(name.to_string(), Object::Method(function));
 
         Ok(ControlFlow::Next)
+    }
+
+    /// Execute module definition - create a Module object and register it.
+    pub(crate) fn execute_module_def(
+        &mut self,
+        name: &str,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        let module = Rc::new(Class::new(name, None));
+
+        for statement in body {
+            match statement {
+                Statement::MethodDef {
+                    name: method_name,
+                    parameters,
+                    body: method_body,
+                    ..
+                } => {
+                    let param_names: Vec<String> = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword)
+                        .map(|p| p.name.clone())
+                        .collect();
+                    let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> =
+                        parameters
+                            .iter()
+                            .filter(|p| p.is_named_keyword)
+                            .map(|p| (p.name.clone(), p.default_value.clone()))
+                            .collect();
+                    let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.keyword_parameters = keyword_parameters;
+                    module.define_method(method_name, Rc::new(m));
+                }
+                _ => {
+                    return Err(MetorexError::runtime_error(
+                        "Unsupported statement in module body".to_string(),
+                        position_to_location(position),
+                    ));
+                }
+            }
+        }
+
+        self.environment_mut()
+            .define(name.to_string(), Object::Module(module));
+
+        Ok(ControlFlow::Next)
+    }
+
+    /// Execute include at statement level (outside class body - error).
+    pub(crate) fn execute_include(
+        &mut self,
+        _module_name: &str,
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        Err(MetorexError::runtime_error(
+            "include can only be used inside a class definition",
+            position_to_location(position),
+        ))
+    }
+
+    /// Execute extend at statement level (outside class body - error).
+    pub(crate) fn execute_extend(
+        &mut self,
+        _module_name: &str,
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        Err(MetorexError::runtime_error(
+            "extend can only be used inside a class definition",
+            position_to_location(position),
+        ))
     }
 }

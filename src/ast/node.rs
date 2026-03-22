@@ -188,6 +188,25 @@ pub enum Expression {
         position: Position,
     },
 
+    // If expression (if...end in expression context)
+    // Evaluates to the last expression in the matching branch, or nil.
+    If {
+        condition: Box<Expression>,
+        then_branch: Vec<Statement>,
+        elsif_branches: Vec<ElsifBranch>,
+        else_branch: Option<Vec<Statement>>,
+        position: Position,
+    },
+
+    // Unless expression (unless...end in expression context)
+    // Evaluates to the last expression in the matching branch, or nil.
+    Unless {
+        condition: Box<Expression>,
+        then_branch: Vec<Statement>,
+        else_branch: Option<Vec<Statement>>,
+        position: Position,
+    },
+
     // Scope resolution (e.g., Math::PI, Foo::Bar)
     ScopeResolution {
         namespace: Box<Expression>,
@@ -234,6 +253,21 @@ pub enum MatchPattern {
     // Multiple patterns (OR matching) - matches if any pattern matches
     // Used for: when 1, 2, 3 then "small"
     Multiple(Vec<MatchPattern>),
+
+    // Bind pattern: matches inner pattern and binds the whole value to a name
+    // Used in case/in: `in Integer => n`
+    Bind {
+        pattern: Box<MatchPattern>,
+        name: String,
+    },
+
+    // Range pattern: matches if value falls within start..end or start...end
+    // Used in case/when: `when 1..10 then`
+    Range {
+        start: Box<MatchPattern>,
+        end: Box<MatchPattern>,
+        exclusive: bool, // true for ..., false for ..
+    },
 }
 
 /// A single case in a match statement
@@ -280,6 +314,7 @@ pub struct Parameter {
     pub default_value: Option<Expression>, // Default value for the parameter
     pub is_variadic: bool,                 // True if this is a *args parameter
     pub is_keyword: bool,                  // True if this is a **kwargs parameter
+    pub is_named_keyword: bool,            // True if this is a name: style keyword parameter
     pub is_block: bool,                    // True if this is a &block parameter
     pub position: Position,
 }
@@ -292,6 +327,7 @@ impl Parameter {
             default_value: None,
             is_variadic: false,
             is_keyword: false,
+            is_named_keyword: false,
             is_block: false,
             position,
         }
@@ -304,6 +340,7 @@ impl Parameter {
             default_value: Some(default_value),
             is_variadic: false,
             is_keyword: false,
+            is_named_keyword: false,
             is_block: false,
             position,
         }
@@ -316,6 +353,7 @@ impl Parameter {
             default_value: None,
             is_variadic: true,
             is_keyword: false,
+            is_named_keyword: false,
             is_block: false,
             position,
         }
@@ -328,6 +366,24 @@ impl Parameter {
             default_value: None,
             is_variadic: false,
             is_keyword: true,
+            is_named_keyword: false,
+            is_block: false,
+            position,
+        }
+    }
+
+    /// Create a new named keyword parameter (`name:` or `name: default`)
+    pub fn named_keyword(
+        name: String,
+        default_value: Option<Expression>,
+        position: Position,
+    ) -> Self {
+        Parameter {
+            name,
+            default_value,
+            is_variadic: false,
+            is_keyword: false,
+            is_named_keyword: true,
             is_block: false,
             position,
         }
@@ -340,6 +396,7 @@ impl Parameter {
             default_value: None,
             is_variadic: false,
             is_keyword: false,
+            is_named_keyword: false,
             is_block: true,
             position,
         }
@@ -347,7 +404,11 @@ impl Parameter {
 
     /// Check if this is a simple parameter (no default, not variadic/keyword/block)
     pub fn is_simple(&self) -> bool {
-        self.default_value.is_none() && !self.is_variadic && !self.is_keyword && !self.is_block
+        self.default_value.is_none()
+            && !self.is_variadic
+            && !self.is_keyword
+            && !self.is_named_keyword
+            && !self.is_block
     }
 
     /// Check if this parameter has a default value
@@ -396,6 +457,22 @@ pub enum Statement {
         position: Position,
     },
 
+    ModuleDef {
+        name: String,
+        body: Vec<Statement>,
+        position: Position,
+    },
+
+    Include {
+        module_name: String,
+        position: Position,
+    },
+
+    Extend {
+        module_name: String,
+        position: Position,
+    },
+
     // Conditional statements
     If {
         condition: Expression,
@@ -428,8 +505,16 @@ pub enum Statement {
         position: Position,
     },
 
-    // Match statement (pattern matching)
+    // Match statement (case/when pattern matching)
     Match {
+        expression: Expression,
+        cases: Vec<MatchCase>,
+        position: Position,
+    },
+
+    // CaseIn statement (Ruby 2.7+ case/in pattern matching)
+    // Raises NoMatchingPatternError if no arm matches and no else is present.
+    CaseIn {
         expression: Expression,
         cases: Vec<MatchCase>,
         position: Position,
@@ -557,7 +642,9 @@ impl Expression {
             | Expression::Super { position, .. }
             | Expression::Range { position, .. }
             | Expression::Case { position, .. }
-            | Expression::ScopeResolution { position, .. } => *position,
+            | Expression::ScopeResolution { position, .. }
+            | Expression::If { position, .. }
+            | Expression::Unless { position, .. } => *position,
         }
     }
 
@@ -600,6 +687,7 @@ impl Statement {
             | Statement::While { position, .. }
             | Statement::For { position, .. }
             | Statement::Match { position, .. }
+            | Statement::CaseIn { position, .. }
             | Statement::Return { position, .. }
             | Statement::Break { position, .. }
             | Statement::Continue { position, .. }
@@ -608,17 +696,21 @@ impl Statement {
             | Statement::Raise { position, .. }
             | Statement::AttrReader { position, .. }
             | Statement::AttrWriter { position, .. }
-            | Statement::AttrAccessor { position, .. } => *position,
+            | Statement::AttrAccessor { position, .. }
+            | Statement::ModuleDef { position, .. }
+            | Statement::Include { position, .. }
+            | Statement::Extend { position, .. } => *position,
         }
     }
 
-    /// Check if this statement is a definition (function, method, or class)
+    /// Check if this statement is a definition (function, method, class, or module)
     pub fn is_definition(&self) -> bool {
         matches!(
             self,
             Statement::FunctionDef { .. }
                 | Statement::MethodDef { .. }
                 | Statement::ClassDef { .. }
+                | Statement::ModuleDef { .. }
         )
     }
 
@@ -630,6 +722,7 @@ impl Statement {
                 | Statement::While { .. }
                 | Statement::For { .. }
                 | Statement::Match { .. }
+                | Statement::CaseIn { .. }
                 | Statement::Return { .. }
                 | Statement::Break { .. }
                 | Statement::Continue { .. }

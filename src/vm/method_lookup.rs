@@ -39,6 +39,19 @@ impl VirtualMachine {
                 self.invoke_method(class, method, receiver, arguments, position)
             }
             None => {
+                // For Class receivers, check for extended methods (__ext__name class var)
+                if let Object::Class(class_rc) = &receiver {
+                    let ext_key = format!("__ext__{}", method_name);
+                    if let Some(Object::Method(ext_method)) = class_rc.get_class_var(&ext_key) {
+                        return self.invoke_method(
+                            Rc::clone(class_rc),
+                            ext_method,
+                            receiver.clone(),
+                            arguments,
+                            position,
+                        );
+                    }
+                }
                 // Try native method as fallback
                 let class = self.builtins().class_of(&receiver);
                 if let Some(result) =

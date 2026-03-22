@@ -141,14 +141,53 @@ impl Parser {
             return Ok(arguments);
         }
 
+        // Collect any keyword args (ident: value) to build a hash at the end
+        let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
+
         loop {
             self.skip_whitespace();
-            arguments.push(self.parse_expression()?);
+
+            // Detect keyword argument: Ident followed by Colon
+            if matches!(self.peek().kind, TokenKind::Ident(_))
+                && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            {
+                let name = match self.advance().kind {
+                    TokenKind::Ident(n) => n,
+                    _ => unreachable!(),
+                };
+                self.advance(); // consume ':'
+                self.skip_whitespace();
+                let value = self.parse_expression()?;
+                keyword_pairs.push((name, value));
+            } else {
+                arguments.push(self.parse_expression()?);
+            }
+
             self.skip_whitespace();
 
             if !self.match_token(&[TokenKind::Comma]) {
                 break;
             }
+        }
+
+        // If there were keyword args, append them as a Dict at the end of arguments
+        if !keyword_pairs.is_empty() {
+            let position = self.peek().position;
+            arguments.push(Expression::Dictionary {
+                entries: keyword_pairs
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            Expression::StringLiteral {
+                                value: format!(":{}", k),
+                                position,
+                            },
+                            v,
+                        )
+                    })
+                    .collect(),
+                position,
+            });
         }
 
         self.skip_whitespace();
@@ -214,9 +253,11 @@ impl Parser {
             return false;
         }
 
-        // Look ahead to detect dictionary patterns
-        // Pattern 1: <arg> ':' - clearly dict syntax like {x: 1}
-        if matches!(self.peek_ahead(1).kind, TokenKind::Colon) {
+        // Pattern 1: <ident> ':' is a keyword argument (name: value), allow it
+        // but only for Ident — not Int/Float/String followed by colon (those are dict-like)
+        if matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            && !matches!(self.peek().kind, TokenKind::Ident(_))
+        {
             return false;
         }
 
@@ -241,22 +282,33 @@ impl Parser {
         callee: Expression,
     ) -> Result<Expression, MetorexError> {
         let mut arguments = Vec::new();
+        let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
         let position = callee.position();
 
-        // Parse first argument using full expression precedence so that
-        // e.g. `puts x && y` is parsed as `puts(x && y)` not `puts(x) && y`
-        self.skip_whitespace();
-        arguments.push(self.parse_expression()?);
         self.skip_whitespace();
 
-        // After parsing the first argument, check if we see a colon
-        // This would indicate we're in a dictionary literal, not a function call
-        if self.check(&[TokenKind::Colon]) {
-            // We misidentified this as a function call
-            // Return an error - the dictionary parser will handle this correctly
-            return Err(
-                self.error_at_current("Expected function call but found dictionary-like syntax")
-            );
+        // Parse first argument — detect keyword arg pattern (Ident :)
+        if matches!(self.peek().kind, TokenKind::Ident(_))
+            && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+        {
+            let name = match self.advance().kind {
+                TokenKind::Ident(n) => n,
+                _ => unreachable!(),
+            };
+            self.advance(); // consume ':'
+            self.skip_whitespace();
+            let value = self.parse_expression()?;
+            keyword_pairs.push((name, value));
+        } else {
+            arguments.push(self.parse_expression()?);
+            self.skip_whitespace();
+
+            // After parsing the first positional argument, check if we see a colon
+            // (which would indicate dict syntax, not a function call)
+            if self.check(&[TokenKind::Colon]) {
+                return Err(self
+                    .error_at_current("Expected function call but found dictionary-like syntax"));
+            }
         }
 
         // Parse remaining arguments if there are commas
@@ -277,8 +329,41 @@ impl Parser {
                 break;
             }
 
-            arguments.push(self.parse_expression()?);
+            // Detect keyword argument
+            if matches!(self.peek().kind, TokenKind::Ident(_))
+                && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            {
+                let name = match self.advance().kind {
+                    TokenKind::Ident(n) => n,
+                    _ => unreachable!(),
+                };
+                self.advance(); // consume ':'
+                self.skip_whitespace();
+                let value = self.parse_expression()?;
+                keyword_pairs.push((name, value));
+            } else {
+                arguments.push(self.parse_expression()?);
+            }
             self.skip_whitespace();
+        }
+
+        // If there were keyword args, append them as a Dict
+        if !keyword_pairs.is_empty() {
+            arguments.push(Expression::Dictionary {
+                entries: keyword_pairs
+                    .into_iter()
+                    .map(|(k, v)| {
+                        (
+                            Expression::StringLiteral {
+                                value: format!(":{}", k),
+                                position,
+                            },
+                            v,
+                        )
+                    })
+                    .collect(),
+                position,
+            });
         }
 
         Ok(Expression::Call {

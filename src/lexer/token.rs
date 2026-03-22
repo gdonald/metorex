@@ -57,6 +57,9 @@ pub enum TokenKind {
     AttrReader,
     AttrWriter,
     AttrAccessor,
+    Module,
+    Include,
+    Extend,
 
     // Literals
     Int(i64),
@@ -162,6 +165,9 @@ impl fmt::Display for TokenKind {
             TokenKind::AttrReader => write!(f, "attr_reader"),
             TokenKind::AttrWriter => write!(f, "attr_writer"),
             TokenKind::AttrAccessor => write!(f, "attr_accessor"),
+            TokenKind::Module => write!(f, "module"),
+            TokenKind::Include => write!(f, "include"),
+            TokenKind::Extend => write!(f, "extend"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),

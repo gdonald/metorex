@@ -13,6 +13,29 @@ impl Parser {
 
         let name = match self.advance().kind {
             TokenKind::Ident(name) => name,
+            // Operator method names
+            TokenKind::Plus => "+".to_string(),
+            TokenKind::Minus => "-".to_string(),
+            TokenKind::Star => "*".to_string(),
+            TokenKind::Slash => "/".to_string(),
+            TokenKind::Percent => "%".to_string(),
+            TokenKind::EqualEqual => "==".to_string(),
+            TokenKind::BangEqual => "!=".to_string(),
+            TokenKind::Less => "<".to_string(),
+            TokenKind::Greater => ">".to_string(),
+            TokenKind::LessEqual => "<=".to_string(),
+            TokenKind::GreaterEqual => ">=".to_string(),
+            TokenKind::Pipe => "|".to_string(),
+            TokenKind::Ampersand => "&".to_string(),
+            // [] and []= operator method names
+            TokenKind::LBracket => {
+                self.expect(TokenKind::RBracket, "Expected ']' after '[' in method name")?;
+                if self.match_token(&[TokenKind::Equal]) {
+                    "[]=".to_string()
+                } else {
+                    "[]".to_string()
+                }
+            }
             _ => return Err(self.error_at_previous("Expected function name")),
         };
 
@@ -94,8 +117,19 @@ impl Parser {
                     _ => return Err(self.error_at_previous("Expected parameter name")),
                 };
 
-                // Check for default value
-                if self.match_token(&[TokenKind::Equal]) {
+                // Check for `name:` or `name: default` (named keyword argument)
+                if self.match_token(&[TokenKind::Colon]) {
+                    // `name:` alone means required keyword arg (no default)
+                    // `name: expr` means optional keyword arg with default
+                    let default =
+                        if self.check(&[TokenKind::Comma, TokenKind::RParen, TokenKind::Newline]) {
+                            None
+                        } else {
+                            Some(self.parse_expression()?)
+                        };
+                    params.push(Parameter::named_keyword(name, default, param_pos));
+                // Check for positional default value
+                } else if self.match_token(&[TokenKind::Equal]) {
                     let default = self.parse_expression()?;
                     params.push(Parameter::with_default(name, default, param_pos));
                 } else {

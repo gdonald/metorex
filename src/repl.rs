@@ -242,6 +242,7 @@ impl Repl {
             Object::Method { .. } => "<Method>".to_string(),
             Object::NativeFunction(name) => format!("<NativeFunction: {}>", name),
             Object::Class(class) => format!("<Class: {}>", class.name()),
+            Object::Module(module) => format!("<Module: {}>", module.name()),
             Object::Instance(instance) => {
                 let instance_borrowed = instance.borrow();
                 format!("<{} instance>", instance_borrowed.class_name())

@@ -2,9 +2,9 @@
 // Handles parsing of literals, identifiers, and compound expressions
 
 use crate::ast::Expression;
-use crate::ast::node::ExprMatchCase;
+use crate::ast::node::{ElsifBranch, ExprMatchCase};
 use crate::error::MetorexError;
-use crate::lexer::TokenKind;
+use crate::lexer::{Position, TokenKind};
 use crate::parser::Parser;
 
 impl Parser {
@@ -332,6 +332,12 @@ impl Parser {
             // Case expression: case value when pattern then expr ... end
             TokenKind::Case => self.parse_case_expression(token.position),
 
+            // If expression: if cond then ... else ... end
+            TokenKind::If => self.parse_if_expression(token.position),
+
+            // Unless expression: unless cond then ... else ... end
+            TokenKind::Unless => self.parse_unless_expression(token.position),
+
             _ => Err(self.error_at_previous(&format!("Unexpected token: {:?}", token.kind))),
         }
     }
@@ -433,6 +439,130 @@ impl Parser {
             expression,
             cases,
             else_case,
+            position: start_pos,
+        })
+    }
+
+    /// Parse an if expression: `if cond [then] body [elsif cond body]* [else body] end`
+    pub(crate) fn parse_if_expression(
+        &mut self,
+        start_pos: Position,
+    ) -> Result<Expression, MetorexError> {
+        self.skip_whitespace();
+        let condition = Box::new(self.parse_expression()?);
+        self.skip_whitespace();
+        self.match_token(&[TokenKind::Then]); // optional `then`
+        self.skip_whitespace();
+
+        let mut then_branch = Vec::new();
+        while !self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End]) && !self.is_at_end()
+        {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End]) {
+                break;
+            }
+            then_branch.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        let mut elsif_branches = Vec::new();
+        while self.match_token(&[TokenKind::Elsif]) {
+            let elsif_pos = self.previous().position;
+            self.skip_whitespace();
+            let elsif_cond = self.parse_expression()?;
+            self.skip_whitespace();
+            self.match_token(&[TokenKind::Then]);
+            self.skip_whitespace();
+            let mut elsif_body = Vec::new();
+            while !self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End])
+                && !self.is_at_end()
+            {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::Elsif, TokenKind::Else, TokenKind::End]) {
+                    break;
+                }
+                elsif_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            elsif_branches.push(ElsifBranch {
+                condition: elsif_cond,
+                body: elsif_body,
+                position: elsif_pos,
+            });
+        }
+
+        let else_branch = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            let mut else_stmts = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                else_stmts.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(else_stmts)
+        } else {
+            None
+        };
+
+        self.skip_whitespace();
+        self.expect(TokenKind::End, "Expected 'end' after if expression")?;
+
+        Ok(Expression::If {
+            condition,
+            then_branch,
+            elsif_branches,
+            else_branch,
+            position: start_pos,
+        })
+    }
+
+    /// Parse an unless expression: `unless cond [then] body [else body] end`
+    pub(crate) fn parse_unless_expression(
+        &mut self,
+        start_pos: Position,
+    ) -> Result<Expression, MetorexError> {
+        self.skip_whitespace();
+        let condition = Box::new(self.parse_expression()?);
+        self.skip_whitespace();
+        self.match_token(&[TokenKind::Then]);
+        self.skip_whitespace();
+
+        let mut then_branch = Vec::new();
+        while !self.check(&[TokenKind::Else, TokenKind::End]) && !self.is_at_end() {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::Else, TokenKind::End]) {
+                break;
+            }
+            then_branch.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        let else_branch = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            let mut else_stmts = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                else_stmts.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(else_stmts)
+        } else {
+            None
+        };
+
+        self.skip_whitespace();
+        self.expect(TokenKind::End, "Expected 'end' after unless expression")?;
+
+        Ok(Expression::Unless {
+            condition,
+            then_branch,
+            else_branch,
             position: start_pos,
         })
     }

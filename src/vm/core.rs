@@ -153,8 +153,11 @@ impl VirtualMachine {
                 continue;
             }
 
-            // Match statements also produce values
-            if let Statement::Match { .. } = statement {
+            // Match/CaseIn statements also produce values
+            if matches!(
+                statement,
+                Statement::Match { .. } | Statement::CaseIn { .. }
+            ) {
                 match self.execute_statement(statement)? {
                     ControlFlow::Return { value, .. } => {
                         last_value = Some(value);
@@ -369,6 +372,21 @@ impl VirtualMachine {
                 }
                 let left_value = self.evaluate_expression(left)?;
                 let right_value = self.evaluate_expression(right)?;
+                // Check for user-defined operator methods on instances
+                if let (Some(op_name), Object::Instance(instance_rc)) =
+                    (binary_op_method_name(op), &left_value)
+                {
+                    let class = Rc::clone(&instance_rc.borrow().class);
+                    if let Some(method) = class.find_method(op_name) {
+                        return self.invoke_method(
+                            class,
+                            method,
+                            left_value.clone(),
+                            vec![right_value],
+                            *position,
+                        );
+                    }
+                }
                 self.evaluate_binary_operation(op, left_value, right_value, *position)
             }
             Expression::Array { elements, .. } => self.evaluate_array_literal(elements),
@@ -380,6 +398,19 @@ impl VirtualMachine {
             } => {
                 let collection = self.evaluate_expression(array)?;
                 let key = self.evaluate_expression(index)?;
+                // Check for user-defined [] method on instances
+                if let Object::Instance(instance_rc) = &collection {
+                    let class = Rc::clone(&instance_rc.borrow().class);
+                    if let Some(method) = class.find_method("[]") {
+                        return self.invoke_method(
+                            class,
+                            method,
+                            collection.clone(),
+                            vec![key],
+                            *position,
+                        );
+                    }
+                }
                 self.evaluate_index_operation(collection, key, *position)
             }
             Expression::MethodCall {
@@ -607,6 +638,21 @@ impl VirtualMachine {
                     )),
                 }
             }
+
+            Expression::If {
+                condition,
+                then_branch,
+                elsif_branches,
+                else_branch,
+                ..
+            } => self.evaluate_if_expression(condition, then_branch, elsif_branches, else_branch),
+
+            Expression::Unless {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => self.evaluate_unless_expression(condition, then_branch, else_branch),
         }
     }
 }
@@ -614,5 +660,23 @@ impl VirtualMachine {
 impl Default for VirtualMachine {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Map a binary operator to its operator method name for user-defined dispatch.
+fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
+    match op {
+        BinaryOp::Add => Some("+"),
+        BinaryOp::Subtract => Some("-"),
+        BinaryOp::Multiply => Some("*"),
+        BinaryOp::Divide => Some("/"),
+        BinaryOp::Modulo => Some("%"),
+        BinaryOp::Equal => Some("=="),
+        BinaryOp::NotEqual => Some("!="),
+        BinaryOp::Less => Some("<"),
+        BinaryOp::Greater => Some(">"),
+        BinaryOp::LessEqual => Some("<="),
+        BinaryOp::GreaterEqual => Some(">="),
+        _ => None,
     }
 }

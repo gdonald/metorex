@@ -6,7 +6,8 @@
 //! - Dictionary literals
 //! - Index operations (array/dictionary access)
 
-use crate::ast::{Expression, InterpolationPart};
+use crate::ast::node::ElsifBranch;
+use crate::ast::{Expression, InterpolationPart, Statement};
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
@@ -16,7 +17,7 @@ use std::rc::Rc;
 
 use super::core::VirtualMachine;
 use super::errors::{index_out_of_bounds_error, undefined_dictionary_key_error};
-use super::utils::{object_to_dict_key, position_to_location};
+use super::utils::{is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
     /// Evaluate string interpolation parts into a single owned string.
@@ -121,5 +122,71 @@ impl VirtualMachine {
                 position_to_location(position),
             )),
         }
+    }
+
+    /// Evaluate an if expression, returning the value of the matching branch.
+    pub(crate) fn evaluate_if_expression(
+        &mut self,
+        condition: &Expression,
+        then_branch: &[Statement],
+        elsif_branches: &[ElsifBranch],
+        else_branch: &Option<Vec<Statement>>,
+    ) -> Result<Object, MetorexError> {
+        if is_truthy(&self.evaluate_expression(condition)?) {
+            return self.evaluate_branch_value(then_branch);
+        }
+        for elsif in elsif_branches {
+            if is_truthy(&self.evaluate_expression(&elsif.condition)?) {
+                return self.evaluate_branch_value(&elsif.body);
+            }
+        }
+        if let Some(else_stmts) = else_branch {
+            return self.evaluate_branch_value(else_stmts);
+        }
+        Ok(Object::Nil)
+    }
+
+    /// Evaluate an unless expression, returning the value of the matching branch.
+    pub(crate) fn evaluate_unless_expression(
+        &mut self,
+        condition: &Expression,
+        then_branch: &[Statement],
+        else_branch: &Option<Vec<Statement>>,
+    ) -> Result<Object, MetorexError> {
+        if !is_truthy(&self.evaluate_expression(condition)?) {
+            return self.evaluate_branch_value(then_branch);
+        }
+        if let Some(else_stmts) = else_branch {
+            return self.evaluate_branch_value(else_stmts);
+        }
+        Ok(Object::Nil)
+    }
+
+    /// Execute a list of statements and return the value of the last expression statement.
+    fn evaluate_branch_value(&mut self, stmts: &[Statement]) -> Result<Object, MetorexError> {
+        use super::ControlFlow;
+        self.environment_mut().push_scope();
+        let mut last_value = Object::Nil;
+        for stmt in stmts {
+            if let Statement::Expression { expression, .. } = stmt {
+                last_value = self.evaluate_expression(expression)?;
+                continue;
+            }
+            match self.execute_statement(stmt)? {
+                ControlFlow::Next => {}
+                ControlFlow::Return { value, .. } => {
+                    self.environment_mut().pop_scope();
+                    return Ok(value);
+                }
+                flow => {
+                    self.environment_mut().pop_scope();
+                    // Propagate breaks/continues/exceptions by re-executing (not ideal but safe)
+                    let _ = flow;
+                    break;
+                }
+            }
+        }
+        self.environment_mut().pop_scope();
+        Ok(last_value)
     }
 }

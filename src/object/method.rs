@@ -1,6 +1,6 @@
 // Method struct - represents a class method (bound or unbound)
 
-use crate::ast::Statement;
+use crate::ast::{Expression, Statement};
 use crate::callable::Callable;
 use crate::error::SourceLocation;
 
@@ -11,8 +11,11 @@ use super::Object;
 pub struct Method {
     /// Name of the method
     pub name: String,
-    /// Parameter names
+    /// Positional parameter names
     pub parameters: Vec<String>,
+    /// Named keyword parameters: (name, optional_default_expression)
+    /// e.g., `def f(name:, age: 10)` → [("name", None), ("age", Some(IntLiteral(10)))]
+    pub keyword_parameters: Vec<(String, Option<Expression>)>,
     /// Method body (AST statements)
     pub body: Vec<Statement>,
     /// Optional receiver (for bound methods)
@@ -29,6 +32,7 @@ impl Method {
         Self {
             name,
             parameters,
+            keyword_parameters: vec![],
             body,
             receiver: None,
             owner: None,
@@ -46,6 +50,7 @@ impl Method {
         Self {
             name,
             parameters,
+            keyword_parameters: vec![],
             body,
             receiver: None,
             owner: Some(owner),
@@ -63,6 +68,7 @@ impl Method {
         Self {
             name,
             parameters,
+            keyword_parameters: vec![],
             body,
             receiver: None,
             owner: None,
@@ -81,6 +87,7 @@ impl Method {
         Self {
             name,
             parameters,
+            keyword_parameters: vec![],
             body,
             receiver: None,
             owner: Some(owner),
@@ -93,6 +100,7 @@ impl Method {
         Self {
             name: self.name.clone(),
             parameters: self.parameters.clone(),
+            keyword_parameters: self.keyword_parameters.clone(),
             body: self.body.clone(),
             receiver: Some(Box::new(receiver)),
             owner: self.owner.clone(),

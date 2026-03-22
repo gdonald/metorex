@@ -40,6 +40,9 @@ pub enum Object {
     /// Class object (used for class definitions and instantiation)
     Class(Rc<Class>),
 
+    /// Module object (used for mixins via include/extend)
+    Module(Rc<Class>),
+
     /// Method object (bound or unbound)
     Method(Rc<Method>),
 
@@ -83,6 +86,7 @@ impl Object {
             Object::Dict(_) => "Dict",
             Object::Instance(_) => "Instance",
             Object::Class(_) => "Class",
+            Object::Module(_) => "Module",
             Object::Method(_) => "Method",
             Object::Block(_) => "Block",
             Object::Exception(_) => "Exception",

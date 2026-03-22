@@ -737,3 +737,129 @@ fn test_runtime_global_variables_parens_execution() {
     let output = run_example("runtime/global_variables_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_control_flow_case_in_basic_execution() {
+    let expected = "42\nhello\n1\n2\n3\n99\n";
+    let output = run_example("control_flow/case_in_basic.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_in_basic_parens_execution() {
+    let expected = "42\nhello\n1\n2\n3\n99\n";
+    let output = run_example("control_flow/case_in_basic_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_in_else_execution() {
+    let expected = "no match\nnil or other\n";
+    let output = run_example("control_flow/case_in_else.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_in_else_parens_execution() {
+    let expected = "no match\nnil or other\n";
+    let output = run_example("control_flow/case_in_else_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_if_expression_execution() {
+    let expected = "42\n2\nnil\n10\npositive\n";
+    let output = run_example("control_flow/if_expression.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_if_expression_parens_execution() {
+    let expected = "42\n2\nnil\n10\npositive\n";
+    let output = run_example("control_flow/if_expression_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_range_pattern_execution() {
+    let expected = "B\nmid\ninclusive or out\n";
+    let output = run_example("control_flow/case_range_pattern.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_case_range_pattern_parens_execution() {
+    let expected = "B\nmid\ninclusive or out\n";
+    let output = run_example("control_flow/case_range_pattern_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_keyword_args_execution() {
+    let expected = "Hello, Alice!\nHi, Bob!\nHey, Carol!\n";
+    let output = run_example("methods/keyword_args.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_keyword_args_parens_execution() {
+    let expected = "Hello, Alice!\nHi, Bob!\nHey, Carol!\n";
+    let output = run_example("methods/keyword_args_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_keyword_args_class_execution() {
+    let expected = "I'm Alice, age 0\nI'm Bob, age 30\n";
+    let output = run_example("methods/keyword_args_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_keyword_args_class_parens_execution() {
+    let expected = "I'm Alice, age 0\nI'm Bob, age 30\n";
+    let output = run_example("methods/keyword_args_class_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_operator_methods_execution() {
+    let expected = "(4, 6)\ntrue\nfalse\n";
+    let output = run_example("oop/operator_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_operator_methods_parens_execution() {
+    let expected = "(4, 6)\ntrue\nfalse\n";
+    let output = run_example("oop/operator_methods_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_operator_methods_index_execution() {
+    let expected = "42\n99\n0\n";
+    let output = run_example("oop/operator_methods_index.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_operator_methods_index_parens_execution() {
+    let expected = "42\n99\n0\n";
+    let output = run_example("oop/operator_methods_index_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_modules_execution() {
+    let expected = "Hello, I am Alice\nGoodbye from Alice\nI am a class with module methods\n";
+    let output = run_example("oop/modules.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_modules_parens_execution() {
+    let expected = "Hello, I am Alice\nGoodbye from Alice\nI am a class with module methods\n";
+    let output = run_example("oop/modules_parens.rb");
+    assert_eq!(output, expected);
+}

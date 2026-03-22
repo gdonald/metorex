@@ -174,10 +174,10 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.8.10. Create example file: `examples/parser/pattern_matching.mx`
   - [x] 3.8.11. Create test file: `tests/pattern_matching_tests.rs`
   - **Ruby compliance note**: Guards (`when x if x > 0`), variable binding (`when x`), array/hash destructuring, and wildcards (`_`) in `case...when` are NOT valid Ruby syntax. These features require `case...in` (Ruby 2.7+ pattern matching). The current Metorex `case...when` extended syntax is Metorex-specific.
-  - [ ] 3.8.12. Add `case...in` pattern matching AST node (Ruby 2.7+ compatible)
-  - [ ] 3.8.13. Add `if`/`unless` expression form (assign result of if: `x = if cond then a else b end`)
-  - [ ] 3.8.14. Consider regex patterns: `when /pattern/ then ...`
-  - [ ] 3.8.15. Consider range patterns as when values: `when 1..10 then ...`
+  - [x] 3.8.12. Add `case...in` pattern matching AST node (Ruby 2.7+ compatible)
+  - [x] 3.8.13. Add `if`/`unless` expression form (assign result of if: `x = if cond then a else b end`)
+  - [ ] 3.8.14. Consider regex patterns: `when /pattern/ then ...` *(deferred — requires Regex type)*
+  - [x] 3.8.15. Consider range patterns as when values: `when 1..10 then ...`
 
 - [x] 3.9. Function and Method Definition Nodes
   - [x] 3.9.1. Implement `FunctionDefStmt` (name, parameters, body)
@@ -188,9 +188,9 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.9.6. Implement `MethodDefStmt` (extends FunctionDefStmt)
   - [x] 3.9.7. Write unit tests for function definitions
   - [x] 3.9.8. Create example file: `examples/parser/functions.mx`
-  - [ ] 3.9.9. Implement keyword argument syntax in definitions (`def method(name:, age: 10)`)
-  - [ ] 3.9.10. Implement keyword argument syntax in calls (`method(name: "Bob")`)
-  - [ ] 3.9.11. Allow operator method names (`def +(other)`, `def ==(other)`, `def [](key)`)
+  - [x] 3.9.9. Implement keyword argument syntax in definitions (`def method(name:, age: 10)`)
+  - [x] 3.9.10. Implement keyword argument syntax in calls (`method(name: "Bob")`)
+  - [x] 3.9.11. Allow operator method names (`def +(other)`, `def ==(other)`, `def [](key)`)
 
 - [x] 3.10. Class Definition Nodes
   - [x] 3.10.1. Implement `ClassDefStmt` (name, superclass, body)
@@ -220,16 +220,16 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 3.12.5. Create test file: `tests/parser_tests.rs`
   - [x] 3.12.6. Create test file: `tests/parser_error_recovery_tests.rs`
 
-- [ ] 3.13. Module and Mixin Support
-  - [ ] 3.13.1. Add `Module`, `Include`, `Extend` keyword tokens
-  - [ ] 3.13.2. Implement `ModuleDefStmt` AST node (`module Name ... end`)
-  - [ ] 3.13.3. Implement `IncludeStmt` and `ExtendStmt` AST nodes
-  - [ ] 3.13.4. VM: Create module objects in global registry
-  - [ ] 3.13.5. VM: `include` copies module methods into class instance method table
-  - [ ] 3.13.6. VM: `extend` adds module methods as class-level (singleton) methods
-  - [ ] 3.13.7. Write unit tests for module parsing and execution
-  - [ ] 3.13.8. Create example file: `examples/oop/modules.rb`
-  - [ ] 3.13.9. Create test file: `tests/module_tests.rs`
+- [x] 3.13. Module and Mixin Support
+  - [x] 3.13.1. Add `Module`, `Include`, `Extend` keyword tokens
+  - [x] 3.13.2. Implement `ModuleDefStmt` AST node (`module Name ... end`)
+  - [x] 3.13.3. Implement `IncludeStmt` and `ExtendStmt` AST nodes
+  - [x] 3.13.4. VM: Create module objects in global registry
+  - [x] 3.13.5. VM: `include` copies module methods into class instance method table
+  - [x] 3.13.6. VM: `extend` adds module methods as class-level (singleton) methods
+  - [x] 3.13.7. Write unit tests for module parsing and execution
+  - [x] 3.13.8. Create example file: `examples/oop/modules.rb`
+  - [x] 3.13.9. Create test file: `tests/module_tests.rs`
 
 ### 4. Runtime Object System
 

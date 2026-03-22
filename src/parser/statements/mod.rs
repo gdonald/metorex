@@ -35,6 +35,9 @@ impl Parser {
             TokenKind::AttrReader => self.parse_attr_reader(),
             TokenKind::AttrWriter => self.parse_attr_writer(),
             TokenKind::AttrAccessor => self.parse_attr_accessor(),
+            TokenKind::Module => self.parse_module_def(),
+            TokenKind::Include => self.parse_include(),
+            TokenKind::Extend => self.parse_extend(),
             _ => {
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;

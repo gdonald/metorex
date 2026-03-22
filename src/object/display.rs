@@ -41,6 +41,7 @@ impl fmt::Display for Object {
                 write!(f, "<{} instance>", instance.class.name())
             }
             Object::Class(class) => write!(f, "<class {}>", class.name()),
+            Object::Module(module) => write!(f, "<module {}>", module.name()),
             Object::Method(method) => write!(f, "<method {}>", method.name),
             Object::Block(_) => write!(f, "<block>"),
             Object::Exception(exc) => {

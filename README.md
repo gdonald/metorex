@@ -192,7 +192,10 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Method dispatch for built-in objects
 - Meta-programming core
 - Exception handling
-- Pattern matching
+- Pattern matching (`case/when` and `case/in` with Ruby 2.7+ `=> name` binding)
+- Keyword arguments (`def method(name:, age: 10)` and `method(name: "Bob")`)
+- Operator method names (`def +(other)`, `def ==(other)`, `def [](key)`, `def []=(key, value)`)
+- Module and mixin support (`module`, `include`, `extend`)
 - Built-in testing framework
 
 ### Phase 2: Bytecode VM

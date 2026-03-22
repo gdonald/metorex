@@ -76,6 +76,58 @@ impl VirtualMachine {
         ))
     }
 
+    /// Execute a `case/in` statement (Ruby 2.7+ pattern matching).
+    /// Raises `NoMatchingPatternError` if no arm matches and no else clause is present.
+    pub(crate) fn execute_case_in(
+        &mut self,
+        expression: &Expression,
+        cases: &[crate::ast::MatchCase],
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        let match_value = self.evaluate_expression(expression)?;
+
+        for case in cases {
+            let mut bindings: HashMap<String, Object> = HashMap::new();
+            if self.match_pattern(&case.pattern, &match_value, &mut bindings, position)? {
+                if !self.evaluate_guard_with_bindings(case.guard.as_ref(), &bindings)? {
+                    continue;
+                }
+
+                self.environment_mut().push_scope();
+                self.apply_pattern_bindings(&bindings);
+
+                let mut last_value = Object::Nil;
+                for statement in &case.body {
+                    if let Statement::Expression { expression, .. } = statement {
+                        last_value = self.evaluate_expression(expression)?;
+                        continue;
+                    }
+                    match self.execute_statement(statement)? {
+                        ControlFlow::Next => {}
+                        flow => {
+                            self.environment_mut().pop_scope();
+                            return Ok(flow);
+                        }
+                    }
+                }
+
+                self.environment_mut().pop_scope();
+                return Ok(ControlFlow::Return {
+                    value: last_value,
+                    position,
+                });
+            }
+        }
+
+        Err(MetorexError::runtime_error(
+            format!(
+                "NoMatchingPatternError: {} (NoMatchingPatternError)",
+                match_value
+            ),
+            position_to_location(position),
+        ))
+    }
+
     /// Match a pattern against a value and collect variable bindings.
     /// Returns true if the pattern matches, false otherwise.
     pub(crate) fn match_pattern(
@@ -195,6 +247,53 @@ impl VirtualMachine {
                 }
                 // None of the patterns matched
                 Ok(false)
+            }
+
+            // Bind pattern: match inner pattern and bind the whole value to a name
+            // Used in case/in: `in Integer => n`
+            MatchPattern::Bind { pattern, name } => {
+                if self.match_pattern(pattern, value, bindings, position)? {
+                    bindings.insert(name.clone(), value.clone());
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+
+            // Range pattern: matches if value falls within start..end or start...end
+            MatchPattern::Range {
+                start,
+                end,
+                exclusive,
+            } => {
+                // Extract numeric value for comparison
+                let val_num = match value {
+                    Object::Int(n) => *n as f64,
+                    Object::Float(f) => *f,
+                    _ => return Ok(false),
+                };
+
+                // Extract start bound
+                let start_num = match start.as_ref() {
+                    MatchPattern::IntLiteral(n) => *n as f64,
+                    MatchPattern::FloatLiteral(f) => *f,
+                    _ => return Ok(false),
+                };
+
+                // Extract end bound
+                let end_num = match end.as_ref() {
+                    MatchPattern::IntLiteral(n) => *n as f64,
+                    MatchPattern::FloatLiteral(f) => *f,
+                    _ => return Ok(false),
+                };
+
+                let in_range = if *exclusive {
+                    val_num >= start_num && val_num < end_num
+                } else {
+                    val_num >= start_num && val_num <= end_num
+                };
+
+                Ok(in_range)
             }
         }
     }

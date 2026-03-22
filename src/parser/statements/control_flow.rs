@@ -1,8 +1,8 @@
 // Control flow statement parsing (if, while, for, case)
 
-use crate::ast::{ElsifBranch, MatchCase, MatchPattern, Statement};
+use crate::ast::{ElsifBranch, Expression, MatchCase, MatchPattern, Statement};
 use crate::error::{MetorexError, SourceLocation};
-use crate::lexer::TokenKind;
+use crate::lexer::{Position, TokenKind};
 use crate::parser::Parser;
 
 impl Parser {
@@ -272,6 +272,11 @@ impl Parser {
         let expression = self.parse_expression()?;
         self.skip_whitespace();
 
+        // Detect whether this is case/when or case/in
+        if self.check(&[TokenKind::In]) {
+            return self.parse_case_in_body(expression, start_pos);
+        }
+
         // Parse when clauses
         let mut cases = Vec::new();
         loop {
@@ -349,6 +354,162 @@ impl Parser {
             cases,
             position: start_pos,
         })
+    }
+
+    /// Parse the body of a `case/in` statement (Ruby 2.7+ pattern matching).
+    /// Called after `case expr` has been consumed and `in` is the next token.
+    fn parse_case_in_body(
+        &mut self,
+        expression: Expression,
+        start_pos: Position,
+    ) -> Result<Statement, MetorexError> {
+        let mut cases = Vec::new();
+
+        loop {
+            self.skip_whitespace();
+            if !self.match_token(&[TokenKind::In]) {
+                break;
+            }
+            let in_pos = self.previous().position;
+            self.skip_whitespace();
+
+            // Parse the pattern (supports `=> name` binding)
+            let pattern = self.parse_case_in_pattern()?;
+            self.skip_whitespace();
+
+            // Parse optional guard clause (if ...)
+            let guard = if self.match_token(&[TokenKind::If]) {
+                self.skip_whitespace();
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            self.skip_whitespace();
+
+            // Parse the body
+            let mut body = Vec::new();
+            while !self.check(&[TokenKind::In, TokenKind::Else, TokenKind::End])
+                && !self.is_at_end()
+            {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::In, TokenKind::Else, TokenKind::End]) {
+                    break;
+                }
+                body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+
+            cases.push(MatchCase {
+                pattern,
+                guard,
+                body,
+                position: in_pos,
+            });
+        }
+
+        // Parse optional else clause (as a wildcard pattern)
+        self.skip_whitespace();
+        if self.match_token(&[TokenKind::Else]) {
+            let else_pos = self.previous().position;
+            self.skip_whitespace();
+
+            let mut else_body = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                else_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+
+            cases.push(MatchCase {
+                pattern: MatchPattern::Wildcard,
+                guard: None,
+                body: else_body,
+                position: else_pos,
+            });
+        }
+
+        self.skip_whitespace();
+        self.expect(TokenKind::End, "Expected 'end' after case/in statement")?;
+
+        Ok(Statement::CaseIn {
+            expression,
+            cases,
+            position: start_pos,
+        })
+    }
+
+    /// Parse a single pattern for `case/in`, supporting `pattern => name` binding
+    /// at the top level and inside array patterns.
+    fn parse_case_in_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
+        self.parse_case_in_pattern_inner()
+    }
+
+    /// Recursive inner parser for `case/in` patterns with `=> name` bind support.
+    fn parse_case_in_pattern_inner(&mut self) -> Result<MatchPattern, MetorexError> {
+        let token = self.peek().clone();
+
+        let inner = match &token.kind {
+            // Array pattern — parse each element with bind support
+            TokenKind::LBracket => {
+                self.advance();
+                self.skip_whitespace();
+                let mut patterns = Vec::new();
+                while !self.check(&[TokenKind::RBracket]) && !self.is_at_end() {
+                    self.skip_whitespace();
+                    if self.match_token(&[TokenKind::DotDotDot]) {
+                        self.skip_whitespace();
+                        if let TokenKind::Ident(name) = &self.peek().kind {
+                            let rest_name = name.clone();
+                            self.advance();
+                            patterns.push(MatchPattern::Rest(rest_name));
+                        } else {
+                            return Err(MetorexError::syntax_error(
+                                "Expected identifier after ... in array pattern".to_string(),
+                                SourceLocation::new(
+                                    self.peek().position.line,
+                                    self.peek().position.column,
+                                    self.peek().position.offset,
+                                ),
+                            ));
+                        }
+                    } else {
+                        patterns.push(self.parse_case_in_pattern_inner()?);
+                    }
+                    self.skip_whitespace();
+                    if !self.check(&[TokenKind::RBracket]) {
+                        self.expect(TokenKind::Comma, "Expected ',' or ']' in array pattern")?;
+                        self.skip_whitespace();
+                    }
+                }
+                self.expect(TokenKind::RBracket, "Expected ']' after array pattern")?;
+                MatchPattern::Array(patterns)
+            }
+            // For all other patterns, delegate to the base parser
+            _ => self.parse_case_pattern()?,
+        };
+
+        self.skip_whitespace();
+
+        // Check for `=> name` binding
+        if self.match_token(&[TokenKind::FatArrow]) {
+            self.skip_whitespace();
+            let name = if let TokenKind::Ident(n) = &self.peek().kind {
+                let n = n.clone();
+                self.advance();
+                n
+            } else {
+                return Err(self.error_at_current("Expected identifier after '=>' in pattern"));
+            };
+            Ok(MatchPattern::Bind {
+                pattern: Box::new(inner),
+                name,
+            })
+        } else {
+            Ok(inner)
+        }
     }
 
     /// Parse a pattern for a case statement
@@ -516,21 +677,24 @@ impl Parser {
                 Ok(MatchPattern::Object(key_patterns))
             }
 
-            // Literal patterns
+            // Literal patterns (may be followed by .. or ... to form a range pattern)
             TokenKind::Int(n) => {
                 let value = *n;
                 self.advance();
-                Ok(MatchPattern::IntLiteral(value))
+                let start = MatchPattern::IntLiteral(value);
+                self.parse_range_pattern_suffix(start)
             }
             TokenKind::Float(f) => {
                 let value = *f;
                 self.advance();
-                Ok(MatchPattern::FloatLiteral(value))
+                let start = MatchPattern::FloatLiteral(value);
+                self.parse_range_pattern_suffix(start)
             }
             TokenKind::String(s) => {
                 let value = s.clone();
                 self.advance();
-                Ok(MatchPattern::StringLiteral(value))
+                let start = MatchPattern::StringLiteral(value);
+                self.parse_range_pattern_suffix(start)
             }
             TokenKind::True => {
                 self.advance();
@@ -569,6 +733,30 @@ impl Parser {
                     token.position.offset,
                 ),
             )),
+        }
+    }
+
+    /// If `..` or `...` follows a literal pattern, wrap it in a Range pattern.
+    fn parse_range_pattern_suffix(
+        &mut self,
+        start: MatchPattern,
+    ) -> Result<MatchPattern, MetorexError> {
+        if self.match_token(&[TokenKind::DotDotDot]) {
+            let end = self.parse_case_pattern()?;
+            Ok(MatchPattern::Range {
+                start: Box::new(start),
+                end: Box::new(end),
+                exclusive: true,
+            })
+        } else if self.match_token(&[TokenKind::DotDot]) {
+            let end = self.parse_case_pattern()?;
+            Ok(MatchPattern::Range {
+                start: Box::new(start),
+                end: Box::new(end),
+                exclusive: false,
+            })
+        } else {
+            Ok(start)
         }
     }
 }

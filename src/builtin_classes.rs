@@ -102,7 +102,7 @@ impl BuiltinClasses {
             Object::Dict(_) => Rc::clone(&self.hash_class),
             Object::Set(_) => Rc::clone(&self.set_class),
             Object::Instance(inst) => Rc::clone(&inst.borrow().class),
-            Object::Class(_) => Rc::clone(&self.object_class),
+            Object::Class(_) | Object::Module(_) => Rc::clone(&self.object_class),
             Object::Method(_) => Rc::clone(&self.object_class),
             Object::Block(_) => Rc::clone(&self.object_class),
             Object::Binding(_) => Rc::clone(&self.object_class),

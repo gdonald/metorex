@@ -57,4 +57,77 @@ impl Parser {
             position: start_pos,
         })
     }
+
+    /// Parse a module definition
+    pub(crate) fn parse_module_def(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self
+            .expect(TokenKind::Module, "Expected 'module'")?
+            .position;
+        self.skip_whitespace();
+
+        let name = match self.advance().kind {
+            TokenKind::Ident(name) => name,
+            _ => return Err(self.error_at_previous("Expected module name")),
+        };
+
+        self.skip_whitespace();
+
+        let was_in_class = self.in_class_body;
+        self.in_class_body = true;
+
+        let mut body = Vec::new();
+        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::End]) {
+                break;
+            }
+            body.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        self.in_class_body = was_in_class;
+        self.expect(TokenKind::End, "Expected 'end' after module body")?;
+
+        Ok(Statement::ModuleDef {
+            name,
+            body,
+            position: start_pos,
+        })
+    }
+
+    /// Parse an include statement
+    pub(crate) fn parse_include(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self
+            .expect(TokenKind::Include, "Expected 'include'")?
+            .position;
+        self.skip_whitespace();
+
+        let module_name = match self.advance().kind {
+            TokenKind::Ident(name) => name,
+            _ => return Err(self.error_at_previous("Expected module name after 'include'")),
+        };
+
+        Ok(Statement::Include {
+            module_name,
+            position: start_pos,
+        })
+    }
+
+    /// Parse an extend statement
+    pub(crate) fn parse_extend(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self
+            .expect(TokenKind::Extend, "Expected 'extend'")?
+            .position;
+        self.skip_whitespace();
+
+        let module_name = match self.advance().kind {
+            TokenKind::Ident(name) => name,
+            _ => return Err(self.error_at_previous("Expected module name after 'extend'")),
+        };
+
+        Ok(Statement::Extend {
+            module_name,
+            position: start_pos,
+        })
+    }
 }

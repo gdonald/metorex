@@ -358,6 +358,7 @@ fn test_equals_method() {
     let method1 = Rc::new(Method {
         name: "foo".to_string(),
         parameters: vec![],
+        keyword_parameters: vec![],
         body: vec![],
         receiver: None,
         owner: None,
@@ -367,6 +368,7 @@ fn test_equals_method() {
     let method3 = Rc::new(Method {
         name: "foo".to_string(),
         parameters: vec![],
+        keyword_parameters: vec![],
         body: vec![],
         receiver: None,
         owner: None,

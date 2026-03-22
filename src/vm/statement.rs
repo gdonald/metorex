@@ -114,6 +114,11 @@ impl VirtualMachine {
                 cases,
                 position,
             } => self.execute_match(expression, cases, *position),
+            Statement::CaseIn {
+                expression,
+                cases,
+                position,
+            } => self.execute_case_in(expression, cases, *position),
             Statement::FunctionDef {
                 name,
                 parameters,
@@ -129,6 +134,19 @@ impl VirtualMachine {
                     position_to_location(*position),
                 ))
             }
+            Statement::ModuleDef {
+                name,
+                body,
+                position,
+            } => self.execute_module_def(name, body, *position),
+            Statement::Include {
+                module_name,
+                position,
+            } => self.execute_include(module_name, *position),
+            Statement::Extend {
+                module_name,
+                position,
+            } => self.execute_extend(module_name, *position),
         }
     }
 
@@ -267,6 +285,25 @@ impl VirtualMachine {
                         let mut dict = dict_rc.borrow_mut();
                         dict.insert(key_str, value);
                         Ok(())
+                    }
+                    Object::Instance(instance_rc) => {
+                        // Dispatch to user-defined []= method
+                        let class = Rc::clone(&instance_rc.borrow().class);
+                        if let Some(method) = class.find_method("[]=") {
+                            self.invoke_method(
+                                class,
+                                method,
+                                Object::Instance(instance_rc),
+                                vec![idx, value],
+                                *position,
+                            )?;
+                            Ok(())
+                        } else {
+                            Err(MetorexError::runtime_error(
+                                "No []= method defined on instance",
+                                position_to_location(*position),
+                            ))
+                        }
                     }
                     _ => Err(MetorexError::runtime_error(
                         "Cannot index assign on this type",

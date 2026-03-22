@@ -408,6 +408,9 @@ impl Resolver {
 
             Statement::Match {
                 expression, cases, ..
+            }
+            | Statement::CaseIn {
+                expression, cases, ..
             } => {
                 self.resolve_expression(expression);
 
@@ -468,6 +471,19 @@ impl Resolver {
             | Statement::AttrWriter { .. }
             | Statement::AttrAccessor { .. } => {
                 // These are class-level declarations, no variable resolution needed
+            }
+
+            Statement::ModuleDef { name, body, .. } => {
+                self.push_scope();
+                for stmt in body {
+                    self.resolve_statement(stmt);
+                }
+                self.pop_scope();
+                self.declare(name.clone(), Position::default());
+            }
+
+            Statement::Include { .. } | Statement::Extend { .. } => {
+                // Module inclusion/extension, no variable resolution needed
             }
         }
     }
@@ -667,6 +683,57 @@ impl Resolver {
 
             Expression::GlobalVariable { .. } => {
                 // Global variables don't need scope resolution
+            }
+
+            Expression::If {
+                condition,
+                then_branch,
+                elsif_branches,
+                else_branch,
+                ..
+            } => {
+                self.resolve_expression(condition);
+                self.push_scope();
+                for stmt in then_branch {
+                    self.resolve_statement(stmt);
+                }
+                self.pop_scope();
+                for elsif in elsif_branches {
+                    self.resolve_expression(&elsif.condition);
+                    self.push_scope();
+                    for stmt in &elsif.body {
+                        self.resolve_statement(stmt);
+                    }
+                    self.pop_scope();
+                }
+                if let Some(else_stmts) = else_branch {
+                    self.push_scope();
+                    for stmt in else_stmts {
+                        self.resolve_statement(stmt);
+                    }
+                    self.pop_scope();
+                }
+            }
+
+            Expression::Unless {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.resolve_expression(condition);
+                self.push_scope();
+                for stmt in then_branch {
+                    self.resolve_statement(stmt);
+                }
+                self.pop_scope();
+                if let Some(else_stmts) = else_branch {
+                    self.push_scope();
+                    for stmt in else_stmts {
+                        self.resolve_statement(stmt);
+                    }
+                    self.pop_scope();
+                }
             }
 
             // Literals don't need resolution
