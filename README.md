@@ -196,6 +196,9 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Keyword arguments (`def method(name:, age: 10)` and `method(name: "Bob")`)
 - Operator method names (`def +(other)`, `def ==(other)`, `def [](key)`, `def []=(key, value)`)
 - Module and mixin support (`module`, `include`, `extend`)
+- `define_method` for dynamic method definition on classes
+- `get_source` for runtime method introspection
+- AST Inspection API: `Method#body`, `Block#statements`, node type/property access
 - Built-in testing framework
 
 ### Phase 2: Bytecode VM

@@ -1,5 +1,8 @@
+mod ast_inspection_tests;
 mod block_as_object_tests;
 mod block_execution_tests;
+mod define_method_tests;
 mod function_definition_tests;
+mod get_source_tests;
 mod implicit_block_tests;
 mod lambda_tests;

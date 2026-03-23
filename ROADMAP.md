@@ -512,34 +512,34 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 7.2.14. Create test file: `tests/implicit_block_tests.rs`
   - [x] 7.2.15. Document the implicit block capture feature
 
-- [ ] 7.3. `define_method` Implementation
-  - [ ] 7.3.1. Add `define_method(name, block)` to Object class
-  - [ ] 7.3.2. Extract BlockStatement from block object
-  - [ ] 7.3.3. Create Method object from block
-  - [ ] 7.3.4. Add method to class method table
-  - [ ] 7.3.5. Ensure method is callable on instances
-  - [ ] 7.3.6. Write unit tests for define_method
-  - [ ] 7.3.7. Create example file: `examples/metaprogramming/define_method.rb`
-  - [ ] 7.3.8. Create test file: `tests/define_method_tests.rs`
+- [x] 7.3. `define_method` Implementation
+  - [x] 7.3.1. Add `define_method(name, block)` to Object class
+  - [x] 7.3.2. Extract BlockStatement from block object
+  - [x] 7.3.3. Create Method object from block
+  - [x] 7.3.4. Add method to class method table
+  - [x] 7.3.5. Ensure method is callable on instances
+  - [x] 7.3.6. Write unit tests for define_method
+  - [x] 7.3.7. Create example file: `examples/metaprogramming/define_method.rb`
+  - [x] 7.3.8. Create test file: `tests/blocks/define_method_tests.rs`
 
-- [ ] 7.4. `get_source` Implementation
-  - [ ] 7.4.1. Add `get_source(method_name)` to Object class
-  - [ ] 7.4.2. Lookup method in class hierarchy
-  - [ ] 7.4.3. Return BlockStatement object for method body
-  - [ ] 7.4.4. Handle native methods (return nil or special marker)
-  - [ ] 7.4.5. Write unit tests for get_source
-  - [ ] 7.4.6. Create example file: `examples/metaprogramming/get_source.rb`
-  - [ ] 7.4.7. Create test file: `tests/get_source_tests.rs`
+- [x] 7.4. `get_source` Implementation
+  - [x] 7.4.1. Add `get_source(method_name)` to Object class
+  - [x] 7.4.2. Lookup method in class hierarchy
+  - [x] 7.4.3. Return Method object for method body
+  - [x] 7.4.4. Handle native methods (return nil or method stub)
+  - [x] 7.4.5. Write unit tests for get_source
+  - [x] 7.4.6. Create example file: `tests/_examples/metaprogramming/get_source.rb`
+  - [x] 7.4.7. Create test file: `tests/blocks/get_source_tests.rs`
 
-- [ ] 7.5. AST Inspection API
-  - [ ] 7.5.1. Expose AST node types as Metorex classes
-  - [ ] 7.5.2. Add methods to inspect node properties
-  - [ ] 7.5.3. Allow traversal of AST tree
-  - [ ] 7.5.4. Implement `BlockStatement#statements` accessor
-  - [ ] 7.5.5. Implement node type checking methods
-  - [ ] 7.5.6. Write unit tests for AST inspection
-  - [ ] 7.5.7. Create example file: `examples/metaprogramming/ast_inspection.rb`
-  - [ ] 7.5.8. Create test file: `tests/ast_inspection_tests.rs`
+- [x] 7.5. AST Inspection API
+  - [x] 7.5.1. Expose AST node types as Metorex classes
+  - [x] 7.5.2. Add methods to inspect node properties
+  - [x] 7.5.3. Allow traversal of AST tree
+  - [x] 7.5.4. Implement `BlockStatement#statements` accessor
+  - [x] 7.5.5. Implement node type checking methods
+  - [x] 7.5.6. Write unit tests for AST inspection
+  - [x] 7.5.7. Create example file: `examples/metaprogramming/ast_inspection.rb`
+  - [x] 7.5.8. Create test file: `tests/ast_inspection_tests.rs`
 
 - [ ] 7.6. DSL Examples and Tests
   - [ ] 7.6.1. Create DSL example: simple test framework

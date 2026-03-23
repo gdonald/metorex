@@ -312,6 +312,14 @@ impl VirtualMachine {
             self.environment_mut()
                 .define("self".to_string(), self_value.clone());
 
+            // Inject captured closure variables (from define_method blocks)
+            if let Some(captured) = &method.captured_vars {
+                for (name, value_ref) in captured {
+                    self.environment_mut()
+                        .define_shared(name.clone(), value_ref.clone());
+                }
+            }
+
             let (positional, kwargs) = split_keyword_args(arguments);
             for (param, value) in method.parameters.iter().zip(positional.into_iter()) {
                 self.environment_mut().define(param.clone(), value);

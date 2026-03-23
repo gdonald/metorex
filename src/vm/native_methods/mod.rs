@@ -4,6 +4,7 @@
 //! standard classes like Object, String, and Array.
 
 mod array_methods;
+mod ast_methods;
 mod exception_methods;
 mod float_methods;
 mod hash_methods;
@@ -15,7 +16,9 @@ use super::VirtualMachine;
 use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
-use crate::object::Object;
+use crate::object::{Method, Object};
+use crate::vm::errors::*;
+use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -64,6 +67,49 @@ impl VirtualMachine {
                 "name" => {
                     return Ok(Some(Object::String(Rc::new(class_rc.name().to_string()))));
                 }
+                "define_method" => {
+                    if arguments.is_empty() {
+                        return Err(method_argument_error("define_method", 1, 0, position));
+                    }
+                    let method_name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "define_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let block = self
+                        .pending_block
+                        .take()
+                        .or_else(|| arguments.get(1).cloned());
+                    let block = match block {
+                        Some(Object::Block(b)) => b,
+                        _ => {
+                            return Err(MetorexError::runtime_error(
+                                "define_method requires a block",
+                                position_to_location(position),
+                            ));
+                        }
+                    };
+                    let mut method = Method::new(
+                        method_name_str.clone(),
+                        block.parameters.clone(),
+                        block.body.clone(),
+                    );
+                    // Capture closure: prefer existing captured_vars, otherwise snap current scope
+                    method.captured_vars = Some(if block.captured_vars.is_empty() {
+                        self.environment().current_scope_var_refs()
+                    } else {
+                        block.captured_vars.clone()
+                    });
+                    class_rc.define_method(&method_name_str, Rc::new(method));
+                    return Ok(Some(Object::Nil));
+                }
                 _ => {}
             }
         }
@@ -86,7 +132,6 @@ impl VirtualMachine {
                     }
                 }
                 "parameters" => {
-                    // Return an array of parameter names
                     let params: Vec<Object> = method_obj
                         .parameters
                         .iter()
@@ -95,6 +140,25 @@ impl VirtualMachine {
                     return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                         params,
                     )))));
+                }
+                "body" => {
+                    return Ok(Some(ast_methods::serialize_statements(&method_obj.body)));
+                }
+                "arity" => {
+                    return Ok(Some(Object::Int(method_obj.parameters.len() as i64)));
+                }
+                _ => {}
+            }
+        }
+
+        // Special handling for Block objects (AST inspection)
+        if let Object::Block(block_obj) = receiver {
+            match method_name {
+                "statements" => {
+                    return Ok(Some(ast_methods::serialize_statements(&block_obj.body)));
+                }
+                "arity" => {
+                    return Ok(Some(Object::Int(block_obj.parameters.len() as i64)));
                 }
                 _ => {}
             }

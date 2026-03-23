@@ -3,6 +3,9 @@
 use crate::ast::{Expression, Statement};
 use crate::callable::Callable;
 use crate::error::SourceLocation;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
 
 use super::Object;
 
@@ -26,6 +29,8 @@ pub struct Method {
     pub owner: Option<String>,
     /// Source location where the method is defined
     pub source_location: Option<SourceLocation>,
+    /// Captured closure variables (from define_method blocks)
+    pub captured_vars: Option<HashMap<String, Rc<RefCell<Object>>>>,
 }
 
 impl Method {
@@ -40,6 +45,7 @@ impl Method {
             receiver: None,
             owner: None,
             source_location: None,
+            captured_vars: None,
         }
     }
 
@@ -59,6 +65,7 @@ impl Method {
             receiver: None,
             owner: Some(owner),
             source_location: None,
+            captured_vars: None,
         }
     }
 
@@ -78,6 +85,7 @@ impl Method {
             receiver: None,
             owner: None,
             source_location: Some(source_location),
+            captured_vars: None,
         }
     }
 
@@ -98,6 +106,7 @@ impl Method {
             receiver: None,
             owner: Some(owner),
             source_location: Some(source_location),
+            captured_vars: None,
         }
     }
 
@@ -112,6 +121,7 @@ impl Method {
             receiver: Some(Box::new(receiver)),
             owner: self.owner.clone(),
             source_location: self.source_location.clone(),
+            captured_vars: self.captured_vars.clone(),
         }
     }
 

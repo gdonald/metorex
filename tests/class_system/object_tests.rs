@@ -364,6 +364,7 @@ fn test_equals_method() {
         receiver: None,
         owner: None,
         source_location: None,
+        captured_vars: None,
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -375,6 +376,7 @@ fn test_equals_method() {
         receiver: None,
         owner: None,
         source_location: None,
+        captured_vars: None,
     });
 
     let obj1 = Object::Method(method1);

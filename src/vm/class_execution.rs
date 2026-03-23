@@ -244,8 +244,62 @@ impl VirtualMachine {
                     }
                 }
                 _ => {
-                    // For now, we ignore other statements in the class body
-                    // In the future, we might support class-level code execution
+                    // Handle define_method(:name) { |args| body } calls in class body
+                    if let Statement::Expression {
+                        expression:
+                            Expression::Call {
+                                callee,
+                                arguments: call_args,
+                                trailing_block: Some(block_expr),
+                                ..
+                            },
+                        ..
+                    } = statement
+                        && let Expression::Identifier {
+                            name: callee_name, ..
+                        } = callee.as_ref()
+                        && callee_name == "define_method"
+                    {
+                        let method_name_str = if let Some(name_expr) = call_args.first() {
+                            match self.evaluate_expression(name_expr)? {
+                                Object::String(s) => (*s).clone(),
+                                Object::Symbol(s) => (*s).clone(),
+                                _ => {
+                                    return Err(MetorexError::runtime_error(
+                                        "define_method: first argument must be a String or Symbol",
+                                        position_to_location(position),
+                                    ));
+                                }
+                            }
+                        } else {
+                            return Err(MetorexError::runtime_error(
+                                "define_method requires at least one argument",
+                                position_to_location(position),
+                            ));
+                        };
+                        let block_obj = self.evaluate_expression(block_expr)?;
+                        let block = match block_obj {
+                            Object::Block(b) => b,
+                            _ => {
+                                return Err(MetorexError::runtime_error(
+                                    "define_method requires a block",
+                                    position_to_location(position),
+                                ));
+                            }
+                        };
+                        let mut method = Method::new(
+                            method_name_str.clone(),
+                            block.parameters.clone(),
+                            block.body.clone(),
+                        );
+                        // Capture closure: prefer existing captured_vars, otherwise snap current scope
+                        method.captured_vars = Some(if block.captured_vars.is_empty() {
+                            self.environment().current_scope_var_refs()
+                        } else {
+                            block.captured_vars.clone()
+                        });
+                        class.define_method(&method_name_str, Rc::new(method));
+                    }
                 }
             }
         }

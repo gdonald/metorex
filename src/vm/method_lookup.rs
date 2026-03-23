@@ -54,27 +54,36 @@ impl VirtualMachine {
                 }
                 // Try native method as fallback
                 let class = self.builtins().class_of(&receiver);
-                if let Some(result) =
-                    self.call_native_method(&class, &receiver, method_name, &arguments, position)?
+                let native_result =
+                    self.call_native_method(&class, &receiver, method_name, &arguments, position)?;
+
+                if let Some(result) = native_result {
+                    return Ok(result);
+                }
+
+                // For user-defined class instances, fall back to base Object methods
+                let object_result =
+                    self.call_object_method(&receiver, method_name, &arguments, position)?;
+
+                if let Some(result) = object_result {
+                    return Ok(result);
+                }
+
+                // Try method_missing as a final fallback
+                if let Some((method_missing_class, method_missing_method)) =
+                    self.lookup_method(&receiver, "method_missing")
                 {
-                    Ok(result)
+                    // Call method_missing with the method name as a string argument
+                    let method_name_obj = Object::String(Rc::new(method_name.to_string()));
+                    self.invoke_method(
+                        method_missing_class,
+                        method_missing_method,
+                        receiver,
+                        vec![method_name_obj],
+                        position,
+                    )
                 } else {
-                    // Try method_missing as a final fallback
-                    if let Some((method_missing_class, method_missing_method)) =
-                        self.lookup_method(&receiver, "method_missing")
-                    {
-                        // Call method_missing with the method name as a string argument
-                        let method_name_obj = Object::String(Rc::new(method_name.to_string()));
-                        self.invoke_method(
-                            method_missing_class,
-                            method_missing_method,
-                            receiver,
-                            vec![method_name_obj],
-                            position,
-                        )
-                    } else {
-                        Err(undefined_method_error(method_name, &receiver, position))
-                    }
+                    Err(undefined_method_error(method_name, &receiver, position))
                 }
             }
         }

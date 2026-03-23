@@ -73,6 +73,32 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Bool(matches!(receiver, Object::Nil))))
             }
+            "get_source" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let query = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                match self.lookup_method(receiver, &query) {
+                    Some((_class, method)) => Ok(Some(Object::Method(method))),
+                    None => Ok(Some(Object::Nil)),
+                }
+            }
             _ => Ok(None),
         }
     }

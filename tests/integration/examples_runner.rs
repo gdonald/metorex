@@ -233,6 +233,27 @@ Goodbye, Bob!
 }
 
 #[test]
+fn test_metaprogramming_get_source_execution() {
+    let expected = "speak\nfetch\ntrue\nspeak\npurr\npurr\n";
+    let output = run_example("metaprogramming/get_source.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_define_method_execution() {
+    let expected = "Hello, World!\n10\n12\nHi there!\nzero\none\ntwo\ntrue\n";
+    let output = run_example("metaprogramming/define_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_ast_inspection_execution() {
+    let expected = "add\n2\n1\nBinaryOp\n+\n1\nBinaryOp\n*\n1\n1\n";
+    let output = run_example("metaprogramming/ast_inspection.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_algorithms_filter_even_numbers_execution() {
     let expected = "[2, 4, 6]\n";
     let output = run_example("algorithms/filter_even_numbers.rb");
