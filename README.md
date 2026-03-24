@@ -199,7 +199,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `define_method` for dynamic method definition on classes
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access
-- Built-in testing framework
+- DSL Examples: test framework, HTML builder, query builder, configuration language
 
 ### Phase 2: Bytecode VM
 - Bytecode compiler

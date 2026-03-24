@@ -541,12 +541,12 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 7.5.7. Create example file: `examples/metaprogramming/ast_inspection.rb`
   - [x] 7.5.8. Create test file: `tests/ast_inspection_tests.rs`
 
-- [ ] 7.6. DSL Examples and Tests
-  - [ ] 7.6.1. Create DSL example: simple test framework
-  - [ ] 7.6.2. Create DSL example: HTML builder
-  - [ ] 7.6.3. Create DSL example: query builder
-  - [ ] 7.6.4. Create DSL example: configuration language
-  - [ ] 7.6.5. Write tests for each DSL
+- [x] 7.6. DSL Examples and Tests
+  - [x] 7.6.1. Create DSL example: simple test framework
+  - [x] 7.6.2. Create DSL example: HTML builder
+  - [x] 7.6.3. Create DSL example: query builder
+  - [x] 7.6.4. Create DSL example: configuration language
+  - [x] 7.6.5. Write tests for each DSL
   - [ ] 7.6.6. Document DSL patterns
   - [ ] 7.6.7. Create example file: `examples/dsl/test_framework.rb`
   - [ ] 7.6.8. Create example file: `examples/dsl/html_builder.rb`
