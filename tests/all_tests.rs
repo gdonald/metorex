@@ -1,5 +1,6 @@
 // Main test integration file that organizes all tests by topic
 
+mod array_methods_tests;
 mod ast;
 mod blocks;
 mod class_system;

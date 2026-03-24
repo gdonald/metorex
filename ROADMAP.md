@@ -547,9 +547,9 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 7.6.3. Create DSL example: query builder
   - [x] 7.6.4. Create DSL example: configuration language
   - [x] 7.6.5. Write tests for each DSL
-  - [ ] 7.6.6. Document DSL patterns
-  - [ ] 7.6.7. Create example file: `examples/dsl/test_framework.rb`
-  - [ ] 7.6.8. Create example file: `examples/dsl/html_builder.rb`
+  - [x] 7.6.6. Document DSL patterns
+  - [x] 7.6.7. Create example file: `examples/dsl/test_framework.rb`
+  - [x] 7.6.8. Create example file: `examples/dsl/html_builder.rb`
 
 ### 8. Standard Library (Core)
 
@@ -566,20 +566,20 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 8.1.10. Create example file: `examples/stdlib/strings.rb`
   - [x] 8.1.11. Create test file: `tests/string_methods_tests.rs`
 
-- [ ] 8.2. Array Methods
-  - [ ] 8.2.1. Implement `length`/`size`
-  - [ ] 8.2.2. Implement `push`/`append`
-  - [ ] 8.2.3. Implement `pop`
-  - [ ] 8.2.4. Implement `shift`/`unshift`
-  - [ ] 8.2.5. Implement `map`
-  - [ ] 8.2.6. Implement `filter`/`select`
-  - [ ] 8.2.7. Implement `reduce`/`fold`
-  - [ ] 8.2.8. Implement `each` (iterator with block)
-  - [ ] 8.2.9. Implement `sort`
-  - [ ] 8.2.10. Implement `reverse`
-  - [ ] 8.2.11. Write unit tests for array methods
-  - [ ] 8.2.12. Create example file: `examples/stdlib/arrays.rb`
-  - [ ] 8.2.13. Create test file: `tests/array_methods_tests.rs`
+- [x] 8.2. Array Methods
+  - [x] 8.2.1. Implement `length`/`size`
+  - [x] 8.2.2. Implement `push`/`append`
+  - [x] 8.2.3. Implement `pop`
+  - [x] 8.2.4. Implement `shift`/`unshift`
+  - [x] 8.2.5. Implement `map`
+  - [x] 8.2.6. Implement `filter`/`select`
+  - [x] 8.2.7. Implement `reduce`/`fold`
+  - [x] 8.2.8. Implement `each` (iterator with block)
+  - [x] 8.2.9. Implement `sort`
+  - [x] 8.2.10. Implement `reverse`
+  - [x] 8.2.11. Write unit tests for array methods
+  - [x] 8.2.12. Create example file: `examples/stdlib/arrays.rb`
+  - [x] 8.2.13. Create test file: `tests/array_methods_tests.rs`
 
 - [ ] 8.3. Hash/Dict Methods
   - [ ] 8.3.1. Implement `keys`

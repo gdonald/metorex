@@ -200,6 +200,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access
 - DSL Examples: test framework, HTML builder, query builder, configuration language
+- Array Methods: `length`/`size`, `push`/`pop`, `shift`/`unshift`, `sort`, `reverse`, `map`, `select`/`filter`, `reduce`, `each`, `join`
 
 ### Phase 2: Bytecode VM
 - Bytecode compiler

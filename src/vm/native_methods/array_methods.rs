@@ -9,6 +9,23 @@ use crate::vm::utils::position_to_location;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+fn compare_for_sort(a: &Object, b: &Object) -> std::cmp::Ordering {
+    match (a, b) {
+        (Object::Int(x), Object::Int(y)) => x.cmp(y),
+        (Object::Float(x), Object::Float(y)) => {
+            x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal)
+        }
+        (Object::Int(x), Object::Float(y)) => (*x as f64)
+            .partial_cmp(y)
+            .unwrap_or(std::cmp::Ordering::Equal),
+        (Object::Float(x), Object::Int(y)) => x
+            .partial_cmp(&(*y as f64))
+            .unwrap_or(std::cmp::Ordering::Equal),
+        (Object::String(x), Object::String(y)) => x.as_str().cmp(y.as_str()),
+        _ => a.to_string().cmp(&b.to_string()),
+    }
+}
+
 impl VirtualMachine {
     /// Execute native methods for the Array class.
     pub(crate) fn call_array_method(
@@ -385,6 +402,91 @@ impl VirtualMachine {
                     }
 
                     Ok(Some(Object::Array(Rc::new(RefCell::new(transposed)))))
+                } else {
+                    Ok(None)
+                }
+            }
+            "size" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Array(array_rc) = receiver {
+                    Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
+                } else {
+                    Ok(None)
+                }
+            }
+            "shift" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Array(array_rc) = receiver {
+                    let mut array = array_rc.borrow_mut();
+                    if array.is_empty() {
+                        Ok(Some(Object::Nil))
+                    } else {
+                        Ok(Some(array.remove(0)))
+                    }
+                } else {
+                    Ok(None)
+                }
+            }
+            "unshift" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Array(array_rc) = receiver {
+                    array_rc.borrow_mut().insert(0, arguments[0].clone());
+                    Ok(Some(receiver.clone()))
+                } else {
+                    Ok(None)
+                }
+            }
+            "sort" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Array(array_rc) = receiver {
+                    let mut sorted = array_rc.borrow().clone();
+                    sorted.sort_by(compare_for_sort);
+                    Ok(Some(Object::Array(Rc::new(RefCell::new(sorted)))))
+                } else {
+                    Ok(None)
+                }
+            }
+            "reverse" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Array(array_rc) = receiver {
+                    let mut reversed = array_rc.borrow().clone();
+                    reversed.reverse();
+                    Ok(Some(Object::Array(Rc::new(RefCell::new(reversed)))))
                 } else {
                     Ok(None)
                 }

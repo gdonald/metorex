@@ -969,6 +969,20 @@ fn test_stdlib_strings_parens_execution() {
 }
 
 #[test]
+fn test_stdlib_arrays_execution() {
+    let expected = "8\n8\n[1, 2, 3, 4]\n4\n[1, 2, 3]\n1\n[2, 3]\n[0, 2, 3]\n[1, 1, 2, 3, 4, 5, 6, 9]\n[6, 2, 9, 5, 1, 4, 1, 3]\n[2, 4, 6]\n[2, 4, 6]\n15\na, b, c\nabc\n";
+    let output = run_example("stdlib/arrays.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_arrays_parens_execution() {
+    let expected = "8\n8\n[1, 2, 3, 4]\n4\n[1, 2, 3]\n1\n[2, 3]\n[0, 2, 3]\n[1, 1, 2, 3, 4, 5, 6, 9]\n[6, 2, 9, 5, 1, 4, 1, 3]\n[2, 4, 6]\n[2, 4, 6]\n15\na, b, c\nabc\n";
+    let output = run_example("stdlib/arrays_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_dsl_test_framework_execution() {
     let expected = "Suite: Math Tests\n  PASS: 1 + 1 equals 2\n  PASS: 10 / 2 equals 5\n  PASS: 3 * 4 equals 12\n  PASS: 5 - 3 equals 2\n  FAIL: impossible math\nResults: 4 passed, 1 failed\n";
     let output = run_example("dsl/test_framework.rb");
