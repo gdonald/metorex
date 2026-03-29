@@ -634,18 +634,18 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 8.6.9. Create test file: `tests/set_methods_tests.rs`
 
 - [ ] 8.7. Built-in Testing Framework
-  - [ ] 8.7.1. Design test framework API (`describe`, `it`, `expect`)
-  - [ ] 8.7.2. Implement `Test` class for test definitions
-  - [ ] 8.7.3. Implement `TestRunner` for executing tests
-  - [ ] 8.7.4. Implement assertion methods (`assert`, `assert_equal`, `assert_raises`)
+  - [x] 8.7.1. Design test framework API (`describe`, `it`, `expect`)
+  - [x] 8.7.2. Implement `Test` class for test definitions
+  - [x] 8.7.3. Implement `TestRunner` for executing tests
+  - [x] 8.7.4. Implement assertion methods (`assert`, `assert_equal`, `assert_raises`)
   - [ ] 8.7.5. Implement test discovery (finding test files)
-  - [ ] 8.7.6. Implement test reporting (pass/fail counts, timing)
-  - [ ] 8.7.7. Implement `before` and `after` hooks
+  - [x] 8.7.6. Implement test reporting (pass/fail counts, timing)
+  - [x] 8.7.7. Implement `before` and `after` hooks
   - [ ] 8.7.8. Implement test filtering (run specific tests)
   - [ ] 8.7.9. Add colored output for test results
-  - [ ] 8.7.10. Write tests for the testing framework (meta!)
-  - [ ] 8.7.11. Create example file: `examples/stdlib/testing_framework.rb`
-  - [ ] 8.7.12. Create test file: `tests/testing_framework_tests.rs`
+  - [x] 8.7.10. Write tests for the testing framework (meta!)
+  - [x] 8.7.11. Create example file: `examples/stdlib/testing_framework.rb`
+  - [x] 8.7.12. Create test file: `tests/testing_framework_tests.rs`
 
 ### 9. CLI and REPL
 

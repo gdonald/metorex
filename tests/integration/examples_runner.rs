@@ -652,7 +652,7 @@ simple_func
 nil
 Object
 Object
-<Binding with 27 vars>
+<Binding with 30 vars>
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");
@@ -1049,6 +1049,20 @@ fn test_stdlib_sets_execution() {
 fn test_stdlib_sets_parens_execution() {
     let expected = "3\n3\ntrue\nfalse\n2\ntrue\nfalse\n6\n2\n2\n3\n3\n";
     let output = run_example("stdlib/sets_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_testing_framework_execution() {
+    let expected = "Math operations\n  PASS: adds numbers\n  PASS: multiplies numbers\n  PASS: divides numbers\n3 passed, 0 failed\nString operations\n  PASS: concatenates strings\n  PASS: gets length\n2 passed, 0 failed\nType checking\n  PASS: checks integer type\n  PASS: checks truthiness\n  PASS: checks nil\n3 passed, 0 failed\nAssertions\n  PASS: assert_equal catches mismatches\n  PASS: assert catches false\n2 passed, 0 failed\n";
+    let output = run_example("stdlib/testing_framework.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_testing_framework_parens_execution() {
+    let expected = "Math operations\n  PASS: adds numbers\n  PASS: multiplies numbers\n  PASS: divides numbers\n3 passed, 0 failed\nString operations\n  PASS: concatenates strings\n  PASS: gets length\n2 passed, 0 failed\nType checking\n  PASS: checks integer type\n  PASS: checks truthiness\n  PASS: checks nil\n3 passed, 0 failed\nAssertions\n  PASS: assert_equal catches mismatches\n  PASS: assert catches false\n2 passed, 0 failed\n";
+    let output = run_example("stdlib/testing_framework_parens.rb");
     assert_eq!(output, expected);
 }
 

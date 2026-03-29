@@ -39,6 +39,15 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("print", Object::NativeFunction("print".to_string()));
     globals.set("p", Object::NativeFunction("p".to_string()));
     globals.set("gets", Object::NativeFunction("gets".to_string()));
+    globals.set("assert", Object::NativeFunction("assert".to_string()));
+    globals.set(
+        "assert_equal",
+        Object::NativeFunction("assert_equal".to_string()),
+    );
+    globals.set(
+        "assert_raises",
+        Object::NativeFunction("assert_raises".to_string()),
+    );
     globals.set("method", Object::NativeFunction("method".to_string()));
     globals.set(
         "require_relative",
