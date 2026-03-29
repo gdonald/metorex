@@ -34,6 +34,8 @@ pub struct BuiltinClasses {
     pub type_error_class: Rc<Class>,
     /// ValueError class (inherits from StandardError)
     pub value_error_class: Rc<Class>,
+    /// File class for file I/O operations
+    pub file_class: Rc<Class>,
 }
 
 impl BuiltinClasses {
@@ -52,6 +54,9 @@ impl BuiltinClasses {
         let hash_class = Rc::new(Class::new("Hash", Some(Rc::clone(&object_class))));
         let set_class = Rc::new(Class::new("Set", Some(Rc::clone(&object_class))));
         let range_class = Rc::new(Class::new("Range", Some(Rc::clone(&object_class))));
+
+        // Create utility classes
+        let file_class = Rc::new(Class::new("File", Some(Rc::clone(&object_class))));
 
         // Create exception hierarchy
         let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
@@ -86,6 +91,7 @@ impl BuiltinClasses {
             runtime_error_class,
             type_error_class,
             value_error_class,
+            file_class,
         }
     }
 
@@ -158,6 +164,7 @@ impl BuiltinClasses {
         );
         classes.insert("TypeError".to_string(), Rc::clone(&self.type_error_class));
         classes.insert("ValueError".to_string(), Rc::clone(&self.value_error_class));
+        classes.insert("File".to_string(), Rc::clone(&self.file_class));
         classes
     }
 }

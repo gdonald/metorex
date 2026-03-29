@@ -652,7 +652,7 @@ simple_func
 nil
 Object
 Object
-<Binding with 23 vars>
+<Binding with 27 vars>
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");
@@ -993,6 +993,62 @@ fn test_stdlib_hashes_execution() {
 fn test_stdlib_hashes_parens_execution() {
     let expected = "[alice, bob, charlie]\n[25, 30, 35]\ntrue\nfalse\n3\n30\n0\n25\n4\n90\n3\n";
     let output = run_example("stdlib/hashes_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_numbers_execution() {
+    let expected = "42\n7\n42\n42\n42\n10\n3.14\n2.5\n4\n3\n3.14\n3\n3.14\n3.14\n";
+    let output = run_example("stdlib/numbers.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_numbers_parens_execution() {
+    let expected = "42\n7\n42\n42\n42\n10\n3.14\n2.5\n4\n3\n3.14\n3\n3.14\n3.14\n";
+    let output = run_example("stdlib/numbers_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_type_introspection_execution() {
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nObject\nnil\n2\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let output = run_example("builtins/type_introspection.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_type_introspection_parens_execution() {
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nObject\nnil\n2\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let output = run_example("builtins/type_introspection_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_io_execution() {
+    let expected = "Hello from puts\nHello from print\nInt(42)\nHello from file!\ntrue\n";
+    let output = run_example("stdlib/io.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_io_parens_execution() {
+    let expected = "Hello from puts\nHello from print\nInt(42)\nHello from file!\ntrue\n";
+    let output = run_example("stdlib/io_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_sets_execution() {
+    let expected = "3\n3\ntrue\nfalse\n2\ntrue\nfalse\n6\n2\n2\n3\n3\n";
+    let output = run_example("stdlib/sets.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_sets_parens_execution() {
+    let expected = "3\n3\ntrue\nfalse\n2\ntrue\nfalse\n6\n2\n2\n3\n3\n";
+    let output = run_example("stdlib/sets_parens.rb");
     assert_eq!(output, expected);
 }
 

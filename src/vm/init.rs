@@ -36,6 +36,9 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
 /// Register native functions in the global registry.
 pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("puts", Object::NativeFunction("puts".to_string()));
+    globals.set("print", Object::NativeFunction("print".to_string()));
+    globals.set("p", Object::NativeFunction("p".to_string()));
+    globals.set("gets", Object::NativeFunction("gets".to_string()));
     globals.set("method", Object::NativeFunction("method".to_string()));
     globals.set(
         "require_relative",

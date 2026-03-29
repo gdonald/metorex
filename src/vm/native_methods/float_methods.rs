@@ -57,6 +57,92 @@ impl VirtualMachine {
                     Ok(None)
                 }
             }
+            "abs" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Float(f) = receiver {
+                    Ok(Some(Object::Float(f.abs())))
+                } else {
+                    Ok(None)
+                }
+            }
+            "ceil" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Float(f) = receiver {
+                    Ok(Some(Object::Int(f.ceil() as i64)))
+                } else {
+                    Ok(None)
+                }
+            }
+            "floor" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Float(f) = receiver {
+                    Ok(Some(Object::Int(f.floor() as i64)))
+                } else {
+                    Ok(None)
+                }
+            }
+            "to_i" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Float(f) = receiver {
+                    Ok(Some(Object::Int(*f as i64)))
+                } else {
+                    Ok(None)
+                }
+            }
+            "to_f" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "to_s" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Object::Float(f) = receiver {
+                    Ok(Some(Object::String(std::rc::Rc::new(f.to_string()))))
+                } else {
+                    Ok(None)
+                }
+            }
             _ => Ok(None),
         }
     }

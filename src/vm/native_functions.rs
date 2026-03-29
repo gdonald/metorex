@@ -142,6 +142,51 @@ impl VirtualMachine {
                 // Return true if newly loaded, false if already loaded (Ruby behavior)
                 Ok(Object::Bool(!was_already_loaded))
             }
+            "print" => {
+                // print outputs arguments without trailing newline
+                for arg in &arguments {
+                    let output = self.get_string_representation(arg, position)?;
+                    print!("{}", output);
+                }
+                use std::io::Write;
+                std::io::stdout().flush().ok();
+                Ok(Object::Nil)
+            }
+            "p" => {
+                // p prints the inspect representation of each argument
+                for arg in &arguments {
+                    println!("{:?}", arg);
+                }
+                if arguments.len() == 1 {
+                    Ok(arguments.into_iter().next().unwrap())
+                } else {
+                    Ok(Object::Nil)
+                }
+            }
+            "gets" => {
+                // gets reads a line from stdin
+                if !arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        format!("gets() expects 0 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input).map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!("Failed to read from stdin: {}", e),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+                // Remove trailing newline (like Ruby's gets)
+                if input.ends_with('\n') {
+                    input.pop();
+                    if input.ends_with('\r') {
+                        input.pop();
+                    }
+                }
+                Ok(Object::string(input))
+            }
             _ => Err(MetorexError::runtime_error(
                 format!("Unknown native function: {}", name),
                 crate::vm::utils::position_to_location(position),

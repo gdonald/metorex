@@ -592,46 +592,46 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 8.3.8. Create example file: `examples/stdlib/hashes.rb`
   - [x] 8.3.9. Create test file: `tests/hash_methods_tests.rs`
 
-- [ ] 8.4. Numeric Methods
-  - [ ] 8.4.1. Implement basic arithmetic operators
-  - [ ] 8.4.2. Implement comparison operators
-  - [ ] 8.4.3. Implement `abs`
-  - [ ] 8.4.4. Implement `ceil`/`floor`/`round` (for Float)
-  - [ ] 8.4.5. Implement `to_i`/`to_f`/`to_s`
-  - [ ] 8.4.6. Implement `times` iterator (for Int)
-  - [ ] 8.4.7. Write unit tests for numeric methods
-  - [ ] 8.4.8. Create example file: `examples/stdlib/numbers.rb`
-  - [ ] 8.4.9. Create test file: `tests/numeric_methods_tests.rs`
+- [x] 8.4. Numeric Methods
+  - [x] 8.4.1. Implement basic arithmetic operators
+  - [x] 8.4.2. Implement comparison operators
+  - [x] 8.4.3. Implement `abs`
+  - [x] 8.4.4. Implement `ceil`/`floor`/`round` (for Float)
+  - [x] 8.4.5. Implement `to_i`/`to_f`/`to_s`
+  - [x] 8.4.6. Implement `times` iterator (for Int)
+  - [x] 8.4.7. Write unit tests for numeric methods
+  - [x] 8.4.8. Create example file: `examples/stdlib/numbers.rb`
+  - [x] 8.4.9. Create test file: `tests/numeric_methods_tests.rs`
 
-- [ ] 8.4b. Type Introspection Built-ins
-  - [ ] 8.4b.1. Implement `type()` / `.class` function returning class name string
-  - [ ] 8.4b.2. Implement `is_a?` / `kind_of?` type checking
-  - [ ] 8.4b.3. Add class hierarchy inspection (`superclass`, `ancestors`)
-  - [ ] 8.4b.4. Implement instance variable inspection (`instance_variables`, `instance_variable_get`)
-  - [ ] 8.4b.5. Add instance copying/cloning (`dup`, `clone`)
-  - [ ] 8.4b.6. Write unit tests for type introspection
-  - [ ] 8.4b.7. Use `tests/_examples/builtins/type_introspection.rb` in an actual test in `examples_runner.rs`
+- [x] 8.4b. Type Introspection Built-ins
+  - [x] 8.4b.1. Implement `type()` / `.class` function returning class name string
+  - [x] 8.4b.2. Implement `is_a?` / `kind_of?` type checking
+  - [x] 8.4b.3. Add class hierarchy inspection (`superclass`, `ancestors`)
+  - [x] 8.4b.4. Implement instance variable inspection (`instance_variables`, `instance_variable_get`)
+  - [x] 8.4b.5. Add instance copying/cloning (`dup`, `clone`)
+  - [x] 8.4b.6. Write unit tests for type introspection
+  - [x] 8.4b.7. Use `tests/_examples/builtins/type_introspection.rb` in an actual test in `examples_runner.rs`
 
-- [ ] 8.5. IO and Print Functions
-  - [ ] 8.5.1. Implement `print` function
-  - [ ] 8.5.2. Implement `puts`/`println` function
-  - [ ] 8.5.3. Implement `gets`/`readline` for input
-  - [ ] 8.5.4. Implement file reading (`File.read`)
-  - [ ] 8.5.5. Implement file writing (`File.write`)
-  - [ ] 8.5.6. Write unit tests for IO
-  - [ ] 8.5.7. Create example file: `examples/stdlib/io.rb`
-  - [ ] 8.5.8. Create test file: `tests/io_tests.rs`
+- [x] 8.5. IO and Print Functions
+  - [x] 8.5.1. Implement `print` function
+  - [x] 8.5.2. Implement `puts`/`println` function
+  - [x] 8.5.3. Implement `gets`/`readline` for input
+  - [x] 8.5.4. Implement file reading (`File.read`)
+  - [x] 8.5.5. Implement file writing (`File.write`)
+  - [x] 8.5.6. Write unit tests for IO
+  - [x] 8.5.7. Create example file: `examples/stdlib/io.rb`
+  - [x] 8.5.8. Create test file: `tests/io_tests.rs`
 
-- [ ] 8.6. Set Methods
-  - [ ] 8.6.1. Implement `add`/`insert` for sets
-  - [ ] 8.6.2. Implement `remove`/`delete` for sets
-  - [ ] 8.6.3. Implement `contains?`/`has?` for sets
-  - [ ] 8.6.4. Implement set operations (`union`, `intersection`, `difference`)
-  - [ ] 8.6.5. Implement `size`/`length` for sets
-  - [ ] 8.6.6. Implement `each` iterator for sets
-  - [ ] 8.6.7. Write unit tests for set methods
-  - [ ] 8.6.8. Create example file: `examples/stdlib/sets.rb`
-  - [ ] 8.6.9. Create test file: `tests/set_methods_tests.rs`
+- [x] 8.6. Set Methods
+  - [x] 8.6.1. Implement `add`/`insert` for sets
+  - [x] 8.6.2. Implement `remove`/`delete` for sets
+  - [x] 8.6.3. Implement `contains?`/`has?` for sets
+  - [x] 8.6.4. Implement set operations (`union`, `intersection`, `difference`)
+  - [x] 8.6.5. Implement `size`/`length` for sets
+  - [x] 8.6.6. Implement `each` iterator for sets
+  - [x] 8.6.7. Write unit tests for set methods
+  - [x] 8.6.8. Create example file: `examples/stdlib/sets.rb`
+  - [x] 8.6.9. Create test file: `tests/set_methods_tests.rs`
 
 - [ ] 8.7. Built-in Testing Framework
   - [ ] 8.7.1. Design test framework API (`describe`, `it`, `expect`)
