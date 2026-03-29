@@ -16,3 +16,4 @@ target
 tarpaulin-report.html
 tarpaulin-report.json
 *.profraw
+add_tests.md
