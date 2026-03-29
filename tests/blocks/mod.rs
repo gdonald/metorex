@@ -1,5 +1,5 @@
 mod ast_inspection_tests;
-mod ast_serialization_coverage_tests;
+mod ast_serialization;
 mod block_as_object_tests;
 mod block_execution_tests;
 mod define_method_tests;

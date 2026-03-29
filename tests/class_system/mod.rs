@@ -5,5 +5,5 @@ mod class_instantiation_tests;
 mod class_parsing_tests;
 mod class_system_tests;
 mod inheritance_tests;
-mod object_tests;
+mod object;
 mod type_introspection_tests;

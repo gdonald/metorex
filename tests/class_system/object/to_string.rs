@@ -1,0 +1,43 @@
+// Type System Tests - to_string() method
+
+use metorex::object::{Class, Object};
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::rc::Rc;
+
+#[test]
+fn test_to_string_primitives() {
+    assert_eq!(Object::Nil.to_string(), "nil");
+    assert_eq!(Object::Bool(true).to_string(), "true");
+    assert_eq!(Object::Bool(false).to_string(), "false");
+    assert_eq!(Object::Int(42).to_string(), "42");
+    assert_eq!(Object::Float(3.14).to_string(), "3.14");
+    assert_eq!(Object::string("hello").to_string(), "hello");
+}
+
+#[test]
+fn test_to_string_array() {
+    let arr = Object::Array(Rc::new(RefCell::new(vec![
+        Object::Int(1),
+        Object::Int(2),
+        Object::Int(3),
+    ])));
+    assert_eq!(arr.to_string(), "[1, 2, 3]");
+}
+
+#[test]
+fn test_to_string_dict() {
+    let mut map = HashMap::new();
+    map.insert("x".to_string(), Object::Int(10));
+    let dict = Object::Dict(Rc::new(RefCell::new(map)));
+    let s = dict.to_string();
+    assert!(s.starts_with('{') && s.ends_with('}'));
+    assert!(s.contains("x: 10"));
+}
+
+#[test]
+fn test_to_string_class() {
+    let class = Rc::new(Class::new("MyClass", None));
+    let obj = Object::Class(class);
+    assert_eq!(obj.to_string(), "<class MyClass>");
+}
