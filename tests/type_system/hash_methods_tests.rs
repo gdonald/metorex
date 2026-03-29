@@ -318,3 +318,35 @@ count
 "#);
     assert_eq!(result, Some(Object::Int(2)));
 }
+
+// ── additional coverage: get/fetch error paths ──────────────────────────────
+
+#[test]
+fn hash_each_with_exception_in_block() {
+    let err = run_err(
+        r#"
+{"a" => 1}.each do |k, v|
+  raise "error in each"
+end
+"#,
+    );
+    assert!(err.contains("error in each") || err.contains("exception"));
+}
+
+#[test]
+fn hash_get_error_non_hashable_key() {
+    let err = run_err(r#"{"a" => 1}.get([1, 2])"#);
+    assert!(err.contains("String") || err.contains("type"));
+}
+
+#[test]
+fn hash_fetch_error_non_hashable_key() {
+    let err = run_err(r#"{"a" => 1}.fetch([1, 2])"#);
+    assert!(err.contains("String") || err.contains("type"));
+}
+
+#[test]
+fn hash_merge_error_too_many_args() {
+    let err = run_err(r#"{"a" => 1}.merge({"b" => 2}, {"c" => 3})"#);
+    assert!(err.contains("argument"));
+}

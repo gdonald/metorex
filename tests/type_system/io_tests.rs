@@ -159,3 +159,36 @@ File.read("{path}")
     // Cleanup
     std::fs::remove_file(path).ok();
 }
+
+// ============================================================================
+// Additional error paths for coverage
+// ============================================================================
+
+#[test]
+fn file_write_non_string_path_error() {
+    let err = run_err(r#"File.write(42, "content")"#);
+    assert!(err.contains("String") || err.contains("type"));
+}
+
+#[test]
+fn file_exist_non_string_error() {
+    let err = run_err("File.exist?(42)");
+    assert!(err.contains("String") || err.contains("type"));
+}
+
+#[test]
+fn file_write_with_non_string_content() {
+    let path = "tests/_examples/io_nonstr_test.txt";
+    let result = run(&format!(r#"File.write("{}", 42)"#, path));
+    // Non-string content gets formatted via Display
+    assert_eq!(result, Some(Object::Int(2))); // "42" is 2 bytes
+
+    // Cleanup
+    std::fs::remove_file(path).ok();
+}
+
+#[test]
+fn print_with_no_args_returns_nil() {
+    let result = run("print()");
+    assert_eq!(result, Some(Object::Nil));
+}

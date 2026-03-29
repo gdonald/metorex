@@ -293,3 +293,51 @@ fn float_to_s_error_with_args() {
     let err = run_err("3.14.to_s(1)");
     assert!(err.contains("argument"));
 }
+
+// ============================================================================
+// Additional error paths for coverage
+// ============================================================================
+
+#[test]
+fn int_to_i_error_with_args() {
+    let err = run_err("42.to_i(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn int_to_s_error_with_args() {
+    let err = run_err("42.to_s(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn float_to_f_error_with_args() {
+    let err = run_err("3.14.to_f(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn int_times_with_exception_in_block() {
+    let err = run_err(
+        r#"
+3.times do |i|
+  if i == 1
+    raise "error in times"
+  end
+end
+"#,
+    );
+    assert!(err.contains("error in times") || err.contains("exception"));
+}
+
+#[test]
+fn float_abs_zero() {
+    let result = run("0.0.abs");
+    assert_eq!(result, Some(Object::Float(0.0)));
+}
+
+#[test]
+fn float_floor_whole() {
+    let result = run("5.0.floor");
+    assert_eq!(result, Some(Object::Int(5)));
+}

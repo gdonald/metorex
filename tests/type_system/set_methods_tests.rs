@@ -304,3 +304,85 @@ count
 "#);
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ============================================================================
+// Error paths for coverage
+// ============================================================================
+
+#[test]
+fn set_each_with_exception_in_block() {
+    let err = run_err(
+        r#"
+Set.new([1, 2]).each do |x|
+  raise "error in set each"
+end
+"#,
+    );
+    assert!(err.contains("error in set each") || err.contains("exception"));
+}
+
+#[test]
+fn set_contains_non_hashable_returns_false() {
+    let result = run("Set.new([1, 2]).include?([1, 2])");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn set_add_non_hashable_error() {
+    let err = run_err("s = Set.new\ns.add([1, 2])");
+    assert!(err.contains("not hashable") || err.contains("Cannot add"));
+}
+
+#[test]
+fn set_remove_non_hashable_error() {
+    let err = run_err("s = Set.new([1])\ns.remove([1, 2])");
+    assert!(err.contains("not hashable") || err.contains("Cannot remove"));
+}
+
+#[test]
+fn set_new_with_non_hashable_element_error() {
+    let err = run_err("Set.new([[1, 2]])");
+    assert!(err.contains("not hashable") || err.contains("Cannot add"));
+}
+
+#[test]
+fn set_union_error_no_args() {
+    let err = run_err("Set.new([1]).union");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn set_intersection_error_non_set() {
+    let err = run_err("Set.new([1]).intersection(42)");
+    assert!(err.contains("Set") || err.contains("type"));
+}
+
+#[test]
+fn set_difference_error_non_set() {
+    let err = run_err("Set.new([1]).difference(42)");
+    assert!(err.contains("Set") || err.contains("type"));
+}
+
+#[test]
+fn set_remove_error_no_args() {
+    let err = run_err("Set.new([1]).remove");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn set_contains_error_no_args() {
+    let err = run_err("Set.new([1]).contains?");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn set_empty_error_with_args() {
+    let err = run_err("Set.new.empty?(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn set_to_a_error_with_args() {
+    let err = run_err("Set.new.to_a(1)");
+    assert!(err.contains("argument"));
+}

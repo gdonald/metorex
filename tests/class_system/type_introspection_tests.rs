@@ -320,3 +320,56 @@ fn dup_string_returns_same_value() {
     let result = run(r#""hello".dup"#);
     assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
 }
+
+// ============================================================================
+// Error paths for coverage
+// ============================================================================
+
+#[test]
+fn instance_variables_error_with_args() {
+    let err = run_err("42.instance_variables(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn instance_variable_get_error_non_string_arg() {
+    let err = run_err(
+        r#"
+class Foo
+end
+Foo.new.instance_variable_get(42)
+"#,
+    );
+    assert!(err.contains("String") || err.contains("type"));
+}
+
+#[test]
+fn dup_error_with_args() {
+    let err = run_err("42.dup(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn instance_variable_get_with_symbol() {
+    let result = run(r#"
+class Person
+  def initialize(name)
+    @name = name
+  end
+end
+p = Person.new("Alice")
+p.instance_variable_get(:name)
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("Alice".to_string()))));
+}
+
+#[test]
+fn clone_dict_creates_independent_copy() {
+    let result = run(r#"
+h1 = {"a" => 1, "b" => 2}
+h2 = h1.dup
+h2["c"] = 3
+h1.size
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
