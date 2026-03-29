@@ -156,3 +156,165 @@ fn hash_has_key_integer_key_false() {
     let result = run(r#"{1 => "x"}.has_key?(2)"#);
     assert_eq!(result, Some(Object::Bool(false)));
 }
+
+// ── get ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_get_existing_key() {
+    let result = run(r#"{"a" => 1}.get("a")"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_get_missing_key_returns_nil() {
+    let result = run(r#"{"a" => 1}.get("z")"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn hash_get_missing_key_with_default() {
+    let result = run(r#"{"a" => 1}.get("z", 99)"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn hash_get_existing_key_ignores_default() {
+    let result = run(r#"{"a" => 1}.get("a", 99)"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_get_error_no_args() {
+    let err = run_err(r#"{"a" => 1}.get"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn hash_get_error_too_many_args() {
+    let err = run_err(r#"{"a" => 1}.get("a", 1, 2)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn hash_get_with_integer_key() {
+    let result = run(r#"{1 => "one"}.get(1)"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("one".to_string())))
+    );
+}
+
+// ── fetch ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_fetch_existing_key() {
+    let result = run(r#"{"a" => 1}.fetch("a")"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_fetch_missing_key_raises_error() {
+    let err = run_err(r#"{"a" => 1}.fetch("z")"#);
+    assert!(err.contains("not found") || err.contains("Key"));
+}
+
+#[test]
+fn hash_fetch_missing_key_with_default() {
+    let result = run(r#"{"a" => 1}.fetch("z", 42)"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+// ── merge ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_merge_two_hashes() {
+    let result = run(r#"{"a" => 1}.merge({"b" => 2}).size"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn hash_merge_overwrites_existing_keys() {
+    let result = run(r#"{"a" => 1, "b" => 2}.merge({"b" => 99})["b"]"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn hash_merge_does_not_mutate_original() {
+    let result = run(r#"
+h = {"a" => 1}
+h.merge({"b" => 2})
+h.size
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_merge_error_no_args() {
+    let err = run_err(r#"{"a" => 1}.merge"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn hash_merge_error_non_hash_arg() {
+    let err = run_err(r#"{"a" => 1}.merge(42)"#);
+    assert!(err.contains("Hash") || err.contains("type"));
+}
+
+// ── each ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_each_iterates_pairs() {
+    let result = run(r#"
+result = []
+{"a" => 1}.each { |k, v| result.push(k) }
+result.length
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_each_receives_key_and_value() {
+    let result = run(r#"
+total = 0
+{"x" => 10, "y" => 20}.each { |k, v| total += v }
+total
+"#);
+    assert_eq!(result, Some(Object::Int(30)));
+}
+
+#[test]
+fn hash_each_returns_original_hash() {
+    let result = run(r#"
+h = {"a" => 1}
+r = h.each { |k, v| v }
+r.size
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_each_error_no_block() {
+    let err = run_err(r#"{"a" => 1}.each"#);
+    assert!(err.contains("block") || err.contains("Block"));
+}
+
+#[test]
+fn hash_each_error_with_args() {
+    let err = run_err(r#"{"a" => 1}.each(1) { |k, v| v }"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn hash_each_with_break() {
+    let result = run(r#"
+count = 0
+{"a" => 1, "b" => 2, "c" => 3}.each do |k, v|
+  count += 1
+  if count == 2
+    break
+  end
+end
+count
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}

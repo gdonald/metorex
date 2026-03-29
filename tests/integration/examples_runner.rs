@@ -983,6 +983,20 @@ fn test_stdlib_arrays_parens_execution() {
 }
 
 #[test]
+fn test_stdlib_hashes_execution() {
+    let expected = "[alice, bob, charlie]\n[25, 30, 35]\ntrue\nfalse\n3\n30\n0\n25\n4\n90\n3\n";
+    let output = run_example("stdlib/hashes.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_hashes_parens_execution() {
+    let expected = "[alice, bob, charlie]\n[25, 30, 35]\ntrue\nfalse\n3\n30\n0\n25\n4\n90\n3\n";
+    let output = run_example("stdlib/hashes_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_dsl_test_framework_execution() {
     let expected = "Suite: Math Tests\n  PASS: 1 + 1 equals 2\n  PASS: 10 / 2 equals 5\n  PASS: 3 * 4 equals 12\n  PASS: 5 - 3 equals 2\n  FAIL: impossible math\nResults: 4 passed, 1 failed\n";
     let output = run_example("dsl/test_framework.rb");

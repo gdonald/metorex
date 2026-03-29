@@ -581,16 +581,16 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 8.2.12. Create example file: `examples/stdlib/arrays.rb`
   - [x] 8.2.13. Create test file: `tests/array_methods_tests.rs`
 
-- [ ] 8.3. Hash/Dict Methods
-  - [ ] 8.3.1. Implement `keys`
-  - [ ] 8.3.2. Implement `values`
-  - [ ] 8.3.3. Implement `has_key?`
-  - [ ] 8.3.4. Implement `get`/`fetch`
-  - [ ] 8.3.5. Implement `merge`
-  - [ ] 8.3.6. Implement `each` (iterator)
-  - [ ] 8.3.7. Write unit tests for hash methods
-  - [ ] 8.3.8. Create example file: `examples/stdlib/hashes.rb`
-  - [ ] 8.3.9. Create test file: `tests/hash_methods_tests.rs`
+- [x] 8.3. Hash/Dict Methods
+  - [x] 8.3.1. Implement `keys`
+  - [x] 8.3.2. Implement `values`
+  - [x] 8.3.3. Implement `has_key?`
+  - [x] 8.3.4. Implement `get`/`fetch`
+  - [x] 8.3.5. Implement `merge`
+  - [x] 8.3.6. Implement `each` (iterator)
+  - [x] 8.3.7. Write unit tests for hash methods
+  - [x] 8.3.8. Create example file: `examples/stdlib/hashes.rb`
+  - [x] 8.3.9. Create test file: `tests/hash_methods_tests.rs`
 
 - [ ] 8.4. Numeric Methods
   - [ ] 8.4.1. Implement basic arithmetic operators
