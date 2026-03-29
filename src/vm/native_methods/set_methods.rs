@@ -19,6 +19,9 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::Set(set_rc) = receiver else {
+            return Ok(None);
+        };
         match method_name {
             "add" | "insert" => {
                 if arguments.len() != 1 {
@@ -29,21 +32,17 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let hash = ObjectHash::from_object(&arguments[0]).ok_or_else(|| {
-                        MetorexError::runtime_error(
-                            format!(
-                                "Cannot add {} to set (not hashable)",
-                                arguments[0].type_name()
-                            ),
-                            position_to_location(position),
-                        )
-                    })?;
-                    set_rc.borrow_mut().insert(hash);
-                    Ok(Some(receiver.clone()))
-                } else {
-                    Ok(None)
-                }
+                let hash = ObjectHash::from_object(&arguments[0]).ok_or_else(|| {
+                    MetorexError::runtime_error(
+                        format!(
+                            "Cannot add {} to set (not hashable)",
+                            arguments[0].type_name()
+                        ),
+                        position_to_location(position),
+                    )
+                })?;
+                set_rc.borrow_mut().insert(hash);
+                Ok(Some(receiver.clone()))
             }
             "remove" | "delete" => {
                 if arguments.len() != 1 {
@@ -54,21 +53,17 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let hash = ObjectHash::from_object(&arguments[0]).ok_or_else(|| {
-                        MetorexError::runtime_error(
-                            format!(
-                                "Cannot remove {} from set (not hashable)",
-                                arguments[0].type_name()
-                            ),
-                            position_to_location(position),
-                        )
-                    })?;
-                    let removed = set_rc.borrow_mut().remove(&hash);
-                    Ok(Some(Object::Bool(removed)))
-                } else {
-                    Ok(None)
-                }
+                let hash = ObjectHash::from_object(&arguments[0]).ok_or_else(|| {
+                    MetorexError::runtime_error(
+                        format!(
+                            "Cannot remove {} from set (not hashable)",
+                            arguments[0].type_name()
+                        ),
+                        position_to_location(position),
+                    )
+                })?;
+                let removed = set_rc.borrow_mut().remove(&hash);
+                Ok(Some(Object::Bool(removed)))
             }
             "contains?" | "include?" | "has?" => {
                 if arguments.len() != 1 {
@@ -79,15 +74,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let hash = match ObjectHash::from_object(&arguments[0]) {
-                        Some(h) => h,
-                        None => return Ok(Some(Object::Bool(false))),
-                    };
-                    Ok(Some(Object::Bool(set_rc.borrow().contains(&hash))))
-                } else {
-                    Ok(None)
-                }
+                let hash = match ObjectHash::from_object(&arguments[0]) {
+                    Some(h) => h,
+                    None => return Ok(Some(Object::Bool(false))),
+                };
+                Ok(Some(Object::Bool(set_rc.borrow().contains(&hash))))
             }
             "size" | "length" => {
                 if !arguments.is_empty() {
@@ -98,11 +89,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    Ok(Some(Object::Int(set_rc.borrow().len() as i64)))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Int(set_rc.borrow().len() as i64)))
             }
             "empty?" => {
                 if !arguments.is_empty() {
@@ -113,11 +100,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    Ok(Some(Object::Bool(set_rc.borrow().is_empty())))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Bool(set_rc.borrow().is_empty())))
             }
             "to_a" => {
                 if !arguments.is_empty() {
@@ -128,16 +111,12 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let elements: Vec<Object> = set_rc
-                        .borrow()
-                        .iter()
-                        .map(|h| Object::string(h.hash_value.clone()))
-                        .collect();
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(elements)))))
-                } else {
-                    Ok(None)
-                }
+                let elements: Vec<Object> = set_rc
+                    .borrow()
+                    .iter()
+                    .map(|h| Object::string(h.hash_value.clone()))
+                    .collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(elements)))))
             }
             "union" => {
                 if arguments.len() != 1 {
@@ -148,24 +127,20 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let other = match &arguments[0] {
-                        Object::Set(other_rc) => other_rc,
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Set",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-                    let result: HashSet<ObjectHash> =
-                        set_rc.borrow().union(&other.borrow()).cloned().collect();
-                    Ok(Some(Object::Set(Rc::new(RefCell::new(result)))))
-                } else {
-                    Ok(None)
-                }
+                let other = match &arguments[0] {
+                    Object::Set(other_rc) => other_rc,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Set",
+                            &arguments[0],
+                            position,
+                        ));
+                    }
+                };
+                let result: HashSet<ObjectHash> =
+                    set_rc.borrow().union(&other.borrow()).cloned().collect();
+                Ok(Some(Object::Set(Rc::new(RefCell::new(result)))))
             }
             "intersection" => {
                 if arguments.len() != 1 {
@@ -176,27 +151,23 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let other = match &arguments[0] {
-                        Object::Set(other_rc) => other_rc,
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Set",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-                    let result: HashSet<ObjectHash> = set_rc
-                        .borrow()
-                        .intersection(&other.borrow())
-                        .cloned()
-                        .collect();
-                    Ok(Some(Object::Set(Rc::new(RefCell::new(result)))))
-                } else {
-                    Ok(None)
-                }
+                let other = match &arguments[0] {
+                    Object::Set(other_rc) => other_rc,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Set",
+                            &arguments[0],
+                            position,
+                        ));
+                    }
+                };
+                let result: HashSet<ObjectHash> = set_rc
+                    .borrow()
+                    .intersection(&other.borrow())
+                    .cloned()
+                    .collect();
+                Ok(Some(Object::Set(Rc::new(RefCell::new(result)))))
             }
             "difference" => {
                 if arguments.len() != 1 {
@@ -207,27 +178,23 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Set(set_rc) = receiver {
-                    let other = match &arguments[0] {
-                        Object::Set(other_rc) => other_rc,
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Set",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-                    let result: HashSet<ObjectHash> = set_rc
-                        .borrow()
-                        .difference(&other.borrow())
-                        .cloned()
-                        .collect();
-                    Ok(Some(Object::Set(Rc::new(RefCell::new(result)))))
-                } else {
-                    Ok(None)
-                }
+                let other = match &arguments[0] {
+                    Object::Set(other_rc) => other_rc,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Set",
+                            &arguments[0],
+                            position,
+                        ));
+                    }
+                };
+                let result: HashSet<ObjectHash> = set_rc
+                    .borrow()
+                    .difference(&other.borrow())
+                    .cloned()
+                    .collect();
+                Ok(Some(Object::Set(Rc::new(RefCell::new(result)))))
             }
             "each" => {
                 if !arguments.is_empty() {
@@ -255,39 +222,35 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                if let Object::Set(set_rc) = receiver {
-                    let elements: Vec<ObjectHash> = set_rc.borrow().iter().cloned().collect();
-                    for elem in elements {
-                        let args = vec![Object::string(elem.hash_value)];
-                        match self.execute_block_with_control_flow(&block, args)? {
-                            super::super::ControlFlow::Next
-                            | super::super::ControlFlow::Continue { .. } => {
-                                continue;
-                            }
-                            super::super::ControlFlow::Break { .. } => break,
-                            super::super::ControlFlow::Return { value: _, position } => {
-                                return Err(super::super::errors::loop_control_error(
-                                    "return", position,
-                                ));
-                            }
-                            super::super::ControlFlow::Exception {
-                                exception,
-                                position,
-                            } => {
-                                return Err(MetorexError::runtime_error(
-                                    format!(
-                                        "Uncaught exception: {}",
-                                        super::super::utils::format_exception(&exception)
-                                    ),
-                                    super::super::utils::position_to_location(position),
-                                ));
-                            }
+                let elements: Vec<ObjectHash> = set_rc.borrow().iter().cloned().collect();
+                for elem in elements {
+                    let args = vec![Object::string(elem.hash_value)];
+                    match self.execute_block_with_control_flow(&block, args)? {
+                        super::super::ControlFlow::Next
+                        | super::super::ControlFlow::Continue { .. } => {
+                            continue;
+                        }
+                        super::super::ControlFlow::Break { .. } => break,
+                        super::super::ControlFlow::Return { value: _, position } => {
+                            return Err(super::super::errors::loop_control_error(
+                                "return", position,
+                            ));
+                        }
+                        super::super::ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::runtime_error(
+                                format!(
+                                    "Uncaught exception: {}",
+                                    super::super::utils::format_exception(&exception)
+                                ),
+                                super::super::utils::position_to_location(position),
+                            ));
                         }
                     }
-                    Ok(Some(receiver.clone()))
-                } else {
-                    Ok(None)
                 }
+                Ok(Some(receiver.clone()))
             }
             _ => Ok(None),
         }

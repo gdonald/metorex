@@ -245,6 +245,12 @@ cargo test
 # Run the REPL
 cargo run
 
+# Run a Metorex file
+cargo run -- my_script.rb
+
+# Discover and run test files in a directory
+cargo run -- --test tests/
+
 # Install code coverage tool (required for cargo tarpaulin)
 cargo install cargo-tarpaulin
 

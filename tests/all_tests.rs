@@ -17,5 +17,6 @@ mod parser;
 mod repl;
 mod require_relative;
 mod string_methods_tests;
+mod test_discovery;
 mod type_system;
 mod vm;

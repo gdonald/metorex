@@ -17,6 +17,9 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::String(string_value) = receiver else {
+            return Ok(None);
+        };
         match method_name {
             "length" => {
                 if !arguments.is_empty() {
@@ -27,11 +30,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    Ok(Some(Object::Int(string_value.chars().count() as i64)))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Int(string_value.chars().count() as i64)))
             }
             "upcase" => {
                 if !arguments.is_empty() {
@@ -42,11 +41,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    Ok(Some(Object::string(string_value.to_uppercase())))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::string(string_value.to_uppercase())))
             }
             "downcase" => {
                 if !arguments.is_empty() {
@@ -57,11 +52,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    Ok(Some(Object::string(string_value.to_lowercase())))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::string(string_value.to_lowercase())))
             }
             "+" => {
                 if arguments.len() != 1 {
@@ -72,17 +63,18 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let (Object::String(lhs), Object::String(rhs)) = (receiver, &arguments[0]) {
-                    let mut combined = lhs.as_ref().clone();
-                    combined.push_str(rhs);
-                    Ok(Some(Object::string(combined)))
-                } else {
-                    Err(method_argument_type_error(
+                match &arguments[0] {
+                    Object::String(rhs) => {
+                        let mut combined = string_value.as_ref().clone();
+                        combined.push_str(rhs);
+                        Ok(Some(Object::string(combined)))
+                    }
+                    _ => Err(method_argument_type_error(
                         method_name,
                         "String",
                         &arguments[0],
                         position,
-                    ))
+                    )),
                 }
             }
             "trim" => {
@@ -94,11 +86,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    Ok(Some(Object::string(string_value.trim().to_string())))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::string(string_value.trim().to_string())))
             }
             "reverse" => {
                 if !arguments.is_empty() {
@@ -109,12 +97,8 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    let reversed: String = string_value.chars().rev().collect();
-                    Ok(Some(Object::string(reversed)))
-                } else {
-                    Ok(None)
-                }
+                let reversed: String = string_value.chars().rev().collect();
+                Ok(Some(Object::string(reversed)))
             }
             "chars" => {
                 if !arguments.is_empty() {
@@ -125,15 +109,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    let chars: Vec<Object> = string_value
-                        .chars()
-                        .map(|c| Object::string(c.to_string()))
-                        .collect();
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(chars)))))
-                } else {
-                    Ok(None)
-                }
+                let chars: Vec<Object> = string_value
+                    .chars()
+                    .map(|c| Object::string(c.to_string()))
+                    .collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(chars)))))
             }
             "bytes" => {
                 if !arguments.is_empty() {
@@ -144,15 +124,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    let bytes: Vec<Object> = string_value
-                        .bytes()
-                        .map(|b| Object::Int(b as i64))
-                        .collect();
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(bytes)))))
-                } else {
-                    Ok(None)
-                }
+                let bytes: Vec<Object> = string_value
+                    .bytes()
+                    .map(|b| Object::Int(b as i64))
+                    .collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(bytes)))))
             }
             "size" => {
                 if !arguments.is_empty() {
@@ -163,11 +139,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    Ok(Some(Object::Int(string_value.chars().count() as i64)))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Int(string_value.chars().count() as i64)))
             }
             "strip" => {
                 if !arguments.is_empty() {
@@ -178,11 +150,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    Ok(Some(Object::string(string_value.trim().to_string())))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::string(string_value.trim().to_string())))
             }
             "split" => {
                 if arguments.len() > 1 {
@@ -193,32 +161,28 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    let parts: Vec<Object> = if arguments.is_empty() {
-                        string_value
-                            .split_whitespace()
-                            .map(|s| Object::string(s.to_string()))
-                            .collect()
-                    } else {
-                        match &arguments[0] {
-                            Object::String(sep) => string_value
-                                .split(sep.as_ref())
-                                .map(|s| Object::string(s.to_string()))
-                                .collect(),
-                            _ => {
-                                return Err(method_argument_type_error(
-                                    method_name,
-                                    "String",
-                                    &arguments[0],
-                                    position,
-                                ));
-                            }
-                        }
-                    };
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(parts)))))
+                let parts: Vec<Object> = if arguments.is_empty() {
+                    string_value
+                        .split_whitespace()
+                        .map(|s| Object::string(s.to_string()))
+                        .collect()
                 } else {
-                    Ok(None)
-                }
+                    match &arguments[0] {
+                        Object::String(sep) => string_value
+                            .split(sep.as_ref())
+                            .map(|s| Object::string(s.to_string()))
+                            .collect(),
+                        _ => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String",
+                                &arguments[0],
+                                position,
+                            ));
+                        }
+                    }
+                };
+                Ok(Some(Object::Array(Rc::new(RefCell::new(parts)))))
             }
             "slice" | "[]" => {
                 if arguments.len() != 2 {
@@ -229,35 +193,31 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    let (start, len) = match (&arguments[0], &arguments[1]) {
-                        (Object::Int(s), Object::Int(l)) => (*s, *l),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Integer",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-                    let chars: Vec<char> = string_value.chars().collect();
-                    let char_count = chars.len() as i64;
-                    let start_idx = if start < 0 {
-                        (char_count + start).max(0) as usize
-                    } else {
-                        start.min(char_count) as usize
-                    };
-                    let end_idx = (start_idx as i64 + len).min(char_count).max(0) as usize;
-                    if start_idx > chars.len() {
-                        Ok(Some(Object::Nil))
-                    } else {
-                        let sliced: String =
-                            chars[start_idx..end_idx.min(chars.len())].iter().collect();
-                        Ok(Some(Object::string(sliced)))
+                let (start, len) = match (&arguments[0], &arguments[1]) {
+                    (Object::Int(s), Object::Int(l)) => (*s, *l),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Integer",
+                            &arguments[0],
+                            position,
+                        ));
                     }
+                };
+                let chars: Vec<char> = string_value.chars().collect();
+                let char_count = chars.len() as i64;
+                let start_idx = if start < 0 {
+                    (char_count + start).max(0) as usize
                 } else {
-                    Ok(None)
+                    start.min(char_count) as usize
+                };
+                let end_idx = (start_idx as i64 + len).min(char_count).max(0) as usize;
+                if start_idx > chars.len() {
+                    Ok(Some(Object::Nil))
+                } else {
+                    let sliced: String =
+                        chars[start_idx..end_idx.min(chars.len())].iter().collect();
+                    Ok(Some(Object::string(sliced)))
                 }
             }
             "include?" | "contains?" => {
@@ -269,20 +229,16 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    match &arguments[0] {
-                        Object::String(substr) => {
-                            Ok(Some(Object::Bool(string_value.contains(substr.as_ref()))))
-                        }
-                        _ => Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            &arguments[0],
-                            position,
-                        )),
+                match &arguments[0] {
+                    Object::String(substr) => {
+                        Ok(Some(Object::Bool(string_value.contains(substr.as_ref()))))
                     }
-                } else {
-                    Ok(None)
+                    _ => Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        &arguments[0],
+                        position,
+                    )),
                 }
             }
             "starts_with?" => {
@@ -294,20 +250,16 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    match &arguments[0] {
-                        Object::String(prefix) => Ok(Some(Object::Bool(
-                            string_value.starts_with(prefix.as_ref()),
-                        ))),
-                        _ => Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            &arguments[0],
-                            position,
-                        )),
-                    }
-                } else {
-                    Ok(None)
+                match &arguments[0] {
+                    Object::String(prefix) => Ok(Some(Object::Bool(
+                        string_value.starts_with(prefix.as_ref()),
+                    ))),
+                    _ => Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        &arguments[0],
+                        position,
+                    )),
                 }
             }
             "ends_with?" => {
@@ -319,24 +271,19 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::String(string_value) = receiver {
-                    match &arguments[0] {
-                        Object::String(suffix) => {
-                            Ok(Some(Object::Bool(string_value.ends_with(suffix.as_ref()))))
-                        }
-                        _ => Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            &arguments[0],
-                            position,
-                        )),
+                match &arguments[0] {
+                    Object::String(suffix) => {
+                        Ok(Some(Object::Bool(string_value.ends_with(suffix.as_ref()))))
                     }
-                } else {
-                    Ok(None)
+                    _ => Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        &arguments[0],
+                        position,
+                    )),
                 }
             }
             "each_char" => {
-                // each_char takes a trailing block (via pending_block)
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -362,16 +309,12 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                if let Object::String(string_value) = receiver {
-                    for ch in string_value.chars() {
-                        let char_str = Object::string(ch.to_string());
-                        let args = vec![char_str];
-                        self.execute_block_body(&block, args)?;
-                    }
-                    Ok(Some(receiver.clone()))
-                } else {
-                    Ok(None)
+                for ch in string_value.chars() {
+                    let char_str = Object::string(ch.to_string());
+                    let args = vec![char_str];
+                    self.execute_block_body(&block, args)?;
                 }
+                Ok(Some(receiver.clone()))
             }
             _ => Ok(None),
         }

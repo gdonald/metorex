@@ -5,8 +5,10 @@ use clap::Parser as ClapParser;
 use metorex::lexer::Lexer;
 use metorex::parser::Parser;
 use metorex::repl::Repl;
+use metorex::test_discovery;
 use metorex::vm::VirtualMachine;
 use std::fs;
+use std::path::Path;
 use std::process;
 
 #[derive(ClapParser)]
@@ -26,10 +28,32 @@ struct Cli {
     /// Start the REPL
     #[arg(long)]
     repl: bool,
+
+    /// Discover and run test files in a directory
+    /// (matches *_test.rb, test_*.rb, *_spec.rb)
+    #[arg(long)]
+    test: Option<String>,
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    // Test discovery mode
+    if let Some(ref test_dir) = cli.test {
+        let dir = Path::new(test_dir);
+        match test_discovery::run_test_discovery(dir) {
+            Ok(result) => {
+                if !result.all_passed() {
+                    process::exit(1);
+                }
+            }
+            Err(err) => {
+                eprintln!("Test discovery error: {}", err);
+                process::exit(1);
+            }
+        }
+        return;
+    }
 
     // REPL mode: no file given or explicit --repl flag
     if cli.file.is_none() || cli.repl {

@@ -15,6 +15,7 @@ pub mod repl;
 pub mod resolver;
 pub mod runtime;
 pub mod scope;
+pub mod test_discovery;
 pub mod vm;
 
 pub fn version() -> &'static str {

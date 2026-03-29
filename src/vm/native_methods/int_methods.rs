@@ -17,6 +17,9 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::Int(n) = receiver else {
+            return Ok(None);
+        };
         match method_name {
             "abs" => {
                 if !arguments.is_empty() {
@@ -27,11 +30,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Int(n) = receiver {
-                    Ok(Some(Object::Int(n.abs())))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Int(n.abs())))
             }
             "to_f" => {
                 if !arguments.is_empty() {
@@ -42,11 +41,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Int(n) = receiver {
-                    Ok(Some(Object::Float(*n as f64)))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Float(*n as f64)))
             }
             "to_i" => {
                 if !arguments.is_empty() {
@@ -68,11 +63,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Int(n) = receiver {
-                    Ok(Some(Object::String(Rc::new(n.to_string()))))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::String(Rc::new(n.to_string()))))
             }
             "times" => {
                 if !arguments.is_empty() {
@@ -100,38 +91,34 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                if let Object::Int(n) = receiver {
-                    for i in 0..*n {
-                        let args = vec![Object::Int(i)];
-                        match self.execute_block_with_control_flow(&block, args)? {
-                            super::super::ControlFlow::Next
-                            | super::super::ControlFlow::Continue { .. } => {
-                                continue;
-                            }
-                            super::super::ControlFlow::Break { .. } => break,
-                            super::super::ControlFlow::Return { value: _, position } => {
-                                return Err(super::super::errors::loop_control_error(
-                                    "return", position,
-                                ));
-                            }
-                            super::super::ControlFlow::Exception {
-                                exception,
-                                position,
-                            } => {
-                                return Err(MetorexError::runtime_error(
-                                    format!(
-                                        "Uncaught exception: {}",
-                                        super::super::utils::format_exception(&exception)
-                                    ),
-                                    super::super::utils::position_to_location(position),
-                                ));
-                            }
+                for i in 0..*n {
+                    let args = vec![Object::Int(i)];
+                    match self.execute_block_with_control_flow(&block, args)? {
+                        super::super::ControlFlow::Next
+                        | super::super::ControlFlow::Continue { .. } => {
+                            continue;
+                        }
+                        super::super::ControlFlow::Break { .. } => break,
+                        super::super::ControlFlow::Return { value: _, position } => {
+                            return Err(super::super::errors::loop_control_error(
+                                "return", position,
+                            ));
+                        }
+                        super::super::ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::runtime_error(
+                                format!(
+                                    "Uncaught exception: {}",
+                                    super::super::utils::format_exception(&exception)
+                                ),
+                                super::super::utils::position_to_location(position),
+                            ));
                         }
                     }
-                    Ok(Some(Object::Int(*n)))
-                } else {
-                    Ok(None)
                 }
+                Ok(Some(Object::Int(*n)))
             }
             _ => Ok(None),
         }

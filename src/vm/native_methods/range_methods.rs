@@ -18,9 +18,16 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::Range {
+            start,
+            end,
+            exclusive,
+        } = receiver
+        else {
+            return Ok(None);
+        };
         match method_name {
             "each" => {
-                // each takes a trailing block (via pending_block)
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -30,69 +37,59 @@ impl VirtualMachine {
                     ));
                 }
                 let pending = self.pending_block.take();
-                if let Object::Range {
-                    start,
-                    end,
-                    exclusive,
-                } = receiver
-                {
-                    let block = match pending {
-                        Some(Object::Block(b)) => b,
-                        Some(other) => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Block",
-                                &other,
-                                position,
-                            ));
-                        }
-                        None => {
-                            return Err(MetorexError::runtime_error(
-                                "each requires a block",
-                                position_to_location(position),
-                            ));
-                        }
-                    };
+                let block = match pending {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "each requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
 
-                    // Only support integer ranges for now
-                    match (start.as_ref(), end.as_ref()) {
-                        (Object::Int(start_val), Object::Int(end_val)) => {
-                            let end_inclusive = if *exclusive { *end_val - 1 } else { *end_val };
+                match (start.as_ref(), end.as_ref()) {
+                    (Object::Int(start_val), Object::Int(end_val)) => {
+                        let end_inclusive = if *exclusive { *end_val - 1 } else { *end_val };
 
-                            for i in *start_val..=end_inclusive {
-                                let args = vec![Object::Int(i)];
-                                match self.execute_block_with_control_flow(&block, args)? {
-                                    super::super::ControlFlow::Next
-                                    | super::super::ControlFlow::Continue { .. } => continue,
-                                    super::super::ControlFlow::Break { .. } => break,
-                                    super::super::ControlFlow::Return { value: _, position } => {
-                                        return Err(super::super::errors::loop_control_error(
-                                            "return", position,
-                                        ));
-                                    }
-                                    super::super::ControlFlow::Exception {
-                                        exception,
-                                        position,
-                                    } => {
-                                        return Err(MetorexError::runtime_error(
-                                            format!(
-                                                "Uncaught exception: {}",
-                                                super::super::utils::format_exception(&exception)
-                                            ),
-                                            super::super::utils::position_to_location(position),
-                                        ));
-                                    }
+                        for i in *start_val..=end_inclusive {
+                            let args = vec![Object::Int(i)];
+                            match self.execute_block_with_control_flow(&block, args)? {
+                                super::super::ControlFlow::Next
+                                | super::super::ControlFlow::Continue { .. } => continue,
+                                super::super::ControlFlow::Break { .. } => break,
+                                super::super::ControlFlow::Return { value: _, position } => {
+                                    return Err(super::super::errors::loop_control_error(
+                                        "return", position,
+                                    ));
+                                }
+                                super::super::ControlFlow::Exception {
+                                    exception,
+                                    position,
+                                } => {
+                                    return Err(MetorexError::runtime_error(
+                                        format!(
+                                            "Uncaught exception: {}",
+                                            super::super::utils::format_exception(&exception)
+                                        ),
+                                        super::super::utils::position_to_location(position),
+                                    ));
                                 }
                             }
-                            Ok(Some(receiver.clone()))
                         }
-                        _ => Err(MetorexError::runtime_error(
-                            "Range.each only supports integer ranges".to_string(),
-                            position_to_location(position),
-                        )),
+                        Ok(Some(receiver.clone()))
                     }
-                } else {
-                    Ok(None)
+                    _ => Err(MetorexError::runtime_error(
+                        "Range.each only supports integer ranges".to_string(),
+                        position_to_location(position),
+                    )),
                 }
             }
             "to_a" => {
@@ -104,27 +101,18 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Range {
-                    start,
-                    end,
-                    exclusive,
-                } = receiver
-                {
-                    match (start.as_ref(), end.as_ref()) {
-                        (Object::Int(start_val), Object::Int(end_val)) => {
-                            let end_inclusive = if *exclusive { *end_val - 1 } else { *end_val };
+                match (start.as_ref(), end.as_ref()) {
+                    (Object::Int(start_val), Object::Int(end_val)) => {
+                        let end_inclusive = if *exclusive { *end_val - 1 } else { *end_val };
 
-                            let elements: Vec<Object> =
-                                (*start_val..=end_inclusive).map(Object::Int).collect();
-                            Ok(Some(Object::Array(Rc::new(RefCell::new(elements)))))
-                        }
-                        _ => Err(MetorexError::runtime_error(
-                            "Range.to_a only supports integer ranges".to_string(),
-                            position_to_location(position),
-                        )),
+                        let elements: Vec<Object> =
+                            (*start_val..=end_inclusive).map(Object::Int).collect();
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(elements)))))
                     }
-                } else {
-                    Ok(None)
+                    _ => Err(MetorexError::runtime_error(
+                        "Range.to_a only supports integer ranges".to_string(),
+                        position_to_location(position),
+                    )),
                 }
             }
             "include?" => {
@@ -136,32 +124,22 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Range {
-                    start,
-                    end,
-                    exclusive,
-                } = receiver
-                {
-                    match (start.as_ref(), end.as_ref(), &arguments[0]) {
-                        (Object::Int(start_val), Object::Int(end_val), Object::Int(test_val)) => {
-                            let in_range = if *exclusive {
-                                *test_val >= *start_val && *test_val < *end_val
-                            } else {
-                                *test_val >= *start_val && *test_val <= *end_val
-                            };
-                            Ok(Some(Object::Bool(in_range)))
-                        }
-                        _ => Err(MetorexError::runtime_error(
-                            "Range.include? only supports integer ranges".to_string(),
-                            position_to_location(position),
-                        )),
+                match (start.as_ref(), end.as_ref(), &arguments[0]) {
+                    (Object::Int(start_val), Object::Int(end_val), Object::Int(test_val)) => {
+                        let in_range = if *exclusive {
+                            *test_val >= *start_val && *test_val < *end_val
+                        } else {
+                            *test_val >= *start_val && *test_val <= *end_val
+                        };
+                        Ok(Some(Object::Bool(in_range)))
                     }
-                } else {
-                    Ok(None)
+                    _ => Err(MetorexError::runtime_error(
+                        "Range.include? only supports integer ranges".to_string(),
+                        position_to_location(position),
+                    )),
                 }
             }
             "map" => {
-                // map takes a trailing block (via pending_block)
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -171,50 +149,40 @@ impl VirtualMachine {
                     ));
                 }
                 let pending = self.pending_block.take();
-                if let Object::Range {
-                    start,
-                    end,
-                    exclusive,
-                } = receiver
-                {
-                    let block = match pending {
-                        Some(Object::Block(b)) => b,
-                        Some(other) => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Block",
-                                &other,
-                                position,
-                            ));
-                        }
-                        None => {
-                            return Err(MetorexError::runtime_error(
-                                "map requires a block",
-                                position_to_location(position),
-                            ));
-                        }
-                    };
-
-                    // Only support integer ranges for now
-                    match (start.as_ref(), end.as_ref()) {
-                        (Object::Int(start_val), Object::Int(end_val)) => {
-                            let end_inclusive = if *exclusive { *end_val - 1 } else { *end_val };
-
-                            let mut results = Vec::new();
-                            for i in *start_val..=end_inclusive {
-                                let args = vec![Object::Int(i)];
-                                let value = self.execute_block_body(&block, args)?;
-                                results.push(value);
-                            }
-                            Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
-                        }
-                        _ => Err(MetorexError::runtime_error(
-                            "Range.map only supports integer ranges".to_string(),
-                            position_to_location(position),
-                        )),
+                let block = match pending {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
                     }
-                } else {
-                    Ok(None)
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "map requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
+
+                match (start.as_ref(), end.as_ref()) {
+                    (Object::Int(start_val), Object::Int(end_val)) => {
+                        let end_inclusive = if *exclusive { *end_val - 1 } else { *end_val };
+
+                        let mut results = Vec::new();
+                        for i in *start_val..=end_inclusive {
+                            let args = vec![Object::Int(i)];
+                            let value = self.execute_block_body(&block, args)?;
+                            results.push(value);
+                        }
+                        Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+                    }
+                    _ => Err(MetorexError::runtime_error(
+                        "Range.map only supports integer ranges".to_string(),
+                        position_to_location(position),
+                    )),
                 }
             }
             _ => Ok(None),

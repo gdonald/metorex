@@ -638,7 +638,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 8.7.2. Implement `Test` class for test definitions
   - [x] 8.7.3. Implement `TestRunner` for executing tests
   - [x] 8.7.4. Implement assertion methods (`assert`, `assert_equal`, `assert_raises`)
-  - [ ] 8.7.5. Implement test discovery (finding test files)
+  - [x] 8.7.5. Implement test discovery (finding test files)
   - [x] 8.7.6. Implement test reporting (pass/fail counts, timing)
   - [x] 8.7.7. Implement `before` and `after` hooks
   - [x] 8.7.8. Implement test filtering (run specific tests)

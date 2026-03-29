@@ -18,6 +18,9 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::Dict(dict_rc) = receiver else {
+            return Ok(None);
+        };
         match method_name {
             "keys" => {
                 if !arguments.is_empty() {
@@ -28,14 +31,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    let dict = dict_rc.borrow();
-                    let keys: Vec<Object> =
-                        dict.keys().map(|k| Object::string(k.clone())).collect();
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(keys)))))
-                } else {
-                    Ok(None)
-                }
+                let dict = dict_rc.borrow();
+                let keys: Vec<Object> = dict.keys().map(|k| Object::string(k.clone())).collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(keys)))))
             }
             "values" => {
                 if !arguments.is_empty() {
@@ -46,13 +44,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    let dict = dict_rc.borrow();
-                    let values: Vec<Object> = dict.values().cloned().collect();
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(values)))))
-                } else {
-                    Ok(None)
-                }
+                let dict = dict_rc.borrow();
+                let values: Vec<Object> = dict.values().cloned().collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(values)))))
             }
             "has_key?" | "key?" => {
                 if arguments.len() != 1 {
@@ -63,29 +57,24 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    let key_obj = &arguments[0];
-                    // Convert key object to string representation (same as used for dict keys)
-                    let key_str = match key_obj {
-                        Object::String(s) => s.as_str().to_string(),
-                        Object::Int(i) => i.to_string(),
-                        Object::Float(f) => f.to_string(),
-                        Object::Bool(b) => b.to_string(),
-                        Object::Nil => "nil".to_string(),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "String, Integer, Float, Bool, or Nil",
-                                key_obj,
-                                position,
-                            ));
-                        }
-                    };
-                    let dict = dict_rc.borrow();
-                    Ok(Some(Object::Bool(dict.contains_key(&key_str))))
-                } else {
-                    Ok(None)
-                }
+                let key_obj = &arguments[0];
+                let key_str = match key_obj {
+                    Object::String(s) => s.as_str().to_string(),
+                    Object::Int(i) => i.to_string(),
+                    Object::Float(f) => f.to_string(),
+                    Object::Bool(b) => b.to_string(),
+                    Object::Nil => "nil".to_string(),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String, Integer, Float, Bool, or Nil",
+                            key_obj,
+                            position,
+                        ));
+                    }
+                };
+                let dict = dict_rc.borrow();
+                Ok(Some(Object::Bool(dict.contains_key(&key_str))))
             }
             "entries" | "to_a" => {
                 if !arguments.is_empty() {
@@ -96,21 +85,17 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    let dict = dict_rc.borrow();
-                    let entries: Vec<Object> = dict
-                        .iter()
-                        .map(|(k, v)| {
-                            Object::Array(Rc::new(RefCell::new(vec![
-                                Object::string(k.clone()),
-                                v.clone(),
-                            ])))
-                        })
-                        .collect();
-                    Ok(Some(Object::Array(Rc::new(RefCell::new(entries)))))
-                } else {
-                    Ok(None)
-                }
+                let dict = dict_rc.borrow();
+                let entries: Vec<Object> = dict
+                    .iter()
+                    .map(|(k, v)| {
+                        Object::Array(Rc::new(RefCell::new(vec![
+                            Object::string(k.clone()),
+                            v.clone(),
+                        ])))
+                    })
+                    .collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(entries)))))
             }
             "length" | "size" => {
                 if !arguments.is_empty() {
@@ -121,11 +106,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    Ok(Some(Object::Int(dict_rc.borrow().len() as i64)))
-                } else {
-                    Ok(None)
-                }
+                Ok(Some(Object::Int(dict_rc.borrow().len() as i64)))
             }
             "[]" => {
                 if arguments.len() != 1 {
@@ -153,37 +134,30 @@ impl VirtualMachine {
                         position_to_location(position),
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    let key_str =
-                        crate::vm::utils::object_to_dict_key(&arguments[0]).ok_or_else(|| {
-                            method_argument_type_error(
-                                method_name,
-                                "String, Integer, Float, Bool, or Nil",
-                                &arguments[0],
-                                position,
-                            )
-                        })?;
-                    let dict = dict_rc.borrow();
-                    match dict.get(&key_str) {
-                        Some(value) => Ok(Some(value.clone())),
-                        None => {
-                            if arguments.len() == 2 {
-                                // Return the default value
-                                Ok(Some(arguments[1].clone()))
-                            } else if method_name == "fetch" {
-                                // fetch without default raises an error
-                                Err(MetorexError::runtime_error(
-                                    format!("Key '{}' not found in hash", key_str),
-                                    position_to_location(position),
-                                ))
-                            } else {
-                                // get without default returns nil
-                                Ok(Some(Object::Nil))
-                            }
+                let key_str =
+                    crate::vm::utils::object_to_dict_key(&arguments[0]).ok_or_else(|| {
+                        method_argument_type_error(
+                            method_name,
+                            "String, Integer, Float, Bool, or Nil",
+                            &arguments[0],
+                            position,
+                        )
+                    })?;
+                let dict = dict_rc.borrow();
+                match dict.get(&key_str) {
+                    Some(value) => Ok(Some(value.clone())),
+                    None => {
+                        if arguments.len() == 2 {
+                            Ok(Some(arguments[1].clone()))
+                        } else if method_name == "fetch" {
+                            Err(MetorexError::runtime_error(
+                                format!("Key '{}' not found in hash", key_str),
+                                position_to_location(position),
+                            ))
+                        } else {
+                            Ok(Some(Object::Nil))
                         }
                     }
-                } else {
-                    Ok(None)
                 }
             }
             "merge" => {
@@ -195,26 +169,22 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                if let Object::Dict(dict_rc) = receiver {
-                    let other = match &arguments[0] {
-                        Object::Dict(other_rc) => other_rc,
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Hash",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-                    let mut merged = dict_rc.borrow().clone();
-                    for (k, v) in other.borrow().iter() {
-                        merged.insert(k.clone(), v.clone());
+                let other = match &arguments[0] {
+                    Object::Dict(other_rc) => other_rc,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Hash",
+                            &arguments[0],
+                            position,
+                        ));
                     }
-                    Ok(Some(Object::Dict(Rc::new(RefCell::new(merged)))))
-                } else {
-                    Ok(None)
+                };
+                let mut merged = dict_rc.borrow().clone();
+                for (k, v) in other.borrow().iter() {
+                    merged.insert(k.clone(), v.clone());
                 }
+                Ok(Some(Object::Dict(Rc::new(RefCell::new(merged)))))
             }
             "each" => {
                 if !arguments.is_empty() {
@@ -242,43 +212,39 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                if let Object::Dict(dict_rc) = receiver {
-                    let entries: Vec<(String, Object)> = dict_rc
-                        .borrow()
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect();
-                    for (key, value) in entries {
-                        let args = vec![Object::string(key), value];
-                        match self.execute_block_with_control_flow(&block, args)? {
-                            super::super::ControlFlow::Next
-                            | super::super::ControlFlow::Continue { .. } => {
-                                continue;
-                            }
-                            super::super::ControlFlow::Break { .. } => break,
-                            super::super::ControlFlow::Return { value: _, position } => {
-                                return Err(super::super::errors::loop_control_error(
-                                    "return", position,
-                                ));
-                            }
-                            super::super::ControlFlow::Exception {
-                                exception,
-                                position,
-                            } => {
-                                return Err(MetorexError::runtime_error(
-                                    format!(
-                                        "Uncaught exception: {}",
-                                        super::super::utils::format_exception(&exception)
-                                    ),
-                                    super::super::utils::position_to_location(position),
-                                ));
-                            }
+                let entries: Vec<(String, Object)> = dict_rc
+                    .borrow()
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                for (key, value) in entries {
+                    let args = vec![Object::string(key), value];
+                    match self.execute_block_with_control_flow(&block, args)? {
+                        super::super::ControlFlow::Next
+                        | super::super::ControlFlow::Continue { .. } => {
+                            continue;
+                        }
+                        super::super::ControlFlow::Break { .. } => break,
+                        super::super::ControlFlow::Return { value: _, position } => {
+                            return Err(super::super::errors::loop_control_error(
+                                "return", position,
+                            ));
+                        }
+                        super::super::ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::runtime_error(
+                                format!(
+                                    "Uncaught exception: {}",
+                                    super::super::utils::format_exception(&exception)
+                                ),
+                                super::super::utils::position_to_location(position),
+                            ));
                         }
                     }
-                    Ok(Some(receiver.clone()))
-                } else {
-                    Ok(None)
                 }
+                Ok(Some(receiver.clone()))
             }
             _ => Ok(None),
         }

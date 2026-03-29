@@ -1093,3 +1093,10 @@ fn test_dsl_config_execution() {
     let output = run_example("dsl/config.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_stdlib_error_paths_test_execution() {
+    let expected = "3.14\n-3.14\n4\n3\n4\n3\n3.14\n42\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
+    let output = run_example("stdlib/error_paths_test.rb");
+    assert_eq!(output, expected);
+}
