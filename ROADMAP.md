@@ -641,24 +641,24 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [ ] 8.7.5. Implement test discovery (finding test files)
   - [x] 8.7.6. Implement test reporting (pass/fail counts, timing)
   - [x] 8.7.7. Implement `before` and `after` hooks
-  - [ ] 8.7.8. Implement test filtering (run specific tests)
-  - [ ] 8.7.9. Add colored output for test results
+  - [x] 8.7.8. Implement test filtering (run specific tests)
+  - [x] 8.7.9. Add colored output for test results
   - [x] 8.7.10. Write tests for the testing framework (meta!)
   - [x] 8.7.11. Create example file: `examples/stdlib/testing_framework.rb`
   - [x] 8.7.12. Create test file: `tests/testing_framework_tests.rs`
 
 ### 9. CLI and REPL
 
-- [ ] 9.1. Command Line Interface
-  - [ ] 9.1.1. Create `cli` crate
-  - [ ] 9.1.2. Implement argument parsing with clap
-  - [ ] 9.1.3. Add `metorex <file.rb>` command
-  - [ ] 9.1.4. Add `--version` flag
-  - [ ] 9.1.5. Add `--help` flag
-  - [ ] 9.1.6. Add `--ast` flag to dump AST
-  - [ ] 9.1.7. Add `--debug` flag for verbose output
-  - [ ] 9.1.8. Write integration tests for CLI
-  - [ ] 9.1.9. Create test file: `tests/cli_tests.rs`
+- [x] 9.1. Command Line Interface
+  - [x] 9.1.1. Create `cli` crate
+  - [x] 9.1.2. Implement argument parsing with clap
+  - [x] 9.1.3. Add `metorex <file.rb>` command
+  - [x] 9.1.4. Add `--version` flag
+  - [x] 9.1.5. Add `--help` flag
+  - [x] 9.1.6. Add `--ast` flag to dump AST
+  - [x] 9.1.7. Add `--debug` flag for verbose output
+  - [x] 9.1.8. Write integration tests for CLI
+  - [x] 9.1.9. Create test file: `tests/cli_tests.rs`
 
 - [x] 9.2. REPL Implementation
   - [x] 9.2.1. Implement basic read-eval-print loop

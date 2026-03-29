@@ -1054,14 +1054,14 @@ fn test_stdlib_sets_parens_execution() {
 
 #[test]
 fn test_stdlib_testing_framework_execution() {
-    let expected = "Math operations\n  PASS: adds numbers\n  PASS: multiplies numbers\n  PASS: divides numbers\n3 passed, 0 failed\nString operations\n  PASS: concatenates strings\n  PASS: gets length\n2 passed, 0 failed\nType checking\n  PASS: checks integer type\n  PASS: checks truthiness\n  PASS: checks nil\n3 passed, 0 failed\nAssertions\n  PASS: assert_equal catches mismatches\n  PASS: assert catches false\n2 passed, 0 failed\n";
+    let expected = "\x1b[1mMath operations\x1b[0m\n  \x1b[32mPASS\x1b[0m: adds numbers\n  \x1b[32mPASS\x1b[0m: multiplies numbers\n  \x1b[32mPASS\x1b[0m: divides numbers\n\x1b[32m3 passed\x1b[0m, 0 failed\n\x1b[1mString operations\x1b[0m\n  \x1b[32mPASS\x1b[0m: concatenates strings\n  \x1b[32mPASS\x1b[0m: gets length\n\x1b[32m2 passed\x1b[0m, 0 failed\n\x1b[1mType checking\x1b[0m\n  \x1b[32mPASS\x1b[0m: checks integer type\n  \x1b[32mPASS\x1b[0m: checks truthiness\n  \x1b[32mPASS\x1b[0m: checks nil\n\x1b[32m3 passed\x1b[0m, 0 failed\n\x1b[1mAssertions\x1b[0m\n  \x1b[32mPASS\x1b[0m: assert_equal catches mismatches\n  \x1b[32mPASS\x1b[0m: assert catches false\n\x1b[32m2 passed\x1b[0m, 0 failed\n\x1b[1mFiltered suite\x1b[0m\n  \x1b[32mPASS\x1b[0m: add test\n\x1b[32m1 passed\x1b[0m, 0 failed\n";
     let output = run_example("stdlib/testing_framework.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_testing_framework_parens_execution() {
-    let expected = "Math operations\n  PASS: adds numbers\n  PASS: multiplies numbers\n  PASS: divides numbers\n3 passed, 0 failed\nString operations\n  PASS: concatenates strings\n  PASS: gets length\n2 passed, 0 failed\nType checking\n  PASS: checks integer type\n  PASS: checks truthiness\n  PASS: checks nil\n3 passed, 0 failed\nAssertions\n  PASS: assert_equal catches mismatches\n  PASS: assert catches false\n2 passed, 0 failed\n";
+    let expected = "\x1b[1mMath operations\x1b[0m\n  \x1b[32mPASS\x1b[0m: adds numbers\n  \x1b[32mPASS\x1b[0m: multiplies numbers\n  \x1b[32mPASS\x1b[0m: divides numbers\n\x1b[32m3 passed\x1b[0m, 0 failed\n\x1b[1mString operations\x1b[0m\n  \x1b[32mPASS\x1b[0m: concatenates strings\n  \x1b[32mPASS\x1b[0m: gets length\n\x1b[32m2 passed\x1b[0m, 0 failed\n\x1b[1mType checking\x1b[0m\n  \x1b[32mPASS\x1b[0m: checks integer type\n  \x1b[32mPASS\x1b[0m: checks truthiness\n  \x1b[32mPASS\x1b[0m: checks nil\n\x1b[32m3 passed\x1b[0m, 0 failed\n\x1b[1mAssertions\x1b[0m\n  \x1b[32mPASS\x1b[0m: assert_equal catches mismatches\n  \x1b[32mPASS\x1b[0m: assert catches false\n\x1b[32m2 passed\x1b[0m, 0 failed\n\x1b[1mFiltered suite\x1b[0m\n  \x1b[32mPASS\x1b[0m: add test\n\x1b[32m1 passed\x1b[0m, 0 failed\n";
     let output = run_example("stdlib/testing_framework_parens.rb");
     assert_eq!(output, expected);
 }

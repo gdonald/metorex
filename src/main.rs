@@ -1,19 +1,38 @@
 // Metorex CLI
 // Command-line interface for the Metorex programming language
 
+use clap::Parser as ClapParser;
 use metorex::lexer::Lexer;
 use metorex::parser::Parser;
 use metorex::repl::Repl;
 use metorex::vm::VirtualMachine;
-use std::env;
 use std::fs;
 use std::process;
 
-fn main() {
-    let args: Vec<String> = env::args().collect();
+#[derive(ClapParser)]
+#[command(name = "metorex", version, about = "The Metorex programming language")]
+struct Cli {
+    /// Source file to execute
+    file: Option<String>,
 
-    // No arguments or explicit REPL flag - start REPL mode
-    if args.len() == 1 || (args.len() == 2 && (args[1] == "repl" || args[1] == "--repl")) {
+    /// Dump the AST instead of executing
+    #[arg(long)]
+    ast: bool,
+
+    /// Enable debug/verbose output
+    #[arg(long)]
+    debug: bool,
+
+    /// Start the REPL
+    #[arg(long)]
+    repl: bool,
+}
+
+fn main() {
+    let cli = Cli::parse();
+
+    // REPL mode: no file given or explicit --repl flag
+    if cli.file.is_none() || cli.repl {
         match Repl::new() {
             Ok(mut repl) => {
                 if let Err(err) = repl.run() {
@@ -29,8 +48,7 @@ fn main() {
         return;
     }
 
-    // File execution mode
-    let filename = &args[1];
+    let filename = cli.file.as_ref().unwrap();
 
     // Convert filename to absolute path
     let absolute_path = match fs::canonicalize(filename) {
@@ -50,9 +68,18 @@ fn main() {
         }
     };
 
+    if cli.debug {
+        eprintln!("[debug] File: {}", absolute_path.display());
+        eprintln!("[debug] Source length: {} bytes", source.len());
+    }
+
     // Tokenize
     let lexer = Lexer::new(&source);
     let tokens = lexer.tokenize();
+
+    if cli.debug {
+        eprintln!("[debug] Tokens: {}", tokens.len());
+    }
 
     // Parse
     let mut parser = Parser::new(tokens);
@@ -66,6 +93,18 @@ fn main() {
             process::exit(1);
         }
     };
+
+    if cli.debug {
+        eprintln!("[debug] Statements: {}", program.len());
+    }
+
+    // AST dump mode
+    if cli.ast {
+        for stmt in &program {
+            println!("{:#?}", stmt);
+        }
+        return;
+    }
 
     // Execute
     let mut vm = VirtualMachine::new();

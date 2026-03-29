@@ -114,3 +114,17 @@ fn test_lexer_string_with_unknown_escape() {
     // Unknown escapes keep the backslash
     assert_eq!(token.kind, TokenKind::String("test\\xabc".to_string()));
 }
+
+#[test]
+fn test_lexer_string_with_esc_escape() {
+    let mut lexer = Lexer::new(r#""\e[32m""#);
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::String("\x1b[32m".to_string()));
+}
+
+#[test]
+fn test_lexer_string_with_null_escape() {
+    let mut lexer = Lexer::new(r#""\0""#);
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::String("\0".to_string()));
+}

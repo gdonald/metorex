@@ -339,6 +339,16 @@ impl<'a> Lexer<'a> {
                             current_text.push('#');
                             self.advance();
                         }
+                        Some('e') => {
+                            // ESC character (0x1B) for ANSI escape sequences
+                            current_text.push('\x1B');
+                            self.advance();
+                        }
+                        Some('0') => {
+                            // Null character
+                            current_text.push('\0');
+                            self.advance();
+                        }
                         Some(ch) => {
                             // For unrecognized escape sequences, include the backslash
                             current_text.push('\\');
