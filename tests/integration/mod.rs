@@ -1,4 +1,4 @@
 mod cli_tests;
-mod examples_runner;
+mod examples;
 mod test_runner;
 mod version_test;
