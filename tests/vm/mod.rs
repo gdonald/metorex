@@ -1,4 +1,15 @@
+mod class_execution_coverage_tests;
+mod control_coverage_tests;
+mod core_coverage_tests;
+mod expression_coverage_tests;
 mod method_dispatch_tests;
+mod method_invocation_coverage_tests;
+mod native_functions_tests;
+mod native_methods_coverage_tests;
+mod operators_tests;
+mod pattern_matching_coverage_tests;
+mod statement_coverage_tests;
+mod vm_coverage_tests;
 mod vm_expression_tests;
 mod vm_initialization_tests;
 mod vm_statement_tests;

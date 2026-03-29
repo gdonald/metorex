@@ -21,7 +21,14 @@ fn test_binary_op_display() {
 }
 
 #[test]
+fn test_binary_op_and_or_display() {
+    assert_eq!(format!("{}", BinaryOp::And), "&&");
+    assert_eq!(format!("{}", BinaryOp::Or), "||");
+}
+
+#[test]
 fn test_unary_op_display() {
     assert_eq!(format!("{}", UnaryOp::Plus), "+");
     assert_eq!(format!("{}", UnaryOp::Minus), "-");
+    assert_eq!(format!("{}", UnaryOp::Not), "!");
 }

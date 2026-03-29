@@ -10,6 +10,13 @@ fn run(code: &str) -> Option<Object> {
     vm.execute_program(&stmts).expect("execution failed")
 }
 
+fn run_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
 #[test]
 fn string_length() {
     let result = run(r#""hello".length"#);
@@ -141,4 +148,197 @@ fn array_join_with_separator() {
 fn array_join_no_separator() {
     let result = run(r#"["one", "two", "three"].join"#);
     assert_eq!(result, Some(Object::string("onetwothree")));
+}
+
+// ── chars ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_chars_returns_array_of_chars() {
+    let result = run(r#""abc".chars"#);
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::string("a"),
+            Object::string("b"),
+            Object::string("c"),
+        ]))
+    );
+}
+
+#[test]
+fn string_chars_error_with_args() {
+    let err = run_err(r#""hello".chars(1)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── bytes ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_bytes_returns_array_of_ints() {
+    let result = run(r#""abc".bytes"#);
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(97),
+            Object::Int(98),
+            Object::Int(99),
+        ]))
+    );
+}
+
+#[test]
+fn string_bytes_error_with_args() {
+    let err = run_err(r#""hello".bytes(1)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── each_char ────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_each_char_iterates() {
+    let result = run(r#"
+result = []
+"abc".each_char { |c| result.push(c) }
+result
+"#);
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::string("a"),
+            Object::string("b"),
+            Object::string("c"),
+        ]))
+    );
+}
+
+#[test]
+fn string_each_char_error_with_args() {
+    let err = run_err(r#""hello".each_char(1) { |c| c }"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_each_char_error_no_block() {
+    let err = run_err(r#""hello".each_char"#);
+    assert!(err.contains("block"));
+}
+
+// ── slice ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_slice_past_end_returns_empty() {
+    let result = run(r#""hi".slice(10, 5)"#);
+    assert_eq!(result, Some(Object::string("")));
+}
+
+#[test]
+fn string_slice_error_wrong_arg_count() {
+    let err = run_err(r#""hello".slice(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_slice_error_wrong_type() {
+    let err = run_err(r#""hello".slice("x", 2)"#);
+    assert!(err.contains("Integer"));
+}
+
+// ── error paths for basic methods ────────────────────────────────────────────
+
+#[test]
+fn string_length_error_with_args() {
+    let err = run_err(r#""hello".length(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_upcase_error_with_args() {
+    let err = run_err(r#""hello".upcase(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_downcase_error_with_args() {
+    let err = run_err(r#""hello".downcase(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_trim_error_with_args() {
+    let err = run_err(r#""hello".trim(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_reverse_error_with_args() {
+    let err = run_err(r#""hello".reverse(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_size_error_with_args() {
+    let err = run_err(r#""hello".size(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_strip_error_with_args() {
+    let err = run_err(r#""hello".strip(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_split_error_too_many_args() {
+    let err = run_err(r#""hello".split(",", "extra")"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_split_error_non_string_sep() {
+    let err = run_err(r#""hello".split(42)"#);
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn string_include_error_wrong_count() {
+    let err = run_err(r#""hello".include?"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_include_error_non_string_arg() {
+    let err = run_err(r#""hello".include?(42)"#);
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn string_starts_with_error_wrong_count() {
+    let err = run_err(r#""hello".starts_with?"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_starts_with_error_non_string_arg() {
+    let err = run_err(r#""hello".starts_with?(42)"#);
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn string_ends_with_error_wrong_count() {
+    let err = run_err(r#""hello".ends_with?"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_ends_with_error_non_string_arg() {
+    let err = run_err(r#""hello".ends_with?(42)"#);
+    assert!(err.contains("String"));
+}
+
+// ── + operator via method dispatch ──────────────────────────────────────────
+
+#[test]
+fn string_concat_operator() {
+    let result = run(r#""hello" + " world""#);
+    assert_eq!(result, Some(Object::string("hello world")));
 }

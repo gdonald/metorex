@@ -1,4 +1,4 @@
-use metorex::file_loader::load_file_source;
+use metorex::file_loader::{find_file_path, load_file_source};
 use std::path::Path;
 
 use crate::common::EXAMPLES_DIR;
@@ -80,4 +80,16 @@ fn test_load_file_not_found_with_extension() {
 fn test_load_file_invalid_path() {
     let result = load_example("does/not/exist.rb");
     assert!(result.is_err());
+}
+
+// ── find_file_path: .mx extension auto-detection (file_loader.rs line 51) ────
+
+#[test]
+fn test_find_file_path_mx_extension_auto_detect() {
+    // mx_only.mx exists but mx_only.rb does not — should find the .mx file
+    let path = Path::new(EXAMPLES_DIR).join("file_loader/mx_only");
+    let result = find_file_path(&path);
+    assert!(result.is_ok(), "Expected Ok but got: {:?}", result);
+    let found = result.unwrap();
+    assert!(found.to_string_lossy().ends_with(".mx"));
 }

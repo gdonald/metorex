@@ -4,6 +4,20 @@ use std::path::Path;
 use crate::common::EXAMPLES_DIR;
 
 #[test]
+fn test_resolve_path_no_parent_directory_error() {
+    // A path with no parent (empty or root) causes "Cannot determine parent directory"
+    // On Unix, Path::new("") has no parent, triggering file_loader.rs lines 118-125
+    let base_file = Path::new("");
+    let result = resolve_relative_path(base_file, "test.rb");
+    assert!(
+        result.is_err(),
+        "Expected error for empty base path but got Ok"
+    );
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("parent") || err.contains("directory") || err.contains("Cannot"));
+}
+
+#[test]
 fn test_resolve_path_same_directory() {
     // Base file: tests/_examples/file_loader/test_file.rb
     // Relative path: explicit.rb (same directory)

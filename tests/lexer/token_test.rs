@@ -1,6 +1,6 @@
 // Unit tests for token types
 
-use metorex::lexer::{Position, Token, TokenKind};
+use metorex::lexer::{InterpolationPart, Position, Token, TokenKind};
 
 #[test]
 fn test_position_creation() {
@@ -171,6 +171,93 @@ fn test_token_kind_equality() {
         TokenKind::String("hello".to_string()),
         TokenKind::String("world".to_string())
     );
+}
+
+#[test]
+fn test_remaining_keyword_tokens_display() {
+    let keywords = vec![
+        (TokenKind::Elsif, "elsif"),
+        (TokenKind::Unless, "unless"),
+        (TokenKind::For, "for"),
+        (TokenKind::In, "in"),
+        (TokenKind::Begin, "begin"),
+        (TokenKind::Rescue, "rescue"),
+        (TokenKind::Ensure, "ensure"),
+        (TokenKind::Raise, "raise"),
+        (TokenKind::Break, "break"),
+        (TokenKind::Continue, "continue"),
+        (TokenKind::Return, "return"),
+        (TokenKind::Lambda, "lambda"),
+        (TokenKind::Super, "super"),
+        (TokenKind::Case, "case"),
+        (TokenKind::When, "when"),
+        (TokenKind::Then, "then"),
+        (TokenKind::AttrReader, "attr_reader"),
+        (TokenKind::AttrWriter, "attr_writer"),
+        (TokenKind::AttrAccessor, "attr_accessor"),
+        (TokenKind::Module, "module"),
+        (TokenKind::Include, "include"),
+        (TokenKind::Extend, "extend"),
+    ];
+
+    for (kind, expected) in keywords {
+        assert_eq!(kind.to_string(), expected);
+    }
+}
+
+#[test]
+fn test_interpolated_string_token_display() {
+    let parts = vec![
+        InterpolationPart::Text("hello ".to_string()),
+        InterpolationPart::Expression("name".to_string()),
+    ];
+    let token = TokenKind::InterpolatedString(parts);
+    let display = token.to_string();
+    assert!(display.contains("hello"));
+}
+
+#[test]
+fn test_variable_tokens_display() {
+    assert_eq!(
+        TokenKind::InstanceVar("foo".to_string()).to_string(),
+        "@foo"
+    );
+    assert_eq!(
+        TokenKind::ClassVar("count".to_string()).to_string(),
+        "@@count"
+    );
+    assert_eq!(TokenKind::GlobalVar("var".to_string()).to_string(), "$var");
+}
+
+#[test]
+fn test_compound_assignment_tokens_display() {
+    let tokens = vec![
+        (TokenKind::PlusEqual, "+="),
+        (TokenKind::MinusEqual, "-="),
+        (TokenKind::StarEqual, "*="),
+        (TokenKind::SlashEqual, "/="),
+    ];
+    for (kind, expected) in tokens {
+        assert_eq!(kind.to_string(), expected);
+    }
+}
+
+#[test]
+fn test_additional_operator_tokens_display() {
+    let tokens = vec![
+        (TokenKind::Bang, "!"),
+        (TokenKind::DotDot, ".."),
+        (TokenKind::DotDotDot, "..."),
+        (TokenKind::FatArrow, "=>"),
+        (TokenKind::Pipe, "|"),
+        (TokenKind::Ampersand, "&"),
+        (TokenKind::LogicalAnd, "&&"),
+        (TokenKind::LogicalOr, "||"),
+        (TokenKind::ColonColon, "::"),
+    ];
+    for (kind, expected) in tokens {
+        assert_eq!(kind.to_string(), expected);
+    }
 }
 
 #[test]

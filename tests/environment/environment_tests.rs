@@ -332,3 +332,17 @@ fn test_deep_nesting() {
     // Should be back at global scope
     assert_eq!(env.current_depth(), 0);
 }
+
+// ── current_scope_vars coverage (environment.rs lines 96-97) ──
+
+#[test]
+fn test_current_scope_vars_collects_from_chain() {
+    let mut env = Environment::new();
+    env.define("a".to_string(), int(1));
+    env.push_scope();
+    env.define("b".to_string(), int(2));
+
+    let vars = env.current_scope_vars();
+    assert_eq!(vars.get("a"), Some(&int(1)));
+    assert_eq!(vars.get("b"), Some(&int(2)));
+}

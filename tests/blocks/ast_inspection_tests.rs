@@ -14,16 +14,6 @@ fn eval(source: &str) -> Option<Object> {
     vm.execute_program(&statements).expect("Execution failed")
 }
 
-fn get_str_field(obj: &Object, key: &str) -> String {
-    match obj {
-        Object::Dict(d) => match d.borrow().get(key) {
-            Some(Object::String(s)) => s.as_ref().clone(),
-            _ => panic!("Field '{}' not a string in {:?}", key, obj),
-        },
-        _ => panic!("Expected Dict, got {:?}", obj),
-    }
-}
-
 #[test]
 fn test_method_body_returns_array() {
     let source = r#"

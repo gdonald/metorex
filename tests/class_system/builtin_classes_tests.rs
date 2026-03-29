@@ -385,3 +385,54 @@ fn test_array_index_parameters() {
     assert_eq!(index.parameters.len(), 1);
     assert_eq!(index.parameters[0], "index");
 }
+
+// ── class_of for Symbol (builtin_classes.rs line 100) ─────────────────────────
+
+#[test]
+fn test_class_of_symbol() {
+    let builtins = BuiltinClasses::new();
+    let obj = Object::Symbol(Rc::new("hello".to_string()));
+    let class = builtins.class_of(&obj);
+    // Symbols are treated as strings in the type system
+    assert_eq!(class.name(), "String");
+}
+
+// ── class_of for NativeFunction (builtin_classes.rs line 111) ─────────────────
+
+#[test]
+fn test_class_of_native_function() {
+    let builtins = BuiltinClasses::new();
+    let obj = Object::NativeFunction("puts".to_string());
+    let class = builtins.class_of(&obj);
+    assert_eq!(class.name(), "Object");
+}
+
+// ── class_of for Method (builtin_classes.rs line 106) ─────────────────────────
+
+#[test]
+fn test_class_of_method_object() {
+    use metorex::object::Method;
+    let builtins = BuiltinClasses::new();
+    let method = Method::new("foo".to_string(), vec![], vec![]);
+    let obj = Object::Method(Rc::new(method));
+    let class = builtins.class_of(&obj);
+    assert_eq!(class.name(), "Object");
+}
+
+// ── class_of for Result (builtin_classes.rs line 110) ─────────────────────────
+
+#[test]
+fn test_class_of_result_ok() {
+    let builtins = BuiltinClasses::new();
+    let obj = Object::ok(Object::Int(1));
+    let class = builtins.class_of(&obj);
+    assert_eq!(class.name(), "Object");
+}
+
+#[test]
+fn test_class_of_result_err() {
+    let builtins = BuiltinClasses::new();
+    let obj = Object::err(Object::string("fail"));
+    let class = builtins.class_of(&obj);
+    assert_eq!(class.name(), "Object");
+}

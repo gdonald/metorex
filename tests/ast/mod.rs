@@ -6,4 +6,5 @@ mod helpers;
 mod lambda_block_test;
 mod nested_expression_test;
 mod operator_display_test;
+mod position_method_coverage_tests;
 mod statement_nodes_test;

@@ -12,6 +12,7 @@ mod elsif_execution_tests;
 mod for_execution_tests;
 mod if_else_execution_tests;
 mod loop_control_execution_tests;
+mod pattern_coverage_tests;
 mod pattern_matching_execution_tests;
 mod pattern_matching_tests;
 mod unless_execution_tests;

@@ -99,6 +99,20 @@ fn test_lexer_very_small_float() {
     assert_eq!(token.kind, TokenKind::Float(0.0000001));
 }
 
+// ── Number followed by dot at EOF (lexer/mod.rs line 134) ────────────────────
+
+#[test]
+fn test_lexer_integer_with_trailing_dot_at_eof() {
+    // Source "42." — the dot is followed by EOF (not a digit), so 42 is returned as Int
+    // and the dot is left for the next token; hits the else-break at line 134
+    let mut lexer = Lexer::new("42.");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Int(42));
+    // The trailing dot becomes the next token
+    let dot_token = lexer.next_token();
+    assert_eq!(dot_token.kind, TokenKind::Dot);
+}
+
 #[test]
 fn test_lexer_multiple_floats() {
     let mut lexer = Lexer::new("1.1 2.2 3.3");

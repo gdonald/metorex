@@ -295,3 +295,66 @@ fn test_scope_isolation() {
     assert_eq!(scope1.get("x"), Some(Object::Int(42)));
     assert_eq!(scope2.get("x"), Some(Object::Int(100)));
 }
+
+// ── get_ref traverses parent chain (scope.rs lines 76-77, 81) ──
+
+#[test]
+fn test_get_ref_from_parent_scope() {
+    let parent = Rc::new(RefCell::new(Scope::new()));
+    parent.borrow_mut().define("x".to_string(), Object::Int(42));
+
+    let child = Scope::with_parent(parent);
+    let x_ref = child.get_ref("x");
+    assert!(x_ref.is_some());
+    assert_eq!(*x_ref.unwrap().borrow(), Object::Int(42));
+}
+
+#[test]
+fn test_get_ref_not_found() {
+    let parent = Rc::new(RefCell::new(Scope::new()));
+    let child = Scope::with_parent(parent);
+    assert!(child.get_ref("missing").is_none());
+}
+
+// ── collect_all_vars with parent (scope.rs lines 139-152) ──
+
+#[test]
+fn test_collect_all_vars_with_parent() {
+    let parent = Rc::new(RefCell::new(Scope::new()));
+    parent.borrow_mut().define("a".to_string(), Object::Int(1));
+    parent.borrow_mut().define("b".to_string(), Object::Int(2));
+
+    let mut child = Scope::with_parent(parent);
+    child.define("b".to_string(), Object::Int(20)); // shadow parent's b
+    child.define("c".to_string(), Object::Int(3));
+
+    let all_vars = child.collect_all_vars();
+    assert_eq!(all_vars.get("a"), Some(&Object::Int(1)));
+    assert_eq!(all_vars.get("b"), Some(&Object::Int(20))); // child shadows parent
+    assert_eq!(all_vars.get("c"), Some(&Object::Int(3)));
+}
+
+// ── collect_all_var_refs with parent (scope.rs lines 176-177) ──
+
+#[test]
+fn test_collect_all_var_refs_with_parent() {
+    let parent = Rc::new(RefCell::new(Scope::new()));
+    parent.borrow_mut().define("x".to_string(), Object::Int(10));
+
+    let mut child = Scope::with_parent(parent);
+    child.define("y".to_string(), Object::Int(20));
+
+    let all_refs = child.collect_all_var_refs();
+    assert!(all_refs.contains_key("x"));
+    assert!(all_refs.contains_key("y"));
+    assert_eq!(*all_refs["x"].borrow(), Object::Int(10));
+    assert_eq!(*all_refs["y"].borrow(), Object::Int(20));
+}
+
+// ── Default impl (scope.rs lines 176-177) ──
+
+#[test]
+fn test_scope_default() {
+    let scope = Scope::default();
+    assert!(scope.get("anything").is_none());
+}

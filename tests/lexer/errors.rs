@@ -1,6 +1,6 @@
 // Lexer error handling and recovery tests
 
-use metorex::lexer::{Lexer, TokenKind};
+use metorex::lexer::{InterpolationPart, Lexer, TokenKind};
 
 // ===== Error Handling Tests =====
 
@@ -153,4 +153,40 @@ fn test_lexer_method_chain_long() {
 
     let dots: Vec<_> = tokens.iter().filter(|t| t.kind == TokenKind::Dot).collect();
     assert_eq!(dots.len(), 3);
+}
+
+// ── Escape sequence at end of input (lexer/mod.rs lines 348-351) ──────────────
+
+#[test]
+fn test_lexer_string_unterminated_after_backslash() {
+    // Source: " followed by \ with no more input — hits the None arm in escape handling
+    let mut lexer = Lexer::new(r#""\"#);
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+// ── Newline inside string interpolation (lexer/mod.rs lines 381-384) ──────────
+
+#[test]
+fn test_lexer_interpolation_newline_in_expression_is_error() {
+    // Source: "#{\n}" — a newline inside #{...} triggers an unterminated-interpolation error
+    let mut lexer = Lexer::new("\"#{\n}\"");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+// ── Nested braces inside interpolation (lexer/mod.rs lines 387-390, 399-400) ──
+
+#[test]
+fn test_lexer_interpolation_nested_braces() {
+    // Source: "#{{x}}" — the inner {} increments and then decrements depth
+    let mut lexer = Lexer::new("\"#{{x}}\"");
+    let token = lexer.next_token();
+    match token.kind {
+        TokenKind::InterpolatedString(parts) => {
+            assert_eq!(parts.len(), 1);
+            assert_eq!(parts[0], InterpolationPart::Expression("{x}".to_string()));
+        }
+        _ => panic!("Expected InterpolatedString, got {:?}", token.kind),
+    }
 }
