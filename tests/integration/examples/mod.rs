@@ -1,5 +1,7 @@
+mod advanced;
 mod algorithms;
 mod basics;
+mod builtins;
 mod control_flow;
 mod data_structures;
 mod dsl;

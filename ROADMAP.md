@@ -712,7 +712,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 10.3.3. Test full compilation pipeline
   - [x] 10.3.4. Test all language features together
   - [x] 10.3.5. Create test file: `tests/integration_tests/` module
-  - [ ] 10.3.6. Achieve 100% code coverage (current: 93.37%, 6862/7349 lines)
+  - [ ] 10.3.6. Achieve 100% code coverage (current: 94.67%, 6977/7370 lines)
 
 - [x] 10.4. Examples Runner Coverage (`tests/integration/examples_runner.rs`)
 
@@ -817,12 +817,12 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
     - [ ] Use `tests/_examples/advanced/implicit_block_capture.rb`
 
   - [ ] 10.4.11. Advanced Features (pending section 3.13, 7.6 completion)
-    - [ ] Use `tests/_examples/advanced/traits.rb`
+    - [x] Use `tests/_examples/advanced/traits.rb`
     - [ ] Use `tests/_examples/advanced/dsl_example.rb`
     - [ ] Use `tests/_examples/advanced/serialization.rb`
 
-  - [ ] 10.4.12. Builtins (pending section 8.4b completion)
-    - [ ] Use `tests/_examples/builtins/type_introspection.rb`
+  - [x] 10.4.12. Builtins
+    - [x] Use `tests/_examples/builtins/type_introspection.rb`
 
   - [ ] 10.4.13. Concurrency (pending Phase 3)
     - [ ] Use `tests/_examples/advanced/concurrency.rb`

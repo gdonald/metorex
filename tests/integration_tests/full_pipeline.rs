@@ -4,25 +4,27 @@
 // Uses the metorex binary to test the complete pipeline including stdout capture.
 
 use crate::common::EXAMPLES_DIR;
+use std::fs;
 use std::process::Command;
 
+/// Create a unique temp file path for this thread.
+fn temp_rb_file(prefix: &str) -> std::path::PathBuf {
+    let id = std::thread::current().id();
+    std::env::temp_dir().join(format!("metorex_pipeline_{}{:?}.rb", prefix, id))
+}
+
+/// Write source to a temp file, run metorex on it, return stdout.
 fn run_source(code: &str) -> String {
     let binary = env!("CARGO_BIN_EXE_metorex");
-    let mut cmd = Command::new(binary);
-    cmd.arg("/dev/stdin");
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    let tmp_path = temp_rb_file("ok_");
+    fs::write(&tmp_path, code).expect("failed to write temp file");
 
-    let mut child = cmd.spawn().expect("failed to start metorex");
-    use std::io::Write;
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(code.as_bytes())
-        .unwrap();
-    let output = child.wait_with_output().expect("failed to wait");
+    let output = Command::new(binary)
+        .arg(&tmp_path)
+        .output()
+        .expect("failed to execute");
+
+    let _ = fs::remove_file(&tmp_path);
     assert!(
         output.status.success(),
         "Program failed: {}",
@@ -31,23 +33,18 @@ fn run_source(code: &str) -> String {
     String::from_utf8(output.stdout).expect("stdout not utf8")
 }
 
+/// Write source to a temp file, run metorex expecting failure, return stderr.
 fn run_source_err(code: &str) -> String {
     let binary = env!("CARGO_BIN_EXE_metorex");
-    let mut cmd = Command::new(binary);
-    cmd.arg("/dev/stdin");
-    cmd.stdin(std::process::Stdio::piped());
-    cmd.stdout(std::process::Stdio::piped());
-    cmd.stderr(std::process::Stdio::piped());
+    let tmp_path = temp_rb_file("err_");
+    fs::write(&tmp_path, code).expect("failed to write temp file");
 
-    let mut child = cmd.spawn().expect("failed to start metorex");
-    use std::io::Write;
-    child
-        .stdin
-        .take()
-        .unwrap()
-        .write_all(code.as_bytes())
-        .unwrap();
-    let output = child.wait_with_output().expect("failed to wait");
+    let output = Command::new(binary)
+        .arg(&tmp_path)
+        .output()
+        .expect("failed to execute");
+
+    let _ = fs::remove_file(&tmp_path);
     assert!(!output.status.success(), "Expected program to fail");
     String::from_utf8(output.stderr).expect("stderr not utf8")
 }
