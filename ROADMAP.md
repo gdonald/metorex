@@ -176,7 +176,6 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - **Ruby compliance note**: Guards (`when x if x > 0`), variable binding (`when x`), array/hash destructuring, and wildcards (`_`) in `case...when` are NOT valid Ruby syntax. These features require `case...in` (Ruby 2.7+ pattern matching). The current Metorex `case...when` extended syntax is Metorex-specific.
   - [x] 3.8.12. Add `case...in` pattern matching AST node (Ruby 2.7+ compatible)
   - [x] 3.8.13. Add `if`/`unless` expression form (assign result of if: `x = if cond then a else b end`)
-  - [ ] 3.8.14. Consider regex patterns: `when /pattern/ then ...` *(deferred — requires Regex type)*
   - [x] 3.8.15. Consider range patterns as when values: `when 1..10 then ...`
 
 - [x] 3.9. Function and Method Definition Nodes
@@ -692,7 +691,6 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 10.1.3. Create example: Factorial
   - [x] 10.1.4. Create example: Calculator
   - [x] 10.1.5. Create example: Todo list application
-  - [ ] 10.1.6. Create example: Simple web server (if networking added)
   - [x] 10.1.7. Create example: Data processing pipeline
   - [x] 10.1.8. Create example: Object-oriented design patterns
   - [x] 10.1.9. All examples in `tests/_examples/programs/`
@@ -712,7 +710,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 10.3.3. Test full compilation pipeline
   - [x] 10.3.4. Test all language features together
   - [x] 10.3.5. Create test file: `tests/integration_tests/` module
-  - [ ] 10.3.6. Achieve 100% code coverage (current: 94.67%, 6977/7370 lines)
+  - [x] 10.3.6. Code coverage measured (current: 94.67%, 6977/7370 lines — see Future Enhancements for 100% goal)
 
 - [x] 10.4. Examples Runner Coverage (`tests/integration/examples_runner.rs`)
 
@@ -812,23 +810,11 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
     - [x] Use `tests/_examples/require/nested.rb`
     - [x] Use `tests/_examples/require/return_values.rb`
 
-  - [ ] 10.4.10. Advanced OOP (pending section 7.2–7.3 completion)
-    - [ ] Use `tests/_examples/advanced/dynamic_method_definition.rb`
-    - [ ] Use `tests/_examples/advanced/implicit_block_capture.rb`
-
-  - [ ] 10.4.11. Advanced Features (pending section 3.13, 7.6 completion)
+  - [x] 10.4.10. Advanced Features
     - [x] Use `tests/_examples/advanced/traits.rb`
-    - [ ] Use `tests/_examples/advanced/dsl_example.rb`
-    - [ ] Use `tests/_examples/advanced/serialization.rb`
 
-  - [x] 10.4.12. Builtins
+  - [x] 10.4.11. Builtins
     - [x] Use `tests/_examples/builtins/type_introspection.rb`
-
-  - [ ] 10.4.13. Concurrency (pending Phase 3)
-    - [ ] Use `tests/_examples/advanced/concurrency.rb`
-
-  - [ ] 10.4.14. Networking (pending Phase 3)
-    - [ ] Use `tests/_examples/advanced/networking.rb`
 
 ---
 
@@ -2031,6 +2017,15 @@ Goal: Add an AOT transpilation pipeline that converts supported Metorex programs
 
 ### Future Enhancements
 
+- [ ] Regex patterns in case/when: `when /pattern/ then ...` (requires Regex type)
+- [ ] Achieve 100% code coverage (current: 94.67% — remaining gaps are native method error paths, interactive REPL wrapper, and main.rs)
+- [ ] Examples runner: `tests/_examples/advanced/dynamic_method_definition.rb` (requires section 7.2–7.3)
+- [ ] Examples runner: `tests/_examples/advanced/implicit_block_capture.rb` (requires section 7.2–7.3)
+- [ ] Examples runner: `tests/_examples/advanced/dsl_example.rb` (requires section 3.13, 7.6)
+- [ ] Examples runner: `tests/_examples/advanced/serialization.rb` (requires section 3.13, 7.6)
+- [ ] Examples runner: `tests/_examples/advanced/concurrency.rb` (requires Phase 3)
+- [ ] Examples runner: `tests/_examples/advanced/networking.rb` (requires Phase 3)
+- [ ] Create example: Simple web server (requires networking)
 - [ ] Implement `require` (non-relative, uses `$LOAD_PATH`)
 - [ ] Implement `load` (always re-loads file)
 - [ ] Implement `autoload` (lazy loading)
