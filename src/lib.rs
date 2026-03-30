@@ -6,6 +6,7 @@ pub mod builtin_classes;
 pub mod bytecode;
 pub mod callable;
 pub mod class;
+pub mod compiler;
 pub mod environment;
 pub mod error;
 pub mod file_loader;

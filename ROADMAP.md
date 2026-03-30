@@ -881,28 +881,28 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
 
 ### 12. Compiler (AST to Bytecode)
 
-- [ ] 12.1. Compiler Core Structure
-  - [ ] 12.1.1. Define `Compiler` struct in `src/compiler/mod.rs`
-  - [ ] 12.1.2. Add current chunk reference
-  - [ ] 12.1.3. Add scope depth tracking
-  - [ ] 12.1.4. Add local variable stack
+- [x] 12.1. Compiler Core Structure
+  - [x] 12.1.1. Define `Compiler` struct in `src/compiler/mod.rs`
+  - [x] 12.1.2. Add current chunk reference
+  - [x] 12.1.3. Add scope depth tracking
+  - [x] 12.1.4. Add local variable stack
   - [ ] 12.1.5. Add upvalue tracking for closures
   - [ ] 12.1.6. Add enclosing compiler reference (for nested functions)
-  - [ ] 12.1.7. Implement `new()` constructor
-  - [ ] 12.1.8. Implement `compile()` entry point
+  - [x] 12.1.7. Implement `new()` constructor
+  - [x] 12.1.8. Implement `compile()` entry point
 
-- [ ] 12.2. Expression Compilation
-  - [ ] 12.2.1. Implement literal compilation
-  - [ ] 12.2.2. Implement variable access compilation
-  - [ ] 12.2.3. Implement binary expression compilation
-  - [ ] 12.2.4. Implement unary expression compilation
-  - [ ] 12.2.5. Implement grouping expression compilation
-  - [ ] 12.2.6. Implement array literal compilation
-  - [ ] 12.2.7. Implement hash literal compilation
-  - [ ] 12.2.8. Implement index expression compilation
-  - [ ] 12.2.9. Implement method call compilation
-  - [ ] 12.2.10. Write unit tests for expression compilation
-  - [ ] 12.2.11. Create test file: `tests/compiler_expression_tests.rs`
+- [x] 12.2. Expression Compilation
+  - [x] 12.2.1. Implement literal compilation
+  - [x] 12.2.2. Implement variable access compilation
+  - [x] 12.2.3. Implement binary expression compilation
+  - [x] 12.2.4. Implement unary expression compilation
+  - [x] 12.2.5. Implement grouping expression compilation
+  - [x] 12.2.6. Implement array literal compilation
+  - [x] 12.2.7. Implement hash literal compilation
+  - [x] 12.2.8. Implement index expression compilation
+  - [x] 12.2.9. Implement method call compilation
+  - [x] 12.2.10. Write unit tests for expression compilation
+  - [x] 12.2.11. Create test file: `tests/compiler/compiler_expression_tests.rs`
 
 - [ ] 12.3. Statement Compilation
   - [ ] 12.3.1. Implement expression statement compilation
