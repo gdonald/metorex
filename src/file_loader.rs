@@ -2,7 +2,7 @@
 //
 // This module provides utilities for loading, parsing, and resolving file paths
 // in the Metorex language. It supports Ruby's file loading conventions including
-// automatic file extension detection (.rb, .rb, or no extension).
+// automatic file extension detection (.rb, .mx, or no extension).
 
 use crate::ast::Statement;
 use crate::error::{MetorexError, SourceLocation};
@@ -11,12 +11,129 @@ use crate::parser::Parser;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Returns the absolute display form of a path (best-effort).
+/// Uses canonicalize if possible, otherwise falls back to std::fs::canonicalize
+/// or just returns the path as-is.
+fn absolute_display(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| {
+            // If the file doesn't exist we can't canonicalize, so try to
+            // absolutize by joining with the current directory.
+            if path.is_absolute() {
+                path.to_path_buf()
+            } else {
+                std::env::current_dir()
+                    .map(|cwd| cwd.join(path))
+                    .unwrap_or_else(|_| path.to_path_buf())
+            }
+        })
+        .display()
+        .to_string()
+}
+
+/// Suggest similar filenames from the same directory when a file is not found.
+///
+/// Looks at sibling files in the parent directory and returns names that are
+/// similar to the requested filename (using a simple substring / edit-distance
+/// heuristic).  Returns at most 3 suggestions.
+fn suggest_similar_files(path: &Path) -> Vec<String> {
+    let parent = match path.parent() {
+        Some(p) if p.as_os_str().is_empty() => Path::new("."),
+        Some(p) => p,
+        None => return vec![],
+    };
+
+    let target_stem = path
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if target_stem.is_empty() {
+        return vec![];
+    }
+
+    let entries = match fs::read_dir(parent) {
+        Ok(entries) => entries,
+        Err(_) => return vec![],
+    };
+
+    let mut candidates: Vec<(usize, String)> = Vec::new();
+
+    for entry in entries.flatten() {
+        let entry_path = entry.path();
+        if !entry_path.is_file() {
+            continue;
+        }
+
+        let entry_name = match entry_path.file_name().and_then(|n| n.to_str()) {
+            Some(n) => n.to_string(),
+            None => continue,
+        };
+
+        let entry_stem = entry_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+
+        // Check if the extension is one we care about
+        let ext = entry_path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("");
+        if !matches!(ext, "rb" | "mx" | "") {
+            continue;
+        }
+
+        let distance = levenshtein_distance(&target_stem, &entry_stem);
+        // Accept suggestions within a reasonable edit distance
+        let threshold = if target_stem.len() <= 3 { 1 } else { 3 };
+        if distance > 0 && distance <= threshold {
+            candidates.push((distance, entry_name));
+        }
+    }
+
+    candidates.sort_by_key(|(d, _)| *d);
+    candidates
+        .into_iter()
+        .take(3)
+        .map(|(_, name)| name)
+        .collect()
+}
+
+/// Simple Levenshtein distance implementation for short strings.
+fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+
+    let mut prev = (0..=n).collect::<Vec<_>>();
+    let mut curr = vec![0; n + 1];
+
+    for i in 1..=m {
+        curr[0] = i;
+        for j in 1..=n {
+            let cost = if a_chars[i - 1] == b_chars[j - 1] {
+                0
+            } else {
+                1
+            };
+            curr[j] = (prev[j] + 1).min(curr[j - 1] + 1).min(prev[j - 1] + cost);
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
 /// Finds the actual file path with extension auto-detection.
 ///
 /// This function supports Ruby's file loading conventions:
-/// - If the path has an extension (.rb, .rb, etc.), it tries that path first
+/// - If the path has an extension (.rb, .mx, etc.), it tries that path first
 /// - If no extension or file not found, it tries adding .rb
-/// - If still not found, it tries adding .rb
+/// - If still not found, it tries adding .mx
 /// - Returns the path of the first file that exists
 ///
 /// # Arguments
@@ -33,8 +150,9 @@ pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
 
     // If the path has an extension, don't try alternatives
     if path.extension().is_some() {
+        let abs = absolute_display(path);
         return Err(MetorexError::runtime_error(
-            format!("File not found: '{}'", path.display()),
+            format!("File not found: '{}'", abs),
             SourceLocation::new(0, 0, 0),
         ));
     }
@@ -45,21 +163,30 @@ pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
         return Ok(rb_path);
     }
 
-    // Try with .rb extension
+    // Try with .mx extension
     let mx_path = path.with_extension("mx");
     if mx_path.exists() {
         return Ok(mx_path);
     }
 
-    // File not found with any extension
+    // File not found with any extension — build helpful error message
+    let abs = absolute_display(path);
+    let abs_rb = format!("{}.rb", abs);
+    let abs_mx = format!("{}.mx", abs);
+
+    let mut msg = format!(
+        "File not found: '{}' (tried {}, {}, {})",
+        abs, abs, abs_rb, abs_mx
+    );
+
+    // Add "did you mean?" suggestions
+    let suggestions = suggest_similar_files(path);
+    if !suggestions.is_empty() {
+        msg.push_str(&format!(". Did you mean: {}?", suggestions.join(", ")));
+    }
+
     Err(MetorexError::runtime_error(
-        format!(
-            "File not found: '{}' (tried {}, {}.rb, {}.rb)",
-            path.display(),
-            path.display(),
-            path.display(),
-            path.display()
-        ),
+        msg,
         SourceLocation::new(0, 0, 0),
     ))
 }

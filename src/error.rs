@@ -208,6 +208,17 @@ impl MetorexError {
         }
     }
 
+    /// Get the error message without the prefix (e.g., "Runtime error at 0:0:").
+    pub fn message(&self) -> &str {
+        match self {
+            Self::SyntaxError { message, .. }
+            | Self::RuntimeError { message, .. }
+            | Self::TypeError { message, .. }
+            | Self::UncaughtException { message, .. } => message,
+            Self::IoError(msg) | Self::InternalError(msg) => msg,
+        }
+    }
+
     /// Get the source location associated with this error, if any
     pub fn location(&self) -> Option<&SourceLocation> {
         match self {

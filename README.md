@@ -35,6 +35,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Optional Type System**: Gradual typing with type inference for performance and safety
 - **Advanced Collections**: Set, Deque, PriorityQueue, TreeMap, and immutable structures
 - **Runtime Class System**: Classes support inheritance, runtime method definition, instance variables, and class-level state
+- **File Loading**: `require_relative` with extension auto-detection, deduplication, circular dependency handling, and shared scope
 
 ### Meta-Programming (Core Innovation)
 - **Code-as-Object**: AST nodes are first-class objects manipulable at runtime

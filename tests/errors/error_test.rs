@@ -166,6 +166,26 @@ fn test_format_error_with_source() {
 }
 
 #[test]
+fn test_message_returns_raw_message_without_prefix() {
+    let loc = SourceLocation::new(5, 10, 50);
+
+    let runtime_err = MetorexError::runtime_error("Division by zero", loc.clone());
+    assert_eq!(runtime_err.message(), "Division by zero");
+
+    let syntax_err = MetorexError::syntax_error("Unexpected token", loc.clone());
+    assert_eq!(syntax_err.message(), "Unexpected token");
+
+    let type_err = MetorexError::type_error("Type mismatch", loc);
+    assert_eq!(type_err.message(), "Type mismatch");
+
+    let io_err = MetorexError::IoError("file not found".to_string());
+    assert_eq!(io_err.message(), "file not found");
+
+    let internal_err = MetorexError::internal_error("something broke");
+    assert_eq!(internal_err.message(), "something broke");
+}
+
+#[test]
 fn test_format_error_with_stack_trace() {
     let source = "line 1\nline 2\nline 3";
     let loc = SourceLocation::new(2, 5, 10);

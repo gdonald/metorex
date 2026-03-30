@@ -102,7 +102,11 @@ impl VirtualMachine {
                     crate::file_loader::resolve_relative_path(current_file, relative_path)
                         .map_err(|e| {
                             MetorexError::runtime_error(
-                                format!("Failed to resolve path '{}': {}", relative_path, e),
+                                format!(
+                                    "require_relative('{}') — cannot resolve path: {}",
+                                    relative_path,
+                                    e.message()
+                                ),
                                 crate::vm::utils::position_to_location(position),
                             )
                         })?;
@@ -111,7 +115,7 @@ impl VirtualMachine {
                 let actual_path =
                     crate::file_loader::find_file_path(&resolved_path).map_err(|e| {
                         MetorexError::runtime_error(
-                            format!("Error in require_relative: {}", e),
+                            format!("require_relative('{}') — {}", relative_path, e.message()),
                             crate::vm::utils::position_to_location(position),
                         )
                     })?;
@@ -134,7 +138,7 @@ impl VirtualMachine {
                 // Execute the file (it will handle its own deduplication)
                 self.execute_file(&resolved_path).map_err(|e| {
                     MetorexError::runtime_error(
-                        format!("Error in require_relative: {}", e),
+                        format!("require_relative('{}') — {}", relative_path, e.message()),
                         crate::vm::utils::position_to_location(position),
                     )
                 })?;

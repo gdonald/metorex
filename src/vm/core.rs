@@ -231,12 +231,7 @@ impl VirtualMachine {
         use crate::file_loader::{find_file_path, load_file_source, parse_file};
 
         // Find the actual file path (with extension auto-detection)
-        let actual_path = find_file_path(path).map_err(|e| {
-            MetorexError::runtime_error(
-                format!("Failed to find file '{}': {}", path.display(), e),
-                SourceLocation::new(0, 0, 0),
-            )
-        })?;
+        let actual_path = find_file_path(path)?;
 
         // Canonicalize the file path to absolute path for proper deduplication
         let canonical_path = actual_path.canonicalize().map_err(|e| {

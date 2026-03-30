@@ -93,3 +93,72 @@ fn test_find_file_path_mx_extension_auto_detect() {
     let found = result.unwrap();
     assert!(found.to_string_lossy().ends_with(".mx"));
 }
+
+// ── 9.3.10: Error messages use absolute paths ────
+
+#[test]
+fn test_error_message_contains_absolute_path() {
+    let path = Path::new(EXAMPLES_DIR).join("file_loader/nonexistent");
+    let result = find_file_path(&path);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().message().to_string();
+    // Error message should contain an absolute path (starts with /)
+    assert!(
+        err_msg.contains('/'),
+        "Error should contain absolute path, got: {}",
+        err_msg
+    );
+    assert!(
+        err_msg.contains("File not found"),
+        "Error should say 'File not found', got: {}",
+        err_msg
+    );
+}
+
+#[test]
+fn test_error_message_shows_tried_extensions() {
+    let path = Path::new(EXAMPLES_DIR).join("file_loader/nonexistent");
+    let result = find_file_path(&path);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().message().to_string();
+    assert!(
+        err_msg.contains(".rb") && err_msg.contains(".mx"),
+        "Error should list tried extensions (.rb, .mx), got: {}",
+        err_msg
+    );
+}
+
+// ── 9.3.11: "Did you mean?" suggestions ────
+
+#[test]
+fn test_error_message_suggests_similar_file() {
+    // "test_fil" is close to "test_file.rb" — should suggest it
+    let path = Path::new(EXAMPLES_DIR).join("file_loader/test_fil");
+    let result = find_file_path(&path);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().message().to_string();
+    assert!(
+        err_msg.contains("Did you mean"),
+        "Error should contain 'Did you mean' suggestion, got: {}",
+        err_msg
+    );
+    assert!(
+        err_msg.contains("test_file.rb"),
+        "Error should suggest test_file.rb, got: {}",
+        err_msg
+    );
+}
+
+#[test]
+fn test_error_message_no_suggestion_for_unrelated_name() {
+    // "zzzzzzzzz" is totally unrelated — should not suggest anything
+    let path = Path::new(EXAMPLES_DIR).join("file_loader/zzzzzzzzz");
+    let result = find_file_path(&path);
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().message().to_string();
+    assert!(
+        !err_msg.contains("Did you mean"),
+        "Error should NOT contain suggestion for unrelated name, got: {}",
+        err_msg
+    );
+}

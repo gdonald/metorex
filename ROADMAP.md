@@ -633,7 +633,7 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 8.6.8. Create example file: `examples/stdlib/sets.rb`
   - [x] 8.6.9. Create test file: `tests/set_methods_tests.rs`
 
-- [ ] 8.7. Built-in Testing Framework
+- [x] 8.7. Built-in Testing Framework
   - [x] 8.7.1. Design test framework API (`describe`, `it`, `expect`)
   - [x] 8.7.2. Implement `Test` class for test definitions
   - [x] 8.7.3. Implement `TestRunner` for executing tests
@@ -665,31 +665,24 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
   - [x] 9.2.2. Add line editing with rustyline
   - [x] 9.2.3. Add history support
   - [x] 9.2.4. Add multi-line input support
-  - [ ] 9.2.5. Add syntax highlighting (future enhancement)
-  - [ ] 9.2.6. Add auto-completion (future enhancement)
-  - [x] 9.2.7. Add `.exit` command
-  - [x] 9.2.8. Add `.clear` command
-  - [x] 9.2.9. Add `.help` command
-  - [x] 9.2.10. Write tests for REPL
-  - [x] 9.2.11. Create test file: `tests/repl/repl_test.rs`
+  - [x] 9.2.5. Add `.exit` command
+  - [x] 9.2.6. Add `.clear` command
+  - [x] 9.2.7. Add `.help` command
+  - [x] 9.2.8. Write tests for REPL
+  - [x] 9.2.9. Create test file: `tests/repl/repl_test.rs`
 
 - [x] 9.3. `require_relative` File Loading (Phases 1–4 complete)
   - [x] 9.3.1. VM: `current_file` tracking and `loaded_files` deduplication registry
   - [x] 9.3.2. `src/file_loader.rs`: `load_file_source()`, `resolve_relative_path()`, `parse_file()`
   - [x] 9.3.3. VM: `execute_file()` with deduplication and path restore
   - [x] 9.3.4. Native function `require_relative` registered in global scope
-  - [ ] 9.3.5. Test file extension auto-detection: `.rb`, `.rb`, and no extension
-  - [ ] 9.3.6. Test scope/variable sharing: variables, functions, and classes defined in required files are accessible in requiring file
-  - [ ] 9.3.7. Test nested requires (A → B → C execute in correct order)
-  - [ ] 9.3.8. Test circular requires are handled gracefully (no infinite loop)
-  - [ ] 9.3.9. Test diamond dependency (D loads only once when required by both B and C)
-  - [ ] 9.3.10. Review error messages for clarity; use absolute paths in errors
-  - [ ] 9.3.11. Add suggestions in error messages (e.g., "did you mean file.rb?")
-  - [ ] 9.3.12. Future: implement `require` (non-relative, uses `$LOAD_PATH`)
-  - [ ] 9.3.13. Future: implement `load` (always re-loads file)
-  - [ ] 9.3.14. Future: implement `autoload` (lazy loading)
-  - [ ] 9.3.15. Future: add `__FILE__` and `__LINE__` magic constants
-  - [ ] 9.3.16. Future: move `require_relative` into a proper `Kernel` module
+  - [x] 9.3.5. Test file extension auto-detection: `.rb`, `.rb`, and no extension
+  - [x] 9.3.6. Test scope/variable sharing: variables, functions, and classes defined in required files are accessible in requiring file
+  - [x] 9.3.7. Test nested requires (A → B → C execute in correct order)
+  - [x] 9.3.8. Test circular requires are handled gracefully (no infinite loop)
+  - [x] 9.3.9. Test diamond dependency (D loads only once when required by both B and C)
+  - [x] 9.3.10. Review error messages for clarity; use absolute paths in errors
+  - [x] 9.3.11. Add suggestions in error messages (e.g., "did you mean file.rb?")
 
 ### 10. End-to-End Testing and Examples
 
@@ -2036,5 +2029,13 @@ Goal: Add an AOT transpilation pipeline that converts supported Metorex programs
   - [ ] 31.6.4. Add benchmarks comparing VM vs transpiled execution on representative workloads
   - [ ] 31.6.5. Define exit criteria for promoting transpiler from experimental to supported
 
+### Future Enhancements
 
+- [ ] Implement `require` (non-relative, uses `$LOAD_PATH`)
+- [ ] Implement `load` (always re-loads file)
+- [ ] Implement `autoload` (lazy loading)
+- [ ] Add `__FILE__` and `__LINE__` magic constants
+- [ ] Move `require_relative` into a proper `Kernel` module
+- [ ] REPL syntax highlighting
+- [ ] REPL auto-completion
 
