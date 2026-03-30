@@ -686,25 +686,25 @@ Goal: Build a Minimum Viable Product (MVP) with functional Code-as-Object and dy
 
 ### 10. End-to-End Testing and Examples
 
-- [ ] 10.1. Comprehensive Language Examples
-  - [ ] 10.1.1. Create example: FizzBuzz
-  - [ ] 10.1.2. Create example: Fibonacci sequence
-  - [ ] 10.1.3. Create example: Factorial
-  - [ ] 10.1.4. Create example: Calculator
-  - [ ] 10.1.5. Create example: Todo list application
+- [x] 10.1. Comprehensive Language Examples
+  - [x] 10.1.1. Create example: FizzBuzz
+  - [x] 10.1.2. Create example: Fibonacci sequence
+  - [x] 10.1.3. Create example: Factorial
+  - [x] 10.1.4. Create example: Calculator
+  - [x] 10.1.5. Create example: Todo list application
   - [ ] 10.1.6. Create example: Simple web server (if networking added)
-  - [ ] 10.1.7. Create example: Data processing pipeline
-  - [ ] 10.1.8. Create example: Object-oriented design patterns
-  - [ ] 10.1.9. All examples in `examples/programs/`
+  - [x] 10.1.7. Create example: Data processing pipeline
+  - [x] 10.1.8. Create example: Object-oriented design patterns
+  - [x] 10.1.9. All examples in `tests/_examples/programs/`
 
-- [ ] 10.2. Meta-Programming Showcase
-  - [ ] 10.2.1. Create example: Method delegation
-  - [ ] 10.2.2. Create example: Aspect-oriented programming
-  - [ ] 10.2.3. Create example: Lazy evaluation
-  - [ ] 10.2.4. Create example: Memoization decorator
-  - [ ] 10.2.5. Create example: Custom iterators
-  - [ ] 10.2.6. Create example: Method chaining DSL
-  - [ ] 10.2.7. All examples in `examples/metaprogramming/advanced/`
+- [x] 10.2. Meta-Programming Showcase
+  - [x] 10.2.1. Create example: Method delegation
+  - [x] 10.2.2. Create example: Aspect-oriented programming
+  - [x] 10.2.3. Create example: Lazy evaluation
+  - [x] 10.2.4. Create example: Memoization decorator
+  - [x] 10.2.5. Create example: Custom iterators
+  - [x] 10.2.6. Create example: Method chaining DSL
+  - [x] 10.2.7. All examples in `tests/_examples/metaprogramming/advanced/`
 
 - [ ] 10.3. Integration Test Suite
   - [ ] 10.3.1. Test lexer + parser integration

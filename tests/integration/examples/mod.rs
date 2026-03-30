@@ -10,6 +10,7 @@ mod introspection;
 mod metaprogramming;
 mod methods;
 mod oop;
+mod programs;
 mod stdlib;
 
 use crate::common::EXAMPLES_DIR;

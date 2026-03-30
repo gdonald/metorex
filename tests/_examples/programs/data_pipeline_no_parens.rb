@@ -1,0 +1,52 @@
+# Data Processing Pipeline without parentheses (where possible)
+
+students = [
+  {"name" => "Alice", "grade" => 92, "subject" => "Math"},
+  {"name" => "Bob", "grade" => 78, "subject" => "Science"},
+  {"name" => "Charlie", "grade" => 95, "subject" => "Math"},
+  {"name" => "Diana", "grade" => 88, "subject" => "Science"},
+  {"name" => "Eve", "grade" => 67, "subject" => "Math"},
+  {"name" => "Frank", "grade" => 91, "subject" => "Science"}
+]
+
+passing = students.filter do |s|
+  s["grade"] >= 70
+end
+
+puts "Passing students:"
+passing.each do |s|
+  puts "  #{s["name"]}: #{s["grade"]}"
+end
+
+honor_roll = students.filter do |s|
+  s["grade"] >= 90
+end
+
+puts "Honor roll:"
+honor_roll.each do |s|
+  puts "  #{s["name"]}: #{s["grade"]}"
+end
+
+total = 0
+students.each do |s|
+  total += s["grade"]
+end
+average = total / students.length
+puts "Average grade: #{average}"
+
+math_count = 0
+science_count = 0
+students.each do |s|
+  if s["subject"] == "Math"
+    math_count += 1
+  else
+    science_count += 1
+  end
+end
+puts "Math students: #{math_count}"
+puts "Science students: #{science_count}"
+
+names = students.map do |s|
+  s["name"]
+end
+puts "All students: #{names}"
