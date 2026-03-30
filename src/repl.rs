@@ -13,149 +13,184 @@ const PROMPT: &str = ">> ";
 const CONTINUATION_PROMPT: &str = ".. ";
 const BANNER: &str = include_str!("banner.txt");
 
-pub struct Repl {
+/// Result of processing a single line of REPL input.
+#[derive(Debug, PartialEq)]
+pub enum LineResult {
+    /// Continue the REPL (nothing special happened).
+    Continue,
+    /// The user asked to exit.
+    Exit,
+    /// A value was produced and should be displayed.
+    Value(String),
+    /// An error occurred and should be displayed.
+    Error(String),
+    /// Input is incomplete — prompt for continuation.
+    Incomplete,
+}
+
+/// Command result from handle_command.
+#[derive(Debug, PartialEq)]
+pub enum CommandResult {
+    /// The command was handled; exit the REPL.
+    Exit,
+    /// The command was handled; continue.
+    Continue,
+    /// The command reset the VM.
+    Reset,
+    /// The command cleared the screen; here is the text to print.
+    Clear(String),
+    /// Help text to display.
+    Help(String),
+    /// Unknown command.
+    Unknown(String),
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ReplCore — all testable logic, no I/O dependencies
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct ReplCore {
     vm: VirtualMachine,
-    editor: DefaultEditor,
     buffer: String,
 }
 
-impl Repl {
-    /// Create a new REPL instance
-    pub fn new() -> RustylineResult<Self> {
-        let editor = DefaultEditor::new()?;
-        Ok(Self {
+impl ReplCore {
+    pub fn new() -> Self {
+        Self {
             vm: VirtualMachine::new(),
-            editor,
             buffer: String::new(),
-        })
-    }
-
-    /// Start the REPL loop
-    pub fn run(&mut self) -> RustylineResult<()> {
-        println!("{}", BANNER);
-        println!("Metorex REPL v{}", env!("CARGO_PKG_VERSION"));
-        println!("Type .help for more information, .exit to quit");
-        println!();
-
-        loop {
-            let prompt = if self.buffer.is_empty() {
-                PROMPT
-            } else {
-                CONTINUATION_PROMPT
-            };
-
-            match self.editor.readline(prompt) {
-                Ok(line) => {
-                    // Add to history
-                    let _ = self.editor.add_history_entry(&line);
-
-                    // Handle special commands
-                    if self.buffer.is_empty() && line.trim().starts_with('.') {
-                        if self.handle_command(&line) {
-                            return Ok(());
-                        }
-                        continue;
-                    }
-
-                    // Add line to buffer
-                    if !self.buffer.is_empty() {
-                        self.buffer.push('\n');
-                    }
-                    self.buffer.push_str(&line);
-
-                    // Try to evaluate the buffer
-                    if self.should_evaluate() {
-                        self.evaluate_buffer();
-                        self.buffer.clear();
-                    }
-                }
-                Err(ReadlineError::Interrupted) => {
-                    // Ctrl-C - clear buffer and continue
-                    println!("^C");
-                    self.buffer.clear();
-                }
-                Err(ReadlineError::Eof) => {
-                    // Ctrl-D - exit
-                    println!("exit");
-                    return Ok(());
-                }
-                Err(err) => {
-                    eprintln!("Error: {}", err);
-                    return Err(err);
-                }
-            }
         }
     }
 
-    /// Handle special REPL commands
-    fn handle_command(&mut self, line: &str) -> bool {
+    /// Access the underlying VM (for test inspection).
+    pub fn vm(&self) -> &VirtualMachine {
+        &self.vm
+    }
+
+    /// Current buffer contents.
+    pub fn buffer(&self) -> &str {
+        &self.buffer
+    }
+
+    /// Whether we are in continuation mode (buffer is non-empty).
+    pub fn is_continuation(&self) -> bool {
+        !self.buffer.is_empty()
+    }
+
+    /// Return the appropriate prompt string.
+    pub fn prompt(&self) -> &'static str {
+        if self.buffer.is_empty() {
+            PROMPT
+        } else {
+            CONTINUATION_PROMPT
+        }
+    }
+
+    /// Process one line of input. Returns what the caller should do.
+    pub fn process_line(&mut self, line: &str) -> LineResult {
+        // Handle dot-commands only when buffer is empty
+        if self.buffer.is_empty() && line.trim().starts_with('.') {
+            return match self.handle_command(line) {
+                CommandResult::Exit => LineResult::Exit,
+                CommandResult::Continue => LineResult::Continue,
+                CommandResult::Reset => LineResult::Continue,
+                CommandResult::Clear(text) => LineResult::Value(text),
+                CommandResult::Help(text) => LineResult::Value(text),
+                CommandResult::Unknown(msg) => LineResult::Error(msg),
+            };
+        }
+
+        // Append line to buffer
+        if !self.buffer.is_empty() {
+            self.buffer.push('\n');
+        }
+        self.buffer.push_str(line);
+
+        // Try to evaluate
+        if self.should_evaluate() {
+            let result = self.evaluate_buffer();
+            self.buffer.clear();
+            result
+        } else {
+            LineResult::Incomplete
+        }
+    }
+
+    /// Clear the input buffer (e.g. on Ctrl-C).
+    pub fn clear_buffer(&mut self) {
+        self.buffer.clear();
+    }
+
+    /// Handle special REPL commands (lines starting with `.`).
+    pub fn handle_command(&mut self, line: &str) -> CommandResult {
         let cmd = line.trim();
 
         match cmd {
-            ".exit" | ".quit" => {
-                println!("Goodbye!");
-                return true;
-            }
-            ".help" => {
-                self.print_help();
-            }
+            ".exit" | ".quit" => CommandResult::Exit,
+            ".help" => CommandResult::Help(Self::help_text()),
             ".clear" => {
-                print!("\x1B[2J\x1B[1;1H"); // ANSI escape codes to clear screen
-                println!("{}", BANNER);
-                println!("Metorex REPL v{}", env!("CARGO_PKG_VERSION"));
-                println!("Type .help for more information, .exit to quit");
-                println!();
+                let text = format!(
+                    "{}\nMetorex REPL v{}\nType .help for more information, .exit to quit\n",
+                    BANNER,
+                    env!("CARGO_PKG_VERSION")
+                );
+                CommandResult::Clear(text)
             }
             ".reset" => {
                 self.vm = VirtualMachine::new();
-                println!("VM state reset");
+                CommandResult::Reset
             }
-            _ => {
-                eprintln!("Unknown command: {}", cmd);
-                eprintln!("Type .help for available commands");
-            }
+            _ => CommandResult::Unknown(format!(
+                "Unknown command: {}\nType .help for available commands",
+                cmd
+            )),
         }
-
-        false
     }
 
-    /// Print help information
-    fn print_help(&self) {
-        println!("Metorex REPL Commands:");
-        println!("  .help       Show this help message");
-        println!("  .exit       Exit the REPL (or Ctrl-D)");
-        println!("  .quit       Alias for .exit");
-        println!("  .clear      Clear the screen");
-        println!("  .reset      Reset the VM state");
-        println!();
-        println!("Keyboard shortcuts:");
-        println!("  Ctrl-C      Clear current input buffer");
-        println!("  Ctrl-D      Exit the REPL");
-        println!();
-        println!("Multi-line input:");
-        println!("  The REPL automatically detects incomplete expressions");
-        println!("  and prompts for continuation with '..'");
-        println!();
+    /// Generate help text.
+    pub fn help_text() -> String {
+        let mut s = String::new();
+        s.push_str("Metorex REPL Commands:\n");
+        s.push_str("  .help       Show this help message\n");
+        s.push_str("  .exit       Exit the REPL (or Ctrl-D)\n");
+        s.push_str("  .quit       Alias for .exit\n");
+        s.push_str("  .clear      Clear the screen\n");
+        s.push_str("  .reset      Reset the VM state\n");
+        s.push('\n');
+        s.push_str("Keyboard shortcuts:\n");
+        s.push_str("  Ctrl-C      Clear current input buffer\n");
+        s.push_str("  Ctrl-D      Exit the REPL\n");
+        s.push('\n');
+        s.push_str("Multi-line input:\n");
+        s.push_str("  The REPL automatically detects incomplete expressions\n");
+        s.push_str("  and prompts for continuation with '..'");
+        s
     }
 
-    /// Determine if the current buffer should be evaluated
-    fn should_evaluate(&self) -> bool {
+    /// Banner text shown at startup.
+    pub fn banner() -> String {
+        format!(
+            "{}\nMetorex REPL v{}\nType .help for more information, .exit to quit\n",
+            BANNER,
+            env!("CARGO_PKG_VERSION")
+        )
+    }
+
+    /// Determine if the current buffer should be evaluated.
+    pub fn should_evaluate(&self) -> bool {
         let trimmed = self.buffer.trim();
 
-        // Empty input
         if trimmed.is_empty() {
             return true;
         }
 
-        // Try to parse and see if we get a complete statement
         let lexer = Lexer::new(&self.buffer);
         let tokens = lexer.tokenize();
         let mut parser = Parser::new(tokens);
 
         match parser.parse() {
-            Ok(_) => true, // Successfully parsed, ready to evaluate
+            Ok(_) => true,
             Err(errors) => {
-                // Check if error indicates incomplete input
                 for error in &errors {
                     let error_msg = error.to_string().to_lowercase();
                     if error_msg.contains("unexpected end of input")
@@ -163,58 +198,51 @@ impl Repl {
                         || error_msg.contains("unclosed")
                         || error_msg.contains("incomplete")
                     {
-                        return false; // Need more input
+                        return false;
                     }
                 }
-                // Other parse errors - try to evaluate anyway to show the error
                 true
             }
         }
     }
 
-    /// Evaluate the current buffer
-    fn evaluate_buffer(&mut self) {
-        // Tokenize
+    /// Evaluate the current buffer. Returns the result for display.
+    pub fn evaluate_buffer(&mut self) -> LineResult {
         let lexer = Lexer::new(&self.buffer);
         let tokens = lexer.tokenize();
 
-        // Parse
         let mut parser = Parser::new(tokens);
         let program = match parser.parse() {
             Ok(prog) => prog,
             Err(errors) => {
-                for err in errors {
-                    eprintln!("Parse error: {}", err);
-                }
-                return;
+                let msgs: Vec<String> = errors
+                    .iter()
+                    .map(|e| format!("Parse error: {}", e))
+                    .collect();
+                return LineResult::Error(msgs.join("\n"));
             }
         };
 
-        // Execute and display result
         match self.vm.execute_program(&program) {
             Ok(Some(result)) => {
-                // Display non-nil results
-                if !matches!(result, Object::Nil) {
-                    println!("=> {}", Self::format_object(&result));
+                if matches!(result, Object::Nil) {
+                    LineResult::Continue
+                } else {
+                    LineResult::Value(format!("=> {}", Self::format_object(&result)))
                 }
             }
-            Ok(None) => {
-                // No result (e.g., statements like assignments)
-            }
-            Err(err) => {
-                eprintln!("Runtime error: {}", self.format_error(&err));
-            }
+            Ok(None) => LineResult::Continue,
+            Err(err) => LineResult::Error(format!("Runtime error: {}", Self::format_error(&err))),
         }
     }
 
-    /// Format an object for display
+    /// Format an object for display.
     pub fn format_object(obj: &Object) -> String {
         match obj {
             Object::Nil => "nil".to_string(),
             Object::Bool(b) => b.to_string(),
             Object::Int(i) => i.to_string(),
             Object::Float(f) => {
-                // Format float nicely
                 if f.fract() == 0.0 && f.is_finite() {
                     format!("{:.1}", f)
                 } else {
@@ -235,7 +263,7 @@ impl Repl {
                     .iter()
                     .map(|(k, v)| format!("\"{}\" => {}", k, Self::format_object(v)))
                     .collect();
-                entries.sort(); // Sort for consistent display
+                entries.sort();
                 format!("{{{}}}", entries.join(", "))
             }
             Object::Block { .. } => "<Block>".to_string(),
@@ -284,9 +312,73 @@ impl Repl {
         }
     }
 
-    /// Format an error for display
-    fn format_error(&self, err: &MetorexError) -> String {
+    /// Format an error for display.
+    pub fn format_error(err: &MetorexError) -> String {
         err.to_string()
+    }
+}
+
+impl Default for ReplCore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Repl — thin interactive wrapper around ReplCore
+// ─────────────────────────────────────────────────────────────────────────────
+
+pub struct Repl {
+    core: ReplCore,
+    editor: DefaultEditor,
+}
+
+impl Repl {
+    /// Create a new REPL instance.
+    pub fn new() -> RustylineResult<Self> {
+        let editor = DefaultEditor::new()?;
+        Ok(Self {
+            core: ReplCore::new(),
+            editor,
+        })
+    }
+
+    /// Start the REPL loop.
+    pub fn run(&mut self) -> RustylineResult<()> {
+        println!("{}", ReplCore::banner());
+
+        loop {
+            let prompt = self.core.prompt();
+
+            match self.editor.readline(prompt) {
+                Ok(line) => {
+                    let _ = self.editor.add_history_entry(&line);
+
+                    match self.core.process_line(&line) {
+                        LineResult::Continue => {}
+                        LineResult::Exit => {
+                            println!("Goodbye!");
+                            return Ok(());
+                        }
+                        LineResult::Value(text) => println!("{}", text),
+                        LineResult::Error(text) => eprintln!("{}", text),
+                        LineResult::Incomplete => {}
+                    }
+                }
+                Err(ReadlineError::Interrupted) => {
+                    println!("^C");
+                    self.core.clear_buffer();
+                }
+                Err(ReadlineError::Eof) => {
+                    println!("exit");
+                    return Ok(());
+                }
+                Err(err) => {
+                    eprintln!("Error: {}", err);
+                    return Err(err);
+                }
+            }
+        }
     }
 }
 

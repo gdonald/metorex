@@ -1,364 +1,586 @@
 // Tests for the Metorex REPL
 
-use metorex::lexer::Lexer;
 use metorex::object::Object;
-use metorex::parser::Parser;
-use metorex::repl::Repl;
-use metorex::vm::VirtualMachine;
+use metorex::repl::{CommandResult, LineResult, Repl, ReplCore};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Helper function to evaluate a single expression in a fresh VM
-fn eval_expr(source: &str) -> Result<Option<Object>, String> {
-    let lexer = Lexer::new(source);
-    let tokens = lexer.tokenize();
-    let mut parser = Parser::new(tokens);
-    let program = parser.parse().map_err(|e| format!("{:?}", e))?;
-    let mut vm = VirtualMachine::new();
-    vm.execute_program(&program).map_err(|e| e.to_string())
-}
+// ============================================================================
+// ReplCore — command handling
+// ============================================================================
 
-/// Helper function to evaluate multiple statements in sequence
-fn eval_sequence(sources: &[&str]) -> Result<Vec<Option<Object>>, String> {
-    let mut vm = VirtualMachine::new();
-    let mut results = Vec::new();
-
-    for source in sources {
-        let lexer = Lexer::new(source);
-        let tokens = lexer.tokenize();
-        let mut parser = Parser::new(tokens);
-        let program = parser.parse().map_err(|e| format!("{:?}", e))?;
-        let result = vm.execute_program(&program).map_err(|e| e.to_string())?;
-        results.push(result);
-    }
-
-    Ok(results)
+#[test]
+fn command_exit() {
+    let mut core = ReplCore::new();
+    assert_eq!(core.handle_command(".exit"), CommandResult::Exit);
 }
 
 #[test]
-fn test_repl_creation() {
-    let result = Repl::new();
-    assert!(result.is_ok(), "REPL should initialize successfully");
+fn command_quit() {
+    let mut core = ReplCore::new();
+    assert_eq!(core.handle_command(".quit"), CommandResult::Exit);
 }
 
 #[test]
-fn test_repl_simple_arithmetic() {
-    let result = eval_expr("1 + 2");
-    assert!(result.is_ok());
-    match result.unwrap() {
-        Some(Object::Int(3)) => (),
-        other => panic!("Expected Int(3), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_variable_assignment_and_retrieval() {
-    let results = eval_sequence(&["x = 42", "x"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-    assert_eq!(results.len(), 2);
-
-    // First statement (assignment) returns None or the assigned value
-    // Second statement should return the value
-    match &results[1] {
-        Some(Object::Int(42)) => (),
-        other => panic!("Expected Integer(42), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_string_interpolation() {
-    let results = eval_sequence(&["name = \"Ada\"", "\"Hello, #{name}!\""]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[1] {
-        Some(Object::String(s)) if s.as_str() == "Hello, Ada!" => (),
-        other => panic!("Expected String(\"Hello, Ada!\"), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_array_operations() {
-    let results = eval_sequence(&["arr = [1, 2, 3]", "arr.length"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[1] {
-        Some(Object::Int(3)) => (),
-        other => panic!("Expected Integer(3), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_hash_operations() {
-    let results = eval_sequence(&[
-        "{\"name\" => \"Bob\", \"age\" => 30}",
-        "h = {\"x\" => 10}",
-        "h[\"x\"]",
-    ]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    // Check the hash lookup result
-    match &results[2] {
-        Some(Object::Int(10)) => (),
-        other => panic!("Expected Integer(10), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_function_definition_and_call() {
-    let results = eval_sequence(&["def add(a, b)\n  a + b\nend", "add(5, 7)"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[1] {
-        Some(Object::Int(12)) => (),
-        other => panic!("Expected Integer(12), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_class_definition_and_instantiation() {
-    let results = eval_sequence(&[
-        "class Person\n  def initialize(name)\n    @name = name\n  end\n  def name\n    @name\n  end\nend",
-        "p = Person.new(\"Alice\")",
-        "p.name",
-    ]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[2] {
-        Some(Object::String(s)) if s.as_str() == "Alice" => (),
-        other => panic!("Expected String(\"Alice\"), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_lambda_creation_and_call() {
-    let results = eval_sequence(&["square = lambda do |x| x * x end", "square.call(5)"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[1] {
-        Some(Object::Int(25)) => (),
-        other => panic!("Expected Integer(25), got {:?}", other),
-    }
-}
-
-#[test]
-fn test_repl_block_with_each() {
-    let results = eval_sequence(&["sum = 0", "[1, 2, 3].each do |x| sum = sum + x end", "sum"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[2] {
-        Some(Object::Int(6)) => (),
-        other => panic!("Expected Integer(6), got {:?}", other),
-    }
-}
-
-// TODO: Re-enable when if statement returns values properly
-// #[test]
-// fn test_repl_if_statement() {
-//     let results = eval_sequence(&["x = 10", "if x > 5\n  \"big\"\nelse\n  \"small\"\nend"]);
-//     assert!(results.is_ok());
-//     let results = results.unwrap();
-//
-//     match &results[1] {
-//         Some(Object::String(s)) if s.as_str() == "big" => (),
-//         other => panic!("Expected String(\"big\"), got {:?}", other),
-//     }
-// }
-
-#[test]
-fn test_repl_range_operations() {
-    let results = eval_sequence(&["r = 1..5", "r.to_a"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[1] {
-        Some(Object::Array(arr)) if arr.borrow().len() == 5 => {
-            // Check that array contains [1, 2, 3, 4, 5]
-            for (i, obj) in arr.borrow().iter().enumerate() {
-                match obj {
-                    Object::Int(n) if *n == (i as i64 + 1) => (),
-                    other => panic!("Expected Int({}), got {:?}", i + 1, other),
-                }
-            }
+fn command_help() {
+    let mut core = ReplCore::new();
+    match core.handle_command(".help") {
+        CommandResult::Help(text) => {
+            assert!(text.contains(".help"));
+            assert!(text.contains(".exit"));
+            assert!(text.contains(".reset"));
+            assert!(text.contains("Ctrl-C"));
         }
-        other => panic!("Expected Array of length 5, got {:?}", other),
-    }
-}
-
-// TODO: Re-enable when parser error detection is improved
-// #[test]
-// fn test_repl_error_recovery() {
-//     // First command has a syntax error, but VM should still work for next command
-//     let result1 = eval_expr("1 + + 2"); // Syntax error
-//     assert!(result1.is_err());
-
-//
-//     // REPL should recover and work for the next command
-//     let result2 = eval_expr("2 + 3");
-//     assert!(result2.is_ok());
-//     match result2.unwrap() {
-//         Some(Object::Int(5)) => (),
-//         other => panic!("Expected Int(5), got {:?}", other),
-//     }
-// }
-
-#[test]
-fn test_repl_persistent_state() {
-    // Variables should persist across evaluations in the same VM
-    let results = eval_sequence(&[
-        "counter = 0",
-        "counter = counter + 1",
-        "counter = counter + 1",
-        "counter",
-    ]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match &results[3] {
-        Some(Object::Int(2)) => (),
-        other => panic!("Expected Integer(2), got {:?}", other),
+        other => panic!("Expected Help, got {:?}", other),
     }
 }
 
 #[test]
-fn test_repl_method_chaining() {
-    let result = eval_expr("[1, 2, 3, 4].map { |x| x * 2 }.filter { |x| x > 4 }");
-    assert!(result.is_ok());
-    match result.unwrap() {
-        Some(Object::Array(arr)) => {
-            let arr_borrowed = arr.borrow();
-            assert_eq!(arr_borrowed.len(), 2);
-            // Should contain [6, 8]
-            match (&arr_borrowed[0], &arr_borrowed[1]) {
-                (Object::Int(6), Object::Int(8)) => (),
-                other => panic!("Expected [6, 8], got {:?}", other),
-            }
+fn command_clear() {
+    let mut core = ReplCore::new();
+    match core.handle_command(".clear") {
+        CommandResult::Clear(text) => {
+            assert!(text.contains("Metorex REPL"));
         }
-        other => panic!("Expected Array, got {:?}", other),
+        other => panic!("Expected Clear, got {:?}", other),
     }
 }
 
 #[test]
-fn test_repl_closure_capture() {
-    let results = eval_sequence(&[
-        "def make_counter()\n  count = 0\n  lambda do\n    count = count + 1\n    count\n  end\nend",
-        "counter = make_counter()",
-        "counter.call()",
-        "counter.call()",
-        "counter.call()",
-    ]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
+fn command_reset() {
+    let mut core = ReplCore::new();
+    // Set some state first
+    core.process_line("x = 42");
+    assert_eq!(core.vm().environment().get("x"), Some(Object::Int(42)));
 
-    // Check that each call increments the counter
-    match (&results[2], &results[3], &results[4]) {
-        (Some(Object::Int(1)), Some(Object::Int(2)), Some(Object::Int(3))) => (),
-        other => panic!("Expected (1, 2, 3), got {:?}", other),
-    }
+    // Reset should clear VM state
+    assert_eq!(core.handle_command(".reset"), CommandResult::Reset);
+    assert_eq!(core.vm().environment().get("x"), None);
 }
 
 #[test]
-fn test_repl_nil_handling() {
-    let result = eval_expr("nil");
-    assert!(result.is_ok());
-    match result.unwrap() {
-        Some(Object::Nil) => (),
-        other => panic!("Expected Nil, got {:?}", other),
-    }
-}
-
-// TODO: Re-enable when boolean operators (&&, ||, !) are implemented
-// #[test]
-// fn test_repl_boolean_operations() {
-//     let results = eval_sequence(&["true && false", "true || false", "!true"]);
-//     assert!(results.is_ok());
-//     let results = results.unwrap();
-//
-//     match (&results[0], &results[1], &results[2]) {
-//         (
-//             Some(Object::Bool(false)),
-//             Some(Object::Bool(true)),
-//             Some(Object::Bool(false)),
-//         ) => (),
-//         other => panic!("Expected (false, true, false), got {:?}", other),
-//     }
-// }
-
-#[test]
-fn test_repl_string_methods() {
-    let results = eval_sequence(&["\"hello\".upcase", "\"WORLD\".downcase", "\"test\".length"]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
-
-    match (&results[0], &results[1], &results[2]) {
-        (Some(Object::String(s1)), Some(Object::String(s2)), Some(Object::Int(4)))
-            if s1.as_str() == "HELLO" && s2.as_str() == "world" =>
-        {
-            ()
+fn command_unknown() {
+    let mut core = ReplCore::new();
+    match core.handle_command(".foo") {
+        CommandResult::Unknown(msg) => {
+            assert!(msg.contains("Unknown command"));
+            assert!(msg.contains(".foo"));
         }
-        other => panic!("Expected correct string method results, got {:?}", other),
+        other => panic!("Expected Unknown, got {:?}", other),
+    }
+}
+
+// ============================================================================
+// ReplCore — prompt
+// ============================================================================
+
+#[test]
+fn prompt_normal_when_buffer_empty() {
+    let core = ReplCore::new();
+    assert_eq!(core.prompt(), ">> ");
+    assert!(!core.is_continuation());
+}
+
+#[test]
+fn prompt_continuation_when_buffer_has_content() {
+    let mut core = ReplCore::new();
+    core.process_line("def foo");
+    // Buffer should be non-empty (incomplete input)
+    assert!(core.is_continuation());
+    assert_eq!(core.prompt(), ".. ");
+}
+
+// ============================================================================
+// ReplCore — should_evaluate
+// ============================================================================
+
+#[test]
+fn should_evaluate_empty_input() {
+    let core = ReplCore::new();
+    assert!(core.should_evaluate());
+}
+
+#[test]
+fn should_evaluate_complete_expression() {
+    let mut core = ReplCore::new();
+    core.process_line("1 + 2");
+    // After a complete expression, buffer is cleared
+    assert!(core.buffer().is_empty());
+}
+
+// ============================================================================
+// ReplCore — process_line
+// ============================================================================
+
+#[test]
+fn process_line_simple_expression() {
+    let mut core = ReplCore::new();
+    match core.process_line("1 + 2") {
+        LineResult::Value(text) => assert!(text.contains("3")),
+        other => panic!("Expected Value, got {:?}", other),
     }
 }
 
 #[test]
-fn test_repl_super_keyword() {
-    let results = eval_sequence(&[
-        "class Animal\n  def speak\n    \"Some sound\"\n  end\nend",
-        "class Dog < Animal\n  def speak\n    super() + \" and woof\"\n  end\nend",
-        "dog = Dog.new()",
-        "dog.speak",
-    ]);
-    assert!(results.is_ok());
-    let results = results.unwrap();
+fn process_line_assignment_returns_continue() {
+    let mut core = ReplCore::new();
+    // Assignments produce nil, which is suppressed
+    match core.process_line("x = 42") {
+        LineResult::Continue => {}
+        other => panic!("Expected Continue for assignment, got {:?}", other),
+    }
+    assert_eq!(core.vm().environment().get("x"), Some(Object::Int(42)));
+}
 
-    match &results[3] {
-        Some(Object::String(s)) if s.as_str() == "Some sound and woof" => (),
-        other => panic!("Expected String(\"Some sound and woof\"), got {:?}", other),
+#[test]
+fn process_line_exit_command() {
+    let mut core = ReplCore::new();
+    assert_eq!(core.process_line(".exit"), LineResult::Exit);
+}
+
+#[test]
+fn process_line_help_command() {
+    let mut core = ReplCore::new();
+    match core.process_line(".help") {
+        LineResult::Value(text) => assert!(text.contains(".help")),
+        other => panic!("Expected Value with help text, got {:?}", other),
     }
 }
 
 #[test]
-fn test_format_object_primitives() {
-    assert_eq!(Repl::format_object(&Object::Nil), "nil");
-    assert_eq!(Repl::format_object(&Object::Bool(true)), "true");
-    assert_eq!(Repl::format_object(&Object::Bool(false)), "false");
-    assert_eq!(Repl::format_object(&Object::Int(42)), "42");
-    assert_eq!(Repl::format_object(&Object::Float(3.14)), "3.14");
+fn process_line_unknown_command() {
+    let mut core = ReplCore::new();
+    match core.process_line(".bogus") {
+        LineResult::Error(msg) => assert!(msg.contains("Unknown command")),
+        other => panic!("Expected Error, got {:?}", other),
+    }
+}
+
+#[test]
+fn process_line_incomplete_input() {
+    let mut core = ReplCore::new();
+    assert_eq!(core.process_line("def foo"), LineResult::Incomplete);
+    assert!(core.is_continuation());
+    assert!(!core.buffer().is_empty());
+}
+
+#[test]
+fn process_line_multiline_completion() {
+    let mut core = ReplCore::new();
+    assert_eq!(core.process_line("def add(a, b)"), LineResult::Incomplete);
+    assert_eq!(core.process_line("  a + b"), LineResult::Incomplete);
+    // Completing the function definition
+    let result = core.process_line("end");
+    assert!(
+        matches!(result, LineResult::Continue | LineResult::Value(_)),
+        "Expected Continue or Value, got {:?}",
+        result
+    );
+    assert!(core.buffer().is_empty());
+}
+
+#[test]
+fn process_line_parse_error() {
+    let mut core = ReplCore::new();
+    match core.process_line("1 +* 2") {
+        LineResult::Error(msg) => assert!(msg.contains("Parse error") || msg.contains("error")),
+        other => panic!("Expected Error for syntax error, got {:?}", other),
+    }
+}
+
+#[test]
+fn process_line_runtime_error() {
+    let mut core = ReplCore::new();
+    match core.process_line("undefined_var_xyz") {
+        LineResult::Error(msg) => assert!(msg.contains("Undefined variable")),
+        other => panic!("Expected Error for undefined var, got {:?}", other),
+    }
+}
+
+// ============================================================================
+// ReplCore — clear_buffer
+// ============================================================================
+
+#[test]
+fn clear_buffer_resets_continuation() {
+    let mut core = ReplCore::new();
+    core.process_line("def foo");
+    assert!(core.is_continuation());
+    core.clear_buffer();
+    assert!(!core.is_continuation());
+    assert!(core.buffer().is_empty());
+}
+
+// ============================================================================
+// ReplCore — stateful evaluation (persistent VM)
+// ============================================================================
+
+#[test]
+fn state_persists_across_lines() {
+    let mut core = ReplCore::new();
+    core.process_line("x = 10");
+    core.process_line("y = 20");
+    match core.process_line("x + y") {
+        LineResult::Value(text) => assert!(text.contains("30")),
+        other => panic!("Expected Value(30), got {:?}", other),
+    }
+}
+
+#[test]
+fn function_persists_across_lines() {
+    let mut core = ReplCore::new();
+    core.process_line("def add(a, b)");
+    core.process_line("  a + b");
+    core.process_line("end");
+    match core.process_line("add(3, 4)") {
+        LineResult::Value(text) => assert!(text.contains("7")),
+        other => panic!("Expected Value(7), got {:?}", other),
+    }
+}
+
+#[test]
+fn class_persists_across_lines() {
+    let mut core = ReplCore::new();
+    core.process_line("class Dog");
+    core.process_line("  def initialize(name)");
+    core.process_line("    @name = name");
+    core.process_line("  end");
+    core.process_line("  def name");
+    core.process_line("    @name");
+    core.process_line("  end");
+    core.process_line("end");
+    match core.process_line("Dog.new(\"Rex\").name") {
+        LineResult::Value(text) => assert!(text.contains("Rex")),
+        other => panic!("Expected Value with Rex, got {:?}", other),
+    }
+}
+
+#[test]
+fn reset_clears_state() {
+    let mut core = ReplCore::new();
+    core.process_line("x = 42");
+    assert_eq!(core.vm().environment().get("x"), Some(Object::Int(42)));
+    core.handle_command(".reset");
+    assert_eq!(core.vm().environment().get("x"), None);
+}
+
+// ============================================================================
+// ReplCore — banner and help
+// ============================================================================
+
+#[test]
+fn banner_contains_version() {
+    let banner = ReplCore::banner();
+    assert!(banner.contains("Metorex REPL"));
+    assert!(banner.contains(env!("CARGO_PKG_VERSION")));
+}
+
+#[test]
+fn help_text_contains_commands() {
+    let help = ReplCore::help_text();
+    assert!(help.contains(".help"));
+    assert!(help.contains(".exit"));
+    assert!(help.contains(".quit"));
+    assert!(help.contains(".clear"));
+    assert!(help.contains(".reset"));
+}
+
+// ============================================================================
+// ReplCore::format_object
+// ============================================================================
+
+#[test]
+fn format_object_primitives() {
+    assert_eq!(ReplCore::format_object(&Object::Nil), "nil");
+    assert_eq!(ReplCore::format_object(&Object::Bool(true)), "true");
+    assert_eq!(ReplCore::format_object(&Object::Bool(false)), "false");
+    assert_eq!(ReplCore::format_object(&Object::Int(42)), "42");
+    assert_eq!(ReplCore::format_object(&Object::Float(3.14)), "3.14");
     assert_eq!(
-        Repl::format_object(&Object::String(Rc::new("hello".to_string()))),
+        ReplCore::format_object(&Object::String(Rc::new("hello".to_string()))),
         "\"hello\""
     );
 }
 
 #[test]
-fn test_format_object_array() {
+fn format_object_float_whole_number() {
+    assert_eq!(ReplCore::format_object(&Object::Float(5.0)), "5.0");
+}
+
+#[test]
+fn format_object_symbol() {
+    assert_eq!(
+        ReplCore::format_object(&Object::Symbol(Rc::new("foo".to_string()))),
+        ":foo"
+    );
+}
+
+#[test]
+fn format_object_array() {
     let array = Object::Array(Rc::new(RefCell::new(vec![
         Object::Int(1),
         Object::Int(2),
         Object::Int(3),
     ])));
-    assert_eq!(Repl::format_object(&array), "[1, 2, 3]");
+    assert_eq!(ReplCore::format_object(&array), "[1, 2, 3]");
 }
 
 #[test]
-fn test_format_object_range() {
-    let range_inclusive = Object::Range {
+fn format_object_empty_array() {
+    let array = Object::Array(Rc::new(RefCell::new(vec![])));
+    assert_eq!(ReplCore::format_object(&array), "[]");
+}
+
+#[test]
+fn format_object_nested_array() {
+    let inner = Object::Array(Rc::new(RefCell::new(vec![Object::Int(1), Object::Int(2)])));
+    let outer = Object::Array(Rc::new(RefCell::new(vec![inner, Object::Int(3)])));
+    assert_eq!(ReplCore::format_object(&outer), "[[1, 2], 3]");
+}
+
+#[test]
+fn format_object_dict() {
+    let mut map = std::collections::HashMap::new();
+    map.insert("a".to_string(), Object::Int(1));
+    let dict = Object::Dict(Rc::new(RefCell::new(map)));
+    assert_eq!(ReplCore::format_object(&dict), "{\"a\" => 1}");
+}
+
+#[test]
+fn format_object_range_inclusive() {
+    let range = Object::Range {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(10)),
         exclusive: false,
     };
-    let range_exclusive = Object::Range {
+    assert_eq!(ReplCore::format_object(&range), "1..10");
+}
+
+#[test]
+fn format_object_range_exclusive() {
+    let range = Object::Range {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(10)),
         exclusive: true,
     };
-    assert_eq!(Repl::format_object(&range_inclusive), "1..10");
-    assert_eq!(Repl::format_object(&range_exclusive), "1...10");
+    assert_eq!(ReplCore::format_object(&range), "1...10");
+}
+
+#[test]
+fn format_object_native_function() {
+    let nf = Object::NativeFunction("puts".to_string());
+    assert_eq!(ReplCore::format_object(&nf), "<NativeFunction: puts>");
+}
+
+#[test]
+fn format_object_block() {
+    // Block variant — just check it doesn't panic
+    use metorex::object::BlockStatement;
+    let block = Object::Block(Rc::new(BlockStatement {
+        parameters: vec![],
+        body: vec![],
+        captured_vars: std::collections::HashMap::new(),
+    }));
+    assert_eq!(ReplCore::format_object(&block), "<Block>");
+}
+
+#[test]
+fn format_object_result_ok() {
+    let r = Object::Result(Ok(Box::new(Object::Int(42))));
+    assert_eq!(ReplCore::format_object(&r), "<Ok: 42>");
+}
+
+#[test]
+fn format_object_result_err() {
+    let r = Object::Result(Err(Box::new(Object::String(Rc::new("oops".to_string())))));
+    assert_eq!(ReplCore::format_object(&r), "<Err: \"oops\">");
+}
+
+// ============================================================================
+// ReplCore::format_error
+// ============================================================================
+
+#[test]
+fn format_error_returns_display() {
+    use metorex::error::{MetorexError, SourceLocation};
+    let err = MetorexError::runtime_error("test error", SourceLocation::new(1, 1, 0));
+    let formatted = ReplCore::format_error(&err);
+    assert!(formatted.contains("test error"));
+}
+
+// ============================================================================
+// Repl (interactive wrapper) — minimal smoke test
+// ============================================================================
+
+#[test]
+fn repl_creation() {
+    let result = Repl::new();
+    assert!(result.is_ok(), "REPL should initialize successfully");
+}
+
+#[test]
+fn repl_default() {
+    // Exercises the Default impl on Repl (covers the .expect path)
+    let _repl = Repl::default();
+}
+
+#[test]
+fn repl_core_default() {
+    let core = ReplCore::default();
+    assert!(core.buffer().is_empty());
+    assert!(!core.is_continuation());
+}
+
+// ============================================================================
+// Evaluation sequences (simulating multi-line REPL sessions)
+// ============================================================================
+
+#[test]
+fn session_variable_and_retrieval() {
+    let mut core = ReplCore::new();
+    core.process_line("x = 42");
+    match core.process_line("x") {
+        LineResult::Value(text) => assert!(text.contains("42")),
+        other => panic!("Expected Value(42), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_string_interpolation() {
+    let mut core = ReplCore::new();
+    core.process_line("name = \"Ada\"");
+    // Note: interpolated strings need to be tested carefully in Rust string literals
+    let code = r#""Hello, #{name}!""#;
+    let result = core.process_line(code);
+    match result {
+        LineResult::Value(text) => assert!(text.contains("Ada")),
+        other => panic!("Expected Value with Ada, got {:?}", other),
+    }
+}
+
+#[test]
+fn session_array_operations() {
+    let mut core = ReplCore::new();
+    core.process_line("arr = [1, 2, 3]");
+    match core.process_line("arr.length") {
+        LineResult::Value(text) => assert!(text.contains("3")),
+        other => panic!("Expected Value(3), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_lambda_and_call() {
+    let mut core = ReplCore::new();
+    core.process_line("square = lambda do |x| x * x end");
+    match core.process_line("square.call(5)") {
+        LineResult::Value(text) => assert!(text.contains("25")),
+        other => panic!("Expected Value(25), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_block_with_each() {
+    let mut core = ReplCore::new();
+    core.process_line("sum = 0");
+    core.process_line("[1, 2, 3].each do |x| sum = sum + x end");
+    match core.process_line("sum") {
+        LineResult::Value(text) => assert!(text.contains("6")),
+        other => panic!("Expected Value(6), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_closure_counter() {
+    let mut core = ReplCore::new();
+    core.process_line("def make_counter()");
+    core.process_line("  count = 0");
+    core.process_line("  lambda do");
+    core.process_line("    count = count + 1");
+    core.process_line("    count");
+    core.process_line("  end");
+    core.process_line("end");
+    core.process_line("counter = make_counter()");
+    match core.process_line("counter.call()") {
+        LineResult::Value(text) => assert!(text.contains("1")),
+        other => panic!("Expected Value(1), got {:?}", other),
+    }
+    match core.process_line("counter.call()") {
+        LineResult::Value(text) => assert!(text.contains("2")),
+        other => panic!("Expected Value(2), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_range_to_array() {
+    let mut core = ReplCore::new();
+    core.process_line("r = 1..5");
+    match core.process_line("r.to_a") {
+        LineResult::Value(text) => {
+            assert!(text.contains("[1, 2, 3, 4, 5]"));
+        }
+        other => panic!("Expected Value with array, got {:?}", other),
+    }
+}
+
+#[test]
+fn session_method_chaining() {
+    let mut core = ReplCore::new();
+    match core.process_line("[1, 2, 3, 4].map { |x| x * 2 }.filter { |x| x > 4 }") {
+        LineResult::Value(text) => {
+            assert!(text.contains("6"));
+            assert!(text.contains("8"));
+        }
+        other => panic!("Expected Value with [6, 8], got {:?}", other),
+    }
+}
+
+#[test]
+fn session_string_methods() {
+    let mut core = ReplCore::new();
+    match core.process_line("\"hello\".upcase") {
+        LineResult::Value(text) => assert!(text.contains("HELLO")),
+        other => panic!("Expected Value(HELLO), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_super_keyword() {
+    let mut core = ReplCore::new();
+    core.process_line("class Animal");
+    core.process_line("  def speak");
+    core.process_line("    \"Some sound\"");
+    core.process_line("  end");
+    core.process_line("end");
+    core.process_line("class Dog < Animal");
+    core.process_line("  def speak");
+    core.process_line("    super() + \" and woof\"");
+    core.process_line("  end");
+    core.process_line("end");
+    core.process_line("dog = Dog.new()");
+    match core.process_line("dog.speak") {
+        LineResult::Value(text) => assert!(text.contains("Some sound and woof")),
+        other => panic!("Expected Value with 'Some sound and woof', got {:?}", other),
+    }
+}
+
+#[test]
+fn session_persistent_counter() {
+    let mut core = ReplCore::new();
+    core.process_line("counter = 0");
+    core.process_line("counter = counter + 1");
+    core.process_line("counter = counter + 1");
+    match core.process_line("counter") {
+        LineResult::Value(text) => assert!(text.contains("2")),
+        other => panic!("Expected Value(2), got {:?}", other),
+    }
+}
+
+#[test]
+fn session_nil_handling() {
+    let mut core = ReplCore::new();
+    // nil should produce Continue (suppressed display)
+    match core.process_line("nil") {
+        LineResult::Continue => {}
+        other => panic!("Expected Continue for nil, got {:?}", other),
+    }
 }

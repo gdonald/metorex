@@ -11,6 +11,7 @@ mod errors;
 mod exceptions;
 mod file_loader;
 mod integration;
+mod integration_tests;
 mod lexer;
 mod module_tests;
 mod parser;
