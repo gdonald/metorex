@@ -3,6 +3,7 @@
 mod array_methods_tests;
 mod ast;
 mod blocks;
+mod bytecode;
 mod class_system;
 pub mod common;
 mod control_flow;

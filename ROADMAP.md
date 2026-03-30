@@ -824,84 +824,60 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
 
 ### 11. Bytecode Design and Implementation
 
-- [ ] 11.1. Bytecode Instruction Set
-  - [ ] 11.1.1. Define `OpCode` enum in `src/bytecode/opcode.rs`
-  - [ ] 11.1.2. Add `OP_CONSTANT` (load constant from pool)
-  - [ ] 11.1.3. Add `OP_NIL`, `OP_TRUE`, `OP_FALSE`
-  - [ ] 11.1.4. Add `OP_POP` (pop from stack)
-  - [ ] 11.1.5. Add `OP_GET_LOCAL`, `OP_SET_LOCAL`
-  - [ ] 11.1.6. Add `OP_GET_GLOBAL`, `OP_SET_GLOBAL`
-  - [ ] 11.1.7. Add `OP_GET_INSTANCE`, `OP_SET_INSTANCE`
-  - [ ] 11.1.8. Add `OP_DEFINE_GLOBAL`
-  - [ ] 11.1.9. Add arithmetic ops: `OP_ADD`, `OP_SUBTRACT`, `OP_MULTIPLY`, `OP_DIVIDE`, `OP_MODULO`
-  - [ ] 11.1.10. Add comparison ops: `OP_EQUAL`, `OP_NOT_EQUAL`, `OP_GREATER`, `OP_LESS`, `OP_GREATER_EQUAL`, `OP_LESS_EQUAL`
-  - [ ] 11.1.11. Add unary ops: `OP_NEGATE`, `OP_NOT`
-  - [ ] 11.1.12. Add `OP_JUMP`, `OP_JUMP_IF_FALSE`, `OP_LOOP`
-  - [ ] 11.1.13. Add `OP_CALL` (method invocation)
-  - [ ] 11.1.14. Add `OP_INVOKE` (optimized method call)
-  - [ ] 11.1.15. Add `OP_CLOSURE` (create closure)
-  - [ ] 11.1.16. Add `OP_GET_UPVALUE`, `OP_SET_UPVALUE`, `OP_CLOSE_UPVALUE`
-  - [ ] 11.1.17. Add `OP_CLASS` (define class)
-  - [ ] 11.1.18. Add `OP_METHOD` (add method to class)
-  - [ ] 11.1.19. Add `OP_RETURN`
-  - [ ] 11.1.20. Add `OP_ARRAY` (create array)
-  - [ ] 11.1.21. Add `OP_HASH` (create hash)
-  - [ ] 11.1.22. Add `OP_INDEX_GET`, `OP_INDEX_SET`
-  - [ ] 11.1.23. Add `OP_TRY` (begin try block, push exception handler)
-  - [ ] 11.1.24. Add `OP_CATCH` (catch exception, pop handler)
-  - [ ] 11.1.25. Add `OP_FINALLY` (begin finally block)
-  - [ ] 11.1.26. Add `OP_END_TRY` (end try/catch/finally block)
-  - [ ] 11.1.27. Add `OP_RAISE` (throw exception)
-  - [ ] 11.1.28. Add `OP_MATCH` (pattern matching)
-  - [ ] 11.1.29. Add `OP_MATCH_PATTERN` (test pattern against value)
-  - [ ] 11.1.30. Document each opcode with comments
-  - [ ] 11.1.31. Create test file: `tests/opcode_tests.rs`
+- [x] 11.1. Bytecode Instruction Set
+  - [x] 11.1.1. Define `OpCode` enum in `src/bytecode/opcode.rs`
+  - [x] 11.1.2. Add `OP_CONSTANT` (load constant from pool)
+  - [x] 11.1.3. Add `OP_NIL`, `OP_TRUE`, `OP_FALSE`
+  - [x] 11.1.4. Add `OP_POP` (pop from stack)
+  - [x] 11.1.5. Add `OP_GET_LOCAL`, `OP_SET_LOCAL`
+  - [x] 11.1.6. Add `OP_GET_GLOBAL`, `OP_SET_GLOBAL`
+  - [x] 11.1.7. Add `OP_GET_INSTANCE`, `OP_SET_INSTANCE`
+  - [x] 11.1.8. Add `OP_DEFINE_GLOBAL`
+  - [x] 11.1.9. Add arithmetic ops: `OP_ADD`, `OP_SUBTRACT`, `OP_MULTIPLY`, `OP_DIVIDE`, `OP_MODULO`
+  - [x] 11.1.10. Add comparison ops: `OP_EQUAL`, `OP_NOT_EQUAL`, `OP_GREATER`, `OP_LESS`, `OP_GREATER_EQUAL`, `OP_LESS_EQUAL`
+  - [x] 11.1.11. Add unary ops: `OP_NEGATE`, `OP_NOT`
+  - [x] 11.1.12. Add `OP_JUMP`, `OP_JUMP_IF_FALSE`, `OP_LOOP`
+  - [x] 11.1.13. Add `OP_CALL` (method invocation)
+  - [x] 11.1.14. Add `OP_INVOKE` (optimized method call)
+  - [x] 11.1.15. Add `OP_CLOSURE` (create closure)
+  - [x] 11.1.16. Add `OP_GET_UPVALUE`, `OP_SET_UPVALUE`, `OP_CLOSE_UPVALUE`
+  - [x] 11.1.17. Add `OP_CLASS` (define class)
+  - [x] 11.1.18. Add `OP_METHOD` (add method to class)
+  - [x] 11.1.19. Add `OP_RETURN`
+  - [x] 11.1.20. Add `OP_ARRAY` (create array)
+  - [x] 11.1.21. Add `OP_HASH` (create hash)
+  - [x] 11.1.22. Add `OP_INDEX_GET`, `OP_INDEX_SET`
+  - [x] 11.1.23. Add `OP_TRY` (begin try block, push exception handler)
+  - [x] 11.1.24. Add `OP_CATCH` (catch exception, pop handler)
+  - [x] 11.1.25. Add `OP_FINALLY` (begin finally block)
+  - [x] 11.1.26. Add `OP_END_TRY` (end try/catch/finally block)
+  - [x] 11.1.27. Add `OP_RAISE` (throw exception)
+  - [x] 11.1.28. Add `OP_MATCH` (pattern matching)
+  - [x] 11.1.29. Add `OP_MATCH_PATTERN` (test pattern against value)
+  - [x] 11.1.30. Document each opcode with comments
+  - [x] 11.1.31. Create test file: `tests/bytecode/opcode_tests.rs`
 
-- [ ] 11.2. Chunk (Bytecode Container)
-  - [ ] 11.2.1. Define `Chunk` struct in `src/bytecode/chunk.rs`
-  - [ ] 11.2.2. Add `code: Vec<u8>` for bytecode
-  - [ ] 11.2.3. Add `constants: Vec<Object>` for constant pool
-  - [ ] 11.2.4. Add `lines: Vec<usize>` for line number mapping
-  - [ ] 11.2.5. Implement `write_byte()` method
-  - [ ] 11.2.6. Implement `add_constant()` method
-  - [ ] 11.2.7. Implement `get_line()` method for debugging
-  - [ ] 11.2.8. Implement chunk disassembler for debugging
-  - [ ] 11.2.9. Write unit tests for chunk operations
-  - [ ] 11.2.10. Create test file: `tests/chunk_tests.rs`
+- [x] 11.2. Chunk (Bytecode Container)
+  - [x] 11.2.1. Define `Chunk` struct in `src/bytecode/chunk.rs`
+  - [x] 11.2.2. Add `code: Vec<u8>` for bytecode
+  - [x] 11.2.3. Add `constants: Vec<Object>` for constant pool
+  - [x] 11.2.4. Add `lines: Vec<usize>` for line number mapping
+  - [x] 11.2.5. Implement `write_byte()` method
+  - [x] 11.2.6. Implement `add_constant()` method
+  - [x] 11.2.7. Implement `get_line()` method for debugging
+  - [x] 11.2.8. Implement chunk disassembler for debugging
+  - [x] 11.2.9. Write unit tests for chunk operations
+  - [x] 11.2.10. Create test file: `tests/bytecode/chunk_tests.rs`
 
-- [ ] 11.3. Bytecode Disassembler
-  - [ ] 11.3.1. Create disassembler in `src/bytecode/disassembler.rs`
-  - [ ] 11.3.2. Implement instruction formatting
-  - [ ] 11.3.3. Show constant values in disassembly
-  - [ ] 11.3.4. Show line numbers
-  - [ ] 11.3.5. Add offset information
-  - [ ] 11.3.6. Create readable output format
-  - [ ] 11.3.7. Add CLI flag `--disassemble` to show bytecode
-  - [ ] 11.3.8. Write tests for disassembler
-  - [ ] 11.3.9. Create test file: `tests/disassembler_tests.rs`
-
-- [ ] 11.4. Critical Infrastructure: Runtime Compilation for Meta-Programming
-  - [ ] 11.4.1. Add `EVAL_STRING` instruction (parse string → AST → bytecode → execute at runtime)
-  - [ ] 11.4.2. Add `BUILD_LAMBDA` instruction (create lambda/block object with bytecode body)
-  - [ ] 11.4.3. Add `DEFINE_METHOD_RUNTIME` instruction (runtime method definition via `define_method`)
-  - [ ] 11.4.4. Add `GET_METHOD_AST` / `GET_CLASS_AST` instructions (expose AST for meta-programming)
-  - [ ] 11.4.5. Add `SET_METHOD_AST` instruction (recompile and replace method from AST)
-  - [ ] 11.4.6. Design compiler API for runtime use (must be callable from within the VM)
-  - [ ] 11.4.7. Preserve full AST alongside bytecode to support `get_source` and introspection
-  - [ ] 11.4.8. Write tests for runtime compilation and method AST access
-
-- [ ] 11.5. Critical Infrastructure: Closures, GC, and Yield
-  - [ ] 11.5.1. Design upvalue/closure model: open upvalues on stack, closed upvalues on heap
-  - [ ] 11.5.2. Add `CAPTURE_VAR`, `GET_UPVALUE`, `SET_UPVALUE`, `CLOSE_UPVALUE` instructions
-  - [ ] 11.5.3. Implement upvalue closing when scope exits
-  - [ ] 11.5.4. Integrate stack, call frames, and constant pool with GC root scanning
-  - [ ] 11.5.5. Add `YIELD` instruction: suspend current method, pass values to block, resume on return
-  - [ ] 11.5.6. Add `CALL_BLOCK` and `BLOCK_GIVEN` instructions
-  - [ ] 11.5.7. Implement non-local return semantics for blocks (break/next/return from yield)
-  - [ ] 11.5.8. Add inline method resolution cache with class-hierarchy invalidation
-  - [ ] 11.5.9. Write closure edge-case tests (closed-over mutables, nested closures)
-  - [ ] 11.5.10. Write yield/block stress tests (deep nesting, non-local returns)
-  - [ ] 11.5.11. Write GC stress tests (short-lived objects, circular references)
+- [x] 11.3. Bytecode Disassembler
+  - [x] 11.3.1. Create disassembler in `src/bytecode/disassembler.rs`
+  - [x] 11.3.2. Implement instruction formatting
+  - [x] 11.3.3. Show constant values in disassembly
+  - [x] 11.3.4. Show line numbers
+  - [x] 11.3.5. Add offset information
+  - [x] 11.3.6. Create readable output format
+  - [x] 11.3.8. Write tests for disassembler
+  - [x] 11.3.9. Create test file: `tests/bytecode/disassembler_tests.rs`
 
 ### 12. Compiler (AST to Bytecode)
 
@@ -2017,6 +1993,9 @@ Goal: Add an AOT transpilation pipeline that converts supported Metorex programs
 
 ### Future Enhancements
 
+- [ ] Add CLI flag `--disassemble` to show bytecode (requires compiler)
+- [ ] 11.4. Runtime Compilation for Meta-Programming (`EVAL_STRING`, `BUILD_LAMBDA`, `DEFINE_METHOD_RUNTIME`, `GET_METHOD_AST`, `SET_METHOD_AST`, compiler API for runtime use, AST preservation)
+- [ ] 11.5. Closures, GC, and Yield (`CAPTURE_VAR`, upvalue closing, GC root scanning, `YIELD`, `CALL_BLOCK`, `BLOCK_GIVEN`, non-local returns, inline method cache)
 - [ ] Regex patterns in case/when: `when /pattern/ then ...` (requires Regex type)
 - [ ] Achieve 100% code coverage (current: 94.67% — remaining gaps are native method error paths, interactive REPL wrapper, and main.rs)
 - [ ] Examples runner: `tests/_examples/advanced/dynamic_method_definition.rb` (requires section 7.2–7.3)
