@@ -204,7 +204,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Array Methods: `length`/`size`, `push`/`pop`, `shift`/`unshift`, `sort`, `reverse`, `map`, `select`/`filter`, `reduce`, `each`, `join`
 
 ### Phase 2: Bytecode VM
-- Bytecode compiler (in progress: expression, statement, control flow, function/method compilation done)
+- Bytecode compiler (in progress: expression, statement, control flow, function/method, class compilation done)
 - Stack-based VM
 - Trait/interface system
 - Advanced reflection

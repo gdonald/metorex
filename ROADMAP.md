@@ -933,14 +933,14 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.5.7. Write unit tests for function compilation
   - [x] 12.5.8. Create test file: `tests/compiler_function_tests.rs`
 
-- [ ] 12.6. Class Compilation
-  - [ ] 12.6.1. Implement class definition compilation
-  - [ ] 12.6.2. Emit `OP_CLASS` instruction
-  - [ ] 12.6.3. Compile class methods
-  - [ ] 12.6.4. Emit `OP_METHOD` for each method
-  - [ ] 12.6.5. Handle inheritance compilation
-  - [ ] 12.6.6. Write unit tests for class compilation
-  - [ ] 12.6.7. Create test file: `tests/compiler_class_tests.rs`
+- [x] 12.6. Class Compilation
+  - [x] 12.6.1. Implement class definition compilation
+  - [x] 12.6.2. Emit `OP_CLASS` instruction
+  - [x] 12.6.3. Compile class methods
+  - [x] 12.6.4. Emit `OP_METHOD` for each method
+  - [x] 12.6.5. Handle inheritance compilation
+  - [x] 12.6.6. Write unit tests for class compilation
+  - [x] 12.6.7. Create test file: `tests/compiler_class_tests.rs`
 
 - [ ] 12.7. Closure and Upvalue Compilation
   - [ ] 12.7.1. Implement local variable resolution

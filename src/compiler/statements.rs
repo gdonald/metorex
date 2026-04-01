@@ -387,13 +387,51 @@ impl Compiler {
                 let func_obj = Object::CompiledFunction(Rc::new(func));
                 self.emit_constant(func_obj, line)?;
                 let name_idx = self.identifier_constant(name)?;
-                let operand = (name_idx as u16) << 8;
-                self.emit_op_u16(OpCode::Method, operand, line);
+                self.emit_op_u8(OpCode::Method, name_idx, line);
+                Ok(())
+            }
+
+            // ── Class definition (12.6) ────────────────────────────────
+            Statement::ClassDef {
+                name,
+                superclass,
+                body,
+                position,
+            } => {
+                let line = Self::pos_line(position);
+
+                // Emit OP_CLASS with the class name
+                let name_idx = self.identifier_constant(name)?;
+                self.emit_op_u8(OpCode::Class, name_idx, line);
+
+                // Handle inheritance: if there's a superclass, push it and
+                // the class onto the stack for the VM to wire up.
+                if let Some(parent) = superclass {
+                    let parent_idx = self.identifier_constant(parent)?;
+                    self.emit_op_u8(OpCode::GetGlobal, parent_idx, line);
+                }
+
+                // Define the class globally so methods can reference it
+                let def_idx = self.identifier_constant(name)?;
+                self.emit_op_u8(OpCode::DefineGlobal, def_idx, line);
+
+                // Compile class body — methods emit OP_METHOD
+                // First, get the class back on the stack so OP_METHOD can attach to it
+                let get_idx = self.identifier_constant(name)?;
+                self.emit_op_u8(OpCode::GetGlobal, get_idx, line);
+
+                for stmt in body {
+                    self.compile_statement(stmt)?;
+                }
+
+                // Pop the class from the stack
+                self.emit_op(OpCode::Pop, line);
+
                 Ok(())
             }
 
             // Remaining statement types are stubs for now — will be expanded
-            // in sections 12.6-12.8
+            // in sections 12.7-12.8
             _ => {
                 // For unimplemented statement types, emit nothing but don't error
                 // so partial compilation can proceed
