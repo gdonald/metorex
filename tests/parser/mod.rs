@@ -1,3 +1,13 @@
-mod parser_coverage_tests;
+mod parser_call_tests;
+mod parser_case_tests;
+mod parser_class_module_tests;
+mod parser_control_flow_body_tests;
 mod parser_error_recovery_tests;
+mod parser_exception_tests;
+mod parser_for_tests;
+mod parser_function_def_tests;
+mod parser_keyword_method_tests;
+mod parser_lambda_block_tests;
+mod parser_operator_method_tests;
 mod parser_tests;
+mod parser_unless_tests;
