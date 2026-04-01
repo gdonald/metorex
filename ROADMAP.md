@@ -904,14 +904,14 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.2.10. Write unit tests for expression compilation
   - [x] 12.2.11. Create test file: `tests/compiler/compiler_expression_tests.rs`
 
-- [ ] 12.3. Statement Compilation
-  - [ ] 12.3.1. Implement expression statement compilation
-  - [ ] 12.3.2. Implement variable declaration compilation
-  - [ ] 12.3.3. Implement assignment compilation
-  - [ ] 12.3.4. Implement block compilation
-  - [ ] 12.3.5. Implement return statement compilation
-  - [ ] 12.3.6. Write unit tests for statement compilation
-  - [ ] 12.3.7. Create test file: `tests/compiler_statement_tests.rs`
+- [x] 12.3. Statement Compilation
+  - [x] 12.3.1. Implement expression statement compilation
+  - [x] 12.3.2. Implement variable declaration compilation
+  - [x] 12.3.3. Implement assignment compilation
+  - [x] 12.3.4. Implement block compilation
+  - [x] 12.3.5. Implement return statement compilation
+  - [x] 12.3.6. Write unit tests for statement compilation
+  - [x] 12.3.7. Create test file: `tests/compiler_statement_tests.rs`
 
 - [ ] 12.4. Control Flow Compilation
   - [ ] 12.4.1. Implement if/else compilation with jumps

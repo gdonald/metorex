@@ -81,8 +81,21 @@ impl Compiler {
                 Ok(())
             }
 
+            Statement::Block {
+                statements,
+                position,
+            } => {
+                let line = Self::pos_line(position);
+                self.begin_scope();
+                for s in statements {
+                    self.compile_statement(s)?;
+                }
+                self.end_scope(line);
+                Ok(())
+            }
+
             // Remaining statement types are stubs for now — will be expanded
-            // in sections 12.3-12.8
+            // in sections 12.4-12.8
             _ => {
                 // For unimplemented statement types, emit nothing but don't error
                 // so partial compilation can proceed

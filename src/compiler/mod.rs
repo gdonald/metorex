@@ -53,12 +53,10 @@ impl Compiler {
 
     // ── Scope management ────────────────────────────────────────────────
 
-    #[allow(dead_code)]
     fn begin_scope(&mut self) {
         self.scope_depth += 1;
     }
 
-    #[allow(dead_code)]
     fn end_scope(&mut self, line: usize) {
         self.scope_depth -= 1;
         // Pop locals that went out of scope
