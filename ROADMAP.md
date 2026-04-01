@@ -923,15 +923,15 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.4.7. Write unit tests for control flow compilation
   - [x] 12.4.8. Create test file: `tests/compiler_control_flow_tests.rs`
 
-- [ ] 12.5. Function and Method Compilation
-  - [ ] 12.5.1. Implement function definition compilation
-  - [ ] 12.5.2. Create nested compiler for function body
-  - [ ] 12.5.3. Compile function parameters
-  - [ ] 12.5.4. Emit `OP_RETURN` at function end
-  - [ ] 12.5.5. Store compiled function in constant pool
-  - [ ] 12.5.6. Implement method compilation
-  - [ ] 12.5.7. Write unit tests for function compilation
-  - [ ] 12.5.8. Create test file: `tests/compiler_function_tests.rs`
+- [x] 12.5. Function and Method Compilation
+  - [x] 12.5.1. Implement function definition compilation
+  - [x] 12.5.2. Create nested compiler for function body
+  - [x] 12.5.3. Compile function parameters
+  - [x] 12.5.4. Emit `OP_RETURN` at function end
+  - [x] 12.5.5. Store compiled function in constant pool
+  - [x] 12.5.6. Implement method compilation
+  - [x] 12.5.7. Write unit tests for function compilation
+  - [x] 12.5.8. Create test file: `tests/compiler_function_tests.rs`
 
 - [ ] 12.6. Class Compilation
   - [ ] 12.6.1. Implement class definition compilation

@@ -309,6 +309,7 @@ impl ReplCore {
             Object::Binding(binding) => {
                 format!("<Binding with {} vars>", binding.variables.len())
             }
+            Object::CompiledFunction(func) => format!("{}", func),
         }
     }
 

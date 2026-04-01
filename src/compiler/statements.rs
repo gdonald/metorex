@@ -1,9 +1,11 @@
 // Statement compilation: AST Statement nodes → bytecode
 
-use crate::ast::{Expression, Statement};
+use std::rc::Rc;
+
+use crate::ast::{Expression, Parameter, Statement};
 use crate::bytecode::opcode::OpCode;
 use crate::error::{MetorexError, SourceLocation};
-use crate::object::Object;
+use crate::object::{CompiledFunction, Object};
 
 use super::Compiler;
 
@@ -358,13 +360,82 @@ impl Compiler {
                 Ok(())
             }
 
+            // ── Function and method definitions (12.5) ──────────────────
+            Statement::FunctionDef {
+                name,
+                parameters,
+                body,
+                position,
+            } => {
+                let line = Self::pos_line(position);
+                let func = Self::compile_function_body(name, parameters, body)?;
+                let func_obj = Object::CompiledFunction(Rc::new(func));
+                self.emit_constant(func_obj, line)?;
+                let name_idx = self.identifier_constant(name)?;
+                self.emit_op_u8(OpCode::DefineGlobal, name_idx, line);
+                Ok(())
+            }
+
+            Statement::MethodDef {
+                name,
+                parameters,
+                body,
+                position,
+            } => {
+                let line = Self::pos_line(position);
+                let func = Self::compile_function_body(name, parameters, body)?;
+                let func_obj = Object::CompiledFunction(Rc::new(func));
+                self.emit_constant(func_obj, line)?;
+                let name_idx = self.identifier_constant(name)?;
+                let operand = (name_idx as u16) << 8;
+                self.emit_op_u16(OpCode::Method, operand, line);
+                Ok(())
+            }
+
             // Remaining statement types are stubs for now — will be expanded
-            // in sections 12.5-12.8
+            // in sections 12.6-12.8
             _ => {
                 // For unimplemented statement types, emit nothing but don't error
                 // so partial compilation can proceed
                 Ok(())
             }
         }
+    }
+
+    /// Compile a function/method body into a `CompiledFunction`.
+    ///
+    /// Creates a nested compiler, adds parameters as locals at slot 0+,
+    /// compiles the body, and emits an implicit return.
+    fn compile_function_body(
+        name: &str,
+        parameters: &[Parameter],
+        body: &[Statement],
+    ) -> Result<CompiledFunction, MetorexError> {
+        let arity = parameters
+            .iter()
+            .filter(|p| !p.is_variadic && !p.is_keyword && !p.is_block)
+            .count() as u8;
+
+        let mut func_compiler = Compiler::new();
+        func_compiler.scope_depth = 1; // function body is a local scope
+
+        // Add parameters as locals (they occupy the first stack slots)
+        for param in parameters {
+            func_compiler.add_local(param.name.clone());
+            func_compiler.mark_initialized();
+        }
+
+        // Compile the body
+        for stmt in body {
+            func_compiler.compile_statement(stmt)?;
+        }
+
+        // Emit implicit nil + return if the body doesn't end with a return
+        func_compiler.emit_op(OpCode::Nil, 0);
+        func_compiler.emit_op(OpCode::Return, 0);
+
+        let mut func = CompiledFunction::new(name.to_string(), arity);
+        func.chunk = func_compiler.chunk;
+        Ok(func)
     }
 }

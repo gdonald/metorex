@@ -78,6 +78,7 @@ impl fmt::Display for Object {
             Object::Binding(binding) => {
                 write!(f, "<Binding with {} vars>", binding.variables.len())
             }
+            Object::CompiledFunction(func) => write!(f, "{}", func),
         }
     }
 }

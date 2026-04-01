@@ -116,6 +116,7 @@ impl BuiltinClasses {
             Object::Result(_) => Rc::clone(&self.object_class),
             Object::NativeFunction(_) => Rc::clone(&self.object_class),
             Object::Range { .. } => Rc::clone(&self.range_class),
+            Object::CompiledFunction(_) => Rc::clone(&self.object_class),
         }
     }
 
