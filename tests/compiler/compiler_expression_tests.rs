@@ -426,16 +426,9 @@ fn compile_scope_resolution_not_implemented() {
 }
 
 #[test]
-fn compile_lambda_not_yet_implemented() {
-    let tokens = metorex::lexer::Lexer::new("lambda do |x| x end").tokenize();
-    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
-    let compiler = metorex::compiler::Compiler::new();
-    let err = compiler.compile(&stmts).unwrap_err().to_string();
-    assert!(
-        err.contains("not yet implemented") || err.contains("Compilation"),
-        "Error was: {}",
-        err
-    );
+fn compile_lambda_produces_compiled_function() {
+    let chunk = compile("lambda do |x| x end");
+    assert!(!chunk.is_empty());
 }
 
 #[test]

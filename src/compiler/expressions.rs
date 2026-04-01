@@ -3,7 +3,7 @@
 use crate::ast::{BinaryOp, Expression, InterpolationPart, UnaryOp};
 use crate::bytecode::opcode::OpCode;
 use crate::error::{MetorexError, SourceLocation};
-use crate::object::Object;
+use crate::object::{CompiledFunction, Object};
 use std::rc::Rc;
 
 use super::Compiler;
@@ -295,9 +295,66 @@ impl Compiler {
                 Ok(())
             }
 
+            // ── Block/lambda compilation (12.8) ───────────────────────
+            Expression::Lambda {
+                parameters,
+                body,
+                position,
+                ..
+            } => {
+                let line = Self::pos_line(position);
+                let arity = parameters.len() as u8;
+
+                let mut block_compiler = Compiler::new();
+                block_compiler.scope_depth = 1;
+                block_compiler.enclosing_locals = Some(self.locals.clone());
+                block_compiler.enclosing_upvalues = Some(self.upvalues.clone());
+
+                // Add block parameters as locals
+                for param in parameters {
+                    block_compiler.add_local(param.clone());
+                    block_compiler.mark_initialized();
+                }
+
+                // Compile the body
+                for stmt in body {
+                    block_compiler.compile_statement(stmt)?;
+                }
+
+                // Emit implicit nil + return
+                block_compiler.emit_op(OpCode::Nil, line);
+                block_compiler.emit_op(OpCode::Return, line);
+
+                // Copy back capture flags to enclosing locals
+                if let Some(ref enclosing) = block_compiler.enclosing_locals {
+                    for (i, local) in enclosing.iter().enumerate() {
+                        if local.is_captured && i < self.locals.len() {
+                            self.locals[i].is_captured = true;
+                        }
+                    }
+                }
+
+                let upvalues = block_compiler.upvalues;
+
+                let mut func = CompiledFunction::new("<block>".to_string(), arity);
+                func.chunk = block_compiler.chunk;
+
+                let func_obj = Object::CompiledFunction(Rc::new(func));
+                self.emit_constant(func_obj, line)?;
+
+                if !upvalues.is_empty() {
+                    self.emit_op_u8(OpCode::Closure, upvalues.len() as u8, line);
+                    for uv in &upvalues {
+                        self.chunk.write_byte(u8::from(uv.is_local), line);
+                        self.chunk.write_byte(uv.index, line);
+                    }
+                }
+
+                Ok(())
+            }
+
             // ── Not yet compiled ────────────────────────────────────────
-            Expression::Lambda { position, .. }
-            | Expression::Super { position, .. }
+            Expression::Super { position, .. }
             | Expression::Case { position, .. }
             | Expression::If { position, .. }
             | Expression::Unless { position, .. }

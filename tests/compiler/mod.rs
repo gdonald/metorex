@@ -1,3 +1,4 @@
+mod compiler_block_tests;
 mod compiler_class_tests;
 mod compiler_closure_tests;
 mod compiler_control_flow_tests;

@@ -952,13 +952,13 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.7.7. Create example file: `examples/compiler/closures.rb`
   - [x] 12.7.8. Create test file: `tests/compiler_closure_tests.rs`
 
-- [ ] 12.8. Block Compilation (Meta-Programming)
-  - [ ] 12.8.1. Compile blocks as closures
-  - [ ] 12.8.2. Capture block environment
-  - [ ] 12.8.3. Emit `OP_CLOSURE` for blocks
-  - [ ] 12.8.4. Store block object in constant pool
-  - [ ] 12.8.5. Write unit tests for block compilation
-  - [ ] 12.8.6. Create test file: `tests/compiler_block_tests.rs`
+- [x] 12.8. Block Compilation (Meta-Programming)
+  - [x] 12.8.1. Compile blocks as closures
+  - [x] 12.8.2. Capture block environment
+  - [x] 12.8.3. Emit `OP_CLOSURE` for blocks
+  - [x] 12.8.4. Store block object in constant pool
+  - [x] 12.8.5. Write unit tests for block compilation
+  - [x] 12.8.6. Create test file: `tests/compiler_block_tests.rs`
 
 - [ ] 12.9. Optimization Passes
   - [ ] 12.9.1. Implement constant folding
