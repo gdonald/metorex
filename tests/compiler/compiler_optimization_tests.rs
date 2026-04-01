@@ -558,3 +558,124 @@ fn fold_int_modulo_by_zero_not_folded() {
     let ops = opcodes(&chunk);
     assert!(ops.contains(&OpCode::Modulo));
 }
+
+// ── Constant folding with ConstantLong (optimizer.rs lines 48-50) ─────
+
+#[test]
+fn fold_negate_with_constant_long() {
+    // Build a chunk with ConstantLong + Negate to exercise the
+    // constant_fold path that only handles Constant (short), not ConstantLong.
+    // The negate should NOT be folded since the optimizer doesn't handle ConstantLong.
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    // Add enough constants to force a ConstantLong index (>255)
+    for i in 0..256 {
+        chunk.add_constant(Object::Int(i));
+    }
+    let idx = chunk.add_constant(Object::Int(42)).unwrap();
+    assert!(idx > 255);
+    chunk.write_constant(idx, 1); // writes ConstantLong
+    chunk.write_opcode(OpCode::Negate, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+
+    optimizer::constant_fold(&mut chunk);
+    let ops = opcodes(&chunk);
+    // ConstantLong + Negate should remain since the optimizer only folds short Constant
+    assert!(
+        ops.contains(&OpCode::Negate),
+        "ConstantLong negate should not be folded: {:?}",
+        ops
+    );
+}
+
+// ── Float modulo not foldable (optimizer.rs line 105) ──────────────────
+
+#[test]
+fn fold_float_modulo_not_supported() {
+    // Float modulo is not in the fold_binary match arms, so it should not fold
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    let a = chunk.add_constant(Object::Float(10.0)).unwrap();
+    let b = chunk.add_constant(Object::Float(3.0)).unwrap();
+    chunk.write_constant(a, 1);
+    chunk.write_constant(b, 1);
+    chunk.write_opcode(OpCode::Modulo, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+
+    optimizer::constant_fold(&mut chunk);
+    let ops = opcodes(&chunk);
+    assert!(
+        ops.contains(&OpCode::Modulo),
+        "Float modulo should not be folded: {:?}",
+        ops
+    );
+}
+
+// ── Dead code: unknown bytes (optimizer.rs lines 166-170) ──────────────
+
+#[test]
+fn dead_code_eliminate_unknown_byte_after_return() {
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    chunk.write_opcode(OpCode::Return, 1);
+    // Write an invalid opcode byte (not recognized as any OpCode)
+    chunk.write_byte(0xFF, 2); // dead unknown byte
+
+    optimizer::dead_code_eliminate(&mut chunk);
+    // The unknown byte after return should be removed
+    assert_eq!(chunk.len(), 1, "Only Return should remain");
+}
+
+#[test]
+fn dead_code_eliminate_unknown_byte_not_after_return() {
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    // Write an unknown byte that is NOT after return (should be preserved)
+    chunk.write_byte(0xFF, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+
+    optimizer::dead_code_eliminate(&mut chunk);
+    // The unknown byte before return should be preserved
+    assert_eq!(chunk.len(), 2, "Unknown byte + Return should remain");
+}
+
+// ── collect_jump_targets with Loop backward jump (optimizer.rs lines 201-202) ──
+
+#[test]
+fn dead_code_with_loop_backward_jump_target() {
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    // position 0: Nil
+    chunk.write_opcode(OpCode::Nil, 1);
+    // position 1: Loop with offset 4 (points backward: 1+3-4 = 0, i.e., Nil)
+    chunk.write_op_u16(OpCode::Loop, 4, 1);
+    // position 4: Return
+    chunk.write_opcode(OpCode::Return, 1);
+
+    optimizer::dead_code_eliminate(&mut chunk);
+    let ops = opcodes(&chunk);
+    // Nil at position 0 is a jump target of the Loop, so it must be preserved
+    assert!(ops.contains(&OpCode::Nil));
+    assert!(ops.contains(&OpCode::Loop));
+}
+
+// ── Peephole unknown bytes (optimizer.rs lines 253-255) ────────────────
+
+#[test]
+fn peephole_unknown_byte_preserved() {
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    chunk.write_byte(0xFF, 1); // unknown byte
+    chunk.write_opcode(OpCode::Return, 1);
+
+    optimizer::peephole_optimize(&mut chunk);
+    // Unknown byte should be copied as-is
+    assert_eq!(chunk.code()[0], 0xFF);
+}
+
+// ── Tail call detection edge case (optimizer.rs lines 332-333) ─────────
+
+#[test]
+fn count_tail_calls_with_unknown_byte() {
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    chunk.write_byte(0xFF, 1); // unknown byte
+    chunk.write_op_u8(OpCode::Call, 0, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+
+    let count = optimizer::count_tail_calls(&chunk);
+    assert_eq!(count, 1, "Should still detect tail call after unknown byte");
+}

@@ -477,3 +477,334 @@ fn execute_int_float_comparison() {
     let result = run_ok("return 1 < 2.5");
     assert_eq!(result, Object::Bool(true));
 }
+
+// ── VM: Invalid opcode handling (vm.rs lines 213-218) ──────────────────
+
+#[test]
+fn execute_invalid_opcode_errors() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // Write an invalid opcode byte
+    chunk.write_byte(0xFF, 1);
+
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("Invalid opcode"), "Error was: {}", err);
+}
+
+// ── VM: Return from empty frame (vm.rs lines 209, 214-217) ────────────
+
+#[test]
+fn execute_return_with_empty_stack_returns_nil() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // Just a Return with nothing on stack: pop returns Nil via unwrap_or
+    chunk.write_opcode(OpCode::Return, 1);
+
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Nil);
+}
+
+// ── VM: ConstantLong execution (vm.rs lines 242-244) ───────────────────
+
+#[test]
+fn execute_constant_long() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // Add more than 255 constants to force ConstantLong
+    for i in 0..256 {
+        chunk.add_constant(Object::Int(i));
+    }
+    let idx = chunk.add_constant(Object::Int(9999)).unwrap();
+    assert!(idx > 255);
+    chunk.write_constant(idx, 1); // emits ConstantLong
+    chunk.write_opcode(OpCode::Return, 1);
+
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Int(9999));
+}
+
+// ── VM: Negate error path (vm.rs line 265) ─────────────────────────────
+
+#[test]
+fn execute_negate_non_numeric_errors() {
+    let result = run("return -\"hello\"");
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("Cannot negate"), "Error was: {}", err);
+}
+
+#[test]
+fn execute_negate_bool_errors() {
+    let result = run("return -true");
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("Cannot negate"), "Error was: {}", err);
+}
+
+// ── VM: SetGlobal for undefined variable (vm.rs lines 324-328) ─────────
+
+#[test]
+fn execute_set_global_undefined_variable_errors() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // Push a value
+    chunk.write_opcode(OpCode::Nil, 1);
+    // Try to SetGlobal for a variable that was never defined
+    let idx = chunk
+        .add_constant(Object::String(Rc::new("undefined_var".to_string())))
+        .unwrap();
+    chunk.write_op_u8(OpCode::SetGlobal, idx as u8, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("Undefined variable"), "Error was: {}", err);
+}
+
+// ── VM: Jump instruction (vm.rs lines 341-342) ─────────────────────────
+
+#[test]
+fn execute_jump_skips_code() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // Push 42 first
+    let idx = chunk.add_constant(Object::Int(42)).unwrap();
+    chunk.write_constant(idx, 1);
+    // Jump forward 2 bytes (skip over the Pop instruction)
+    chunk.write_op_u16(OpCode::Jump, 1, 1);
+    // This Pop should be skipped
+    chunk.write_opcode(OpCode::Pop, 1);
+    // Return (should return 42 since Pop was skipped)
+    chunk.write_opcode(OpCode::Return, 1);
+
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Int(42));
+}
+
+// ── VM: Float negate ───────────────────────────────────────────────────
+
+#[test]
+fn execute_negate_float() {
+    let result = run_ok("return -2.5");
+    assert_eq!(result, Object::Float(-2.5));
+}
+
+// ── VM: Mixed type arithmetic errors ───────────────────────────────────
+
+#[test]
+fn execute_add_type_error() {
+    let result = run("return true + 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_subtract_type_error() {
+    let result = run("return \"hello\" - 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_multiply_type_error() {
+    let result = run("return nil * 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_modulo_by_zero_error() {
+    let result = run("return 10 % 0");
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("Modulo by zero"), "Error was: {}", err);
+}
+
+#[test]
+fn execute_modulo_type_error() {
+    let result = run("return \"hello\" % 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_compare_type_error() {
+    let result = run("return \"hello\" < 1");
+    assert!(result.is_err());
+}
+
+// ── Float-Int mixed arithmetic (covers reverse operand paths) ───────
+
+#[test]
+fn execute_float_plus_int() {
+    let result = run_ok("return 2.5 + 1");
+    assert_eq!(result, Object::Float(3.5));
+}
+
+#[test]
+fn execute_float_minus_int() {
+    let result = run_ok("return 5.5 - 2");
+    assert_eq!(result, Object::Float(3.5));
+}
+
+#[test]
+fn execute_float_times_int() {
+    let result = run_ok("return 2.5 * 4");
+    assert_eq!(result, Object::Float(10.0));
+}
+
+#[test]
+fn execute_float_div_int() {
+    let result = run_ok("return 10.0 / 4");
+    assert_eq!(result, Object::Float(2.5));
+}
+
+#[test]
+fn execute_float_div_int_zero() {
+    let result = run("return 10.0 / 0");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_int_div_float_zero() {
+    let result = run("return 10 / 0.0");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_float_div_float_zero() {
+    let result = run("return 10.0 / 0.0");
+    assert!(result.is_err());
+}
+
+// ── Float comparisons ──────────────────────────────────────────────
+
+#[test]
+fn execute_float_less_int() {
+    let result = run_ok("return 1.5 < 2");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_float_greater_int() {
+    let result = run_ok("return 2.5 > 1");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_float_less_equal_int() {
+    let result = run_ok("return 2.0 <= 2");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_float_greater_equal_int() {
+    let result = run_ok("return 2.0 >= 2");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_float_float_comparison() {
+    let result = run_ok("return 1.5 < 2.5");
+    assert_eq!(result, Object::Bool(true));
+}
+
+// ── Additional type error paths ─────────────────────────────────────
+
+#[test]
+fn execute_bool_add_error() {
+    let result = run("return true + true");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_nil_subtract_error() {
+    let result = run("return nil - 1");
+    assert!(result.is_err());
+}
+
+// ── IndexSet and Hash with non-string key ───────────────────────────
+
+#[test]
+fn execute_array_index_set() {
+    let result = run_ok("a = [1, 2, 3]\na[0] = 99\nreturn a[0]");
+    assert_eq!(result, Object::Int(99));
+}
+
+#[test]
+fn execute_hash_with_non_string_key() {
+    // Hash keys that aren't strings get to_string'd
+    let chunk = {
+        let tokens = Lexer::new("return {1 => \"one\"}").tokenize();
+        let stmts = Parser::new(tokens)
+            .parse()
+            .map_err(|errs| {
+                errs.iter()
+                    .map(|e| e.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            })
+            .unwrap();
+        Compiler::new().compile(&stmts).unwrap()
+    };
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk);
+    assert!(result.is_ok());
+}
+
+// ── Index type error ────────────────────────────────────────────────
+
+#[test]
+fn execute_index_get_type_error() {
+    let result = run("return 42[0]");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_index_set_out_of_bounds() {
+    let result = run("a = [1]\na[5] = 99");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_index_set_type_error() {
+    let result = run("a = 42\na[0] = 1");
+    assert!(result.is_err());
+}
+
+// ── Dict index operations ───────────────────────────────────────────
+
+#[test]
+fn execute_dict_index_get() {
+    let result = run_ok("h = {\"a\" => 1}\nreturn h[\"a\"]");
+    assert_eq!(result, Object::Int(1));
+}
+
+#[test]
+fn execute_dict_index_get_missing() {
+    let result = run_ok("h = {\"a\" => 1}\nreturn h[\"z\"]");
+    assert_eq!(result, Object::Nil);
+}
+
+#[test]
+fn execute_dict_index_set() {
+    let result = run_ok("h = {\"a\" => 1}\nh[\"b\"] = 2\nreturn h[\"b\"]");
+    assert_eq!(result, Object::Int(2));
+}
+
+// ── Array negative index ────────────────────────────────────────────
+
+#[test]
+fn execute_array_negative_index() {
+    let result = run_ok("a = [10, 20, 30]\nreturn a[-1]");
+    assert_eq!(result, Object::Int(30));
+}

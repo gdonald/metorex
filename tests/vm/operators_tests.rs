@@ -282,3 +282,48 @@ fn int_float_comparison() {
     let result = run("2 >= 1.5");
     assert_eq!(result, Some(Object::Bool(true)));
 }
+
+// ── operators.rs: And/Or error path (lines 62-64) ───────────────────────────
+// These should never be reached in normal execution because And/Or are
+// handled by short-circuit evaluation. We cannot easily trigger them
+// through normal code execution, but we test the short-circuit paths work.
+
+#[test]
+fn logical_and_short_circuit() {
+    let result = run("false && 1 / 0");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn logical_or_short_circuit() {
+    let result = run("true || 1 / 0");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── operators.rs: assignment error path (lines 67-69) ───────────────────────
+// These should never be reached because assignments are handled by
+// statement execution. We test that normal assignments work.
+
+#[test]
+fn add_assign_operator() {
+    let result = run("x = 5\nx += 3\nx");
+    assert_eq!(result, Some(Object::Int(8)));
+}
+
+#[test]
+fn subtract_assign_operator() {
+    let result = run("x = 10\nx -= 3\nx");
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn multiply_assign_operator() {
+    let result = run("x = 4\nx *= 3\nx");
+    assert_eq!(result, Some(Object::Int(12)));
+}
+
+#[test]
+fn divide_assign_operator() {
+    let result = run("x = 12\nx /= 4\nx");
+    assert_eq!(result, Some(Object::Int(3)));
+}

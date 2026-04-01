@@ -522,3 +522,343 @@ fn compile_function_call_multi_args() {
     let ops = opcodes(&chunk);
     assert!(ops.contains(&OpCode::Call));
 }
+
+// ── Empty interpolation parts (expressions.rs line 55) ────────────────
+
+#[test]
+fn compile_interpolated_string_with_text_and_expr() {
+    let chunk = compile("\"hello #{1} world\"");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::Constant));
+    assert!(ops.contains(&OpCode::Add));
+}
+
+#[test]
+fn compile_interpolated_string_empty_parts_via_ast() {
+    // Directly construct an InterpolatedString with zero parts to hit line 55
+    use metorex::ast::{Expression, Statement};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let expr = Expression::InterpolatedString {
+        parts: vec![],
+        position: pos,
+    };
+    let stmt = Statement::Expression {
+        expression: expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let chunk = compiler.compile(&[stmt]).expect("compile failed");
+    // Should emit a constant empty string
+    assert!(!chunk.is_empty());
+    let mut found_empty_string = false;
+    for i in 0..chunk.constants_count() {
+        if let Object::String(s) = chunk.get_constant(i)
+            && s.is_empty()
+        {
+            found_empty_string = true;
+            break;
+        }
+    }
+    assert!(
+        found_empty_string,
+        "Empty InterpolatedString should produce empty string constant"
+    );
+}
+
+// ── Assignment operator error in expression context (expressions.rs lines 167-169) ──
+
+#[test]
+fn compile_assign_op_in_expression_context_errors() {
+    // Directly construct AST with BinaryOp::Assign in expression position
+    use metorex::ast::{BinaryOp, Expression};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let expr = Expression::BinaryOp {
+        op: BinaryOp::Assign,
+        left: Box::new(Expression::Identifier {
+            name: "x".to_string(),
+            position: pos,
+        }),
+        right: Box::new(Expression::IntLiteral {
+            value: 1,
+            position: pos,
+        }),
+        position: pos,
+    };
+    let stmt = metorex::ast::Statement::Expression {
+        expression: expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(
+        err.contains("Assignment operators should be handled as statements"),
+        "Error was: {}",
+        err
+    );
+}
+
+#[test]
+fn compile_add_assign_op_in_expression_context_errors() {
+    use metorex::ast::{BinaryOp, Expression};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let expr = Expression::BinaryOp {
+        op: BinaryOp::AddAssign,
+        left: Box::new(Expression::Identifier {
+            name: "x".to_string(),
+            position: pos,
+        }),
+        right: Box::new(Expression::IntLiteral {
+            value: 1,
+            position: pos,
+        }),
+        position: pos,
+    };
+    let stmt = metorex::ast::Statement::Expression {
+        expression: expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn compile_subtract_assign_op_in_expression_context_errors() {
+    use metorex::ast::{BinaryOp, Expression};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let expr = Expression::BinaryOp {
+        op: BinaryOp::SubtractAssign,
+        left: Box::new(Expression::Identifier {
+            name: "x".to_string(),
+            position: pos,
+        }),
+        right: Box::new(Expression::IntLiteral {
+            value: 1,
+            position: pos,
+        }),
+        position: pos,
+    };
+    let stmt = metorex::ast::Statement::Expression {
+        expression: expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn compile_multiply_assign_op_in_expression_context_errors() {
+    use metorex::ast::{BinaryOp, Expression};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let expr = Expression::BinaryOp {
+        op: BinaryOp::MultiplyAssign,
+        left: Box::new(Expression::Identifier {
+            name: "x".to_string(),
+            position: pos,
+        }),
+        right: Box::new(Expression::IntLiteral {
+            value: 1,
+            position: pos,
+        }),
+        position: pos,
+    };
+    let stmt = metorex::ast::Statement::Expression {
+        expression: expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn compile_divide_assign_op_in_expression_context_errors() {
+    use metorex::ast::{BinaryOp, Expression};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let expr = Expression::BinaryOp {
+        op: BinaryOp::DivideAssign,
+        left: Box::new(Expression::Identifier {
+            name: "x".to_string(),
+            position: pos,
+        }),
+        right: Box::new(Expression::IntLiteral {
+            value: 1,
+            position: pos,
+        }),
+        position: pos,
+    };
+    let stmt = metorex::ast::Statement::Expression {
+        expression: expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+}
+
+// ── Range compilation (expressions.rs lines 270-274) ────────────────────
+
+#[test]
+fn compile_range_inclusive_produces_call() {
+    let chunk = compile("1..10");
+    let ops = opcodes(&chunk);
+    // Range compiles to: start, end, bool(exclusive), Call 3
+    assert!(ops.contains(&OpCode::Call));
+}
+
+#[test]
+fn compile_range_exclusive_produces_call() {
+    let chunk = compile("1...10");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::Call));
+}
+
+#[test]
+fn compile_range_inclusive_has_false_exclusive() {
+    let chunk = compile("1..5");
+    // The exclusive flag for inclusive range should be false
+    let mut found_false = false;
+    for i in 0..chunk.constants_count() {
+        if *chunk.get_constant(i) == Object::Bool(false) {
+            found_false = true;
+            break;
+        }
+    }
+    assert!(
+        found_false,
+        "Inclusive range should have Bool(false) constant"
+    );
+}
+
+#[test]
+fn compile_range_exclusive_has_true_exclusive() {
+    let chunk = compile("1...5");
+    // The exclusive flag for exclusive range should be true
+    let mut found_true = false;
+    for i in 0..chunk.constants_count() {
+        if *chunk.get_constant(i) == Object::Bool(true) {
+            found_true = true;
+            break;
+        }
+    }
+    assert!(
+        found_true,
+        "Exclusive range should have Bool(true) constant"
+    );
+}
+
+// ── If expression not implemented (expressions.rs line 359) ─────────────
+
+#[test]
+fn compile_if_expression_not_implemented() {
+    use metorex::ast::{Expression, Statement};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let if_expr = Expression::If {
+        condition: Box::new(Expression::BoolLiteral {
+            value: true,
+            position: pos,
+        }),
+        then_branch: vec![Statement::Expression {
+            expression: Expression::IntLiteral {
+                value: 1,
+                position: pos,
+            },
+            position: pos,
+        }],
+        elsif_branches: vec![],
+        else_branch: None,
+        position: pos,
+    };
+    let stmt = Statement::Expression {
+        expression: if_expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("not yet implemented"), "Error was: {}", err);
+}
+
+// ── Unless expression not implemented (expressions.rs line 360) ─────────
+
+#[test]
+fn compile_unless_expression_not_implemented() {
+    use metorex::ast::{Expression, Statement};
+    use metorex::lexer::token::Position;
+
+    let pos = Position {
+        line: 1,
+        column: 1,
+        offset: 0,
+    };
+    let unless_expr = Expression::Unless {
+        condition: Box::new(Expression::BoolLiteral {
+            value: true,
+            position: pos,
+        }),
+        then_branch: vec![Statement::Expression {
+            expression: Expression::IntLiteral {
+                value: 1,
+                position: pos,
+            },
+            position: pos,
+        }],
+        else_branch: None,
+        position: pos,
+    };
+    let stmt = Statement::Expression {
+        expression: unless_expr,
+        position: pos,
+    };
+    let compiler = Compiler::new();
+    let result = compiler.compile(&[stmt]);
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("not yet implemented"), "Error was: {}", err);
+}

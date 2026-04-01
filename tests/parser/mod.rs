@@ -2,6 +2,7 @@ mod parser_call_tests;
 mod parser_case_tests;
 mod parser_class_module_tests;
 mod parser_control_flow_body_tests;
+mod parser_coverage_tests;
 mod parser_error_recovery_tests;
 mod parser_exception_tests;
 mod parser_for_tests;

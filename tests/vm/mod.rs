@@ -1,3 +1,5 @@
+mod additional_coverage_tests;
+mod builtin_classes_coverage_tests;
 mod class_execution_coverage_tests;
 mod control_coverage_tests;
 mod core_coverage_tests;

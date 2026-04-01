@@ -1,4 +1,5 @@
 mod basics;
+mod coverage;
 mod errors;
 mod identifiers;
 mod integration;
