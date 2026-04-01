@@ -80,6 +80,8 @@ impl Compiler {
                 let line = Self::pos_line(position);
                 if let Some(slot) = self.resolve_local(name) {
                     self.emit_op_u8(OpCode::GetLocal, slot, line);
+                } else if let Some(uv) = self.resolve_upvalue(name) {
+                    self.emit_op_u8(OpCode::GetUpvalue, uv, line);
                 } else {
                     let idx = self.identifier_constant(name)?;
                     self.emit_op_u8(OpCode::GetGlobal, idx, line);

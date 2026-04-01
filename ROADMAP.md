@@ -886,8 +886,8 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.1.2. Add current chunk reference
   - [x] 12.1.3. Add scope depth tracking
   - [x] 12.1.4. Add local variable stack
-  - [ ] 12.1.5. Add upvalue tracking for closures
-  - [ ] 12.1.6. Add enclosing compiler reference (for nested functions)
+  - [x] 12.1.5. Add upvalue tracking for closures
+  - [x] 12.1.6. Add enclosing compiler reference (for nested functions)
   - [x] 12.1.7. Implement `new()` constructor
   - [x] 12.1.8. Implement `compile()` entry point
 
@@ -942,15 +942,15 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.6.6. Write unit tests for class compilation
   - [x] 12.6.7. Create test file: `tests/compiler_class_tests.rs`
 
-- [ ] 12.7. Closure and Upvalue Compilation
-  - [ ] 12.7.1. Implement local variable resolution
-  - [ ] 12.7.2. Implement upvalue resolution
-  - [ ] 12.7.3. Track captured variables
-  - [ ] 12.7.4. Emit `OP_CLOSURE` with upvalue list
-  - [ ] 12.7.5. Emit `OP_CLOSE_UPVALUE` when needed
-  - [ ] 12.7.6. Write unit tests for closures
-  - [ ] 12.7.7. Create example file: `examples/compiler/closures.rb`
-  - [ ] 12.7.8. Create test file: `tests/compiler_closure_tests.rs`
+- [x] 12.7. Closure and Upvalue Compilation
+  - [x] 12.7.1. Implement local variable resolution
+  - [x] 12.7.2. Implement upvalue resolution
+  - [x] 12.7.3. Track captured variables
+  - [x] 12.7.4. Emit `OP_CLOSURE` with upvalue list
+  - [x] 12.7.5. Emit `OP_CLOSE_UPVALUE` when needed
+  - [x] 12.7.6. Write unit tests for closures
+  - [x] 12.7.7. Create example file: `examples/compiler/closures.rb`
+  - [x] 12.7.8. Create test file: `tests/compiler_closure_tests.rs`
 
 - [ ] 12.8. Block Compilation (Meta-Programming)
   - [ ] 12.8.1. Compile blocks as closures

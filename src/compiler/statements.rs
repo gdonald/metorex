@@ -7,7 +7,7 @@ use crate::bytecode::opcode::OpCode;
 use crate::error::{MetorexError, SourceLocation};
 use crate::object::{CompiledFunction, Object};
 
-use super::Compiler;
+use super::{Compiler, Upvalue};
 
 impl Compiler {
     /// Compile a single statement.
@@ -31,6 +31,8 @@ impl Compiler {
                     Expression::Identifier { name, .. } => {
                         if let Some(slot) = self.resolve_local(name) {
                             self.emit_op_u8(OpCode::SetLocal, slot, line);
+                        } else if let Some(uv) = self.resolve_upvalue(name) {
+                            self.emit_op_u8(OpCode::SetUpvalue, uv, line);
                         } else if self.scope_depth > 0 {
                             // New local variable in a local scope
                             self.add_local(name.clone());
@@ -368,9 +370,16 @@ impl Compiler {
                 position,
             } => {
                 let line = Self::pos_line(position);
-                let func = Self::compile_function_body(name, parameters, body)?;
+                let (func, upvalues) = self.compile_function_body(name, parameters, body)?;
                 let func_obj = Object::CompiledFunction(Rc::new(func));
                 self.emit_constant(func_obj, line)?;
+                if !upvalues.is_empty() {
+                    self.emit_op_u8(OpCode::Closure, upvalues.len() as u8, line);
+                    for uv in &upvalues {
+                        self.chunk.write_byte(u8::from(uv.is_local), line);
+                        self.chunk.write_byte(uv.index, line);
+                    }
+                }
                 let name_idx = self.identifier_constant(name)?;
                 self.emit_op_u8(OpCode::DefineGlobal, name_idx, line);
                 Ok(())
@@ -383,9 +392,16 @@ impl Compiler {
                 position,
             } => {
                 let line = Self::pos_line(position);
-                let func = Self::compile_function_body(name, parameters, body)?;
+                let (func, upvalues) = self.compile_function_body(name, parameters, body)?;
                 let func_obj = Object::CompiledFunction(Rc::new(func));
                 self.emit_constant(func_obj, line)?;
+                if !upvalues.is_empty() {
+                    self.emit_op_u8(OpCode::Closure, upvalues.len() as u8, line);
+                    for uv in &upvalues {
+                        self.chunk.write_byte(u8::from(uv.is_local), line);
+                        self.chunk.write_byte(uv.index, line);
+                    }
+                }
                 let name_idx = self.identifier_constant(name)?;
                 self.emit_op_u8(OpCode::Method, name_idx, line);
                 Ok(())
@@ -440,15 +456,17 @@ impl Compiler {
         }
     }
 
-    /// Compile a function/method body into a `CompiledFunction`.
+    /// Compile a function/method body into a `CompiledFunction` and its upvalues.
     ///
-    /// Creates a nested compiler, adds parameters as locals at slot 0+,
-    /// compiles the body, and emits an implicit return.
+    /// Creates a nested compiler with access to the enclosing compiler's locals
+    /// for upvalue resolution. Adds parameters as locals, compiles the body,
+    /// emits an implicit return, and returns the upvalue list for OP_CLOSURE.
     fn compile_function_body(
+        &mut self,
         name: &str,
         parameters: &[Parameter],
         body: &[Statement],
-    ) -> Result<CompiledFunction, MetorexError> {
+    ) -> Result<(CompiledFunction, Vec<Upvalue>), MetorexError> {
         let arity = parameters
             .iter()
             .filter(|p| !p.is_variadic && !p.is_keyword && !p.is_block)
@@ -456,6 +474,8 @@ impl Compiler {
 
         let mut func_compiler = Compiler::new();
         func_compiler.scope_depth = 1; // function body is a local scope
+        func_compiler.enclosing_locals = Some(self.locals.clone());
+        func_compiler.enclosing_upvalues = Some(self.upvalues.clone());
 
         // Add parameters as locals (they occupy the first stack slots)
         for param in parameters {
@@ -472,8 +492,19 @@ impl Compiler {
         func_compiler.emit_op(OpCode::Nil, 0);
         func_compiler.emit_op(OpCode::Return, 0);
 
+        // Copy back capture flags to the enclosing compiler's locals
+        if let Some(ref enclosing) = func_compiler.enclosing_locals {
+            for (i, local) in enclosing.iter().enumerate() {
+                if local.is_captured && i < self.locals.len() {
+                    self.locals[i].is_captured = true;
+                }
+            }
+        }
+
+        let upvalues = func_compiler.upvalues;
+
         let mut func = CompiledFunction::new(name.to_string(), arity);
         func.chunk = func_compiler.chunk;
-        Ok(func)
+        Ok((func, upvalues))
     }
 }
