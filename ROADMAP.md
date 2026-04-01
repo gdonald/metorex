@@ -913,15 +913,15 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.3.6. Write unit tests for statement compilation
   - [x] 12.3.7. Create test file: `tests/compiler_statement_tests.rs`
 
-- [ ] 12.4. Control Flow Compilation
-  - [ ] 12.4.1. Implement if/else compilation with jumps
-  - [ ] 12.4.2. Implement while loop compilation
-  - [ ] 12.4.3. Implement for loop compilation
-  - [ ] 12.4.4. Implement break statement compilation
-  - [ ] 12.4.5. Implement continue statement compilation
-  - [ ] 12.4.6. Implement jump patching
-  - [ ] 12.4.7. Write unit tests for control flow compilation
-  - [ ] 12.4.8. Create test file: `tests/compiler_control_flow_tests.rs`
+- [x] 12.4. Control Flow Compilation
+  - [x] 12.4.1. Implement if/else compilation with jumps
+  - [x] 12.4.2. Implement while loop compilation
+  - [x] 12.4.3. Implement for loop compilation
+  - [x] 12.4.4. Implement break statement compilation
+  - [x] 12.4.5. Implement continue statement compilation
+  - [x] 12.4.6. Implement jump patching
+  - [x] 12.4.7. Write unit tests for control flow compilation
+  - [x] 12.4.8. Create test file: `tests/compiler_control_flow_tests.rs`
 
 - [ ] 12.5. Function and Method Compilation
   - [ ] 12.5.1. Implement function definition compilation

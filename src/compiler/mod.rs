@@ -20,6 +20,17 @@ pub struct Local {
     pub depth: i32, // -1 means "declared but not yet defined"
 }
 
+/// Tracks a loop being compiled so break/continue know where to jump.
+#[derive(Debug, Clone)]
+struct LoopContext {
+    /// Bytecode offset of the loop start (for continue / Loop instruction).
+    start: usize,
+    /// Scope depth when the loop began (so break/continue can pop locals).
+    scope_depth: i32,
+    /// Placeholder offsets for break jumps that need to be patched at loop end.
+    break_jumps: Vec<usize>,
+}
+
 /// Compiler state for producing bytecode from an AST.
 pub struct Compiler {
     /// The chunk being compiled into.
@@ -30,6 +41,9 @@ pub struct Compiler {
 
     /// Current scope depth (0 = global).
     scope_depth: i32,
+
+    /// Stack of active loops (for break/continue).
+    loop_stack: Vec<LoopContext>,
 }
 
 impl Compiler {
@@ -39,6 +53,7 @@ impl Compiler {
             chunk: Chunk::new(),
             locals: Vec::new(),
             scope_depth: 0,
+            loop_stack: Vec::new(),
         }
     }
 
@@ -94,6 +109,39 @@ impl Compiler {
         None
     }
 
+    // ── Loop management ─────────────────────────────────────────────────
+
+    fn begin_loop(&mut self, start: usize) {
+        self.loop_stack.push(LoopContext {
+            start,
+            scope_depth: self.scope_depth,
+            break_jumps: Vec::new(),
+        });
+    }
+
+    fn end_loop(&mut self) -> LoopContext {
+        self.loop_stack.pop().expect("end_loop without begin_loop")
+    }
+
+    /// Emit Pop instructions for locals between the current scope and the
+    /// loop's scope depth (used by break/continue to clean up the stack).
+    fn emit_pops_to_loop_scope(&mut self, line: usize) {
+        let loop_depth = self
+            .loop_stack
+            .last()
+            .expect("emit_pops_to_loop_scope outside loop")
+            .scope_depth;
+        let pop_count = self
+            .locals
+            .iter()
+            .rev()
+            .take_while(|local| local.depth > loop_depth)
+            .count();
+        for _ in 0..pop_count {
+            self.emit_op(OpCode::Pop, line);
+        }
+    }
+
     // ── Emitters ────────────────────────────────────────────────────────
 
     fn emit_op(&mut self, op: OpCode, line: usize) {
@@ -133,7 +181,6 @@ impl Compiler {
     }
 
     /// Emit a loop instruction that jumps backward.
-    #[allow(dead_code)]
     fn emit_loop(&mut self, loop_start: usize, line: usize) {
         let offset = self.chunk.len() - loop_start + 3; // +3 for the Loop opcode + u16
         self.emit_op_u16(OpCode::Loop, offset as u16, line);
