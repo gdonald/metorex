@@ -970,70 +970,70 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
 
 ### 13. Bytecode Virtual Machine
 
-- [ ] 13.1. Stack-Based VM Structure
-  - [ ] 13.1.1. Refactor `VirtualMachine` for bytecode execution
-  - [ ] 13.1.2. Add value stack (`Vec<Object>`)
-  - [ ] 13.1.3. Add call frame stack
-  - [ ] 13.1.4. Add instruction pointer (IP)
-  - [ ] 13.1.5. Add globals table
-  - [ ] 13.1.6. Add open upvalues list
-  - [ ] 13.1.7. Initialize stack with capacity
-  - [ ] 13.1.8. Implement stack operations (push, pop, peek)
+- [x] 13.1. Stack-Based VM Structure
+  - [x] 13.1.1. Refactor `VirtualMachine` for bytecode execution
+  - [x] 13.1.2. Add value stack (`Vec<Object>`)
+  - [x] 13.1.3. Add call frame stack
+  - [x] 13.1.4. Add instruction pointer (IP)
+  - [x] 13.1.5. Add globals table
+  - [x] 13.1.6. Add open upvalues list
+  - [x] 13.1.7. Initialize stack with capacity
+  - [x] 13.1.8. Implement stack operations (push, pop, peek)
 
-- [ ] 13.2. Call Frame Implementation
-  - [ ] 13.2.1. Define `CallFrame` struct
-  - [ ] 13.2.2. Add closure/function reference
-  - [ ] 13.2.3. Add instruction pointer
-  - [ ] 13.2.4. Add stack slot offset
-  - [ ] 13.2.5. Implement frame push/pop operations
-  - [ ] 13.2.6. Write unit tests for call frames
-  - [ ] 13.2.7. Create test file: `tests/call_frame_tests.rs`
+- [x] 13.2. Call Frame Implementation
+  - [x] 13.2.1. Define `CallFrame` struct
+  - [x] 13.2.2. Add closure/function reference
+  - [x] 13.2.3. Add instruction pointer
+  - [x] 13.2.4. Add stack slot offset
+  - [x] 13.2.5. Implement frame push/pop operations
+  - [x] 13.2.6. Write unit tests for call frames
+  - [x] 13.2.7. Create test file: `tests/call_frame_tests.rs`
 
-- [ ] 13.3. Bytecode Execution Loop
-  - [ ] 13.3.1. Implement main `run()` loop
-  - [ ] 13.3.2. Fetch-decode-execute cycle
-  - [ ] 13.3.3. Read instruction at IP
-  - [ ] 13.3.4. Dispatch to instruction handler
-  - [ ] 13.3.5. Advance IP
-  - [ ] 13.3.6. Handle errors and exceptions
-  - [ ] 13.3.7. Add execution tracing for debugging
+- [x] 13.3. Bytecode Execution Loop
+  - [x] 13.3.1. Implement main `run()` loop
+  - [x] 13.3.2. Fetch-decode-execute cycle
+  - [x] 13.3.3. Read instruction at IP
+  - [x] 13.3.4. Dispatch to instruction handler
+  - [x] 13.3.5. Advance IP
+  - [x] 13.3.6. Handle errors and exceptions
+  - [x] 13.3.7. Add execution tracing for debugging
 
-- [ ] 13.4. Basic Instruction Execution
-  - [ ] 13.4.1. Implement `OP_CONSTANT` execution
-  - [ ] 13.4.2. Implement `OP_NIL`, `OP_TRUE`, `OP_FALSE` execution
-  - [ ] 13.4.3. Implement `OP_POP` execution
-  - [ ] 13.4.4. Implement arithmetic operations
-  - [ ] 13.4.5. Implement comparison operations
-  - [ ] 13.4.6. Implement unary operations
-  - [ ] 13.4.7. Write unit tests for basic instructions
-  - [ ] 13.4.8. Create test file: `tests/vm_basic_instructions_tests.rs`
+- [x] 13.4. Basic Instruction Execution
+  - [x] 13.4.1. Implement `OP_CONSTANT` execution
+  - [x] 13.4.2. Implement `OP_NIL`, `OP_TRUE`, `OP_FALSE` execution
+  - [x] 13.4.3. Implement `OP_POP` execution
+  - [x] 13.4.4. Implement arithmetic operations
+  - [x] 13.4.5. Implement comparison operations
+  - [x] 13.4.6. Implement unary operations
+  - [x] 13.4.7. Write unit tests for basic instructions
+  - [x] 13.4.8. Create test file: `tests/vm_basic_instructions_tests.rs`
 
-- [ ] 13.5. Variable Access Execution
-  - [ ] 13.5.1. Implement `OP_GET_LOCAL` execution
-  - [ ] 13.5.2. Implement `OP_SET_LOCAL` execution
-  - [ ] 13.5.3. Implement `OP_GET_GLOBAL` execution
-  - [ ] 13.5.4. Implement `OP_SET_GLOBAL` execution
-  - [ ] 13.5.5. Implement `OP_DEFINE_GLOBAL` execution
-  - [ ] 13.5.6. Write unit tests for variable access
-  - [ ] 13.5.7. Create test file: `tests/vm_variable_tests.rs`
+- [x] 13.5. Variable Access Execution
+  - [x] 13.5.1. Implement `OP_GET_LOCAL` execution
+  - [x] 13.5.2. Implement `OP_SET_LOCAL` execution
+  - [x] 13.5.3. Implement `OP_GET_GLOBAL` execution
+  - [x] 13.5.4. Implement `OP_SET_GLOBAL` execution
+  - [x] 13.5.5. Implement `OP_DEFINE_GLOBAL` execution
+  - [x] 13.5.6. Write unit tests for variable access
+  - [x] 13.5.7. Create test file: `tests/vm_variable_tests.rs`
 
-- [ ] 13.6. Control Flow Execution
-  - [ ] 13.6.1. Implement `OP_JUMP` execution
-  - [ ] 13.6.2. Implement `OP_JUMP_IF_FALSE` execution
-  - [ ] 13.6.3. Implement `OP_LOOP` execution
-  - [ ] 13.6.4. Write unit tests for control flow
-  - [ ] 13.6.5. Create test file: `tests/vm_control_flow_tests.rs`
+- [x] 13.6. Control Flow Execution
+  - [x] 13.6.1. Implement `OP_JUMP` execution
+  - [x] 13.6.2. Implement `OP_JUMP_IF_FALSE` execution
+  - [x] 13.6.3. Implement `OP_LOOP` execution
+  - [x] 13.6.4. Write unit tests for control flow
+  - [x] 13.6.5. Create test file: `tests/vm_control_flow_tests.rs`
 
-- [ ] 13.7. Function Call Execution
-  - [ ] 13.7.1. Implement `OP_CALL` execution
-  - [ ] 13.7.2. Create new call frame
-  - [ ] 13.7.3. Bind arguments to parameters
-  - [ ] 13.7.4. Handle argument count mismatches
-  - [ ] 13.7.5. Implement `OP_RETURN` execution
-  - [ ] 13.7.6. Pop call frame and restore IP
-  - [ ] 13.7.7. Return value to caller
-  - [ ] 13.7.8. Write unit tests for function calls
-  - [ ] 13.7.9. Create test file: `tests/vm_function_call_tests.rs`
+- [x] 13.7. Function Call Execution
+  - [x] 13.7.1. Implement `OP_CALL` execution
+  - [x] 13.7.2. Create new call frame
+  - [x] 13.7.3. Bind arguments to parameters
+  - [x] 13.7.4. Handle argument count mismatches
+  - [x] 13.7.5. Implement `OP_RETURN` execution
+  - [x] 13.7.6. Pop call frame and restore IP
+  - [x] 13.7.7. Return value to caller
+  - [x] 13.7.8. Write unit tests for function calls
+  - [x] 13.7.9. Create test file: `tests/vm_function_call_tests.rs`
 
 - [ ] 13.8. Closure and Upvalue Execution
   - [ ] 13.8.1. Implement `OP_CLOSURE` execution
@@ -1057,13 +1057,13 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [ ] 13.9.8. Write unit tests for OOP
   - [ ] 13.9.9. Create test file: `tests/vm_oop_tests.rs`
 
-- [ ] 13.10. Collection Execution
-  - [ ] 13.10.1. Implement `OP_ARRAY` execution
-  - [ ] 13.10.2. Implement `OP_HASH` execution
-  - [ ] 13.10.3. Implement `OP_INDEX_GET` execution
-  - [ ] 13.10.4. Implement `OP_INDEX_SET` execution
-  - [ ] 13.10.5. Write unit tests for collections
-  - [ ] 13.10.6. Create test file: `tests/vm_collections_tests.rs`
+- [x] 13.10. Collection Execution
+  - [x] 13.10.1. Implement `OP_ARRAY` execution
+  - [x] 13.10.2. Implement `OP_HASH` execution
+  - [x] 13.10.3. Implement `OP_INDEX_GET` execution
+  - [x] 13.10.4. Implement `OP_INDEX_SET` execution
+  - [x] 13.10.5. Write unit tests for collections
+  - [x] 13.10.6. Create test file: `tests/vm_collections_tests.rs`
 
 ### 14. Advanced Meta-Programming (Bytecode Era)
 
