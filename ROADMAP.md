@@ -960,13 +960,13 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 12.8.5. Write unit tests for block compilation
   - [x] 12.8.6. Create test file: `tests/compiler_block_tests.rs`
 
-- [ ] 12.9. Optimization Passes
-  - [ ] 12.9.1. Implement constant folding
-  - [ ] 12.9.2. Implement dead code elimination
-  - [ ] 12.9.3. Implement peephole optimization
-  - [ ] 12.9.4. Optimize tail calls
-  - [ ] 12.9.5. Write unit tests for optimizations
-  - [ ] 12.9.6. Create test file: `tests/compiler_optimization_tests.rs`
+- [x] 12.9. Optimization Passes
+  - [x] 12.9.1. Implement constant folding
+  - [x] 12.9.2. Implement dead code elimination
+  - [x] 12.9.3. Implement peephole optimization
+  - [x] 12.9.4. Optimize tail calls
+  - [x] 12.9.5. Write unit tests for optimizations
+  - [x] 12.9.6. Create test file: `tests/compiler_optimization_tests.rs`
 
 ### 13. Bytecode Virtual Machine
 

@@ -3,6 +3,7 @@
 // Walks the AST and emits bytecode instructions into a Chunk.
 
 mod expressions;
+pub mod optimizer;
 mod statements;
 
 use crate::ast::Statement;
@@ -88,6 +89,16 @@ impl Compiler {
             self.compile_statement(stmt)?;
         }
         self.emit_op(OpCode::Return, 0);
+        Ok(self.chunk)
+    }
+
+    /// Compile a list of statements with optimization passes enabled.
+    pub fn compile_optimized(mut self, program: &[Statement]) -> Result<Chunk, MetorexError> {
+        for stmt in program {
+            self.compile_statement(stmt)?;
+        }
+        self.emit_op(OpCode::Return, 0);
+        optimizer::optimize(&mut self.chunk);
         Ok(self.chunk)
     }
 
