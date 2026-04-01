@@ -248,3 +248,15 @@ fn jump_patch_workflow() {
     // Verify the patched offset
     assert_eq!(chunk.read_u16(jump_offset), 2); // skip 2 bytes (Nil + Pop)
 }
+
+// ── add_constant many constants (chunk.rs line 67) ─────────────────────────
+
+#[test]
+fn chunk_add_many_constants() {
+    let mut chunk = Chunk::new();
+    for i in 0..100 {
+        let idx = chunk.add_constant(metorex::object::Object::Int(i));
+        assert!(idx.is_some());
+        assert_eq!(idx.unwrap(), i as u16);
+    }
+}

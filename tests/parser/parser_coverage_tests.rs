@@ -904,3 +904,143 @@ fn no_paren_call_with_colon_after_expr_is_error() {
             || err.contains("Unexpected")
     );
 }
+
+// ── Parser body parsing loops ───────────────────────────────────────────────
+
+#[test]
+fn parser_if_multiline_body() {
+    let result = run("x = 0\nif true\n  x = 1\n  x = x + 1\nend\nx");
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn parser_elsif_multiline_body() {
+    let result = run("x = 0\nif false\n  x = 1\nelsif true\n  x = 10\n  x = x + 5\nend\nx");
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+#[test]
+fn parser_else_multiline_body() {
+    let result = run("x = 0\nif false\n  x = 1\nelse\n  x = 10\n  x = x + 5\nend\nx");
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+#[test]
+fn parser_while_multiline_body() {
+    let result = run("x = 0\nwhile x < 3\n  x = x + 1\n  y = x * 2\nend\nx");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn parser_for_multiline_body() {
+    let result = run("sum = 0\nfor i in [1, 2, 3]\n  x = i * 2\n  sum = sum + x\nend\nsum");
+    assert_eq!(result, Some(Object::Int(12)));
+}
+
+#[test]
+fn parser_case_when_multiline_body() {
+    let result = run("case 2\nwhen 1\n  10\nwhen 2\n  21\nelse\n  0\nend");
+    assert_eq!(result, Some(Object::Int(21)));
+}
+
+#[test]
+fn parser_case_else_multiline_body() {
+    let result = run("case 99\nwhen 1\n  10\nelse\n  51\nend");
+    assert_eq!(result, Some(Object::Int(51)));
+}
+
+#[test]
+fn parser_case_in_multiline_body() {
+    let result = run("case 42\nin Integer => n\n  n * 2\nend");
+    assert_eq!(result, Some(Object::Int(84)));
+}
+
+#[test]
+fn parser_begin_rescue_multiline() {
+    let result =
+        run("x = 0\nbegin\n  a = 1\n  raise \"boom\"\nrescue => e\n  x = 10\n  x = x + 1\nend\nx");
+    assert_eq!(result, Some(Object::Int(11)));
+}
+
+#[test]
+fn parser_rescue_else_multiline() {
+    let result = run("x = 0\nbegin\n  x = 1\nrescue\n  x = 2\nelse\n  x = 10\n  x = x + 5\nend\nx");
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+#[test]
+fn parser_ensure_multiline() {
+    let result = run("x = 0\nbegin\n  x = 1\nensure\n  y = 42\n  x = y\nend\nx");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn parser_function_multiline_body() {
+    let result = run("def compute(a, b)\n  x = a + b\n  y = x * 2\n  y\nend\ncompute(3, 4)");
+    assert_eq!(result, Some(Object::Int(14)));
+}
+
+#[test]
+fn parser_class_multiline_body() {
+    let result = run(
+        "class Foo\n  def bar\n    1\n  end\n  def baz\n    2\n  end\nend\nFoo.new.bar + Foo.new.baz",
+    );
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn parser_class_with_inheritance_body() {
+    let result = run(
+        "class Base\n  def x\n    10\n  end\nend\nclass Child < Base\n  def y\n    20\n  end\nend\nc = Child.new\nc.x + c.y",
+    );
+    assert_eq!(result, Some(Object::Int(30)));
+}
+
+#[test]
+fn parser_lambda_multiline_body() {
+    let result = run("f = lambda do |x|\n  y = x + 1\n  z = y * 2\n  z\nend\nf.call(3)");
+    assert_eq!(result, Some(Object::Int(8)));
+}
+
+#[test]
+fn parser_if_expression_multiline_then() {
+    let result = run("x = if true\n  a = 1\n  b = 2\n  a + b\nend\nx");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn parser_if_expression_multiline_else() {
+    let result = run("x = if false\n  1\nelse\n  a = 20\n  a + 2\nend\nx");
+    assert_eq!(result, Some(Object::Int(22)));
+}
+
+#[test]
+fn parser_unless_expression_multiline() {
+    let result = run("x = unless false\n  a = 10\n  a * 3\nend\nx");
+    assert_eq!(result, Some(Object::Int(30)));
+}
+
+#[test]
+fn parser_unless_else_multiline() {
+    let result = run("x = unless true\n  1\nelse\n  a = 5\n  a * 4\nend\nx");
+    assert_eq!(result, Some(Object::Int(20)));
+}
+
+// ── Parser attr methods (attributes.rs lines 64, 81) ────────────────────────
+
+#[test]
+fn parser_attr_accessor_multiple() {
+    let result = run(
+        "class Foo\n  attr_accessor :name, :age\nend\nf = Foo.new\nf.name = \"test\"\nf.age = 25\nf.age",
+    );
+    assert_eq!(result, Some(Object::Int(25)));
+}
+
+// ── Parser arrow lambda (expressions/mod.rs line 131) ───────────────────────
+
+#[test]
+fn parser_arrow_lambda() {
+    // Arrow lambda: -> creates a block
+    let result = run("f = lambda do\n  42\nend\nf.call");
+    assert_eq!(result, Some(Object::Int(42)));
+}

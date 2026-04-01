@@ -189,3 +189,11 @@ end
         err.contains("Undefined") || err.contains("superclass") || err.contains("UndefinedClass")
     );
 }
+
+// ── define_method with closure capture (lines 284-299) ──────────────────────
+
+#[test]
+fn define_method_with_closure() {
+    let result = run("class Foo\n  define_method(\"val\") do\n    100\n  end\nend\nFoo.new.val");
+    assert_eq!(result, Some(Object::Int(100)));
+}

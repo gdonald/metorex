@@ -60,6 +60,44 @@ fn compile_string_literal() {
 }
 
 #[test]
+fn compile_symbol_literal() {
+    let chunk = compile(":hello");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_interpolated_string() {
+    let chunk = compile("x = 42\n\"value: #{x}\"");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_empty_interpolated_string() {
+    let chunk = compile("\"\"");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_instance_variable() {
+    let chunk = compile("@x");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::GetInstance));
+}
+
+#[test]
+fn compile_global_variable() {
+    let chunk = compile("$x");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::GetGlobal));
+}
+
+#[test]
+fn compile_class_variable() {
+    let chunk = compile("@@x");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
 fn compile_true() {
     let chunk = compile("true");
     let ops = opcodes(&chunk);
@@ -331,4 +369,163 @@ fn compile_return_with_value() {
     let ops = opcodes(&chunk);
     assert!(ops.contains(&OpCode::Constant));
     assert!(ops.contains(&OpCode::Return));
+}
+
+// ── Empty interpolated string (compiler/expressions.rs line 55) ─────────────
+
+#[test]
+fn compile_empty_string_literal() {
+    let chunk = compile("\"\"");
+    assert!(!chunk.is_empty());
+}
+
+// ── Identifier resolves globally (compiler/expressions.rs line 82) ──────────
+
+#[test]
+fn compile_global_identifier_resolves_globally() {
+    let chunk = compile("x = 1\nx");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::GetGlobal));
+}
+
+// ── Self expression (compiler/expressions.rs lines 268-272) ─────────────────
+
+#[test]
+fn compile_self_expression() {
+    let chunk = compile("self");
+    // self compiles to some opcode — just verify it produces output
+    assert!(!chunk.is_empty());
+}
+
+// ── Unimplemented expression types (compiler/expressions.rs lines 298-302) ──
+
+#[test]
+fn compile_super_not_implemented() {
+    let tokens = metorex::lexer::Lexer::new("super").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = metorex::compiler::Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(
+        err.contains("not yet implemented") || err.contains("Compilation"),
+        "Error was: {}",
+        err
+    );
+}
+
+#[test]
+fn compile_scope_resolution_not_implemented() {
+    let tokens = metorex::lexer::Lexer::new("Foo::Bar").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = metorex::compiler::Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(
+        err.contains("not yet implemented") || err.contains("Compilation"),
+        "Error was: {}",
+        err
+    );
+}
+
+#[test]
+fn compile_lambda_not_yet_implemented() {
+    let tokens = metorex::lexer::Lexer::new("lambda do |x| x end").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = metorex::compiler::Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(
+        err.contains("not yet implemented") || err.contains("Compilation"),
+        "Error was: {}",
+        err
+    );
+}
+
+#[test]
+fn compile_case_not_yet_implemented() {
+    let tokens = metorex::lexer::Lexer::new("x = case 1\nwhen 1\n  42\nend").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = metorex::compiler::Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(
+        err.contains("not yet implemented") || err.contains("Compilation"),
+        "Error was: {}",
+        err
+    );
+}
+
+// ── Statement compilation ──────────────────────────────────────────────
+
+#[test]
+fn compile_assignment() {
+    let chunk = compile("x = 42");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_instance_var_assignment() {
+    let chunk = compile("@x = 42");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::SetInstance));
+}
+
+#[test]
+fn compile_index_set() {
+    let chunk = compile("a = [1, 2, 3]\na[0] = 42");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::IndexSet));
+}
+
+#[test]
+fn compile_return_nil() {
+    let chunk = compile("return");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::Nil));
+    assert!(ops.contains(&OpCode::Return));
+}
+
+// ── Range ──────────────────────────────────────────────────────────────
+
+#[test]
+fn compile_range_inclusive() {
+    let chunk = compile("1..10");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_range_exclusive() {
+    let chunk = compile("1...10");
+    assert!(!chunk.is_empty());
+}
+
+// ── Fallthrough statement types ────────────────────────────────────────
+
+#[test]
+fn compile_if_statement_fallthrough() {
+    let chunk = compile("if true\n  42\nend");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_class_statement_fallthrough() {
+    let chunk = compile("class Foo\nend");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_def_statement_fallthrough() {
+    let chunk = compile("def foo\n  42\nend");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_while_statement_fallthrough() {
+    let chunk = compile("while false\n  42\nend");
+    assert!(!chunk.is_empty());
+}
+
+// ── Function call with multiple args ───────────────────────────────────
+
+#[test]
+fn compile_function_call_multi_args() {
+    let chunk = compile("puts(1, 2, 3)");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::Call));
 }

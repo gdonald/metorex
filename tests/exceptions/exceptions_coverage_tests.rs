@@ -204,3 +204,45 @@ end
     );
     assert!(err.contains("ensure") || err.contains("error") || err.contains("RuntimeError"));
 }
+
+// ── exception backtrace in method (exceptions.rs line 94) ───────────────────
+
+#[test]
+fn exception_backtrace_in_method() {
+    let result = run("def inner\n  raise \"deep\"\nend\n\
+         result = nil\nbegin\n  inner\nrescue => e\n  result = e.backtrace\nend\nresult");
+    assert!(result.is_some());
+}
+
+// ── exception non-matching rescue propagates (exceptions.rs line 227) ───────
+
+#[test]
+fn exception_non_matching_rescue_propagates() {
+    let err = run_err("begin\n  raise \"boom\"\nrescue ArgumentError\n  \"caught\"\nend");
+    assert!(
+        err.contains("boom") || err.contains("exception"),
+        "Error was: {}",
+        err
+    );
+}
+
+// ── exception to_s with backtrace (exception_methods.rs line 78) ────────────
+
+#[test]
+fn exception_to_s_with_backtrace() {
+    let result = run(
+        "result = nil\nbegin\n  raise \"test error\"\nrescue => e\n  result = e.to_s\nend\nresult",
+    );
+    match result {
+        Some(Object::String(s)) => assert!(s.contains("test error"), "Got: {}", s),
+        other => panic!("Expected String, got {:?}", other),
+    }
+}
+
+// ── exception backtrace None (exception_methods.rs line 52) ─────────────────
+
+#[test]
+fn exception_backtrace_none() {
+    let result = run("e = RuntimeError.new(\"test\")\nresult = e.backtrace\nresult");
+    assert!(result.is_some());
+}

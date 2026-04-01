@@ -111,3 +111,68 @@ fn require_relative_execute_file_error_propagates() {
     let msg = result.unwrap_err().to_string();
     assert!(msg.contains("require_relative") || msg.contains("error") || msg.contains("Error"));
 }
+
+// ── require_relative deduplication (lines 104-131) ──────────────────────
+
+#[test]
+fn require_relative_deduplication() {
+    let code = "a = require_relative(\"lib/helper\")\nb = require_relative(\"lib/helper\")\nb";
+    let tokens = metorex::lexer::Lexer::new(code).tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let mut vm = VirtualMachine::new();
+    let base = std::fs::canonicalize("tests/_examples/require/basic.rb").unwrap();
+    vm.set_current_file(base.clone());
+    vm.mark_file_loaded(base);
+    let result = vm.execute_program(&stmts);
+    assert!(result.is_ok());
+}
+
+// ── assert_equal (lines 178-192) ────────────────────────────────────────
+
+#[test]
+fn assert_equal_success() {
+    let result = run("assert_equal(1, 1)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn assert_equal_failure() {
+    let err = run_err("assert_equal(1, 2)");
+    assert!(
+        err.contains("Expected") || err.contains("got"),
+        "Error was: {}",
+        err
+    );
+}
+
+#[test]
+fn assert_equal_with_message() {
+    let err = run_err("assert_equal(1, 2, \"custom msg\")");
+    assert!(err.contains("custom msg"), "Error was: {}", err);
+}
+
+#[test]
+fn assert_equal_wrong_arg_count() {
+    let err = run_err("assert_equal(1)");
+    assert!(err.contains("argument"), "Error was: {}", err);
+}
+
+// ── assert_raises (lines 192-273) ───────────────────────────────────────
+
+#[test]
+fn assert_raises_with_args() {
+    let err = run_err("assert_raises(1) { raise \"boom\" }");
+    assert!(err.contains("argument"), "Error was: {}", err);
+}
+
+#[test]
+fn assert_raises_no_block_error() {
+    // assert_raises() called with no block and no parens returns function ref
+    // Test with parens to trigger the error path
+    let err = run_err("assert_raises()");
+    assert!(
+        err.contains("block") || err.contains("Block") || err.contains("requires"),
+        "Error was: {}",
+        err
+    );
+}

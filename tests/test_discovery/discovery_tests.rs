@@ -213,3 +213,19 @@ fn test_file_result_has_duration() {
         assert!(r.duration_ms < 10000);
     }
 }
+
+// ── test_discovery on non-directory (test_discovery.rs lines 75-77) ─────────
+
+#[test]
+fn test_discovery_on_file_not_dir() {
+    let result = run_test_discovery(Path::new("Cargo.toml"));
+    assert!(result.is_err());
+}
+
+// ── test_discovery on nonexistent dir (test_discovery.rs lines 83-85) ───────
+
+#[test]
+fn test_discovery_nonexistent_dir() {
+    let result = run_test_discovery(Path::new("/nonexistent_dir_xyz"));
+    assert!(result.is_err());
+}

@@ -206,3 +206,19 @@ fn test_format_error_compact() {
     assert!(formatted.contains("Syntax error"));
     assert!(formatted.contains("Test error"));
 }
+
+// ── extract_source_snippet line validation (error.rs line 273) ──────────────
+
+#[test]
+fn test_error_display_line_zero() {
+    let err = MetorexError::runtime_error("test", SourceLocation::new(0, 0, 0));
+    let s = err.to_string();
+    assert!(s.contains("test"));
+}
+
+#[test]
+fn test_error_display_line_beyond_source() {
+    let err = MetorexError::runtime_error("test", SourceLocation::new(999, 0, 0));
+    let s = err.to_string();
+    assert!(s.contains("test"));
+}

@@ -162,3 +162,28 @@ fn test_error_message_no_suggestion_for_unrelated_name() {
         err_msg
     );
 }
+
+// ── suggest_similar_files edge cases (file_loader.rs lines 43-86) ──────────
+
+#[test]
+fn test_suggest_similar_for_typo() {
+    // Try a typo near existing files to trigger suggest_similar_files
+    let path = Path::new(EXAMPLES_DIR).join("basics/intgers.rb");
+    let result = find_file_path(&path);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_suggest_empty_stem() {
+    let result = find_file_path(Path::new(".rb"));
+    assert!(result.is_err());
+}
+
+// ── load_file_source read error (file_loader.rs lines 211-213) ─────────────
+
+#[test]
+fn test_load_nonexistent_file() {
+    let result =
+        metorex::file_loader::load_file_source(Path::new("this_file_does_not_exist_xyz.rb"));
+    assert!(result.is_err());
+}

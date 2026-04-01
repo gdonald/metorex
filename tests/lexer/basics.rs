@@ -330,3 +330,23 @@ fn test_lexer_identifier_then_newline() {
     let token2 = lexer.next_token();
     assert_eq!(token2.kind, TokenKind::Newline);
 }
+
+// ── advance() returning None at end (lexer/mod.rs line 48) ─────────────
+
+#[test]
+fn test_lexer_advance_past_end() {
+    let mut lexer = Lexer::new("");
+    let tok = lexer.next_token();
+    assert_eq!(tok.kind, TokenKind::EOF);
+    let tok2 = lexer.next_token();
+    assert_eq!(tok2.kind, TokenKind::EOF);
+}
+
+// ── Unknown character (lexer/mod.rs line 667) ──────────────────────────
+
+#[test]
+fn test_lexer_unknown_character() {
+    let mut lexer = Lexer::new("~");
+    let tok = lexer.next_token();
+    assert_eq!(tok.kind, TokenKind::EOF);
+}

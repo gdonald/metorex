@@ -4,6 +4,7 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
+use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -237,4 +238,30 @@ fn rest_pattern_outside_array_is_parse_error() {
     let tokens = metorex::lexer::Lexer::new("case 42\nin ...rest\n  rest\nend\n").tokenize();
     let result = metorex::parser::Parser::new(tokens).parse();
     assert!(result.is_err());
+}
+
+// ── Range pattern matching (lines 280, 287) ─────────────────────────────────
+
+#[test]
+fn range_pattern_float_end() {
+    let result = run("case 2.5\nin 1.0..3.0\n  \"yes\"\nend");
+    assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
+}
+
+#[test]
+fn range_pattern_exclusive() {
+    let result = run("case 5\nin 1...5\n  \"match\"\nelse\n  \"no\"\nend");
+    assert_eq!(result, Some(Object::String(Rc::new("no".to_string()))));
+}
+
+#[test]
+fn range_pattern_non_numeric() {
+    let result = run("case \"abc\"\nin 1..10\n  \"match\"\nelse\n  \"no\"\nend");
+    assert_eq!(result, Some(Object::String(Rc::new("no".to_string()))));
+}
+
+#[test]
+fn range_pattern_exclusive_float() {
+    let result = run("case 3.5\nin 1.0...5.0\n  \"yes\"\nelse\n  \"no\"\nend");
+    assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
 }

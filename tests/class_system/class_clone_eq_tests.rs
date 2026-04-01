@@ -112,3 +112,44 @@ fn class_eq_different_superclass_not_equal() {
     // Different superclass pointers → not equal
     assert_ne!(a, b);
 }
+
+// ── class PartialEq with methods (class.rs lines 143-153) ──────────────────
+
+#[test]
+fn class_eq_different_method_count() {
+    use metorex::object::Method;
+    use std::rc::Rc;
+    let a = Class::new("Foo", None);
+    let b = Class::new("Foo", None);
+    let method = Rc::new(Method::new("bar".to_string(), vec![], vec![]));
+    a.define_method("bar", method);
+    // a has 1 method, b has 0 → not equal
+    assert_ne!(a, b);
+}
+
+#[test]
+fn class_eq_different_methods() {
+    use metorex::object::Method;
+    use std::rc::Rc;
+    let a = Class::new("Foo", None);
+    let b = Class::new("Foo", None);
+    let method_a = Rc::new(Method::new("bar".to_string(), vec![], vec![]));
+    let method_b = Rc::new(Method::new("baz".to_string(), vec![], vec![]));
+    a.define_method("bar", method_a);
+    b.define_method("baz", method_b);
+    assert_ne!(a, b);
+}
+
+#[test]
+fn class_eq_same_methods_equal() {
+    use metorex::object::Method;
+    use std::rc::Rc;
+    let a = Class::new("Foo", None);
+    let b = Class::new("Foo", None);
+    let method_a = Rc::new(Method::new("bar".to_string(), vec![], vec![]));
+    let method_b = Rc::new(Method::new("bar".to_string(), vec![], vec![]));
+    a.define_method("bar", Rc::clone(&method_a));
+    b.define_method("bar", method_b);
+    // Same method name + same structure → equal
+    assert_eq!(a, b);
+}

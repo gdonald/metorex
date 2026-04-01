@@ -5,6 +5,7 @@ use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
 use std::path::Path;
+use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -363,4 +364,89 @@ x = 10
 fn uncaught_exception_at_top_level() {
     let err = run_err("raise \"top level error\"");
     assert!(err.contains("top level error"));
+}
+
+// ── Case/In as value expression (core.rs lines 170, 187) ───────────────
+
+#[test]
+fn case_in_as_value_expression() {
+    let result = run("case 42\nin Integer => n\n  n\nend");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn case_in_continues_after_match() {
+    let result = run("case 5\nin Integer\n  \"matched\"\nend");
+    assert_eq!(result, Some(Object::String(Rc::new("matched".to_string()))));
+}
+
+// ── execute_file path (core.rs lines 238-263) ──────────────────────────
+
+#[test]
+fn require_relative_success_path() {
+    let code = "require_relative(\"lib/helper\")";
+    let tokens = metorex::lexer::Lexer::new(code).tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let mut vm = metorex::vm::VirtualMachine::new();
+    let base = std::fs::canonicalize("tests/_examples/require/basic.rb").unwrap();
+    vm.set_current_file(base.clone());
+    vm.mark_file_loaded(base);
+    let result = vm.execute_program(&stmts);
+    assert!(result.is_ok());
+}
+
+// ── super with deep inheritance (core.rs lines 518-558) ────────────────
+
+#[test]
+fn super_deep_inheritance() {
+    let result = run("class A\n  def val\n    1\n  end\nend\n\
+         class B < A\n  def val\n    super + 10\n  end\nend\n\
+         class C < B\n  def val\n    super + 100\n  end\nend\n\
+         C.new.val");
+    assert_eq!(result, Some(Object::Int(111)));
+}
+
+#[test]
+fn super_with_arguments() {
+    let result = run(
+        "class Base\n  def greet(name)\n    \"Hello, #{name}\"\n  end\nend\n\
+         class Child < Base\n  def greet(name)\n    super(name)\n  end\nend\n\
+         Child.new.greet(\"World\")",
+    );
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("Hello, World".to_string())))
+    );
+}
+
+// ── binary_op_method_name (core.rs line 682) ───────────────────────────
+
+#[test]
+fn custom_operator_plus() {
+    let result = run(
+        "class Vec2\n  attr_accessor :x, :y\n  def initialize(x, y)\n    @x = x\n    @y = y\n  end\n\
+         def +(other)\n    Vec2.new(@x + other.x, @y + other.y)\n  end\nend\n\
+         v = Vec2.new(1, 2) + Vec2.new(3, 4)\nv.x",
+    );
+    assert_eq!(result, Some(Object::Int(4)));
+}
+
+#[test]
+fn custom_operator_minus() {
+    let result = run(
+        "class Num\n  attr_reader :val\n  def initialize(v)\n    @val = v\n  end\n\
+         def -(other)\n    Num.new(@val - other.val)\n  end\nend\n\
+         (Num.new(10) - Num.new(3)).val",
+    );
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn custom_operator_multiply() {
+    let result = run(
+        "class Num\n  attr_reader :val\n  def initialize(v)\n    @val = v\n  end\n\
+         def *(other)\n    Num.new(@val * other.val)\n  end\nend\n\
+         (Num.new(3) * Num.new(4)).val",
+    );
+    assert_eq!(result, Some(Object::Int(12)));
 }

@@ -584,3 +584,65 @@ fn session_nil_handling() {
         other => panic!("Expected Continue for nil, got {:?}", other),
     }
 }
+
+// ── REPL format_object Block/Method (repl.rs line 270) ──────────────────────
+
+#[test]
+fn repl_format_block_object() {
+    let mut repl = ReplCore::new();
+    let result = repl.process_line("f = lambda do |x|\n  x\nend\nf");
+    match result {
+        LineResult::Value(v) => assert!(
+            v.contains("Block") || v.contains("Lambda") || v.contains("Method"),
+            "Got: {}",
+            v
+        ),
+        _ => {}
+    }
+}
+
+#[test]
+fn repl_format_method_object() {
+    let mut repl = ReplCore::new();
+    repl.process_line("def foo\n  42\nend");
+    let result = repl.process_line("method(:foo)");
+    match result {
+        LineResult::Value(v) => assert!(
+            v.contains("Method") || v.contains("method") || v.contains("foo"),
+            "Got: {}",
+            v
+        ),
+        _ => {}
+    }
+}
+
+// ── REPL format_object Module (repl.rs line 273) ────────────────────────────
+
+#[test]
+fn repl_format_module_object() {
+    let mut repl = ReplCore::new();
+    repl.process_line("module TestMod\n  def greet\n    \"hi\"\n  end\nend");
+    let result = repl.process_line("TestMod");
+    match result {
+        LineResult::Value(v) => {
+            assert!(v.contains("Module") || v.contains("TestMod"), "Got: {}", v)
+        }
+        _ => {}
+    }
+}
+
+// ── REPL format_object NativeFunction (repl.rs line 271) ────────────────────
+
+#[test]
+fn repl_format_native_function() {
+    let mut repl = ReplCore::new();
+    let result = repl.process_line("method(:puts)");
+    match result {
+        LineResult::Value(v) => assert!(
+            v.contains("Method") || v.contains("NativeFunction") || v.contains("puts"),
+            "Got: {}",
+            v
+        ),
+        _ => {}
+    }
+}

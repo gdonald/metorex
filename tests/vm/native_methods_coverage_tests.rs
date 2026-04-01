@@ -4,6 +4,7 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
+use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -337,4 +338,116 @@ puts b
 nil
 "#);
     assert_eq!(result, Some(Object::Nil));
+}
+
+// ── Array each/map/select/reduce block paths ────────────────────────────
+
+#[test]
+fn array_each_with_break() {
+    let result = run(
+        "result = []\n[1, 2, 3, 4, 5].each do |x|\n  if x == 4\n    break\n  end\n  result.push(x)\nend\nresult.length",
+    );
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn array_each_with_continue() {
+    // `next` is not a keyword in Metorex, use workaround
+    let result = run(
+        "result = []\n[1, 2, 3, 4, 5].each do |x|\n  if x != 3\n    result.push(x)\n  end\nend\nresult.length",
+    );
+    assert_eq!(result, Some(Object::Int(4)));
+}
+
+#[test]
+fn array_select_basic() {
+    let result = run("[1, 2, 3, 4].select { |x| x > 2 }");
+    assert!(result.is_some());
+}
+
+#[test]
+fn array_reduce_basic() {
+    let result = run("[1, 2, 3].reduce { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+// ── String each_char block path ─────────────────────────────────────────
+
+#[test]
+fn string_each_char_basic() {
+    let result = run("result = []\n\"abc\".each_char do |c|\n  result.push(c)\nend\nresult.length");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── Hash each with break ────────────────────────────────────────────────
+
+#[test]
+fn hash_each_with_break() {
+    let result = run(
+        "count = 0\n{\"a\" => 1, \"b\" => 2, \"c\" => 3}.each do |k, v|\n  count = count + 1\n  if count == 2\n    break\n  end\nend\ncount",
+    );
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+// ── Int times with break ────────────────────────────────────────────────
+
+#[test]
+fn int_times_with_break_coverage() {
+    let result =
+        run("sum = 0\n10.times do |i|\n  if i == 5\n    break\n  end\n  sum = sum + i\nend\nsum");
+    assert_eq!(result, Some(Object::Int(10)));
+}
+
+// ── Range each with break ───────────────────────────────────────────────
+
+#[test]
+fn range_each_with_break_coverage() {
+    let result = run(
+        "sum = 0\n(1..100).each do |i|\n  if i > 5\n    break\n  end\n  sum = sum + i\nend\nsum",
+    );
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+// ── Set each with break ────────────────────────────────────────────────
+
+#[test]
+fn set_each_with_break() {
+    let result = run(
+        "s = Set.new\ns.add(\"a\")\ns.add(\"b\")\ns.add(\"c\")\ncount = 0\ns.each do |x|\n  count = count + 1\n  if count == 2\n    break\n  end\nend\ncount",
+    );
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+// ── File.write (native_methods/mod.rs lines 160-162) ────────────────────
+
+#[test]
+fn file_write_and_read() {
+    let result = run(
+        "File.write(\"/tmp/metorex_test_coverage.txt\", \"hello\")\nFile.read(\"/tmp/metorex_test_coverage.txt\")",
+    );
+    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    let _ = std::fs::remove_file("/tmp/metorex_test_coverage.txt");
+}
+
+// ── define_method closure capture (native_methods/mod.rs line 224) ──────
+
+#[test]
+fn define_method_closure_capture_in_class() {
+    let result =
+        run("class Foo\n  define_method(:get_val) do\n    42\n  end\nend\nFoo.new.get_val");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+// ── Various dict key types (utils.rs line 29) ───────────────────────────
+
+#[test]
+fn int_as_hash_key() {
+    let result = run("h = {}\nh[1] = \"one\"\nh[1]");
+    assert_eq!(result, Some(Object::String(Rc::new("one".to_string()))));
+}
+
+#[test]
+fn bool_as_hash_key() {
+    let result = run("h = {}\nh[true] = \"yes\"\nh[true]");
+    assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
 }

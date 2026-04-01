@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -246,4 +245,14 @@ end
 test_if_expr
 "#);
     assert_eq!(result, Some(Object::Int(15)));
+}
+
+// ── Break/Continue in for-loop (expression.rs line 194) ─────────────────────
+
+#[test]
+fn for_loop_with_break() {
+    let result = run(
+        "sum = 0\nfor i in [1, 2, 3, 4, 5]\n  if i == 4\n    break\n  end\n  sum = sum + i\nend\nsum",
+    );
+    assert_eq!(result, Some(Object::Int(6)));
 }

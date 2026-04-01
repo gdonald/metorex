@@ -611,3 +611,199 @@ fn test_lexer_complex_expression() {
     let token13 = lexer.next_token();
     assert_eq!(token13.kind, TokenKind::Ident("z".to_string()));
 }
+
+// ── Compound assignment operators (lexer/mod.rs lines 509-547) ─────────
+
+#[test]
+fn test_lexer_plus_equal() {
+    let mut lexer = Lexer::new("+=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::PlusEqual);
+}
+
+#[test]
+fn test_lexer_minus_equal() {
+    let mut lexer = Lexer::new("-=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::MinusEqual);
+}
+
+#[test]
+fn test_lexer_star_equal() {
+    let mut lexer = Lexer::new("*=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::StarEqual);
+}
+
+#[test]
+fn test_lexer_slash_equal() {
+    let mut lexer = Lexer::new("/=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::SlashEqual);
+}
+
+#[test]
+fn test_lexer_arrow() {
+    let mut lexer = Lexer::new("->");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Arrow);
+}
+
+// ── Comparison operators (lexer/mod.rs lines 552-590) ──────────────────
+
+#[test]
+fn test_lexer_equal_equal() {
+    let mut lexer = Lexer::new("==");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EqualEqual);
+}
+
+#[test]
+fn test_lexer_fat_arrow() {
+    let mut lexer = Lexer::new("=>");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::FatArrow);
+}
+
+#[test]
+fn test_lexer_bang_equal() {
+    let mut lexer = Lexer::new("!=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::BangEqual);
+}
+
+#[test]
+fn test_lexer_bang_standalone() {
+    let mut lexer = Lexer::new("!");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Bang);
+}
+
+#[test]
+fn test_lexer_less_equal() {
+    let mut lexer = Lexer::new("<=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LessEqual);
+}
+
+#[test]
+fn test_lexer_greater_equal() {
+    let mut lexer = Lexer::new(">=");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::GreaterEqual);
+}
+
+// ── Delimiters (lexer/mod.rs lines 592-620) ────────────────────────────
+
+#[test]
+fn test_lexer_lbrace() {
+    let mut lexer = Lexer::new("{");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LBrace);
+}
+
+#[test]
+fn test_lexer_rbrace() {
+    let mut lexer = Lexer::new("}");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::RBrace);
+}
+
+#[test]
+fn test_lexer_lbracket() {
+    let mut lexer = Lexer::new("[");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LBracket);
+}
+
+#[test]
+fn test_lexer_rbracket() {
+    let mut lexer = Lexer::new("]");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::RBracket);
+}
+
+#[test]
+fn test_lexer_comma() {
+    let mut lexer = Lexer::new(",");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Comma);
+}
+
+// ── Dot, range operators (lexer/mod.rs lines 620-634) ──────────────────
+
+#[test]
+fn test_lexer_dot() {
+    let mut lexer = Lexer::new(".");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Dot);
+}
+
+#[test]
+fn test_lexer_dot_dot() {
+    let mut lexer = Lexer::new("..");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::DotDot);
+}
+
+#[test]
+fn test_lexer_dot_dot_dot() {
+    let mut lexer = Lexer::new("...");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::DotDotDot);
+}
+
+// ── Colon, scope resolution (lexer/mod.rs lines 636-643) ───────────────
+
+#[test]
+fn test_lexer_colon() {
+    let mut lexer = Lexer::new(":");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Colon);
+}
+
+#[test]
+fn test_lexer_colon_colon() {
+    let mut lexer = Lexer::new("::");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::ColonColon);
+}
+
+// ── Semicolon (lexer/mod.rs line 645) ──────────────────────────────────
+
+#[test]
+fn test_lexer_semicolon() {
+    let mut lexer = Lexer::new(";");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Semicolon);
+}
+
+// ── Pipe, logical operators (lexer/mod.rs lines 649-665) ───────────────
+
+#[test]
+fn test_lexer_pipe() {
+    let mut lexer = Lexer::new("|");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Pipe);
+}
+
+#[test]
+fn test_lexer_logical_or() {
+    let mut lexer = Lexer::new("||");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LogicalOr);
+}
+
+#[test]
+fn test_lexer_ampersand() {
+    let mut lexer = Lexer::new("&");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::Ampersand);
+}
+
+#[test]
+fn test_lexer_logical_and() {
+    let mut lexer = Lexer::new("&&");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::LogicalAnd);
+}

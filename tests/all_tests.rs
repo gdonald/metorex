@@ -8,7 +8,6 @@ mod class_system;
 pub mod common;
 mod compiler;
 mod control_flow;
-mod coverage;
 mod environment;
 mod errors;
 mod exceptions;

@@ -128,3 +128,72 @@ fn test_lexer_string_with_null_escape() {
     let token = lexer.next_token();
     assert_eq!(token.kind, TokenKind::String("\0".to_string()));
 }
+
+// ── Unterminated strings (lexer/mod.rs lines 281-289) ──────────────────
+
+#[test]
+fn test_lexer_unterminated_double_string() {
+    let mut lexer = Lexer::new("\"hello");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+#[test]
+fn test_lexer_unterminated_string_at_newline() {
+    let mut lexer = Lexer::new("\"hello\n");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+#[test]
+fn test_lexer_escape_at_eof() {
+    let mut lexer = Lexer::new("\"hello\\");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+// ── Escape sequences: \r and \' ────────────────────────────────────────
+
+#[test]
+fn test_lexer_escape_return() {
+    let mut lexer = Lexer::new(r#""hello\rworld""#);
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::String("hello\rworld".to_string()));
+}
+
+#[test]
+fn test_lexer_escape_single_quote_in_double() {
+    let mut lexer = Lexer::new(r#""hello\'world""#);
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::String("hello'world".to_string()));
+}
+
+#[test]
+fn test_lexer_escape_hash_literal() {
+    let mut lexer = Lexer::new(r#""hello\#world""#);
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::String("hello#world".to_string()));
+}
+
+// ── Interpolation edge cases (lexer/mod.rs lines 358-402) ──────────────
+
+#[test]
+fn test_lexer_interpolation_unterminated() {
+    let mut lexer = Lexer::new("\"hello #{name");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+#[test]
+fn test_lexer_interpolation_newline_inside() {
+    let mut lexer = Lexer::new("\"hello #{name\n}\"");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+#[test]
+fn test_lexer_interpolation_nested_braces() {
+    let mut lexer = Lexer::new("\"#{{1 => 2}}\"");
+    let token = lexer.next_token();
+    assert!(matches!(token.kind, TokenKind::InterpolatedString(_)));
+}

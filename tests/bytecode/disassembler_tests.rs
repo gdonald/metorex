@@ -266,3 +266,46 @@ fn all_simple_opcodes_disassemble() {
         );
     }
 }
+
+// ── format_constant for various types (disassembler.rs lines 124-129) ──────
+
+#[test]
+fn disassemble_symbol_constant() {
+    let mut chunk = Chunk::new();
+    let idx = chunk.add_constant(metorex::object::Object::Symbol(std::rc::Rc::new(
+        "hello".to_string(),
+    )));
+    chunk.write_constant(idx.unwrap(), 1);
+    let output = disassemble(&chunk, "symbol_test");
+    assert!(
+        output.contains(":hello") || output.contains("hello"),
+        "Output: {}",
+        output
+    );
+}
+
+#[test]
+fn disassemble_bool_constant() {
+    let mut chunk = Chunk::new();
+    let idx = chunk.add_constant(metorex::object::Object::Bool(true));
+    chunk.write_constant(idx.unwrap(), 1);
+    let output = disassemble(&chunk, "bool_test");
+    assert!(output.contains("true"), "Output: {}", output);
+}
+
+#[test]
+fn disassemble_nil_constant() {
+    let mut chunk = Chunk::new();
+    chunk.write_opcode(OpCode::Nil, 1);
+    let output = disassemble(&chunk, "nil_test");
+    assert!(output.contains("OP_NIL"), "Output: {}", output);
+}
+
+#[test]
+fn disassemble_float_constant() {
+    let mut chunk = Chunk::new();
+    let idx = chunk.add_constant(metorex::object::Object::Float(3.14));
+    chunk.write_constant(idx.unwrap(), 1);
+    let output = disassemble(&chunk, "float_test");
+    assert!(output.contains("3.14"), "Output: {}", output);
+}

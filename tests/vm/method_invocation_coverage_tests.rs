@@ -201,3 +201,17 @@ e
 "#);
     assert!(result.is_some());
 }
+
+// ── Block with captured vars (method_invocation.rs lines 212-213) ───────────
+
+#[test]
+fn block_captures_closure_vars() {
+    let result = run("x = 10\nf = lambda do |y|\n  x + y\nend\nf.call(5)");
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+#[test]
+fn block_captures_multiple_vars() {
+    let result = run("a = 1\nb = 2\nf = lambda do |c|\n  a + b + c\nend\nf.call(3)");
+    assert_eq!(result, Some(Object::Int(6)));
+}
