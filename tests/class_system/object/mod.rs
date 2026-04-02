@@ -4,4 +4,6 @@ mod equals;
 mod hash;
 mod instance;
 mod method;
+mod struct_coverage;
 mod to_string;
+mod type_display_ops_coverage;
