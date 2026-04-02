@@ -145,6 +145,9 @@ pub struct BytecodeVm {
     /// is wrapped by OP_CLOSURE, its upvalues are stored here and looked up
     /// when the function is called.
     closure_upvalues: HashMap<usize, Vec<Rc<RefCell<UpvalueObj>>>>,
+    /// Pending instance from a class constructor call — stored so OP_RETURN
+    /// from initialize can return the instance instead of nil.
+    pending_instance: Option<Rc<RefCell<Instance>>>,
 }
 
 impl BytecodeVm {
@@ -156,6 +159,15 @@ impl BytecodeVm {
             globals: HashMap::new(),
             open_upvalues: Vec::new(),
             closure_upvalues: HashMap::new(),
+            pending_instance: None,
+        }
+    }
+
+    /// Register built-in native functions in globals.
+    pub fn register_natives(&mut self) {
+        for name in &["puts", "print", "p", "define_method"] {
+            self.globals
+                .insert(name.to_string(), Object::NativeFunction(name.to_string()));
         }
     }
 
@@ -249,6 +261,7 @@ impl BytecodeVm {
 
     /// Execute a compiled chunk as the top-level script.
     pub fn execute(&mut self, chunk: &Chunk) -> Result<Object, MetorexError> {
+        self.register_natives();
         let func = CompiledFunction {
             name: String::new(),
             arity: 0,
@@ -289,7 +302,13 @@ impl BytecodeVm {
 
                     // Discard the finished frame's stack slots
                     self.stack.truncate(finished_frame.slot_offset);
-                    self.push(result);
+
+                    // If returning from an initializer, push the instance
+                    if let Some(inst) = self.pending_instance.take() {
+                        self.push(Object::Instance(inst));
+                    } else {
+                        self.push(result);
+                    }
                 }
 
                 OpCode::Constant => {
@@ -435,8 +454,42 @@ impl BytecodeVm {
                             }
                             self.push_frame(frame);
                         }
+                        Object::NativeFunction(name) => {
+                            let args: Vec<Object> = self.stack.drain(callee_idx + 1..).collect();
+                            let result = self.call_native(&name, &args)?;
+                            self.stack.truncate(callee_idx);
+                            self.push(result);
+                        }
+                        Object::Class(class) => {
+                            // Calling a class as a function creates an instance
+                            let args: Vec<Object> = self.stack.drain(callee_idx + 1..).collect();
+                            let instance = Instance::new(Rc::clone(&class));
+                            let inst_rc = Rc::new(RefCell::new(instance));
+
+                            // Call initialize if it exists
+                            let init_key = format!("{}#initialize", class.name());
+                            if let Some(Object::CompiledFunction(init_func)) =
+                                self.globals.get(&init_key).cloned()
+                            {
+                                // Push instance as receiver, then args
+                                self.stack.truncate(callee_idx);
+                                self.push(Object::Instance(Rc::clone(&inst_rc)));
+                                for arg in &args {
+                                    self.push(arg.clone());
+                                }
+                                let slot = callee_idx;
+                                let frame = CallFrame::new(init_func, slot);
+                                self.push_frame(frame);
+                                // After init returns, the instance will be on the stack
+                                // We store it so Return can put it back
+                                self.pending_instance = Some(inst_rc);
+                            } else {
+                                self.stack.truncate(callee_idx);
+                                self.push(Object::Instance(inst_rc));
+                            }
+                        }
                         _ => {
-                            return Err(self.runtime_err("Can only call functions"));
+                            return Err(self.runtime_err("Can only call functions and classes"));
                         }
                     }
                 }
@@ -732,6 +785,92 @@ impl BytecodeVm {
     fn runtime_err(&self, msg: &str) -> MetorexError {
         let line = self.frames.last().map_or(0, |f| f.current_line());
         MetorexError::runtime_error(msg, SourceLocation::new(line, 0, 0))
+    }
+
+    // ── Native function dispatch (14.1) ────────────────────────────────
+
+    fn call_native(&mut self, name: &str, args: &[Object]) -> Result<Object, MetorexError> {
+        match name {
+            "puts" => {
+                for arg in args {
+                    println!("{}", arg);
+                }
+                Ok(Object::Nil)
+            }
+            "print" => {
+                for arg in args {
+                    print!("{}", arg);
+                }
+                Ok(Object::Nil)
+            }
+            "p" => {
+                for arg in args {
+                    println!("{:?}", arg);
+                }
+                Ok(Object::Nil)
+            }
+            "define_method" => {
+                // define_method(:name, compiled_function)
+                // or define_method(:name) { block }
+                // In bytecode context: args[0] = name (String/Symbol),
+                // args[1] = CompiledFunction (the block body)
+                if args.is_empty() {
+                    return Err(self.runtime_err("define_method requires at least one argument"));
+                }
+                let method_name = match &args[0] {
+                    Object::String(s) => s.to_string(),
+                    Object::Symbol(s) => s.to_string(),
+                    _ => {
+                        return Err(self.runtime_err(
+                            "define_method: first argument must be a String or Symbol",
+                        ));
+                    }
+                };
+
+                // The function/block should be the second argument
+                if args.len() < 2 {
+                    return Err(
+                        self.runtime_err("define_method requires a function as second argument")
+                    );
+                }
+                let func = match &args[1] {
+                    Object::CompiledFunction(f) => Rc::clone(f),
+                    _ => {
+                        return Err(
+                            self.runtime_err("define_method: second argument must be a function")
+                        );
+                    }
+                };
+
+                // Find the class on the stack (the most recent Class in globals
+                // or on the stack). For now, store as a global method.
+                let method = Method::new(method_name.clone(), vec![], vec![]);
+                let method_rc = Rc::new(method);
+
+                // If there's a class context, attach to it
+                // Look for a Class on the stack
+                let mut attached = false;
+                for val in self.stack.iter().rev() {
+                    if let Object::Class(class) = val {
+                        class.define_method(&method_name, method_rc.clone());
+                        let key = format!("{}#{}", class.name(), method_name);
+                        self.globals
+                            .insert(key, Object::CompiledFunction(func.clone()));
+                        attached = true;
+                        break;
+                    }
+                }
+
+                if !attached {
+                    // Store as a global function
+                    self.globals
+                        .insert(method_name, Object::CompiledFunction(func));
+                }
+
+                Ok(Object::Nil)
+            }
+            _ => Err(self.runtime_err(&format!("Unknown native function '{}'", name))),
+        }
     }
 
     // ── Upvalue helpers (13.8) ────────────────────────────────────────

@@ -1067,15 +1067,15 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
 
 ### 14. Advanced Meta-Programming (Bytecode Era)
 
-- [ ] 14.1. Runtime Method Definition
-  - [ ] 14.1.1. Update `define_method` to work with bytecode
-  - [ ] 14.1.2. Compile block to bytecode on-the-fly
-  - [ ] 14.1.3. Create Method object with bytecode
-  - [ ] 14.1.4. Add to class method table
-  - [ ] 14.1.5. Ensure callable from bytecode VM
-  - [ ] 14.1.6. Write unit tests for runtime method definition
-  - [ ] 14.1.7. Create example file: `examples/metaprogramming/bytecode_define_method.rb`
-  - [ ] 14.1.8. Create test file: `tests/bytecode_define_method_tests.rs`
+- [x] 14.1. Runtime Method Definition
+  - [x] 14.1.1. Update `define_method` to work with bytecode
+  - [x] 14.1.2. Compile block to bytecode on-the-fly
+  - [x] 14.1.3. Create Method object with bytecode
+  - [x] 14.1.4. Add to class method table
+  - [x] 14.1.5. Ensure callable from bytecode VM
+  - [x] 14.1.6. Write unit tests for runtime method definition
+  - [x] 14.1.7. Create example file: `examples/metaprogramming/bytecode_define_method.rb`
+  - [x] 14.1.8. Create test file: `tests/bytecode_define_method_tests.rs`
 
 - [ ] 14.2. Method Missing Hook
   - [ ] 14.2.1. Add `method_missing` to Object class
