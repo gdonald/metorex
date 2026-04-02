@@ -2,13 +2,55 @@
 //
 // A stack-based VM that executes compiled bytecode chunks.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::bytecode::chunk::Chunk;
 use crate::bytecode::opcode::OpCode;
+use crate::class::Class;
 use crate::error::{MetorexError, SourceLocation};
-use crate::object::{CompiledFunction, Object};
+use crate::object::{CompiledFunction, Instance, Method, Object};
+
+// ── Upvalue (13.8) ─────────────────────────────────────────────────────
+
+/// A runtime upvalue — a captured variable that may still be on the stack
+/// (open) or has been moved to the heap (closed).
+#[derive(Debug, Clone)]
+pub struct UpvalueObj {
+    /// The captured value. While the local is still alive on the stack,
+    /// this is kept in sync via `stack_index`. Once the local goes out
+    /// of scope, the value is "closed" — moved here permanently.
+    pub value: Rc<RefCell<Object>>,
+    /// Stack index this upvalue points to while it is open.
+    /// Set to `usize::MAX` once closed.
+    pub stack_index: usize,
+}
+
+impl UpvalueObj {
+    pub fn new_open(stack_index: usize, value: Object) -> Self {
+        Self {
+            value: Rc::new(RefCell::new(value)),
+            stack_index,
+        }
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.stack_index != usize::MAX
+    }
+
+    pub fn close(&mut self, value: Object) {
+        *self.value.borrow_mut() = value;
+        self.stack_index = usize::MAX;
+    }
+}
+
+/// A runtime closure — a compiled function bundled with its captured upvalues.
+#[derive(Debug, Clone)]
+pub struct ClosureObj {
+    pub function: Rc<CompiledFunction>,
+    pub upvalues: Vec<Rc<RefCell<UpvalueObj>>>,
+}
 
 // ── Call Frame (13.2) ──────────────────────────────────────────────────
 
@@ -25,6 +67,8 @@ pub struct CallFrame {
     pub ip: usize,
     /// Base slot in the value stack where this frame's locals start.
     pub slot_offset: usize,
+    /// Upvalues captured by this frame's closure (empty for non-closures).
+    pub upvalues: Vec<Rc<RefCell<UpvalueObj>>>,
 }
 
 impl CallFrame {
@@ -34,6 +78,17 @@ impl CallFrame {
             function,
             ip: 0,
             slot_offset,
+            upvalues: Vec::new(),
+        }
+    }
+
+    /// Create a call frame for a closure with upvalues.
+    pub fn new_closure(closure: ClosureObj, slot_offset: usize) -> Self {
+        Self {
+            function: closure.function,
+            ip: 0,
+            slot_offset,
+            upvalues: closure.upvalues,
         }
     }
 
@@ -84,8 +139,12 @@ pub struct BytecodeVm {
     frames: Vec<CallFrame>,
     /// Global variables.
     globals: HashMap<String, Object>,
-    /// Open upvalues (heap-allocated captured locals).
-    open_upvalues: Vec<Object>,
+    /// Open upvalues — tracked so we can close them when locals go out of scope.
+    open_upvalues: Vec<Rc<RefCell<UpvalueObj>>>,
+    /// Maps function pointer addresses to closure upvalues. When a function
+    /// is wrapped by OP_CLOSURE, its upvalues are stored here and looked up
+    /// when the function is called.
+    closure_upvalues: HashMap<usize, Vec<Rc<RefCell<UpvalueObj>>>>,
 }
 
 impl BytecodeVm {
@@ -96,6 +155,7 @@ impl BytecodeVm {
             frames: Vec::with_capacity(64),
             globals: HashMap::new(),
             open_upvalues: Vec::new(),
+            closure_upvalues: HashMap::new(),
         }
     }
 
@@ -367,8 +427,12 @@ impl BytecodeVm {
                                     func.arity, arg_count
                                 )));
                             }
-                            // slot_offset points past the callee to the first argument
-                            let frame = CallFrame::new(func, callee_idx + 1);
+                            // Look up closure upvalues by function pointer address
+                            let key = Rc::as_ptr(&func) as usize;
+                            let mut frame = CallFrame::new(func, callee_idx + 1);
+                            if let Some(upvalues) = self.closure_upvalues.get(&key) {
+                                frame.upvalues = upvalues.clone();
+                            }
                             self.push_frame(frame);
                         }
                         _ => {
@@ -416,35 +480,219 @@ impl BytecodeVm {
                     self.push(value);
                 }
 
-                // ── Upvalues (placeholder) ─────────────────────────────
-                OpCode::GetUpvalue
-                | OpCode::SetUpvalue
-                | OpCode::CloseUpvalue
-                | OpCode::Closure => {
-                    // Skip operand bytes for now
-                    let _operand = self.current_frame_mut()?.read_byte();
-                    if op == OpCode::Closure {
-                        // Closure has additional upvalue descriptors
-                        let uv_count = _operand as usize;
-                        for _ in 0..uv_count {
-                            self.current_frame_mut()?.read_byte(); // is_local
-                            self.current_frame_mut()?.read_byte(); // index
+                // ── Closures and upvalues (13.8) ─────────────────────
+                OpCode::Closure => {
+                    let uv_count = self.current_frame_mut()?.read_byte() as usize;
+                    // The function is on top of the stack
+                    let func_val = self.peek(0)?.clone();
+                    let func = match func_val {
+                        Object::CompiledFunction(f) => f,
+                        _ => return Err(self.runtime_err("Expected function for closure")),
+                    };
+
+                    let mut upvalues = Vec::with_capacity(uv_count);
+                    for _ in 0..uv_count {
+                        let is_local = self.current_frame_mut()?.read_byte() != 0;
+                        let index = self.current_frame_mut()?.read_byte() as usize;
+
+                        if is_local {
+                            // Capture a local from the enclosing frame
+                            let slot = self.current_frame()?.slot_offset + index;
+                            let uv = self.capture_upvalue(slot);
+                            upvalues.push(uv);
+                        } else {
+                            // Forward an upvalue from the enclosing closure
+                            let enclosing_uv = self.current_frame()?.upvalues.get(index).cloned();
+                            match enclosing_uv {
+                                Some(uv) => upvalues.push(uv),
+                                None => {
+                                    return Err(self.runtime_err("Invalid upvalue index"));
+                                }
+                            }
+                        }
+                    }
+
+                    // Store the upvalues keyed by the Rc pointer address of the function.
+                    // When this function is later called (even after being stored in a
+                    // global and retrieved), the upvalues are looked up by this key.
+                    let key = Rc::as_ptr(&func) as usize;
+                    self.closure_upvalues.insert(key, upvalues);
+                }
+
+                OpCode::GetUpvalue => {
+                    let index = self.current_frame_mut()?.read_byte() as usize;
+                    let val = {
+                        let frame = self.current_frame()?;
+                        match frame.upvalues.get(index) {
+                            Some(uv) => uv.borrow().value.borrow().clone(),
+                            None => {
+                                return Err(self.runtime_err("Invalid upvalue index"));
+                            }
+                        }
+                    };
+                    self.push(val);
+                }
+
+                OpCode::SetUpvalue => {
+                    let index = self.current_frame_mut()?.read_byte() as usize;
+                    let val = self.peek(0)?.clone();
+                    let frame = self.current_frame()?;
+                    match frame.upvalues.get(index) {
+                        Some(uv) => {
+                            *uv.borrow().value.borrow_mut() = val;
+                        }
+                        None => {
+                            return Err(self.runtime_err("Invalid upvalue index"));
                         }
                     }
                 }
 
-                // ── Class/method (placeholder) ─────────────────────────
+                OpCode::CloseUpvalue => {
+                    let stack_top = self.stack.len() - 1;
+                    self.close_upvalues(stack_top);
+                    self.pop()?;
+                }
+
+                // ── Classes and objects (13.9) ─────────────────────────
                 OpCode::Class => {
-                    let _name_idx = self.current_frame_mut()?.read_byte();
+                    let name_idx = self.current_frame_mut()?.read_byte() as usize;
+                    let name = self.read_string_constant(name_idx)?;
+                    let class = Class::new(name, None);
+                    self.push(Object::Class(Rc::new(class)));
                 }
+
                 OpCode::Method => {
-                    let _name_idx = self.current_frame_mut()?.read_byte();
+                    let name_idx = self.current_frame_mut()?.read_byte() as usize;
+                    let name = self.read_string_constant(name_idx)?;
+                    // Stack: [..., class, compiled_function]
+                    let func_val = self.pop()?;
+                    let class_val = self.peek(0)?;
+                    match (class_val, func_val) {
+                        (Object::Class(class), Object::CompiledFunction(func)) => {
+                            let method = Method::new(name.clone(), vec![], vec![]);
+                            // Store the compiled function in the method's closure vars
+                            // so the VM can look it up when calling
+                            let mut m = method;
+                            m.owner = Some(class.name().to_string());
+                            let method_rc = Rc::new(m);
+                            class.define_method(&name, method_rc);
+                            // Also store the compiled function for bytecode execution
+                            let key = format!("{}#{}", class.name(), name);
+                            self.define_global(key, Object::CompiledFunction(func));
+                        }
+                        _ => {
+                            return Err(
+                                self.runtime_err("OP_METHOD requires class and function on stack")
+                            );
+                        }
+                    }
                 }
+
                 OpCode::Invoke => {
-                    let _operand = self.current_frame_mut()?.read_u16();
+                    let operand = self.current_frame_mut()?.read_u16();
+                    let name_idx = (operand >> 8) as usize;
+                    let arg_count = (operand & 0xFF) as usize;
+                    let method_name = self.read_string_constant(name_idx)?;
+
+                    // The receiver is below the arguments on the stack
+                    let receiver = self.peek(arg_count)?.clone();
+
+                    match &receiver {
+                        Object::Instance(inst) => {
+                            let class_name = inst.borrow().class_name().to_string();
+                            let key = format!("{}#{}", class_name, method_name);
+                            if let Some(Object::CompiledFunction(func)) =
+                                self.globals.get(&key).cloned()
+                            {
+                                if func.arity as usize != arg_count {
+                                    return Err(self.runtime_err(&format!(
+                                        "Expected {} arguments but got {}",
+                                        func.arity, arg_count
+                                    )));
+                                }
+                                let callee_idx = self.stack.len() - 1 - arg_count;
+                                let frame = CallFrame::new(func, callee_idx + 1);
+                                self.push_frame(frame);
+                            } else {
+                                return Err(self.runtime_err(&format!(
+                                    "Undefined method '{}' for {}",
+                                    method_name, class_name
+                                )));
+                            }
+                        }
+                        Object::Class(class) => {
+                            // Calling ClassName() — instantiation
+                            if method_name == "new" || method_name == class.name() {
+                                let instance = Instance::new(Rc::clone(class));
+                                // Pop receiver + args, push instance
+                                for _ in 0..arg_count {
+                                    self.pop()?;
+                                }
+                                // Pop the class (receiver)
+                                let receiver_idx = self.stack.len() - 1;
+                                self.stack[receiver_idx] =
+                                    Object::Instance(Rc::new(RefCell::new(instance)));
+                            } else {
+                                return Err(self.runtime_err(&format!(
+                                    "Undefined class method '{}'",
+                                    method_name
+                                )));
+                            }
+                        }
+                        _ => {
+                            // For non-instance receivers, try native methods
+                            // (length, push, etc.) — return an error for now
+                            return Err(self.runtime_err(&format!(
+                                "Cannot call method '{}' on {}",
+                                method_name,
+                                receiver.type_name()
+                            )));
+                        }
+                    }
                 }
-                OpCode::GetInstance | OpCode::SetInstance => {
-                    let _idx = self.current_frame_mut()?.read_byte();
+
+                OpCode::GetInstance => {
+                    let name_idx = self.current_frame_mut()?.read_byte() as usize;
+                    let name = self.read_string_constant(name_idx)?;
+                    // 'self' is the first local in the current frame (slot 0)
+                    let offset = self.current_frame()?.slot_offset;
+                    if offset < self.stack.len() {
+                        let receiver = self.stack[offset].clone();
+                        match receiver {
+                            Object::Instance(inst) => {
+                                let val =
+                                    inst.borrow().get_var(&name).cloned().unwrap_or(Object::Nil);
+                                self.push(val);
+                            }
+                            _ => {
+                                return Err(self.runtime_err(
+                                    "Cannot access instance variable outside of instance",
+                                ));
+                            }
+                        }
+                    } else {
+                        self.push(Object::Nil);
+                    }
+                }
+
+                OpCode::SetInstance => {
+                    let name_idx = self.current_frame_mut()?.read_byte() as usize;
+                    let name = self.read_string_constant(name_idx)?;
+                    let value = self.peek(0)?.clone();
+                    let offset = self.current_frame()?.slot_offset;
+                    if offset < self.stack.len() {
+                        let receiver = self.stack[offset].clone();
+                        match receiver {
+                            Object::Instance(inst) => {
+                                inst.borrow_mut().set_var(name, value);
+                            }
+                            _ => {
+                                return Err(self.runtime_err(
+                                    "Cannot set instance variable outside of instance",
+                                ));
+                            }
+                        }
+                    }
                 }
 
                 // ── Exception handling (placeholder) ──────────────────
@@ -484,6 +732,51 @@ impl BytecodeVm {
     fn runtime_err(&self, msg: &str) -> MetorexError {
         let line = self.frames.last().map_or(0, |f| f.current_line());
         MetorexError::runtime_error(msg, SourceLocation::new(line, 0, 0))
+    }
+
+    // ── Upvalue helpers (13.8) ────────────────────────────────────────
+
+    /// Capture a local variable as an upvalue (public for testing).
+    pub fn capture_upvalue_public(&mut self, stack_index: usize) -> Rc<RefCell<UpvalueObj>> {
+        self.capture_upvalue(stack_index)
+    }
+
+    /// Close upvalues at or above `last` (public for testing).
+    pub fn close_upvalues_public(&mut self, last: usize) {
+        self.close_upvalues(last);
+    }
+
+    /// Capture a local variable as an upvalue. If an open upvalue for this
+    /// stack slot already exists, reuse it (so multiple closures share the
+    /// same upvalue cell).
+    fn capture_upvalue(&mut self, stack_index: usize) -> Rc<RefCell<UpvalueObj>> {
+        // Check if we already have an open upvalue for this slot
+        for uv in &self.open_upvalues {
+            if uv.borrow().stack_index == stack_index {
+                return Rc::clone(uv);
+            }
+        }
+        // Create a new open upvalue
+        let value = self.stack[stack_index].clone();
+        let uv = Rc::new(RefCell::new(UpvalueObj::new_open(stack_index, value)));
+        self.open_upvalues.push(Rc::clone(&uv));
+        uv
+    }
+
+    /// Close all upvalues that point to stack slots at or above `last`.
+    /// This moves the value from the stack into the upvalue cell.
+    fn close_upvalues(&mut self, last: usize) {
+        self.open_upvalues.retain(|uv| {
+            let mut uv_ref = uv.borrow_mut();
+            if uv_ref.stack_index >= last {
+                // Close this upvalue: copy the current stack value into it
+                let value = self.stack[uv_ref.stack_index].clone();
+                uv_ref.close(value);
+                false // remove from open list
+            } else {
+                true // keep in open list
+            }
+        });
     }
 }
 

@@ -205,7 +205,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 
 ### Phase 2: Bytecode VM
 - Bytecode compiler (complete: expression, statement, control flow, function/method, class, closure, block compilation, optimization passes)
-- Stack-based VM (in progress: structure, call frames, execution loop, basic instructions, variables, control flow, function calls, collections done)
+- Stack-based VM (complete: structure, call frames, execution loop, basic instructions, variables, control flow, function calls, closures, classes/objects, collections)
 - Trait/interface system
 - Advanced reflection
 

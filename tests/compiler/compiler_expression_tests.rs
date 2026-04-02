@@ -862,3 +862,116 @@ fn compile_unless_expression_not_implemented() {
     let err = result.unwrap_err().to_string();
     assert!(err.contains("not yet implemented"), "Error was: {}", err);
 }
+
+// ── SelfExpr compilation (expressions.rs lines 270-274) ───────────────────
+
+#[test]
+fn compile_self_in_method_body() {
+    use metorex::ast::{Expression, Statement};
+    use metorex::lexer::token::Position;
+    let pos = Position {
+        line: 1,
+        column: 0,
+        offset: 0,
+    };
+    let stmts = vec![Statement::MethodDef {
+        name: "me".to_string(),
+        parameters: vec![],
+        body: vec![Statement::Expression {
+            expression: Expression::SelfExpr { position: pos },
+            position: pos,
+        }],
+        position: pos,
+    }];
+    let compiler = Compiler::new();
+    let chunk = compiler.compile(&stmts).expect("compile failed");
+    for i in 0..256 {
+        let constant =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| chunk.get_constant(i)));
+        match constant {
+            Ok(Object::CompiledFunction(f)) if f.name == "me" => {
+                let body_ops = opcodes(&f.chunk);
+                assert!(
+                    body_ops.contains(&OpCode::GetLocal),
+                    "Expected GetLocal for self, got: {:?}",
+                    body_ops
+                );
+                return;
+            }
+            Ok(_) => continue,
+            Err(_) => break,
+        }
+    }
+    panic!("Expected compiled method 'me'");
+}
+
+// ── For loop with break (statements.rs line 325) ──────────────────────────
+
+#[test]
+fn compile_for_with_break_patches_jump() {
+    let chunk = compile("for x in [1, 2, 3]\n  break\nend");
+    let ops = opcodes(&chunk);
+    assert!(ops.contains(&OpCode::Jump));
+    assert!(ops.contains(&OpCode::Loop));
+}
+
+// ── Wildcard statement fallthrough (statements.rs line 454) ───────────────
+
+#[test]
+fn compile_begin_rescue_falls_through() {
+    let chunk = compile("begin\n  42\nrescue\n  0\nend");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_raise_falls_through() {
+    let chunk = compile("raise \"oops\"");
+    assert!(!chunk.is_empty());
+}
+
+#[test]
+fn compile_module_falls_through() {
+    let chunk = compile("module Foo\nend");
+    assert!(!chunk.is_empty());
+}
+
+// ── Disassembly of Nil constant (disassembler.rs line 128-129) ────────────
+
+#[test]
+fn disassemble_nil_constant() {
+    use metorex::bytecode::disassembler::disassemble;
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    chunk.add_constant(Object::Nil);
+    chunk.write_op_u8(OpCode::Constant, 0, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+    let output = disassemble(&chunk, "nil_test");
+    assert!(
+        output.contains("nil"),
+        "Expected nil in disassembly: {}",
+        output
+    );
+}
+
+#[test]
+fn disassemble_non_standard_constant() {
+    use metorex::bytecode::disassembler::disassemble;
+    use metorex::object::CompiledFunction;
+    let mut chunk = metorex::bytecode::chunk::Chunk::new();
+    let func = CompiledFunction::new("test_fn".to_string(), 0);
+    chunk.add_constant(Object::CompiledFunction(std::rc::Rc::new(func)));
+    chunk.write_op_u8(OpCode::Constant, 0, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+    let output = disassemble(&chunk, "func_test");
+    assert!(!output.is_empty());
+}
+
+// ── emit_pops_to_loop_scope (mod.rs line 226) ─────────────────────────────
+
+#[test]
+fn compile_break_with_local_in_loop_body() {
+    // break inside a scope with a local variable should pop the local
+    let chunk = compile("while true\n  x = 1\n  break\nend");
+    let ops = opcodes(&chunk);
+    // The break needs to pop the local x before jumping
+    assert!(ops.contains(&OpCode::Jump));
+}

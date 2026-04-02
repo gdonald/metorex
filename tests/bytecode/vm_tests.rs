@@ -808,3 +808,88 @@ fn execute_array_negative_index() {
     let result = run_ok("a = [10, 20, 30]\nreturn a[-1]");
     assert_eq!(result, Object::Int(30));
 }
+
+// ── Mixed-type subtraction (Int-Float, Float-Int) ──────────────────
+
+#[test]
+fn execute_int_minus_float() {
+    let result = run_ok("return 5 - 2.5");
+    assert_eq!(result, Object::Float(2.5));
+}
+
+// ── Mixed-type multiplication (Int*Float, Float*Int) ───────────────
+
+#[test]
+fn execute_int_times_float() {
+    let result = run_ok("return 3 * 2.5");
+    assert_eq!(result, Object::Float(7.5));
+}
+
+// ── Mixed-type comparisons (Int vs Float) ──────────────────────────
+
+#[test]
+fn execute_int_less_float() {
+    let result = run_ok("return 1 < 2.5");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_int_greater_float() {
+    let result = run_ok("return 3 > 2.5");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_int_less_equal_float() {
+    let result = run_ok("return 2 <= 2.0");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_int_greater_equal_float() {
+    let result = run_ok("return 2 >= 2.0");
+    assert_eq!(result, Object::Bool(true));
+}
+
+// ── Float-Float comparisons (>, <=, >=) ────────────────────────────
+
+#[test]
+fn execute_float_greater_float() {
+    let result = run_ok("return 3.5 > 2.5");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_float_less_equal_float() {
+    let result = run_ok("return 2.5 <= 2.5");
+    assert_eq!(result, Object::Bool(true));
+}
+
+#[test]
+fn execute_float_greater_equal_float() {
+    let result = run_ok("return 3.5 >= 2.5");
+    assert_eq!(result, Object::Bool(true));
+}
+
+// ── OP_CLOSE_UPVALUE ───────────────────────────────────────────────
+
+#[test]
+fn execute_close_upvalue_via_closure() {
+    // A closure that captures a local from a block scope; when the
+    // scope ends the local is closed over via OP_CLOSE_UPVALUE.
+    let src = r#"
+def make_counter
+  count = 0
+  def increment
+    count = count + 1
+    return count
+  end
+  return increment
+end
+f = make_counter()
+f()
+return f()
+"#;
+    let result = run_ok(src);
+    assert_eq!(result, Object::Int(2));
+}

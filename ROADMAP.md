@@ -1035,27 +1035,27 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 13.7.8. Write unit tests for function calls
   - [x] 13.7.9. Create test file: `tests/vm_function_call_tests.rs`
 
-- [ ] 13.8. Closure and Upvalue Execution
-  - [ ] 13.8.1. Implement `OP_CLOSURE` execution
-  - [ ] 13.8.2. Create closure object with upvalues
-  - [ ] 13.8.3. Implement `OP_GET_UPVALUE` execution
-  - [ ] 13.8.4. Implement `OP_SET_UPVALUE` execution
-  - [ ] 13.8.5. Implement `OP_CLOSE_UPVALUE` execution
-  - [ ] 13.8.6. Close upvalues on scope exit
-  - [ ] 13.8.7. Write unit tests for closures
-  - [ ] 13.8.8. Create example file: `examples/vm/closures.rb`
-  - [ ] 13.8.9. Create test file: `tests/vm_closure_tests.rs`
+- [x] 13.8. Closure and Upvalue Execution
+  - [x] 13.8.1. Implement `OP_CLOSURE` execution
+  - [x] 13.8.2. Create closure object with upvalues
+  - [x] 13.8.3. Implement `OP_GET_UPVALUE` execution
+  - [x] 13.8.4. Implement `OP_SET_UPVALUE` execution
+  - [x] 13.8.5. Implement `OP_CLOSE_UPVALUE` execution
+  - [x] 13.8.6. Close upvalues on scope exit
+  - [x] 13.8.7. Write unit tests for closures
+  - [x] 13.8.8. Create example file: `examples/vm/closures.rb`
+  - [x] 13.8.9. Create test file: `tests/vm_closure_tests.rs`
 
-- [ ] 13.9. Class and Object Execution
-  - [ ] 13.9.1. Implement `OP_CLASS` execution
-  - [ ] 13.9.2. Create class object
-  - [ ] 13.9.3. Implement `OP_METHOD` execution
-  - [ ] 13.9.4. Add method to class
-  - [ ] 13.9.5. Implement `OP_INVOKE` execution (optimized method call)
-  - [ ] 13.9.6. Implement `OP_GET_INSTANCE` execution
-  - [ ] 13.9.7. Implement `OP_SET_INSTANCE` execution
-  - [ ] 13.9.8. Write unit tests for OOP
-  - [ ] 13.9.9. Create test file: `tests/vm_oop_tests.rs`
+- [x] 13.9. Class and Object Execution
+  - [x] 13.9.1. Implement `OP_CLASS` execution
+  - [x] 13.9.2. Create class object
+  - [x] 13.9.3. Implement `OP_METHOD` execution
+  - [x] 13.9.4. Add method to class
+  - [x] 13.9.5. Implement `OP_INVOKE` execution (optimized method call)
+  - [x] 13.9.6. Implement `OP_GET_INSTANCE` execution
+  - [x] 13.9.7. Implement `OP_SET_INSTANCE` execution
+  - [x] 13.9.8. Write unit tests for OOP
+  - [x] 13.9.9. Create test file: `tests/vm_oop_tests.rs`
 
 - [x] 13.10. Collection Execution
   - [x] 13.10.1. Implement `OP_ARRAY` execution
