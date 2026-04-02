@@ -87,6 +87,25 @@ impl Class {
             .and_then(|superclass| superclass.find_method(name))
     }
 
+    /// Remove a method defined directly on this class.
+    /// Returns true if the method was found and removed, false otherwise.
+    pub fn remove_method(&self, name: &str) -> bool {
+        self.methods.borrow_mut().remove(name).is_some()
+    }
+
+    /// Create an alias for an existing method.
+    /// Returns true if the source method was found and aliased, false otherwise.
+    pub fn alias_method(&self, new_name: &str, old_name: &str) -> bool {
+        if let Some(method) = self.find_method(old_name) {
+            self.methods
+                .borrow_mut()
+                .insert(new_name.to_string(), method);
+            true
+        } else {
+            false
+        }
+    }
+
     /// Return a list of method names defined directly on this class.
     pub fn method_names(&self) -> Vec<String> {
         let mut names = self.methods.borrow().keys().cloned().collect::<Vec<_>>();

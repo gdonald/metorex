@@ -31,6 +31,8 @@ pub struct Method {
     pub source_location: Option<SourceLocation>,
     /// Captured closure variables (from define_method blocks)
     pub captured_vars: Option<HashMap<String, Rc<RefCell<Object>>>>,
+    /// True if this method was undefined via undef_method (calling it raises an error)
+    pub is_undefined: bool,
 }
 
 impl Method {
@@ -46,6 +48,7 @@ impl Method {
             owner: None,
             source_location: None,
             captured_vars: None,
+            is_undefined: false,
         }
     }
 
@@ -66,6 +69,7 @@ impl Method {
             owner: Some(owner),
             source_location: None,
             captured_vars: None,
+            is_undefined: false,
         }
     }
 
@@ -86,6 +90,7 @@ impl Method {
             owner: None,
             source_location: Some(source_location),
             captured_vars: None,
+            is_undefined: false,
         }
     }
 
@@ -107,6 +112,23 @@ impl Method {
             owner: Some(owner),
             source_location: Some(source_location),
             captured_vars: None,
+            is_undefined: false,
+        }
+    }
+
+    /// Create an undefined method sentinel (for undef_method).
+    pub fn undefined(name: String) -> Self {
+        Self {
+            name,
+            parameters: vec![],
+            keyword_parameters: vec![],
+            block_parameter: None,
+            body: vec![],
+            receiver: None,
+            owner: None,
+            source_location: None,
+            captured_vars: None,
+            is_undefined: true,
         }
     }
 
@@ -122,6 +144,7 @@ impl Method {
             owner: self.owner.clone(),
             source_location: self.source_location.clone(),
             captured_vars: self.captured_vars.clone(),
+            is_undefined: self.is_undefined,
         }
     }
 

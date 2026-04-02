@@ -226,6 +226,287 @@ impl VirtualMachine {
                     class_rc.define_method(&method_name_str, Rc::new(method));
                     return Ok(Some(Object::Nil));
                 }
+                "remove_method" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "remove_method",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "remove_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if !class_rc.remove_method(&name_str) {
+                        return Err(MetorexError::runtime_error(
+                            format!("method '{}' not defined in {}", name_str, class_rc.name()),
+                            position_to_location(position),
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
+                "undef_method" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "undef_method",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "undef_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let sentinel = Method::undefined(name_str.clone());
+                    class_rc.define_method(&name_str, Rc::new(sentinel));
+                    return Ok(Some(Object::Nil));
+                }
+                "alias_method" => {
+                    if arguments.len() != 2 {
+                        return Err(method_argument_error(
+                            "alias_method",
+                            2,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let new_name = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "alias_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let old_name = match &arguments[1] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "alias_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if !class_rc.alias_method(&new_name, &old_name) {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "undefined method '{}' for class '{}'",
+                                old_name,
+                                class_rc.name()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
+                "module_function" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "module_function",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "module_function",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if let Some(method) = class_rc.find_method(&name_str) {
+                        // Store as __ext__ so it's callable on the class/module receiver
+                        class_rc
+                            .set_class_var(format!("__ext__{}", name_str), Object::Method(method));
+                    } else {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "undefined method '{}' for module '{}'",
+                                name_str,
+                                class_rc.name()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
+                _ => {}
+            }
+        }
+
+        // Module receivers: support the same methods as Class (remove_method, etc.)
+        if let Object::Module(module_rc) = receiver {
+            match method_name {
+                "name" => {
+                    return Ok(Some(Object::String(Rc::new(module_rc.name().to_string()))));
+                }
+                "remove_method" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "remove_method",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "remove_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if !module_rc.remove_method(&name_str) {
+                        return Err(MetorexError::runtime_error(
+                            format!("method '{}' not defined in {}", name_str, module_rc.name()),
+                            position_to_location(position),
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
+                "undef_method" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "undef_method",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "undef_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let sentinel = Method::undefined(name_str.clone());
+                    module_rc.define_method(&name_str, Rc::new(sentinel));
+                    return Ok(Some(Object::Nil));
+                }
+                "alias_method" => {
+                    if arguments.len() != 2 {
+                        return Err(method_argument_error(
+                            "alias_method",
+                            2,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let new_name = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "alias_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let old_name = match &arguments[1] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "alias_method",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if !module_rc.alias_method(&new_name, &old_name) {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "undefined method '{}' for module '{}'",
+                                old_name,
+                                module_rc.name()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
+                "module_function" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "module_function",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let name_str = match &arguments[0] {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "module_function",
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if let Some(method) = module_rc.find_method(&name_str) {
+                        module_rc
+                            .set_class_var(format!("__ext__{}", name_str), Object::Method(method));
+                    } else {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "undefined method '{}' for module '{}'",
+                                name_str,
+                                module_rc.name()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
                 _ => {}
             }
         }

@@ -35,67 +35,73 @@ impl VirtualMachine {
             self.pending_block = Some(self.evaluate_expression(block_expr)?);
         }
 
+        // Try user-defined method lookup first
         match self.lookup_method(&receiver, method_name) {
-            Some((class, method)) => {
-                self.invoke_method(class, method, receiver, arguments, position)
+            Some((class, method)) if !method.is_undefined => {
+                return self.invoke_method(class, method, receiver, arguments, position);
             }
-            None => {
-                // For Class receivers, check for extended methods (__ext__name class var)
-                if let Object::Class(class_rc) = &receiver {
-                    let ext_key = format!("__ext__{}", method_name);
-                    if let Some(Object::Method(ext_method)) = class_rc.get_class_var(&ext_key) {
-                        return self.invoke_method(
-                            Rc::clone(class_rc),
-                            ext_method,
-                            receiver.clone(),
-                            arguments,
-                            position,
-                        );
-                    }
-                }
-                // Try native method as fallback
-                let class = self.builtins().class_of(&receiver);
-                let native_result =
-                    self.call_native_method(&class, &receiver, method_name, &arguments, position)?;
-
-                if let Some(result) = native_result {
-                    return Ok(result);
-                }
-
-                // For user-defined class instances, fall back to base Object methods
-                let object_result =
-                    self.call_object_method(&receiver, method_name, &arguments, position)?;
-
-                if let Some(result) = object_result {
-                    return Ok(result);
-                }
-
-                // Try method_missing as a final fallback
-                if let Some((method_missing_class, method_missing_method)) =
-                    self.lookup_method(&receiver, "method_missing")
-                {
-                    let method_name_obj = Object::String(Rc::new(method_name.to_string()));
-                    let arity = method_missing_method.parameters.len();
-                    let method_missing_args = if arity <= 1 {
-                        // def method_missing(name)
-                        vec![method_name_obj]
-                    } else {
-                        // def method_missing(name, args)
-                        // Pack original arguments into an array
-                        let args_array = Object::Array(Rc::new(RefCell::new(arguments)));
-                        vec![method_name_obj, args_array]
-                    };
-                    self.invoke_method(
-                        method_missing_class,
-                        method_missing_method,
-                        receiver,
-                        method_missing_args,
-                        position,
-                    )
-                } else {
-                    Err(undefined_method_error(method_name, &receiver, position))
-                }
+            _ => {
+                // Method not found or undefined via undef_method — continue to fallbacks
             }
+        }
+
+        // For Class/Module receivers, check for extended methods (__ext__name class var)
+        let ext_class_rc = match &receiver {
+            Object::Class(c) => Some(Rc::clone(c)),
+            Object::Module(m) => Some(Rc::clone(m)),
+            _ => None,
+        };
+        if let Some(class_rc) = ext_class_rc {
+            let ext_key = format!("__ext__{}", method_name);
+            if let Some(Object::Method(ext_method)) = class_rc.get_class_var(&ext_key) {
+                return self.invoke_method(
+                    class_rc,
+                    ext_method,
+                    receiver.clone(),
+                    arguments,
+                    position,
+                );
+            }
+        }
+
+        // Try native method as fallback
+        let class = self.builtins().class_of(&receiver);
+        let native_result =
+            self.call_native_method(&class, &receiver, method_name, &arguments, position)?;
+
+        if let Some(result) = native_result {
+            return Ok(result);
+        }
+
+        // For user-defined class instances, fall back to base Object methods
+        let object_result =
+            self.call_object_method(&receiver, method_name, &arguments, position)?;
+
+        if let Some(result) = object_result {
+            return Ok(result);
+        }
+
+        // Try method_missing as a final fallback
+        if let Some((method_missing_class, method_missing_method)) =
+            self.lookup_method(&receiver, "method_missing")
+        {
+            let method_name_obj = Object::String(Rc::new(method_name.to_string()));
+            let arity = method_missing_method.parameters.len();
+            let method_missing_args = if arity <= 1 {
+                vec![method_name_obj]
+            } else {
+                let args_array = Object::Array(Rc::new(RefCell::new(arguments)));
+                vec![method_name_obj, args_array]
+            };
+            self.invoke_method(
+                method_missing_class,
+                method_missing_method,
+                receiver,
+                method_missing_args,
+                position,
+            )
+        } else {
+            Err(undefined_method_error(method_name, &receiver, position))
         }
     }
 

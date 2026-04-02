@@ -1085,14 +1085,14 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 14.2.5. Create example file: `examples/metaprogramming/method_missing.rb`
   - [x] 14.2.6. Create test file: `tests/method_missing_tests.rs`
 
-- [ ] 14.3. Runtime Class Modification
-  - [ ] 14.3.1. Implement `remove_method`
-  - [ ] 14.3.2. Implement `undef_method`
-  - [ ] 14.3.3. Implement `alias_method`
-  - [ ] 14.3.4. Implement `module_function`
-  - [ ] 14.3.5. Write unit tests for class modification
-  - [ ] 14.3.6. Create example file: `examples/metaprogramming/class_modification.rb`
-  - [ ] 14.3.7. Create test file: `tests/class_modification_tests.rs`
+- [x] 14.3. Runtime Class Modification
+  - [x] 14.3.1. Implement `remove_method`
+  - [x] 14.3.2. Implement `undef_method`
+  - [x] 14.3.3. Implement `alias_method`
+  - [x] 14.3.4. Implement `module_function`
+  - [x] 14.3.5. Write unit tests for class modification
+  - [x] 14.3.6. Create example file: `examples/metaprogramming/class_modification.rb`
+  - [x] 14.3.7. Create test file: `tests/class_modification_tests.rs`
 
 - [ ] 14.4. Reflection and Introspection
   - [ ] 14.4.1. Implement `class` method

@@ -308,3 +308,65 @@ Base caught: whatever
     let output = run_example("metaprogramming/method_missing_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+// 14.3 — Runtime Class Modification
+
+#[test]
+fn test_metaprogramming_class_modification_execution() {
+    let expected = r#"=== alias_method ===
+Hello, Alice!
+Hello, Bob!
+
+=== remove_method ===
+moving
+no method: speak
+
+=== undef_method ===
+Base farewell
+undefined: greet
+
+=== multiple aliases ===
+HELLO
+HELLO
+HELLO
+
+=== module_function ===
+14
+12
+
+=== remove_method with inheritance ===
+Parent greet
+"#;
+    let output = run_example("metaprogramming/class_modification.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_modification_no_parens_execution() {
+    let expected = r#"=== alias_method ===
+Hello, Alice!
+Hello, Bob!
+
+=== remove_method ===
+moving
+no method: speak
+
+=== undef_method ===
+Base farewell
+undefined: greet
+
+=== multiple aliases ===
+HELLO
+HELLO
+HELLO
+
+=== module_function ===
+14
+12
+
+=== remove_method with inheritance ===
+Parent greet
+"#;
+    let output = run_example("metaprogramming/class_modification_no_parens.rb");
+    assert_eq!(output, expected);
+}

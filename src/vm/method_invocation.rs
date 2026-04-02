@@ -248,6 +248,18 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         let method_name = method.name.clone();
 
+        // Check for undefined methods (created by undef_method)
+        if method.is_undefined {
+            return Err(MetorexError::runtime_error(
+                format!(
+                    "Undefined method '{}' for type '{}'",
+                    method_name,
+                    class.name()
+                ),
+                position_to_location(position),
+            ));
+        }
+
         if let Some(result) = self.call_native_method(
             class.as_ref(),
             &receiver,
