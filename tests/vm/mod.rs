@@ -6,6 +6,7 @@ mod core_coverage_tests;
 mod expression_coverage_tests;
 mod method_dispatch_tests;
 mod method_invocation_coverage_tests;
+mod method_missing_tests;
 mod native_functions_tests;
 mod native_methods_coverage_tests;
 mod native_methods_error_coverage_tests;

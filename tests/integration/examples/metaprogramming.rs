@@ -246,3 +246,65 @@ fn test_metaprogramming_advanced_method_chaining_dsl() {
     assert!(output.contains("host = localhost"));
     assert!(output.contains("port = 8080"));
 }
+
+// 14.2 — Method Missing
+
+#[test]
+fn test_metaprogramming_method_missing_execution() {
+    let expected = r#"=== Dynamic Attribute Access ===
+Alice
+30
+engineer
+unknown: email
+
+=== Ghost Methods ===
+Called hello with 0 arg(s)
+Called add with 2 arg(s)
+Called greet with 3 arg(s)
+
+=== Flexible Calculator ===
+6
+30
+unknown operation: multiply
+
+=== Selective ===
+I am real
+ghost: fake_method
+
+=== Inherited method_missing ===
+Base caught: anything
+Base caught: whatever
+"#;
+    let output = run_example("metaprogramming/method_missing.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_method_missing_no_parens_execution() {
+    let expected = r#"=== Dynamic Attribute Access ===
+Alice
+30
+engineer
+unknown: email
+
+=== Ghost Methods ===
+Called hello with 0 arg(s)
+Called add with 2 arg(s)
+Called greet with 3 arg(s)
+
+=== Flexible Calculator ===
+6
+30
+unknown operation: multiply
+
+=== Selective ===
+I am real
+ghost: fake_method
+
+=== Inherited method_missing ===
+Base caught: anything
+Base caught: whatever
+"#;
+    let output = run_example("metaprogramming/method_missing_no_parens.rb");
+    assert_eq!(output, expected);
+}

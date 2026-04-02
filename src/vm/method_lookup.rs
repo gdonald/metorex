@@ -10,6 +10,7 @@ use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::{Method, Object};
+use std::cell::RefCell;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -73,13 +74,22 @@ impl VirtualMachine {
                 if let Some((method_missing_class, method_missing_method)) =
                     self.lookup_method(&receiver, "method_missing")
                 {
-                    // Call method_missing with the method name as a string argument
                     let method_name_obj = Object::String(Rc::new(method_name.to_string()));
+                    let arity = method_missing_method.parameters.len();
+                    let method_missing_args = if arity <= 1 {
+                        // def method_missing(name)
+                        vec![method_name_obj]
+                    } else {
+                        // def method_missing(name, args)
+                        // Pack original arguments into an array
+                        let args_array = Object::Array(Rc::new(RefCell::new(arguments)));
+                        vec![method_name_obj, args_array]
+                    };
                     self.invoke_method(
                         method_missing_class,
                         method_missing_method,
                         receiver,
-                        vec![method_name_obj],
+                        method_missing_args,
                         position,
                     )
                 } else {

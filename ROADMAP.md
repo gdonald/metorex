@@ -1077,13 +1077,13 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 14.1.7. Create example file: `examples/metaprogramming/bytecode_define_method.rb`
   - [x] 14.1.8. Create test file: `tests/bytecode_define_method_tests.rs`
 
-- [ ] 14.2. Method Missing Hook
-  - [ ] 14.2.1. Add `method_missing` to Object class
-  - [ ] 14.2.2. Check for `method_missing` on lookup failure
-  - [ ] 14.2.3. Call `method_missing` with method name and args
-  - [ ] 14.2.4. Write unit tests for method_missing
-  - [ ] 14.2.5. Create example file: `examples/metaprogramming/method_missing.rb`
-  - [ ] 14.2.6. Create test file: `tests/method_missing_tests.rs`
+- [x] 14.2. Method Missing Hook
+  - [x] 14.2.1. Add `method_missing` to Object class
+  - [x] 14.2.2. Check for `method_missing` on lookup failure
+  - [x] 14.2.3. Call `method_missing` with method name and args
+  - [x] 14.2.4. Write unit tests for method_missing
+  - [x] 14.2.5. Create example file: `examples/metaprogramming/method_missing.rb`
+  - [x] 14.2.6. Create test file: `tests/method_missing_tests.rs`
 
 - [ ] 14.3. Runtime Class Modification
   - [ ] 14.3.1. Implement `remove_method`

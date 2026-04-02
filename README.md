@@ -40,6 +40,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 ### Meta-Programming (Core Innovation)
 - **Code-as-Object**: AST nodes are first-class objects manipulable at runtime
 - **Runtime Method Definition**: `define_method` for dynamic behavior
+- **Method Missing Hook**: `method_missing` intercepts calls to undefined methods with method name and arguments
 - **AST Reflection**: Inspect and modify code structure at runtime
 - **Block Execution**: Blocks are objects with `.call()` method; trailing `do...end` and `{...}` blocks captured implicitly via `&block` parameter with `block_given?` support
 - **DSL Construction**: Build domain-specific languages naturally
@@ -198,6 +199,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Operator method names (`def +(other)`, `def ==(other)`, `def [](key)`, `def []=(key, value)`)
 - Module and mixin support (`module`, `include`, `extend`)
 - `define_method` for dynamic method definition on classes
+- `method_missing` hook for intercepting undefined method calls
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access
 - DSL Examples: test framework, HTML builder, query builder, configuration language
