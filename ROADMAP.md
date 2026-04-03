@@ -1094,16 +1094,16 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 14.3.6. Create example file: `examples/metaprogramming/class_modification.rb`
   - [x] 14.3.7. Create test file: `tests/class_modification_tests.rs`
 
-- [ ] 14.4. Reflection and Introspection
-  - [ ] 14.4.1. Implement `class` method
-  - [ ] 14.4.2. Implement `instance_of?` method
-  - [ ] 14.4.3. Implement `respond_to?` method
-  - [ ] 14.4.4. Implement `methods` method (list all methods)
-  - [ ] 14.4.5. Implement `instance_variables` method
-  - [ ] 14.4.6. Implement `send` method (dynamic dispatch)
-  - [ ] 14.4.7. Write unit tests for reflection
-  - [ ] 14.4.8. Create example file: `examples/metaprogramming/reflection.rb`
-  - [ ] 14.4.9. Create test file: `tests/reflection_tests.rs`
+- [x] 14.4. Reflection and Introspection
+  - [x] 14.4.1. Implement `class` method
+  - [x] 14.4.2. Implement `instance_of?` method
+  - [x] 14.4.3. Implement `respond_to?` method
+  - [x] 14.4.4. Implement `methods` method (list all methods)
+  - [x] 14.4.5. Implement `instance_variables` method
+  - [x] 14.4.6. Implement `send` method (dynamic dispatch)
+  - [x] 14.4.7. Write unit tests for reflection
+  - [x] 14.4.8. Create example file: `examples/metaprogramming/reflection.rb`
+  - [x] 14.4.9. Create test file: `tests/reflection_tests.rs`
 
 - [ ] 14.5. AST Manipulation
   - [ ] 14.5.1. Implement `eval` function (compile and execute string)

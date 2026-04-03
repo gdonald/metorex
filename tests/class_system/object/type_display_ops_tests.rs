@@ -211,13 +211,13 @@ fn display_instance() {
 #[test]
 fn display_class() {
     let c = Rc::new(Class::new("Cat", None));
-    assert_eq!(format!("{}", Object::Class(c)), "<class Cat>");
+    assert_eq!(format!("{}", Object::Class(c)), "Cat");
 }
 
 #[test]
 fn display_module() {
     let m = Rc::new(Class::new("MyMod", None));
-    assert_eq!(format!("{}", Object::Module(m)), "<module MyMod>");
+    assert_eq!(format!("{}", Object::Module(m)), "MyMod");
 }
 
 #[test]

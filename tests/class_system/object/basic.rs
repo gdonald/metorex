@@ -87,7 +87,7 @@ fn test_class_object() {
     let class = Rc::new(Class::new("MyClass", None));
     let obj = Object::Class(class);
     assert_eq!(obj.type_name(), "Class");
-    assert_eq!(format!("{}", obj), "<class MyClass>");
+    assert_eq!(format!("{}", obj), "MyClass");
 }
 
 #[test]

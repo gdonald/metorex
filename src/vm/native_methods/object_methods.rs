@@ -180,6 +180,125 @@ impl VirtualMachine {
                     Ok(Some(Object::Nil))
                 }
             }
+            "instance_of?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let target_class = match &arguments[0] {
+                    Object::Class(c) => c,
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Class",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let obj_class = self.builtins().class_of(receiver);
+                Ok(Some(Object::Bool(obj_class.name() == target_class.name())))
+            }
+            "methods" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let class = self.builtins().class_of(receiver);
+                let mut names = class.method_names();
+                // Walk the superclass chain to collect inherited methods
+                let mut current = class.superclass();
+                while let Some(parent) = current {
+                    for name in parent.method_names() {
+                        if !names.contains(&name) {
+                            names.push(name);
+                        }
+                    }
+                    current = parent.superclass();
+                }
+                // For instances, also include methods from the instance's class
+                if let Object::Instance(inst_rc) = receiver {
+                    let inst = inst_rc.borrow();
+                    for name in inst.class.method_names() {
+                        if !names.contains(&name) {
+                            names.push(name);
+                        }
+                    }
+                    let mut parent = inst.class.superclass();
+                    while let Some(p) = parent {
+                        for name in p.method_names() {
+                            if !names.contains(&name) {
+                                names.push(name);
+                            }
+                        }
+                        parent = p.superclass();
+                    }
+                }
+                names.sort();
+                names.dedup();
+                let method_strings: Vec<Object> = names.into_iter().map(Object::string).collect();
+                Ok(Some(Object::Array(std::rc::Rc::new(
+                    std::cell::RefCell::new(method_strings),
+                ))))
+            }
+            "send" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let target_method = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let send_args = arguments[1..].to_vec();
+                // Try user-defined method lookup
+                if let Some((class, method)) = self.lookup_method(receiver, &target_method)
+                    && !method.is_undefined
+                {
+                    return self
+                        .invoke_method(class, method, receiver.clone(), send_args, position)
+                        .map(Some);
+                }
+                // Try native method
+                let class = self.builtins().class_of(receiver);
+                let native_result = self.call_native_method(
+                    &class,
+                    receiver,
+                    &target_method,
+                    &send_args,
+                    position,
+                )?;
+                if let Some(result) = native_result {
+                    return Ok(Some(result));
+                }
+                // Try object methods
+                let object_result =
+                    self.call_object_method(receiver, &target_method, &send_args, position)?;
+                if let Some(result) = object_result {
+                    return Ok(Some(result));
+                }
+                Err(undefined_method_error(&target_method, receiver, position))
+            }
             "dup" | "clone" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

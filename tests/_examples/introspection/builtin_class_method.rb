@@ -1,0 +1,10 @@
+puts([1, 2, 3].class)
+puts("hello".class)
+puts(42.class)
+puts(3.14.class)
+puts(true.class)
+puts(nil.class)
+puts((1..5).class)
+h = {"a" => 1}
+puts(h.class)
+puts(Set.new().class)

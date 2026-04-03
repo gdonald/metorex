@@ -270,6 +270,16 @@ impl VirtualMachine {
             return Ok(result);
         }
 
+        // For stub methods (empty body, registered on Object for introspection),
+        // fall through to base Object native methods (class, to_s, respond_to?, etc.)
+        if method.body.is_empty()
+            && method.captured_vars.is_none()
+            && let Some(result) =
+                self.call_object_method(&receiver, &method_name, &arguments, position)?
+        {
+            return Ok(result);
+        }
+
         let expected = method.parameters.len();
         let positional_count = positional_arg_count(&arguments);
         if expected != positional_count {

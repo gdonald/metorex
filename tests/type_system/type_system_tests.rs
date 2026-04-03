@@ -460,7 +460,7 @@ fn test_to_string_dict() {
 fn test_to_string_class_and_instance() {
     let class = Rc::new(Class::new("MyClass".to_string(), None));
     let class_obj = Object::Class(Rc::clone(&class));
-    assert_eq!(class_obj.to_string(), "<class MyClass>");
+    assert_eq!(class_obj.to_string(), "MyClass");
 
     let instance = Object::Instance(Rc::new(RefCell::new(Instance::new(class))));
     let s = instance.to_string();

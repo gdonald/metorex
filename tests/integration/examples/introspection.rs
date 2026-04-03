@@ -77,3 +77,17 @@ greet
     let output = run_example("introspection/default_parameters.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_introspection_builtin_class_method() {
+    let expected = "Array\nString\nInteger\nFloat\nObject\nObject\nRange\nHash\nSet\n";
+    let output = run_example("introspection/builtin_class_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_builtin_class_method_no_parens() {
+    let expected = "Array\nString\nInteger\nFloat\nObject\nObject\nRange\nHash\nSet\n";
+    let output = run_example("introspection/builtin_class_method_no_parens.rb");
+    assert_eq!(output, expected);
+}

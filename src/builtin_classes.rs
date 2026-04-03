@@ -193,6 +193,26 @@ pub fn init_object_methods(object_class: &Class) {
         vec![],
     ));
     object_class.define_method("respond_to?", respond_to_method);
+
+    // Object#instance_of? - check exact class match
+    let instance_of_method = Rc::new(Method::new(
+        "instance_of?".to_string(),
+        vec!["class".to_string()],
+        vec![],
+    ));
+    object_class.define_method("instance_of?", instance_of_method);
+
+    // Object#methods - list all available methods
+    let methods_method = Rc::new(Method::new("methods".to_string(), vec![], vec![]));
+    object_class.define_method("methods", methods_method);
+
+    // Object#send - dynamic method dispatch
+    let send_method = Rc::new(Method::new(
+        "send".to_string(),
+        vec!["method_name".to_string()],
+        vec![],
+    ));
+    object_class.define_method("send", send_method);
 }
 
 /// Initialize built-in methods for the String class

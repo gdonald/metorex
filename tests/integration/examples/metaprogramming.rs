@@ -370,3 +370,85 @@ Parent greet
     let output = run_example("metaprogramming/class_modification_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+// 14.4 — Reflection and Introspection
+
+#[test]
+fn test_metaprogramming_reflection_execution() {
+    let expected = r#"=== class ===
+Dog
+String
+Integer
+Array
+
+=== instance_of? ===
+true
+false
+
+=== is_a? ===
+true
+true
+
+=== respond_to? ===
+true
+true
+false
+
+=== methods ===
+2
+
+=== send ===
+Woof!
+Fetching ball
+
+=== send with symbol ===
+Woof!
+Fetching stick
+
+=== send on built-in ===
+HELLO
+5
+"#;
+    let output = run_example("metaprogramming/reflection.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_reflection_no_parens_execution() {
+    let expected = r#"=== class ===
+Dog
+String
+Integer
+Array
+
+=== instance_of? ===
+true
+false
+
+=== is_a? ===
+true
+true
+
+=== respond_to? ===
+true
+true
+false
+
+=== methods ===
+2
+
+=== send ===
+Woof!
+Fetching ball
+
+=== send with symbol ===
+Woof!
+Fetching stick
+
+=== send on built-in ===
+HELLO
+5
+"#;
+    let output = run_example("metaprogramming/reflection_no_parens.rb");
+    assert_eq!(output, expected);
+}
