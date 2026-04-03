@@ -1,4 +1,5 @@
 mod additional_tests;
+mod ast_manipulation_tests;
 mod builtin_classes_tests;
 mod builtin_object_methods_tests;
 mod class;

@@ -34,7 +34,7 @@ simple_func
 nil
 Object
 Object
-<Binding with 30 vars>
+<Binding with 32 vars>
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");

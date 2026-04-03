@@ -53,6 +53,8 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         "require_relative",
         Object::NativeFunction("require_relative".to_string()),
     );
+    globals.set("eval", Object::NativeFunction("eval".to_string()));
+    globals.set("parse", Object::NativeFunction("parse".to_string()));
 }
 
 /// Seed the environment with values from the global registry.

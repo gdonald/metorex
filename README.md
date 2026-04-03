@@ -43,7 +43,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Method Missing Hook**: `method_missing` intercepts calls to undefined methods with method name and arguments
 - **Runtime Class Modification**: `remove_method`, `undef_method`, `alias_method`, `module_function` for dynamic class/module manipulation
 - **Reflection and Introspection**: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
-- **AST Reflection**: Inspect and modify code structure at runtime
+- **AST Manipulation**: `eval` for runtime code execution, `parse` for AST inspection, runtime code generation via string evaluation
 - **Block Execution**: Blocks are objects with `.call()` method; trailing `do...end` and `{...}` blocks captured implicitly via `&block` parameter with `block_given?` support
 - **DSL Construction**: Build domain-specific languages naturally
 
@@ -204,6 +204,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `method_missing` hook for intercepting undefined method calls
 - Runtime class modification: `remove_method`, `undef_method`, `alias_method`, `module_function`
 - Reflection: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
+- `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access
 - DSL Examples: test framework, HTML builder, query builder, configuration language

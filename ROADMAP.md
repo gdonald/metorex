@@ -1105,36 +1105,14 @@ Goal: Improve performance by migrating to a Bytecode Virtual Machine and impleme
   - [x] 14.4.8. Create example file: `examples/metaprogramming/reflection.rb`
   - [x] 14.4.9. Create test file: `tests/reflection_tests.rs`
 
-- [ ] 14.5. AST Manipulation
-  - [ ] 14.5.1. Implement `eval` function (compile and execute string)
-  - [ ] 14.5.2. Implement AST modification API
-  - [ ] 14.5.3. Allow blocks to be modified at runtime
-  - [ ] 14.5.4. Implement code generation helpers
-  - [ ] 14.5.5. Write unit tests for AST manipulation
-  - [ ] 14.5.6. Create example file: `examples/metaprogramming/ast_manipulation.rb`
-  - [ ] 14.5.7. Create test file: `tests/ast_manipulation_tests.rs`
-
-- [ ] 14.6. Trait/Interface System
-  - [ ] 14.6.1. Define `Trait` struct in `src/trait.rs`
-  - [ ] 14.6.2. Add trait name and method signatures
-  - [ ] 14.6.3. Implement trait definition syntax parsing (`trait Drawable ... end`)
-  - [ ] 14.6.4. Parse trait method declarations (without implementations)
-  - [ ] 14.6.5. Parse trait implementation syntax (`impl Drawable for Circle ... end`)
-  - [ ] 14.6.6. Add `OP_TRAIT` bytecode instruction (define trait)
-  - [ ] 14.6.7. Add `OP_IMPL_TRAIT` bytecode instruction (implement trait)
-  - [ ] 14.6.8. Add `OP_CHECK_TRAIT` bytecode instruction (runtime check)
-  - [ ] 14.6.9. Implement trait table in VM (registry of traits)
-  - [ ] 14.6.10. Implement trait implementation table (which types implement which traits)
-  - [ ] 14.6.11. Implement trait method dispatch
-  - [ ] 14.6.12. Implement default trait implementations
-  - [ ] 14.6.13. Implement trait bounds for generic code
-  - [ ] 14.6.14. Implement associated types in traits
-  - [ ] 14.6.15. Implement trait objects (dynamic dispatch)
-  - [ ] 14.6.16. Add `implements?` method to check trait implementation
-  - [ ] 14.6.17. Write unit tests for trait system
-  - [ ] 14.6.18. Create example file: `examples/traits/basic_traits.rb`
-  - [ ] 14.6.19. Create example file: `examples/traits/trait_bounds.rb`
-  - [ ] 14.6.20. Create test file: `tests/trait_system_tests.rs`
+- [x] 14.5. AST Manipulation
+  - [x] 14.5.1. Implement `eval` function (compile and execute string)
+  - [x] 14.5.2. Implement AST modification API
+  - [x] 14.5.3. Allow blocks to be modified at runtime
+  - [x] 14.5.4. Implement code generation helpers
+  - [x] 14.5.5. Write unit tests for AST manipulation
+  - [x] 14.5.6. Create example file: `examples/metaprogramming/ast_manipulation.rb`
+  - [x] 14.5.7. Create test file: `tests/ast_manipulation_tests.rs`
 
 ### 15. Performance and Memory Management
 

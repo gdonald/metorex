@@ -452,3 +452,65 @@ HELLO
     let output = run_example("metaprogramming/reflection_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+// 14.5 — AST Manipulation
+
+#[test]
+fn test_metaprogramming_ast_manipulation_execution() {
+    let expected = r#"=== eval ===
+6
+50
+30
+
+=== eval define method ===
+14
+
+=== eval define class ===
+(3, 4)
+
+=== parse ===
+Array
+1
+
+=== code generation ===
+7
+7
+30
+
+=== runtime modification ===
+8
+15
+"#;
+    let output = run_example("metaprogramming/ast_manipulation.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_ast_manipulation_no_parens_execution() {
+    let expected = r#"=== eval ===
+6
+50
+30
+
+=== eval define method ===
+14
+
+=== eval define class ===
+(3, 4)
+
+=== parse ===
+Array
+1
+
+=== code generation ===
+7
+7
+30
+
+=== runtime modification ===
+8
+15
+"#;
+    let output = run_example("metaprogramming/ast_manipulation_no_parens.rb");
+    assert_eq!(output, expected);
+}

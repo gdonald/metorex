@@ -268,6 +268,82 @@ impl VirtualMachine {
                     )),
                 }
             }
+            "parse" => {
+                if arguments.len() != 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("parse() expects 1 argument, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let code = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "parse() expects a String argument, got {}",
+                                other.type_name()
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+                let tokens = crate::lexer::Lexer::new(&code).tokenize();
+                let statements = crate::parser::Parser::new(tokens)
+                    .parse()
+                    .map_err(|errors| {
+                        MetorexError::runtime_error(
+                            format!(
+                                "parse: parse error: {}",
+                                errors
+                                    .iter()
+                                    .map(|e| e.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join("; ")
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        )
+                    })?;
+                use crate::vm::native_methods::ast_methods;
+                Ok(ast_methods::serialize_statements(&statements))
+            }
+            "eval" => {
+                if arguments.len() != 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("eval() expects 1 argument, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let code = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "eval() expects a String argument, got {}",
+                                other.type_name()
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+                let tokens = crate::lexer::Lexer::new(&code).tokenize();
+                let statements = crate::parser::Parser::new(tokens)
+                    .parse()
+                    .map_err(|errors| {
+                        MetorexError::runtime_error(
+                            format!(
+                                "eval: parse error: {}",
+                                errors
+                                    .iter()
+                                    .map(|e| e.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join("; ")
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        )
+                    })?;
+                let result = self.execute_program(&statements)?;
+                Ok(result.unwrap_or(Object::Nil))
+            }
             _ => Err(MetorexError::runtime_error(
                 format!("Unknown native function: {}", name),
                 crate::vm::utils::position_to_location(position),

@@ -4,7 +4,7 @@
 //! standard classes like Object, String, and Array.
 
 mod array_methods;
-mod ast_methods;
+pub(crate) mod ast_methods;
 mod exception_methods;
 mod float_methods;
 mod hash_methods;
