@@ -11,6 +11,36 @@ impl Parser {
         let start_pos = self.expect(TokenKind::Class, "Expected 'class'")?.position;
         self.skip_whitespace();
 
+        // Handle `class << self` (singleton class)
+        if self.check(&[TokenKind::Shovel]) {
+            self.advance(); // consume <<
+            self.skip_whitespace();
+            // Expect `self` (or an expression, but we only support self for now)
+            match self.advance().kind {
+                TokenKind::Ident(ref n) if n == "self" => {}
+                _ => return Err(self.error_at_previous("Expected 'self' after 'class <<'")),
+            }
+            self.skip_whitespace();
+
+            // Parse the singleton class body — statements get merged into the enclosing class
+            let mut body = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End]) {
+                    break;
+                }
+                body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            self.expect(TokenKind::End, "Expected 'end' after 'class << self' body")?;
+
+            // Return the body statements wrapped in a Block so the class executor can handle them
+            return Ok(Statement::Block {
+                statements: body,
+                position: start_pos,
+            });
+        }
+
         let name = match self.advance().kind {
             TokenKind::Ident(name) => name,
             _ => return Err(self.error_at_previous("Expected class name")),

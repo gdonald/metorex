@@ -42,6 +42,31 @@ impl Parser {
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;
 
+                // Check for multiple assignment: a, b, c = ...
+                // Look ahead to verify there's an = after the comma-separated identifiers
+                if matches!(expr, Expression::Identifier { .. })
+                    && self.check(&[TokenKind::Comma])
+                    && self.is_multiple_assignment()
+                {
+                    let mut targets = vec![expr];
+                    while self.match_token(&[TokenKind::Comma]) {
+                        self.skip_whitespace();
+                        targets.push(self.parse_expression_with_lambda()?);
+                    }
+                    self.expect(TokenKind::Equal, "Expected '=' in multiple assignment")?;
+                    self.skip_whitespace();
+                    let mut values = vec![self.parse_expression_with_lambda()?];
+                    while self.match_token(&[TokenKind::Comma]) {
+                        self.skip_whitespace();
+                        values.push(self.parse_expression_with_lambda()?);
+                    }
+                    return Ok(Statement::MultipleAssignment {
+                        targets,
+                        values,
+                        position: token.position,
+                    });
+                }
+
                 // Check if this is an assignment
                 if self.check(&[
                     TokenKind::Equal,
@@ -83,19 +108,86 @@ impl Parser {
                         _ => unreachable!(),
                     };
 
-                    Ok(Statement::Assignment {
+                    let stmt = Statement::Assignment {
                         target: expr,
                         value: final_value,
                         position: token.position,
-                    })
+                    };
+                    self.wrap_with_modifier(stmt)
                 } else {
                     // It's just an expression statement
-                    Ok(Statement::Expression {
+                    let stmt = Statement::Expression {
                         expression: expr,
                         position: token.position,
-                    })
+                    };
+                    self.wrap_with_modifier(stmt)
                 }
             }
+        }
+    }
+
+    /// Look ahead to check if this is a multiple assignment (a, b = ...)
+    /// by scanning comma-separated identifiers until we find = or something else.
+    fn is_multiple_assignment(&self) -> bool {
+        let mut offset = 1; // start after the first comma
+        loop {
+            // Skip whitespace tokens
+            let tok = self.peek_ahead(offset);
+            if matches!(
+                tok.kind,
+                TokenKind::Newline | TokenKind::Comment(_) | TokenKind::Semicolon
+            ) {
+                offset += 1;
+                continue;
+            }
+            // Expect an identifier
+            if !matches!(tok.kind, TokenKind::Ident(_)) {
+                return false;
+            }
+            offset += 1;
+            // After the identifier, expect comma or =
+            let next = self.peek_ahead(offset);
+            if matches!(next.kind, TokenKind::Equal) {
+                return true;
+            }
+            if matches!(next.kind, TokenKind::Comma) {
+                offset += 1;
+                continue;
+            }
+            return false;
+        }
+    }
+
+    /// Check for postfix if/unless modifiers and wrap the statement.
+    /// Only matches if the modifier is on the same line (no newline before it).
+    fn wrap_with_modifier(&mut self, stmt: Statement) -> Result<Statement, MetorexError> {
+        // Don't consume newlines — modifier must be on the same line
+        if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
+            return Ok(stmt);
+        }
+        if self.check(&[TokenKind::If]) {
+            let position = self.advance().position; // consume 'if'
+            self.skip_whitespace();
+            let condition = self.parse_expression()?;
+            Ok(Statement::If {
+                condition,
+                then_branch: vec![stmt],
+                elsif_branches: vec![],
+                else_branch: None,
+                position,
+            })
+        } else if self.check(&[TokenKind::Unless]) {
+            let position = self.advance().position; // consume 'unless'
+            self.skip_whitespace();
+            let condition = self.parse_expression()?;
+            Ok(Statement::Unless {
+                condition,
+                then_branch: vec![stmt],
+                else_branch: None,
+                position,
+            })
+        } else {
+            Ok(stmt)
         }
     }
 }

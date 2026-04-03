@@ -485,6 +485,20 @@ impl Resolver {
             Statement::Include { .. } | Statement::Extend { .. } => {
                 // Module inclusion/extension, no variable resolution needed
             }
+
+            Statement::MultipleAssignment {
+                targets, values, ..
+            } => {
+                for value in values {
+                    self.resolve_expression(value);
+                }
+                for target in targets {
+                    if let Expression::Identifier { name, position } = target {
+                        self.declare(name.clone(), *position);
+                    }
+                    self.resolve_expression(target);
+                }
+            }
         }
     }
 
@@ -744,7 +758,9 @@ impl Resolver {
             | Expression::BoolLiteral { .. }
             | Expression::NilLiteral { .. }
             | Expression::SelfExpr { .. }
-            | Expression::Super { .. } => {}
+            | Expression::Super { .. }
+            | Expression::MagicFile { .. }
+            | Expression::MagicLine { .. } => {}
         }
     }
 }

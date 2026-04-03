@@ -60,6 +60,8 @@ pub enum TokenKind {
     Module,
     Include,
     Extend,
+    MagicFile,
+    MagicLine,
 
     // Literals
     Int(i64),
@@ -89,6 +91,9 @@ pub enum TokenKind {
     Less,         // <
     Greater,      // >
     LessEqual,    // <=
+    Spaceship,    // <=>
+    Shovel,       // <<
+    Question,     // ? (ternary operator)
     GreaterEqual, // >=
     PlusEqual,    // +=
     MinusEqual,   // -=
@@ -168,6 +173,8 @@ impl fmt::Display for TokenKind {
             TokenKind::Module => write!(f, "module"),
             TokenKind::Include => write!(f, "include"),
             TokenKind::Extend => write!(f, "extend"),
+            TokenKind::MagicFile => write!(f, "__FILE__"),
+            TokenKind::MagicLine => write!(f, "__LINE__"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),
@@ -206,6 +213,9 @@ impl fmt::Display for TokenKind {
             TokenKind::Less => write!(f, "<"),
             TokenKind::Greater => write!(f, ">"),
             TokenKind::LessEqual => write!(f, "<="),
+            TokenKind::Spaceship => write!(f, "<=>"),
+            TokenKind::Shovel => write!(f, "<<"),
+            TokenKind::Question => write!(f, "?"),
             TokenKind::GreaterEqual => write!(f, ">="),
             TokenKind::PlusEqual => write!(f, "+="),
             TokenKind::MinusEqual => write!(f, "-="),

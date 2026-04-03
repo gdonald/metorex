@@ -38,6 +38,7 @@ fn binary_op_str(op: &BinaryOp) -> &'static str {
         BinaryOp::Greater => ">",
         BinaryOp::LessEqual => "<=",
         BinaryOp::GreaterEqual => ">=",
+        BinaryOp::Spaceship => "<=>",
         BinaryOp::And => "&&",
         BinaryOp::Or => "||",
         BinaryOp::Assign => "=",

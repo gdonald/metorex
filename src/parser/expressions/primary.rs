@@ -81,6 +81,12 @@ impl Parser {
                 name,
                 position: token.position,
             }),
+            TokenKind::MagicFile => Ok(Expression::MagicFile {
+                position: token.position,
+            }),
+            TokenKind::MagicLine => Ok(Expression::MagicLine {
+                position: token.position,
+            }),
 
             // Symbol literal (:name)
             TokenKind::Colon => {
@@ -171,12 +177,15 @@ impl Parser {
                 })
             }
 
-            // Lambda literal: lambda do |params| ... end or lambda |params| ... end
+            // Lambda literal: lambda do |params| ... end or lambda { |params| ... }
             TokenKind::Lambda => {
                 self.skip_whitespace();
 
-                // Check for 'do' keyword (optional for compact syntax)
-                let _has_do = self.match_token(&[TokenKind::Do]);
+                // Check for brace or 'do' keyword
+                let use_braces = self.match_token(&[TokenKind::LBrace]);
+                if !use_braces {
+                    self.match_token(&[TokenKind::Do]);
+                }
                 self.skip_whitespace();
 
                 // Parse parameters: |param1, param2, ...| or || for empty params
@@ -214,17 +223,26 @@ impl Parser {
                 // Parse body statements
                 self.skip_whitespace();
                 let mut body = Vec::new();
+                let end_token = if use_braces {
+                    TokenKind::RBrace
+                } else {
+                    TokenKind::End
+                };
 
-                while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                while !self.check(std::slice::from_ref(&end_token)) && !self.is_at_end() {
                     self.skip_whitespace();
-                    if self.check(&[TokenKind::End]) {
+                    if self.check(std::slice::from_ref(&end_token)) {
                         break;
                     }
                     body.push(self.parse_statement()?);
                     self.skip_whitespace();
                 }
 
-                self.expect(TokenKind::End, "Expected 'end' after lambda body")?;
+                if use_braces {
+                    self.expect(TokenKind::RBrace, "Expected '}' after lambda body")?;
+                } else {
+                    self.expect(TokenKind::End, "Expected 'end' after lambda body")?;
+                }
 
                 Ok(Expression::Lambda {
                     parameters,

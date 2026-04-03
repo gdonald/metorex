@@ -183,6 +183,67 @@ impl VirtualMachine {
                     };
                     return Ok(Some(Object::Bool(std::path::Path::new(&path).exists())));
                 }
+                "expand_path" if class_rc.name() == "File" => {
+                    if arguments.is_empty() || arguments.len() > 2 {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "wrong number of arguments (given {}, expected 1..2)",
+                                arguments.len()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
+                    let path_str = match &arguments[0] {
+                        Object::String(s) => s.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "expand_path",
+                                "String",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let base = if arguments.len() == 2 {
+                        match &arguments[1] {
+                            Object::String(s) => s.as_str().to_string(),
+                            other => {
+                                return Err(method_argument_type_error(
+                                    "expand_path",
+                                    "String",
+                                    other,
+                                    position,
+                                ));
+                            }
+                        }
+                    } else {
+                        std::env::current_dir()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    };
+                    let base_path = std::path::PathBuf::from(&base);
+                    let expanded = base_path.join(&path_str);
+                    let result = match expanded.canonicalize() {
+                        Ok(p) => p.to_string_lossy().to_string(),
+                        Err(_) => {
+                            // Path doesn't exist yet; normalize manually
+                            let mut components = Vec::new();
+                            for comp in expanded.components() {
+                                match comp {
+                                    std::path::Component::ParentDir => {
+                                        components.pop();
+                                    }
+                                    std::path::Component::CurDir => {}
+                                    _ => components.push(comp),
+                                }
+                            }
+                            let normalized: std::path::PathBuf = components.iter().collect();
+                            normalized.to_string_lossy().to_string()
+                        }
+                    };
+                    return Ok(Some(Object::string(result)));
+                }
                 "define_method" => {
                     if arguments.is_empty() {
                         return Err(method_argument_error("define_method", 1, 0, position));

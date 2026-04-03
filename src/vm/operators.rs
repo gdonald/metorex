@@ -59,6 +59,7 @@ impl VirtualMachine {
             Less | Greater | LessEqual | GreaterEqual => {
                 self.evaluate_comparison(op, left, right, position)
             }
+            Spaceship => self.evaluate_spaceship(left, right, position),
             And | Or => Err(MetorexError::internal_error(format!(
                 "Logical operation '{:?}' should be handled by short-circuit evaluation",
                 op
@@ -211,5 +212,35 @@ impl VirtualMachine {
         };
 
         Ok(Object::Bool(result))
+    }
+
+    /// Evaluate the spaceship operator (<=>), returning -1, 0, or 1.
+    pub(crate) fn evaluate_spaceship(
+        &self,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match (&left, &right) {
+            (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a.cmp(b) as i64)),
+            (Object::Float(a), Object::Float(b)) => {
+                Ok(Object::Int(a.partial_cmp(b).map_or(0, |o| o as i64)))
+            }
+            (Object::Int(a), Object::Float(b)) => {
+                let a = *a as f64;
+                Ok(Object::Int(a.partial_cmp(b).map_or(0, |o| o as i64)))
+            }
+            (Object::Float(a), Object::Int(b)) => {
+                let b = *b as f64;
+                Ok(Object::Int(a.partial_cmp(&b).map_or(0, |o| o as i64)))
+            }
+            (Object::String(a), Object::String(b)) => Ok(Object::Int(a.cmp(b) as i64)),
+            _ => Err(binary_type_error(
+                BinaryOp::Spaceship,
+                &left,
+                &right,
+                position,
+            )),
+        }
     }
 }

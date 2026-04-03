@@ -11,7 +11,7 @@ impl Parser {
         let start_pos = self.expect(TokenKind::If, "Expected 'if'")?.position;
         self.skip_whitespace();
 
-        let condition = self.parse_expression()?;
+        let condition = self.parse_condition()?;
         self.skip_whitespace();
 
         // Parse then branch
@@ -87,7 +87,7 @@ impl Parser {
         let start_pos = self.expect(TokenKind::While, "Expected 'while'")?.position;
         self.skip_whitespace();
 
-        let condition = self.parse_expression()?;
+        let condition = self.parse_condition()?;
         self.skip_whitespace();
 
         // Optionally consume 'do'
@@ -173,7 +173,8 @@ impl Parser {
     /// Parse a break statement
     pub(crate) fn parse_break_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self.expect(TokenKind::Break, "Expected 'break'")?.position;
-        Ok(Statement::Break { position: pos })
+        let stmt = Statement::Break { position: pos };
+        self.wrap_with_modifier(stmt)
     }
 
     /// Parse a continue statement
@@ -181,7 +182,8 @@ impl Parser {
         let pos = self
             .expect(TokenKind::Continue, "Expected 'continue'")?
             .position;
-        Ok(Statement::Continue { position: pos })
+        let stmt = Statement::Continue { position: pos };
+        self.wrap_with_modifier(stmt)
     }
 
     /// Parse an unless statement
@@ -191,7 +193,7 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        let condition = self.parse_expression()?;
+        let condition = self.parse_condition()?;
         self.skip_whitespace();
 
         // Parse then branch
@@ -245,7 +247,24 @@ impl Parser {
         {
             None
         } else {
-            Some(self.parse_expression()?)
+            let first = self.parse_expression()?;
+            if self.match_token(&[TokenKind::Comma]) {
+                // Multiple return values: return a, b, c → return [a, b, c]
+                let mut elements = vec![first];
+                loop {
+                    self.skip_whitespace();
+                    elements.push(self.parse_expression()?);
+                    if !self.match_token(&[TokenKind::Comma]) {
+                        break;
+                    }
+                }
+                Some(Expression::Array {
+                    elements,
+                    position: pos,
+                })
+            } else {
+                Some(first)
+            }
         };
 
         Ok(Statement::Return {

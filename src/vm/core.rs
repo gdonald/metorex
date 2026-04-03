@@ -40,7 +40,9 @@ impl VirtualMachine {
 
         let mut globals = GlobalRegistry::new();
         register_builtin_classes(&mut globals, &builtins);
+        register_builtin_modules(&mut globals);
         register_singletons(&mut globals);
+        register_special_globals(&mut globals);
         register_native_functions(&mut globals);
 
         seed_environment_with_globals(&mut environment, &globals);
@@ -85,6 +87,17 @@ impl VirtualMachine {
     /// Borrow the heap allocator.
     pub fn heap(&self) -> Rc<RefCell<Heap>> {
         Rc::clone(&self.heap)
+    }
+
+    /// Set the ARGV global with script arguments.
+    pub fn set_argv(&mut self, args: Vec<String>) {
+        let elements: Vec<Object> = args
+            .into_iter()
+            .map(|s| Object::String(Rc::new(s)))
+            .collect();
+        let argv = Object::Array(Rc::new(RefCell::new(elements)));
+        self.globals.set("ARGV", argv.clone());
+        self.environment.define("ARGV".to_string(), argv);
     }
 
     /// Set the current file being executed.
@@ -367,6 +380,11 @@ impl VirtualMachine {
                             self.evaluate_expression(right)
                         };
                     }
+                    BinaryOp::Assign => {
+                        let value = self.evaluate_expression(right)?;
+                        self.assign_value(left, value.clone())?;
+                        return Ok(value);
+                    }
                     _ => {}
                 }
                 let left_value = self.evaluate_expression(left)?;
@@ -468,6 +486,15 @@ impl VirtualMachine {
             Expression::GlobalVariable { name, .. } => {
                 Ok(self.globals.get(name).unwrap_or(Object::Nil))
             }
+            Expression::MagicFile { .. } => {
+                let path = self
+                    .current_file
+                    .as_ref()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(eval)".to_string());
+                Ok(Object::String(Rc::new(path)))
+            }
+            Expression::MagicLine { position, .. } => Ok(Object::Int(position.line as i64)),
             Expression::ClassVariable { name, position } => {
                 // Class variables can be read within a method or class context
                 match self.environment.get("self") {
@@ -628,12 +655,14 @@ impl VirtualMachine {
             } => {
                 let ns_value = self.evaluate_expression(namespace)?;
                 match ns_value {
-                    Object::Class(class_rc) => class_rc.get_class_var(name).ok_or_else(|| {
-                        MetorexError::runtime_error(
-                            format!("Uninitialized constant {}::{}", class_rc.name(), name),
-                            position_to_location(*position),
-                        )
-                    }),
+                    Object::Class(class_rc) | Object::Module(class_rc) => {
+                        class_rc.get_class_var(name).ok_or_else(|| {
+                            MetorexError::runtime_error(
+                                format!("Uninitialized constant {}::{}", class_rc.name(), name),
+                                position_to_location(*position),
+                            )
+                        })
+                    }
                     _ => Err(MetorexError::runtime_error(
                         "'::' scope resolution requires a class or module as namespace".to_string(),
                         position_to_location(*position),
@@ -679,6 +708,7 @@ fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::Greater => Some(">"),
         BinaryOp::LessEqual => Some("<="),
         BinaryOp::GreaterEqual => Some(">="),
+        BinaryOp::Spaceship => Some("<=>"),
         _ => None,
     }
 }

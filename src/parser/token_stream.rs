@@ -107,7 +107,9 @@ impl TokenStream {
 
     /// Skip newlines and comments
     pub fn skip_whitespace(&mut self) {
-        while let TokenKind::Newline | TokenKind::Comment(_) = &self.peek().kind {
+        while let TokenKind::Newline | TokenKind::Comment(_) | TokenKind::Semicolon =
+            &self.peek().kind
+        {
             self.advance();
         }
     }

@@ -20,6 +20,7 @@ pub enum BinaryOp {
     Greater,      // >
     LessEqual,    // <=
     GreaterEqual, // >=
+    Spaceship,    // <=>
 
     // Logical operators
     And, // &&
@@ -88,6 +89,12 @@ pub enum Expression {
     },
     GlobalVariable {
         name: String,
+        position: Position,
+    },
+    MagicFile {
+        position: Position,
+    },
+    MagicLine {
         position: Position,
     },
 
@@ -433,6 +440,13 @@ pub enum Statement {
         position: Position,
     },
 
+    // Multiple assignment (a, b, c = expr)
+    MultipleAssignment {
+        targets: Vec<Expression>,
+        values: Vec<Expression>,
+        position: Position,
+    },
+
     // Function definition (standalone function)
     FunctionDef {
         name: String,
@@ -598,6 +612,7 @@ impl fmt::Display for BinaryOp {
             BinaryOp::DivideAssign => write!(f, "/="),
             BinaryOp::And => write!(f, "&&"),
             BinaryOp::Or => write!(f, "||"),
+            BinaryOp::Spaceship => write!(f, "<=>"),
         }
     }
 }
@@ -629,6 +644,8 @@ impl Expression {
             | Expression::InstanceVariable { position, .. }
             | Expression::ClassVariable { position, .. }
             | Expression::GlobalVariable { position, .. }
+            | Expression::MagicFile { position, .. }
+            | Expression::MagicLine { position, .. }
             | Expression::BinaryOp { position, .. }
             | Expression::UnaryOp { position, .. }
             | Expression::Call { position, .. }
@@ -699,7 +716,8 @@ impl Statement {
             | Statement::AttrAccessor { position, .. }
             | Statement::ModuleDef { position, .. }
             | Statement::Include { position, .. }
-            | Statement::Extend { position, .. } => *position,
+            | Statement::Extend { position, .. }
+            | Statement::MultipleAssignment { position, .. } => *position,
         }
     }
 

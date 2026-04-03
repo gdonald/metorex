@@ -158,6 +158,12 @@ impl Compiler {
                     BinaryOp::Greater => self.emit_op(OpCode::Greater, line),
                     BinaryOp::LessEqual => self.emit_op(OpCode::LessEqual, line),
                     BinaryOp::GreaterEqual => self.emit_op(OpCode::GreaterEqual, line),
+                    BinaryOp::Spaceship => {
+                        return Err(MetorexError::runtime_error(
+                            "Spaceship operator not yet supported in bytecode compiler",
+                            SourceLocation::new(line, 0, 0),
+                        ));
+                    }
                     BinaryOp::And | BinaryOp::Or => unreachable!(),
                     BinaryOp::Assign
                     | BinaryOp::AddAssign
@@ -358,7 +364,9 @@ impl Compiler {
             | Expression::Case { position, .. }
             | Expression::If { position, .. }
             | Expression::Unless { position, .. }
-            | Expression::ScopeResolution { position, .. } => {
+            | Expression::ScopeResolution { position, .. }
+            | Expression::MagicFile { position, .. }
+            | Expression::MagicLine { position, .. } => {
                 let line = Self::pos_line(position);
                 Err(MetorexError::runtime_error(
                     format!(

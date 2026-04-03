@@ -75,13 +75,29 @@ impl Parser {
             TokenKind::Greater,
             TokenKind::LessEqual,
             TokenKind::GreaterEqual,
+            TokenKind::Spaceship,
+            TokenKind::Shovel,
         ]) {
             let op_token = self.advance();
+            if op_token.kind == TokenKind::Shovel {
+                // << is a method call (e.g., array.<<(value))
+                self.skip_whitespace();
+                let right = self.parse_range()?;
+                expr = Expression::MethodCall {
+                    receiver: Box::new(expr),
+                    method: "<<".to_string(),
+                    arguments: vec![right],
+                    trailing_block: None,
+                    position: op_token.position,
+                };
+                continue;
+            }
             let op = match op_token.kind {
                 TokenKind::Less => BinaryOp::Less,
                 TokenKind::Greater => BinaryOp::Greater,
                 TokenKind::LessEqual => BinaryOp::LessEqual,
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
+                TokenKind::Spaceship => BinaryOp::Spaceship,
                 _ => unreachable!(),
             };
             let right = self.parse_range()?;

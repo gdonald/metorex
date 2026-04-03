@@ -63,6 +63,93 @@ impl VirtualMachine {
                     ))
                 }
             }
+            "require" => {
+                // require(name) loads and executes a file from $LOAD_PATH
+                if arguments.len() != 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("require() expects 1 argument, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+
+                let require_name = match &arguments[0] {
+                    Object::String(path) => path.as_ref().clone(),
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "require() expects a String argument, got {}",
+                                arguments[0].type_name()
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+
+                // Search $LOAD_PATH for the file
+                let load_path = self.globals().get(":").unwrap_or(Object::Nil);
+                let search_dirs: Vec<String> = match &load_path {
+                    Object::Array(arr) => arr
+                        .borrow()
+                        .iter()
+                        .filter_map(|obj| match obj {
+                            Object::String(s) => Some(s.as_ref().clone()),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => Vec::new(),
+                };
+
+                let mut found_path = None;
+                for dir in &search_dirs {
+                    let base = std::path::PathBuf::from(dir);
+                    // Try exact name first, then with .rb extension
+                    let candidates = [
+                        base.join(&require_name),
+                        base.join(format!("{}.rb", require_name)),
+                    ];
+                    for candidate in &candidates {
+                        if candidate.exists() {
+                            found_path = Some(candidate.clone());
+                            break;
+                        }
+                    }
+                    if found_path.is_some() {
+                        break;
+                    }
+                }
+
+                let resolved = found_path.ok_or_else(|| {
+                    MetorexError::runtime_error(
+                        format!(
+                            "cannot load such file -- {} (searched in $LOAD_PATH: {:?})",
+                            require_name, search_dirs
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+
+                let canonical_path = resolved.canonicalize().map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!(
+                            "Failed to canonicalize path '{}': {}",
+                            resolved.display(),
+                            e
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+
+                let was_already_loaded = self.is_file_loaded(&canonical_path);
+
+                self.execute_file(&resolved).map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!("require('{}') — {}", require_name, e.message()),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
+
+                Ok(Object::Bool(!was_already_loaded))
+            }
             "require_relative" => {
                 // require_relative(path) loads and executes a file relative to the current file
                 if arguments.len() != 1 {

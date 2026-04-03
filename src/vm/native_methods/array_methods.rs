@@ -50,7 +50,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
             }
-            "push" | "append" => {
+            "push" | "append" | "<<" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         method_name,

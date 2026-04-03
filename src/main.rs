@@ -49,6 +49,26 @@ struct Cli {
     /// Ignored flags for Ruby compatibility
     #[arg(long = "disable", hide = true)]
     _disable: Option<String>,
+
+    /// Ignored: Ruby -r (require library)
+    #[arg(short = 'r', hide = true)]
+    _require: Vec<String>,
+
+    /// Ignored: Ruby -I (include path)
+    #[arg(short = 'I', hide = true)]
+    _include: Vec<String>,
+
+    /// Ignored: Ruby -w (warnings)
+    #[arg(short = 'w', hide = true, action = clap::ArgAction::SetTrue)]
+    _warnings: bool,
+
+    /// Ignored: Ruby -W (warning level)
+    #[arg(short = 'W', hide = true)]
+    _warning_level: Option<String>,
+
+    /// Ignored: Ruby -d (debug mode)
+    #[arg(short = 'd', hide = true, action = clap::ArgAction::SetTrue)]
+    _ruby_debug: bool,
 }
 
 fn main() {
@@ -118,8 +138,7 @@ fn main() {
     }
 
     let filename = &cli.file[0];
-    // TODO: pass script_args into VM as ARGV
-    let _script_args: Vec<String> = cli.file[1..].to_vec();
+    let script_args: Vec<String> = cli.file[1..].to_vec();
 
     // Convert filename to absolute path
     let absolute_path = match fs::canonicalize(filename) {
@@ -183,6 +202,7 @@ fn main() {
     // Set the current file path and mark it as loaded
     vm.set_current_file(absolute_path.clone());
     vm.mark_file_loaded(absolute_path);
+    vm.set_argv(script_args);
 
     if let Err(err) = vm.execute_program(&program) {
         eprintln!("Runtime error: {}", err);

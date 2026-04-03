@@ -70,7 +70,14 @@ impl VirtualMachine {
                         .iter()
                         .find(|p| p.is_block)
                         .map(|p| p.name.clone());
+                    let default_params: Vec<(usize, crate::ast::Expression)> = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .enumerate()
+                        .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
+                        .collect();
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
                     let method = Rc::new(m);
@@ -243,6 +250,51 @@ impl VirtualMachine {
                         }
                     }
                 }
+                // class << self block — treat inner statements as class-level
+                Statement::Block { statements, .. } => {
+                    for inner_stmt in statements {
+                        if let Statement::AttrAccessor { attributes, .. } = inner_stmt {
+                            for attr_name in attributes {
+                                // Getter
+                                let getter_body = vec![Statement::Expression {
+                                    expression: Expression::InstanceVariable {
+                                        name: format!("@{}", attr_name),
+                                        position: crate::lexer::Position::default(),
+                                    },
+                                    position: crate::lexer::Position::default(),
+                                }];
+                                class.define_method(
+                                    attr_name,
+                                    Rc::new(Method::new(
+                                        attr_name.to_string(),
+                                        vec![],
+                                        getter_body,
+                                    )),
+                                );
+                                // Setter
+                                let setter_body = vec![Statement::Assignment {
+                                    target: Expression::InstanceVariable {
+                                        name: format!("@{}", attr_name),
+                                        position: crate::lexer::Position::default(),
+                                    },
+                                    value: Expression::Identifier {
+                                        name: "value".to_string(),
+                                        position: crate::lexer::Position::default(),
+                                    },
+                                    position: crate::lexer::Position::default(),
+                                }];
+                                class.define_method(
+                                    format!("{}=", attr_name),
+                                    Rc::new(Method::new(
+                                        format!("{}=", attr_name),
+                                        vec!["value".to_string()],
+                                        setter_body,
+                                    )),
+                                );
+                            }
+                        }
+                    }
+                }
                 _ => {
                     // Handle define_method(:name) { |args| body } calls in class body
                     if let Statement::Expression {
@@ -339,6 +391,14 @@ impl VirtualMachine {
             .find(|p| p.is_block)
             .map(|p| p.name.clone());
 
+        // Extract positional default values
+        let default_parameters: Vec<(usize, crate::ast::Expression)> = parameters
+            .iter()
+            .filter(|p| !p.is_named_keyword && !p.is_block)
+            .enumerate()
+            .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
+            .collect();
+
         // Create source location from position
         let source_location =
             crate::error::SourceLocation::new(position.line, position.column, position.offset);
@@ -350,6 +410,7 @@ impl VirtualMachine {
             body.to_vec(),
             source_location,
         );
+        function.default_parameters = default_parameters;
         function.keyword_parameters = keyword_parameters;
         function.block_parameter = block_parameter;
         let function = Rc::new(function);
@@ -393,10 +454,28 @@ impl VirtualMachine {
                         .iter()
                         .find(|p| p.is_block)
                         .map(|p| p.name.clone());
+                    let default_params: Vec<(usize, crate::ast::Expression)> = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .enumerate()
+                        .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
+                        .collect();
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
                     module.define_method(method_name, Rc::new(m));
+                }
+                Statement::Assignment {
+                    target:
+                        Expression::Identifier {
+                            name: const_name, ..
+                        },
+                    value,
+                    ..
+                } if const_name.starts_with(|c: char| c.is_uppercase()) => {
+                    let const_value = self.evaluate_expression(value)?;
+                    module.set_class_var(const_name, const_value);
                 }
                 _ => {
                     return Err(MetorexError::runtime_error(

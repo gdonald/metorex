@@ -16,6 +16,8 @@ pub struct Method {
     pub name: String,
     /// Positional parameter names (excludes &block and keyword params)
     pub parameters: Vec<String>,
+    /// Default values for positional parameters, indexed by position
+    pub default_parameters: Vec<(usize, Expression)>,
     /// Named keyword parameters: (name, optional_default_expression)
     /// e.g., `def f(name:, age: 10)` → [("name", None), ("age", Some(IntLiteral(10)))]
     pub keyword_parameters: Vec<(String, Option<Expression>)>,
@@ -41,6 +43,7 @@ impl Method {
         Self {
             name,
             parameters,
+            default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
             body,
@@ -62,6 +65,7 @@ impl Method {
         Self {
             name,
             parameters,
+            default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
             body,
@@ -83,6 +87,7 @@ impl Method {
         Self {
             name,
             parameters,
+            default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
             body,
@@ -105,6 +110,7 @@ impl Method {
         Self {
             name,
             parameters,
+            default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
             body,
@@ -121,6 +127,7 @@ impl Method {
         Self {
             name,
             parameters: vec![],
+            default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
             body: vec![],
@@ -137,6 +144,7 @@ impl Method {
         Self {
             name: self.name.clone(),
             parameters: self.parameters.clone(),
+            default_parameters: self.default_parameters.clone(),
             keyword_parameters: self.keyword_parameters.clone(),
             block_parameter: self.block_parameter.clone(),
             body: self.body.clone(),

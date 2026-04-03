@@ -214,10 +214,17 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// Read a global variable ($var)
+    /// Read a global variable ($var, $:, $0, etc.)
     fn read_global_variable(&mut self) -> TokenKind {
         // Skip the $
         self.advance();
+        if let Some(ch) = self.peek() {
+            // Special single-character globals: $: $; $, $/ $\ $! $@ $~ $& $' $` $+ $. $< $> $" $_ $* $$ $? $0-$9
+            if !Self::is_identifier_start(ch) {
+                self.advance();
+                return TokenKind::GlobalVar(ch.to_string());
+            }
+        }
         let mut ident = String::new();
         while let Some(ch) = self.peek() {
             if Self::is_identifier_continue(ch) {
@@ -249,7 +256,7 @@ impl<'a> Lexer<'a> {
             "ensure" => TokenKind::Ensure,
             "raise" => TokenKind::Raise,
             "break" => TokenKind::Break,
-            "continue" => TokenKind::Continue,
+            "continue" | "next" => TokenKind::Continue,
             "return" => TokenKind::Return,
             "lambda" => TokenKind::Lambda,
             "super" => TokenKind::Super,
@@ -265,6 +272,11 @@ impl<'a> Lexer<'a> {
             "true" => TokenKind::True,
             "false" => TokenKind::False,
             "nil" => TokenKind::Nil,
+            "__FILE__" => TokenKind::MagicFile,
+            "__LINE__" => TokenKind::MagicLine,
+            "and" => TokenKind::LogicalAnd,
+            "or" => TokenKind::LogicalOr,
+            "not" => TokenKind::Bang,
             _ => TokenKind::Ident(ident),
         }
     }
@@ -574,7 +586,15 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     if self.peek() == Some('=') {
                         self.advance();
-                        Token::new(TokenKind::LessEqual, position)
+                        if self.peek() == Some('>') {
+                            self.advance();
+                            Token::new(TokenKind::Spaceship, position)
+                        } else {
+                            Token::new(TokenKind::LessEqual, position)
+                        }
+                    } else if self.peek() == Some('<') {
+                        self.advance();
+                        Token::new(TokenKind::Shovel, position)
                     } else {
                         Token::new(TokenKind::Less, position)
                     }
@@ -662,6 +682,19 @@ impl<'a> Lexer<'a> {
                         Token::new(TokenKind::LogicalAnd, position)
                     } else {
                         Token::new(TokenKind::Ampersand, position)
+                    }
+                }
+                // ? can be: ternary operator or character literal (?x)
+                '?' => {
+                    self.advance(); // consume ?
+                    match self.peek() {
+                        // ?x where x is not a space/newline: character literal
+                        Some(ch) if !ch.is_whitespace() => {
+                            self.advance();
+                            Token::new(TokenKind::String(ch.to_string()), position)
+                        }
+                        // ? followed by space/newline/EOF: ternary operator
+                        _ => Token::new(TokenKind::Question, position),
                     }
                 }
                 _ => {

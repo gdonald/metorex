@@ -182,3 +182,133 @@ fn cli_test_flag_appears_in_help() {
     let stdout = String::from_utf8(output.stdout).unwrap();
     assert!(stdout.contains("--test"));
 }
+
+// ============================================================================
+// -v (Ruby-compatible version)
+// ============================================================================
+
+#[test]
+fn cli_v_flag_prints_ruby_version() {
+    let output = metorex_cmd().arg("-v").output().expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert!(stdout.contains("ruby 4.0.2"));
+    assert!(stdout.contains("metorex"));
+}
+
+// ============================================================================
+// -e (evaluate inline code)
+// ============================================================================
+
+#[test]
+fn cli_e_flag_evaluates_code() {
+    let output = metorex_cmd()
+        .args(["-e", "puts 1 + 2"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "3");
+}
+
+#[test]
+fn cli_e_flag_syntax_error_exits_nonzero() {
+    let output = metorex_cmd()
+        .args(["-e", "def"])
+        .output()
+        .expect("failed to execute");
+    assert!(!output.status.success());
+}
+
+// ============================================================================
+// --disable (ignored Ruby flag)
+// ============================================================================
+
+#[test]
+fn cli_disable_flag_ignored() {
+    let output = metorex_cmd()
+        .args(["--disable=gems", "-e", "puts 42"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "42");
+}
+
+// ============================================================================
+// -r, -I, -w, -d (ignored Ruby flags)
+// ============================================================================
+
+#[test]
+fn cli_r_flag_ignored() {
+    let output = metorex_cmd()
+        .args(["-r", "somefile", "-e", "puts 1"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "1");
+}
+
+#[test]
+fn cli_i_flag_ignored() {
+    let output = metorex_cmd()
+        .args(["-I", "somepath", "-e", "puts 2"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "2");
+}
+
+#[test]
+fn cli_w_flag_ignored() {
+    let output = metorex_cmd()
+        .args(["-w", "-e", "puts 3"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "3");
+}
+
+#[test]
+fn cli_d_flag_ignored() {
+    let output = metorex_cmd()
+        .args(["-d", "-e", "puts 4"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "4");
+}
+
+// ============================================================================
+// ARGV (script arguments)
+// ============================================================================
+
+#[test]
+fn cli_argv_passed_to_script() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["tests/_examples/argv/argv_basic.rb", "foo", "bar", "baz"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "3\nfoo\nbar\nbaz");
+}
+
+#[test]
+fn cli_argv_empty_when_no_args() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["tests/_examples/argv/argv_basic.rb"])
+        .output()
+        .expect("failed to execute");
+    assert!(output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "0");
+}

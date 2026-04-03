@@ -8,6 +8,7 @@ mod dsl;
 mod errors;
 mod file_loading;
 mod functions;
+mod globals;
 mod introspection;
 mod metaprogramming;
 mod methods;

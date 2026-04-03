@@ -1,6 +1,6 @@
 // Exception handling statement parsing (begin/rescue/raise)
 
-use crate::ast::{RescueClause, Statement};
+use crate::ast::{Expression, RescueClause, Statement};
 use crate::error::{MetorexError, SourceLocation};
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -191,12 +191,28 @@ impl Parser {
         {
             None
         } else {
-            Some(self.parse_expression()?)
+            let expr = self.parse_expression()?;
+            // Check for `raise ExceptionClass, message` form
+            if self.match_token(&[TokenKind::Comma]) {
+                self.skip_whitespace();
+                let message = self.parse_expression()?;
+                // Transform to ExceptionClass.new(message)
+                Some(Expression::MethodCall {
+                    receiver: Box::new(expr),
+                    method: "new".to_string(),
+                    arguments: vec![message],
+                    trailing_block: None,
+                    position: start_pos,
+                })
+            } else {
+                Some(expr)
+            }
         };
 
-        Ok(Statement::Raise {
+        let stmt = Statement::Raise {
             exception,
             position: start_pos,
-        })
+        };
+        self.wrap_with_modifier(stmt)
     }
 }

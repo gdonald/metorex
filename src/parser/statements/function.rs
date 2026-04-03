@@ -11,8 +11,21 @@ impl Parser {
         let start_pos = self.expect(TokenKind::Def, "Expected 'def'")?.position;
         self.skip_whitespace();
 
+        let mut _singleton_receiver: Option<String> = None;
         let name = match self.advance().kind {
-            TokenKind::Ident(name) => name,
+            TokenKind::Ident(name) => {
+                // Check for singleton method: def obj.method_name
+                if self.check(&[TokenKind::Dot]) {
+                    self.advance(); // consume .
+                    _singleton_receiver = Some(name);
+                    match self.advance().kind {
+                        TokenKind::Ident(method_name) => method_name,
+                        _ => return Err(self.error_at_previous("Expected method name after '.'")),
+                    }
+                } else {
+                    name
+                }
+            }
             // Operator method names
             TokenKind::Plus => "+".to_string(),
             TokenKind::Minus => "-".to_string(),
@@ -25,8 +38,12 @@ impl Parser {
             TokenKind::Greater => ">".to_string(),
             TokenKind::LessEqual => "<=".to_string(),
             TokenKind::GreaterEqual => ">=".to_string(),
+            TokenKind::Spaceship => "<=>".to_string(),
             TokenKind::Pipe => "|".to_string(),
             TokenKind::Ampersand => "&".to_string(),
+            TokenKind::Shovel => "<<".to_string(),
+            // Allow keywords as method names
+            TokenKind::Continue => "next".to_string(),
             // [] and []= operator method names
             TokenKind::LBracket => {
                 self.expect(TokenKind::RBracket, "Expected ']' after '[' in method name")?;
@@ -52,13 +69,65 @@ impl Parser {
 
         // Parse function body
         let mut body = Vec::new();
-        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+        while !self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure])
+            && !self.is_at_end()
+        {
             self.skip_whitespace();
-            if self.check(&[TokenKind::End]) {
+            if self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure]) {
                 break;
             }
             body.push(self.parse_statement()?);
             self.skip_whitespace();
+        }
+
+        // Check for method-level rescue/ensure (implicit begin)
+        if self.check(&[TokenKind::Rescue, TokenKind::Ensure]) {
+            let mut rescue_clauses = Vec::new();
+            while self.match_token(&[TokenKind::Rescue]) {
+                rescue_clauses.push(self.parse_rescue_clause()?);
+                self.skip_whitespace();
+            }
+
+            let else_clause = if self.match_token(&[TokenKind::Else]) {
+                self.skip_whitespace();
+                let mut else_body = Vec::new();
+                while !self.check(&[TokenKind::Ensure, TokenKind::End]) && !self.is_at_end() {
+                    self.skip_whitespace();
+                    if self.check(&[TokenKind::Ensure, TokenKind::End]) {
+                        break;
+                    }
+                    else_body.push(self.parse_statement()?);
+                    self.skip_whitespace();
+                }
+                Some(else_body)
+            } else {
+                None
+            };
+
+            let ensure_block = if self.match_token(&[TokenKind::Ensure]) {
+                self.skip_whitespace();
+                let mut ensure_body = Vec::new();
+                while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                    self.skip_whitespace();
+                    if self.check(&[TokenKind::End]) {
+                        break;
+                    }
+                    ensure_body.push(self.parse_statement()?);
+                    self.skip_whitespace();
+                }
+                Some(ensure_body)
+            } else {
+                None
+            };
+
+            // Wrap the body in a Begin statement
+            body = vec![Statement::Begin {
+                body,
+                rescue_clauses,
+                else_clause,
+                ensure_block,
+                position: start_pos,
+            }];
         }
 
         self.expect(TokenKind::End, "Expected 'end' after function body")?;

@@ -6,7 +6,7 @@ mod call;
 mod primary;
 mod unary;
 
-use crate::ast::Expression;
+use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -159,8 +159,55 @@ impl Parser {
     }
 
     /// Parse assignment (lowest precedence)
+    /// Parse a condition expression that may contain an inline assignment.
+    /// Used in if/unless/while conditions where `var = expr` is valid.
+    pub(crate) fn parse_condition(&mut self) -> Result<Expression, MetorexError> {
+        let expr = self.parse_expression()?;
+
+        // Check for inline assignment: ident = expr (in condition context)
+        if matches!(expr, Expression::Identifier { .. }) && self.check(&[TokenKind::Equal]) {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let value = self.parse_expression()?;
+            return Ok(Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr),
+                right: Box::new(value),
+                position,
+            });
+        }
+
+        Ok(expr)
+    }
+
     pub(crate) fn parse_assignment(&mut self) -> Result<Expression, MetorexError> {
-        self.parse_logical_or()
+        let expr = self.parse_logical_or()?;
+
+        // Ternary operator: condition ? true_expr : false_expr
+        if self.check(&[TokenKind::Question]) {
+            let position = self.advance().position; // consume ?
+            self.skip_whitespace();
+            let then_expr = self.parse_assignment()?;
+            self.skip_whitespace();
+            self.expect(TokenKind::Colon, "Expected ':' in ternary expression")?;
+            self.skip_whitespace();
+            let else_expr = self.parse_assignment()?;
+            return Ok(Expression::If {
+                condition: Box::new(expr),
+                then_branch: vec![Statement::Expression {
+                    expression: then_expr,
+                    position,
+                }],
+                elsif_branches: vec![],
+                else_branch: Some(vec![Statement::Expression {
+                    expression: else_expr,
+                    position,
+                }]),
+                position,
+            });
+        }
+
+        Ok(expr)
     }
 
     /// Parse a block: `do |param1, param2| ... end`

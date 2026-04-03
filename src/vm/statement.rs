@@ -44,6 +44,47 @@ impl VirtualMachine {
                 self.assign_value(target, evaluated)?;
                 Ok(ControlFlow::Next)
             }
+            Statement::MultipleAssignment {
+                targets,
+                values,
+                position: _,
+            } => {
+                if values.len() == 1 {
+                    // Single value on right side — try to splat an array
+                    let evaluated = self.evaluate_expression(&values[0])?;
+                    match evaluated {
+                        Object::Array(arr) => {
+                            let elements = arr.borrow();
+                            for (i, target) in targets.iter().enumerate() {
+                                let val = elements.get(i).cloned().unwrap_or(Object::Nil);
+                                self.assign_value(target, val)?;
+                            }
+                        }
+                        _ => {
+                            // Assign first target, rest get nil
+                            for (i, target) in targets.iter().enumerate() {
+                                let val = if i == 0 {
+                                    evaluated.clone()
+                                } else {
+                                    Object::Nil
+                                };
+                                self.assign_value(target, val)?;
+                            }
+                        }
+                    }
+                } else {
+                    // Multiple values — assign one-to-one
+                    for (i, target) in targets.iter().enumerate() {
+                        let val = if i < values.len() {
+                            self.evaluate_expression(&values[i])?
+                        } else {
+                            Object::Nil
+                        };
+                        self.assign_value(target, val)?;
+                    }
+                }
+                Ok(ControlFlow::Next)
+            }
             Statement::Return { value, position } => {
                 let result = match value {
                     Some(expr) => self.evaluate_expression(expr)?,

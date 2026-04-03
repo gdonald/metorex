@@ -36,7 +36,7 @@ impl Parser {
                     TokenKind::Ensure => "ensure".to_string(),
                     TokenKind::Raise => "raise".to_string(),
                     TokenKind::Break => "break".to_string(),
-                    TokenKind::Continue => "continue".to_string(),
+                    TokenKind::Continue => "next".to_string(),
                     TokenKind::Return => "return".to_string(),
                     TokenKind::Lambda => "lambda".to_string(),
                     TokenKind::Super => "super".to_string(),
@@ -45,9 +45,11 @@ impl Parser {
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
 
-                // Check if there are arguments
+                // Check if there are arguments (with or without parens)
                 let arguments = if self.match_token(&[TokenKind::LParen]) {
                     self.parse_arguments()?
+                } else if self.can_start_argument_for_method_call() {
+                    self.parse_arguments_without_parens()?
                 } else {
                     Vec::new()
                 };
@@ -70,15 +72,47 @@ impl Parser {
                     position,
                 };
             } else if self.match_token(&[TokenKind::LBracket]) {
-                // Array indexing
-                let index = self.parse_expression()?;
-                self.expect(TokenKind::RBracket, "Expected ']' after array index")?;
-                let position = expr.position();
-                expr = Expression::Index {
-                    array: Box::new(expr),
-                    index: Box::new(index),
-                    position,
-                };
+                // Array indexing or [] method call
+                if self.match_token(&[TokenKind::RBracket]) {
+                    // Empty brackets: obj[] — call with no args
+                    let position = expr.position();
+                    expr = Expression::MethodCall {
+                        receiver: Box::new(expr),
+                        method: "[]".to_string(),
+                        arguments: vec![],
+                        trailing_block: None,
+                        position,
+                    };
+                } else {
+                    let first_arg = self.parse_expression()?;
+                    if self.match_token(&[TokenKind::Comma]) {
+                        // Multi-arg bracket: obj[a, b] — method call to []
+                        self.skip_whitespace();
+                        let mut args = vec![first_arg];
+                        args.push(self.parse_expression()?);
+                        while self.match_token(&[TokenKind::Comma]) {
+                            self.skip_whitespace();
+                            args.push(self.parse_expression()?);
+                        }
+                        self.expect(TokenKind::RBracket, "Expected ']'")?;
+                        let position = expr.position();
+                        expr = Expression::MethodCall {
+                            receiver: Box::new(expr),
+                            method: "[]".to_string(),
+                            arguments: args,
+                            trailing_block: None,
+                            position,
+                        };
+                    } else {
+                        self.expect(TokenKind::RBracket, "Expected ']' after array index")?;
+                        let position = expr.position();
+                        expr = Expression::Index {
+                            array: Box::new(expr),
+                            index: Box::new(first_arg),
+                            position,
+                        };
+                    }
+                }
             } else if self.match_token(&[TokenKind::ColonColon]) {
                 // Scope resolution (e.g., Math::PI, Foo::Bar)
                 let position = expr.position();
@@ -182,6 +216,8 @@ impl Parser {
                 let value = self.parse_expression()?;
                 keyword_pairs.push((name, value));
             } else {
+                // Handle &expr (block-to-proc conversion) — treat as regular arg for now
+                self.match_token(&[TokenKind::Ampersand]);
                 arguments.push(self.parse_expression()?);
             }
 
@@ -234,8 +270,7 @@ impl Parser {
         // Also check for binary operators that shouldn't start an argument
         if matches!(
             self.peek().kind,
-            TokenKind::Colon
-                | TokenKind::RBrace
+            TokenKind::RBrace
                 | TokenKind::Comma
                 | TokenKind::Plus
                 | TokenKind::Minus
@@ -269,6 +304,9 @@ impl Parser {
                 | TokenKind::ClassVar(_)
                 | TokenKind::GlobalVar(_)
                 | TokenKind::Bang
+                | TokenKind::MagicFile
+                | TokenKind::MagicLine
+                | TokenKind::Ampersand
         );
 
         if !can_be_arg {
@@ -283,14 +321,7 @@ impl Parser {
             return false;
         }
 
-        // Pattern 2: <arg> ',' - suggests dict with missing colon like {x 1, y: 2}
-        // In valid code, function arguments are separated by commas, but they're inside
-        // parentheses. At statement level, we don't expect immediate comma after arg.
-        if matches!(self.peek_ahead(1).kind, TokenKind::Comma) {
-            return false;
-        }
-
-        // Pattern 3: <arg> '}' - suggests dict with missing colon like {x 1}
+        // Pattern 2: <arg> '}' - suggests dict with missing colon like {x 1}
         if matches!(self.peek_ahead(1).kind, TokenKind::RBrace) {
             return false;
         }
@@ -298,14 +329,86 @@ impl Parser {
         true
     }
 
-    /// Finish parsing a function call without parentheses (Ruby-style)
-    fn finish_call_without_parens(
-        &mut self,
-        callee: Expression,
-    ) -> Result<Expression, MetorexError> {
+    /// Check if the next token can start an argument in a paren-less method call
+    fn can_start_argument_for_method_call(&mut self) -> bool {
+        if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
+            return false;
+        }
+
+        self.skip_whitespace();
+
+        // Colon followed by Ident is a symbol, not a separator
+        if self.peek().kind == TokenKind::Colon
+            && !matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+        {
+            return false;
+        }
+        if matches!(
+            self.peek().kind,
+            TokenKind::RBrace
+                | TokenKind::Comma
+                | TokenKind::Plus
+                | TokenKind::Minus
+                | TokenKind::Star
+                | TokenKind::Slash
+                | TokenKind::Percent
+                | TokenKind::Equal
+                | TokenKind::EqualEqual
+                | TokenKind::BangEqual
+                | TokenKind::Less
+                | TokenKind::Greater
+                | TokenKind::LessEqual
+                | TokenKind::GreaterEqual
+                | TokenKind::Dot
+                | TokenKind::RParen
+                | TokenKind::RBracket
+                | TokenKind::Semicolon
+        ) {
+            return false;
+        }
+
+        // For method calls, be more conservative than bare function calls:
+        // no LBracket (would be array indexing), no bare integers/strings
+        // that might be the next statement
+        let can_be_arg = matches!(
+            self.peek().kind,
+            TokenKind::Ident(_)
+                | TokenKind::Int(_)
+                | TokenKind::Float(_)
+                | TokenKind::String(_)
+                | TokenKind::InterpolatedString(_)
+                | TokenKind::True
+                | TokenKind::False
+                | TokenKind::Nil
+                | TokenKind::InstanceVar(_)
+                | TokenKind::ClassVar(_)
+                | TokenKind::GlobalVar(_)
+                | TokenKind::Bang
+                | TokenKind::MagicFile
+                | TokenKind::MagicLine
+                | TokenKind::Ampersand
+        );
+
+        if !can_be_arg {
+            return false;
+        }
+
+        // Don't greedily consume if followed by comma or closing brace
+        if matches!(
+            self.peek_ahead(1).kind,
+            TokenKind::Comma | TokenKind::RBrace
+        ) {
+            return false;
+        }
+
+        true
+    }
+
+    /// Parse arguments without parentheses, returning the argument list
+    fn parse_arguments_without_parens(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut arguments = Vec::new();
         let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
-        let position = callee.position();
+        let position = self.peek().position;
 
         self.skip_whitespace();
 
@@ -322,12 +425,12 @@ impl Parser {
             let value = self.parse_expression()?;
             keyword_pairs.push((name, value));
         } else {
+            // Handle &expr (block-to-proc conversion)
+            self.match_token(&[TokenKind::Ampersand]);
             arguments.push(self.parse_expression()?);
 
             // After parsing the first positional argument, check if we see a colon
             // (which would indicate dict syntax, not a function call).
-            // Do NOT call skip_whitespace() here — consuming a newline would make the
-            // next line's '[' look like array indexing on this call expression.
             if self.check(&[TokenKind::Colon]) {
                 return Err(self
                     .error_at_current("Expected function call but found dictionary-like syntax"));
@@ -365,6 +468,8 @@ impl Parser {
                 let value = self.parse_expression()?;
                 keyword_pairs.push((name, value));
             } else {
+                // Handle &expr (block-to-proc conversion)
+                self.match_token(&[TokenKind::Ampersand]);
                 arguments.push(self.parse_expression()?);
             }
             self.skip_whitespace();
@@ -388,6 +493,17 @@ impl Parser {
                 position,
             });
         }
+
+        Ok(arguments)
+    }
+
+    /// Finish parsing a function call without parentheses (Ruby-style)
+    fn finish_call_without_parens(
+        &mut self,
+        callee: Expression,
+    ) -> Result<Expression, MetorexError> {
+        let position = callee.position();
+        let arguments = self.parse_arguments_without_parens()?;
 
         // Check for trailing block (both do...end and {...} syntax)
         let trailing_block = if self.check(&[TokenKind::Do]) {

@@ -274,9 +274,9 @@ end
 
 #[test]
 fn test_missing_condition_in_if() {
+    // `if\n  x = 1\nend` is valid Ruby — `x = 1` is the condition
     let source = r#"
 if
-  x = 1
 end
 "#;
     assert!(parse_fails(source));
@@ -286,7 +286,6 @@ end
 fn test_missing_condition_in_while() {
     let source = r#"
 while
-  x = 1
 end
 "#;
     assert!(parse_fails(source));

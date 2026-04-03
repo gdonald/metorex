@@ -5,8 +5,11 @@
 
 use super::GlobalRegistry;
 use crate::builtin_classes::{self, BuiltinClasses};
+use crate::class::Class;
 use crate::environment::Environment;
 use crate::object::Object;
+use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Initialize built-in methods for core classes.
 pub(super) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
@@ -33,6 +36,68 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("block_given?", Object::Bool(false));
 }
 
+/// Register built-in modules (Comparable, Enumerable, Kernel, etc.).
+pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
+    // Comparable — stub module, methods will be added later
+    let comparable = Rc::new(Class::new("Comparable", None));
+    globals.set("Comparable", Object::Module(comparable));
+
+    // Enumerable — stub module
+    let enumerable = Rc::new(Class::new("Enumerable", None));
+    globals.set("Enumerable", Object::Module(enumerable));
+
+    // Kernel — stub module
+    let kernel = Rc::new(Class::new("Kernel", None));
+    globals.set("Kernel", Object::Module(kernel));
+}
+
+/// Register Ruby special global variables.
+pub(super) fn register_special_globals(globals: &mut GlobalRegistry) {
+    // $LOAD_PATH / $: — shared array
+    let load_path = Object::Array(Rc::new(RefCell::new(Vec::new())));
+    globals.set(":", load_path.clone());
+    globals.set("LOAD_PATH", load_path);
+
+    // $LOADED_FEATURES / $" — shared array
+    let loaded_features = Object::Array(Rc::new(RefCell::new(Vec::new())));
+    globals.set("\"", loaded_features.clone());
+    globals.set("LOADED_FEATURES", loaded_features);
+
+    // $stdout / $stderr / $stdin — placeholders
+    globals.set("stdout", Object::String(Rc::new("$stdout".to_string())));
+    globals.set("stderr", Object::String(Rc::new("$stderr".to_string())));
+    globals.set("stdin", Object::String(Rc::new("$stdin".to_string())));
+
+    // $0 / $PROGRAM_NAME — set later by main when file is known
+    globals.set("0", Object::String(Rc::new(String::new())));
+    globals.set("PROGRAM_NAME", Object::String(Rc::new(String::new())));
+
+    // $; $, $/ $\ — string separator globals
+    globals.set(";", Object::Nil);
+    globals.set(",", Object::Nil);
+    globals.set("/", Object::String(Rc::new("\n".to_string())));
+    globals.set("\\", Object::Nil);
+
+    // $! $@ $~ $& — exception/regex globals
+    globals.set("!", Object::Nil);
+    globals.set("@", Object::Nil);
+    globals.set("~", Object::Nil);
+    globals.set("&", Object::Nil);
+
+    // $? — process status
+    globals.set("?", Object::Nil);
+
+    // $_ — last input line
+    globals.set("_", Object::Nil);
+
+    // $. — line number
+    globals.set(".", Object::Int(0));
+
+    // $DEBUG / $VERBOSE
+    globals.set("DEBUG", Object::Bool(false));
+    globals.set("VERBOSE", Object::Bool(false));
+}
+
 /// Register native functions in the global registry.
 pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("puts", Object::NativeFunction("puts".to_string()));
@@ -49,6 +114,7 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         Object::NativeFunction("assert_raises".to_string()),
     );
     globals.set("method", Object::NativeFunction("method".to_string()));
+    globals.set("require", Object::NativeFunction("require".to_string()));
     globals.set(
         "require_relative",
         Object::NativeFunction("require_relative".to_string()),

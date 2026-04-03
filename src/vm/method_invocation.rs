@@ -28,10 +28,11 @@ impl VirtualMachine {
             Object::Block(block) => block.call(self, arguments, position),
             Object::Method(method) => {
                 // Call standalone function (represented as Method object)
-                // Validate positional argument count (kwargs dict doesn't count)
+                // Validate positional argument count, accounting for defaults
                 let expected = method.parameters.len();
                 let positional_count = positional_arg_count(&arguments);
-                if expected != positional_count {
+                let required = expected - method.default_parameters.len();
+                if positional_count < required || positional_count > expected {
                     return Err(method_argument_error(
                         &method.name,
                         expected,
@@ -282,7 +283,8 @@ impl VirtualMachine {
 
         let expected = method.parameters.len();
         let positional_count = positional_arg_count(&arguments);
-        if expected != positional_count {
+        let required = expected - method.default_parameters.len();
+        if positional_count < required || positional_count > expected {
             return Err(method_argument_error(
                 &method_name,
                 expected,
@@ -343,7 +345,16 @@ impl VirtualMachine {
             }
 
             let (positional, kwargs) = split_keyword_args(arguments);
-            for (param, value) in method.parameters.iter().zip(positional.into_iter()) {
+            for (i, param) in method.parameters.iter().enumerate() {
+                let value = if i < positional.len() {
+                    positional[i].clone()
+                } else if let Some((_, default_expr)) =
+                    method.default_parameters.iter().find(|(idx, _)| *idx == i)
+                {
+                    self.evaluate_expression(default_expr)?
+                } else {
+                    Object::Nil
+                };
                 self.environment_mut().define(param.clone(), value);
             }
             self.bind_keyword_params(&method.keyword_parameters, kwargs)?;
@@ -450,7 +461,18 @@ impl VirtualMachine {
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
             let (positional, kwargs) = split_keyword_args(arguments);
-            for (param, value) in function.parameters.iter().zip(positional.into_iter()) {
+            for (i, param) in function.parameters.iter().enumerate() {
+                let value = if i < positional.len() {
+                    positional[i].clone()
+                } else if let Some((_, default_expr)) = function
+                    .default_parameters
+                    .iter()
+                    .find(|(idx, _)| *idx == i)
+                {
+                    self.evaluate_expression(default_expr)?
+                } else {
+                    Object::Nil
+                };
                 self.environment_mut().define(param.clone(), value);
             }
             self.bind_keyword_params(&function.keyword_parameters, kwargs)?;
