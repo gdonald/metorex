@@ -1,9 +1,6 @@
 mod attr_methods_tests;
 mod builtin_classes_tests;
-mod class_clone_eq_tests;
-mod class_instantiation_tests;
-mod class_parsing_tests;
-mod class_system_tests;
+mod class;
 mod inheritance_tests;
 mod object;
 mod type_introspection_tests;

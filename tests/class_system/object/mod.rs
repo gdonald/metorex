@@ -1,9 +1,9 @@
+mod additional_tests;
 mod basic;
-mod coverage;
 mod equals;
 mod hash;
 mod instance;
 mod method;
-mod struct_coverage;
+mod struct_tests;
 mod to_string;
-mod type_display_ops_coverage;
+mod type_display_ops_tests;

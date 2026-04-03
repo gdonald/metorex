@@ -132,8 +132,6 @@ fn unknown_native_function_error() {
     // Create a NativeFunction manually and try to call it
     use metorex::bytecode::chunk::Chunk;
     use metorex::bytecode::opcode::OpCode;
-    use metorex::object::CompiledFunction;
-    use std::rc::Rc;
 
     let mut chunk = Chunk::new();
     // Push NativeFunction("unknown") then call it

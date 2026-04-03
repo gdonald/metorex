@@ -1,7 +1,6 @@
 mod ast_inspection_tests;
 mod ast_serialization;
-mod block_as_object_tests;
-mod block_execution_tests;
+mod block;
 mod define_method_tests;
 mod function_definition_tests;
 mod get_source_tests;

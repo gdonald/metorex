@@ -1,6 +1,5 @@
 // Tests for closure and upvalue execution in the bytecode VM (13.8)
 
-use metorex::bytecode::opcode::OpCode;
 use metorex::bytecode::vm::{BytecodeVm, CallFrame, ClosureObj, UpvalueObj};
 use metorex::compiler::Compiler;
 use metorex::lexer::Lexer;

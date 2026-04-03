@@ -1,4 +1,4 @@
-mod exception_execution_tests;
-mod exception_objects_tests;
-mod exception_parsing_tests;
-mod exceptions_coverage_tests;
+mod additional_tests;
+mod execution_tests;
+mod objects_tests;
+mod parsing_tests;

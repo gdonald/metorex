@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
