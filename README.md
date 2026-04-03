@@ -240,9 +240,10 @@ METOREX is in active development. We welcome contributions! Please see [CONTRIBU
 ### Development Setup
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/metorex.git
+# Clone the repository (including Ruby spec submodules)
+git clone https://github.com/gdonald/metorex.git
 cd metorex
+git submodule update --init
 
 # Build the project
 cargo build
@@ -264,6 +265,9 @@ cargo install cargo-tarpaulin
 
 # Run code coverage
 cargo tarpaulin --out Stdout
+
+# Run Ruby spec suite (requires submodules)
+scripts/run_ruby_spec.sh
 ```
 
 ## License

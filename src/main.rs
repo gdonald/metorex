@@ -11,11 +11,15 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
+const RUBY_VERSION: &str = "4.0.2";
+const METOREX_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 #[derive(ClapParser)]
 #[command(name = "metorex", version, about = "The Metorex programming language")]
 struct Cli {
-    /// Source file to execute
-    file: Option<String>,
+    /// Source file to execute, followed by arguments for the script
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    file: Vec<String>,
 
     /// Dump the AST instead of executing
     #[arg(long)]
@@ -33,10 +37,51 @@ struct Cli {
     /// (matches *_test.rb, test_*.rb, *_spec.rb)
     #[arg(long)]
     test: Option<String>,
+
+    /// Print Ruby-compatible version string
+    #[arg(short = 'v', long = "verbose")]
+    ruby_version: bool,
+
+    /// Evaluate code from command line
+    #[arg(short = 'e')]
+    execute: Option<String>,
+
+    /// Ignored flags for Ruby compatibility
+    #[arg(long = "disable", hide = true)]
+    _disable: Option<String>,
 }
 
 fn main() {
     let cli = Cli::parse();
+
+    // Ruby-compatible version output
+    if cli.ruby_version {
+        println!("ruby {} (metorex {})", RUBY_VERSION, METOREX_VERSION);
+        return;
+    }
+
+    // Evaluate inline code
+    if let Some(ref code) = cli.execute {
+        let lexer = Lexer::new(code);
+        let tokens = lexer.tokenize();
+        let mut parser = Parser::new(tokens);
+        let program = match parser.parse() {
+            Ok(prog) => prog,
+            Err(errors) => {
+                eprintln!("Parse error(s):");
+                for err in errors {
+                    eprintln!("  {}", err);
+                }
+                process::exit(1);
+            }
+        };
+        let mut vm = VirtualMachine::new();
+        if let Err(err) = vm.execute_program(&program) {
+            eprintln!("Runtime error: {}", err);
+            process::exit(1);
+        }
+        return;
+    }
 
     // Test discovery mode
     if let Some(ref test_dir) = cli.test {
@@ -56,7 +101,7 @@ fn main() {
     }
 
     // REPL mode: no file given or explicit --repl flag
-    if cli.file.is_none() || cli.repl {
+    if cli.file.is_empty() || cli.repl {
         match Repl::new() {
             Ok(mut repl) => {
                 if let Err(err) = repl.run() {
@@ -72,7 +117,9 @@ fn main() {
         return;
     }
 
-    let filename = cli.file.as_ref().unwrap();
+    let filename = &cli.file[0];
+    // TODO: pass script_args into VM as ARGV
+    let _script_args: Vec<String> = cli.file[1..].to_vec();
 
     // Convert filename to absolute path
     let absolute_path = match fs::canonicalize(filename) {

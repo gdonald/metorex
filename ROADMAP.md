@@ -1991,3 +1991,22 @@ Goal: Add an AOT transpilation pipeline that converts supported Metorex programs
 - [ ] REPL syntax highlighting
 - [ ] REPL auto-completion
 
+## Ruby Spec Suite (mspec) Compatibility
+
+Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via mspec, progressively passing more specs.
+
+### Harness Requirements
+
+- [x] Accept `-v` flag and output Ruby-compatible version string (ruby 4.0.2)
+- [x] Accept `-e "code"` flag to evaluate inline code
+- [x] Accept and ignore `--disable=gems` flag
+- [x] Accept multiple file arguments (trailing args for script ARGV)
+- [ ] Wire up script arguments as ARGV in the VM
+- [ ] Parse mspec-run without errors (currently fails on symbol syntax at line 3)
+- [ ] Silently ignore other common Ruby flags as needed
+
+### Passing Specs
+
+- [ ] core/true
+- [ ] core/nil
+
