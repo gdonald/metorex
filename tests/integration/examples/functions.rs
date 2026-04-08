@@ -27,3 +27,31 @@ fn test_parser_lambdas_execution() {
     let output = run_example("functions/test_lambdas.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_parenless_dotted_symbol_args() {
+    let expected = ":start\nhandler_one\n:finish\nhandler_two\n";
+    let output = run_example("functions/parenless_symbol_args.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_parenless_dotted_symbol_args_parens() {
+    let expected = ":start\nhandler_one\n:finish\nhandler_two\n";
+    let output = run_example("functions/parenless_symbol_args_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_parenless_bare_call_symbol_args() {
+    let expected = ":start\nhandler_one\n:finish\nhandler_two\n";
+    let output = run_example("functions/parenless_symbol_bare_call.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_parenless_bare_call_symbol_args_parens() {
+    let expected = ":start\nhandler_one\n:finish\nhandler_two\n";
+    let output = run_example("functions/parenless_symbol_bare_call_parens.rb");
+    assert_eq!(output, expected);
+}

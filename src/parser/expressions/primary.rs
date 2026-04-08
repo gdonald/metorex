@@ -26,6 +26,11 @@ impl Parser {
                 value,
                 position: token.position,
             }),
+            TokenKind::Regex(pattern, flags) => Ok(Expression::RegexLiteral {
+                pattern,
+                flags,
+                position: token.position,
+            }),
             TokenKind::InterpolatedString(parts) => {
                 // Convert token interpolation parts to AST interpolation parts
                 let mut ast_parts = Vec::new();

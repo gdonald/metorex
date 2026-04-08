@@ -58,6 +58,11 @@ pub enum Expression {
         value: String,
         position: Position,
     },
+    RegexLiteral {
+        pattern: String,
+        flags: String,
+        position: Position,
+    },
     InterpolatedString {
         parts: Vec<InterpolationPart>,
         position: Position,
@@ -636,6 +641,7 @@ impl Expression {
             Expression::IntLiteral { position, .. }
             | Expression::FloatLiteral { position, .. }
             | Expression::StringLiteral { position, .. }
+            | Expression::RegexLiteral { position, .. }
             | Expression::Symbol { position, .. }
             | Expression::InterpolatedString { position, .. }
             | Expression::BoolLiteral { position, .. }

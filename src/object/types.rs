@@ -73,6 +73,9 @@ pub enum Object {
 
     /// Compiled function (bytecode)
     CompiledFunction(Rc<CompiledFunction>),
+
+    /// Regular expression (pattern string, flags string)
+    Regex(Rc<String>, Rc<String>),
 }
 
 impl Object {
@@ -99,6 +102,7 @@ impl Object {
             Object::Range { .. } => "Range",
             Object::Binding(_) => "Binding",
             Object::CompiledFunction(_) => "CompiledFunction",
+            Object::Regex(_, _) => "Regexp",
         }
     }
 }

@@ -760,7 +760,8 @@ impl Resolver {
             | Expression::SelfExpr { .. }
             | Expression::Super { .. }
             | Expression::MagicFile { .. }
-            | Expression::MagicLine { .. } => {}
+            | Expression::MagicLine { .. }
+            | Expression::RegexLiteral { .. } => {}
         }
     }
 }

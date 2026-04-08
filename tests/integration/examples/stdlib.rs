@@ -113,6 +113,34 @@ fn test_builtins_type_introspection_parens_execution() {
 }
 
 #[test]
+fn test_stdlib_string_format_execution() {
+    let expected = "hello world\nnum: 42\npi: 3.14\nhex: ff\ncart has 5 items\n100% complete: done\n\"test\"\n00042\nleft      |\n";
+    let output = run_example("stdlib/string_format.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_string_format_parens_execution() {
+    let expected = "hello world\nnum: 42\npi: 3.14\nhex: ff\ncart has 5 items\n100% complete: done\n\"test\"\n00042\nleft      |\n";
+    let output = run_example("stdlib/string_format_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_regex_literals_execution() {
+    let expected = "/hello/\n/world/i\n5\n/[a-z]+\\d+/\n/hello\\/world/\n";
+    let output = run_example("stdlib/regex_literals.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_regex_literals_parens_execution() {
+    let expected = "/hello/\n/world/i\n5\n/[a-z]+\\d+/\n/hello\\/world/\n";
+    let output = run_example("stdlib/regex_literals_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_stdlib_error_paths_test_execution() {
     let expected = "3.14\n-3.14\n4\n3\n4\n3\n3.14\n42\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
     let output = run_example("stdlib/error_paths_test.rb");

@@ -366,7 +366,8 @@ impl Compiler {
             | Expression::Unless { position, .. }
             | Expression::ScopeResolution { position, .. }
             | Expression::MagicFile { position, .. }
-            | Expression::MagicLine { position, .. } => {
+            | Expression::MagicLine { position, .. }
+            | Expression::RegexLiteral { position, .. } => {
                 let line = Self::pos_line(position);
                 Err(MetorexError::runtime_error(
                     format!(

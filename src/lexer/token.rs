@@ -68,6 +68,7 @@ pub enum TokenKind {
     Float(f64),
     String(String),
     InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
+    Regex(String, String),                      // pattern, flags
     True,
     False,
     Nil,
@@ -190,6 +191,7 @@ impl fmt::Display for TokenKind {
                 }
                 write!(f, "\"")
             }
+            TokenKind::Regex(pat, flags) => write!(f, "/{}/{}", pat, flags),
             TokenKind::True => write!(f, "true"),
             TokenKind::False => write!(f, "false"),
             TokenKind::Nil => write!(f, "nil"),

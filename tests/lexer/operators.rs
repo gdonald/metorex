@@ -27,9 +27,28 @@ fn test_lexer_operator_star() {
 
 #[test]
 fn test_lexer_operator_slash() {
-    let mut lexer = Lexer::new("/");
-    let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::Slash);
+    // After an identifier, / is division not regex
+    let tokens = Lexer::new("a / b").tokenize();
+    assert_eq!(tokens[1].kind, TokenKind::Slash);
+}
+
+#[test]
+fn test_lexer_regex_literal() {
+    // At start of input, / begins a regex literal
+    let tokens = Lexer::new("/pattern/").tokenize();
+    assert_eq!(
+        tokens[0].kind,
+        TokenKind::Regex("pattern".to_string(), "".to_string())
+    );
+}
+
+#[test]
+fn test_lexer_regex_literal_with_flags() {
+    let tokens = Lexer::new("/hello/im").tokenize();
+    assert_eq!(
+        tokens[0].kind,
+        TokenKind::Regex("hello".to_string(), "im".to_string())
+    );
 }
 
 #[test]
@@ -122,9 +141,9 @@ fn test_lexer_operator_star_equal() {
 
 #[test]
 fn test_lexer_operator_slash_equal() {
-    let mut lexer = Lexer::new("/=");
-    let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::SlashEqual);
+    // After an identifier, /= is division-assignment
+    let tokens = Lexer::new("a /= b").tokenize();
+    assert_eq!(tokens[1].kind, TokenKind::SlashEqual);
 }
 
 // ===== Delimiter Tests =====
@@ -533,39 +552,23 @@ fn test_lexer_all_comparison_operators() {
 
 #[test]
 fn test_lexer_all_arithmetic_operators() {
-    let mut lexer = Lexer::new("+ - * / %");
-
-    let token1 = lexer.next_token();
-    assert_eq!(token1.kind, TokenKind::Plus);
-
-    let token2 = lexer.next_token();
-    assert_eq!(token2.kind, TokenKind::Minus);
-
-    let token3 = lexer.next_token();
-    assert_eq!(token3.kind, TokenKind::Star);
-
-    let token4 = lexer.next_token();
-    assert_eq!(token4.kind, TokenKind::Slash);
-
-    let token5 = lexer.next_token();
-    assert_eq!(token5.kind, TokenKind::Percent);
+    let tokens = Lexer::new("a + b - c * d / e % f").tokenize();
+    // tokens: a + b - c * d / e % f EOF
+    assert_eq!(tokens[1].kind, TokenKind::Plus);
+    assert_eq!(tokens[3].kind, TokenKind::Minus);
+    assert_eq!(tokens[5].kind, TokenKind::Star);
+    assert_eq!(tokens[7].kind, TokenKind::Slash);
+    assert_eq!(tokens[9].kind, TokenKind::Percent);
 }
 
 #[test]
 fn test_lexer_all_compound_assignments() {
-    let mut lexer = Lexer::new("+= -= *= /=");
-
-    let token1 = lexer.next_token();
-    assert_eq!(token1.kind, TokenKind::PlusEqual);
-
-    let token2 = lexer.next_token();
-    assert_eq!(token2.kind, TokenKind::MinusEqual);
-
-    let token3 = lexer.next_token();
-    assert_eq!(token3.kind, TokenKind::StarEqual);
-
-    let token4 = lexer.next_token();
-    assert_eq!(token4.kind, TokenKind::SlashEqual);
+    let tokens = Lexer::new("a += 1\nb -= 1\nc *= 1\nd /= 1").tokenize();
+    // a += 1 \n b -= 1 \n c *= 1 \n d /= 1
+    assert_eq!(tokens[1].kind, TokenKind::PlusEqual);
+    assert_eq!(tokens[5].kind, TokenKind::MinusEqual);
+    assert_eq!(tokens[9].kind, TokenKind::StarEqual);
+    assert_eq!(tokens[13].kind, TokenKind::SlashEqual);
 }
 
 #[test]
@@ -637,9 +640,9 @@ fn test_lexer_star_equal() {
 
 #[test]
 fn test_lexer_slash_equal() {
-    let mut lexer = Lexer::new("/=");
-    let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::SlashEqual);
+    // After an identifier, /= is division-assignment
+    let tokens = Lexer::new("x /= 2").tokenize();
+    assert_eq!(tokens[1].kind, TokenKind::SlashEqual);
 }
 
 #[test]

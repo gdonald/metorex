@@ -51,6 +51,9 @@ impl VirtualMachine {
 
         match op {
             Add => self.evaluate_addition(left, right, position),
+            Modulo if matches!(left, Object::String(_)) => {
+                self.evaluate_string_format(left, right, position)
+            }
             Subtract | Multiply | Divide | Modulo => {
                 self.evaluate_numeric_binary(op, left, right, position)
             }
@@ -212,6 +215,249 @@ impl VirtualMachine {
         };
 
         Ok(Object::Bool(result))
+    }
+
+    /// Evaluate Ruby-style String `%` formatting (`"hello %s" % "world"`).
+    ///
+    /// When the right operand is an Array, each element is consumed in order by
+    /// successive format specifiers. Otherwise the single value is used for the
+    /// first (and only expected) specifier.
+    pub(crate) fn evaluate_string_format(
+        &self,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let fmt_str = match &left {
+            Object::String(s) => s.as_ref().clone(),
+            _ => unreachable!("caller guarantees left is String"),
+        };
+
+        let args: Vec<Object> = match right {
+            Object::Array(arr) => arr.borrow().clone(),
+            other => vec![other],
+        };
+
+        let mut result = String::new();
+        let mut arg_idx = 0;
+        let chars: Vec<char> = fmt_str.chars().collect();
+        let mut i = 0;
+
+        while i < chars.len() {
+            if chars[i] == '%' {
+                i += 1;
+                if i >= chars.len() {
+                    result.push('%');
+                    break;
+                }
+
+                // Literal %%
+                if chars[i] == '%' {
+                    result.push('%');
+                    i += 1;
+                    continue;
+                }
+
+                // Parse optional flags: -, +, 0, space
+                let mut left_align = false;
+                let mut plus_sign = false;
+                let mut zero_pad = false;
+                let mut space_sign = false;
+                loop {
+                    if i >= chars.len() {
+                        break;
+                    }
+                    match chars[i] {
+                        '-' => {
+                            left_align = true;
+                            i += 1;
+                        }
+                        '+' => {
+                            plus_sign = true;
+                            i += 1;
+                        }
+                        '0' => {
+                            zero_pad = true;
+                            i += 1;
+                        }
+                        ' ' => {
+                            space_sign = true;
+                            i += 1;
+                        }
+                        _ => break,
+                    }
+                }
+
+                // Parse optional width
+                let mut width: Option<usize> = None;
+                if i < chars.len() && chars[i].is_ascii_digit() {
+                    let start = i;
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    width = Some(
+                        chars[start..i]
+                            .iter()
+                            .collect::<String>()
+                            .parse()
+                            .unwrap_or(0),
+                    );
+                }
+
+                // Parse optional precision (.N)
+                let mut precision: Option<usize> = None;
+                if i < chars.len() && chars[i] == '.' {
+                    i += 1;
+                    let start = i;
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    precision = Some(
+                        chars[start..i]
+                            .iter()
+                            .collect::<String>()
+                            .parse()
+                            .unwrap_or(0),
+                    );
+                }
+
+                if i >= chars.len() {
+                    return Err(MetorexError::runtime_error(
+                        "incomplete format specifier in String#%".to_string(),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+
+                let specifier = chars[i];
+                i += 1;
+
+                if arg_idx >= args.len() {
+                    return Err(MetorexError::runtime_error(
+                        "too few arguments for format string".to_string(),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+
+                let arg = &args[arg_idx];
+                arg_idx += 1;
+
+                let formatted = match specifier {
+                    's' => {
+                        let s = format!("{}", arg);
+                        if let Some(prec) = precision {
+                            s[..s.len().min(prec)].to_string()
+                        } else {
+                            s
+                        }
+                    }
+                    'd' | 'i' => match arg {
+                        Object::Int(n) => {
+                            if plus_sign && *n >= 0 {
+                                format!("+{}", n)
+                            } else if space_sign && *n >= 0 {
+                                format!(" {}", n)
+                            } else {
+                                format!("{}", n)
+                            }
+                        }
+                        Object::Float(f) => {
+                            let n = *f as i64;
+                            if plus_sign && n >= 0 {
+                                format!("+{}", n)
+                            } else if space_sign && n >= 0 {
+                                format!(" {}", n)
+                            } else {
+                                format!("{}", n)
+                            }
+                        }
+                        _ => format!("{}", arg),
+                    },
+                    'f' => {
+                        let val = match arg {
+                            Object::Float(f) => *f,
+                            Object::Int(n) => *n as f64,
+                            _ => {
+                                return Err(MetorexError::runtime_error(
+                                    format!(
+                                        "%%f requires numeric argument, got {}",
+                                        arg.type_name()
+                                    ),
+                                    crate::vm::utils::position_to_location(position),
+                                ));
+                            }
+                        };
+                        let prec = precision.unwrap_or(6);
+                        if plus_sign && val >= 0.0 {
+                            format!("+{:.prec$}", val)
+                        } else if space_sign && val >= 0.0 {
+                            format!(" {:.prec$}", val)
+                        } else {
+                            format!("{:.prec$}", val)
+                        }
+                    }
+                    'x' => match arg {
+                        Object::Int(n) => format!("{:x}", n),
+                        _ => format!("{}", arg),
+                    },
+                    'X' => match arg {
+                        Object::Int(n) => format!("{:X}", n),
+                        _ => format!("{}", arg),
+                    },
+                    'o' => match arg {
+                        Object::Int(n) => format!("{:o}", n),
+                        _ => format!("{}", arg),
+                    },
+                    'b' => match arg {
+                        Object::Int(n) => format!("{:b}", n),
+                        _ => format!("{}", arg),
+                    },
+                    'p' => match arg {
+                        Object::String(s) => format!("\"{}\"", s),
+                        Object::Nil => "nil".to_string(),
+                        other => format!("{}", other),
+                    },
+                    'c' => match arg {
+                        Object::Int(n) => {
+                            if let Some(ch) = char::from_u32(*n as u32) {
+                                ch.to_string()
+                            } else {
+                                format!("{}", n)
+                            }
+                        }
+                        Object::String(s) => {
+                            s.chars().next().map_or(String::new(), |c| c.to_string())
+                        }
+                        _ => format!("{}", arg),
+                    },
+                    other => {
+                        return Err(MetorexError::runtime_error(
+                            format!("unknown format specifier '%{}'", other),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+
+                // Apply width and alignment
+                if let Some(w) = width {
+                    if left_align {
+                        result.push_str(&format!("{:<w$}", formatted));
+                    } else if zero_pad
+                        && matches!(specifier, 'd' | 'i' | 'f' | 'x' | 'X' | 'o' | 'b')
+                    {
+                        result.push_str(&format!("{:0>w$}", formatted));
+                    } else {
+                        result.push_str(&format!("{:>w$}", formatted));
+                    }
+                } else {
+                    result.push_str(&formatted);
+                }
+            } else {
+                result.push(chars[i]);
+                i += 1;
+            }
+        }
+
+        Ok(Object::String(Rc::new(result)))
     }
 
     /// Evaluate the spaceship operator (<=>), returning -1, 0, or 1.

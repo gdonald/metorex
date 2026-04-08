@@ -79,6 +79,13 @@ impl fmt::Display for Object {
                 write!(f, "<Binding with {} vars>", binding.variables.len())
             }
             Object::CompiledFunction(func) => write!(f, "{}", func),
+            Object::Regex(pattern, flags) => {
+                if flags.is_empty() {
+                    write!(f, "/{}/", pattern)
+                } else {
+                    write!(f, "/{}/{}", pattern, flags)
+                }
+            }
         }
     }
 }

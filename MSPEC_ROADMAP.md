@@ -51,9 +51,9 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 
 ### Parser / Syntax — Remaining
 
-- [ ] 3.23. Paren-less dotted method calls with symbol args (`MSpec.register :start, obj` — ambiguous with ternary `:`)
-- [ ] 3.24. String `%` formatting operator (`"format" % args`)
-- [ ] 3.25. Regex literals (`/pattern/`)
+- [x] 3.23. Paren-less dotted method calls with symbol args (`MSpec.register :start, obj` — ambiguous with ternary `:`)
+- [x] 3.24. String `%` formatting operator (`"format" % args`)
+- [x] 3.25. Regex literals (`/pattern/`)
 - [ ] 3.26. `yield` keyword
 - [ ] 3.27. Splat operators (`*args`, `**kwargs`)
 - [ ] 3.28. `defined?` keyword
@@ -77,7 +77,7 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 
 ### Current blocker
 
-`mspec/utils/options.rb` parses to line 420/521 (~81%). Next blocker: paren-less dotted method calls with symbol arguments (`MSpec.register :start, obj`) — ambiguous with ternary `:` operator. Needs either contextual disambiguation or requiring parens for these cases.
+`mspec/utils/options.rb` parses to line 420/521 (~81%). Next blockers: String `%` formatting operator, regex literals, `yield` keyword, splat operators, and `defined?` keyword.
 
 ## Phase 4: Passing Specs
 

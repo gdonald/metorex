@@ -15,6 +15,8 @@ pub struct Lexer<'a> {
     line: usize,
     column: usize,
     offset: usize,
+    /// Last significant token kind (for regex vs division disambiguation)
+    prev_significant: Option<TokenKind>,
 }
 
 impl<'a> Lexer<'a> {
@@ -25,6 +27,7 @@ impl<'a> Lexer<'a> {
             line: 1,
             column: 1,
             offset: 0,
+            prev_significant: None,
         }
     }
 
@@ -63,6 +66,96 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
+    }
+
+    /// Check whether `/` should start a regex literal based on the previous
+    /// significant token.  After value-producing tokens (identifiers, numbers,
+    /// closing brackets, `end`, `true`, etc.) `/` is division; otherwise it
+    /// starts a regex.
+    fn slash_is_regex(&self) -> bool {
+        match &self.prev_significant {
+            None => true, // start of file
+            Some(kind) => !matches!(
+                kind,
+                // Value-producing tokens: / after these is division
+                TokenKind::Ident(_)
+                    | TokenKind::Int(_)
+                    | TokenKind::Float(_)
+                    | TokenKind::String(_)
+                    | TokenKind::InterpolatedString(_)
+                    | TokenKind::Regex(_, _)
+                    | TokenKind::True
+                    | TokenKind::False
+                    | TokenKind::Nil
+                    | TokenKind::RParen
+                    | TokenKind::RBracket
+                    | TokenKind::RBrace
+                    | TokenKind::End
+                    | TokenKind::InstanceVar(_)
+                    | TokenKind::ClassVar(_)
+                    | TokenKind::GlobalVar(_)
+                    | TokenKind::MagicFile
+                    | TokenKind::MagicLine
+                    // After `def`, / is an operator method name, not regex
+                    | TokenKind::Def
+            ),
+        }
+    }
+
+    /// Read a regex literal: `/pattern/flags`
+    /// Called after the opening `/` has been consumed.
+    fn read_regex(&mut self) -> TokenKind {
+        let mut pattern = String::new();
+        let mut escaped = false;
+        let mut in_char_class = false;
+
+        while let Some(ch) = self.peek() {
+            if escaped {
+                pattern.push('\\');
+                pattern.push(ch);
+                self.advance();
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => {
+                    self.advance();
+                    escaped = true;
+                }
+                '/' if !in_char_class => {
+                    self.advance(); // consume closing /
+                    break;
+                }
+                '[' => {
+                    in_char_class = true;
+                    pattern.push(ch);
+                    self.advance();
+                }
+                ']' => {
+                    in_char_class = false;
+                    pattern.push(ch);
+                    self.advance();
+                }
+                '\n' => break, // unterminated regex
+                _ => {
+                    pattern.push(ch);
+                    self.advance();
+                }
+            }
+        }
+
+        // Read optional flags (i, m, x, etc.)
+        let mut flags = String::new();
+        while let Some(ch) = self.peek() {
+            if ch.is_ascii_alphabetic() {
+                flags.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+
+        TokenKind::Regex(pattern, flags)
     }
 
     /// Read a comment from # to end of line
@@ -448,6 +541,7 @@ impl<'a> Lexer<'a> {
         let saved_line = self.line;
         let saved_column = self.column;
         let saved_offset = self.offset;
+        let saved_prev = self.prev_significant.clone();
 
         // Get the next token
         let token = self.next_token();
@@ -457,6 +551,7 @@ impl<'a> Lexer<'a> {
         self.line = saved_line;
         self.column = saved_column;
         self.offset = saved_offset;
+        self.prev_significant = saved_prev;
 
         token
     }
@@ -475,8 +570,20 @@ impl<'a> Lexer<'a> {
         tokens
     }
 
-    /// Get the next token from the source code
+    /// Get the next token from the source code, updating regex disambiguation state.
     pub fn next_token(&mut self) -> Token {
+        let token = self.next_token_inner();
+        if !matches!(
+            token.kind,
+            TokenKind::Newline | TokenKind::Comment(_) | TokenKind::EOF
+        ) {
+            self.prev_significant = Some(token.kind.clone());
+        }
+        token
+    }
+
+    /// Internal: produce the next token without updating disambiguation state.
+    fn next_token_inner(&mut self) -> Token {
         // Skip whitespace (but not newlines)
         self.skip_whitespace();
 
@@ -549,12 +656,18 @@ impl<'a> Lexer<'a> {
                     }
                 }
                 '/' => {
-                    self.advance();
-                    if self.peek() == Some('=') {
-                        self.advance();
-                        Token::new(TokenKind::SlashEqual, position)
+                    if self.slash_is_regex() {
+                        self.advance(); // consume opening /
+                        let kind = self.read_regex();
+                        Token::new(kind, position)
                     } else {
-                        Token::new(TokenKind::Slash, position)
+                        self.advance();
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            Token::new(TokenKind::SlashEqual, position)
+                        } else {
+                            Token::new(TokenKind::Slash, position)
+                        }
                     }
                 }
                 '%' => {

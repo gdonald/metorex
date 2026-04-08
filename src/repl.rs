@@ -310,6 +310,13 @@ impl ReplCore {
                 format!("<Binding with {} vars>", binding.variables.len())
             }
             Object::CompiledFunction(func) => format!("{}", func),
+            Object::Regex(pattern, flags) => {
+                if flags.is_empty() {
+                    format!("/{}/", pattern)
+                } else {
+                    format!("/{}/{}", pattern, flags)
+                }
+            }
         }
     }
 

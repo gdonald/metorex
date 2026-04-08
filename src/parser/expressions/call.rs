@@ -265,6 +265,13 @@ impl Parser {
 
         self.skip_whitespace();
 
+        // Colon followed by Ident is a symbol literal, not a separator
+        if self.peek().kind == TokenKind::Colon
+            && !matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+        {
+            return false;
+        }
+
         // Don't parse as function call if we see operators or punctuation that
         // indicate we're in a different context (like dictionary key: value)
         // Also check for binary operators that shouldn't start an argument
@@ -307,6 +314,7 @@ impl Parser {
                 | TokenKind::MagicFile
                 | TokenKind::MagicLine
                 | TokenKind::Ampersand
+                | TokenKind::Colon
         );
 
         if !can_be_arg {
@@ -387,6 +395,7 @@ impl Parser {
                 | TokenKind::MagicFile
                 | TokenKind::MagicLine
                 | TokenKind::Ampersand
+                | TokenKind::Colon
         );
 
         if !can_be_arg {
