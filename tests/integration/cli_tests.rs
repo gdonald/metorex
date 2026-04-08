@@ -236,30 +236,192 @@ fn cli_disable_flag_ignored() {
 }
 
 // ============================================================================
-// -r, -I, -w, -d (ignored Ruby flags)
+// -I flag (prepend to $LOAD_PATH)
 // ============================================================================
 
 #[test]
-fn cli_r_flag_ignored() {
+fn cli_i_flag_prepends_load_path() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
     let output = metorex_cmd()
-        .args(["-r", "somefile", "-e", "puts 1"])
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, "-e", "require \"greet\"\ngreet(\"world\")"])
         .output()
         .expect("failed to execute");
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(stdout.trim(), "1");
+    assert_eq!(stdout.trim(), "hello world");
 }
 
 #[test]
-fn cli_i_flag_ignored() {
+fn cli_i_flag_with_file_execution() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let script = format!("{}/tests/_examples/cli_flags/use_greet.rb", manifest_dir);
     let output = metorex_cmd()
-        .args(["-I", "somepath", "-e", "puts 2"])
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, &script])
         .output()
         .expect("failed to execute");
-    assert!(output.status.success());
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert_eq!(stdout.trim(), "2");
+    assert_eq!(stdout.trim(), "hello world");
 }
+
+#[test]
+fn cli_multiple_i_flags() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let script = format!("{}/tests/_examples/cli_flags/use_both.rb", manifest_dir);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, &script])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "hello world\n42");
+}
+
+// ============================================================================
+// -r flag (require library before executing)
+// ============================================================================
+
+#[test]
+fn cli_r_flag_requires_library() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, "-r", "greet", "-e", "greet(\"from -r\")"])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "hello from -r");
+}
+
+#[test]
+fn cli_r_flag_multiple_requires() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args([
+            "-I",
+            &lib_path,
+            "-r",
+            "greet",
+            "-r",
+            "math_helpers",
+            "-e",
+            "greet(\"test\")\nputs double(7)",
+        ])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "hello test\n14");
+}
+
+#[test]
+fn cli_r_flag_with_file_execution() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let script = format!("{}/tests/_examples/cli_flags/use_greet.rb", manifest_dir);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, "-r", "math_helpers", &script])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "hello world");
+}
+
+#[test]
+fn cli_r_flag_missing_library_fails() {
+    let output = metorex_cmd()
+        .args(["-r", "nonexistent_lib", "-e", "puts 1"])
+        .output()
+        .expect("failed to execute");
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stderr.contains("cannot load such file"));
+    assert!(stderr.contains("nonexistent_lib"));
+}
+
+#[test]
+fn cli_i_flag_no_parens_file_execution() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let script = format!(
+        "{}/tests/_examples/cli_flags/use_greet_no_parens.rb",
+        manifest_dir
+    );
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, &script])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "hello world");
+}
+
+#[test]
+fn cli_i_flag_no_parens_multiple_libs() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let lib_path = format!("{}/tests/_examples/cli_flags/lib", manifest_dir);
+    let script = format!(
+        "{}/tests/_examples/cli_flags/use_both_no_parens.rb",
+        manifest_dir
+    );
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(["-I", &lib_path, &script])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    assert_eq!(stdout.trim(), "hello world\n42");
+}
+
+// ============================================================================
+// -w, -d (ignored Ruby flags)
+// ============================================================================
 
 #[test]
 fn cli_w_flag_ignored() {

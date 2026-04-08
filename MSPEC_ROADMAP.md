@@ -19,8 +19,8 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 - [x] 2.4. Implement `File.expand_path` with one and two-argument forms
 - [x] 2.5. Implement `require` (non-relative, uses `$LOAD_PATH`)
 - [x] 2.6. Support paren-less method calls on dotted expressions (`$:.unshift expr`)
-- [ ] 2.7. Wire up `-r` flag to actually require libraries
-- [ ] 2.8. Wire up `-I` flag to prepend to `$LOAD_PATH`
+- [x] 2.7. Wire up `-r` flag to actually require libraries
+- [x] 2.8. Wire up `-I` flag to prepend to `$LOAD_PATH`
 
 ## Phase 3: mspec Library Compatibility
 

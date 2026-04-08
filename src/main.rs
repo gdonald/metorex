@@ -50,13 +50,13 @@ struct Cli {
     #[arg(long = "disable", hide = true)]
     _disable: Option<String>,
 
-    /// Ignored: Ruby -r (require library)
+    /// Ruby -r (require library before executing)
     #[arg(short = 'r', hide = true)]
-    _require: Vec<String>,
+    require_libs: Vec<String>,
 
-    /// Ignored: Ruby -I (include path)
+    /// Ruby -I (prepend to $LOAD_PATH)
     #[arg(short = 'I', hide = true)]
-    _include: Vec<String>,
+    include_paths: Vec<String>,
 
     /// Ignored: Ruby -w (warnings)
     #[arg(short = 'w', hide = true, action = clap::ArgAction::SetTrue)]
@@ -69,6 +69,19 @@ struct Cli {
     /// Ignored: Ruby -d (debug mode)
     #[arg(short = 'd', hide = true, action = clap::ArgAction::SetTrue)]
     _ruby_debug: bool,
+}
+
+/// Apply `-I` (include paths) and `-r` (require libraries) flags to a VM.
+fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
+    for path in &cli.include_paths {
+        vm.prepend_load_path(path.clone());
+    }
+    for lib in &cli.require_libs {
+        if let Err(err) = vm.require_library(lib) {
+            eprintln!("Runtime error: {}", err);
+            process::exit(1);
+        }
+    }
 }
 
 fn main() {
@@ -96,6 +109,7 @@ fn main() {
             }
         };
         let mut vm = VirtualMachine::new();
+        apply_cli_flags(&mut vm, &cli);
         if let Err(err) = vm.execute_program(&program) {
             eprintln!("Runtime error: {}", err);
             process::exit(1);
@@ -198,6 +212,7 @@ fn main() {
 
     // Execute
     let mut vm = VirtualMachine::new();
+    apply_cli_flags(&mut vm, &cli);
 
     // Set the current file path and mark it as loaded
     vm.set_current_file(absolute_path.clone());

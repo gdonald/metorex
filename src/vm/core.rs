@@ -120,6 +120,65 @@ impl VirtualMachine {
         self.loaded_files.contains(path)
     }
 
+    /// Prepend a path to the `$LOAD_PATH` (`$:`) global array.
+    pub fn prepend_load_path(&mut self, path: String) {
+        if let Some(Object::Array(arr)) = self.globals.get(":") {
+            arr.borrow_mut().insert(0, Object::String(Rc::new(path)));
+        }
+    }
+
+    /// Require a library by name, searching `$LOAD_PATH` just like the `require` builtin.
+    pub fn require_library(&mut self, name: &str) -> Result<(), MetorexError> {
+        use crate::error::SourceLocation;
+
+        let load_path = self.globals().get(":").unwrap_or(Object::Nil);
+        let search_dirs: Vec<String> = match &load_path {
+            Object::Array(arr) => arr
+                .borrow()
+                .iter()
+                .filter_map(|obj| match obj {
+                    Object::String(s) => Some(s.as_ref().clone()),
+                    _ => None,
+                })
+                .collect(),
+            _ => Vec::new(),
+        };
+
+        let mut found_path = None;
+        for dir in &search_dirs {
+            let base = std::path::PathBuf::from(dir);
+            let candidates = [base.join(name), base.join(format!("{}.rb", name))];
+            for candidate in &candidates {
+                if candidate.exists() {
+                    found_path = Some(candidate.clone());
+                    break;
+                }
+            }
+            if found_path.is_some() {
+                break;
+            }
+        }
+
+        let resolved = found_path.ok_or_else(|| {
+            MetorexError::runtime_error(
+                format!(
+                    "cannot load such file -- {} (searched in $LOAD_PATH: {:?})",
+                    name, search_dirs
+                ),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
+
+        self.execute_file(&resolved).map_err(|e| {
+            MetorexError::runtime_error(
+                format!("require('{}') — {}", name, e.message()),
+                SourceLocation::new(0, 0, 0),
+            )
+        })?;
+
+        Ok(())
+    }
+
     /// Run a closure with a new call frame pushed onto the stack.
     pub fn with_call_frame<F, R>(&mut self, frame: CallFrame, action: F) -> R
     where
