@@ -36,3 +36,17 @@ fn test_data_structures_hash_methods_execution() {
         output
     );
 }
+
+#[test]
+fn test_multiple_assignment_execution() {
+    let expected = "1\n2\n3\n10\n20\nnil\n42\nnil\nnil\n100\n200\n7\n8\nnil\n";
+    let output = run_example("data_structures/multiple_assignment.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_multiple_assignment_parens_execution() {
+    let expected = "1\n2\n3\n10\n20\nnil\n42\nnil\nnil\n100\n200\n7\n8\nnil\n";
+    let output = run_example("data_structures/multiple_assignment_parens.rb");
+    assert_eq!(output, expected);
+}

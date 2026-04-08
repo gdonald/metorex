@@ -146,3 +146,17 @@ fn test_oop_super_keyword_parens_execution() {
     let output = run_example("oop/super_keyword_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_operator_methods_extended_execution() {
+    let expected = "-1\n1\n0\n11\n";
+    let output = run_example("oop/operator_methods_extended.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_operator_methods_extended_parens_execution() {
+    let expected = "-1\n1\n0\n11\n";
+    let output = run_example("oop/operator_methods_extended_parens.rb");
+    assert_eq!(output, expected);
+}

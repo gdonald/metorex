@@ -127,6 +127,34 @@ fn test_stdlib_string_format_parens_execution() {
 }
 
 #[test]
+fn test_stdlib_string_format_extended_execution() {
+    let expected = "42\n+42\n-5\n 42\n-5\n+3.140000\n 3.140000\n3\n+3\n 3\nFF\n10\n1010\nA\nh\nnil\n42\nhel\n     right|\n0000000042\n100%\n";
+    let output = run_example("stdlib/string_format_extended.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_string_format_extended_parens_execution() {
+    let expected = "42\n+42\n-5\n 42\n-5\n+3.140000\n 3.140000\n3\n+3\n 3\nFF\n10\n1010\nA\nh\nnil\n42\nhel\n     right|\n0000000042\n100%\n";
+    let output = run_example("stdlib/string_format_extended_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_regex_contexts_execution() {
+    let expected = "/hello/\n/foo/\n/bar/i\n/[a-z]+/\n/path\\/to\\/file/\n5\n4\n5\n";
+    let output = run_example("stdlib/regex_contexts.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_regex_contexts_parens_execution() {
+    let expected = "/hello/\n/foo/\n/bar/i\n/[a-z]+/\n/path\\/to\\/file/\n5\n4\n5\n";
+    let output = run_example("stdlib/regex_contexts_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_stdlib_regex_literals_execution() {
     let expected = "/hello/\n/world/i\n5\n/[a-z]+\\d+/\n/hello\\/world/\n";
     let output = run_example("stdlib/regex_literals.rb");

@@ -90,6 +90,20 @@ fn test_basics_elsif_no_parens_execution() {
 }
 
 #[test]
+fn test_spaceship_operator_execution() {
+    let expected = "-1\n0\n1\n-1\n0\n1\n-1\n0\n1\n-1\n0\n1\n-1\n0\n1\n";
+    let output = run_example("basics/spaceship_operator.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_spaceship_operator_parens_execution() {
+    let expected = "-1\n0\n1\n-1\n0\n1\n-1\n0\n1\n-1\n0\n1\n-1\n0\n1\n";
+    let output = run_example("basics/spaceship_operator_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_type_annotations_collection_types_execution() {
     let output = run_example("type_annotations/collection_types.rb");
     let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {Bob: 85, Alice: 90}\nlength of numbers: 5\nAlice's score: 90\n";

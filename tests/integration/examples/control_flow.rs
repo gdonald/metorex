@@ -217,3 +217,17 @@ fn test_control_flow_case_multi_when_parens_execution() {
     let output = run_example("control_flow/case_multi_when_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_ternary_operator_execution() {
+    let expected = "yes\nno\nbig\nb\n";
+    let output = run_example("control_flow/ternary.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_ternary_operator_parens_execution() {
+    let expected = "yes\nno\nbig\nb\n";
+    let output = run_example("control_flow/ternary_parens.rb");
+    assert_eq!(output, expected);
+}
