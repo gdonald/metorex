@@ -431,6 +431,85 @@ impl VirtualMachine {
                 let result = self.execute_program(&statements)?;
                 Ok(result.unwrap_or(Object::Nil))
             }
+            "load" => {
+                if arguments.len() != 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("load() expects 1 argument, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let path_str = match &arguments[0] {
+                    Object::String(s) => s.as_ref().clone(),
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "load() expects a String argument, got {}",
+                                arguments[0].type_name()
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+                let path = std::path::Path::new(&path_str);
+                // load always executes the file (no deduplication)
+                // Try the path directly first, then search $LOAD_PATH
+                if path.exists() {
+                    self.execute_file(path).map_err(|e| {
+                        MetorexError::runtime_error(
+                            format!("load('{}') — {}", path_str, e.message()),
+                            crate::vm::utils::position_to_location(position),
+                        )
+                    })?;
+                    Ok(Object::Bool(true))
+                } else {
+                    // Search $LOAD_PATH
+                    let load_path = self.globals().get(":").unwrap_or(Object::Nil);
+                    let search_dirs: Vec<String> = match &load_path {
+                        Object::Array(arr) => arr
+                            .borrow()
+                            .iter()
+                            .filter_map(|obj| match obj {
+                                Object::String(s) => Some(s.as_ref().clone()),
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    let mut found = None;
+                    for dir in &search_dirs {
+                        let candidate = std::path::PathBuf::from(dir).join(&path_str);
+                        if candidate.exists() {
+                            found = Some(candidate);
+                            break;
+                        }
+                    }
+                    let resolved = found.ok_or_else(|| {
+                        MetorexError::runtime_error(
+                            format!("cannot load such file -- {}", path_str),
+                            crate::vm::utils::position_to_location(position),
+                        )
+                    })?;
+                    self.execute_file(&resolved).map_err(|e| {
+                        MetorexError::runtime_error(
+                            format!("load('{}') — {}", path_str, e.message()),
+                            crate::vm::utils::position_to_location(position),
+                        )
+                    })?;
+                    Ok(Object::Bool(true))
+                }
+            }
+            "exit" => {
+                let code = if arguments.is_empty() {
+                    0
+                } else if let Object::Int(n) = &arguments[0] {
+                    *n as i32
+                } else if let Object::Bool(b) = &arguments[0] {
+                    if *b { 0 } else { 1 }
+                } else {
+                    0
+                };
+                std::process::exit(code);
+            }
             _ => Err(MetorexError::runtime_error(
                 format!("Unknown native function: {}", name),
                 crate::vm::utils::position_to_location(position),

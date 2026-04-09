@@ -197,6 +197,34 @@ fn test_stdlib_string_format_edge_parens_execution() {
 }
 
 #[test]
+fn test_stdlib_string_to_i_execution() {
+    let expected = "42\n99\n0\n-7\n3\n3.14\n0\nworld\nherro\nherlo\ntrue\nfalse\n";
+    let output = run_example("stdlib/string_to_i.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_string_to_i_parens_execution() {
+    let expected = "42\n99\n0\n-7\n3\n3.14\n0\nworld\nherro\nherlo\ntrue\nfalse\n";
+    let output = run_example("stdlib/string_to_i_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_array_extended_execution() {
+    let expected = "15\n25\n5\n6\n[1, 2, 3]\n[1, 2, 3, 4, [5]]\n[3, 1, 2]\n1\n8\ntrue\nfalse\n10\n30\ntrue\nfalse\n";
+    let output = run_example("stdlib/array_extended.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_array_extended_parens_execution() {
+    let expected = "15\n25\n5\n6\n[1, 2, 3]\n[1, 2, 3, 4, [5]]\n[3, 1, 2]\n1\n8\ntrue\nfalse\n10\n30\ntrue\nfalse\n";
+    let output = run_example("stdlib/array_extended_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_stdlib_error_paths_test_execution() {
     let expected = "3.14\n-3.14\n4\n3\n4\n3\n3.14\n42\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
     let output = run_example("stdlib/error_paths_test.rb");

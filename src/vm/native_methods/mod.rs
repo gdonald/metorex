@@ -40,7 +40,7 @@ impl VirtualMachine {
         // Special handling for Block/Lambda objects
         if let Object::Block(block) = receiver {
             match method_name {
-                "call" => {
+                "call" | "[]" => {
                     return Ok(Some(block.call(self, arguments.to_vec(), position)?));
                 }
                 "binding" => {

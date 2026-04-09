@@ -503,6 +503,10 @@ impl VirtualMachine {
             } => {
                 let collection = self.evaluate_expression(array)?;
                 let key = self.evaluate_expression(index)?;
+                // Block/Lambda [] call syntax: proc[args]
+                if let Object::Block(block) = &collection {
+                    return block.call(self, vec![key], *position);
+                }
                 // Check for user-defined [] method on instances
                 if let Object::Instance(instance_rc) = &collection {
                     let class = Rc::clone(&instance_rc.borrow().class);

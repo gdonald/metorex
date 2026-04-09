@@ -54,6 +54,45 @@ impl VirtualMachine {
                 self.execute_function_body(&method, arguments)
             }
             Object::Class(class) => {
+                // Kernel conversion functions: Integer(), String(), Array()
+                if arguments.len() == 1 {
+                    match class.name() {
+                        "Integer" => {
+                            return match &arguments[0] {
+                                Object::Int(n) => Ok(Object::Int(*n)),
+                                Object::Float(f) => Ok(Object::Int(*f as i64)),
+                                Object::String(s) => {
+                                    s.trim().parse::<i64>().map(Object::Int).map_err(|_| {
+                                        MetorexError::runtime_error(
+                                            format!("invalid value for Integer(): \"{}\"", s),
+                                            position_to_location(position),
+                                        )
+                                    })
+                                }
+                                Object::Bool(b) => Ok(Object::Int(if *b { 1 } else { 0 })),
+                                Object::Nil => Ok(Object::Int(0)),
+                                other => Err(MetorexError::runtime_error(
+                                    format!("can't convert {} into Integer", other.type_name()),
+                                    position_to_location(position),
+                                )),
+                            };
+                        }
+                        "String" => {
+                            return Ok(Object::String(Rc::new(format!("{}", arguments[0]))));
+                        }
+                        "Array" => {
+                            return match &arguments[0] {
+                                Object::Array(_) => Ok(arguments[0].clone()),
+                                Object::Nil => Ok(Object::Array(Rc::new(RefCell::new(vec![])))),
+                                other => {
+                                    Ok(Object::Array(Rc::new(RefCell::new(vec![other.clone()]))))
+                                }
+                            };
+                        }
+                        _ => {}
+                    }
+                }
+
                 // Check if this is an exception class
                 let is_exception_class = self.is_exception_class(&class);
 

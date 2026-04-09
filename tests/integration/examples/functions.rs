@@ -153,3 +153,17 @@ fn test_splat_class_parens_execution() {
     let output = run_example("functions/splat_class_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_lambda_bracket_call_execution() {
+    let expected = "7\n30\n42\n99\n";
+    let output = run_example("functions/lambda_bracket_call.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_lambda_bracket_call_parens_execution() {
+    let expected = "7\n30\n42\n99\n";
+    let output = run_example("functions/lambda_bracket_call_parens.rb");
+    assert_eq!(output, expected);
+}

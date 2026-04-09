@@ -22,3 +22,17 @@ fn test_defined_keyword_parens_execution() {
     let output = run_example("builtins/defined_keyword_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_kernel_conversion_execution() {
+    let expected = "42\n3\n1\n0\n42\nnil\n[]\n[1, 2]\n[hi]\n";
+    let output = run_example("builtins/kernel_conversion.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_kernel_conversion_parens_execution() {
+    let expected = "42\n3\n1\n0\n42\nnil\n[]\n[1, 2]\n[hi]\n";
+    let output = run_example("builtins/kernel_conversion_parens.rb");
+    assert_eq!(output, expected);
+}

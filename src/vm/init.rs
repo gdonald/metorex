@@ -121,6 +121,8 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     );
     globals.set("eval", Object::NativeFunction("eval".to_string()));
     globals.set("parse", Object::NativeFunction("parse".to_string()));
+    globals.set("exit", Object::NativeFunction("exit".to_string()));
+    globals.set("load", Object::NativeFunction("load".to_string()));
 }
 
 /// Seed the environment with values from the global registry.

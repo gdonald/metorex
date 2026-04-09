@@ -316,6 +316,136 @@ impl VirtualMachine {
                 }
                 Ok(Some(receiver.clone()))
             }
+            "to_i" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let trimmed = string_value.trim();
+                let n: i64 = trimmed
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '+')
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0);
+                Ok(Some(Object::Int(n)))
+            }
+            "to_f" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let trimmed = string_value.trim();
+                let n: f64 = trimmed
+                    .chars()
+                    .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '+')
+                    .collect::<String>()
+                    .parse()
+                    .unwrap_or(0.0);
+                Ok(Some(Object::Float(n)))
+            }
+            "dup" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::string(string_value.as_ref().clone())))
+            }
+            "gsub" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let pattern = match &arguments[0] {
+                    Object::String(s) => s.as_ref().clone(),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            &arguments[0],
+                            position,
+                        ));
+                    }
+                };
+                let replacement = match &arguments[1] {
+                    Object::String(s) => s.as_ref().clone(),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            &arguments[1],
+                            position,
+                        ));
+                    }
+                };
+                Ok(Some(Object::string(
+                    string_value.replace(&pattern, &replacement),
+                )))
+            }
+            "sub" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let pattern = match &arguments[0] {
+                    Object::String(s) => s.as_ref().clone(),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            &arguments[0],
+                            position,
+                        ));
+                    }
+                };
+                let replacement = match &arguments[1] {
+                    Object::String(s) => s.as_ref().clone(),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            &arguments[1],
+                            position,
+                        ));
+                    }
+                };
+                Ok(Some(Object::string(string_value.replacen(
+                    &pattern,
+                    &replacement,
+                    1,
+                ))))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(string_value.is_empty())))
+            }
             _ => Ok(None),
         }
     }

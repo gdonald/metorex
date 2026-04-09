@@ -455,6 +455,245 @@ impl VirtualMachine {
                     .collect();
                 Ok(Some(Object::string(parts.join(&sep))))
             }
+            "inject" => {
+                // inject is an alias for reduce
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "inject requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                let array = array_rc.borrow();
+
+                let (initial_value, start_index) = if arguments.len() == 1 {
+                    (Some(arguments[0].clone()), 0)
+                } else {
+                    (None, 1)
+                };
+
+                if array.is_empty() {
+                    return Ok(Some(initial_value.unwrap_or(Object::Nil)));
+                }
+
+                let mut accumulator = if let Some(init) = initial_value {
+                    init
+                } else {
+                    array[0].clone()
+                };
+
+                for element in array.iter().skip(start_index) {
+                    let args = vec![accumulator.clone(), element.clone()];
+                    accumulator = self.execute_block_body(&block, args)?;
+                }
+                Ok(Some(accumulator))
+            }
+            "dup" | "clone" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(array.clone())))))
+            }
+            "flatten" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                let mut flat = Vec::new();
+                for item in array.iter() {
+                    if let Object::Array(inner) = item {
+                        flat.extend(inner.borrow().iter().cloned());
+                    } else {
+                        flat.push(item.clone());
+                    }
+                }
+                Ok(Some(Object::Array(Rc::new(RefCell::new(flat)))))
+            }
+            "compact" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                let compacted: Vec<Object> = array
+                    .iter()
+                    .filter(|obj| !matches!(obj, Object::Nil))
+                    .cloned()
+                    .collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(compacted)))))
+            }
+            "empty?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(array_rc.borrow().is_empty())))
+            }
+            "first" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(
+                    array_rc.borrow().first().cloned().unwrap_or(Object::Nil),
+                ))
+            }
+            "last" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(
+                    array_rc.borrow().last().cloned().unwrap_or(Object::Nil),
+                ))
+            }
+            "include?" | "contains?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                let found = array.iter().any(|obj| obj.equals(&arguments[0]));
+                Ok(Some(Object::Bool(found)))
+            }
+            "min" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                let min = array
+                    .iter()
+                    .fold(None, |acc: Option<&Object>, item| match acc {
+                        None => Some(item),
+                        Some(current) => match (current, item) {
+                            (Object::Int(a), Object::Int(b)) => {
+                                if b < a {
+                                    Some(item)
+                                } else {
+                                    Some(current)
+                                }
+                            }
+                            (Object::Float(a), Object::Float(b)) => {
+                                if b < a {
+                                    Some(item)
+                                } else {
+                                    Some(current)
+                                }
+                            }
+                            _ => Some(current),
+                        },
+                    });
+                Ok(Some(min.cloned().unwrap_or(Object::Nil)))
+            }
+            "max" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                let max = array
+                    .iter()
+                    .fold(None, |acc: Option<&Object>, item| match acc {
+                        None => Some(item),
+                        Some(current) => match (current, item) {
+                            (Object::Int(a), Object::Int(b)) => {
+                                if b > a {
+                                    Some(item)
+                                } else {
+                                    Some(current)
+                                }
+                            }
+                            (Object::Float(a), Object::Float(b)) => {
+                                if b > a {
+                                    Some(item)
+                                } else {
+                                    Some(current)
+                                }
+                            }
+                            _ => Some(current),
+                        },
+                    });
+                Ok(Some(max.cloned().unwrap_or(Object::Nil)))
+            }
+            "uniq" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let array = array_rc.borrow();
+                let mut seen = Vec::new();
+                let mut unique = Vec::new();
+                for item in array.iter() {
+                    let repr = format!("{}", item);
+                    if !seen.contains(&repr) {
+                        seen.push(repr);
+                        unique.push(item.clone());
+                    }
+                }
+                Ok(Some(Object::Array(Rc::new(RefCell::new(unique)))))
+            }
             _ => Ok(None),
         }
     }

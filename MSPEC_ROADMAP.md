@@ -66,18 +66,18 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 
 ### Runtime / Stdlib — Remaining
 
-- [ ] 3.32. `String#to_i` method
-- [ ] 3.33. `String#dup` method
-- [ ] 3.34. `Array#inject` / `Array#reduce` with initial value
-- [ ] 3.35. `Array#shift`, `Array#dup`
-- [ ] 3.36. `Integer()` / `String()` / `Array()` kernel methods
-- [ ] 3.37. `exit` function
-- [ ] 3.38. `load` function
-- [ ] 3.39. Proc/Lambda `[]` call syntax
+- [x] 3.32. `String#to_i` method
+- [x] 3.33. `String#dup` method
+- [x] 3.34. `Array#inject` / `Array#reduce` with initial value
+- [x] 3.35. `Array#shift`, `Array#dup`
+- [x] 3.36. `Integer()` / `String()` / `Array()` kernel methods
+- [x] 3.37. `exit` function
+- [x] 3.38. `load` function
+- [x] 3.39. Proc/Lambda `[]` call syntax
 
 ### Current blocker
 
-All Parser/Syntax items complete. Next blockers: Runtime/Stdlib items (`String#to_i`, `String#dup`, `Array#inject`, `Array#shift`, kernel conversion methods, `exit`, `load`, Proc `[]` call syntax).
+Phase 3 complete. Ready to begin Phase 4 (passing specs).
 
 ## Phase 4: Passing Specs
 
