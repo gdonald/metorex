@@ -352,6 +352,56 @@ impl Parser {
                 })
             }
 
+            // Yield: yield or yield(args) or yield args
+            TokenKind::Yield => {
+                let position = token.position;
+
+                let arguments = if self.check(&[TokenKind::LParen]) {
+                    self.advance(); // consume (
+                    let mut args = Vec::new();
+                    self.skip_whitespace();
+
+                    if !self.check(&[TokenKind::RParen]) {
+                        loop {
+                            self.skip_whitespace();
+                            args.push(self.parse_expression()?);
+                            self.skip_whitespace();
+
+                            if !self.match_token(&[TokenKind::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+
+                    self.skip_whitespace();
+                    self.expect(TokenKind::RParen, "Expected ')' after yield arguments")?;
+                    args
+                } else if !self.check(&[
+                    TokenKind::Newline,
+                    TokenKind::Semicolon,
+                    TokenKind::EOF,
+                    TokenKind::End,
+                    TokenKind::RBrace,
+                    TokenKind::RParen,
+                ]) && !self.is_at_end()
+                {
+                    // yield expr, expr — paren-less arguments
+                    let mut args = vec![self.parse_expression()?];
+                    while self.match_token(&[TokenKind::Comma]) {
+                        self.skip_whitespace();
+                        args.push(self.parse_expression()?);
+                    }
+                    args
+                } else {
+                    Vec::new()
+                };
+
+                Ok(Expression::Yield {
+                    arguments,
+                    position,
+                })
+            }
+
             // Case expression: case value when pattern then expr ... end
             TokenKind::Case => self.parse_case_expression(token.position),
 

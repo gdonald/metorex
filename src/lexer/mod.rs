@@ -353,6 +353,7 @@ impl<'a> Lexer<'a> {
             "return" => TokenKind::Return,
             "lambda" => TokenKind::Lambda,
             "super" => TokenKind::Super,
+            "yield" => TokenKind::Yield,
             "case" => TokenKind::Case,
             "when" => TokenKind::When,
             "then" => TokenKind::Then,

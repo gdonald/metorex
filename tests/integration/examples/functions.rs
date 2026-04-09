@@ -83,3 +83,45 @@ fn test_multiple_return_parens_execution() {
     let output = run_example("functions/multiple_return_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_yield_basic_execution() {
+    let expected = "before yield\nHello, Alice\nafter yield\n0\n1\n2\n20\nyielded with no args\n";
+    let output = run_example("functions/yield_basic.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_yield_basic_parens_execution() {
+    let expected = "before yield\nHello, Alice\nafter yield\n0\n1\n2\n20\nyielded with no args\n";
+    let output = run_example("functions/yield_basic_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_yield_class_execution() {
+    let expected = "10\n20\n30\n[20, 40, 60]\n";
+    let output = run_example("functions/yield_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_yield_class_parens_execution() {
+    let expected = "10\n20\n30\n[20, 40, 60]\n";
+    let output = run_example("functions/yield_class_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_yield_block_given_execution() {
+    let expected = "got: 42\nno block: 99\n";
+    let output = run_example("functions/yield_block_given.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_yield_block_given_parens_execution() {
+    let expected = "got: 42\nno block: 99\n";
+    let output = run_example("functions/yield_block_given_parens.rb");
+    assert_eq!(output, expected);
+}

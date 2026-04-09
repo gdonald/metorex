@@ -687,6 +687,39 @@ impl VirtualMachine {
                     *position,
                 )
             }
+            Expression::Yield {
+                arguments,
+                position,
+            } => {
+                let block = self.environment.get("__block__").or_else(|| {
+                    // Also check if there's a named block parameter
+                    self.environment.get("block_given?").and_then(|bg| {
+                        if bg == Object::Bool(true) {
+                            // The block was bound to a named parameter — find it
+                            None
+                        } else {
+                            None
+                        }
+                    })
+                });
+
+                let block = match block {
+                    Some(Object::Block(b)) => b,
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            "no block given (yield)".to_string(),
+                            position_to_location(*position),
+                        ));
+                    }
+                };
+
+                let mut evaluated_args = Vec::with_capacity(arguments.len());
+                for arg in arguments {
+                    evaluated_args.push(self.evaluate_expression(arg)?);
+                }
+
+                block.call(self, evaluated_args, *position)
+            }
             Expression::Range {
                 start,
                 end,

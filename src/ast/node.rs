@@ -181,6 +181,12 @@ pub enum Expression {
         position: Position,
     },
 
+    // Yield - invoke the block passed to the current method
+    Yield {
+        arguments: Vec<Expression>,
+        position: Position,
+    },
+
     // Range literals
     Range {
         start: Box<Expression>,
@@ -663,6 +669,7 @@ impl Expression {
             | Expression::Grouped { position, .. }
             | Expression::SelfExpr { position, .. }
             | Expression::Super { position, .. }
+            | Expression::Yield { position, .. }
             | Expression::Range { position, .. }
             | Expression::Case { position, .. }
             | Expression::ScopeResolution { position, .. }
