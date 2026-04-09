@@ -762,6 +762,7 @@ impl Resolver {
             | Expression::MagicFile { .. }
             | Expression::MagicLine { .. }
             | Expression::RegexLiteral { .. }
+            | Expression::Splat { .. }
             | Expression::Yield { .. } => {}
         }
     }

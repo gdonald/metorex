@@ -76,10 +76,17 @@ impl VirtualMachine {
                         .enumerate()
                         .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
                         .collect();
+                    let variadic_param = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .enumerate()
+                        .find(|(_, p)| p.is_variadic)
+                        .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
+                    m.variadic_param = variadic_param;
                     let method = Rc::new(m);
                     class.define_method(method_name, method);
                 }
@@ -403,6 +410,14 @@ impl VirtualMachine {
         let source_location =
             crate::error::SourceLocation::new(position.line, position.column, position.offset);
 
+        // Extract variadic parameter info
+        let variadic_param = parameters
+            .iter()
+            .filter(|p| !p.is_named_keyword && !p.is_block)
+            .enumerate()
+            .find(|(_, p)| p.is_variadic)
+            .map(|(i, p)| (i, p.name.clone()));
+
         // Create a Method object to represent the function
         let mut function = Method::with_source_location(
             name.to_string(),
@@ -413,6 +428,7 @@ impl VirtualMachine {
         function.default_parameters = default_parameters;
         function.keyword_parameters = keyword_parameters;
         function.block_parameter = block_parameter;
+        function.variadic_param = variadic_param;
         let function = Rc::new(function);
 
         // Register the function in the environment
@@ -460,10 +476,17 @@ impl VirtualMachine {
                         .enumerate()
                         .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
                         .collect();
+                    let variadic_param = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .enumerate()
+                        .find(|(_, p)| p.is_variadic)
+                        .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
+                    m.variadic_param = variadic_param;
                     module.define_method(method_name, Rc::new(m));
                 }
                 Statement::Assignment {

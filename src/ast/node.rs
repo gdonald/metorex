@@ -181,6 +181,12 @@ pub enum Expression {
         position: Position,
     },
 
+    // Splat expression (*expr) — expands an array into individual arguments
+    Splat {
+        expression: Box<Expression>,
+        position: Position,
+    },
+
     // Yield - invoke the block passed to the current method
     Yield {
         arguments: Vec<Expression>,
@@ -669,6 +675,7 @@ impl Expression {
             | Expression::Grouped { position, .. }
             | Expression::SelfExpr { position, .. }
             | Expression::Super { position, .. }
+            | Expression::Splat { position, .. }
             | Expression::Yield { position, .. }
             | Expression::Range { position, .. }
             | Expression::Case { position, .. }

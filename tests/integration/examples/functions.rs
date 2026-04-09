@@ -125,3 +125,31 @@ fn test_yield_block_given_parens_execution() {
     let output = run_example("functions/yield_block_given_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_splat_basic_execution() {
+    let expected = "INFO: starting\nINFO: loading\nINFO: done\nonly\n0\n6\nHi, Alice\n";
+    let output = run_example("functions/splat_basic.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_splat_basic_parens_execution() {
+    let expected = "INFO: starting\nINFO: loading\nINFO: done\nonly\n0\n6\nHi, Alice\n";
+    let output = run_example("functions/splat_basic_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_splat_class_execution() {
+    let expected = "APP: start\nAPP: running\nAPP: stop\n3\n1\n2\n3\n";
+    let output = run_example("functions/splat_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_splat_class_parens_execution() {
+    let expected = "APP: start\nAPP: running\nAPP: stop\n3\n1\n2\n3\n";
+    let output = run_example("functions/splat_class_parens.rb");
+    assert_eq!(output, expected);
+}

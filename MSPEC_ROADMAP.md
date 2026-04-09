@@ -55,7 +55,7 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 - [x] 3.24. String `%` formatting operator (`"format" % args`)
 - [x] 3.25. Regex literals (`/pattern/`)
 - [x] 3.26. `yield` keyword
-- [ ] 3.27. Splat operators (`*args`, `**kwargs`)
+- [x] 3.27. Splat operators (`*args`, `**kwargs`)
 - [ ] 3.28. `defined?` keyword
 
 ### Runtime / Stdlib — Completed
@@ -77,7 +77,7 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 
 ### Current blocker
 
-`mspec/utils/options.rb` parses to line 420/521 (~81%). Next blockers: splat operators and `defined?` keyword.
+`mspec/utils/options.rb` parses to line 420/521 (~81%). Next blocker: `defined?` keyword.
 
 ## Phase 4: Passing Specs
 

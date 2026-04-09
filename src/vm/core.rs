@@ -362,6 +362,31 @@ impl VirtualMachine {
         Ok(result.unwrap_or(Object::Nil))
     }
 
+    /// Evaluate a list of argument expressions, expanding any splat (`*expr`) arguments.
+    pub(crate) fn evaluate_arguments(
+        &mut self,
+        argument_exprs: &[Expression],
+    ) -> Result<Vec<Object>, MetorexError> {
+        let mut args = Vec::with_capacity(argument_exprs.len());
+        for arg in argument_exprs {
+            if let Expression::Splat { expression, .. } = arg {
+                let value = self.evaluate_expression(expression)?;
+                match value {
+                    Object::Array(arr) => {
+                        args.extend(arr.borrow().iter().cloned());
+                    }
+                    other => {
+                        // Non-array splat: treat as single argument
+                        args.push(other);
+                    }
+                }
+            } else {
+                args.push(self.evaluate_expression(arg)?);
+            }
+        }
+        Ok(args)
+    }
+
     /// Evaluate an expression to a runtime value.
     pub(crate) fn evaluate_expression(
         &mut self,
@@ -513,10 +538,7 @@ impl VirtualMachine {
                 position,
             } => {
                 let callable = self.evaluate_expression(callee)?;
-                let mut evaluated_args = Vec::with_capacity(arguments.len());
-                for argument in arguments {
-                    evaluated_args.push(self.evaluate_expression(argument)?);
-                }
+                let evaluated_args = self.evaluate_arguments(arguments)?;
                 if let Some(block_expr) = trailing_block {
                     self.pending_block = Some(self.evaluate_expression(block_expr)?);
                 }
@@ -686,6 +708,14 @@ impl VirtualMachine {
                     evaluated_args,
                     *position,
                 )
+            }
+            Expression::Splat { expression, .. } => {
+                // Outside of argument lists, splat evaluates to the array itself
+                let value = self.evaluate_expression(expression)?;
+                match value {
+                    arr @ Object::Array(_) => Ok(arr),
+                    other => Ok(Object::Array(Rc::new(RefCell::new(vec![other])))),
+                }
             }
             Expression::Yield {
                 arguments,

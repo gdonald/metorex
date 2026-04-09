@@ -23,6 +23,8 @@ pub struct Method {
     pub keyword_parameters: Vec<(String, Option<Expression>)>,
     /// Optional block parameter name (from `&block` syntax)
     pub block_parameter: Option<String>,
+    /// Variadic (splat) parameter: (positional_index, name) for `*args`
+    pub variadic_param: Option<(usize, String)>,
     /// Method body (AST statements)
     pub body: Vec<Statement>,
     /// Optional receiver (for bound methods)
@@ -46,6 +48,7 @@ impl Method {
             default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
+            variadic_param: None,
             body,
             receiver: None,
             owner: None,
@@ -68,6 +71,7 @@ impl Method {
             default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
+            variadic_param: None,
             body,
             receiver: None,
             owner: Some(owner),
@@ -90,6 +94,7 @@ impl Method {
             default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
+            variadic_param: None,
             body,
             receiver: None,
             owner: None,
@@ -113,6 +118,7 @@ impl Method {
             default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
+            variadic_param: None,
             body,
             receiver: None,
             owner: Some(owner),
@@ -130,6 +136,7 @@ impl Method {
             default_parameters: vec![],
             keyword_parameters: vec![],
             block_parameter: None,
+            variadic_param: None,
             body: vec![],
             receiver: None,
             owner: None,
@@ -147,6 +154,7 @@ impl Method {
             default_parameters: self.default_parameters.clone(),
             keyword_parameters: self.keyword_parameters.clone(),
             block_parameter: self.block_parameter.clone(),
+            variadic_param: self.variadic_param.clone(),
             body: self.body.clone(),
             receiver: Some(Box::new(receiver)),
             owner: self.owner.clone(),

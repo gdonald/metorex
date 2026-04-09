@@ -215,6 +215,14 @@ impl Parser {
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
                 keyword_pairs.push((name, value));
+            } else if self.match_token(&[TokenKind::Star]) {
+                // Splat argument: *expr — expand array into individual args
+                let position = self.previous().position;
+                let expr = self.parse_expression()?;
+                arguments.push(Expression::Splat {
+                    expression: Box::new(expr),
+                    position,
+                });
             } else {
                 // Handle &expr (block-to-proc conversion) — treat as regular arg for now
                 self.match_token(&[TokenKind::Ampersand]);
@@ -476,6 +484,13 @@ impl Parser {
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
                 keyword_pairs.push((name, value));
+            } else if self.match_token(&[TokenKind::Star]) {
+                let position = self.previous().position;
+                let expr = self.parse_expression()?;
+                arguments.push(Expression::Splat {
+                    expression: Box::new(expr),
+                    position,
+                });
             } else {
                 // Handle &expr (block-to-proc conversion)
                 self.match_token(&[TokenKind::Ampersand]);

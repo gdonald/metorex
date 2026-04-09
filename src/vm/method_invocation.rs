@@ -31,11 +31,21 @@ impl VirtualMachine {
                 // Validate positional argument count, accounting for defaults
                 let expected = method.parameters.len();
                 let positional_count = positional_arg_count(&arguments);
-                let required = expected - method.default_parameters.len();
-                if positional_count < required || positional_count > expected {
+                let has_variadic = method.variadic_param.is_some();
+                let required =
+                    expected - method.default_parameters.len() - if has_variadic { 1 } else { 0 };
+                if !has_variadic && (positional_count < required || positional_count > expected) {
                     return Err(method_argument_error(
                         &method.name,
                         expected,
+                        positional_count,
+                        position,
+                    ));
+                }
+                if has_variadic && positional_count < required {
+                    return Err(method_argument_error(
+                        &method.name,
+                        required,
                         positional_count,
                         position,
                     ));
@@ -283,11 +293,21 @@ impl VirtualMachine {
 
         let expected = method.parameters.len();
         let positional_count = positional_arg_count(&arguments);
-        let required = expected - method.default_parameters.len();
-        if positional_count < required || positional_count > expected {
+        let has_variadic = method.variadic_param.is_some();
+        let required =
+            expected - method.default_parameters.len() - if has_variadic { 1 } else { 0 };
+        if !has_variadic && (positional_count < required || positional_count > expected) {
             return Err(method_argument_error(
                 &method_name,
                 expected,
+                positional_count,
+                position,
+            ));
+        }
+        if has_variadic && positional_count < required {
+            return Err(method_argument_error(
+                &method_name,
+                required,
                 positional_count,
                 position,
             ));
@@ -345,18 +365,13 @@ impl VirtualMachine {
             }
 
             let (positional, kwargs) = split_keyword_args(arguments);
-            for (i, param) in method.parameters.iter().enumerate() {
-                let value = if i < positional.len() {
-                    positional[i].clone()
-                } else if let Some((_, default_expr)) =
-                    method.default_parameters.iter().find(|(idx, _)| *idx == i)
-                {
-                    self.evaluate_expression(default_expr)?
-                } else {
-                    Object::Nil
-                };
-                self.environment_mut().define(param.clone(), value);
-            }
+            bind_params(
+                self,
+                &method.parameters,
+                &positional,
+                &method.default_parameters,
+                &method.variadic_param,
+            )?;
             self.bind_keyword_params(&method.keyword_parameters, kwargs)?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
@@ -461,20 +476,13 @@ impl VirtualMachine {
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
             let (positional, kwargs) = split_keyword_args(arguments);
-            for (i, param) in function.parameters.iter().enumerate() {
-                let value = if i < positional.len() {
-                    positional[i].clone()
-                } else if let Some((_, default_expr)) = function
-                    .default_parameters
-                    .iter()
-                    .find(|(idx, _)| *idx == i)
-                {
-                    self.evaluate_expression(default_expr)?
-                } else {
-                    Object::Nil
-                };
-                self.environment_mut().define(param.clone(), value);
-            }
+            bind_params(
+                self,
+                &function.parameters,
+                &positional,
+                &function.default_parameters,
+                &function.variadic_param,
+            )?;
             self.bind_keyword_params(&function.keyword_parameters, kwargs)?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
@@ -626,6 +634,58 @@ fn positional_arg_count(arguments: &[Object]) -> usize {
         }
     }
     arguments.len()
+}
+
+/// Bind positional parameters to arguments, handling variadic (splat) parameters.
+///
+/// When a variadic param is present at index `vi`, parameters before it get one arg each,
+/// the variadic param collects remaining args as an Array, and parameters after it
+/// get args from the end.
+fn bind_params(
+    vm: &mut VirtualMachine,
+    params: &[String],
+    positional: &[Object],
+    default_parameters: &[(usize, Expression)],
+    variadic_param: &Option<(usize, String)>,
+) -> Result<(), MetorexError> {
+    if let Some((vi, _)) = variadic_param {
+        let vi = *vi;
+        let params_after_splat = params.len() - vi - 1;
+        let min_positional = vi + params_after_splat;
+        let splat_count = positional.len().saturating_sub(min_positional);
+
+        for (i, param) in params.iter().enumerate() {
+            let value = if i < vi {
+                // Before splat: normal positional
+                positional.get(i).cloned().unwrap_or(Object::Nil)
+            } else if i == vi {
+                // The splat parameter: collect middle args into an array
+                let rest: Vec<Object> =
+                    positional.get(vi..vi + splat_count).unwrap_or(&[]).to_vec();
+                Object::Array(Rc::new(RefCell::new(rest)))
+            } else {
+                // After splat: take from end of positional
+                let offset_from_end = params.len() - i;
+                let idx = positional.len().saturating_sub(offset_from_end);
+                positional.get(idx).cloned().unwrap_or(Object::Nil)
+            };
+            vm.environment_mut().define(param.clone(), value);
+        }
+    } else {
+        for (i, param) in params.iter().enumerate() {
+            let value = if i < positional.len() {
+                positional[i].clone()
+            } else if let Some((_, default_expr)) =
+                default_parameters.iter().find(|(idx, _)| *idx == i)
+            {
+                vm.evaluate_expression(default_expr)?
+            } else {
+                Object::Nil
+            };
+            vm.environment_mut().define(param.clone(), value);
+        }
+    }
+    Ok(())
 }
 
 /// Split a list of evaluated arguments into positional args and keyword args.

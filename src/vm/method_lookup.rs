@@ -24,10 +24,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let receiver = self.evaluate_expression(receiver_expr)?;
-        let mut arguments = Vec::with_capacity(argument_exprs.len());
-        for argument in argument_exprs {
-            arguments.push(self.evaluate_expression(argument)?);
-        }
+        let arguments = self.evaluate_arguments(argument_exprs)?;
 
         // If there's a trailing block, evaluate it and store as pending_block.
         // Native methods (each, map, etc.) will take it from self.pending_block.
