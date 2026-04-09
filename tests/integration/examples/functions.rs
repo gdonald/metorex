@@ -55,3 +55,31 @@ fn test_parenless_bare_call_symbol_args_parens() {
     let output = run_example("functions/parenless_symbol_bare_call_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_default_params_standalone_execution() {
+    let expected = "once\ntwice\ntwice\n";
+    let output = run_example("functions/default_params_standalone.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_default_params_standalone_parens_execution() {
+    let expected = "once\ntwice\ntwice\n";
+    let output = run_example("functions/default_params_standalone_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_multiple_return_execution() {
+    let expected = "2\n1\n10\n20\n30\n";
+    let output = run_example("functions/multiple_return.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_multiple_return_parens_execution() {
+    let expected = "2\n1\n10\n20\n30\n";
+    let output = run_example("functions/multiple_return_parens.rb");
+    assert_eq!(output, expected);
+}

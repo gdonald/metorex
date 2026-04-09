@@ -43,3 +43,19 @@ fn test_require_from_load_path_execution() {
     let output = run_example("globals/require_test.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_expand_path_nonexistent_execution() {
+    let output = run_example("globals/expand_path_nonexistent.rb");
+    let lines: Vec<&str> = output.trim().split('\n').collect();
+    assert!(lines[0].ends_with("/foo/bar") || lines[0].contains("foo/bar"));
+    assert!(lines[1].ends_with("/tmp/base/baz") || lines[1].contains("base/baz"));
+}
+
+#[test]
+fn test_expand_path_nonexistent_parens_execution() {
+    let output = run_example("globals/expand_path_nonexistent_parens.rb");
+    let lines: Vec<&str> = output.trim().split('\n').collect();
+    assert!(lines[0].ends_with("/foo/bar") || lines[0].contains("foo/bar"));
+    assert!(lines[1].ends_with("/tmp/base/baz") || lines[1].contains("base/baz"));
+}

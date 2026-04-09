@@ -231,3 +231,17 @@ fn test_ternary_operator_parens_execution() {
     let output = run_example("control_flow/ternary_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_unless_else_execution() {
+    let expected = "not big\ntruthy path\n";
+    let output = run_example("control_flow/unless_else.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_unless_else_parens_execution() {
+    let expected = "not big\ntruthy path\n";
+    let output = run_example("control_flow/unless_else_parens.rb");
+    assert_eq!(output, expected);
+}

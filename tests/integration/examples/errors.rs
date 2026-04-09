@@ -63,3 +63,31 @@ fn test_errors_backtrace_method_execution() {
     assert!(output.contains("Backtrace array length:"));
     assert!(output.contains("First frame:"));
 }
+
+#[test]
+fn test_raise_two_arg_execution() {
+    let expected = "caught two-arg raise\n";
+    let output = run_example("errors/raise_two_arg.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_raise_two_arg_parens_execution() {
+    let expected = "caught two-arg raise\n";
+    let output = run_example("errors/raise_two_arg_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_begin_else_ensure_execution() {
+    let expected = "try block\nno error, x = 42\nensure ran\n";
+    let output = run_example("errors/begin_else_ensure.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_begin_else_ensure_parens_execution() {
+    let expected = "try block\nno error, x = 42\nensure ran\n";
+    let output = run_example("errors/begin_else_ensure_parens.rb");
+    assert_eq!(output, expected);
+}

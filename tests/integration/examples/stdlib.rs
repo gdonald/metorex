@@ -169,6 +169,34 @@ fn test_stdlib_regex_literals_parens_execution() {
 }
 
 #[test]
+fn test_stdlib_string_slice_edge_execution() {
+    let expected = "ell\nhe\nll\n\ndone\nfoobar\n";
+    let output = run_example("stdlib/string_slice_edge.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_string_slice_edge_parens_execution() {
+    let expected = "ell\nhe\nll\n\ndone\nfoobar\n";
+    let output = run_example("stdlib/string_slice_edge_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_string_format_edge_execution() {
+    let expected = "hello\nhello\nhello\nhello\nA\nZ\n      hi!\n7\n5.000000\n5.00\ntest%\n";
+    let output = run_example("stdlib/string_format_edge.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_string_format_edge_parens_execution() {
+    let expected = "hello\nhello\nhello\nhello\nA\nZ\n      hi!\n7\n5.000000\n5.00\ntest%\n";
+    let output = run_example("stdlib/string_format_edge_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_stdlib_error_paths_test_execution() {
     let expected = "3.14\n-3.14\n4\n3\n4\n3\n3.14\n42\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
     let output = run_example("stdlib/error_paths_test.rb");

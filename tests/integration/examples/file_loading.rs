@@ -144,3 +144,13 @@ fn test_require_error_no_suggestion_for_unrelated_name() {
         stderr
     );
 }
+
+#[test]
+fn test_require_runtime_error_in_required_file() {
+    let stderr = run_example_expect_error("require/main_with_bad_require.rb");
+    assert!(
+        stderr.contains("intentional error"),
+        "Error should mention the error from the required file, got: {}",
+        stderr
+    );
+}

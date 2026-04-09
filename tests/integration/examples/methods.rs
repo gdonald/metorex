@@ -41,3 +41,17 @@ fn test_runtime_global_variables_parens_execution() {
     let output = run_example("runtime/global_variables_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_default_params_method_execution() {
+    let expected = "Hello, Alice\nHi, Bob\n";
+    let output = run_example("methods/default_params_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_default_params_method_parens_execution() {
+    let expected = "Hello, Alice\nHi, Bob\n";
+    let output = run_example("methods/default_params_method_parens.rb");
+    assert_eq!(output, expected);
+}

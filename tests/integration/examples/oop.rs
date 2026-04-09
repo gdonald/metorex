@@ -160,3 +160,31 @@ fn test_oop_operator_methods_extended_parens_execution() {
     let output = run_example("oop/operator_methods_extended_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_multi_arg_bracket_execution() {
+    let expected = "1\n2\n3\n4\n";
+    let output = run_example("oop/multi_arg_bracket.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_multi_arg_bracket_parens_execution() {
+    let expected = "1\n2\n3\n4\n";
+    let output = run_example("oop/multi_arg_bracket_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_empty_bracket_call_execution() {
+    let expected = "3\n";
+    let output = run_example("oop/empty_bracket_call.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_empty_bracket_call_parens_execution() {
+    let expected = "3\n";
+    let output = run_example("oop/empty_bracket_call_parens.rb");
+    assert_eq!(output, expected);
+}
