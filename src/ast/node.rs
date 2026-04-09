@@ -22,6 +22,9 @@ pub enum BinaryOp {
     GreaterEqual, // >=
     Spaceship,    // <=>
 
+    // Bitwise/logical XOR
+    Xor, // ^
+
     // Logical operators
     And, // &&
     Or,  // ||
@@ -259,6 +262,7 @@ pub enum MatchPattern {
     IntLiteral(i64),
     FloatLiteral(f64),
     StringLiteral(String),
+    SymbolLiteral(String),
     BoolLiteral(bool),
     NilLiteral,
 
@@ -636,6 +640,7 @@ impl fmt::Display for BinaryOp {
             BinaryOp::And => write!(f, "&&"),
             BinaryOp::Or => write!(f, "||"),
             BinaryOp::Spaceship => write!(f, "<=>"),
+            BinaryOp::Xor => write!(f, "^"),
         }
     }
 }

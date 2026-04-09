@@ -31,7 +31,10 @@ impl Parser {
             TokenKind::Raise => self.parse_raise_statement(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
-            TokenKind::Return => self.parse_return_statement(),
+            TokenKind::Return => {
+                let stmt = self.parse_return_statement()?;
+                self.wrap_with_modifier(stmt)
+            }
             TokenKind::AttrReader => self.parse_attr_reader(),
             TokenKind::AttrWriter => self.parse_attr_writer(),
             TokenKind::AttrAccessor => self.parse_attr_accessor(),

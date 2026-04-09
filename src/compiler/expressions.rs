@@ -158,9 +158,9 @@ impl Compiler {
                     BinaryOp::Greater => self.emit_op(OpCode::Greater, line),
                     BinaryOp::LessEqual => self.emit_op(OpCode::LessEqual, line),
                     BinaryOp::GreaterEqual => self.emit_op(OpCode::GreaterEqual, line),
-                    BinaryOp::Spaceship => {
+                    BinaryOp::Spaceship | BinaryOp::Xor => {
                         return Err(MetorexError::runtime_error(
-                            "Spaceship operator not yet supported in bytecode compiler",
+                            format!("{} operator not yet supported in bytecode compiler", op),
                             SourceLocation::new(line, 0, 0),
                         ));
                     }

@@ -156,6 +156,10 @@ impl VirtualMachine {
                 Object::String(value_string) => Ok(pattern_string == value_string.as_ref()),
                 _ => Ok(false),
             },
+            MatchPattern::SymbolLiteral(pattern_name) => match value {
+                Object::Symbol(value_name) => Ok(pattern_name == value_name.as_ref()),
+                _ => Ok(false),
+            },
             MatchPattern::BoolLiteral(pattern_bool) => match value {
                 Object::Bool(value_bool) => Ok(pattern_bool == value_bool),
                 _ => Ok(false),

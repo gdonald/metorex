@@ -508,6 +508,9 @@ impl Parser {
                     TokenKind::End,
                     TokenKind::RBrace,
                     TokenKind::RParen,
+                    TokenKind::If,
+                    TokenKind::Unless,
+                    TokenKind::Do,
                 ]) && !self.is_at_end()
                 {
                     // yield expr, expr — paren-less arguments

@@ -13,6 +13,7 @@ impl Parser {
 
         while self.check(&[TokenKind::LogicalOr]) {
             let op_token = self.advance();
+            self.skip_whitespace();
             let right = self.parse_logical_and()?;
             expr = Expression::BinaryOp {
                 op: BinaryOp::Or,
@@ -31,6 +32,7 @@ impl Parser {
 
         while self.check(&[TokenKind::LogicalAnd]) {
             let op_token = self.advance();
+            self.skip_whitespace();
             let right = self.parse_equality()?;
             expr = Expression::BinaryOp {
                 op: BinaryOp::And,
@@ -77,6 +79,7 @@ impl Parser {
             TokenKind::GreaterEqual,
             TokenKind::Spaceship,
             TokenKind::Shovel,
+            TokenKind::Caret,
         ]) {
             let op_token = self.advance();
             if op_token.kind == TokenKind::Shovel {
@@ -98,6 +101,7 @@ impl Parser {
                 TokenKind::LessEqual => BinaryOp::LessEqual,
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
                 TokenKind::Spaceship => BinaryOp::Spaceship,
+                TokenKind::Caret => BinaryOp::Xor,
                 _ => unreachable!(),
             };
             let right = self.parse_range()?;

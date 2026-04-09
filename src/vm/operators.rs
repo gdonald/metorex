@@ -63,6 +63,16 @@ impl VirtualMachine {
                 self.evaluate_comparison(op, left, right, position)
             }
             Spaceship => self.evaluate_spaceship(left, right, position),
+            Xor => {
+                // XOR: for booleans, logical XOR; for integers, bitwise XOR
+                match (left, right) {
+                    (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a ^ b)),
+                    (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a ^ b)),
+                    (Object::Bool(a), other) => Ok(Object::Bool(a ^ other.is_truthy())),
+                    (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() ^ b)),
+                    (lhs, rhs) => Err(binary_type_error(BinaryOp::Xor, &lhs, &rhs, position)),
+                }
+            }
             And | Or => Err(MetorexError::internal_error(format!(
                 "Logical operation '{:?}' should be handled by short-circuit evaluation",
                 op

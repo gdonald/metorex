@@ -61,6 +61,15 @@ impl Parser {
 
         match self.advance().kind {
             TokenKind::Ident(name) => attributes.push(name),
+            TokenKind::Include => attributes.push("include".to_string()),
+            TokenKind::Extend => attributes.push("extend".to_string()),
+            TokenKind::Class => attributes.push("class".to_string()),
+            TokenKind::Module => attributes.push("module".to_string()),
+            TokenKind::Def => attributes.push("def".to_string()),
+            TokenKind::End => attributes.push("end".to_string()),
+            TokenKind::If => attributes.push("if".to_string()),
+            TokenKind::Else => attributes.push("else".to_string()),
+            TokenKind::Do => attributes.push("do".to_string()),
             _ => return Err(self.error_at_previous("Expected attribute name after ':'")),
         }
 
@@ -78,6 +87,15 @@ impl Parser {
 
             match self.advance().kind {
                 TokenKind::Ident(name) => attributes.push(name),
+                TokenKind::Include => attributes.push("include".to_string()),
+                TokenKind::Extend => attributes.push("extend".to_string()),
+                TokenKind::Class => attributes.push("class".to_string()),
+                TokenKind::Module => attributes.push("module".to_string()),
+                TokenKind::Def => attributes.push("def".to_string()),
+                TokenKind::End => attributes.push("end".to_string()),
+                TokenKind::If => attributes.push("if".to_string()),
+                TokenKind::Else => attributes.push("else".to_string()),
+                TokenKind::Do => attributes.push("do".to_string()),
                 _ => return Err(self.error_at_previous("Expected attribute name after ':'")),
             }
         }

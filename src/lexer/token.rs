@@ -87,6 +87,7 @@ pub enum TokenKind {
     Star,         // *
     Slash,        // /
     Percent,      // %
+    Caret,        // ^
     Equal,        // =
     Bang,         // !
     EqualEqual,   // ==
@@ -214,6 +215,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Star => write!(f, "*"),
             TokenKind::Slash => write!(f, "/"),
             TokenKind::Percent => write!(f, "%"),
+            TokenKind::Caret => write!(f, "^"),
             TokenKind::Equal => write!(f, "="),
             TokenKind::Bang => write!(f, "!"),
             TokenKind::EqualEqual => write!(f, "=="),

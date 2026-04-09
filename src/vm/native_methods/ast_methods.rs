@@ -39,6 +39,7 @@ fn binary_op_str(op: &BinaryOp) -> &'static str {
         BinaryOp::LessEqual => "<=",
         BinaryOp::GreaterEqual => ">=",
         BinaryOp::Spaceship => "<=>",
+        BinaryOp::Xor => "^",
         BinaryOp::And => "&&",
         BinaryOp::Or => "||",
         BinaryOp::Assign => "=",

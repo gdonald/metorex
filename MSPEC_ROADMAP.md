@@ -87,7 +87,13 @@ Parser fixes during Phase 4 work:
 - Added keywords as dotted method names (`.extend`, `.include`, `.module`, etc.)
 - Fixed scope resolution in rescue clauses (`rescue Errno::ENOENT`)
 - Fixed paren-less arg parsing consuming newlines (breaking subsequent `if` statements)
-- `mspec/utils/options.rb` fully parses (521/521 lines). `mspec/utils/script.rb` partially parses — multiple nesting issues in deeper sections remain.
+- Added `return X if/unless condition` postfix modifiers on return statements
+- Added symbol literals in `case/when` patterns (`:major`, `:minor`, etc.)
+- Added `^` XOR operator (boolean and integer)
+- Fixed `yield if condition` — yield without args now stops before `if`/`unless` keywords
+- Added multi-line `or`/`and` — continuation past newlines after logical operators
+- Added keyword names in `attr_reader`/`attr_writer`/`attr_accessor` (`:include`, `:exclude`, etc.)
+- mspec loading progress: `options.rb`, `script.rb`, `guard.rb` all fully parse and load. `runner/mspec.rb` parses to line 88. Next blocker: `while var = expr` assignment in while condition.
 
 ## Phase 4: Passing Specs
 

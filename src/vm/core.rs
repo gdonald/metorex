@@ -922,6 +922,7 @@ fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::LessEqual => Some("<="),
         BinaryOp::GreaterEqual => Some(">="),
         BinaryOp::Spaceship => Some("<=>"),
+        BinaryOp::Xor => Some("^"),
         _ => None,
     }
 }

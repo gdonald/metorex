@@ -719,6 +719,21 @@ impl Parser {
                 let start = MatchPattern::StringLiteral(value);
                 self.parse_range_pattern_suffix(start)
             }
+            // Symbol pattern (:name)
+            TokenKind::Colon => {
+                self.advance();
+                let name = match self.advance().kind {
+                    TokenKind::Ident(n) => n,
+                    TokenKind::InstanceVar(n) => format!("@{}", n),
+                    TokenKind::ClassVar(n) => format!("@@{}", n),
+                    _ => {
+                        return Err(
+                            self.error_at_previous("Expected identifier after ':' in pattern")
+                        );
+                    }
+                };
+                Ok(MatchPattern::SymbolLiteral(name))
+            }
             TokenKind::True => {
                 self.advance();
                 Ok(MatchPattern::BoolLiteral(true))

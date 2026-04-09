@@ -676,6 +676,10 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     Token::new(TokenKind::Percent, position)
                 }
+                '^' => {
+                    self.advance();
+                    Token::new(TokenKind::Caret, position)
+                }
                 '=' => {
                     self.advance();
                     if self.peek() == Some('=') {
