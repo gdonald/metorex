@@ -369,6 +369,7 @@ impl Compiler {
             | Expression::MagicLine { position, .. }
             | Expression::RegexLiteral { position, .. }
             | Expression::Splat { position, .. }
+            | Expression::Defined { position, .. }
             | Expression::Yield { position, .. } => {
                 let line = Self::pos_line(position);
                 Err(MetorexError::runtime_error(

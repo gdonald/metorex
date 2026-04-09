@@ -352,6 +352,22 @@ impl Parser {
                 })
             }
 
+            // defined?(expr) — check if something is defined
+            TokenKind::Defined => {
+                let position = token.position;
+                let expression = if self.match_token(&[TokenKind::LParen]) {
+                    let expr = self.parse_expression()?;
+                    self.expect(TokenKind::RParen, "Expected ')' after defined? argument")?;
+                    expr
+                } else {
+                    self.parse_expression()?
+                };
+                Ok(Expression::Defined {
+                    expression: Box::new(expression),
+                    position,
+                })
+            }
+
             // Yield: yield or yield(args) or yield args
             TokenKind::Yield => {
                 let position = token.position;

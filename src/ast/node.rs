@@ -187,6 +187,12 @@ pub enum Expression {
         position: Position,
     },
 
+    // defined?(expr) — returns a description string or nil
+    Defined {
+        expression: Box<Expression>,
+        position: Position,
+    },
+
     // Yield - invoke the block passed to the current method
     Yield {
         arguments: Vec<Expression>,
@@ -676,6 +682,7 @@ impl Expression {
             | Expression::SelfExpr { position, .. }
             | Expression::Super { position, .. }
             | Expression::Splat { position, .. }
+            | Expression::Defined { position, .. }
             | Expression::Yield { position, .. }
             | Expression::Range { position, .. }
             | Expression::Case { position, .. }

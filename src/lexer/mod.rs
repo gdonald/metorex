@@ -354,6 +354,7 @@ impl<'a> Lexer<'a> {
             "lambda" => TokenKind::Lambda,
             "super" => TokenKind::Super,
             "yield" => TokenKind::Yield,
+            "defined?" => TokenKind::Defined,
             "case" => TokenKind::Case,
             "when" => TokenKind::When,
             "then" => TokenKind::Then,

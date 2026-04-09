@@ -709,6 +709,93 @@ impl VirtualMachine {
                     *position,
                 )
             }
+            Expression::Defined { expression, .. } => {
+                let result = match expression.as_ref() {
+                    Expression::Identifier { name, .. } => match self.environment.get(name) {
+                        Some(Object::Method(_)) => Some("method"),
+                        Some(Object::Class(_)) | Some(Object::Module(_)) => Some("constant"),
+                        Some(_) => Some("local-variable"),
+                        None => {
+                            if self.globals.contains(name) {
+                                Some("method")
+                            } else {
+                                None
+                            }
+                        }
+                    },
+                    Expression::GlobalVariable { name, .. } => {
+                        if self.globals.get(name).is_some_and(|v| v != Object::Nil) {
+                            Some("global-variable")
+                        } else {
+                            None
+                        }
+                    }
+                    Expression::InstanceVariable { name, .. } => {
+                        let var_name = if name.starts_with('@') {
+                            name.clone()
+                        } else {
+                            format!("@{}", name)
+                        };
+                        match self.environment.get("self") {
+                            Some(Object::Instance(inst)) => {
+                                if inst.borrow().get_var(&var_name).is_some() {
+                                    Some("instance-variable")
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    }
+                    Expression::ClassVariable { .. } => {
+                        // Simplified: just check if we can evaluate it
+                        if self.evaluate_expression(expression).is_ok() {
+                            Some("class variable")
+                        } else {
+                            None
+                        }
+                    }
+                    Expression::ScopeResolution { .. } => {
+                        if self.evaluate_expression(expression).is_ok() {
+                            Some("constant")
+                        } else {
+                            None
+                        }
+                    }
+                    Expression::MethodCall { .. } | Expression::Call { .. } => Some("method"),
+                    Expression::Yield { .. } => {
+                        if self.environment.get("__block__").is_some() {
+                            Some("yield")
+                        } else {
+                            None
+                        }
+                    }
+                    // Literals are always defined
+                    Expression::IntLiteral { .. }
+                    | Expression::FloatLiteral { .. }
+                    | Expression::StringLiteral { .. }
+                    | Expression::BoolLiteral { .. }
+                    | Expression::NilLiteral { .. }
+                    | Expression::Symbol { .. }
+                    | Expression::Array { .. }
+                    | Expression::Dictionary { .. }
+                    | Expression::RegexLiteral { .. } => Some("expression"),
+                    Expression::Super { .. } => Some("super"),
+                    Expression::SelfExpr { .. } => Some("self"),
+                    // For anything else, try evaluating and check
+                    _ => {
+                        if self.evaluate_expression(expression).is_ok() {
+                            Some("expression")
+                        } else {
+                            None
+                        }
+                    }
+                };
+                match result {
+                    Some(desc) => Ok(Object::String(Rc::new(desc.to_string()))),
+                    None => Ok(Object::Nil),
+                }
+            }
             Expression::Splat { expression, .. } => {
                 // Outside of argument lists, splat evaluates to the array itself
                 let value = self.evaluate_expression(expression)?;

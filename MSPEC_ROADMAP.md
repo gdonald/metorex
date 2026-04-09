@@ -56,7 +56,7 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 - [x] 3.25. Regex literals (`/pattern/`)
 - [x] 3.26. `yield` keyword
 - [x] 3.27. Splat operators (`*args`, `**kwargs`)
-- [ ] 3.28. `defined?` keyword
+- [x] 3.28. `defined?` keyword
 
 ### Runtime / Stdlib — Completed
 
@@ -77,7 +77,7 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 
 ### Current blocker
 
-`mspec/utils/options.rb` parses to line 420/521 (~81%). Next blocker: `defined?` keyword.
+All Parser/Syntax items complete. Next blockers: Runtime/Stdlib items (`String#to_i`, `String#dup`, `Array#inject`, `Array#shift`, kernel conversion methods, `exit`, `load`, Proc `[]` call syntax).
 
 ## Phase 4: Passing Specs
 
