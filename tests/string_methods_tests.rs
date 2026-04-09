@@ -342,3 +342,141 @@ fn string_concat_operator() {
     let result = run(r#""hello" + " world""#);
     assert_eq!(result, Some(Object::string("hello world")));
 }
+
+// ── to_i ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_to_i_basic() {
+    assert_eq!(run(r#""42".to_i"#), Some(Object::Int(42)));
+}
+
+#[test]
+fn string_to_i_with_spaces() {
+    assert_eq!(run(r#""  99  ".to_i"#), Some(Object::Int(99)));
+}
+
+#[test]
+fn string_to_i_non_numeric() {
+    assert_eq!(run(r#""hello".to_i"#), Some(Object::Int(0)));
+}
+
+#[test]
+fn string_to_i_negative() {
+    assert_eq!(run(r#""-7".to_i"#), Some(Object::Int(-7)));
+}
+
+#[test]
+fn string_to_i_leading_digits() {
+    assert_eq!(run(r#""3abc".to_i"#), Some(Object::Int(3)));
+}
+
+#[test]
+fn string_to_i_error_with_args() {
+    let err = run_err(r#""42".to_i(10)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── to_f ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_to_f_basic() {
+    assert_eq!(run(r#""3.14".to_f"#), Some(Object::Float(3.14)));
+}
+
+#[test]
+fn string_to_f_non_numeric() {
+    assert_eq!(run(r#""hello".to_f"#), Some(Object::Float(0.0)));
+}
+
+#[test]
+fn string_to_f_error_with_args() {
+    let err = run_err(r#""3.14".to_f(1)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── dup ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_dup() {
+    assert_eq!(run(r#""hello".dup"#), Some(Object::string("hello")));
+}
+
+#[test]
+fn string_dup_error_with_args() {
+    let err = run_err(r#""hello".dup(1)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── gsub ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_gsub_basic() {
+    assert_eq!(
+        run(r#""hello world".gsub("o", "0")"#),
+        Some(Object::string("hell0 w0rld"))
+    );
+}
+
+#[test]
+fn string_gsub_error_wrong_count() {
+    let err = run_err(r#""hello".gsub("o")"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_gsub_error_non_string_pattern() {
+    let err = run_err(r#""hello".gsub(42, "x")"#);
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn string_gsub_error_non_string_replacement() {
+    let err = run_err(r#""hello".gsub("o", 42)"#);
+    assert!(err.contains("String"));
+}
+
+// ── sub ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_sub_basic() {
+    assert_eq!(
+        run(r#""hello hello".sub("hello", "hi")"#),
+        Some(Object::string("hi hello"))
+    );
+}
+
+#[test]
+fn string_sub_error_wrong_count() {
+    let err = run_err(r#""hello".sub("o")"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_sub_error_non_string_pattern() {
+    let err = run_err(r#""hello".sub(42, "x")"#);
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn string_sub_error_non_string_replacement() {
+    let err = run_err(r#""hello".sub("o", 42)"#);
+    assert!(err.contains("String"));
+}
+
+// ── empty? ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_empty_true() {
+    assert_eq!(run(r#""".empty?"#), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_empty_false() {
+    assert_eq!(run(r#""hi".empty?"#), Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_empty_error_with_args() {
+    let err = run_err(r#""hi".empty?(1)"#);
+    assert!(err.contains("argument"));
+}

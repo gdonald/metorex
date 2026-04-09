@@ -104,24 +104,26 @@ pub enum TokenKind {
     SlashEqual,   // /=
 
     // Delimiters
-    LParen,     // (
-    RParen,     // )
-    LBrace,     // {
-    RBrace,     // }
-    LBracket,   // [
-    RBracket,   // ]
-    Comma,      // ,
-    Dot,        // .
-    DotDot,     // ..
-    DotDotDot,  // ...
-    Colon,      // :
-    Arrow,      // ->
-    FatArrow,   // =>
-    Pipe,       // |
-    Ampersand,  // &
-    LogicalAnd, // &&
-    LogicalOr,  // ||
-    ColonColon, // ::
+    LParen,           // (
+    RParen,           // )
+    LBrace,           // {
+    RBrace,           // }
+    LBracket,         // [
+    RBracket,         // ]
+    Comma,            // ,
+    Dot,              // .
+    DotDot,           // ..
+    DotDotDot,        // ...
+    Colon,            // :
+    Arrow,            // ->
+    FatArrow,         // =>
+    Pipe,             // |
+    Ampersand,        // &
+    LogicalAnd,       // &&
+    LogicalOr,        // ||
+    LogicalOrAssign,  // ||=
+    LogicalAndAssign, // &&=
+    ColonColon,       // ::
 
     // Special tokens
     Newline,
@@ -246,6 +248,8 @@ impl fmt::Display for TokenKind {
             TokenKind::Ampersand => write!(f, "&"),
             TokenKind::LogicalAnd => write!(f, "&&"),
             TokenKind::LogicalOr => write!(f, "||"),
+            TokenKind::LogicalOrAssign => write!(f, "||="),
+            TokenKind::LogicalAndAssign => write!(f, "&&="),
             TokenKind::ColonColon => write!(f, "::"),
 
             // Special tokens

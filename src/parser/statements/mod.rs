@@ -74,6 +74,8 @@ impl Parser {
                     TokenKind::MinusEqual,
                     TokenKind::StarEqual,
                     TokenKind::SlashEqual,
+                    TokenKind::LogicalOrAssign,
+                    TokenKind::LogicalAndAssign,
                 ]) {
                     let op_token = self.advance();
                     let value = self.parse_expression_with_lambda()?;
@@ -100,6 +102,18 @@ impl Parser {
                         },
                         TokenKind::SlashEqual => Expression::BinaryOp {
                             op: BinaryOp::Divide,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        TokenKind::LogicalOrAssign => Expression::BinaryOp {
+                            op: BinaryOp::Or,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        TokenKind::LogicalAndAssign => Expression::BinaryOp {
+                            op: BinaryOp::And,
                             left: Box::new(expr.clone()),
                             right: Box::new(value),
                             position: op_token.position,

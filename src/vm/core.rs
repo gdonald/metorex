@@ -735,14 +735,10 @@ impl VirtualMachine {
                         }
                     }
                     Expression::InstanceVariable { name, .. } => {
-                        let var_name = if name.starts_with('@') {
-                            name.clone()
-                        } else {
-                            format!("@{}", name)
-                        };
+                        // Instance vars are stored without @ prefix
                         match self.environment.get("self") {
                             Some(Object::Instance(inst)) => {
-                                if inst.borrow().get_var(&var_name).is_some() {
+                                if inst.borrow().get_var(name).is_some() {
                                     Some("instance-variable")
                                 } else {
                                     None

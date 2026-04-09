@@ -77,7 +77,17 @@ Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via m
 
 ### Current blocker
 
-Phase 3 complete. Ready to begin Phase 4 (passing specs).
+Phase 3 complete. Phase 4 in progress.
+
+Parser fixes during Phase 4 work:
+- Fixed paren-less dotted method calls with multiple args (`Foo.bar "hello", 30, "world"`)
+- Fixed ternary `:` disambiguation with paren-less symbol args and method call args
+- Added `||=` and `&&=` compound assignment operators
+- Added `:@ivar` / `:@@cvar` / `:keyword` symbol syntax
+- Added keywords as dotted method names (`.extend`, `.include`, `.module`, etc.)
+- Fixed scope resolution in rescue clauses (`rescue Errno::ENOENT`)
+- Fixed paren-less arg parsing consuming newlines (breaking subsequent `if` statements)
+- `mspec/utils/options.rb` fully parses (521/521 lines). `mspec/utils/script.rb` partially parses — multiple nesting issues in deeper sections remain.
 
 ## Phase 4: Passing Specs
 

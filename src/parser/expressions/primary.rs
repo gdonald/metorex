@@ -93,12 +93,121 @@ impl Parser {
                 position: token.position,
             }),
 
-            // Symbol literal (:name)
+            // Symbol literal (:name, :@ivar, :@@cvar, :keyword)
             TokenKind::Colon => {
                 let symbol_position = token.position;
                 match self.advance().kind {
                     TokenKind::Ident(name) => Ok(Expression::Symbol {
                         value: name,
+                        position: symbol_position,
+                    }),
+                    TokenKind::InstanceVar(name) => Ok(Expression::Symbol {
+                        value: format!("@{}", name),
+                        position: symbol_position,
+                    }),
+                    TokenKind::ClassVar(name) => Ok(Expression::Symbol {
+                        value: format!("@@{}", name),
+                        position: symbol_position,
+                    }),
+                    // Allow keywords as symbol names
+                    TokenKind::Def => Ok(Expression::Symbol {
+                        value: "def".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Class => Ok(Expression::Symbol {
+                        value: "class".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::If => Ok(Expression::Symbol {
+                        value: "if".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Else => Ok(Expression::Symbol {
+                        value: "else".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::End => Ok(Expression::Symbol {
+                        value: "end".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Do => Ok(Expression::Symbol {
+                        value: "do".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Nil => Ok(Expression::Symbol {
+                        value: "nil".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::True => Ok(Expression::Symbol {
+                        value: "true".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::False => Ok(Expression::Symbol {
+                        value: "false".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Return => Ok(Expression::Symbol {
+                        value: "return".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Begin => Ok(Expression::Symbol {
+                        value: "begin".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Rescue => Ok(Expression::Symbol {
+                        value: "rescue".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Ensure => Ok(Expression::Symbol {
+                        value: "ensure".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::While => Ok(Expression::Symbol {
+                        value: "while".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::For => Ok(Expression::Symbol {
+                        value: "for".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Case => Ok(Expression::Symbol {
+                        value: "case".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::When => Ok(Expression::Symbol {
+                        value: "when".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Module => Ok(Expression::Symbol {
+                        value: "module".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Include => Ok(Expression::Symbol {
+                        value: "include".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Yield => Ok(Expression::Symbol {
+                        value: "yield".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Super => Ok(Expression::Symbol {
+                        value: "super".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Lambda => Ok(Expression::Symbol {
+                        value: "lambda".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Break => Ok(Expression::Symbol {
+                        value: "break".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Continue => Ok(Expression::Symbol {
+                        value: "next".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Raise => Ok(Expression::Symbol {
+                        value: "raise".to_string(),
                         position: symbol_position,
                     }),
                     _ => Err(self.error_at_previous("Expected identifier after ':' for symbol")),

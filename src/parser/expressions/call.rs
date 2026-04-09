@@ -42,6 +42,15 @@ impl Parser {
                     TokenKind::Super => "super".to_string(),
                     TokenKind::Case => "case".to_string(),
                     TokenKind::When => "when".to_string(),
+                    TokenKind::Then => "then".to_string(),
+                    TokenKind::Module => "module".to_string(),
+                    TokenKind::Include => "include".to_string(),
+                    TokenKind::Extend => "extend".to_string(),
+                    TokenKind::Yield => "yield".to_string(),
+                    TokenKind::Defined => "defined?".to_string(),
+                    TokenKind::Nil => "nil".to_string(),
+                    TokenKind::True => "true".to_string(),
+                    TokenKind::False => "false".to_string(),
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
 
@@ -329,6 +338,16 @@ impl Parser {
             return false;
         }
 
+        // Colon + Ident without a following Comma could be ternary `: value` rather
+        // than a symbol argument `:sym`.  Allow only when a comma follows the symbol
+        // (confirming it's a multi-arg call like `foo :sym, other`).
+        if self.peek().kind == TokenKind::Colon
+            && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+            && !matches!(self.peek_ahead(2).kind, TokenKind::Comma)
+        {
+            return false;
+        }
+
         // Pattern 1: <ident> ':' is a keyword argument (name: value), allow it
         // but only for Ident — not Int/Float/String followed by colon (those are dict-like)
         if matches!(self.peek_ahead(1).kind, TokenKind::Colon)
@@ -353,9 +372,12 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Colon followed by Ident is a symbol, not a separator
+        // Colon followed by Ident/InstanceVar/ClassVar/keyword is a symbol, not a separator
         if self.peek().kind == TokenKind::Colon
-            && !matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+            && !matches!(
+                self.peek_ahead(1).kind,
+                TokenKind::Ident(_) | TokenKind::InstanceVar(_) | TokenKind::ClassVar(_)
+            )
         {
             return false;
         }
@@ -410,11 +432,12 @@ impl Parser {
             return false;
         }
 
-        // Don't greedily consume if followed by comma or closing brace
-        if matches!(
-            self.peek_ahead(1).kind,
-            TokenKind::Comma | TokenKind::RBrace
-        ) {
+        // Colon + Ident without a following Comma could be ternary `: value` rather
+        // than a symbol argument.  Require Comma after to confirm it's a call arg.
+        if self.peek().kind == TokenKind::Colon
+            && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+            && !matches!(self.peek_ahead(2).kind, TokenKind::Comma)
+        {
             return false;
         }
 
@@ -496,7 +519,8 @@ impl Parser {
                 self.match_token(&[TokenKind::Ampersand]);
                 arguments.push(self.parse_expression()?);
             }
-            self.skip_whitespace();
+            // Don't skip newlines here — the newline terminates paren-less args
+            // and is needed by wrap_with_modifier to prevent consuming the next line
         }
 
         // If there were keyword args, append them as a Dict

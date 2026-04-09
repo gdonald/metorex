@@ -36,3 +36,38 @@ fn test_kernel_conversion_parens_execution() {
     let output = run_example("builtins/kernel_conversion_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_keyword_symbols_execution() {
+    let expected = ":def\n:class\n:if\n:else\n:end\n:do\n:nil\n:true\n:false\n:return\n:begin\n:rescue\n:ensure\n:while\n:for\n:case\n:when\n:module\n:include\n:yield\n:super\n:lambda\n:break\n:next\n:raise\n:@ivar\n:@@cvar\n";
+    let output = run_example("builtins/keyword_symbols.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_keyword_symbols_parens_execution() {
+    let expected = ":def\n:class\n:@ivar\n:@@cvar\n:yield\n";
+    let output = run_example("builtins/keyword_symbols_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_or_assign_execution() {
+    let expected = "42\n42\nfalse\nfalse\nworld\n";
+    let output = run_example("builtins/or_assign.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_or_assign_parens_execution() {
+    let expected = "42\n42\nfalse\nfalse\nworld\n";
+    let output = run_example("builtins/or_assign_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_defined_extended_execution() {
+    let expected = "local-variable\nmethod\nconstant\nnil\nglobal-variable\nnil\ninstance-variable\nnil\nexpression\nexpression\nexpression\nexpression\nyield\nnil\nnil\n";
+    let output = run_example("builtins/defined_extended.rb");
+    assert_eq!(output, expected);
+}

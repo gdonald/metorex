@@ -785,7 +785,12 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     if self.peek() == Some('|') {
                         self.advance();
-                        Token::new(TokenKind::LogicalOr, position)
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            Token::new(TokenKind::LogicalOrAssign, position)
+                        } else {
+                            Token::new(TokenKind::LogicalOr, position)
+                        }
                     } else {
                         Token::new(TokenKind::Pipe, position)
                     }
@@ -794,7 +799,12 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     if self.peek() == Some('&') {
                         self.advance();
-                        Token::new(TokenKind::LogicalAnd, position)
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            Token::new(TokenKind::LogicalAndAssign, position)
+                        } else {
+                            Token::new(TokenKind::LogicalAnd, position)
+                        }
                     } else {
                         Token::new(TokenKind::Ampersand, position)
                     }

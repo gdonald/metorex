@@ -167,3 +167,17 @@ fn test_lambda_bracket_call_parens_execution() {
     let output = run_example("functions/lambda_bracket_call_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_splat_variadic_coverage_execution() {
+    let expected = "INFO: start\nINFO: done\na-b-c\n60\n0\n3\n";
+    let output = run_example("functions/splat_variadic_coverage.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_splat_variadic_coverage_parens_execution() {
+    let expected = "INFO: start\nINFO: done\na-b-c\n60\n0\n3\n";
+    let output = run_example("functions/splat_variadic_coverage_parens.rb");
+    assert_eq!(output, expected);
+}

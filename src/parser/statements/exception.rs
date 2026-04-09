@@ -115,10 +115,21 @@ impl Parser {
             };
 
             if !next_is_assignment {
-                // Parse exception types
+                // Parse exception types (may include scope resolution like Errno::ENOENT)
                 while let TokenKind::Ident(name) = &self.peek().kind {
-                    exception_types.push(name.clone());
+                    let mut full_name = name.clone();
                     self.advance();
+                    // Handle scope resolution (Errno::ENOENT)
+                    while self.match_token(&[TokenKind::ColonColon]) {
+                        if let TokenKind::Ident(part) = &self.peek().kind {
+                            full_name.push_str("::");
+                            full_name.push_str(part);
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    exception_types.push(full_name);
                     self.skip_whitespace();
 
                     // Check for comma (multiple exception types)

@@ -612,3 +612,247 @@ arr
         ]))
     );
 }
+
+// ── inject ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_inject_with_initial() {
+    let result = run("[1, 2, 3].inject(0) { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn array_inject_with_initial_string() {
+    let result = run(r#"[1, 2, 3].inject("") { |s, x| s + x.to_s }"#);
+    assert_eq!(result, Some(Object::string("123")));
+}
+
+#[test]
+fn array_inject_without_initial() {
+    let result = run("[1, 2, 3].inject { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn array_inject_empty_with_initial() {
+    let result = run("[].inject(42) { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn array_inject_error_too_many_args() {
+    let err = run_err("[1].inject(0, 1) { |a, b| a }");
+    assert!(err.contains("argument"));
+}
+
+// ── dup / clone ─────────────────────────────────────────────────────────────
+
+#[test]
+fn array_dup_method() {
+    let result = run("[1, 2, 3].dup");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn array_clone_method() {
+    let result = run("[1, 2, 3].clone");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn array_dup_error_with_args() {
+    let err = run_err("[1].dup(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── flatten ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_flatten_basic() {
+    let result = run("[1, [2, 3], [4]].flatten");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3),
+            Object::Int(4),
+        ]))
+    );
+}
+
+#[test]
+fn array_flatten_error_with_args() {
+    let err = run_err("[1].flatten(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── compact ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_compact_basic() {
+    let result = run("[1, nil, 2, nil, 3].compact");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn array_compact_error_with_args() {
+    let err = run_err("[1].compact(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── empty? ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_empty_true() {
+    assert_eq!(run("[].empty?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_empty_false() {
+    assert_eq!(run("[1].empty?"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn array_empty_error_with_args() {
+    let err = run_err("[1].empty?(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── first / last ────────────────────────────────────────────────────────────
+
+#[test]
+fn array_first_element() {
+    assert_eq!(run("[10, 20, 30].first"), Some(Object::Int(10)));
+}
+
+#[test]
+fn array_first_empty() {
+    assert_eq!(run("[].first"), Some(Object::Nil));
+}
+
+#[test]
+fn array_first_error_with_args() {
+    let err = run_err("[1].first(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn array_last_element() {
+    assert_eq!(run("[10, 20, 30].last"), Some(Object::Int(30)));
+}
+
+#[test]
+fn array_last_empty() {
+    assert_eq!(run("[].last"), Some(Object::Nil));
+}
+
+#[test]
+fn array_last_error_with_args() {
+    let err = run_err("[1].last(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── include? ────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_include_found() {
+    assert_eq!(run("[1, 2, 3].include?(2)"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_include_not_found() {
+    assert_eq!(run("[1, 2, 3].include?(9)"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn array_include_error_wrong_count() {
+    let err = run_err("[1].include?");
+    assert!(err.contains("argument"));
+}
+
+// ── min / max ───────────────────────────────────────────────────────────────
+
+#[test]
+fn array_min_int() {
+    assert_eq!(run("[5, 2, 8, 1].min"), Some(Object::Int(1)));
+}
+
+#[test]
+fn array_max_int() {
+    assert_eq!(run("[5, 2, 8, 1].max"), Some(Object::Int(8)));
+}
+
+#[test]
+fn array_min_float() {
+    assert_eq!(run("[3.5, 1.2, 2.8].min"), Some(Object::Float(1.2)));
+}
+
+#[test]
+fn array_max_float() {
+    assert_eq!(run("[3.5, 1.2, 2.8].max"), Some(Object::Float(3.5)));
+}
+
+#[test]
+fn array_min_empty() {
+    assert_eq!(run("[].min"), Some(Object::Nil));
+}
+
+#[test]
+fn array_max_empty() {
+    assert_eq!(run("[].max"), Some(Object::Nil));
+}
+
+#[test]
+fn array_min_error_with_args() {
+    let err = run_err("[1].min(1)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn array_max_error_with_args() {
+    let err = run_err("[1].max(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── uniq ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_uniq_basic() {
+    let result = run("[3, 1, 2, 1, 3].uniq");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(3),
+            Object::Int(1),
+            Object::Int(2)
+        ]))
+    );
+}
+
+#[test]
+fn array_uniq_error_with_args() {
+    let err = run_err("[1].uniq(1)");
+    assert!(err.contains("argument"));
+}
