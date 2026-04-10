@@ -85,6 +85,17 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
 }
 
 fn main() {
+    // Use a larger stack for deeply nested Ruby programs (mspec, etc.)
+    let builder = std::thread::Builder::new().stack_size(64 * 1024 * 1024); // 64 MB
+    let handler = builder
+        .spawn(move || {
+            real_main();
+        })
+        .expect("Failed to spawn main thread");
+    handler.join().expect("Main thread panicked");
+}
+
+fn real_main() {
     let cli = Cli::parse();
 
     // Ruby-compatible version output

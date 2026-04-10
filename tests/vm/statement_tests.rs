@@ -584,6 +584,7 @@ fn method_def_at_top_level_error() {
     let mut vm = VirtualMachine::new();
     let pos = Position::new(1, 1, 0);
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "foo".to_string(),
         parameters: vec![Parameter::simple("x".to_string(), pos)],
         body: vec![],

@@ -185,6 +185,9 @@ impl VirtualMachine {
                     )),
                 }
             }
+            "begin" | "first" => Ok(Some(start.as_ref().clone())),
+            "end" | "last" => Ok(Some(end.as_ref().clone())),
+            "exclude_end?" => Ok(Some(Object::Bool(*exclusive))),
             _ => Ok(None),
         }
     }

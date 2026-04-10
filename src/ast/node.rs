@@ -487,6 +487,7 @@ pub enum Statement {
         name: String,
         parameters: Vec<Parameter>,
         body: Vec<Statement>,
+        is_class_method: bool,
         position: Position,
     },
 

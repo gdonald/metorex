@@ -206,6 +206,7 @@ fn test_nested_method_call_shows_stack_trace() {
         superclass: None,
         body: vec![
             Statement::MethodDef {
+                is_class_method: false,
                 name: "method_a".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Expression {
@@ -223,6 +224,7 @@ fn test_nested_method_call_shows_stack_trace() {
                 position: pos_at(2, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "method_b".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Expression {
@@ -240,6 +242,7 @@ fn test_nested_method_call_shows_stack_trace() {
                 position: pos_at(5, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "method_c".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Expression {
@@ -382,6 +385,7 @@ fn test_method_argument_count_error_has_location() {
             name: "Calculator".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "add".to_string(),
                 parameters: vec![
                     Parameter::simple("a".to_string(), pos()),
@@ -558,6 +562,7 @@ fn test_error_in_deeply_nested_calls() {
     let mut methods = vec![];
     for i in 1..=4 {
         methods.push(Statement::MethodDef {
+            is_class_method: false,
             name: format!("level{}", i),
             parameters: vec![],
             body: vec![Statement::Expression {
@@ -574,6 +579,7 @@ fn test_error_in_deeply_nested_calls() {
         });
     }
     methods.push(Statement::MethodDef {
+        is_class_method: false,
         name: "level5".to_string(),
         parameters: vec![],
         body: vec![Statement::Expression {

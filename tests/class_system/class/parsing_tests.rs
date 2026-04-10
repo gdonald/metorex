@@ -101,6 +101,7 @@ fn test_class_with_single_method() {
         name: "Greeter".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "greet".to_string(),
             parameters: vec![],
             body: vec![Statement::Return {
@@ -126,6 +127,7 @@ fn test_class_with_multiple_methods() {
         superclass: None,
         body: vec![
             Statement::MethodDef {
+                is_class_method: false,
                 name: "add".to_string(),
                 parameters: vec![
                     Parameter::simple("a".to_string(), pos(2, 11)),
@@ -149,6 +151,7 @@ fn test_class_with_multiple_methods() {
                 position: pos(2, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "subtract".to_string(),
                 parameters: vec![
                     Parameter::simple("a".to_string(), pos(6, 16)),
@@ -186,6 +189,7 @@ fn test_class_with_constructor() {
         name: "Person".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "initialize".to_string(),
             parameters: vec![
                 Parameter::simple("name".to_string(), pos(2, 17)),
@@ -230,6 +234,7 @@ fn test_class_with_constructor_and_methods() {
         superclass: None,
         body: vec![
             Statement::MethodDef {
+                is_class_method: false,
                 name: "initialize".to_string(),
                 parameters: vec![
                     Parameter::simple("width".to_string(), pos(2, 17)),
@@ -262,6 +267,7 @@ fn test_class_with_constructor_and_methods() {
                 position: pos(2, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "area".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -296,6 +302,7 @@ fn test_class_with_instance_variable_initialization() {
         name: "Counter".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "initialize".to_string(),
             parameters: vec![],
             body: vec![Statement::Assignment {
@@ -323,6 +330,7 @@ fn test_class_with_multiple_instance_variables() {
         name: "Person".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "initialize".to_string(),
             parameters: vec![
                 Parameter::simple("name".to_string(), pos(2, 17)),
@@ -380,6 +388,7 @@ fn test_class_with_class_variable() {
         name: "SharedCounter".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "initialize".to_string(),
             parameters: vec![],
             body: vec![Statement::Assignment {
@@ -409,6 +418,7 @@ fn test_class_method_with_default_parameters() {
         name: "Configurator".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "setup".to_string(),
             parameters: vec![
                 Parameter::simple("name".to_string(), pos(2, 12)),
@@ -436,6 +446,7 @@ fn test_class_method_with_variadic_parameters() {
         name: "Logger".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "log".to_string(),
             parameters: vec![Parameter::variadic("messages".to_string(), pos(2, 11))],
             body: vec![],
@@ -453,6 +464,7 @@ fn test_class_method_with_keyword_parameters() {
         name: "ConfigManager".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "configure".to_string(),
             parameters: vec![Parameter::keyword("options".to_string(), pos(2, 17))],
             body: vec![],
@@ -473,6 +485,7 @@ fn test_class_with_getter_and_setter() {
         superclass: None,
         body: vec![
             Statement::MethodDef {
+                is_class_method: false,
                 name: "initialize".to_string(),
                 parameters: vec![Parameter::simple("value".to_string(), pos(2, 17))],
                 body: vec![Statement::Assignment {
@@ -489,6 +502,7 @@ fn test_class_with_getter_and_setter() {
                 position: pos(2, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "get_value".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -501,6 +515,7 @@ fn test_class_with_getter_and_setter() {
                 position: pos(6, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "set_value".to_string(),
                 parameters: vec![Parameter::simple("value".to_string(), pos(10, 17))],
                 body: vec![Statement::Assignment {
@@ -531,6 +546,7 @@ fn test_class_method_with_conditional() {
         name: "Validator".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "is_positive".to_string(),
             parameters: vec![Parameter::simple("n".to_string(), pos(2, 19))],
             body: vec![Statement::If {
@@ -577,6 +593,7 @@ fn test_class_method_with_loop() {
         name: "Summer".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "sum_to".to_string(),
             parameters: vec![Parameter::simple("n".to_string(), pos(2, 14))],
             body: vec![
@@ -681,6 +698,7 @@ fn test_inherited_class_with_override() {
         name: "Animal".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "speak".to_string(),
             parameters: vec![],
             body: vec![Statement::Return {
@@ -699,6 +717,7 @@ fn test_inherited_class_with_override() {
         name: "Dog".to_string(),
         superclass: Some("Animal".to_string()),
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "speak".to_string(),
             parameters: vec![],
             body: vec![Statement::Return {
@@ -723,6 +742,7 @@ fn test_inherited_class_with_additional_methods() {
         superclass: Some("Animal".to_string()),
         body: vec![
             Statement::MethodDef {
+                is_class_method: false,
                 name: "speak".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -735,6 +755,7 @@ fn test_inherited_class_with_additional_methods() {
                 position: pos(2, 3),
             },
             Statement::MethodDef {
+                is_class_method: false,
                 name: "fetch".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -761,6 +782,7 @@ fn test_class_with_nested_function() {
         name: "Outer".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "outer_method".to_string(),
             parameters: vec![Parameter::simple("x".to_string(), pos(2, 20))],
             body: vec![Statement::FunctionDef {
@@ -797,6 +819,7 @@ fn test_class_with_self_reference() {
         name: "Chainable".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "set_value".to_string(),
             parameters: vec![Parameter::simple("value".to_string(), pos(2, 17))],
             body: vec![
@@ -832,6 +855,7 @@ fn test_class_with_exception_handling() {
         name: "SafeCalculator".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "divide".to_string(),
             parameters: vec![
                 Parameter::simple("a".to_string(), pos(2, 14)),

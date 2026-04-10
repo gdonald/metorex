@@ -44,6 +44,7 @@ fn test_class_with_initialize_method() {
         name: "Point".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "initialize".to_string(),
             parameters: vec![
                 Parameter::simple("x".to_string(), pos(2, 18)),
@@ -140,6 +141,7 @@ fn test_create_instance_with_initialize() {
             name: "Point".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "initialize".to_string(),
                 parameters: vec![
                     Parameter::simple("x".to_string(), pos(2, 18)),
@@ -227,6 +229,7 @@ fn test_instance_variable_access() {
             superclass: None,
             body: vec![
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "initialize".to_string(),
                     parameters: vec![Parameter::simple("value".to_string(), pos(2, 18))],
                     body: vec![Statement::Assignment {
@@ -243,6 +246,7 @@ fn test_instance_variable_access() {
                     position: pos(2, 3),
                 },
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "get_count".to_string(),
                     parameters: vec![],
                     body: vec![Statement::Return {
@@ -334,6 +338,7 @@ fn test_class_variable_access() {
                     position: pos(2, 3),
                 },
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "initialize".to_string(),
                     parameters: vec![],
                     body: vec![Statement::Assignment {
@@ -358,6 +363,7 @@ fn test_class_variable_access() {
                     position: pos(3, 3),
                 },
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "get_total".to_string(),
                     parameters: vec![],
                     body: vec![Statement::Return {
@@ -446,6 +452,7 @@ fn test_class_with_inheritance() {
             name: "Base".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "initialize".to_string(),
                 parameters: vec![Parameter::simple("x".to_string(), pos(2, 18))],
                 body: vec![Statement::Assignment {

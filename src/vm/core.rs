@@ -392,6 +392,26 @@ impl VirtualMachine {
         &mut self,
         expression: &Expression,
     ) -> Result<Object, MetorexError> {
+        // Guard against infinite recursion
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static DEPTH: AtomicUsize = AtomicUsize::new(0);
+        let d = DEPTH.fetch_add(1, Ordering::Relaxed);
+        if d > 1000 {
+            DEPTH.store(0, Ordering::Relaxed);
+            return Err(MetorexError::runtime_error(
+                "SystemStackError: stack level too deep".to_string(),
+                crate::vm::utils::position_to_location(expression.position()),
+            ));
+        }
+        let result = self.evaluate_expression_inner(expression);
+        DEPTH.fetch_sub(1, Ordering::Relaxed);
+        result
+    }
+
+    fn evaluate_expression_inner(
+        &mut self,
+        expression: &Expression,
+    ) -> Result<Object, MetorexError> {
         match expression {
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
@@ -406,10 +426,52 @@ impl VirtualMachine {
                 .map(|s| Object::String(Rc::new(s))),
             Expression::BoolLiteral { value, .. } => Ok(Object::Bool(*value)),
             Expression::NilLiteral { .. } => Ok(Object::Nil),
-            Expression::Identifier { name, position } => self
-                .environment
-                .get(name)
-                .ok_or_else(|| undefined_variable_error(name, *position)),
+            Expression::Identifier { name, position } => {
+                if let Some(val) = self.environment.get(name) {
+                    Ok(val)
+                } else if let Some(receiver) = self.environment.get("self") {
+                    // In class/module body, bare identifiers resolve methods on self
+                    // Guard: don't re-invoke the current method (prevents infinite recursion)
+                    let in_same_method = self
+                        .get_current_method_name()
+                        .is_some_and(|frame| frame.ends_with(&format!("#{}", name)));
+                    if !in_same_method {
+                        if let Some((class, method)) = self.lookup_method(&receiver, name) {
+                            if !method.is_undefined {
+                                let required = method.parameters.len()
+                                    - method.default_parameters.len()
+                                    - if method.variadic_param.is_some() {
+                                        1
+                                    } else {
+                                        0
+                                    };
+                                if required == 0 {
+                                    return self.invoke_method(
+                                        class,
+                                        method,
+                                        receiver,
+                                        vec![],
+                                        *position,
+                                    );
+                                } else {
+                                    let mut bound = method.as_ref().clone();
+                                    bound.receiver = Some(Box::new(receiver));
+                                    return Ok(Object::Method(Rc::new(bound)));
+                                }
+                            }
+                        }
+                    }
+                    // Special case: `new` on a Class returns the class (for calling)
+                    if name == "new" {
+                        if let Object::Class(_) = &receiver {
+                            return Ok(receiver);
+                        }
+                    }
+                    Err(undefined_variable_error(name, *position))
+                } else {
+                    Err(undefined_variable_error(name, *position))
+                }
+            }
             Expression::Lambda {
                 parameters,
                 body,
@@ -559,6 +621,12 @@ impl VirtualMachine {
                         let instance = instance_rc.borrow();
                         Ok(instance.get_var(name).cloned().unwrap_or(Object::Nil))
                     }
+                    Some(Object::Class(class_rc)) => Ok(class_rc
+                        .get_class_var(&format!("@{}", name))
+                        .unwrap_or(Object::Nil)),
+                    Some(Object::Module(module_rc)) => Ok(module_rc
+                        .get_class_var(&format!("@{}", name))
+                        .unwrap_or(Object::Nil)),
                     Some(_) => Err(MetorexError::runtime_error(
                         format!("Cannot read instance variable @{} on non-instance", name),
                         position_to_location(*position),

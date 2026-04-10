@@ -373,10 +373,9 @@ fn lexer_tilde_is_unknown() {
 }
 
 #[test]
-fn lexer_backtick_is_unknown() {
-    let mut lexer = Lexer::new("`");
-    let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::EOF);
+fn lexer_backtick_command_string() {
+    let tokens = Lexer::new("`echo hello`").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "echo hello"));
 }
 
 #[test]

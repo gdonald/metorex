@@ -35,6 +35,7 @@ fn test_assignment_statement() {
 #[test]
 fn test_method_def() {
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "add".to_string(),
         parameters: vec![
             Parameter::simple("x".to_string(), pos(1, 9)),

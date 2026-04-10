@@ -484,6 +484,7 @@ fn test_class_definition_scope() {
         name: "MyClass".to_string(),
         superclass: None,
         body: vec![Statement::MethodDef {
+            is_class_method: false,
             name: "initialize".to_string(),
             parameters: vec![],
             body: vec![Statement::Assignment {

@@ -119,6 +119,26 @@ impl VirtualMachine {
                     }
                     return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(chain)))));
                 }
+                "const_defined?" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "const_defined?",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let const_name = match &arguments[0] {
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        Object::String(s) => s.as_ref().clone(),
+                        _ => return Ok(Some(Object::Bool(false))),
+                    };
+                    // Check if the constant exists as a class variable or in globals
+                    let found = class_rc.get_class_var(&const_name).is_some()
+                        || self.environment().get(&const_name).is_some()
+                        || self.globals().get(&const_name).is_some();
+                    return Ok(Some(Object::Bool(found)));
+                }
                 // File class methods
                 "read" if class_rc.name() == "File" => {
                     if arguments.len() != 1 {

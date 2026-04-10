@@ -706,6 +706,7 @@ fn resolver_method_def_with_default_param() {
     let mut param = Parameter::simple("x".to_string(), pos());
     param.default_value = Some(int_lit(0));
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "greet".to_string(),
         parameters: vec![param],
         body: vec![],

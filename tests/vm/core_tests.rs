@@ -258,23 +258,17 @@ fn auto_call_method_in_block_context() {
 // Reading @var in that context hits the Some(_) non-instance branch.
 
 #[test]
-fn instance_var_read_on_class_self_error() {
-    let err = run_err(
-        r#"
+fn instance_var_read_on_class_self_returns_nil() {
+    // In Ruby, @x on a Class returns nil (class-level instance variable)
+    let result = run(r#"
 class Foo
   def read_ivar
     @x
   end
 end
 Foo.read_ivar
-"#,
-    );
-    assert!(
-        err.contains("instance variable")
-            || err.contains("@x")
-            || err.contains("non-instance")
-            || err.contains("Cannot")
-    );
+"#);
+    assert!(result == Some(Object::Nil) || result.is_none());
 }
 
 // ── super when self is a Class (core.rs lines 507-509) ───────────────────────

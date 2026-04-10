@@ -28,6 +28,7 @@ fn test_basic_inheritance_method_lookup() {
             name: "Animal".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "speak".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -112,6 +113,7 @@ fn test_method_overriding() {
             name: "Animal".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "speak".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -129,6 +131,7 @@ fn test_method_overriding() {
             name: "Dog".to_string(),
             superclass: Some("Animal".to_string()),
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "speak".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -212,6 +215,7 @@ fn test_inheritance_chain_method_lookup() {
             name: "GrandParent".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "method_a".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -229,6 +233,7 @@ fn test_inheritance_chain_method_lookup() {
             name: "Parent".to_string(),
             superclass: Some("GrandParent".to_string()),
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "method_b".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -246,6 +251,7 @@ fn test_inheritance_chain_method_lookup() {
             name: "Child".to_string(),
             superclass: Some("Parent".to_string()),
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "method_c".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -322,6 +328,7 @@ fn test_inherited_initialize_method() {
             superclass: None,
             body: vec![
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "initialize".to_string(),
                     parameters: vec![Parameter::simple("name".to_string(), pos(2, 18))],
                     body: vec![Statement::Assignment {
@@ -338,6 +345,7 @@ fn test_inherited_initialize_method() {
                     position: pos(2, 3),
                 },
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "get_name".to_string(),
                     parameters: vec![],
                     body: vec![Statement::Return {
@@ -432,6 +440,7 @@ fn test_overriding_with_instance_variables() {
             superclass: None,
             body: vec![
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "initialize".to_string(),
                     parameters: vec![Parameter::simple("name".to_string(), pos(2, 18))],
                     body: vec![
@@ -461,6 +470,7 @@ fn test_overriding_with_instance_variables() {
                     position: pos(2, 3),
                 },
                 Statement::MethodDef {
+                    is_class_method: false,
                     name: "speak".to_string(),
                     parameters: vec![],
                     body: vec![Statement::Return {
@@ -479,6 +489,7 @@ fn test_overriding_with_instance_variables() {
             name: "Dog".to_string(),
             superclass: Some("Animal".to_string()),
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "initialize".to_string(),
                 parameters: vec![Parameter::simple("name".to_string(), pos(11, 18))],
                 body: vec![
@@ -569,6 +580,7 @@ fn test_multiple_inheritance_levels() {
             name: "GrandParent".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "get_value".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -586,6 +598,7 @@ fn test_multiple_inheritance_levels() {
             name: "Parent".to_string(),
             superclass: Some("GrandParent".to_string()),
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "get_value".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {
@@ -603,6 +616,7 @@ fn test_multiple_inheritance_levels() {
             name: "Child".to_string(),
             superclass: Some("Parent".to_string()),
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "get_value".to_string(),
                 parameters: vec![],
                 body: vec![Statement::Return {

@@ -109,7 +109,24 @@ Parser fixes during Phase 4 work:
 - `%[...]` / `%Q[...]` string literal syntax
 - Postfix `if`/`unless` on multiple assignment statements
 - Module body: general statements, instance variable assignments, `class << self` with attr_*
-- **ALL mspec core files now fully parse AND load**: `options.rb`, `script.rb`, `guard.rb`, `mspec.rb`, `context.rb`, `exception.rb`, `tag.rb`. The require chain reaches runtime execution. Next blocker: runtime features (`setup_env` method resolution in module context).
+- Bare identifier to method dispatch on `self` (class/module body method calls)
+- Module method lookup in `lookup_method`
+- Setter methods on Class/Module objects (`Config.debug = true`)
+- Class/Module reopening (Ruby semantics: `module M; end` reopens existing M)
+- Global registration of classes/modules (persist across file scopes)
+- Instance variable read/write on Class/Module (stored as class vars)
+- `Object.const_defined?` method
+- Backtick command strings (`` `command` `` → String token)
+- Operator symbols (`:[]`, `:[]=`, `:+`, `:-`, etc.)
+- `Range#begin`, `Range#end`, `Range#first`, `Range#last`, `Range#exclude_end?`
+- `&block` argument extraction from positional args in method invocation
+- `String#[]` with integer index and range index
+- Assignment as last expression returns value (fixes `||=` in methods)
+- Recursion guard: bare identifier → method dispatch skips current method to prevent infinite recursion
+- **`def self.method` vs `def method` separation** — class methods stored with `__class__` prefix, looked up preferentially when receiver is Class/Module. Fixes infinite recursion where instance `config` and class `config` shadowed each other.
+- 64MB thread stack for deep mspec execution
+- `evaluate_expression` depth guard (1000 limit) prevents stack overflow
+- **mspec runner fully loads and `MSpecRun.main` begins executing.** `MSpecScript.new` instantiates, `check_version!` runs, `initialize` starts. Next blocker: Symbol keys in hashes (`config[:formatter] = nil`).
 
 ## Phase 4: Passing Specs
 

@@ -42,8 +42,18 @@ impl VirtualMachine {
             None
         };
 
-        // Create the class object
-        let class = Rc::new(Class::new(name, superclass));
+        // Reopen existing class if it exists (Ruby semantics), otherwise create new
+        let class = if superclass.is_none() {
+            if let Some(Object::Class(existing)) = self.globals().get(name) {
+                existing
+            } else if let Some(Object::Class(existing)) = self.environment().get(name) {
+                existing
+            } else {
+                Rc::new(Class::new(name, superclass))
+            }
+        } else {
+            Rc::new(Class::new(name, superclass))
+        };
 
         // Process the class body to extract methods and instance variable declarations
         for statement in body {
@@ -52,6 +62,7 @@ impl VirtualMachine {
                     name: method_name,
                     parameters,
                     body: method_body,
+                    is_class_method,
                     ..
                 } => {
                     // Create a Method object
@@ -88,7 +99,12 @@ impl VirtualMachine {
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     let method = Rc::new(m);
-                    class.define_method(method_name, method);
+                    if *is_class_method {
+                        // def self.method_name — store as class method with __class__ prefix
+                        class.define_method(format!("__class__{}", method_name), method);
+                    } else {
+                        class.define_method(method_name, method);
+                    }
                 }
                 Statement::Assignment {
                     target: Expression::InstanceVariable { name: var_name, .. },
@@ -363,9 +379,11 @@ impl VirtualMachine {
             }
         }
 
-        // Register the class in the environment
+        // Register the class in the environment and globals
+        let class_obj = Object::Class(class);
         self.environment_mut()
-            .define(name.to_string(), Object::Class(class));
+            .define(name.to_string(), class_obj.clone());
+        self.globals_mut().set(name.to_string(), class_obj);
 
         Ok(ControlFlow::Next)
     }
@@ -445,7 +463,14 @@ impl VirtualMachine {
         body: &[Statement],
         _position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        let module = Rc::new(Class::new(name, None));
+        // Reopen existing module if it exists (Ruby semantics)
+        let module = if let Some(Object::Module(existing)) = self.globals().get(name) {
+            existing
+        } else if let Some(Object::Module(existing)) = self.environment().get(name) {
+            existing
+        } else {
+            Rc::new(Class::new(name, None))
+        };
 
         // Set 'self' to the module for instance variable access in module body
         let prev_self = self.environment().get("self");
@@ -458,6 +483,7 @@ impl VirtualMachine {
                     name: method_name,
                     parameters,
                     body: method_body,
+                    is_class_method,
                     ..
                 } => {
                     let param_names: Vec<String> = parameters
@@ -492,7 +518,12 @@ impl VirtualMachine {
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
-                    module.define_method(method_name, Rc::new(m));
+                    let method = Rc::new(m);
+                    if *is_class_method {
+                        module.define_method(format!("__class__{}", method_name), method);
+                    } else {
+                        module.define_method(method_name, method);
+                    }
                 }
                 Statement::Assignment {
                     target:
@@ -566,8 +597,11 @@ impl VirtualMachine {
             self.environment_mut().define("self".to_string(), prev);
         }
 
+        let module_obj = Object::Module(module);
         self.environment_mut()
-            .define(name.to_string(), Object::Module(module));
+            .define(name.to_string(), module_obj.clone());
+        // Also register in globals so the module persists across file scopes
+        self.globals_mut().set(name.to_string(), module_obj);
 
         Ok(ControlFlow::Next)
     }

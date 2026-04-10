@@ -400,6 +400,43 @@ impl VirtualMachine {
                                 ))
                             }
                         }
+                        Object::Class(class_rc) => {
+                            if let Some(method) = class_rc.find_method(&setter_method) {
+                                self.invoke_method(
+                                    Rc::clone(&class_rc),
+                                    method,
+                                    Object::Class(class_rc),
+                                    vec![value],
+                                    *position,
+                                )?;
+                                Ok(())
+                            } else {
+                                // Store as class variable
+                                class_rc.set_class_var(
+                                    format!("@{}", setter_method.trim_end_matches('=')),
+                                    value,
+                                );
+                                Ok(())
+                            }
+                        }
+                        Object::Module(module_rc) => {
+                            if let Some(method) = module_rc.find_method(&setter_method) {
+                                self.invoke_method(
+                                    Rc::clone(&module_rc),
+                                    method,
+                                    Object::Module(module_rc),
+                                    vec![value],
+                                    *position,
+                                )?;
+                                Ok(())
+                            } else {
+                                module_rc.set_class_var(
+                                    format!("@{}", setter_method.trim_end_matches('=')),
+                                    value,
+                                );
+                                Ok(())
+                            }
+                        }
                         _ => Err(MetorexError::runtime_error(
                             format!(
                                 "Cannot call setter method '{}' on {}",

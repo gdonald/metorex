@@ -294,6 +294,7 @@ fn compile_stmts(stmts: &[Statement]) -> metorex::bytecode::chunk::Chunk {
 #[test]
 fn method_def_emits_method_opcode() {
     let stmts = vec![Statement::MethodDef {
+        is_class_method: false,
         name: "greet".to_string(),
         parameters: vec![Parameter::simple("name".to_string(), pos())],
         body: vec![Statement::Expression {
@@ -317,6 +318,7 @@ fn method_def_emits_method_opcode() {
 #[test]
 fn method_def_stores_compiled_function() {
     let stmts = vec![Statement::MethodDef {
+        is_class_method: false,
         name: "calculate".to_string(),
         parameters: vec![
             Parameter::simple("a".to_string(), pos()),

@@ -531,6 +531,7 @@ fn test_block_returned_from_method() {
             name: "BlockFactory".to_string(),
             superclass: None,
             body: vec![Statement::MethodDef {
+                is_class_method: false,
                 name: "create_multiplier".to_string(),
                 parameters: vec![Parameter::simple("factor".to_string(), pos(2, 26))],
                 body: vec![Statement::Return {

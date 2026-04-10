@@ -210,6 +210,86 @@ impl Parser {
                         value: "raise".to_string(),
                         position: symbol_position,
                     }),
+                    // :[] and :[]= operator symbols
+                    TokenKind::LBracket => {
+                        self.expect(TokenKind::RBracket, "Expected ']' after '[' in symbol")?;
+                        if self.match_token(&[TokenKind::Equal]) {
+                            Ok(Expression::Symbol {
+                                value: "[]=".to_string(),
+                                position: symbol_position,
+                            })
+                        } else {
+                            Ok(Expression::Symbol {
+                                value: "[]".to_string(),
+                                position: symbol_position,
+                            })
+                        }
+                    }
+                    // Operator symbols
+                    TokenKind::Plus => Ok(Expression::Symbol {
+                        value: "+".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Minus => Ok(Expression::Symbol {
+                        value: "-".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Star => Ok(Expression::Symbol {
+                        value: "*".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Slash => Ok(Expression::Symbol {
+                        value: "/".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Percent => Ok(Expression::Symbol {
+                        value: "%".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::EqualEqual => Ok(Expression::Symbol {
+                        value: "==".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::BangEqual => Ok(Expression::Symbol {
+                        value: "!=".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Less => Ok(Expression::Symbol {
+                        value: "<".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Greater => Ok(Expression::Symbol {
+                        value: ">".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::LessEqual => Ok(Expression::Symbol {
+                        value: "<=".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::GreaterEqual => Ok(Expression::Symbol {
+                        value: ">=".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Spaceship => Ok(Expression::Symbol {
+                        value: "<=>".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Shovel => Ok(Expression::Symbol {
+                        value: "<<".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Caret => Ok(Expression::Symbol {
+                        value: "^".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::Match => Ok(Expression::Symbol {
+                        value: "=~".to_string(),
+                        position: symbol_position,
+                    }),
+                    TokenKind::NotMatch => Ok(Expression::Symbol {
+                        value: "!~".to_string(),
+                        position: symbol_position,
+                    }),
                     // :"string" syntax — symbol from string literal
                     TokenKind::String(s) => Ok(Expression::Symbol {
                         value: s,

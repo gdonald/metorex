@@ -485,6 +485,7 @@ fn test_begin_in_method() {
     };
 
     let method = Statement::MethodDef {
+        is_class_method: false,
         name: "safe_method".to_string(),
         parameters: vec![],
         body: vec![begin_stmt],

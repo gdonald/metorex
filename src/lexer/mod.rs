@@ -935,6 +935,21 @@ impl<'a> Lexer<'a> {
                         _ => Token::new(TokenKind::Question, position),
                     }
                 }
+                // Backtick command string: `command`
+                '`' => {
+                    self.advance(); // consume opening `
+                    let mut content = String::new();
+                    while let Some(ch) = self.peek() {
+                        if ch == '`' {
+                            self.advance();
+                            break;
+                        }
+                        content.push(ch);
+                        self.advance();
+                    }
+                    // Treat as a string for parsing purposes
+                    Token::new(TokenKind::String(content), position)
+                }
                 _ => {
                     // Unknown character, consume and return EOF
                     self.advance();

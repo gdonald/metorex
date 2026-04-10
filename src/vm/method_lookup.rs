@@ -115,9 +115,22 @@ impl VirtualMachine {
                 drop(instance_ref);
                 class.find_method(method_name).map(|method| (class, method))
             }
-            Object::Class(class_rc) => class_rc
-                .find_method(method_name)
-                .map(|method| (Rc::clone(class_rc), method)),
+            Object::Class(class_rc) => {
+                // For Class receivers, look for class methods (__class__ prefix) first,
+                // then fall back to regular methods
+                let class_method_name = format!("__class__{}", method_name);
+                class_rc
+                    .find_method(&class_method_name)
+                    .or_else(|| class_rc.find_method(method_name))
+                    .map(|method| (Rc::clone(class_rc), method))
+            }
+            Object::Module(module_rc) => {
+                let class_method_name = format!("__class__{}", method_name);
+                module_rc
+                    .find_method(&class_method_name)
+                    .or_else(|| module_rc.find_method(method_name))
+                    .map(|method| (Rc::clone(module_rc), method))
+            }
             _ => {
                 let class = self.builtins().class_of(receiver);
                 class.find_method(method_name).map(|method| (class, method))

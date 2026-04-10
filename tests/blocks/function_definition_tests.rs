@@ -288,6 +288,7 @@ fn test_function_with_all_parameter_types() {
 #[test]
 fn test_simple_method_definition() {
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "get_name".to_string(),
         parameters: vec![],
         body: vec![Statement::Return {
@@ -307,6 +308,7 @@ fn test_simple_method_definition() {
 #[test]
 fn test_method_with_parameters() {
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "set_value".to_string(),
         parameters: vec![Parameter::simple("value".to_string(), pos(1, 15))],
         body: vec![Statement::Assignment {
@@ -329,6 +331,7 @@ fn test_method_with_parameters() {
 #[test]
 fn test_method_with_default_parameters() {
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "initialize".to_string(),
         parameters: vec![
             Parameter::simple("name".to_string(), pos(1, 16)),
@@ -646,6 +649,7 @@ fn test_function_with_empty_body() {
 #[test]
 fn test_method_with_empty_body() {
     let stmt = Statement::MethodDef {
+        is_class_method: false,
         name: "noop".to_string(),
         parameters: vec![],
         body: vec![],

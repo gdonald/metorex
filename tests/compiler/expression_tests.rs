@@ -875,6 +875,7 @@ fn compile_self_in_method_body() {
         offset: 0,
     };
     let stmts = vec![Statement::MethodDef {
+        is_class_method: false,
         name: "me".to_string(),
         parameters: vec![],
         body: vec![Statement::Expression {

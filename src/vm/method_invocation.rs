@@ -293,7 +293,7 @@ impl VirtualMachine {
         class: Rc<Class>,
         method: Rc<Method>,
         receiver: Object,
-        arguments: Vec<Object>,
+        mut arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
         let method_name = method.name.clone();
@@ -331,7 +331,16 @@ impl VirtualMachine {
         }
 
         let expected = method.parameters.len();
-        let positional_count = positional_arg_count(&arguments);
+        let mut positional_count = positional_arg_count(&arguments);
+        // If a trailing &block argument is passed and the method accepts a block parameter,
+        // extract it as pending_block and don't count it as positional.
+        if method.block_parameter.is_some()
+            && !arguments.is_empty()
+            && matches!(arguments.last(), Some(Object::Block(_)))
+        {
+            self.pending_block = arguments.pop();
+            positional_count = positional_arg_count(&arguments);
+        }
         let has_variadic = method.variadic_param.is_some();
         let required =
             expected - method.default_parameters.len() - if has_variadic { 1 } else { 0 };
@@ -438,6 +447,12 @@ impl VirtualMachine {
                     match statement {
                         Statement::Expression { expression, .. } => {
                             last_value = self.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        Statement::Assignment { value, target, .. } => {
+                            let evaluated = self.evaluate_expression(value)?;
+                            self.assign_value(target, evaluated.clone())?;
+                            last_value = evaluated;
                             continue;
                         }
                         Statement::If {
@@ -549,6 +564,12 @@ impl VirtualMachine {
                     match statement {
                         Statement::Expression { expression, .. } => {
                             last_value = self.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        Statement::Assignment { value, target, .. } => {
+                            let evaluated = self.evaluate_expression(value)?;
+                            self.assign_value(target, evaluated.clone())?;
+                            last_value = evaluated;
                             continue;
                         }
                         Statement::If {

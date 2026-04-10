@@ -117,6 +117,58 @@ impl VirtualMachine {
                     .ok_or_else(|| undefined_dictionary_key_error(&key_string, position))
             }
 
+            Object::String(s) => match key {
+                Object::Int(i) => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let len = chars.len() as i64;
+                    let idx = if i < 0 { len + i } else { i };
+                    if idx < 0 || idx >= len {
+                        Ok(Object::Nil)
+                    } else {
+                        Ok(Object::String(Rc::new(chars[idx as usize].to_string())))
+                    }
+                }
+                Object::Range {
+                    start,
+                    end,
+                    exclusive,
+                } => {
+                    let chars: Vec<char> = s.chars().collect();
+                    let len = chars.len() as i64;
+                    let s_idx = match start.as_ref() {
+                        Object::Int(n) => {
+                            let i = if *n < 0 { len + n } else { *n };
+                            i.max(0) as usize
+                        }
+                        _ => 0,
+                    };
+                    let e_idx = match end.as_ref() {
+                        Object::Int(n) => {
+                            let i = if *n < 0 { len + n } else { *n };
+                            if exclusive {
+                                i.max(0) as usize
+                            } else {
+                                (i + 1).max(0) as usize
+                            }
+                        }
+                        _ => chars.len(),
+                    };
+                    let sliced: String = chars
+                        .get(s_idx..e_idx.min(chars.len()))
+                        .unwrap_or(&[])
+                        .iter()
+                        .collect();
+                    Ok(Object::String(Rc::new(sliced)))
+                }
+                _ => Err(MetorexError::type_error(
+                    format!(
+                        "String index must be Integer or Range, found {}",
+                        key.type_name()
+                    ),
+                    position_to_location(position),
+                )),
+            },
+
             other => Err(MetorexError::type_error(
                 format!("Cannot index into type '{}'", other.type_name()),
                 position_to_location(position),

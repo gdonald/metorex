@@ -149,10 +149,12 @@ impl Parser {
 
         // Return MethodDef if we're inside a class, otherwise FunctionDef
         if self.in_class_body {
+            let is_class_method = _singleton_receiver.is_some();
             Ok(Statement::MethodDef {
                 name,
                 parameters,
                 body,
+                is_class_method,
                 position: start_pos,
             })
         } else {
