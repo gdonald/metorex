@@ -126,3 +126,12 @@ fn test_lexer_multiple_floats() {
     let token3 = lexer.next_token();
     assert_eq!(token3.kind, TokenKind::Float(3.3));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+#[test]
+fn lexer_number_followed_by_dot_method() {
+    let tokens = Lexer::new("42.to_s").tokenize();
+    assert!(matches!(tokens[0].kind, TokenKind::Int(42)));
+    assert_eq!(tokens[1].kind, TokenKind::Dot);
+}

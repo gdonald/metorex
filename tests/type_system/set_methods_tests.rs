@@ -386,3 +386,9 @@ fn set_to_a_error_with_args() {
     let err = run_err("Set.new.to_a(1)");
     assert!(err.contains("argument"));
 }
+
+#[test]
+fn set_size_coverage() {
+    let result = run("s = Set.new([1, 2, 3]); s.size");
+    assert_eq!(result, Some(Object::Int(3)));
+}

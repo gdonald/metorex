@@ -86,3 +86,49 @@ c.a_val + c.b_val
 ");
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── Module body features ────────────────────────────────────────────────────
+
+#[test]
+fn module_body_ivar_assignment() {
+    run("module MSpec\n  @exit = nil\n  @abort = nil\nend");
+}
+
+#[test]
+fn module_body_class_self_attr() {
+    run("module Foo\n  class << self\n    attr_reader :bar\n  end\nend");
+}
+
+#[test]
+fn module_body_ivar_and_method() {
+    run("module Config\n  @debug = true\n  def self.debug\n    @debug\n  end\nend");
+}
+
+#[test]
+fn module_class_self_method_def() {
+    run("module Helpers\n  class << self\n    def answer\n      42\n    end\n  end\nend");
+}
+
+#[test]
+fn module_class_self_attr_writer() {
+    run("module Conf\n  class << self\n    attr_writer :debug\n  end\nend");
+}
+
+#[test]
+fn module_class_self_attr_accessor() {
+    run("module Conf\n  class << self\n    attr_accessor :verbose\n  end\nend");
+}
+
+#[test]
+fn module_class_self_method_and_attr() {
+    run(
+        "module Helpers\n  class << self\n    attr_reader :count\n    def reset\n      42\n    end\n  end\nend",
+    );
+}
+
+#[test]
+fn module_class_self_attr_accessor_in_module() {
+    run(
+        "module Tracker\n  class << self\n    attr_accessor :count\n    attr_writer :name\n    attr_reader :id\n    def reset\n      42\n    end\n  end\nend",
+    );
+}

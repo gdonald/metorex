@@ -197,3 +197,49 @@ fn test_lexer_interpolation_nested_braces() {
     let token = lexer.next_token();
     assert!(matches!(token.kind, TokenKind::InterpolatedString(_)));
 }
+
+// ── %[] / %Q[] / %() / %{} / %<> string literals ───────────────────────────
+
+#[test]
+fn test_percent_bracket_string() {
+    let tokens = Lexer::new("%[hello world]").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello world"));
+}
+
+#[test]
+fn test_percent_q_string() {
+    let tokens = Lexer::new("%Q[hello]").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello"));
+}
+
+#[test]
+fn test_percent_paren_string() {
+    let tokens = Lexer::new("%(hello world)").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello world"));
+}
+
+#[test]
+fn test_percent_brace_string() {
+    let tokens = Lexer::new("%{hello}").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello"));
+}
+
+#[test]
+fn test_percent_angle_string() {
+    let tokens = Lexer::new("%<hello>").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "hello"));
+}
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+#[test]
+fn lexer_unterminated_single_quote_string() {
+    let tokens = Lexer::new("'unterminated").tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}
+
+#[test]
+fn lexer_newline_in_single_quote_string() {
+    let tokens = Lexer::new("'line1\nline2'").tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}

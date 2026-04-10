@@ -350,3 +350,23 @@ fn hash_merge_error_too_many_args() {
     let err = run_err(r#"{"a" => 1}.merge({"b" => 2}, {"c" => 3})"#);
     assert!(err.contains("argument"));
 }
+
+#[test]
+fn hash_bracket_access() {
+    let result = run(r#"h = { "a" => 1, "b" => 2 }; h["a"]"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_bracket_missing_key() {
+    let err = run_err(r#"h = { "a" => 1 }; h["missing"]"#);
+    assert!(err.contains("not found") || err.contains("Key"));
+}
+
+#[test]
+fn hash_each_basic() {
+    let result = run(
+        r#"h = { "a" => 1, "b" => 2 }; total = 0; h.each do |k, v|; total = total + v; end; total"#,
+    );
+    assert_eq!(result, Some(Object::Int(3)));
+}

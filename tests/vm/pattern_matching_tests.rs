@@ -265,3 +265,5 @@ fn range_pattern_exclusive_float() {
     let result = run("case 3.5\nin 1.0...5.0\n  \"yes\"\nelse\n  \"no\"\nend");
     assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
 }
+
+// ── From vm/additional_tests ────────────────────────────────────────────────

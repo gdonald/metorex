@@ -217,3 +217,29 @@ fn range_map_exception_inside_block_error() {
         err.contains("range map error") || err.contains("exception") || err.contains("Uncaught")
     );
 }
+
+#[test]
+fn range_each_basic_coverage() {
+    let result = run("result = []\n(1..3).each do |x|\n  result << x\nend\nresult");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn range_map_basic_coverage() {
+    let result = run("(1..3).map do |x|\n  x * 2\nend");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(2),
+            Object::Int(4),
+            Object::Int(6)
+        ]))
+    );
+}

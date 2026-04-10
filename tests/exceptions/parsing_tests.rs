@@ -558,3 +558,14 @@ fn test_begin_with_return_in_ensure() {
     };
     assert_eq!(stmt.position(), pos(1, 1));
 }
+
+// ── Parse error (from additional_tests) ─────────────────────────────────────
+
+#[test]
+fn rescue_fat_arrow_non_ident_parse_error() {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new("begin\nrescue => 42\nend").tokenize();
+    let result = Parser::new(tokens).parse();
+    assert!(result.is_err());
+}

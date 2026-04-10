@@ -176,3 +176,15 @@ fn assert_raises_no_block_error() {
         err
     );
 }
+
+// ── From vm/additional_tests ────────────────────────────────────────────────
+
+#[test]
+fn print_formats_arguments_without_newline() {
+    run("print(\"hello\")"); // just verify no crash
+}
+
+#[test]
+fn p_function_returns_single_value() {
+    assert_eq!(run("p(42)"), Some(Object::Int(42)));
+}

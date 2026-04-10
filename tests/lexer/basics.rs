@@ -350,3 +350,79 @@ fn test_lexer_unknown_character() {
     let tok = lexer.next_token();
     assert_eq!(tok.kind, TokenKind::EOF);
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+#[test]
+fn lexer_empty_input_returns_eof() {
+    let mut lexer = Lexer::new("");
+    assert_eq!(lexer.next_token().kind, TokenKind::EOF);
+}
+
+#[test]
+fn lexer_unknown_character_returns_eof() {
+    let mut lexer = Lexer::new("~");
+    assert_eq!(lexer.next_token().kind, TokenKind::EOF);
+}
+
+#[test]
+fn lexer_tilde_is_unknown() {
+    let mut lexer = Lexer::new("~");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+#[test]
+fn lexer_backtick_is_unknown() {
+    let mut lexer = Lexer::new("`");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::EOF);
+}
+
+#[test]
+fn lexer_tokenize_collects_all_tokens() {
+    let tokens = Lexer::new("x = 1").tokenize();
+    assert!(tokens.len() >= 4); // x, =, 1, EOF
+}
+
+#[test]
+fn lexer_tokenize_empty_source() {
+    let tokens = Lexer::new("").tokenize();
+    assert_eq!(tokens.len(), 1);
+    assert_eq!(tokens[0].kind, TokenKind::EOF);
+}
+
+#[test]
+fn lexer_skips_tabs_and_carriage_returns() {
+    let tokens = Lexer::new("\t\rx = 1").tokenize();
+    assert!(matches!(tokens[0].kind, TokenKind::Ident(_)));
+}
+
+#[test]
+fn lexer_newline_token() {
+    let tokens = Lexer::new("x\ny").tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::Newline));
+}
+
+#[test]
+fn lexer_comment_token() {
+    let tokens = Lexer::new("# comment").tokenize();
+    assert!(matches!(tokens[0].kind, TokenKind::Comment(_)));
+}
+
+#[test]
+fn lexer_all_keywords() {
+    let kws = "def class if elsif else unless while for in end do begin rescue ensure raise break return lambda super case when then attr_reader attr_writer attr_accessor module include extend true false nil";
+    let tokens = Lexer::new(kws).tokenize();
+    assert!(tokens.len() > 20);
+}
+
+#[test]
+fn lexer_position_tracking_across_newlines() {
+    let tokens = Lexer::new("x\ny").tokenize();
+    let y_token = tokens
+        .iter()
+        .find(|t| matches!(&t.kind, TokenKind::Ident(n) if n == "y"))
+        .unwrap();
+    assert_eq!(y_token.position.line, 2);
+}

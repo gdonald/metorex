@@ -140,3 +140,23 @@ end
             || err.contains("type")
     );
 }
+
+// ── From remaining_tests ────────────────────────────────────────────────────
+
+fn run_ctrl(code: &str) -> Option<metorex::object::Object> {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    use metorex::vm::VirtualMachine;
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+#[test]
+fn break_in_while_loop_remaining() {
+    assert_eq!(
+        run_ctrl("x = 0; while true; x = x + 1; break if x >= 3; end; x"),
+        Some(metorex::object::Object::Int(3))
+    );
+}

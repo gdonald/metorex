@@ -246,3 +246,45 @@ a[1]
 "#);
     assert_eq!(result, Some(Object::Int(20)));
 }
+
+// ── From edge_tests ─────────────────────────────────────────────────────────
+
+#[test]
+fn array_sort_method_edge() {
+    assert_eq!(
+        run("[3,1,2].sort"),
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn array_map_double_edge() {
+    assert_eq!(
+        run("[1,2,3].map { |x| x * 2 }"),
+        Some(Object::array(vec![
+            Object::Int(2),
+            Object::Int(4),
+            Object::Int(6)
+        ]))
+    );
+}
+
+#[test]
+fn array_select_filter_edge() {
+    assert_eq!(
+        run("[1,2,3,4].select { |x| x > 2 }"),
+        Some(Object::array(vec![Object::Int(3), Object::Int(4)]))
+    );
+}
+
+#[test]
+fn array_reduce_sum_edge() {
+    assert_eq!(
+        run("[1,2,3].reduce { |sum, x| sum + x }"),
+        Some(Object::Int(6))
+    );
+}

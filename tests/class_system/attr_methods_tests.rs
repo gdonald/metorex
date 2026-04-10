@@ -254,3 +254,49 @@ puts p.y
     let result = execute_source(source);
     assert!(result.is_ok());
 }
+
+fn parse_attr(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+// ── Keyword names in attr_reader/writer/accessor ────────────────────────────
+
+#[test]
+fn attr_reader_with_include_keyword() {
+    parse_attr("class Foo\n  class << self\n    attr_reader :include, :exclude\n  end\nend");
+}
+
+#[test]
+fn attr_reader_keyword_names() {
+    parse_attr(
+        "class Foo\n  attr_reader :include\n  attr_reader :extend\n  attr_reader :class\n  attr_reader :module\n  attr_reader :def\n  attr_reader :end\n  attr_reader :if\n  attr_reader :else\n  attr_reader :do\nend",
+    );
+}
+
+#[test]
+fn attr_writer_keyword_names() {
+    parse_attr("class Foo\n  attr_writer :include, :extend\nend");
+}
+
+#[test]
+fn attr_accessor_keyword_names() {
+    parse_attr("class Foo\n  attr_accessor :include, :extend\nend");
+}
+
+#[test]
+fn class_self_attr_accessor_getter_setter() {
+    parse_attr("class Config\n  class << self\n    attr_accessor :debug\n  end\nend");
+}
+
+#[test]
+fn class_self_attr_reader_getter() {
+    parse_attr("class Foo\n  class << self\n    attr_reader :name\n  end\nend");
+}
+
+#[test]
+fn class_self_attr_writer_setter() {
+    parse_attr("class Foo\n  class << self\n    attr_writer :name\n  end\nend");
+}

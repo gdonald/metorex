@@ -810,3 +810,17 @@ fn test_lexer_logical_and() {
     let token = lexer.next_token();
     assert_eq!(token.kind, TokenKind::LogicalAnd);
 }
+
+// ── New token types ─────────────────────────────────────────────────────────
+
+#[test]
+fn test_lexer_tokens_display_new_types() {
+    let tokens = Lexer::new("=~ !~ === ^ ||= &&=").tokenize();
+    let displays: Vec<String> = tokens.iter().map(|t| format!("{}", t.kind)).collect();
+    assert!(displays.contains(&"=~".to_string()));
+    assert!(displays.contains(&"!~".to_string()));
+    assert!(displays.contains(&"===".to_string()));
+    assert!(displays.contains(&"^".to_string()));
+    assert!(displays.contains(&"||=".to_string()));
+    assert!(displays.contains(&"&&=".to_string()));
+}

@@ -169,3 +169,32 @@ fn unless_expression_without_else() {
     let result = run("x = unless false\n  42\nend\nx");
     assert_eq!(result, Some(Object::Int(42)));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+fn parse_cf_ok(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+#[test]
+fn parse_while_with_do_additional() {
+    parse_cf_ok("while true do\n  break\nend");
+}
+
+#[test]
+fn parse_return_with_value_additional() {
+    parse_cf_ok("def f\n  return 42\nend");
+}
+
+#[test]
+fn parse_break_statement_additional() {
+    parse_cf_ok("while true\n  break\nend");
+}
+
+#[test]
+fn parse_continue_statement_additional() {
+    parse_cf_ok("while true\n  next\nend");
+}

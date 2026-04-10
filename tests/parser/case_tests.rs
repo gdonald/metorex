@@ -56,3 +56,42 @@ fn rest_pattern_at_top_level_is_parse_error() {
     let err = parse_err("case 1\nin *x\n  x\nend");
     assert!(err.contains("pattern") || err.contains("Star") || err.contains("Expected"));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+fn parse_case_ok(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+#[test]
+fn parse_case_with_then_additional() {
+    parse_case_ok("case x\nwhen 1 then 10\nwhen 2 then 20\nend");
+}
+
+#[test]
+fn parse_case_with_guard_additional() {
+    parse_case_ok("case x\nwhen 1\n  10\nend");
+}
+
+#[test]
+fn parse_case_in_additional() {
+    parse_case_ok("case x\nin 1\n  10\nin 2\n  20\nend");
+}
+
+#[test]
+fn parse_case_with_object_pattern_additional() {
+    parse_case_ok("case h\nin { name: n }\n  n\nend");
+}
+
+#[test]
+fn parse_case_with_range_pattern_additional() {
+    parse_case_ok("case x\nwhen 1..10\n  \"range\"\nend");
+}
+
+#[test]
+fn parse_case_with_string_pattern_additional() {
+    parse_case_ok("case x\nwhen \"hello\"\n  1\nend");
+}

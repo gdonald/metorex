@@ -431,3 +431,35 @@ fn test_lexer_bang_method_complex() {
     let token = lexer.next_token();
     assert_eq!(token.kind, TokenKind::Ident("update_all!".to_string()));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+#[test]
+fn lexer_class_variable() {
+    let tokens = Lexer::new("@@count").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::ClassVar(n) if n == "count"));
+}
+
+#[test]
+fn lexer_global_variable() {
+    let tokens = Lexer::new("$stdout").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::GlobalVar(n) if n == "stdout"));
+}
+
+#[test]
+fn lexer_identifier_with_question_mark() {
+    let tokens = Lexer::new("empty?").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::Ident(n) if n == "empty?"));
+}
+
+#[test]
+fn lexer_identifier_with_bang() {
+    let tokens = Lexer::new("save!").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::Ident(n) if n == "save!"));
+}
+
+#[test]
+fn lexer_instance_variable() {
+    let tokens = Lexer::new("@name").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::InstanceVar(n) if n == "name"));
+}

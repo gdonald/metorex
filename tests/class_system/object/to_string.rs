@@ -41,3 +41,26 @@ fn test_to_string_class() {
     let obj = Object::Class(class);
     assert_eq!(obj.to_string(), "MyClass");
 }
+
+// ── Set/NativeFunction display (from additional_tests) ──────────────────────
+
+#[test]
+fn test_set_display_multiple_elements() {
+    use metorex::object::ObjectHash;
+    use std::collections::HashSet;
+    let mut set = HashSet::new();
+    set.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
+    set.insert(ObjectHash::from_object(&Object::Int(2)).unwrap());
+    let obj = Object::Set(Rc::new(RefCell::new(set)));
+    let display = format!("{}", obj);
+    assert!(display.starts_with("#{"));
+    assert!(display.ends_with("}"));
+    assert!(display.contains("1"));
+    assert!(display.contains("2"));
+}
+
+#[test]
+fn test_native_function_display() {
+    let obj = Object::NativeFunction("puts".to_string());
+    assert_eq!(format!("{}", obj), "<native function puts>");
+}

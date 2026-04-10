@@ -480,3 +480,9 @@ fn string_empty_error_with_args() {
     let err = run_err(r#""hi".empty?(1)"#);
     assert!(err.contains("argument"));
 }
+
+#[test]
+fn string_dup_independent_coverage() {
+    let result = run("a = \"hello\"\nb = a.dup\nb");
+    assert_eq!(result, Some(Object::string("hello")));
+}

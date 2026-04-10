@@ -55,3 +55,56 @@ fn parser_function_multiline_body() {
     let result = run("def compute(a, b)\n  x = a + b\n  y = x * 2\n  y\nend\ncompute(3, 4)");
     assert_eq!(result, Some(Object::Int(14)));
 }
+
+// ── Setter method def ───────────────────────────────────────────────────────
+
+#[test]
+fn setter_method_def() {
+    let result = run(r#"
+class Foo
+  def name=(val)
+    @name = val
+  end
+  def name
+    @name
+  end
+end
+f = Foo.new
+f.name = "hello"
+f.name
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("hello".to_string())))
+    );
+}
+
+#[test]
+fn singleton_setter_method() {
+    parse_ok(
+        r#"
+class Foo
+  def self.name=(val)
+    @name = val
+  end
+end
+"#,
+    );
+}
+
+// ── Method rescue/else/ensure ───────────────────────────────────────────────
+
+#[test]
+fn method_rescue_ensure_parsing() {
+    parse_ok("def test\n  raise \"oops\"\nrescue\n  42\nensure\n  99\nend");
+}
+
+#[test]
+fn method_rescue_else_parsing() {
+    parse_ok("def safe\n  42\nrescue => e\n  -1\nelse\n  99\nend");
+}
+
+#[test]
+fn method_rescue_else_ensure_parsing() {
+    parse_ok("def full\n  42\nrescue => e\n  -1\nelse\n  99\nensure\n  0\nend");
+}

@@ -92,3 +92,26 @@ result.length
 "#);
     assert_eq!(result, Some(Object::Int(4)));
 }
+
+// ── From edge_tests ─────────────────────────────────────────────────────────
+
+#[test]
+fn modulo_operator_edge() {
+    assert_eq!(run("10 % 3"), Some(Object::Int(1)));
+}
+
+#[test]
+fn divide_by_zero_int_edge() {
+    let err = run_err("1 / 0");
+    assert!(err.contains("zero") || err.contains("Division"));
+}
+
+// ── From remaining_tests ────────────────────────────────────────────────────
+
+#[test]
+fn int_times_iteration_remaining() {
+    assert_eq!(
+        run("sum = 0; 3.times { |i| sum = sum + i }; sum"),
+        Some(Object::Int(3))
+    );
+}

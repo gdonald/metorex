@@ -856,3 +856,9 @@ fn array_uniq_error_with_args() {
     let err = run_err("[1].uniq(1)");
     assert!(err.contains("argument"));
 }
+
+#[test]
+fn array_dup_independent_coverage() {
+    let result = run("a = [1, 2, 3]\nb = a.dup\nb << 4\na.length");
+    assert_eq!(result, Some(Object::Int(3)));
+}

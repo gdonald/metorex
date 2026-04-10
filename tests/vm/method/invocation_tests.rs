@@ -215,3 +215,125 @@ fn block_captures_multiple_vars() {
     let result = run("a = 1\nb = 2\nf = lambda do |c|\n  a + b + c\nend\nf.call(3)");
     assert_eq!(result, Some(Object::Int(6)));
 }
+
+// ── Splat/variadic ──────────────────────────────────────────────────────────
+
+#[test]
+fn splat_collect_args() {
+    assert_eq!(
+        run("def f(*args)\n  args.length\nend\nf(1, 2, 3)"),
+        Some(Object::Int(3))
+    );
+}
+
+#[test]
+fn splat_expand_in_call() {
+    assert_eq!(
+        run("def add(a, b, c); a + b + c; end; add(*[10, 20, 30])"),
+        Some(Object::Int(60))
+    );
+}
+
+#[test]
+fn splat_with_fixed_before() {
+    let result =
+        run("def log(level, *msgs)\n  msgs.length\nend\nlog(\"INFO\", \"a\", \"b\", \"c\")");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn splat_empty() {
+    assert_eq!(
+        run("def f(*args); args.length; end; f()"),
+        Some(Object::Int(0))
+    );
+}
+
+#[test]
+fn splat_in_method_call() {
+    assert_eq!(
+        run("def sum(a, b); a + b; end; sum(*[3, 4])"),
+        Some(Object::Int(7))
+    );
+}
+
+#[test]
+fn splat_in_dotted_call() {
+    let result = run(
+        "class Calc\n  def add(a, b, c)\n    a + b + c\n  end\nend\nargs = [1, 2, 3]\nCalc.new.add(*args)",
+    );
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn class_method_variadic() {
+    assert_eq!(
+        run(
+            "class Logger\n  def log(level, *msgs)\n    msgs.length\n  end\nend\nLogger.new.log(\"INFO\", \"a\", \"b\")"
+        ),
+        Some(Object::Int(2))
+    );
+}
+
+#[test]
+fn variadic_with_fixed_before_and_default() {
+    let result = run("def test(a, *rest)\n  rest\nend\ntest(1, 2, 3, 4)");
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(2),
+            Object::Int(3),
+            Object::Int(4)
+        ]))
+    );
+}
+
+// ── Yield ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn yield_basic() {
+    assert_eq!(
+        run("def test\n  yield 10\nend\ntest { |x| x * 2 }"),
+        Some(Object::Int(20))
+    );
+}
+
+#[test]
+fn yield_no_args() {
+    assert_eq!(
+        run("def test\n  yield\nend\ntest { 42 }"),
+        Some(Object::Int(42))
+    );
+}
+
+#[test]
+fn yield_no_block_error() {
+    let err = run_err("def f; yield; end; f()");
+    assert!(err.contains("no block given"));
+}
+
+#[test]
+fn yield_multiple_args() {
+    assert_eq!(
+        run("def test\n  yield 1, 2, 3\nend\ntest { |a, b, c| a + b + c }"),
+        Some(Object::Int(6))
+    );
+}
+
+#[test]
+fn block_given_with_yield() {
+    assert_eq!(
+        run(
+            "def m(x)\n  if block_given?\n    yield x\n  else\n    x * 2\n  end\nend\nm(5) { |n| n * 10 }"
+        ),
+        Some(Object::Int(50))
+    );
+}
+
+#[test]
+fn block_given_without_block() {
+    assert_eq!(
+        run("def m(x)\n  if block_given?\n    yield x\n  else\n    x * 2\n  end\nend\nm(5)"),
+        Some(Object::Int(10))
+    );
+}

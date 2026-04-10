@@ -1,4 +1,3 @@
-mod additional_tests;
 mod call_tests;
 mod case_tests;
 mod class_module_tests;

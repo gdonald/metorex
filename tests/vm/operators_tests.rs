@@ -327,3 +327,186 @@ fn divide_assign_operator() {
     let result = run("x = 12\nx /= 4\nx");
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── =~ and !~ regex match operators ─────────────────────────────────────────
+
+#[test]
+fn regex_match_returns_position() {
+    let result = run(r#"/hello/ =~ "say hello world""#);
+    assert_eq!(result, Some(Object::Int(4)));
+}
+
+#[test]
+fn regex_match_returns_nil_on_no_match() {
+    let result = run(r#"/xyz/ =~ "hello""#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn regex_match_string_left() {
+    let result = run(r#""test123" =~ /\d+/"#);
+    assert_eq!(result, Some(Object::Int(4)));
+}
+
+#[test]
+fn regex_not_match_true() {
+    let result = run(r#""abc" !~ /xyz/"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn regex_not_match_false() {
+    let result = run(r#""abc" !~ /abc/"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn regex_match_case_insensitive() {
+    let result = run(r#"/hello/i =~ "HELLO world""#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn percent_r_regex() {
+    let result = run(r#"%r(hello) =~ "say hello""#);
+    assert_eq!(result, Some(Object::Int(4)));
+}
+
+#[test]
+fn percent_r_brackets() {
+    let result = run(r#"%r[hello] =~ "hello world""#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn percent_r_braces() {
+    let result = run(r#"%r{test} =~ "a test""#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+// ── XOR operator ────────────────────────────────────────────────────────────
+
+#[test]
+fn xor_bool_true_false() {
+    assert_eq!(run("true ^ false"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn xor_bool_true_true() {
+    assert_eq!(run("true ^ true"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_bool_false_false() {
+    assert_eq!(run("false ^ false"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_int() {
+    assert_eq!(run("5 ^ 3"), Some(Object::Int(6)));
+}
+
+#[test]
+fn xor_bool_with_truthy() {
+    assert_eq!(run("true ^ nil"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn xor_non_bool_left() {
+    assert_eq!(run(r#""hello" ^ true"#), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_non_bool_left_false() {
+    assert_eq!(run("nil ^ false"), Some(Object::Bool(false)));
+}
+
+// ── === triple equals ───────────────────────────────────────────────────────
+
+#[test]
+fn triple_equals() {
+    assert_eq!(run("1 === 1"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn triple_equals_false() {
+    assert_eq!(run("1 === 2"), Some(Object::Bool(false)));
+}
+
+// ── ||= and &&= ────────────────────────────────────────────────────────────
+
+#[test]
+fn or_assign_nil() {
+    assert_eq!(run("x = nil; x ||= 42; x"), Some(Object::Int(42)));
+}
+
+#[test]
+fn or_assign_existing() {
+    assert_eq!(run("x = 10; x ||= 42; x"), Some(Object::Int(10)));
+}
+
+#[test]
+fn and_assign_truthy() {
+    assert_eq!(run("x = true; x &&= 42; x"), Some(Object::Int(42)));
+}
+
+#[test]
+fn and_assign_falsy() {
+    assert_eq!(run("x = false; x &&= 42; x"), Some(Object::Bool(false)));
+}
+
+// ── Spaceship string ────────────────────────────────────────────────────────
+
+#[test]
+fn spaceship_string() {
+    assert_eq!(run(r#""abc" <=> "def""#), Some(Object::Int(-1)));
+    assert_eq!(run(r#""abc" <=> "abc""#), Some(Object::Int(0)));
+    assert_eq!(run(r#""def" <=> "abc""#), Some(Object::Int(1)));
+}
+
+// ── Chained ternary ─────────────────────────────────────────────────────────
+
+#[test]
+fn chained_ternary_with_methods() {
+    let result = run(r#"
+a = "hello"
+x = a.length > 10 ? "long" : a.length > 3 ? "medium" : "short"
+x
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("medium".to_string())))
+    );
+}
+
+// ── Custom operators (from vm/additional_tests) ─────────────────────────────
+
+#[test]
+fn custom_operator_divide() {
+    assert_eq!(
+        run(
+            "class Num\n  def initialize(v)\n    @v = v\n  end\n  def /(other)\n    @v / other.val\n  end\n  def val\n    @v\n  end\nend\na = Num.new(10)\nb = Num.new(2)\na / b"
+        ),
+        Some(Object::Int(5))
+    );
+}
+
+#[test]
+fn custom_operator_modulo() {
+    assert_eq!(
+        run(
+            "class Num\n  def initialize(v)\n    @v = v\n  end\n  def %(other)\n    @v % other.val\n  end\n  def val\n    @v\n  end\nend\na = Num.new(10)\nb = Num.new(3)\na % b"
+        ),
+        Some(Object::Int(1))
+    );
+}
+
+#[test]
+fn custom_operator_equal_equal() {
+    assert_eq!(
+        run(
+            "class V\n  def initialize(v)\n    @v = v\n  end\n  def ==(other)\n    @v == other.val\n  end\n  def val\n    @v\n  end\nend\nV.new(5) == V.new(5)"
+        ),
+        Some(Object::Bool(true))
+    );
+}

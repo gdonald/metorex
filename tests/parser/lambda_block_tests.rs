@@ -129,3 +129,27 @@ fn parser_lambda_multiline_body() {
     let result = run("f = lambda do |x|\n  y = x + 1\n  z = y * 2\n  z\nend\nf.call(3)");
     assert_eq!(result, Some(Object::Int(8)));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+fn parse_lb_ok(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+#[test]
+fn parse_lambda_with_do_keyword_additional() {
+    parse_lb_ok("f = lambda do\n  42\nend");
+}
+
+#[test]
+fn parse_lambda_empty_params_additional() {
+    parse_lb_ok("f = lambda { || 42 }");
+}
+
+#[test]
+fn parse_do_block_with_params_additional() {
+    parse_lb_ok("[1].each do |x|\n  x\nend");
+}

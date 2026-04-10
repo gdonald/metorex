@@ -120,3 +120,11 @@ fn test_lexer_interpolated_string_with_complex_expression() {
         _ => panic!("Expected InterpolatedString, got {:?}", token.kind),
     }
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+#[test]
+fn lexer_hash_not_interpolation() {
+    let tokens = Lexer::new("'#not_interp'").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s.contains("#not_interp")));
+}

@@ -253,3 +253,46 @@ fn test_object_hash_symbol() {
     let str_hash = ObjectHash::from_object(&Object::string("foo"));
     assert_ne!(hash, str_hash);
 }
+
+// ── is_falsy, exceptions, heap, error (from additional_tests) ───────────────
+
+#[test]
+fn test_is_falsy() {
+    assert!(Object::Nil.is_falsy());
+    assert!(Object::Bool(false).is_falsy());
+    assert!(!Object::Bool(true).is_falsy());
+    assert!(!Object::Int(0).is_falsy());
+}
+
+#[test]
+fn test_exception_with_cause() {
+    let cause = Object::exception("RuntimeError", "original error");
+    let exc = Object::exception_with_cause("RuntimeError", "wrapper error", cause);
+    if let Object::Exception(exc_ref) = exc {
+        let exc_inner = exc_ref.borrow();
+        assert_eq!(exc_inner.message, "wrapper error");
+        assert!(exc_inner.cause.is_some());
+    } else {
+        panic!("Expected exception object");
+    }
+}
+
+#[test]
+fn test_heap_allocate() {
+    use metorex::vm::Heap;
+    let mut heap = Heap::default();
+    assert_eq!(heap.allocation_count(), 0);
+    heap.allocate(Object::Int(1));
+    assert_eq!(heap.allocation_count(), 1);
+    heap.allocate(Object::string("hello"));
+    assert_eq!(heap.allocation_count(), 2);
+}
+
+#[test]
+fn test_metorex_error_from_io_error() {
+    use metorex::error::MetorexError;
+    let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+    let metorex_err: MetorexError = io_err.into();
+    let msg = metorex_err.to_string();
+    assert!(msg.contains("file not found"));
+}

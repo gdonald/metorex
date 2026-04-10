@@ -370,3 +370,139 @@ count
         panic!("Expected Int(3), got {:?}", result);
     }
 }
+
+// Helper for concise tests
+fn run_lambda(code: &str) -> Option<Object> {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+// ── Stabby lambda -> ────────────────────────────────────────────────────────
+
+#[test]
+fn stabby_lambda_brace() {
+    assert_eq!(run_lambda("f = -> { 42 }; f.call"), Some(Object::Int(42)));
+}
+
+#[test]
+fn stabby_lambda_with_params() {
+    assert_eq!(
+        run_lambda("f = -> { |x| x * 2 }; f.call(5)"),
+        Some(Object::Int(10))
+    );
+}
+
+#[test]
+fn stabby_lambda_as_argument() {
+    assert_eq!(
+        run_lambda("def apply(fn); fn.call; end; apply(-> { 99 })"),
+        Some(Object::Int(99))
+    );
+}
+
+#[test]
+fn stabby_lambda_do_end() {
+    assert_eq!(
+        run_lambda("f = -> do\n  42\nend\nf.call"),
+        Some(Object::Int(42))
+    );
+}
+
+#[test]
+fn stabby_lambda_parens_brace() {
+    assert_eq!(
+        run_lambda("f = -> (x) { x + 1 }; f.call(9)"),
+        Some(Object::Int(10))
+    );
+}
+
+#[test]
+fn stabby_lambda_parens_multi() {
+    assert_eq!(
+        run_lambda("f = -> (a, b) { a * b }; f.call(3, 4)"),
+        Some(Object::Int(12))
+    );
+}
+
+#[test]
+fn stabby_lambda_no_body_expr() {
+    assert_eq!(run_lambda("f = -> 42; f.call"), Some(Object::Int(42)));
+}
+
+#[test]
+fn stabby_lambda_in_parens_arg_brace() {
+    assert_eq!(
+        run_lambda("def r(fn); fn.call; end; r(-> { 77 })"),
+        Some(Object::Int(77))
+    );
+}
+
+#[test]
+fn stabby_lambda_in_parens_arg_do() {
+    assert_eq!(
+        run_lambda("def r(fn)\n  fn.call\nend\nr(-> do\n  88\nend)"),
+        Some(Object::Int(88))
+    );
+}
+
+#[test]
+fn stabby_lambda_in_parens_arg_with_params() {
+    assert_eq!(
+        run_lambda("def r(fn); fn.call(5); end; r(-> (x) { x * 3 })"),
+        Some(Object::Int(15))
+    );
+}
+
+#[test]
+fn stabby_lambda_in_parens_arg_expr() {
+    assert_eq!(
+        run_lambda("def r(fn); fn.call; end; r(-> 42)"),
+        Some(Object::Int(42))
+    );
+}
+
+#[test]
+fn arrow_lambda_parens_do_end() {
+    assert_eq!(
+        run_lambda("f = -> (x) do\n  x + 1\nend\nf.call(9)"),
+        Some(Object::Int(10))
+    );
+}
+
+#[test]
+fn arrow_lambda_parens_expr() {
+    assert_eq!(
+        run_lambda("f = -> (x) x * 2; f.call(5)"),
+        Some(Object::Int(10))
+    );
+}
+
+// ── Lambda [] call ──────────────────────────────────────────────────────────
+
+#[test]
+fn lambda_bracket_call_single_arg() {
+    assert_eq!(
+        run_lambda("f = lambda { |x| x * 3 }; f[7]"),
+        Some(Object::Int(21))
+    );
+}
+
+#[test]
+fn lambda_bracket_call_multi_arg() {
+    assert_eq!(
+        run_lambda("f = lambda { |a, b| a + b }; f[3, 4]"),
+        Some(Object::Int(7))
+    );
+}
+
+// ── Block captured vars ─────────────────────────────────────────────────────
+
+#[test]
+fn block_captured_vars() {
+    assert_eq!(
+        run_lambda("x = 10\nf = lambda { x + 5 }\nf.call"),
+        Some(Object::Int(15))
+    );
+}

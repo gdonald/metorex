@@ -136,3 +136,22 @@ fn keyword_method_name_when() {
     let err = run_err("nil.when");
     assert!(err.contains("when") || err.contains("method") || err.contains("nil"));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+fn parse_kw_ok(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+#[test]
+fn parse_super_with_args_additional() {
+    parse_kw_ok("class Foo < Bar\n  def test\n    super(1, 2)\n  end\nend");
+}
+
+#[test]
+fn parse_super_without_parens_additional() {
+    parse_kw_ok("class Foo < Bar\n  def test\n    super\n  end\nend");
+}

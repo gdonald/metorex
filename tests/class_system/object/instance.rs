@@ -154,3 +154,27 @@ fn test_instance_with_object_wrapper() {
         panic!("Expected Instance object");
     }
 }
+
+// ── Binding get/keys (from additional_tests) ────────────────────────────────
+
+#[test]
+fn test_binding_get_and_keys() {
+    use metorex::object::Binding;
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    let mut vars = HashMap::new();
+    vars.insert("x".to_string(), Rc::new(RefCell::new(Object::Int(42))));
+    vars.insert(
+        "y".to_string(),
+        Rc::new(RefCell::new(Object::string("hello"))),
+    );
+    let binding = Binding::new(vars);
+    let x = binding.get("x");
+    assert!(x.is_some());
+    assert_eq!(*x.unwrap().borrow(), Object::Int(42));
+    assert!(binding.get("z").is_none());
+    let keys = binding.keys();
+    assert_eq!(keys.len(), 2);
+    assert!(keys.contains(&"x".to_string()));
+    assert!(keys.contains(&"y".to_string()));
+}

@@ -187,3 +187,12 @@ fn test_load_nonexistent_file() {
         metorex::file_loader::load_file_source(Path::new("this_file_does_not_exist_xyz.rb"));
     assert!(result.is_err());
 }
+
+// ── Additional load tests ───────────────────────────────────────────────────
+
+#[test]
+fn load_file_source_nonexistent_with_extension() {
+    use metorex::file_loader::load_file_source;
+    let result = load_file_source(std::path::Path::new("/nonexistent/file.rb"));
+    assert!(result.is_err());
+}

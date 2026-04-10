@@ -1,4 +1,3 @@
-mod additional_tests;
 mod basic;
 mod equals;
 mod hash;

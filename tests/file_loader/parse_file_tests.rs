@@ -228,3 +228,19 @@ end
     let statements = result.unwrap();
     assert_eq!(statements.len(), 1);
 }
+
+// ── Additional parse tests ──────────────────────────────────────────────────
+
+#[test]
+fn parse_file_with_syntax_error_test() {
+    use metorex::file_loader::parse_file;
+    let result = parse_file("def\nend end end", "test.rb");
+    assert!(result.is_err());
+}
+
+#[test]
+fn parse_file_valid_source_test() {
+    use metorex::file_loader::parse_file;
+    let result = parse_file("x = 1 + 2", "test.rb");
+    assert!(result.is_ok());
+}

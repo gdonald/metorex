@@ -231,3 +231,23 @@ s.difference("not a set")
         err
     );
 }
+
+// ── From remaining_tests ────────────────────────────────────────────────────
+
+#[test]
+fn set_union_method_remaining() {
+    let result = run("a = Set.new([1,2]); b = Set.new([2,3]); a.union(b).size");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn set_intersection_method_remaining() {
+    let result = run("a = Set.new([1,2,3]); b = Set.new([2,3,4]); a.intersection(b).size");
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn set_difference_method_remaining() {
+    let result = run("a = Set.new([1,2,3]); b = Set.new([2,3]); a.difference(b).size");
+    assert_eq!(result, Some(Object::Int(1)));
+}

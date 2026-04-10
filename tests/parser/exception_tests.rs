@@ -30,3 +30,37 @@ fn parser_ensure_multiline() {
     let result = run("x = 0\nbegin\n  x = 1\nensure\n  y = 42\n  x = y\nend\nx");
     assert_eq!(result, Some(Object::Int(42)));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+fn parse_exc_ok(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+#[test]
+fn parse_begin_rescue_else_ensure_additional() {
+    parse_exc_ok("begin\n  1\nrescue\n  2\nelse\n  3\nensure\n  4\nend");
+}
+
+#[test]
+fn parse_rescue_with_variable_binding_additional() {
+    parse_exc_ok("begin\n  1\nrescue => e\n  e\nend");
+}
+
+#[test]
+fn parse_raise_with_string_additional() {
+    parse_exc_ok("raise \"error\"");
+}
+
+#[test]
+fn parse_raise_with_class_and_message_additional() {
+    parse_exc_ok("raise RuntimeError, \"msg\"");
+}
+
+#[test]
+fn parse_rescue_multiple_exception_types_additional() {
+    parse_exc_ok("begin\n  1\nrescue TypeError, RuntimeError => e\n  e\nend");
+}

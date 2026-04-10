@@ -1,4 +1,3 @@
-mod additional_tests;
 mod ast_manipulation_tests;
 mod builtin_classes_tests;
 mod builtin_object_methods_tests;
@@ -12,6 +11,5 @@ mod native_methods;
 mod operators_tests;
 mod pattern_matching_tests;
 mod reflection_tests;
-mod remaining_tests;
 mod statement_tests;
 mod vm;

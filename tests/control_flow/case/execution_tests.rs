@@ -342,3 +342,29 @@ fn test_case_type_pattern_multiple() {
     let result = vm.execute_program(&[case_stmt]);
     assert!(result.is_ok());
 }
+
+fn run_case(code: &str) -> Option<metorex::object::Object> {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    use metorex::vm::VirtualMachine;
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+#[test]
+fn case_when_symbol_match() {
+    assert_eq!(
+        run_case("case :hello\nwhen :hello\n  42\nwhen :world\n  99\nend"),
+        Some(metorex::object::Object::Int(42))
+    );
+}
+
+#[test]
+fn case_when_symbol_no_match() {
+    assert_eq!(
+        run_case("case :other\nwhen :hello\n  42\nwhen :world\n  99\nelse\n  nil\nend"),
+        Some(metorex::object::Object::Nil)
+    );
+}

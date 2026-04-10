@@ -134,3 +134,33 @@ fn test_block_closure_empty_captures() {
 
     assert!(block.captured_vars().is_empty());
 }
+
+// ── Method constructors (from additional_tests) ─────────────────────────────
+
+#[test]
+fn test_method_with_owner() {
+    let method = Method::with_owner(
+        "foo".to_string(),
+        vec!["x".to_string()],
+        vec![],
+        "MyClass".to_string(),
+    );
+    assert_eq!(method.name, "foo");
+    assert_eq!(method.owner, Some("MyClass".to_string()));
+}
+
+#[test]
+fn test_method_with_owner_and_location() {
+    use metorex::error::SourceLocation;
+    let loc = SourceLocation::new(1, 1, 0);
+    let method = Method::with_owner_and_location(
+        "bar".to_string(),
+        vec![],
+        vec![],
+        "OtherClass".to_string(),
+        loc,
+    );
+    assert_eq!(method.name, "bar");
+    assert_eq!(method.owner, Some("OtherClass".to_string()));
+    assert!(method.source_location.is_some());
+}

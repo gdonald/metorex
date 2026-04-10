@@ -212,3 +212,26 @@ Adder.new.add(5)
     let result = eval(source);
     assert_eq!(result, Some(Object::Int(15)));
 }
+
+fn run_dm(code: &str) -> Option<metorex::object::Object> {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    use metorex::vm::VirtualMachine;
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+#[test]
+fn define_method_closure_capture() {
+    let result = run_dm(
+        "class Foo\n  define_method(:greet) do |name|\n    \"hello \" + name\n  end\nend\nFoo.new.greet(\"world\")",
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "hello world".to_string()
+        )))
+    );
+}

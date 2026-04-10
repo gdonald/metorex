@@ -139,3 +139,14 @@ result.length
 "#);
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── From edge_tests ─────────────────────────────────────────────────────────
+
+#[test]
+fn string_interpolation_with_expression_edge() {
+    let result = run(r#"x = 5; "val: #{x + 1}""#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("val: 6".to_string())))
+    );
+}

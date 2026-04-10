@@ -450,3 +450,126 @@ fn custom_operator_multiply() {
     );
     assert_eq!(result, Some(Object::Int(12)));
 }
+
+// ── defined? ────────────────────────────────────────────────────────────────
+
+#[test]
+fn defined_local_variable() {
+    let result = run(r#"x = 1; defined?(x)"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new(
+            "local-variable".to_string()
+        )))
+    );
+}
+
+#[test]
+fn defined_undefined() {
+    assert_eq!(run("defined?(nonexistent)"), Some(Object::Nil));
+}
+
+#[test]
+fn defined_method() {
+    let result = run("def foo; end; defined?(foo)");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("method".to_string())))
+    );
+}
+
+#[test]
+fn defined_constant() {
+    assert_eq!(
+        run("defined?(String)"),
+        Some(Object::String(std::rc::Rc::new("constant".to_string())))
+    );
+}
+
+#[test]
+fn defined_literal() {
+    assert_eq!(
+        run("defined?(42)"),
+        Some(Object::String(std::rc::Rc::new("expression".to_string())))
+    );
+}
+
+#[test]
+fn defined_global_variable() {
+    let result = run("$test_def = 1; defined?($test_def)");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new(
+            "global-variable".to_string()
+        )))
+    );
+}
+
+#[test]
+fn defined_instance_var() {
+    let result = run(
+        "class Foo\n  def initialize\n    @x = 1\n  end\n  def check\n    defined?(@x)\n  end\nend\nFoo.new.check",
+    );
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new(
+            "instance-variable".to_string()
+        )))
+    );
+}
+
+#[test]
+fn defined_yield_with_block() {
+    let result = run("def test\n  defined?(yield)\nend\ntest { 1 }");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("yield".to_string())))
+    );
+}
+
+#[test]
+fn defined_yield_without_block() {
+    assert_eq!(
+        run("def test; defined?(yield); end; test()"),
+        Some(Object::Nil)
+    );
+}
+
+#[test]
+fn defined_class_variable() {
+    let result =
+        run("class Foo\n  @@x = 1\n  def check\n    defined?(@@x)\n  end\nend\nFoo.new.check");
+    assert!(result.is_some());
+}
+
+#[test]
+fn defined_self_in_method() {
+    let result = run("class Foo\n  def check\n    defined?(self)\n  end\nend\nFoo.new.check");
+    assert!(result.is_some());
+}
+
+#[test]
+fn defined_method_call() {
+    assert_eq!(
+        run(r#"defined?(puts("hi"))"#),
+        Some(Object::String(std::rc::Rc::new("method".to_string())))
+    );
+}
+
+#[test]
+fn defined_scope_resolution() {
+    assert_eq!(run("defined?(Nonexistent::Thing)"), Some(Object::Nil));
+}
+
+// ── From vm/additional_tests ────────────────────────────────────────────────
+
+#[test]
+fn global_variable_read_undefined_returns_nil() {
+    assert_eq!(run("$undefined_global_var_xyz"), Some(Object::Nil));
+}
+
+#[test]
+fn scope_resolution_on_class_with_constant() {
+    let result = run("class Foo\n  VERSION = 42\nend\nFoo::VERSION");
+    assert_eq!(result, Some(Object::Int(42)));
+}

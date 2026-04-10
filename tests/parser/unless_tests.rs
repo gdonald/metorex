@@ -33,3 +33,17 @@ fn unless_with_else_takes_else_branch() {
     let result = run("x = 0\nunless true\n  x = 1\nelse\n  x = 2\nend\nx");
     assert_eq!(result, Some(Object::Int(2)));
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+fn parse_unless_ok(code: &str) {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    let tokens = Lexer::new(code).tokenize();
+    Parser::new(tokens).parse().expect("parse failed");
+}
+
+#[test]
+fn parse_unless_with_else_additional() {
+    parse_unless_ok("unless false\n  1\nelse\n  2\nend");
+}

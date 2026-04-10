@@ -296,3 +296,37 @@ fn test_equals_different_types() {
     assert!(!int_obj.equals(&nil_obj));
     assert!(!int_obj.equals(&bool_obj));
 }
+
+// ── Module/Binding equals (from additional_tests) ───────────────────────────
+
+#[test]
+fn test_module_equals_same_rc() {
+    let module = Rc::new(Class::new("MyMod", None));
+    let a = Object::Module(module.clone());
+    let b = Object::Module(module);
+    assert!(a.equals(&b));
+}
+
+#[test]
+fn test_module_equals_different_rc() {
+    let a = Object::Module(Rc::new(Class::new("MyMod", None)));
+    let b = Object::Module(Rc::new(Class::new("MyMod", None)));
+    assert!(!a.equals(&b));
+}
+
+#[test]
+fn test_binding_equals_same_rc() {
+    use metorex::object::Binding;
+    let binding = Rc::new(Binding::new(HashMap::new()));
+    let a = Object::Binding(binding.clone());
+    let b = Object::Binding(binding);
+    assert!(a.equals(&b));
+}
+
+#[test]
+fn test_binding_equals_different_rc() {
+    use metorex::object::Binding;
+    let a = Object::Binding(Rc::new(Binding::new(HashMap::new())));
+    let b = Object::Binding(Rc::new(Binding::new(HashMap::new())));
+    assert!(!a.equals(&b));
+}

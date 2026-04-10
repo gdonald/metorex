@@ -760,3 +760,47 @@ fn test_nested_control_flow() {
 
     assert_eq!(stmt.position(), pos(1, 1));
 }
+
+fn run_cf(code: &str) -> Option<metorex::object::Object> {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    use metorex::vm::VirtualMachine;
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+// ── return if/unless ────────────────────────────────────────────────────────
+
+#[test]
+fn return_if_true() {
+    assert_eq!(
+        run_cf("def f; return 42 if true; 0; end; f()"),
+        Some(metorex::object::Object::Int(42))
+    );
+}
+
+#[test]
+fn return_if_false() {
+    assert_eq!(
+        run_cf("def f; return 42 if false; 0; end; f()"),
+        Some(metorex::object::Object::Int(0))
+    );
+}
+
+#[test]
+fn return_unless_true() {
+    assert_eq!(
+        run_cf("def f; return 42 unless true; 0; end; f()"),
+        Some(metorex::object::Object::Int(0))
+    );
+}
+
+#[test]
+fn return_unless_false() {
+    assert_eq!(
+        run_cf("def f; return 42 unless false; 0; end; f()"),
+        Some(metorex::object::Object::Int(42))
+    );
+}

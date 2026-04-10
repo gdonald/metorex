@@ -84,3 +84,28 @@ fn test_lexer_peek_token() {
     let peeked_eof = lexer.peek_token();
     assert_eq!(peeked_eof.kind, TokenKind::EOF);
 }
+
+// ── From additional_tests ───────────────────────────────────────────────────
+
+#[test]
+fn lexer_peek_token_does_not_consume() {
+    let mut lexer = Lexer::new("x + 1");
+    let peeked = lexer.peek_token();
+    let next = lexer.next_token();
+    assert_eq!(peeked.kind, next.kind);
+}
+
+#[test]
+fn lexer_peek_token_multiple_times() {
+    let mut lexer = Lexer::new("x");
+    let p1 = lexer.peek_token();
+    let p2 = lexer.peek_token();
+    assert_eq!(p1.kind, p2.kind);
+}
+
+#[test]
+fn lexer_iterator_collects_tokens() {
+    let lexer = Lexer::new("1 + 2");
+    let tokens: Vec<_> = lexer.collect();
+    assert!(tokens.len() >= 3);
+}

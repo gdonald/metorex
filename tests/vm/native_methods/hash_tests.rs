@@ -263,3 +263,29 @@ end
 "#);
     assert!(result.is_some());
 }
+
+// ── From edge_tests and misc_tests ──────────────────────────────────────────
+
+#[test]
+fn hash_merge_method_edge() {
+    let result = run(r#"a = {"x" => 1}; b = {"y" => 2}; c = a.merge(b); c["y"]"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn int_as_hash_key_misc() {
+    let result = run("h = { 1 => \"one\" }; h[1]");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("one".to_string())))
+    );
+}
+
+#[test]
+fn bool_as_hash_key_misc() {
+    let result = run("h = { true => \"yes\" }; h[true]");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("yes".to_string())))
+    );
+}

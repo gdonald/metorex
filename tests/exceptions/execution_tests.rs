@@ -335,3 +335,54 @@ end
         _ => panic!("Expected array, got: {:?}", result),
     }
 }
+
+// ── Helpers (from additional_tests) ─────────────────────────────────────────
+
+fn run_exc(code: &str) -> Option<Object> {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+fn run_exc_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
+// ── Exception edge cases (from additional_tests) ────────────────────────────
+
+#[test]
+fn ensure_block_executes_after_body() {
+    let result = run_exc(
+        r#"
+x = 0
+begin
+  x = 1
+ensure
+  x = x + 10
+end
+x
+"#,
+    );
+    assert_eq!(result, Some(Object::Int(11)));
+}
+
+#[test]
+fn begin_else_executes_when_no_exception() {
+    let result = run_exc(
+        r#"
+begin
+  x = 1
+rescue
+  x = -1
+else
+  x = 99
+end
+x
+"#,
+    );
+    assert_eq!(result, Some(Object::Int(99)));
+}

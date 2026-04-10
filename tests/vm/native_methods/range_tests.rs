@@ -266,3 +266,57 @@ result.length
 "#);
     assert_eq!(result, Some(Object::Int(4)));
 }
+
+// ── From edge_tests ─────────────────────────────────────────────────────────
+
+#[test]
+fn range_to_a_inclusive_edge() {
+    assert_eq!(
+        run("(1..3).to_a"),
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3)
+        ]))
+    );
+}
+
+#[test]
+fn range_to_a_exclusive_edge() {
+    assert_eq!(
+        run("(1...3).to_a"),
+        Some(Object::array(vec![Object::Int(1), Object::Int(2)]))
+    );
+}
+
+// ── From remaining_tests ────────────────────────────────────────────────────
+
+#[test]
+fn range_each_inclusive_remaining() {
+    let result = run("sum = 0; (1..3).each { |x| sum = sum + x }; sum");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn range_each_exclusive_remaining() {
+    let result = run("sum = 0; (1...3).each { |x| sum = sum + x }; sum");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn range_map_doubles_remaining() {
+    assert_eq!(
+        run("(1..3).map { |x| x * 2 }"),
+        Some(Object::array(vec![
+            Object::Int(2),
+            Object::Int(4),
+            Object::Int(6)
+        ]))
+    );
+}
+
+#[test]
+fn range_include_boundary_remaining() {
+    assert_eq!(run("(1..5).include?(5)"), Some(Object::Bool(true)));
+    assert_eq!(run("(1...5).include?(5)"), Some(Object::Bool(false)));
+}
