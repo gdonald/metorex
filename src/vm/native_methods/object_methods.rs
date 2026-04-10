@@ -336,6 +336,55 @@ impl VirtualMachine {
                     _ => Ok(Some(receiver.clone())),
                 }
             }
+            "=~" => {
+                // Regex match: string =~ regex or regex =~ string
+                if arguments.len() != 1 {
+                    return Err(method_argument_error("=~", 1, arguments.len(), position));
+                }
+                match (receiver, &arguments[0]) {
+                    (Object::Regex(pattern, flags), Object::String(s))
+                    | (Object::String(s), Object::Regex(pattern, flags)) => {
+                        let case_insensitive = flags.contains('i');
+                        let re_pattern = if case_insensitive {
+                            format!("(?i){}", pattern)
+                        } else {
+                            pattern.as_ref().clone()
+                        };
+                        match regex::Regex::new(&re_pattern) {
+                            Ok(re) => {
+                                if let Some(m) = re.find(s.as_ref()) {
+                                    Ok(Some(Object::Int(m.start() as i64)))
+                                } else {
+                                    Ok(Some(Object::Nil))
+                                }
+                            }
+                            Err(_) => Ok(Some(Object::Nil)),
+                        }
+                    }
+                    _ => Ok(Some(Object::Nil)),
+                }
+            }
+            "!~" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error("!~", 1, arguments.len(), position));
+                }
+                match (receiver, &arguments[0]) {
+                    (Object::Regex(pattern, flags), Object::String(s))
+                    | (Object::String(s), Object::Regex(pattern, flags)) => {
+                        let case_insensitive = flags.contains('i');
+                        let re_pattern = if case_insensitive {
+                            format!("(?i){}", pattern)
+                        } else {
+                            pattern.as_ref().clone()
+                        };
+                        match regex::Regex::new(&re_pattern) {
+                            Ok(re) => Ok(Some(Object::Bool(!re.is_match(s.as_ref())))),
+                            Err(_) => Ok(Some(Object::Bool(true))),
+                        }
+                    }
+                    _ => Ok(Some(Object::Bool(true))),
+                }
+            }
             _ => Ok(None),
         }
     }

@@ -134,17 +134,17 @@ end
 // ── module body with unsupported statement (lines 402-404) ───────────────────
 
 #[test]
-fn module_body_unsupported_statement_error() {
-    let err = run_err(
-        r#"
+fn module_body_general_statements_execute() {
+    // Module bodies now support general statements (not just method defs and constants)
+    let result = run(r#"
 module M
   if true
     42
   end
 end
-"#,
-    );
-    assert!(err.contains("module") || err.contains("Unsupported") || err.contains("statement"));
+"#);
+    // Module definition returns nil
+    assert!(result.is_none() || result == Some(Object::Nil));
 }
 
 // ── define_method with captured vars closure (line 299) ──────────────────────

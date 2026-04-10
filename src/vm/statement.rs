@@ -237,6 +237,15 @@ impl VirtualMachine {
                         instance.set_var(name.clone(), value);
                         Ok(())
                     }
+                    Some(Object::Class(class)) => {
+                        // Module/class-level instance variables stored as class vars
+                        class.set_class_var(format!("@{}", name), value);
+                        Ok(())
+                    }
+                    Some(Object::Module(module)) => {
+                        module.set_class_var(format!("@{}", name), value);
+                        Ok(())
+                    }
                     Some(_) => Err(MetorexError::runtime_error(
                         format!("Cannot set instance variable @{} on non-instance", name),
                         position_to_location(*position),

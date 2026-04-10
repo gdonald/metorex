@@ -53,8 +53,28 @@ impl Parser {
             TokenKind::EqualEqual,
             TokenKind::BangEqual,
             TokenKind::TripleEqual,
+            TokenKind::Match,
+            TokenKind::NotMatch,
         ]) {
             let op_token = self.advance();
+            if matches!(op_token.kind, TokenKind::Match | TokenKind::NotMatch) {
+                // =~ and !~ are dispatched as method calls
+                self.skip_whitespace();
+                let right = self.parse_comparison()?;
+                let method_call = Expression::MethodCall {
+                    receiver: Box::new(expr),
+                    method: if op_token.kind == TokenKind::Match {
+                        "=~".to_string()
+                    } else {
+                        "!~".to_string()
+                    },
+                    arguments: vec![right],
+                    trailing_block: None,
+                    position: op_token.position,
+                };
+                expr = method_call;
+                continue;
+            }
             let op = match op_token.kind {
                 TokenKind::EqualEqual | TokenKind::TripleEqual => BinaryOp::Equal,
                 TokenKind::BangEqual => BinaryOp::NotEqual,

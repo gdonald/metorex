@@ -715,6 +715,61 @@ impl<'a> Lexer<'a> {
                             }
                         }
                         Token::new(TokenKind::Regex(pattern, flags), position)
+                    } else if !matches!(self.prev_significant, Some(TokenKind::Def))
+                        && (self.peek() == Some('Q')
+                            || self.peek() == Some('[')
+                            || self.peek() == Some('(')
+                            || self.peek() == Some('{')
+                            || self.peek() == Some('<'))
+                    {
+                        // %Q[...], %[...], %(...), %{...}, %<...> string literals
+                        if matches!(self.peek(), Some('Q')) {
+                            self.advance(); // consume Q
+                        }
+                        let open = self.peek().unwrap_or('(');
+                        let close = match open {
+                            '(' => ')',
+                            '[' => ']',
+                            '{' => '}',
+                            '<' => '>',
+                            _ => open,
+                        };
+                        self.advance(); // consume opening delimiter
+                        let mut content = String::new();
+                        let mut depth = 1;
+                        while let Some(ch) = self.peek() {
+                            if ch == '\\' {
+                                self.advance();
+                                if let Some(esc) = self.peek() {
+                                    match esc {
+                                        'n' => content.push('\n'),
+                                        't' => content.push('\t'),
+                                        '\\' => content.push('\\'),
+                                        _ => {
+                                            content.push('\\');
+                                            content.push(esc);
+                                        }
+                                    }
+                                    self.advance();
+                                }
+                            } else if ch == open && open != close {
+                                depth += 1;
+                                content.push(ch);
+                                self.advance();
+                            } else if ch == close {
+                                depth -= 1;
+                                if depth == 0 {
+                                    self.advance();
+                                    break;
+                                }
+                                content.push(ch);
+                                self.advance();
+                            } else {
+                                content.push(ch);
+                                self.advance();
+                            }
+                        }
+                        Token::new(TokenKind::String(content), position)
                     } else {
                         Token::new(TokenKind::Percent, position)
                     }
@@ -736,13 +791,19 @@ impl<'a> Lexer<'a> {
                     } else if self.peek() == Some('>') {
                         self.advance();
                         Token::new(TokenKind::FatArrow, position)
+                    } else if self.peek() == Some('~') {
+                        self.advance();
+                        Token::new(TokenKind::Match, position)
                     } else {
                         Token::new(TokenKind::Equal, position)
                     }
                 }
                 '!' => {
                     self.advance();
-                    if self.peek() == Some('=') {
+                    if self.peek() == Some('~') {
+                        self.advance();
+                        Token::new(TokenKind::NotMatch, position)
+                    } else if self.peek() == Some('=') {
                         self.advance();
                         Token::new(TokenKind::BangEqual, position)
                     } else {

@@ -105,7 +105,11 @@ Parser fixes during Phase 4 work:
 - `-> { body }` and `-> (params) { body }` stabby lambda in expression context (args, assignments)
 - Chained assignment (`@a = @b = value`) at statement level
 - Assignment in `elsif` conditions (`elsif x = expr`)
-- mspec loading: `options.rb`, `script.rb`, `guard.rb`, `mspec.rb`, `context.rb` all fully load. `exception.rb` parses to line 45. Next blocker: `=~` regex match operator.
+- `=~` and `!~` regex match operators with runtime implementation
+- `%[...]` / `%Q[...]` string literal syntax
+- Postfix `if`/`unless` on multiple assignment statements
+- Module body: general statements, instance variable assignments, `class << self` with attr_*
+- **ALL mspec core files now fully parse AND load**: `options.rb`, `script.rb`, `guard.rb`, `mspec.rb`, `context.rb`, `exception.rb`, `tag.rb`. The require chain reaches runtime execution. Next blocker: runtime features (`setup_env` method resolution in module context).
 
 ## Phase 4: Passing Specs
 

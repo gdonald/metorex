@@ -443,9 +443,14 @@ impl VirtualMachine {
         &mut self,
         name: &str,
         body: &[Statement],
-        position: Position,
+        _position: Position,
     ) -> Result<ControlFlow, MetorexError> {
         let module = Rc::new(Class::new(name, None));
+
+        // Set 'self' to the module for instance variable access in module body
+        let prev_self = self.environment().get("self");
+        self.environment_mut()
+            .define("self".to_string(), Object::Module(Rc::clone(&module)));
 
         for statement in body {
             match statement {
@@ -500,13 +505,65 @@ impl VirtualMachine {
                     let const_value = self.evaluate_expression(value)?;
                     module.set_class_var(const_name, const_value);
                 }
+                // class << self block — process inner statements at module level
+                Statement::Block {
+                    statements: inner, ..
+                } => {
+                    for inner_stmt in inner {
+                        match inner_stmt {
+                            Statement::AttrReader { attributes, .. }
+                            | Statement::AttrWriter { attributes, .. }
+                            | Statement::AttrAccessor { attributes, .. } => {
+                                // For modules, attr_* creates class-level methods
+                                for attr in attributes {
+                                    let getter = Method::new(
+                                        attr.clone(),
+                                        vec![],
+                                        vec![Statement::Expression {
+                                            expression: Expression::InstanceVariable {
+                                                name: attr.clone(),
+                                                position: crate::lexer::Position::default(),
+                                            },
+                                            position: crate::lexer::Position::default(),
+                                        }],
+                                    );
+                                    module.define_method(attr, Rc::new(getter));
+                                }
+                            }
+                            Statement::MethodDef {
+                                name: method_name,
+                                parameters,
+                                body: method_body,
+                                ..
+                            } => {
+                                let param_names: Vec<String> = parameters
+                                    .iter()
+                                    .filter(|p| !p.is_named_keyword && !p.is_block)
+                                    .map(|p| p.name.clone())
+                                    .collect();
+                                let m = Method::new(
+                                    method_name.clone(),
+                                    param_names,
+                                    method_body.clone(),
+                                );
+                                module.define_method(method_name, Rc::new(m));
+                            }
+                            _ => {
+                                self.execute_statement(inner_stmt)?;
+                            }
+                        }
+                    }
+                }
+                // Other statements in module body
                 _ => {
-                    return Err(MetorexError::runtime_error(
-                        "Unsupported statement in module body".to_string(),
-                        position_to_location(position),
-                    ));
+                    self.execute_statement(statement)?;
                 }
             }
+        }
+
+        // Restore previous self
+        if let Some(prev) = prev_self {
+            self.environment_mut().define("self".to_string(), prev);
         }
 
         self.environment_mut()

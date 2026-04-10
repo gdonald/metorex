@@ -69,11 +69,12 @@ impl Parser {
                         self.skip_whitespace();
                         values.push(self.parse_expression_with_lambda()?);
                     }
-                    return Ok(Statement::MultipleAssignment {
+                    let stmt = Statement::MultipleAssignment {
                         targets,
                         values,
                         position: token.position,
-                    });
+                    };
+                    return self.wrap_with_modifier(stmt);
                 }
 
                 // Check if this is an assignment
