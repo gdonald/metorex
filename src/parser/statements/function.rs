@@ -18,10 +18,25 @@ impl Parser {
                 if self.check(&[TokenKind::Dot]) {
                     self.advance(); // consume .
                     _singleton_receiver = Some(name);
-                    match self.advance().kind {
+                    let method_name = match self.advance().kind {
                         TokenKind::Ident(method_name) => method_name,
                         _ => return Err(self.error_at_previous("Expected method name after '.'")),
+                    };
+                    // Check for setter: def obj.name=(...)
+                    if self.check(&[TokenKind::Equal])
+                        && matches!(self.peek_ahead(1).kind, TokenKind::LParen)
+                    {
+                        self.advance(); // consume =
+                        format!("{}=", method_name)
+                    } else {
+                        method_name
                     }
+                } else if self.check(&[TokenKind::Equal])
+                    && matches!(self.peek_ahead(1).kind, TokenKind::LParen)
+                {
+                    // Setter method: def name=(value)
+                    self.advance(); // consume =
+                    format!("{}=", name)
                 } else {
                     name
                 }

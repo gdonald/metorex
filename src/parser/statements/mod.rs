@@ -47,8 +47,14 @@ impl Parser {
 
                 // Check for multiple assignment: a, b, c = ...
                 // Look ahead to verify there's an = after the comma-separated identifiers
-                if matches!(expr, Expression::Identifier { .. })
-                    && self.check(&[TokenKind::Comma])
+                if matches!(
+                    expr,
+                    Expression::Identifier { .. }
+                        | Expression::Index { .. }
+                        | Expression::InstanceVariable { .. }
+                        | Expression::ClassVariable { .. }
+                        | Expression::GlobalVariable { .. }
+                ) && self.check(&[TokenKind::Comma])
                     && self.is_multiple_assignment()
                 {
                     let mut targets = vec![expr];
@@ -81,7 +87,7 @@ impl Parser {
                     TokenKind::LogicalAndAssign,
                 ]) {
                     let op_token = self.advance();
-                    let value = self.parse_expression_with_lambda()?;
+                    let value = self.parse_assignment_rhs()?;
 
                     // Convert compound assignment to regular assignment with binary op
                     let final_value = match op_token.kind {
@@ -157,12 +163,43 @@ impl Parser {
                 offset += 1;
                 continue;
             }
-            // Expect an identifier
-            if !matches!(tok.kind, TokenKind::Ident(_)) {
+            // Expect an identifier (or @ivar, @@cvar, $gvar)
+            if !matches!(
+                tok.kind,
+                TokenKind::Ident(_)
+                    | TokenKind::InstanceVar(_)
+                    | TokenKind::ClassVar(_)
+                    | TokenKind::GlobalVar(_)
+            ) {
                 return false;
             }
             offset += 1;
-            // After the identifier, expect comma or =
+            // Skip bracket indexing (e.g., a[0])
+            if matches!(self.peek_ahead(offset).kind, TokenKind::LBracket) {
+                offset += 1; // skip [
+                let mut depth = 1;
+                while depth > 0 {
+                    let inner = &self.peek_ahead(offset).kind;
+                    if matches!(inner, TokenKind::LBracket) {
+                        depth += 1;
+                    } else if matches!(inner, TokenKind::RBracket) {
+                        depth -= 1;
+                    } else if matches!(inner, TokenKind::EOF) {
+                        return false;
+                    }
+                    offset += 1;
+                }
+            }
+            // Skip dot+method chains (e.g., obj.field)
+            while matches!(self.peek_ahead(offset).kind, TokenKind::Dot) {
+                offset += 1; // skip .
+                if matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
+                    offset += 1; // skip method name
+                } else {
+                    return false;
+                }
+            }
+            // After the target, expect comma or =
             let next = self.peek_ahead(offset);
             if matches!(next.kind, TokenKind::Equal) {
                 return true;
@@ -218,7 +255,38 @@ impl Parser {
             self.skip_whitespace();
             let value = self.parse_expression()?;
             let position = expr.position();
-            // Wrap as an Assignment expression that also returns the value
+            Ok(crate::ast::Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr),
+                right: Box::new(value),
+                position,
+            })
+        } else {
+            Ok(expr)
+        }
+    }
+
+    /// Parse the right-hand side of an assignment, supporting chained assignments
+    /// like `@a = @b = value`.
+    fn parse_assignment_rhs(
+        &mut self,
+    ) -> Result<crate::ast::Expression, crate::error::MetorexError> {
+        let expr = self.parse_expression_with_lambda()?;
+        // Check for chained assignment: if the parsed expression is followed by `=`
+        // and the expression is an assignable target, parse as nested assignment.
+        if self.check(&[crate::lexer::TokenKind::Equal])
+            && matches!(
+                expr,
+                crate::ast::Expression::Identifier { .. }
+                    | crate::ast::Expression::InstanceVariable { .. }
+                    | crate::ast::Expression::ClassVariable { .. }
+                    | crate::ast::Expression::GlobalVariable { .. }
+                    | crate::ast::Expression::Index { .. }
+            )
+        {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let value = self.parse_assignment_rhs()?;
             Ok(crate::ast::Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
                 left: Box::new(expr),

@@ -98,7 +98,14 @@ Parser fixes during Phase 4 work:
 - Added symbol from string literal (`:"string"`) and interpolated symbols (`:"@#{expr}"`)
 - Extended ternary disambiguation for `:` + String (not just `:` + Ident)
 - Fixed chained ternary with `:` + InstanceVar/any token — broadened ternary colon disambiguation guard to reject paren-less Colon args without a following Comma regardless of what follows the Colon
-- mspec loading progress: `options.rb`, `script.rb`, `guard.rb` all fully load. `runner/mspec.rb` parses to line 299/301. Next blocker: parallel assignment with bracket accessors (`ary[i], ary[r] = ary[r], ary[i]`).
+- Parallel assignment with bracket accessors (`ary[i], ary[r] = ary[r], ary[i]`) with correct RHS-first evaluation
+- `%r(pattern)` regex literal syntax
+- `===` triple-equals operator (case equality)
+- `def name=(val)` setter method definition
+- `-> { body }` and `-> (params) { body }` stabby lambda in expression context (args, assignments)
+- Chained assignment (`@a = @b = value`) at statement level
+- Assignment in `elsif` conditions (`elsif x = expr`)
+- mspec loading: `options.rb`, `script.rb`, `guard.rb`, `mspec.rb`, `context.rb` all fully load. `exception.rb` parses to line 45. Next blocker: `=~` regex match operator.
 
 ## Phase 4: Passing Specs
 

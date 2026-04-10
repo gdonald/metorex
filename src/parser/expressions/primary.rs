@@ -573,6 +573,103 @@ impl Parser {
             // Unless expression: unless cond then ... else ... end
             TokenKind::Unless => self.parse_unless_expression(token.position),
 
+            // Stabby lambda: -> { body } or -> (params) { body }
+            TokenKind::Arrow => {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::LBrace]) {
+                    let block = self.parse_brace_block()?;
+                    if let Expression::Lambda {
+                        parameters,
+                        body,
+                        position,
+                        ..
+                    } = block
+                    {
+                        Ok(Expression::Lambda {
+                            parameters,
+                            body,
+                            captured_vars: Some(Vec::new()),
+                            position,
+                        })
+                    } else {
+                        Ok(block)
+                    }
+                } else if self.check(&[TokenKind::Do]) {
+                    let block = self.parse_block()?;
+                    if let Expression::Lambda {
+                        parameters,
+                        body,
+                        position,
+                        ..
+                    } = block
+                    {
+                        Ok(Expression::Lambda {
+                            parameters,
+                            body,
+                            captured_vars: Some(Vec::new()),
+                            position,
+                        })
+                    } else {
+                        Ok(block)
+                    }
+                } else if self.check(&[TokenKind::LParen]) {
+                    // -> (params) { body }
+                    self.advance(); // consume (
+                    let mut params = Vec::new();
+                    self.skip_whitespace();
+                    if !self.check(&[TokenKind::RParen]) {
+                        loop {
+                            self.skip_whitespace();
+                            if let TokenKind::Ident(name) = self.peek().kind.clone() {
+                                params.push(name);
+                                self.advance();
+                            }
+                            self.skip_whitespace();
+                            if !self.match_token(&[TokenKind::Comma]) {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(TokenKind::RParen, "Expected ')'")?;
+                    self.skip_whitespace();
+                    if self.check(&[TokenKind::LBrace]) {
+                        let block = self.parse_brace_block()?;
+                        if let Expression::Lambda { body, position, .. } = block {
+                            Ok(Expression::Lambda {
+                                parameters: params,
+                                body,
+                                captured_vars: Some(Vec::new()),
+                                position,
+                            })
+                        } else {
+                            Ok(block)
+                        }
+                    } else {
+                        let expr = self.parse_expression()?;
+                        Ok(Expression::Lambda {
+                            parameters: params,
+                            body: vec![crate::ast::Statement::Expression {
+                                expression: expr,
+                                position: token.position,
+                            }],
+                            captured_vars: Some(Vec::new()),
+                            position: token.position,
+                        })
+                    }
+                } else {
+                    let expr = self.parse_assignment()?;
+                    Ok(Expression::Lambda {
+                        parameters: Vec::new(),
+                        body: vec![crate::ast::Statement::Expression {
+                            expression: expr,
+                            position: token.position,
+                        }],
+                        captured_vars: Some(Vec::new()),
+                        position: token.position,
+                    })
+                }
+            }
+
             _ => Err(self.error_at_previous(&format!("Unexpected token: {:?}", token.kind))),
         }
     }

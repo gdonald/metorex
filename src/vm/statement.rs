@@ -73,13 +73,13 @@ impl VirtualMachine {
                         }
                     }
                 } else {
-                    // Multiple values — assign one-to-one
+                    // Multiple values — evaluate all RHS first, then assign
+                    let evaluated: Vec<Object> = values
+                        .iter()
+                        .map(|v| self.evaluate_expression(v))
+                        .collect::<Result<Vec<_>, _>>()?;
                     for (i, target) in targets.iter().enumerate() {
-                        let val = if i < values.len() {
-                            self.evaluate_expression(&values[i])?
-                        } else {
-                            Object::Nil
-                        };
+                        let val = evaluated.get(i).cloned().unwrap_or(Object::Nil);
                         self.assign_value(target, val)?;
                     }
                 }

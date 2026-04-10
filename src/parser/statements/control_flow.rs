@@ -32,7 +32,7 @@ impl Parser {
             let elsif_pos = self.previous().position;
             self.skip_whitespace();
 
-            let elsif_condition = self.parse_expression()?;
+            let elsif_condition = self.parse_condition()?;
             self.skip_whitespace();
 
             let mut elsif_body = Vec::new();

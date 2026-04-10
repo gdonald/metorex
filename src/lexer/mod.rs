@@ -674,7 +674,50 @@ impl<'a> Lexer<'a> {
                 }
                 '%' => {
                     self.advance();
-                    Token::new(TokenKind::Percent, position)
+                    // %r(...) regex literal
+                    if self.peek() == Some('r') {
+                        self.advance(); // consume 'r'
+                        let open = self.peek().unwrap_or('(');
+                        let close = match open {
+                            '(' => ')',
+                            '[' => ']',
+                            '{' => '}',
+                            '<' => '>',
+                            _ => open,
+                        };
+                        self.advance(); // consume opening delimiter
+                        let mut pattern = String::new();
+                        let mut escaped = false;
+                        while let Some(ch) = self.peek() {
+                            if escaped {
+                                pattern.push('\\');
+                                pattern.push(ch);
+                                self.advance();
+                                escaped = false;
+                            } else if ch == '\\' {
+                                self.advance();
+                                escaped = true;
+                            } else if ch == close {
+                                self.advance();
+                                break;
+                            } else {
+                                pattern.push(ch);
+                                self.advance();
+                            }
+                        }
+                        let mut flags = String::new();
+                        while let Some(ch) = self.peek() {
+                            if ch.is_ascii_alphabetic() {
+                                flags.push(ch);
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                        Token::new(TokenKind::Regex(pattern, flags), position)
+                    } else {
+                        Token::new(TokenKind::Percent, position)
+                    }
                 }
                 '^' => {
                     self.advance();
@@ -684,7 +727,12 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     if self.peek() == Some('=') {
                         self.advance();
-                        Token::new(TokenKind::EqualEqual, position)
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            Token::new(TokenKind::TripleEqual, position)
+                        } else {
+                            Token::new(TokenKind::EqualEqual, position)
+                        }
                     } else if self.peek() == Some('>') {
                         self.advance();
                         Token::new(TokenKind::FatArrow, position)

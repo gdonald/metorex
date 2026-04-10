@@ -28,9 +28,44 @@ impl Parser {
         if self.check(&[TokenKind::Arrow]) {
             let arrow_pos = self.advance().position;
             self.skip_whitespace();
+
+            // -> { body } or -> do body end — parse as brace/do block
+            if self.check(&[TokenKind::LBrace]) {
+                let block = self.parse_brace_block()?;
+                if let Expression::Lambda {
+                    parameters,
+                    body,
+                    position,
+                    ..
+                } = block
+                {
+                    return Ok(Expression::Lambda {
+                        parameters,
+                        body,
+                        captured_vars: Some(Vec::new()),
+                        position,
+                    });
+                }
+            } else if self.check(&[TokenKind::Do]) {
+                let block = self.parse_block()?;
+                if let Expression::Lambda {
+                    parameters,
+                    body,
+                    position,
+                    ..
+                } = block
+                {
+                    return Ok(Expression::Lambda {
+                        parameters,
+                        body,
+                        captured_vars: Some(Vec::new()),
+                        position,
+                    });
+                }
+            }
+
             let expr = self.parse_assignment()?;
 
-            // Convert expression to a statement
             let body = vec![crate::ast::Statement::Expression {
                 expression: expr,
                 position: arrow_pos,
@@ -39,7 +74,7 @@ impl Parser {
             return Ok(Expression::Lambda {
                 parameters: Vec::new(),
                 body,
-                captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
+                captured_vars: Some(Vec::new()),
                 position: arrow_pos,
             });
         }
@@ -182,6 +217,9 @@ impl Parser {
 
     pub(crate) fn parse_assignment(&mut self) -> Result<Expression, MetorexError> {
         let expr = self.parse_logical_or()?;
+
+        // Note: assignment (`=`) is handled at the statement level.
+        // parse_assignment only deals with ternary operators.
 
         // Ternary operator: condition ? true_expr : false_expr
         if self.check(&[TokenKind::Question]) {

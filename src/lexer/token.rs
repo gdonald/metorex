@@ -91,6 +91,7 @@ pub enum TokenKind {
     Equal,        // =
     Bang,         // !
     EqualEqual,   // ==
+    TripleEqual,  // ===
     BangEqual,    // !=
     Less,         // <
     Greater,      // >
@@ -219,6 +220,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Equal => write!(f, "="),
             TokenKind::Bang => write!(f, "!"),
             TokenKind::EqualEqual => write!(f, "=="),
+            TokenKind::TripleEqual => write!(f, "==="),
             TokenKind::BangEqual => write!(f, "!="),
             TokenKind::Less => write!(f, "<"),
             TokenKind::Greater => write!(f, ">"),

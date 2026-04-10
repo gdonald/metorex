@@ -49,10 +49,14 @@ impl Parser {
     pub(crate) fn parse_equality(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_comparison()?;
 
-        while self.check(&[TokenKind::EqualEqual, TokenKind::BangEqual]) {
+        while self.check(&[
+            TokenKind::EqualEqual,
+            TokenKind::BangEqual,
+            TokenKind::TripleEqual,
+        ]) {
             let op_token = self.advance();
             let op = match op_token.kind {
-                TokenKind::EqualEqual => BinaryOp::Equal,
+                TokenKind::EqualEqual | TokenKind::TripleEqual => BinaryOp::Equal,
                 TokenKind::BangEqual => BinaryOp::NotEqual,
                 _ => unreachable!(),
             };
