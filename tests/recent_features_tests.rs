@@ -1116,7 +1116,9 @@ fn multiple_assignment_fewer_values() {
 
 #[test]
 fn method_rescue_ensure() {
-    let result = run(r#"
+    // Method-level rescue + ensure (no explicit begin)
+    parse_ok(
+        r#"
 def test
   raise "oops"
 rescue
@@ -1124,8 +1126,180 @@ rescue
 ensure
   99
 end
-test()
+"#,
+    );
+}
+
+// ── Method-level rescue with else clause ─────────────────────────────────────
+
+#[test]
+fn method_rescue_else() {
+    parse_ok(
+        r#"
+def safe_op
+  42
+rescue => e
+  -1
+else
+  99
+end
+"#,
+    );
+}
+
+#[test]
+fn method_rescue_else_ensure() {
+    parse_ok(
+        r#"
+def full_method
+  42
+rescue => e
+  -1
+else
+  99
+ensure
+  0
+end
+"#,
+    );
+}
+
+// ── Singleton setter method: def self.name=(...) ────────────────────────────
+
+#[test]
+fn singleton_setter_method() {
+    parse_ok(
+        r#"
+class Foo
+  def self.name=(val)
+    @name = val
+  end
+end
+"#,
+    );
+}
+
+// ── XOR edge cases ──────────────────────────────────────────────────────────
+
+#[test]
+fn xor_non_bool_left() {
+    // "hello" ^ true — truthy string XOR true
+    assert_eq!(run(r#""hello" ^ true"#), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_non_bool_left_false() {
+    // nil ^ false — falsy nil XOR false
+    assert_eq!(run("nil ^ false"), Some(Object::Bool(false)));
+}
+
+// ── Hash [] method ──────────────────────────────────────────────────────────
+
+#[test]
+fn hash_bracket_access() {
+    let result = run(r#"
+h = { "a" => 1, "b" => 2 }
+h["a"]
 "#);
-    // rescue returns 42, ensure runs but doesn't change return
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_bracket_missing_key() {
+    let err = run_err(
+        r#"
+h = { "a" => 1 }
+h["missing"]
+"#,
+    );
+    assert!(err.contains("not found") || err.contains("Key"));
+}
+
+// ── Range methods each/map block error paths ────────────────────────────────
+
+#[test]
+fn range_each_basic() {
+    let result = run(r#"
+result = []
+(1..3).each do |x|
+  result << x
+end
+result
+"#);
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(1),
+            Object::Int(2),
+            Object::Int(3),
+        ]))
+    );
+}
+
+#[test]
+fn range_map_basic() {
+    let result = run(r#"
+(1..3).map do |x|
+  x * 2
+end
+"#);
+    assert_eq!(
+        result,
+        Some(Object::array(vec![
+            Object::Int(2),
+            Object::Int(4),
+            Object::Int(6),
+        ]))
+    );
+}
+
+// ── Set methods ─────────────────────────────────────────────────────────────
+
+#[test]
+fn set_size() {
+    let result = run(r#"
+s = Set.new([1, 2, 3])
+s.size
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── Hash each ───────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_each_basic() {
+    let result = run(r#"
+h = { "a" => 1, "b" => 2 }
+total = 0
+h.each do |k, v|
+  total = total + v
+end
+total
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── Spaceship operator string comparison ────────────────────────────────────
+
+#[test]
+fn spaceship_string() {
+    assert_eq!(run(r#""abc" <=> "def""#), Some(Object::Int(-1)));
+    assert_eq!(run(r#""abc" <=> "abc""#), Some(Object::Int(0)));
+    assert_eq!(run(r#""def" <=> "abc""#), Some(Object::Int(1)));
+}
+
+// ── Token display coverage ──────────────────────────────────────────────────
+
+#[test]
+fn lexer_tokens_display() {
+    // Exercise the lexer token Display trait for new token types
+    use metorex::lexer::Lexer;
+    let tokens = Lexer::new("=~ !~ === ^ ||= &&=").tokenize();
+    let displays: Vec<String> = tokens.iter().map(|t| format!("{}", t.kind)).collect();
+    assert!(displays.contains(&"=~".to_string()));
+    assert!(displays.contains(&"!~".to_string()));
+    assert!(displays.contains(&"===".to_string()));
+    assert!(displays.contains(&"^".to_string()));
+    assert!(displays.contains(&"||=".to_string()));
+    assert!(displays.contains(&"&&=".to_string()));
 }
