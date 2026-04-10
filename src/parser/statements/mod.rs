@@ -185,7 +185,7 @@ impl Parser {
         if self.check(&[TokenKind::If]) {
             let position = self.advance().position; // consume 'if'
             self.skip_whitespace();
-            let condition = self.parse_expression()?;
+            let condition = self.parse_condition_expression()?;
             Ok(Statement::If {
                 condition,
                 then_branch: vec![stmt],
@@ -196,7 +196,7 @@ impl Parser {
         } else if self.check(&[TokenKind::Unless]) {
             let position = self.advance().position; // consume 'unless'
             self.skip_whitespace();
-            let condition = self.parse_expression()?;
+            let condition = self.parse_condition_expression()?;
             Ok(Statement::Unless {
                 condition,
                 then_branch: vec![stmt],
@@ -205,6 +205,28 @@ impl Parser {
             })
         } else {
             Ok(stmt)
+        }
+    }
+
+    /// Parse a condition expression that may contain an assignment (`x = expr`).
+    /// In Ruby, `if x = foo()` assigns and tests truthiness.
+    fn parse_condition_expression(
+        &mut self,
+    ) -> Result<crate::ast::Expression, crate::error::MetorexError> {
+        let expr = self.parse_expression()?;
+        if self.match_token(&[crate::lexer::TokenKind::Equal]) {
+            self.skip_whitespace();
+            let value = self.parse_expression()?;
+            let position = expr.position();
+            // Wrap as an Assignment expression that also returns the value
+            Ok(crate::ast::Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr),
+                right: Box::new(value),
+                position,
+            })
+        } else {
+            Ok(expr)
         }
     }
 }

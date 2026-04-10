@@ -282,9 +282,16 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Colon followed by Ident is a symbol literal, not a separator
+        // Colon starts a symbol when followed by Ident, InstanceVar, ClassVar, or String
         if self.peek().kind == TokenKind::Colon
-            && !matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+            && !matches!(
+                self.peek_ahead(1).kind,
+                TokenKind::Ident(_)
+                    | TokenKind::InstanceVar(_)
+                    | TokenKind::ClassVar(_)
+                    | TokenKind::String(_)
+                    | TokenKind::InterpolatedString(_)
+            )
         {
             return false;
         }
@@ -342,7 +349,6 @@ impl Parser {
         // than a symbol argument `:sym`.  Allow only when a comma follows the symbol
         // (confirming it's a multi-arg call like `foo :sym, other`).
         if self.peek().kind == TokenKind::Colon
-            && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
             && !matches!(self.peek_ahead(2).kind, TokenKind::Comma)
         {
             return false;
@@ -372,11 +378,15 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Colon followed by Ident/InstanceVar/ClassVar/keyword is a symbol, not a separator
+        // Colon starts a symbol when followed by Ident, InstanceVar, ClassVar, or String
         if self.peek().kind == TokenKind::Colon
             && !matches!(
                 self.peek_ahead(1).kind,
-                TokenKind::Ident(_) | TokenKind::InstanceVar(_) | TokenKind::ClassVar(_)
+                TokenKind::Ident(_)
+                    | TokenKind::InstanceVar(_)
+                    | TokenKind::ClassVar(_)
+                    | TokenKind::String(_)
+                    | TokenKind::InterpolatedString(_)
             )
         {
             return false;
@@ -432,10 +442,9 @@ impl Parser {
             return false;
         }
 
-        // Colon + Ident without a following Comma could be ternary `: value` rather
+        // Colon + value without a following Comma could be ternary `: value` rather
         // than a symbol argument.  Require Comma after to confirm it's a call arg.
         if self.peek().kind == TokenKind::Colon
-            && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
             && !matches!(self.peek_ahead(2).kind, TokenKind::Comma)
         {
             return false;

@@ -242,8 +242,13 @@ impl Parser {
         self.skip_whitespace();
 
         // Check if there's a return value
-        let value = if self.check(&[TokenKind::Newline, TokenKind::Semicolon, TokenKind::EOF])
-            || self.is_at_end()
+        let value = if self.check(&[
+            TokenKind::Newline,
+            TokenKind::Semicolon,
+            TokenKind::EOF,
+            TokenKind::If,
+            TokenKind::Unless,
+        ]) || self.is_at_end()
         {
             None
         } else {

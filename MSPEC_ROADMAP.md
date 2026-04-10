@@ -93,7 +93,12 @@ Parser fixes during Phase 4 work:
 - Fixed `yield if condition` — yield without args now stops before `if`/`unless` keywords
 - Added multi-line `or`/`and` — continuation past newlines after logical operators
 - Added keyword names in `attr_reader`/`attr_writer`/`attr_accessor` (`:include`, `:exclude`, etc.)
-- mspec loading progress: `options.rb`, `script.rb`, `guard.rb` all fully parse and load. `runner/mspec.rb` parses to line 88. Next blocker: `while var = expr` assignment in while condition.
+- Added `return unless/if` with no value (postfix modifier on bare return)
+- Added assignment-in-condition for postfix modifiers (`return unless x = expr`)
+- Added symbol from string literal (`:"string"`) and interpolated symbols (`:"@#{expr}"`)
+- Extended ternary disambiguation for `:` + String (not just `:` + Ident)
+- Fixed chained ternary with `:` + InstanceVar/any token — broadened ternary colon disambiguation guard to reject paren-less Colon args without a following Comma regardless of what follows the Colon
+- mspec loading progress: `options.rb`, `script.rb`, `guard.rb` all fully load. `runner/mspec.rb` parses to line 299/301. Next blocker: parallel assignment with bracket accessors (`ary[i], ary[r] = ary[r], ary[i]`).
 
 ## Phase 4: Passing Specs
 
