@@ -345,12 +345,7 @@ fn run_exc(code: &str) -> Option<Object> {
     vm.execute_program(&stmts).expect("execution failed")
 }
 
-fn run_exc_err(code: &str) -> String {
-    let tokens = Lexer::new(code).tokenize();
-    let stmts = Parser::new(tokens).parse().expect("parse failed");
-    let mut vm = VirtualMachine::new();
-    vm.execute_program(&stmts).unwrap_err().to_string()
-}
+// run_exc_err removed — no tests currently need it
 
 // ── Exception edge cases (from additional_tests) ────────────────────────────
 

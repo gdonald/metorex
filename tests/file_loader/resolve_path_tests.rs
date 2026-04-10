@@ -151,6 +151,8 @@ fn test_resolve_path_dot_current_directory() {
     let resolved = result.unwrap();
     assert!(resolved.ends_with("file_loader/explicit.rb"));
 }
+
+#[test]
 fn find_file_path_with_existing_extension_not_found() {
     // Path with extension that doesn't exist triggers the "has extension" error
     let result = find_file_path(Path::new("tests/_examples/file_loader/nonexistent.rb"));
@@ -159,6 +161,7 @@ fn find_file_path_with_existing_extension_not_found() {
     assert!(msg.contains("File not found"));
 }
 
+#[test]
 fn resolve_relative_path_basic() {
     let base = Path::new("/home/user/project/lib/helper.rb");
     let result = resolve_relative_path(base, "utils");
@@ -167,6 +170,7 @@ fn resolve_relative_path_basic() {
     assert!(path.to_string_lossy().contains("utils"));
 }
 
+#[test]
 fn resolve_relative_path_with_parent_dir() {
     let base = Path::new("/home/user/project/lib/helper.rb");
     let result = resolve_relative_path(base, "../config/settings");
@@ -176,6 +180,7 @@ fn resolve_relative_path_with_parent_dir() {
     assert!(path.to_string_lossy().contains("settings"));
 }
 
+#[test]
 fn find_file_path_nonexistent_no_extension_has_absolute_path() {
     let result = find_file_path(Path::new("nonexistent_xyz_abc"));
     assert!(result.is_err());
@@ -184,6 +189,7 @@ fn find_file_path_nonexistent_no_extension_has_absolute_path() {
     assert!(msg.contains('/'), "Expected absolute path in: {}", msg);
 }
 
+#[test]
 fn find_file_path_similar_name_suggestion() {
     // We know "test_file.rb" exists in file_loader examples dir
     let path = Path::new("tests/_examples/file_loader/test_fiel");
