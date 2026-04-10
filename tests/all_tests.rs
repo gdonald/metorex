@@ -16,6 +16,7 @@ mod integration;
 mod lexer;
 mod module_tests;
 mod parser;
+mod recent_features_tests;
 mod repl_tests;
 mod require_relative;
 mod string_methods_tests;

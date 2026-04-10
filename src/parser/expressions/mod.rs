@@ -64,6 +64,59 @@ impl Parser {
                 }
             }
 
+            // -> (params) { body } or -> (params) do body end
+            if self.check(&[TokenKind::LParen]) {
+                self.advance(); // consume (
+                let mut params = Vec::new();
+                self.skip_whitespace();
+                if !self.check(&[TokenKind::RParen]) {
+                    loop {
+                        self.skip_whitespace();
+                        if let TokenKind::Ident(name) = self.peek().kind.clone() {
+                            params.push(name);
+                            self.advance();
+                        }
+                        self.skip_whitespace();
+                        if !self.match_token(&[TokenKind::Comma]) {
+                            break;
+                        }
+                    }
+                }
+                self.expect(TokenKind::RParen, "Expected ')' after lambda parameters")?;
+                self.skip_whitespace();
+                if self.check(&[TokenKind::LBrace]) {
+                    let block = self.parse_brace_block()?;
+                    if let Expression::Lambda { body, position, .. } = block {
+                        return Ok(Expression::Lambda {
+                            parameters: params,
+                            body,
+                            captured_vars: Some(Vec::new()),
+                            position,
+                        });
+                    }
+                } else if self.check(&[TokenKind::Do]) {
+                    let block = self.parse_block()?;
+                    if let Expression::Lambda { body, position, .. } = block {
+                        return Ok(Expression::Lambda {
+                            parameters: params,
+                            body,
+                            captured_vars: Some(Vec::new()),
+                            position,
+                        });
+                    }
+                }
+                let expr = self.parse_assignment()?;
+                return Ok(Expression::Lambda {
+                    parameters: params,
+                    body: vec![crate::ast::Statement::Expression {
+                        expression: expr,
+                        position: arrow_pos,
+                    }],
+                    captured_vars: Some(Vec::new()),
+                    position: arrow_pos,
+                });
+            }
+
             let expr = self.parse_assignment()?;
 
             let body = vec![crate::ast::Statement::Expression {
