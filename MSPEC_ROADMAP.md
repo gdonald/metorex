@@ -126,7 +126,12 @@ Parser fixes during Phase 4 work:
 - **`def self.method` vs `def method` separation** — class methods stored with `__class__` prefix, looked up preferentially when receiver is Class/Module. Fixes infinite recursion where instance `config` and class `config` shadowed each other.
 - 64MB thread stack for deep mspec execution
 - `evaluate_expression` depth guard (1000 limit) prevents stack overflow
-- **mspec runner fully loads and `MSpecRun.main` begins executing.** `MSpecScript.new` instantiates, `check_version!` runs, `initialize` starts. Next blocker: Symbol keys in hashes (`config[:formatter] = nil`).
+- Symbol keys in hash index assignment (`config[:formatter] = nil`)
+- `instance_variable_set` native method on Instance/Class/Module
+- `instance_variable_get` for Class/Module receivers (reads from class vars)
+- Bare identifier → method dispatch fallback in `Expression::Call` (try `self.method(args)` when identifier fails)
+- Paren-less call with `:InterpolatedString` arg (e.g., `instance_variable_get :"@#{sym}"`)
+- **mspec runner `MSpecRun.main` begins executing.** `MSpecScript.new` → `check_version!` → `ruby_version_is` guard called. Next blocker: `MSpec.mode?` called with 0 args from guard dispatch (bare identifier dispatch auto-invokes 0-arg methods, but guard code calls `mode?` expecting 1 arg).
 
 ## Phase 4: Passing Specs
 

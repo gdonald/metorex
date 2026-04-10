@@ -345,13 +345,15 @@ impl Parser {
             return false;
         }
 
-        // Colon + Ident without a following Comma could be ternary `: value` rather
-        // than a symbol argument `:sym`.  Allow only when a comma follows the symbol
-        // (confirming it's a multi-arg call like `foo :sym, other`).
-        if self.peek().kind == TokenKind::Colon
-            && !matches!(self.peek_ahead(2).kind, TokenKind::Comma)
-        {
-            return false;
+        // Colon could start a symbol arg (:sym) or be a ternary else (:).
+        // Allow when followed by InterpolatedString (dynamic symbol — never ternary).
+        // Otherwise require a comma after to confirm it's a call arg.
+        if self.peek().kind == TokenKind::Colon {
+            let after_colon = &self.peek_ahead(1).kind;
+            let is_dynamic_symbol = matches!(after_colon, TokenKind::InterpolatedString(_));
+            if !is_dynamic_symbol && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
+                return false;
+            }
         }
 
         // Pattern 1: <ident> ':' is a keyword argument (name: value), allow it
@@ -442,12 +444,13 @@ impl Parser {
             return false;
         }
 
-        // Colon + value without a following Comma could be ternary `: value` rather
-        // than a symbol argument.  Require Comma after to confirm it's a call arg.
-        if self.peek().kind == TokenKind::Colon
-            && !matches!(self.peek_ahead(2).kind, TokenKind::Comma)
-        {
-            return false;
+        // Same Colon disambiguation as can_start_argument_for_call
+        if self.peek().kind == TokenKind::Colon {
+            let after_colon = &self.peek_ahead(1).kind;
+            let is_dynamic_symbol = matches!(after_colon, TokenKind::InterpolatedString(_));
+            if !is_dynamic_symbol && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
+                return false;
+            }
         }
 
         true

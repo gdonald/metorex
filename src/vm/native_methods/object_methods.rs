@@ -168,16 +168,65 @@ impl VirtualMachine {
                 };
                 // Strip leading @ if present
                 let clean_name = var_name.strip_prefix('@').unwrap_or(&var_name);
-                if let Object::Instance(inst_rc) = receiver {
-                    let inst = inst_rc.borrow();
-                    Ok(Some(
-                        inst.instance_vars
-                            .get(clean_name)
-                            .cloned()
+                match receiver {
+                    Object::Instance(inst_rc) => {
+                        let inst = inst_rc.borrow();
+                        Ok(Some(
+                            inst.instance_vars
+                                .get(clean_name)
+                                .cloned()
+                                .unwrap_or(Object::Nil),
+                        ))
+                    }
+                    Object::Class(class_rc) => Ok(Some(
+                        class_rc
+                            .get_class_var(&format!("@{}", clean_name))
                             .unwrap_or(Object::Nil),
-                    ))
-                } else {
-                    Ok(Some(Object::Nil))
+                    )),
+                    Object::Module(module_rc) => Ok(Some(
+                        module_rc
+                            .get_class_var(&format!("@{}", clean_name))
+                            .unwrap_or(Object::Nil),
+                    )),
+                    _ => Ok(Some(Object::Nil)),
+                }
+            }
+            "instance_variable_set" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let var_name = match &arguments[0] {
+                    Object::String(s) => s.strip_prefix('@').unwrap_or(s).to_string(),
+                    Object::Symbol(s) => s.strip_prefix('@').unwrap_or(s).to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let value = arguments[1].clone();
+                match receiver {
+                    Object::Instance(instance_rc) => {
+                        instance_rc.borrow_mut().set_var(var_name, value.clone());
+                        Ok(Some(value))
+                    }
+                    Object::Class(class_rc) => {
+                        class_rc.set_class_var(format!("@{}", var_name), value.clone());
+                        Ok(Some(value))
+                    }
+                    Object::Module(module_rc) => {
+                        module_rc.set_class_var(format!("@{}", var_name), value.clone());
+                        Ok(Some(value))
+                    }
+                    _ => Ok(Some(Object::Nil)),
                 }
             }
             "instance_of?" => {

@@ -321,6 +321,7 @@ impl VirtualMachine {
                         // Hash/Dict index assignment
                         let key_str = match idx {
                             Object::String(s) => s.as_str().to_string(),
+                            Object::Symbol(s) => format!(":{}", s),
                             Object::Int(i) => i.to_string(),
                             Object::Float(f) => f.to_string(),
                             Object::Bool(b) => b.to_string(),

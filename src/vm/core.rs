@@ -435,37 +435,30 @@ impl VirtualMachine {
                     let in_same_method = self
                         .get_current_method_name()
                         .is_some_and(|frame| frame.ends_with(&format!("#{}", name)));
-                    if !in_same_method {
-                        if let Some((class, method)) = self.lookup_method(&receiver, name) {
-                            if !method.is_undefined {
-                                let required = method.parameters.len()
-                                    - method.default_parameters.len()
-                                    - if method.variadic_param.is_some() {
-                                        1
-                                    } else {
-                                        0
-                                    };
-                                if required == 0 {
-                                    return self.invoke_method(
-                                        class,
-                                        method,
-                                        receiver,
-                                        vec![],
-                                        *position,
-                                    );
-                                } else {
-                                    let mut bound = method.as_ref().clone();
-                                    bound.receiver = Some(Box::new(receiver));
-                                    return Ok(Object::Method(Rc::new(bound)));
-                                }
-                            }
+                    if !in_same_method
+                        && let Some((class, method)) = self.lookup_method(&receiver, name)
+                        && !method.is_undefined
+                    {
+                        let required = method.parameters.len()
+                            - method.default_parameters.len()
+                            - if method.variadic_param.is_some() {
+                                1
+                            } else {
+                                0
+                            };
+                        if required == 0 {
+                            return self.invoke_method(class, method, receiver, vec![], *position);
+                        } else {
+                            let mut bound = method.as_ref().clone();
+                            bound.receiver = Some(Box::new(receiver));
+                            return Ok(Object::Method(Rc::new(bound)));
                         }
                     }
                     // Special case: `new` on a Class returns the class (for calling)
-                    if name == "new" {
-                        if let Object::Class(_) = &receiver {
-                            return Ok(receiver);
-                        }
+                    if name == "new"
+                        && let Object::Class(_) = &receiver
+                    {
+                        return Ok(receiver);
                     }
                     Err(undefined_variable_error(name, *position))
                 } else {
@@ -603,12 +596,32 @@ impl VirtualMachine {
                 trailing_block,
                 position,
             } => {
-                let callable = self.evaluate_expression(callee)?;
+                let callable = self.evaluate_expression(callee);
                 let evaluated_args = self.evaluate_arguments(arguments)?;
                 if let Some(block_expr) = trailing_block {
                     self.pending_block = Some(self.evaluate_expression(block_expr)?);
                 }
-                self.invoke_callable(callable, evaluated_args, *position)
+                match callable {
+                    Ok(func) => self.invoke_callable(func, evaluated_args, *position),
+                    Err(_) => {
+                        // If callee is a bare identifier not found as variable,
+                        // try dispatching as self.method(args)
+                        if let Expression::Identifier { name, .. } = callee.as_ref()
+                            && self.environment.get("self").is_some()
+                        {
+                            return self.evaluate_method_call(
+                                &Expression::SelfExpr {
+                                    position: *position,
+                                },
+                                name,
+                                arguments,
+                                trailing_block.as_ref().map(|b| b.as_ref()),
+                                *position,
+                            );
+                        }
+                        callable.and_then(|f| self.invoke_callable(f, evaluated_args, *position))
+                    }
+                }
             }
             Expression::SelfExpr { position } => self
                 .environment
