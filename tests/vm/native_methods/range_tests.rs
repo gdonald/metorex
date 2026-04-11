@@ -94,19 +94,10 @@ r.to_a
 // ── Range.include? with non-integer range (lines 154-156) ────────────────────
 
 #[test]
-fn range_include_float_bounds_error() {
-    let err = run_err(
-        r#"
-r = 1.5..3.5
-r.include?(2.0)
-"#,
-    );
-    assert!(
-        err.contains("integer")
-            || err.contains("Integer")
-            || err.contains("Range")
-            || err.contains("only supports")
-    );
+fn range_include_float_bounds_works() {
+    // Float range include? now works via fallback comparison
+    let result = run("r = 1.5..3.5\nr.include?(2.0)");
+    assert_eq!(result, Some(Object::Bool(true)));
 }
 
 // ── Range.map with non-integer range (lines 211-213) ─────────────────────────

@@ -57,7 +57,18 @@ impl VirtualMachine {
             Subtract | Multiply | Divide | Modulo => {
                 self.evaluate_numeric_binary(op, left, right, position)
             }
-            Equal => Ok(Object::Bool(left.equals(&right))),
+            Equal => {
+                // For Class === non-Class, check type membership (Ruby's case equality)
+                if let Object::Class(class_rc) = &left
+                    && !matches!(right, Object::Class(_) | Object::Module(_))
+                {
+                    let right_class = self.builtins().class_of(&right);
+                    return Ok(Object::Bool(
+                        self.builtins().is_subclass_of(&right_class, class_rc),
+                    ));
+                }
+                Ok(Object::Bool(left.equals(&right)))
+            }
             NotEqual => Ok(Object::Bool(!left.equals(&right))),
             Less | Greater | LessEqual | GreaterEqual => {
                 self.evaluate_comparison(op, left, right, position)

@@ -167,6 +167,7 @@ impl BuiltinClasses {
         classes.insert("TypeError".to_string(), Rc::clone(&self.type_error_class));
         classes.insert("ValueError".to_string(), Rc::clone(&self.value_error_class));
         classes.insert("File".to_string(), Rc::clone(&self.file_class));
+        classes.insert("Range".to_string(), Rc::clone(&self.range_class));
         classes
     }
 }

@@ -567,3 +567,115 @@ fn scope_resolution_on_class_with_constant() {
     let result = run("class Foo\n  VERSION = 42\nend\nFoo::VERSION");
     assert_eq!(result, Some(Object::Int(42)));
 }
+
+// ── String indexing ─────────────────────────────────────────────────────────
+
+#[test]
+fn string_index_int() {
+    assert_eq!(
+        run(r#""hello"[0]"#),
+        Some(Object::String(std::rc::Rc::new("h".to_string())))
+    );
+}
+
+#[test]
+fn string_index_negative() {
+    assert_eq!(
+        run(r#""hello"[-1]"#),
+        Some(Object::String(std::rc::Rc::new("o".to_string())))
+    );
+}
+
+#[test]
+fn string_index_out_of_bounds() {
+    assert_eq!(run(r#""hello"[99]"#), Some(Object::Nil));
+}
+
+#[test]
+fn string_index_range() {
+    assert_eq!(
+        run(r#""hello"[1..3]"#),
+        Some(Object::String(std::rc::Rc::new("ell".to_string())))
+    );
+}
+
+// ── Class === type check ────────────────────────────────────────────────────
+
+#[test]
+fn class_triple_eq_match() {
+    assert_eq!(run("Integer === 42"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn class_triple_eq_no_match() {
+    assert_eq!(run("Integer === \"hello\""), Some(Object::Bool(false)));
+}
+
+#[test]
+fn range_class_triple_eq() {
+    assert_eq!(run("Range === (1..5)"), Some(Object::Bool(true)));
+}
+
+// ── Bare identifier to method dispatch ──────────────────────────────────────
+
+#[test]
+fn bare_ident_dispatches_to_self_method() {
+    let result = run(r#"
+module Foo
+  def self.greet
+    "hello"
+  end
+  def self.test
+    greet
+  end
+end
+Foo.test
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("hello".to_string())))
+    );
+}
+
+#[test]
+fn bare_ident_method_with_args_returns_bound() {
+    let result = run(r#"
+module Foo
+  def self.add(a, b)
+    a + b
+  end
+  def self.test
+    add(3, 4)
+  end
+end
+Foo.test
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+// ── Assignment as last expression returns value ─────────────────────────────
+
+#[test]
+fn assignment_last_expr_returns_value() {
+    let result = run(r#"
+def test
+  x = 42
+end
+test()
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn or_assign_last_expr_returns_value() {
+    let result = run(r#"
+class Foo
+  def self.config
+    @config ||= { "x" => 1 }
+  end
+end
+Foo.config
+"#);
+    assert!(result.is_some());
+    assert!(!matches!(result, Some(Object::Nil)));
+}

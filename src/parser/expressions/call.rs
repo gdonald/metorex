@@ -57,7 +57,7 @@ impl Parser {
                 // Check if there are arguments (with or without parens)
                 let arguments = if self.match_token(&[TokenKind::LParen]) {
                     self.parse_arguments()?
-                } else if self.can_start_argument_for_method_call() {
+                } else if self.can_start_argument_for_method_call(&method_name) {
                     self.parse_arguments_without_parens()?
                 } else {
                     Vec::new()
@@ -373,7 +373,7 @@ impl Parser {
     }
 
     /// Check if the next token can start an argument in a paren-less method call
-    fn can_start_argument_for_method_call(&mut self) -> bool {
+    fn can_start_argument_for_method_call(&mut self, method_name: &str) -> bool {
         if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
             return false;
         }
@@ -444,11 +444,22 @@ impl Parser {
             return false;
         }
 
-        // Same Colon disambiguation as can_start_argument_for_call
+        // Colon disambiguation for method calls:
+        // - If method name ends with `?` (e.g., `mode?`), there's no ternary ambiguity
+        //   because `?` was consumed as part of the name. Allow any `:symbol`.
+        // - Otherwise, only allow `:` + Ident/InterpolatedString (symbol patterns) or with comma.
         if self.peek().kind == TokenKind::Colon {
+            if method_name.ends_with('?') {
+                // Method name includes `?`, so no ternary `?` follows.
+                // `:symbol` after such methods is always an argument.
+                return true;
+            }
+            // For other methods, `:` is ambiguous with ternary colon.
+            // Only allow when followed by InterpolatedString (dynamic symbol)
+            // or when comma follows (multi-arg pattern).
             let after_colon = &self.peek_ahead(1).kind;
-            let is_dynamic_symbol = matches!(after_colon, TokenKind::InterpolatedString(_));
-            if !is_dynamic_symbol && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
+            let is_unambiguous = matches!(after_colon, TokenKind::InterpolatedString(_));
+            if !is_unambiguous && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
                 return false;
             }
         }

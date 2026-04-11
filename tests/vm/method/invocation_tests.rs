@@ -337,3 +337,24 @@ fn block_given_without_block() {
         Some(Object::Int(10))
     );
 }
+
+// ── Call fallback to self.method ────────────────────────────────────────────
+
+#[test]
+fn call_fallback_to_self_method() {
+    let result = run(r#"
+class Foo
+  def greet(name)
+    "hi " + name
+  end
+  def test
+    greet("world")
+  end
+end
+Foo.new.test
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("hi world".to_string())))
+    );
+}

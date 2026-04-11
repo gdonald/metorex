@@ -197,3 +197,66 @@ fn define_method_with_closure() {
     let result = run("class Foo\n  define_method(\"val\") do\n    100\n  end\nend\nFoo.new.val");
     assert_eq!(result, Some(Object::Int(100)));
 }
+
+// ── def self.method vs def method separation ────────────────────────────────
+
+fn run_class(code: &str) -> Option<metorex::object::Object> {
+    use metorex::lexer::Lexer;
+    use metorex::parser::Parser;
+    use metorex::vm::VirtualMachine;
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+#[test]
+fn class_method_and_instance_method_coexist() {
+    let result = run_class(
+        r#"
+class Foo
+  def self.class_method
+    "class"
+  end
+  def instance_method
+    "instance"
+  end
+end
+Foo.class_method
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "class".to_string()
+        )))
+    );
+}
+
+#[test]
+fn class_method_not_callable_on_instance() {
+    let result = run_class(
+        r#"
+class Foo
+  def self.class_only
+    42
+  end
+  def instance_only
+    99
+  end
+end
+Foo.new.instance_only
+"#,
+    );
+    assert_eq!(result, Some(metorex::object::Object::Int(99)));
+}
+
+// ── Range include? with strings ─────────────────────────────────────────────
+
+#[test]
+fn range_include_string() {
+    assert_eq!(
+        run_class(r#"("a".."z").include?("m")"#),
+        Some(metorex::object::Object::Bool(true))
+    );
+}

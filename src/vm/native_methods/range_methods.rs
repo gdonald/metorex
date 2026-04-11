@@ -133,10 +133,26 @@ impl VirtualMachine {
                         };
                         Ok(Some(Object::Bool(in_range)))
                     }
-                    _ => Err(MetorexError::runtime_error(
-                        "Range.include? only supports integer ranges".to_string(),
-                        position_to_location(position),
-                    )),
+                    (Object::String(s), Object::String(e), Object::String(v)) => {
+                        let in_range = if *exclusive {
+                            v.as_str() >= s.as_str() && v.as_str() < e.as_str()
+                        } else {
+                            v.as_str() >= s.as_str() && v.as_str() <= e.as_str()
+                        };
+                        Ok(Some(Object::Bool(in_range)))
+                    }
+                    _ => {
+                        // Fallback: compare using Display representation
+                        let s = format!("{}", start);
+                        let e = format!("{}", end);
+                        let v = format!("{}", arguments[0]);
+                        let in_range = if *exclusive {
+                            v >= s && v < e
+                        } else {
+                            v >= s && v <= e
+                        };
+                        Ok(Some(Object::Bool(in_range)))
+                    }
                 }
             }
             "map" => {

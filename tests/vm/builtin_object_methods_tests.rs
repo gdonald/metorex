@@ -157,3 +157,33 @@ fn integer_respond_to_class() {
     let result = run(r#"42.respond_to?("class")"#);
     assert_eq!(result, Some(Object::Bool(true)));
 }
+
+// ── instance_variable_set/get ───────────────────────────────────────────────
+
+#[test]
+fn instance_variable_set_on_instance() {
+    let result = run(r#"
+class Foo; end
+f = Foo.new
+f.instance_variable_set(:@x, 42)
+f.instance_variable_get(:@x)
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn instance_variable_set_on_class() {
+    let result = run(r#"
+class Foo
+  def self.setup
+    instance_variable_set(:@val, 99)
+  end
+  def self.val
+    instance_variable_get(:@val)
+  end
+end
+Foo.setup
+Foo.val
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
