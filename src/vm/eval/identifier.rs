@@ -1,0 +1,67 @@
+// Identifier resolution: local variables, methods on `self`, bare `new`.
+
+use crate::error::MetorexError;
+use crate::lexer::Position;
+use crate::object::Object;
+use std::rc::Rc;
+
+use crate::vm::core::VirtualMachine;
+use crate::vm::errors::undefined_variable_error;
+
+impl VirtualMachine {
+    /// Evaluate a bare identifier expression.
+    ///
+    /// Resolution order:
+    ///   1. Local variable / parameter from the environment.
+    ///   2. If `self` is in scope: a method on the receiver (zero-arg auto-call,
+    ///      bound `Method` for non-zero-arg methods).
+    ///   3. Bare `new` inside a class method instantiates the class.
+    ///   4. Otherwise raise an undefined-variable error.
+    pub(super) fn eval_identifier(
+        &mut self,
+        name: &str,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if let Some(val) = self.environment().get(name) {
+            return Ok(val);
+        }
+
+        let Some(receiver) = self.environment().get("self") else {
+            return Err(undefined_variable_error(name, position));
+        };
+
+        // In class/module body, bare identifiers resolve methods on self.
+        // Guard: don't re-invoke the current method (prevents infinite recursion)
+        let in_same_method = self
+            .get_current_method_name()
+            .is_some_and(|frame| frame.ends_with(&format!("#{}", name)));
+        if !in_same_method
+            && let Some((class, method)) = self.lookup_method(&receiver, name)
+            && !method.is_undefined
+        {
+            let required = method.parameters.len()
+                - method.default_parameters.len()
+                - if method.variadic_param.is_some() {
+                    1
+                } else {
+                    0
+                };
+            if required == 0 {
+                return self.invoke_method(class, method, receiver, vec![], position);
+            } else {
+                let mut bound = method.as_ref().clone();
+                bound.receiver = Some(Box::new(receiver));
+                return Ok(Object::Method(Rc::new(bound)));
+            }
+        }
+
+        // Bare `new` inside a class method should instantiate the class.
+        if name == "new"
+            && let Object::Class(_) = &receiver
+        {
+            return self.invoke_callable(receiver, vec![], position);
+        }
+
+        Err(undefined_variable_error(name, position))
+    }
+}
