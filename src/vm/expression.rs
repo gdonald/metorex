@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
-use super::errors::{index_out_of_bounds_error, undefined_dictionary_key_error};
+use super::errors::index_out_of_bounds_error;
 use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
@@ -80,7 +80,7 @@ impl VirtualMachine {
 
     /// Evaluate indexing operations on arrays and dictionaries.
     pub(crate) fn evaluate_index_operation(
-        &self,
+        &mut self,
         collection: Object,
         key: Object,
         position: Position,
@@ -112,9 +112,7 @@ impl VirtualMachine {
                 })?;
 
                 let dict = dict_rc.borrow();
-                dict.get(&key_string)
-                    .cloned()
-                    .ok_or_else(|| undefined_dictionary_key_error(&key_string, position))
+                Ok(dict.get(&key_string).cloned().unwrap_or(Object::Nil))
             }
 
             Object::String(s) => match key {
@@ -169,6 +167,23 @@ impl VirtualMachine {
                 )),
             },
 
+            Object::Class(_) | Object::Module(_) | Object::Instance(_) => {
+                // Dispatch to the class's `[]` method (for Dir[], custom [] methods, etc.)
+                let class = self.builtins().class_of(&collection);
+                match self.call_native_method(
+                    &class,
+                    &collection,
+                    "[]",
+                    std::slice::from_ref(&key),
+                    position,
+                )? {
+                    Some(val) => Ok(val),
+                    None => Err(MetorexError::type_error(
+                        format!("Cannot index into type '{}'", collection.type_name()),
+                        position_to_location(position),
+                    )),
+                }
+            }
             other => Err(MetorexError::type_error(
                 format!("Cannot index into type '{}'", other.type_name()),
                 position_to_location(position),

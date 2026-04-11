@@ -232,6 +232,12 @@ impl Parser {
                     expression: Box::new(expr),
                     position,
                 });
+            } else if self.match_token(&[TokenKind::StarStar]) {
+                // Double-splat: **expr — pass-through as-is; runtime treats it
+                // as a positional hash (good enough for most mspec usages).
+                let _position = self.previous().position;
+                let expr = self.parse_expression()?;
+                arguments.push(expr);
             } else {
                 // Handle &expr (block-to-proc conversion) — treat as regular arg for now
                 self.match_token(&[TokenKind::Ampersand]);
@@ -245,24 +251,34 @@ impl Parser {
             }
         }
 
-        // If there were keyword args, append them as a Dict at the end of arguments
+        // If there were keyword args, append them as a Dict with a sentinel marker
+        // so the runtime can distinguish parser-synthesized kwargs from a user hash.
         if !keyword_pairs.is_empty() {
             let position = self.peek().position;
-            arguments.push(Expression::Dictionary {
-                entries: keyword_pairs
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            Expression::StringLiteral {
-                                value: format!(":{}", k),
-                                position,
-                            },
-                            v,
-                        )
-                    })
-                    .collect(),
-                position,
-            });
+            let mut entries: Vec<(Expression, Expression)> = keyword_pairs
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        Expression::StringLiteral {
+                            value: format!(":{}", k),
+                            position,
+                        },
+                        v,
+                    )
+                })
+                .collect();
+            // Marker entry the runtime recognizes (see split_keyword_args).
+            entries.push((
+                Expression::StringLiteral {
+                    value: "__MX_KWARGS__".to_string(),
+                    position,
+                },
+                Expression::BoolLiteral {
+                    value: true,
+                    position,
+                },
+            ));
+            arguments.push(Expression::Dictionary { entries, position });
         }
 
         self.skip_whitespace();
@@ -445,13 +461,17 @@ impl Parser {
         }
 
         // Colon disambiguation for method calls:
-        // - If method name ends with `?` (e.g., `mode?`), there's no ternary ambiguity
-        //   because `?` was consumed as part of the name. Allow any `:symbol`.
-        // - Otherwise, only allow `:` + Ident/InterpolatedString (symbol patterns) or with comma.
+        // - If method name ends with `?` (e.g., `mode?`), the method name already
+        //   consumed the `?`. A following `:` could still be the `:` of an outer
+        //   ternary (e.g., `cond ? x.failure? : y`), so we must NOT greedily parse
+        //   it as a paren-less symbol argument. Require parens for symbol args
+        //   on `?`-predicate methods.
         if self.peek().kind == TokenKind::Colon {
             if method_name.ends_with('?') {
-                // Method name includes `?`, so no ternary `?` follows.
-                // `:symbol` after such methods is always an argument.
+                // Inside a ternary, the `:` must be the ternary separator.
+                if self.ternary_depth > 0 {
+                    return false;
+                }
                 return true;
             }
             // For other methods, `:` is ambiguous with ternary colon.
@@ -546,23 +566,31 @@ impl Parser {
             // and is needed by wrap_with_modifier to prevent consuming the next line
         }
 
-        // If there were keyword args, append them as a Dict
+        // If there were keyword args, append them as a marked kwargs Dict.
         if !keyword_pairs.is_empty() {
-            arguments.push(Expression::Dictionary {
-                entries: keyword_pairs
-                    .into_iter()
-                    .map(|(k, v)| {
-                        (
-                            Expression::StringLiteral {
-                                value: format!(":{}", k),
-                                position,
-                            },
-                            v,
-                        )
-                    })
-                    .collect(),
-                position,
-            });
+            let mut entries: Vec<(Expression, Expression)> = keyword_pairs
+                .into_iter()
+                .map(|(k, v)| {
+                    (
+                        Expression::StringLiteral {
+                            value: format!(":{}", k),
+                            position,
+                        },
+                        v,
+                    )
+                })
+                .collect();
+            entries.push((
+                Expression::StringLiteral {
+                    value: "__MX_KWARGS__".to_string(),
+                    position,
+                },
+                Expression::BoolLiteral {
+                    value: true,
+                    position,
+                },
+            ));
+            arguments.push(Expression::Dictionary { entries, position });
         }
 
         Ok(arguments)

@@ -185,14 +185,6 @@ pub(super) fn index_out_of_bounds_error(
     )
 }
 
-/// Produce a runtime error when a dictionary key is missing.
-pub(super) fn undefined_dictionary_key_error(key: &str, position: Position) -> MetorexError {
-    MetorexError::runtime_error(
-        format!("Key '{}' not found in dictionary", key),
-        position_to_location(position),
-    )
-}
-
 // ============================================================================
 // Internal Errors
 // ============================================================================

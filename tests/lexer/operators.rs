@@ -824,3 +824,124 @@ fn test_lexer_tokens_display_new_types() {
     assert!(displays.contains(&"||=".to_string()));
     assert!(displays.contains(&"&&=".to_string()));
 }
+
+// ── Operators added during mspec work ──────────────────────────────────────
+
+#[test]
+fn test_lexer_match_op() {
+    let mut lexer = Lexer::new("=~");
+    assert_eq!(lexer.next_token().kind, TokenKind::Match);
+}
+
+#[test]
+fn test_lexer_not_match_op() {
+    let mut lexer = Lexer::new("!~");
+    assert_eq!(lexer.next_token().kind, TokenKind::NotMatch);
+}
+
+#[test]
+fn test_lexer_triple_equal() {
+    let mut lexer = Lexer::new("===");
+    assert_eq!(lexer.next_token().kind, TokenKind::TripleEqual);
+}
+
+#[test]
+fn test_lexer_star_star() {
+    let mut lexer = Lexer::new("**");
+    assert_eq!(lexer.next_token().kind, TokenKind::StarStar);
+}
+
+#[test]
+fn test_lexer_star_star_then_ident() {
+    let tokens = Lexer::new("**h").tokenize();
+    assert_eq!(tokens[0].kind, TokenKind::StarStar);
+    assert!(matches!(&tokens[1].kind, TokenKind::Ident(s) if s == "h"));
+}
+
+#[test]
+fn test_lexer_star_after_number_is_star() {
+    // single * should not become **
+    let tokens = Lexer::new("3 * 2").tokenize();
+    let kinds: Vec<_> = tokens.iter().map(|t| &t.kind).collect();
+    assert!(kinds.iter().any(|k| matches!(k, TokenKind::Star)));
+}
+
+#[test]
+fn test_lexer_caret() {
+    let mut lexer = Lexer::new("^");
+    assert_eq!(lexer.next_token().kind, TokenKind::Caret);
+}
+
+#[test]
+fn test_lexer_logical_or_assign() {
+    let mut lexer = Lexer::new("||=");
+    assert_eq!(lexer.next_token().kind, TokenKind::LogicalOrAssign);
+}
+
+#[test]
+fn test_lexer_logical_and_assign() {
+    let mut lexer = Lexer::new("&&=");
+    assert_eq!(lexer.next_token().kind, TokenKind::LogicalAndAssign);
+}
+
+#[test]
+fn test_lexer_pipe_alone() {
+    let mut lexer = Lexer::new("|");
+    assert_eq!(lexer.next_token().kind, TokenKind::Pipe);
+}
+
+#[test]
+fn test_lexer_ampersand_alone() {
+    let mut lexer = Lexer::new("&");
+    assert_eq!(lexer.next_token().kind, TokenKind::Ampersand);
+}
+
+// ── Backtick command strings ──────────────────────────────────────────────
+
+#[test]
+fn test_lexer_backtick_command() {
+    let tokens = Lexer::new("`ls -la`").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "ls -la"))
+    );
+}
+
+#[test]
+fn test_lexer_backtick_empty() {
+    let tokens = Lexer::new("``").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.is_empty()))
+    );
+}
+
+// ── Character literal: ?x ─────────────────────────────────────────────────
+
+#[test]
+fn test_lexer_char_literal() {
+    let tokens = Lexer::new("?a").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "a"))
+    );
+}
+
+#[test]
+fn test_lexer_question_with_space() {
+    // ? followed by space is the ternary operator.
+    let tokens = Lexer::new("? ").tokenize();
+    assert_eq!(tokens[0].kind, TokenKind::Question);
+}
+
+// ── Unknown character is consumed and yields EOF ──────────────────────────
+
+#[test]
+fn test_lexer_unknown_character() {
+    // \u{2603} (snowman) is not a valid identifier or operator char.
+    let tokens = Lexer::new("\u{2603}").tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}

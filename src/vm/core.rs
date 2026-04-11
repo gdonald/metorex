@@ -147,9 +147,10 @@ impl VirtualMachine {
         let mut found_path = None;
         for dir in &search_dirs {
             let base = std::path::PathBuf::from(dir);
-            let candidates = [base.join(name), base.join(format!("{}.rb", name))];
+            // Try `.rb` first so a matching .rb file wins over a sibling directory.
+            let candidates = [base.join(format!("{}.rb", name)), base.join(name)];
             for candidate in &candidates {
-                if candidate.exists() {
+                if candidate.is_file() {
                     found_path = Some(candidate.clone());
                     break;
                 }
@@ -235,7 +236,7 @@ impl VirtualMachine {
                 Statement::Match { .. } | Statement::CaseIn { .. }
             ) {
                 match self.execute_statement(statement)? {
-                    ControlFlow::Return { value, .. } => {
+                    ControlFlow::Return { value, .. } | ControlFlow::Value(value) => {
                         last_value = Some(value);
                         continue;
                     }
@@ -262,6 +263,9 @@ impl VirtualMachine {
             // Execute other statements
             match self.execute_statement(statement)? {
                 ControlFlow::Next => {}
+                ControlFlow::Value(value) => {
+                    last_value = Some(value);
+                }
                 ControlFlow::Return { value, .. } => return Ok(Some(value)),
                 ControlFlow::Exception {
                     exception,
@@ -454,11 +458,11 @@ impl VirtualMachine {
                             return Ok(Object::Method(Rc::new(bound)));
                         }
                     }
-                    // Special case: `new` on a Class returns the class (for calling)
+                    // Bare `new` inside a class method should instantiate the class
                     if name == "new"
                         && let Object::Class(_) = &receiver
                     {
-                        return Ok(receiver);
+                        return self.invoke_callable(receiver, vec![], *position);
                     }
                     Err(undefined_variable_error(name, *position))
                 } else {
@@ -596,6 +600,23 @@ impl VirtualMachine {
                 trailing_block,
                 position,
             } => {
+                // If callee is a bare identifier, prefer dispatching as a method
+                // call with the supplied arguments rather than auto-invoking the
+                // identifier with zero args (which would discard the arguments).
+                if let Expression::Identifier { name, .. } = callee.as_ref()
+                    && self.environment.get(name).is_none()
+                    && self.environment.get("self").is_some()
+                {
+                    return self.evaluate_method_call(
+                        &Expression::SelfExpr {
+                            position: *position,
+                        },
+                        name,
+                        arguments,
+                        trailing_block.as_ref().map(|b| b.as_ref()),
+                        *position,
+                    );
+                }
                 let callable = self.evaluate_expression(callee);
                 let evaluated_args = self.evaluate_arguments(arguments)?;
                 if let Some(block_expr) = trailing_block {
@@ -604,8 +625,6 @@ impl VirtualMachine {
                 match callable {
                     Ok(func) => self.invoke_callable(func, evaluated_args, *position),
                     Err(_) => {
-                        // If callee is a bare identifier not found as variable,
-                        // try dispatching as self.method(args)
                         if let Expression::Identifier { name, .. } = callee.as_ref()
                             && self.environment.get("self").is_some()
                         {

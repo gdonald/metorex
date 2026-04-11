@@ -55,6 +55,39 @@ impl VirtualMachine {
 
         // Special handling for Class objects
         if let Object::Class(class_rc) = receiver {
+            // Dir["pattern"] / Dir.glob("pattern")
+            if class_rc.name() == "Dir" && (method_name == "[]" || method_name == "glob") {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let mut results: Vec<Object> = Vec::new();
+                for arg in arguments {
+                    let pattern = match arg {
+                        Object::String(s) => s.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    if let Ok(paths) = glob::glob(&pattern) {
+                        for entry in paths.flatten() {
+                            results.push(Object::string(entry.to_string_lossy().to_string()));
+                        }
+                    }
+                }
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                    results,
+                )))));
+            }
             match method_name {
                 "new" if class_rc.name() == "Set" => {
                     // Set.new creates a new set, optionally from an array
@@ -202,6 +235,100 @@ impl VirtualMachine {
                         }
                     };
                     return Ok(Some(Object::Bool(std::path::Path::new(&path).exists())));
+                }
+                "realpath" if class_rc.name() == "File" => {
+                    if arguments.is_empty() || arguments.len() > 2 {
+                        return Err(method_argument_error(
+                            "realpath",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let path_str = match &arguments[0] {
+                        Object::String(s) => s.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "realpath", "String", other, position,
+                            ));
+                        }
+                    };
+                    let base = if arguments.len() == 2 {
+                        match &arguments[1] {
+                            Object::String(s) => s.as_str().to_string(),
+                            other => {
+                                return Err(method_argument_type_error(
+                                    "realpath", "String", other, position,
+                                ));
+                            }
+                        }
+                    } else {
+                        std::env::current_dir()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .to_string()
+                    };
+                    let base_path = std::path::PathBuf::from(&base);
+                    let expanded = base_path.join(&path_str);
+                    match expanded.canonicalize() {
+                        Ok(p) => {
+                            return Ok(Some(Object::string(p.to_string_lossy().to_string())));
+                        }
+                        Err(e) => {
+                            let exc = if e.kind() == std::io::ErrorKind::NotFound {
+                                Object::exception(
+                                    "Errno::ENOENT",
+                                    format!("No such file or directory @ realpath - {}", path_str),
+                                )
+                            } else {
+                                Object::exception(
+                                    "Errno::ENOTDIR",
+                                    format!("Not a directory @ realpath - {}", path_str),
+                                )
+                            };
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc.clone(),
+                                location: position_to_location(position),
+                                message: format!("{}", exc),
+                            });
+                        }
+                    }
+                }
+                "directory?" if class_rc.name() == "File" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            "directory?",
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let path = match &arguments[0] {
+                        Object::String(s) => s.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "directory?",
+                                "String",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    return Ok(Some(Object::Bool(std::path::Path::new(&path).is_dir())));
+                }
+                "file?" if class_rc.name() == "File" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error("file?", 1, arguments.len(), position));
+                    }
+                    let path = match &arguments[0] {
+                        Object::String(s) => s.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "file?", "String", other, position,
+                            ));
+                        }
+                    };
+                    return Ok(Some(Object::Bool(std::path::Path::new(&path).is_file())));
                 }
                 "expand_path" if class_rc.name() == "File" => {
                     if arguments.is_empty() || arguments.len() > 2 {
@@ -449,6 +576,11 @@ impl VirtualMachine {
 
         // Module receivers: support the same methods as Class (remove_method, etc.)
         if let Object::Module(module_rc) = receiver {
+            // Signal module stubs: trap is a no-op; the block is discarded.
+            if module_rc.name() == "Signal" && method_name == "trap" {
+                self.pending_block.take();
+                return Ok(Some(Object::Nil));
+            }
             match method_name {
                 "name" => {
                     return Ok(Some(Object::String(Rc::new(module_rc.name().to_string()))));

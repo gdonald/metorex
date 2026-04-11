@@ -278,7 +278,9 @@ impl Parser {
         if self.check(&[TokenKind::Question]) {
             let position = self.advance().position; // consume ?
             self.skip_whitespace();
+            self.ternary_depth += 1;
             let then_expr = self.parse_assignment()?;
+            self.ternary_depth -= 1;
             self.skip_whitespace();
             self.expect(TokenKind::Colon, "Expected ':' in ternary expression")?;
             self.skip_whitespace();

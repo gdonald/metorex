@@ -111,3 +111,33 @@ fn attr_reader_with_non_symbol_error() {
     let err = parse_err("class Foo\n  attr_reader 42\nend");
     assert!(err.contains("attribute") || err.contains("Expected") || err.contains("Unexpected"));
 }
+
+// ── attr_* with keyword names (parser supports keywords-as-attr-names) ────
+
+#[test]
+fn attr_reader_with_keyword_names() {
+    let result = run(
+        "class Foo\n  attr_reader :include, :class\n  def initialize\n    @include = 1\n    @class = 2\n  end\nend\nf = Foo.new\nf.include + f.class",
+    );
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn attr_writer_with_keyword_names() {
+    let result = run("class Bar\n  attr_writer :extend\nend\nb = Bar.new\nb.extend = 99\n42");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn attr_accessor_with_multiple_keyword_names() {
+    let result = run(
+        "class Baz\n  attr_accessor :module, :def, :do\nend\nb = Baz.new\nb.module = 1\nb.def = 2\nb.do = 3\nb.module + b.def + b.do",
+    );
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn attr_reader_missing_colon_errors() {
+    let err = parse_err("class Foo\n  attr_reader name\nend");
+    assert!(err.contains("Expected") || err.contains("symbol") || err.contains("attribute"));
+}

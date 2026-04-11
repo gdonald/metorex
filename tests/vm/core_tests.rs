@@ -555,6 +555,102 @@ fn defined_scope_resolution() {
     assert_eq!(run("defined?(Nonexistent::Thing)"), Some(Object::Nil));
 }
 
+#[test]
+fn defined_global_function_returns_string() {
+    // `puts` is in scope; defined? returns some non-nil string.
+    let result = run("defined?(puts)");
+    assert!(matches!(result, Some(Object::String(_))));
+}
+
+#[test]
+fn defined_class_var_with_existing() {
+    let result =
+        run("class Foo\n  @@x = 1\n  def check\n    defined?(@@x)\n  end\nend\nFoo.new.check");
+    if let Some(Object::String(s)) = result {
+        assert!(s.contains("class") || s.contains("variable"));
+    } else {
+        panic!("expected String, got {:?}", result);
+    }
+}
+
+#[test]
+fn defined_scope_resolution_existing() {
+    let result = run("class Foo\n  VERSION = 42\nend\ndefined?(Foo::VERSION)");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("constant".to_string())))
+    );
+}
+
+#[test]
+fn defined_super_returns_super() {
+    let result = run(
+        "class Parent\n  def hi\n    \"p\"\n  end\nend\nclass Child < Parent\n  def hi\n    defined?(super)\n  end\nend\nChild.new.hi",
+    );
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("super".to_string())))
+    );
+}
+
+#[test]
+fn defined_self_returns_string() {
+    let result = run("class Foo\n  def check\n    defined?(self)\n  end\nend\nFoo.new.check");
+    assert!(matches!(result, Some(Object::String(_))));
+}
+
+#[test]
+fn defined_array_literal() {
+    assert_eq!(
+        run("defined?([1, 2, 3])"),
+        Some(Object::String(std::rc::Rc::new("expression".to_string())))
+    );
+}
+
+#[test]
+fn defined_dictionary_literal() {
+    assert_eq!(
+        run("defined?({a: 1})"),
+        Some(Object::String(std::rc::Rc::new("expression".to_string())))
+    );
+}
+
+#[test]
+fn defined_undefined_global_var_returns_nil() {
+    assert_eq!(run("defined?($zzz_no_such_global)"), Some(Object::Nil));
+}
+
+#[test]
+fn defined_instance_var_when_unset_returns_nil() {
+    let result = run("class Foo\n  def check\n    defined?(@unset_iv)\n  end\nend\nFoo.new.check");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── Splat in argument list ────────────────────────────────────────────────
+
+#[test]
+fn splat_with_non_array_value_treated_as_single_arg() {
+    let result = run(r#"
+def f(a, b)
+  a + b
+end
+x = 5
+f(*x, 10)
+"#);
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+#[test]
+fn splat_with_nil_value_treated_as_single_arg() {
+    let result = run(r#"
+def f(x)
+  x.nil?
+end
+f(*nil)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
 // ── From vm/additional_tests ────────────────────────────────────────────────
 
 #[test]

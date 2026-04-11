@@ -80,9 +80,9 @@ s.difference(42)
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn set_each_return_in_method_errors() {
-    let err = run_err(
-        r#"
+fn set_each_return_in_method_returns_from_method() {
+    // Ruby semantics: `return` inside a block returns from the enclosing method.
+    let result = run(r#"
 def test_set_return
   s = Set.new
   s.add("a")
@@ -92,13 +92,8 @@ def test_set_return
   end
 end
 test_set_return
-"#,
-    );
-    assert!(
-        err.contains("return") || err.contains("control") || err.contains("loop"),
-        "Error was: {}",
-        err
-    );
+"#);
+    assert!(matches!(result, Some(Object::String(_))));
 }
 
 #[test]

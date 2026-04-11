@@ -359,8 +359,57 @@ fn hash_bracket_access() {
 
 #[test]
 fn hash_bracket_missing_key() {
-    let err = run_err(r#"h = { "a" => 1 }; h["missing"]"#);
-    assert!(err.contains("not found") || err.contains("Key"));
+    // Ruby semantics: missing hash key returns nil (not an error).
+    let result = run(r#"h = { "a" => 1 }; h["missing"]"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── Hash[] index assignment with various key types ────────────────────────
+
+#[test]
+fn hash_index_assign_symbol_key() {
+    let result = run(r#"h = {}; h[:foo] = 1; h[:foo]"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_index_assign_integer_key() {
+    let result = run(r#"h = {}; h[42] = "answer"; h[42]"#);
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.as_str(), "answer");
+    } else {
+        panic!("expected string, got {:?}", result);
+    }
+}
+
+#[test]
+fn hash_index_assign_bool_key() {
+    let result = run(r#"h = {}; h[true] = "yes"; h[true]"#);
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.as_str(), "yes");
+    } else {
+        panic!("expected string, got {:?}", result);
+    }
+}
+
+#[test]
+fn hash_index_assign_nil_key() {
+    let result = run(r#"h = {}; h[nil] = "nothing"; h[nil]"#);
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.as_str(), "nothing");
+    } else {
+        panic!("expected string, got {:?}", result);
+    }
+}
+
+#[test]
+fn hash_index_assign_float_key() {
+    let result = run(r#"h = {}; h[1.5] = "f"; h[1.5]"#);
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.as_str(), "f");
+    } else {
+        panic!("expected string, got {:?}", result);
+    }
 }
 
 #[test]

@@ -217,6 +217,9 @@ impl VirtualMachine {
 
                 match self.execute_statement(statement)? {
                     ControlFlow::Next => {}
+                    ControlFlow::Value(value) => {
+                        last_value = value;
+                    }
                     ControlFlow::Return { value, .. } => {
                         last_value = value;
                         break;
@@ -270,7 +273,7 @@ impl VirtualMachine {
 
             for statement in block.body() {
                 match self.execute_statement(statement)? {
-                    ControlFlow::Next => {}
+                    ControlFlow::Next | ControlFlow::Value(_) => {}
                     flow @ (ControlFlow::Return { .. }
                     | ControlFlow::Break { .. }
                     | ControlFlow::Continue { .. }
@@ -433,6 +436,9 @@ impl VirtualMachine {
                     self.environment_mut()
                         .define(block_param.clone(), block_value);
                 }
+            } else if let Some(block_param) = &method.block_parameter {
+                self.environment_mut()
+                    .define(block_param.clone(), Object::Nil);
             }
 
             // Execute all statements, tracking the last expression value
@@ -483,12 +489,34 @@ impl VirtualMachine {
                             )?;
                             continue;
                         }
+                        Statement::Begin {
+                            body: begin_body,
+                            rescue_clauses,
+                            else_clause,
+                            ensure_block,
+                            ..
+                        } => {
+                            last_value = self.evaluate_begin_value(
+                                begin_body,
+                                rescue_clauses,
+                                else_clause.as_deref(),
+                                ensure_block.as_deref(),
+                            )?;
+                            continue;
+                        }
                         _ => {}
                     }
                 }
 
+                let is_last = i == body.len() - 1;
                 match self.execute_statement(statement)? {
                     ControlFlow::Next => continue,
+                    ControlFlow::Value(v) => {
+                        if is_last {
+                            last_value = v;
+                        }
+                        continue;
+                    }
                     ControlFlow::Return { value, .. } => return Ok(value),
                     ControlFlow::Exception {
                         exception,
@@ -513,7 +541,10 @@ impl VirtualMachine {
         })();
 
         self.environment_mut().pop_scope();
-        result
+        match result {
+            Err(MetorexError::NonLocalReturn { value, .. }) => Ok(value),
+            other => other,
+        }
     }
 
     /// Execute the body of a standalone function within a fresh scope (no self).
@@ -550,6 +581,9 @@ impl VirtualMachine {
                     self.environment_mut()
                         .define(block_param.clone(), block_value);
                 }
+            } else if let Some(block_param) = &function.block_parameter {
+                self.environment_mut()
+                    .define(block_param.clone(), Object::Nil);
             }
 
             // Execute all statements, tracking the last expression value
@@ -600,12 +634,34 @@ impl VirtualMachine {
                             )?;
                             continue;
                         }
+                        Statement::Begin {
+                            body: begin_body,
+                            rescue_clauses,
+                            else_clause,
+                            ensure_block,
+                            ..
+                        } => {
+                            last_value = self.evaluate_begin_value(
+                                begin_body,
+                                rescue_clauses,
+                                else_clause.as_deref(),
+                                ensure_block.as_deref(),
+                            )?;
+                            continue;
+                        }
                         _ => {}
                     }
                 }
 
+                let is_last = i == body.len() - 1;
                 match self.execute_statement(statement)? {
                     ControlFlow::Next => continue,
+                    ControlFlow::Value(v) => {
+                        if is_last {
+                            last_value = v;
+                        }
+                        continue;
+                    }
                     ControlFlow::Return { value, .. } => return Ok(value),
                     ControlFlow::Exception {
                         exception,
@@ -630,7 +686,128 @@ impl VirtualMachine {
         })();
 
         self.environment_mut().pop_scope();
-        result
+        match result {
+            Err(MetorexError::NonLocalReturn { value, .. }) => Ok(value),
+            other => other,
+        }
+    }
+
+    /// Evaluate a Begin block as an expression, returning the value of the
+    /// last successfully executed statement (in body, rescue, or else).
+    pub(crate) fn evaluate_begin_value(
+        &mut self,
+        body: &[Statement],
+        rescue_clauses: &[crate::ast::RescueClause],
+        else_clause: Option<&[Statement]>,
+        ensure_block: Option<&[Statement]>,
+    ) -> Result<Object, MetorexError> {
+        let body_result = self.execute_statements_for_value(body);
+        let mut final_value = body_result.clone();
+        let mut handled = false;
+
+        if let Err(MetorexError::UncaughtException { exception, .. }) = &body_result {
+            self.environment_mut()
+                .define("$!".to_string(), exception.clone());
+            for rescue_clause in rescue_clauses {
+                if self.exception_matches(exception, &rescue_clause.exception_types)? {
+                    if let Some(var_name) = &rescue_clause.variable_name {
+                        self.environment_mut()
+                            .define(var_name.clone(), exception.clone());
+                    }
+                    final_value = self.execute_statements_for_value(&rescue_clause.body);
+                    handled = true;
+                    break;
+                }
+            }
+            if handled {
+                self.environment_mut().define("$!".to_string(), Object::Nil);
+            }
+        } else if body_result.is_ok()
+            && let Some(else_stmts) = else_clause
+        {
+            final_value = self.execute_statements_for_value(else_stmts);
+        }
+
+        if let Some(ensure_stmts) = ensure_block {
+            // If ensure raises (NonLocalReturn or exception), it overrides the prior result.
+            self.execute_statements_for_value(ensure_stmts)?;
+        }
+
+        final_value
+    }
+
+    /// Execute statements and return the value of the last expression
+    /// (similar to a method body, but without binding parameters or self).
+    pub(crate) fn execute_statements_for_value(
+        &mut self,
+        statements: &[Statement],
+    ) -> Result<Object, MetorexError> {
+        let mut last_value = Object::Nil;
+        for (i, statement) in statements.iter().enumerate() {
+            let is_last = i == statements.len() - 1;
+            if is_last {
+                match statement {
+                    Statement::Expression { expression, .. } => {
+                        last_value = self.evaluate_expression(expression)?;
+                        continue;
+                    }
+                    Statement::Assignment { value, target, .. } => {
+                        let evaluated = self.evaluate_expression(value)?;
+                        self.assign_value(target, evaluated.clone())?;
+                        last_value = evaluated;
+                        continue;
+                    }
+                    Statement::Begin {
+                        body: begin_body,
+                        rescue_clauses,
+                        else_clause,
+                        ensure_block,
+                        ..
+                    } => {
+                        last_value = self.evaluate_begin_value(
+                            begin_body,
+                            rescue_clauses,
+                            else_clause.as_deref(),
+                            ensure_block.as_deref(),
+                        )?;
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            match self.execute_statement(statement)? {
+                ControlFlow::Next => continue,
+                ControlFlow::Value(v) => {
+                    if is_last {
+                        last_value = v;
+                    }
+                    continue;
+                }
+                ControlFlow::Return { value, position } => {
+                    return Err(MetorexError::NonLocalReturn {
+                        value,
+                        location: position_to_location(position),
+                    });
+                }
+                ControlFlow::Exception {
+                    exception,
+                    position,
+                } => {
+                    return Err(MetorexError::UncaughtException {
+                        exception: exception.clone(),
+                        location: position_to_location(position),
+                        message: format_exception(&exception),
+                    });
+                }
+                ControlFlow::Break { position } => {
+                    return Err(loop_control_error("break", position));
+                }
+                ControlFlow::Continue { position } => {
+                    return Err(loop_control_error("continue", position));
+                }
+            }
+        }
+        Ok(last_value)
     }
 
     /// Check if a class is an exception class (Exception or its subclasses)
@@ -646,6 +823,23 @@ impl VirtualMachine {
             "RuntimeError",
             "TypeError",
             "ValueError",
+            "LoadError",
+            "ArgumentError",
+            "NameError",
+            "NoMethodError",
+            "NotImplementedError",
+            "ScriptError",
+            "ZeroDivisionError",
+            "FloatDomainError",
+            "IndexError",
+            "KeyError",
+            "RangeError",
+            "StopIteration",
+            "IOError",
+            "FrozenError",
+            "Errno::ENOENT",
+            "Errno::ENOTDIR",
+            "Errno::EACCES",
         ];
 
         // Check if the class name matches any exception class
@@ -689,7 +883,7 @@ impl VirtualMachine {
 fn positional_arg_count(arguments: &[Object]) -> usize {
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
-        if !dict.is_empty() && dict.keys().all(|k| k.starts_with(':')) {
+        if dict.contains_key("__MX_KWARGS__") {
             return arguments.len() - 1;
         }
     }
@@ -751,14 +945,21 @@ fn bind_params(
 /// Split a list of evaluated arguments into positional args and keyword args.
 /// If the last argument is a Dict with symbol-style keys, it's treated as keyword args.
 fn split_keyword_args(mut arguments: Vec<Object>) -> (Vec<Object>, HashMap<String, Object>) {
+    // Only split if the trailing dict carries the parser-emitted kwargs marker.
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
-        // Keyword arg dicts use symbol-style keys (starting with ':')
-        let all_symbol_keys = !dict.is_empty() && dict.keys().all(|k| k.starts_with(':'));
-        if all_symbol_keys {
+        if dict.contains_key("__MX_KWARGS__") {
             let kwargs: HashMap<String, Object> = dict
                 .iter()
-                .map(|(k, v)| (k[1..].to_string(), v.clone()))
+                .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")
+                .map(|(k, v)| {
+                    let name = if let Some(stripped) = k.strip_prefix(':') {
+                        stripped.to_string()
+                    } else {
+                        k.clone()
+                    };
+                    (name, v.clone())
+                })
                 .collect();
             drop(dict);
             arguments.pop();

@@ -34,6 +34,24 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("false", Object::Bool(false));
     // block_given? defaults to false at global scope (no block context)
     globals.set("block_given?", Object::Bool(false));
+    // Ruby constants that mspec and specs query
+    globals.set("RUBY_VERSION", Object::String(Rc::new("4.0.2".to_string())));
+    globals.set(
+        "RUBY_ENGINE",
+        Object::String(Rc::new("metorex".to_string())),
+    );
+    globals.set(
+        "RUBY_PLATFORM",
+        Object::String(Rc::new(std::env::consts::OS.to_string())),
+    );
+    globals.set(
+        "RUBY_DESCRIPTION",
+        Object::String(Rc::new("metorex (ruby-compatible)".to_string())),
+    );
+    // Standard IO stream placeholders (used as constants like STDOUT/STDERR/STDIN)
+    globals.set("STDOUT", Object::String(Rc::new("STDOUT".to_string())));
+    globals.set("STDERR", Object::String(Rc::new("STDERR".to_string())));
+    globals.set("STDIN", Object::String(Rc::new("STDIN".to_string())));
 }
 
 /// Register built-in modules (Comparable, Enumerable, Kernel, etc.).
@@ -49,6 +67,18 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // Kernel — stub module
     let kernel = Rc::new(Class::new("Kernel", None));
     globals.set("Kernel", Object::Module(kernel));
+
+    // Signal — stub module (trap is a no-op)
+    let signal = Rc::new(Class::new("Signal", None));
+    globals.set("Signal", Object::Module(signal));
+
+    // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)
+    // because object_to_dict_key returns the raw String for Object::String.
+    let mut env_map = std::collections::HashMap::new();
+    for (k, v) in std::env::vars() {
+        env_map.insert(k, Object::String(Rc::new(v)));
+    }
+    globals.set("ENV", Object::Dict(Rc::new(RefCell::new(env_map))));
 }
 
 /// Register Ruby special global variables.
@@ -123,6 +153,23 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("parse", Object::NativeFunction("parse".to_string()));
     globals.set("exit", Object::NativeFunction("exit".to_string()));
     globals.set("load", Object::NativeFunction("load".to_string()));
+    // Visibility modifiers — stubs (no access control enforced).
+    globals.set("private", Object::NativeFunction("private".to_string()));
+    globals.set("public", Object::NativeFunction("public".to_string()));
+    globals.set("protected", Object::NativeFunction("protected".to_string()));
+    globals.set(
+        "module_function",
+        Object::NativeFunction("module_function".to_string()),
+    );
+    globals.set(
+        "private_class_method",
+        Object::NativeFunction("private_class_method".to_string()),
+    );
+    globals.set(
+        "public_class_method",
+        Object::NativeFunction("public_class_method".to_string()),
+    );
+    globals.set("freeze", Object::NativeFunction("freeze".to_string()));
 }
 
 /// Seed the environment with values from the global registry.

@@ -252,7 +252,28 @@ impl Parser {
         {
             None
         } else {
-            let first = self.parse_expression()?;
+            let mut first = self.parse_expression()?;
+            // Allow assignment in return value: `return x = value`
+            if self.check(&[TokenKind::Equal])
+                && matches!(
+                    first,
+                    Expression::Identifier { .. }
+                        | Expression::InstanceVariable { .. }
+                        | Expression::ClassVariable { .. }
+                        | Expression::GlobalVariable { .. }
+                        | Expression::Index { .. }
+                )
+            {
+                let eq_pos = self.advance().position;
+                self.skip_whitespace();
+                let value = self.parse_expression()?;
+                first = Expression::BinaryOp {
+                    op: crate::ast::BinaryOp::Assign,
+                    left: Box::new(first),
+                    right: Box::new(value),
+                    position: eq_pos,
+                };
+            }
             if self.match_token(&[TokenKind::Comma]) {
                 // Multiple return values: return a, b, c → return [a, b, c]
                 let mut elements = vec![first];

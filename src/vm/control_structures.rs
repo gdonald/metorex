@@ -73,7 +73,7 @@ impl VirtualMachine {
             }
 
             match self.execute_statements_internal(body)? {
-                ControlFlow::Next => continue,
+                ControlFlow::Next | ControlFlow::Value(_) => continue,
                 ControlFlow::Break { .. } => break,
                 ControlFlow::Continue { .. } => continue,
                 ControlFlow::Return { value, position } => {
@@ -160,7 +160,7 @@ impl VirtualMachine {
             self.environment_mut().pop_scope();
 
             match result? {
-                ControlFlow::Next => continue,
+                ControlFlow::Next | ControlFlow::Value(_) => continue,
                 ControlFlow::Break { .. } => break,
                 ControlFlow::Continue { .. } => continue,
                 ControlFlow::Return { value, position } => {

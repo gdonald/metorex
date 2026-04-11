@@ -311,3 +311,49 @@ fn range_include_boundary_remaining() {
     assert_eq!(run("(1..5).include?(5)"), Some(Object::Bool(true)));
     assert_eq!(run("(1...5).include?(5)"), Some(Object::Bool(false)));
 }
+
+// ── String range include? ─────────────────────────────────────────────────
+
+#[test]
+fn string_range_include_inclusive() {
+    assert_eq!(run(r#"("a".."z").include?("m")"#), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_range_include_at_end_inclusive() {
+    assert_eq!(run(r#"("a".."z").include?("z")"#), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_range_include_exclusive_excludes_end() {
+    assert_eq!(
+        run(r#"("a"..."z").include?("z")"#),
+        Some(Object::Bool(false))
+    );
+}
+
+#[test]
+fn string_range_include_exclusive_includes_middle() {
+    assert_eq!(
+        run(r#"("a"..."z").include?("m")"#),
+        Some(Object::Bool(true))
+    );
+}
+
+#[test]
+fn string_range_include_below_start() {
+    assert_eq!(
+        run(r#"("c".."z").include?("a")"#),
+        Some(Object::Bool(false))
+    );
+}
+
+#[test]
+fn float_range_include_inclusive() {
+    assert_eq!(run("(1.0..3.0).include?(2.5)"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn float_range_include_outside() {
+    assert_eq!(run("(1.0..3.0).include?(5.0)"), Some(Object::Bool(false)));
+}

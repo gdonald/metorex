@@ -345,7 +345,122 @@ fn run_exc(code: &str) -> Option<Object> {
     vm.execute_program(&stmts).expect("execution failed")
 }
 
-// run_exc_err removed — no tests currently need it
+fn run_exc_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
+#[test]
+fn raise_with_non_exception_value_errors() {
+    // Raising an Integer (or any non-exception) should error.
+    let err = run_exc_err("raise 5");
+    assert!(err.contains("Exception must be"));
+}
+
+#[test]
+fn bare_raise_outside_rescue_errors() {
+    let err = run_exc_err("raise");
+    assert!(err.contains("No exception to re-raise"));
+}
+
+#[test]
+fn raise_class_creates_exception_of_that_type() {
+    let result = run_exc(
+        r#"
+def t
+  begin
+    raise StandardError
+    "no"
+  rescue StandardError => e
+    "caught"
+  end
+end
+t
+"#,
+    );
+    assert_eq!(result, Some(Object::string("caught")));
+}
+
+#[test]
+fn rescue_unrelated_class_does_not_match() {
+    let err = run_exc_err(
+        r#"
+def test
+  begin
+    raise "boom"
+  rescue TypeError => e
+    "wrong"
+  end
+end
+test
+"#,
+    );
+    assert!(err.contains("RuntimeError") || err.contains("boom"));
+}
+
+#[test]
+fn ensure_with_break_overrides_result() {
+    // The `ensure` clause runs even when the body breaks/returns; if it itself
+    // produces a control-flow signal, that wins. We check the simpler "ensure
+    // value is computed" path here.
+    let result = run_exc(
+        r#"
+def collect
+  arr = []
+  [1, 2, 3].each do |x|
+    begin
+      arr << x
+    ensure
+      arr << x * 10
+    end
+  end
+  arr
+end
+collect().length
+"#,
+    );
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn rescue_catches_error_by_exact_name() {
+    // LoadError is recognized by name even when caught explicitly.
+    let result = run_exc(
+        r#"
+def t
+  begin
+    require("zz_no_such_file_xyz")
+    "no"
+  rescue LoadError => e
+    "yes"
+  end
+end
+t
+"#,
+    );
+    assert_eq!(result, Some(Object::string("yes")));
+}
+
+#[test]
+fn rescue_load_error_caught_via_exception_ancestor() {
+    // LoadError is in `is_standard_exception_name`, so `rescue Exception` catches it too.
+    let result = run_exc(
+        r#"
+def t
+  begin
+    require("zz_no_such_file_xyz")
+    "no"
+  rescue Exception => e
+    "yes"
+  end
+end
+t
+"#,
+    );
+    assert_eq!(result, Some(Object::string("yes")));
+}
 
 // ── Exception edge cases (from additional_tests) ────────────────────────────
 

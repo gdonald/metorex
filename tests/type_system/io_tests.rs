@@ -192,3 +192,160 @@ fn print_with_no_args_returns_nil() {
     let result = run("print()");
     assert_eq!(result, Some(Object::Nil));
 }
+
+// ============================================================================
+// File.realpath
+// ============================================================================
+
+#[test]
+fn file_realpath_for_existing_file() {
+    let result = run(r#"File.realpath("Cargo.toml")"#);
+    match result {
+        Some(Object::String(s)) => assert!(s.ends_with("Cargo.toml")),
+        other => panic!("expected canonical path string, got {:?}", other),
+    }
+}
+
+#[test]
+fn file_realpath_with_base_dir() {
+    let result = run(r#"File.realpath("Cargo.toml", ".")"#);
+    match result {
+        Some(Object::String(s)) => assert!(s.ends_with("Cargo.toml")),
+        other => panic!("expected canonical path string, got {:?}", other),
+    }
+}
+
+#[test]
+fn file_realpath_missing_raises_enoent() {
+    let err = run_err(r#"File.realpath("definitely_not_here_xyz_123.txt")"#);
+    assert!(err.contains("ENOENT") || err.contains("No such file"));
+}
+
+#[test]
+fn file_realpath_wrong_arg_count_errors() {
+    let err = run_err("File.realpath");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn file_realpath_non_string_arg_errors() {
+    let err = run_err("File.realpath(42)");
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn file_realpath_non_string_base_errors() {
+    let err = run_err(r#"File.realpath("Cargo.toml", 42)"#);
+    assert!(err.contains("String"));
+}
+
+// ============================================================================
+// File.directory?
+// ============================================================================
+
+#[test]
+fn file_directory_true_for_existing_dir() {
+    let result = run(r#"File.directory?("src")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn file_directory_false_for_file() {
+    let result = run(r#"File.directory?("Cargo.toml")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn file_directory_wrong_arg_count_errors() {
+    let err = run_err("File.directory?");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn file_directory_non_string_arg_errors() {
+    let err = run_err("File.directory?(42)");
+    assert!(err.contains("String"));
+}
+
+// ============================================================================
+// File.file?
+// ============================================================================
+
+#[test]
+fn file_file_true_for_existing_file() {
+    let result = run(r#"File.file?("Cargo.toml")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn file_file_false_for_directory() {
+    let result = run(r#"File.file?("src")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn file_file_wrong_arg_count_errors() {
+    let err = run_err("File.file?");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn file_file_non_string_arg_errors() {
+    let err = run_err("File.file?(42)");
+    assert!(err.contains("String"));
+}
+
+// ============================================================================
+// Dir[] / Dir.glob
+// ============================================================================
+
+#[test]
+fn dir_bracket_glob_returns_matches() {
+    let result = run(r#"Dir["Cargo.*"]"#);
+    match result {
+        Some(Object::Array(arr)) => {
+            let names: Vec<String> = arr
+                .borrow()
+                .iter()
+                .filter_map(|o| match o {
+                    Object::String(s) => Some((**s).clone()),
+                    _ => None,
+                })
+                .collect();
+            assert!(names.iter().any(|n| n.ends_with("Cargo.toml")));
+        }
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+#[test]
+fn dir_glob_returns_matches() {
+    let result = run(r#"Dir.glob("Cargo.*")"#);
+    match result {
+        Some(Object::Array(arr)) => {
+            assert!(!arr.borrow().is_empty());
+        }
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+#[test]
+fn dir_glob_no_match_returns_empty_array() {
+    let result = run(r#"Dir["zzz_no_such_pattern_xyz_*"]"#);
+    match result {
+        Some(Object::Array(arr)) => assert!(arr.borrow().is_empty()),
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+#[test]
+fn dir_glob_no_args_errors() {
+    let err = run_err(r#"Dir.glob"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn dir_glob_non_string_arg_errors() {
+    let err = run_err("Dir[42]");
+    assert!(err.contains("String"));
+}

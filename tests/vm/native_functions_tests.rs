@@ -188,3 +188,237 @@ fn print_formats_arguments_without_newline() {
 fn p_function_returns_single_value() {
     assert_eq!(run("p(42)"), Some(Object::Int(42)));
 }
+
+// ── load() ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn load_existing_file_returns_true() {
+    // Create a temporary .rb file and load it.
+    let path = "tests/_examples/io_load_test_tmp.rb";
+    std::fs::write(path, "x = 99\n").unwrap();
+    let result = run(&format!(r#"load("{}")"#, path));
+    assert_eq!(result, Some(Object::Bool(true)));
+    std::fs::remove_file(path).ok();
+}
+
+#[test]
+fn load_missing_file_errors() {
+    let err = run_err(r#"load("definitely_not_here_xyzzy.rb")"#);
+    assert!(err.contains("cannot load"));
+}
+
+#[test]
+fn load_wrong_arg_count_errors() {
+    let err = run_err("load()");
+    assert!(err.contains("1 argument"));
+}
+
+#[test]
+fn load_non_string_arg_errors() {
+    let err = run_err("load(42)");
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn load_too_many_args_errors() {
+    let err = run_err(r#"load("a", "b")"#);
+    assert!(err.contains("1 argument"));
+}
+
+#[test]
+fn load_via_load_path() {
+    // Create a file in tests/_examples and load it via a bare name + $LOAD_PATH.
+    let dir = "tests/_examples";
+    let name = "io_load_path_test_tmp.rb";
+    let path = format!("{}/{}", dir, name);
+    std::fs::write(&path, "y = 7\n").unwrap();
+    let result = run(&format!(
+        r#"$LOAD_PATH.unshift "{}"
+load("{}")
+"#,
+        dir, name
+    ));
+    assert_eq!(result, Some(Object::Bool(true)));
+    std::fs::remove_file(&path).ok();
+}
+
+// ── visibility modifier stubs (private/public/protected/module_function) ───
+
+#[test]
+fn private_visibility_stub_is_noop() {
+    assert_eq!(run("private()"), Some(Object::Nil));
+}
+
+#[test]
+fn public_visibility_stub_is_noop() {
+    assert_eq!(run("public()"), Some(Object::Nil));
+}
+
+#[test]
+fn protected_visibility_stub_is_noop() {
+    assert_eq!(run("protected()"), Some(Object::Nil));
+}
+
+#[test]
+fn module_function_stub_is_noop() {
+    assert_eq!(run("module_function()"), Some(Object::Nil));
+}
+
+#[test]
+fn freeze_stub_is_noop() {
+    assert_eq!(run("freeze()"), Some(Object::Nil));
+}
+
+#[test]
+fn private_class_method_stub_is_noop() {
+    assert_eq!(run("private_class_method()"), Some(Object::Nil));
+}
+
+#[test]
+fn public_class_method_stub_is_noop() {
+    assert_eq!(run("public_class_method()"), Some(Object::Nil));
+}
+
+#[test]
+fn private_with_argument_still_noop() {
+    // `private :foo` should not error even though it's a stub.
+    assert_eq!(run("private(:foo)"), Some(Object::Nil));
+}
+
+// ── require() error paths ──────────────────────────────────────────────────
+
+#[test]
+fn require_no_args_errors() {
+    let err = run_err("require()");
+    assert!(err.contains("1 argument"));
+}
+
+#[test]
+fn require_non_string_arg_errors() {
+    let err = run_err("require(42)");
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn require_missing_file_raises_load_error() {
+    // `require` on a non-existent file raises LoadError; caught inside a method.
+    let result = run(r#"
+def try_load
+  begin
+    require("zz_definitely_not_here_xyz")
+    "not caught"
+  rescue LoadError => e
+    "caught"
+  end
+end
+try_load
+"#);
+    assert_eq!(result, Some(Object::string("caught")));
+}
+
+// ── gets() — only the wrong-arg-count error path is testable without stdin ─
+
+#[test]
+fn gets_with_args_errors() {
+    let err = run_err("gets(\"prompt\")");
+    assert!(err.contains("0 argument"));
+}
+
+// ── Kernel conversion functions: Integer(), String(), Array() ─────────────
+
+#[test]
+fn integer_conversion_from_int() {
+    assert_eq!(run("Integer(42)"), Some(Object::Int(42)));
+}
+
+#[test]
+fn integer_conversion_from_float_truncates() {
+    assert_eq!(run("Integer(3.9)"), Some(Object::Int(3)));
+}
+
+#[test]
+fn integer_conversion_from_string_with_whitespace() {
+    assert_eq!(run("Integer(\"  42  \")"), Some(Object::Int(42)));
+}
+
+#[test]
+fn integer_conversion_from_invalid_string_errors() {
+    let err = run_err(r#"Integer("hello")"#);
+    assert!(err.contains("invalid"));
+}
+
+#[test]
+fn integer_conversion_from_true_returns_one() {
+    assert_eq!(run("Integer(true)"), Some(Object::Int(1)));
+}
+
+#[test]
+fn integer_conversion_from_false_returns_zero() {
+    assert_eq!(run("Integer(false)"), Some(Object::Int(0)));
+}
+
+#[test]
+fn integer_conversion_from_nil_returns_zero() {
+    assert_eq!(run("Integer(nil)"), Some(Object::Int(0)));
+}
+
+#[test]
+fn integer_conversion_from_array_errors() {
+    let err = run_err("Integer([1, 2])");
+    assert!(err.contains("Array") || err.contains("convert"));
+}
+
+#[test]
+fn string_conversion_from_int() {
+    assert_eq!(run("String(42)"), Some(Object::string("42")));
+}
+
+#[test]
+fn string_conversion_from_nil() {
+    // String() formats nil via Display, which yields the literal "nil".
+    assert_eq!(run("String(nil)"), Some(Object::string("nil")));
+}
+
+#[test]
+fn array_conversion_from_array_returns_self() {
+    let result = run("Array([1, 2, 3])");
+    match result {
+        Some(Object::Array(arr)) => assert_eq!(arr.borrow().len(), 3),
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+#[test]
+fn array_conversion_from_nil_returns_empty() {
+    let result = run("Array(nil)");
+    match result {
+        Some(Object::Array(arr)) => assert!(arr.borrow().is_empty()),
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+#[test]
+fn array_conversion_from_string_wraps() {
+    let result = run(r#"Array("hi")"#);
+    match result {
+        Some(Object::Array(arr)) => assert_eq!(arr.borrow().len(), 1),
+        other => panic!("expected Array, got {:?}", other),
+    }
+}
+
+#[test]
+fn require_missing_file_raises_load_error_caught_as_standard_error() {
+    // LoadError < StandardError — a bare rescue should also catch it.
+    let result = run(r#"
+def try_load
+  begin
+    require("zz_definitely_not_here_xyz")
+    "not caught"
+  rescue => e
+    "caught"
+  end
+end
+try_load
+"#);
+    assert_eq!(result, Some(Object::string("caught")));
+}

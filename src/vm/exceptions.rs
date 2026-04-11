@@ -229,6 +229,16 @@ impl VirtualMachine {
 
         // Check if the exception's type matches any of the specified types
         for type_name in exception_types {
+            // Exact name match (covers stdlib exceptions like LoadError, Errno::*, etc.)
+            if type_name == &exception_type_name {
+                return Ok(true);
+            }
+            // Well-known ancestor catches: StandardError/Exception catches most errors.
+            if (type_name == "StandardError" || type_name == "Exception")
+                && Self::is_standard_exception_name(&exception_type_name)
+            {
+                return Ok(true);
+            }
             // Look up the exception type class in the environment
             if let Some(Object::Class(target_class)) = self.environment().get(type_name) {
                 // Get the class for this exception type
@@ -244,6 +254,29 @@ impl VirtualMachine {
         }
 
         Ok(false)
+    }
+
+    fn is_standard_exception_name(name: &str) -> bool {
+        matches!(
+            name,
+            "StandardError"
+                | "RuntimeError"
+                | "TypeError"
+                | "ValueError"
+                | "ArgumentError"
+                | "NameError"
+                | "NoMethodError"
+                | "LoadError"
+                | "NotImplementedError"
+                | "ZeroDivisionError"
+                | "FloatDomainError"
+                | "IndexError"
+                | "KeyError"
+                | "RangeError"
+                | "StopIteration"
+                | "IOError"
+                | "FrozenError"
+        ) || name.starts_with("Errno::")
     }
 
     /// Check if a class is the same as or a subclass of another class.

@@ -243,3 +243,371 @@ fn lexer_newline_in_single_quote_string() {
     let tokens = Lexer::new("'line1\nline2'").tokenize();
     assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
 }
+
+// ── %w[] / %w!! / %w<> / %w() / %w{} percent-word arrays ──────────────────
+
+#[test]
+fn lexer_percent_w_brackets() {
+    let tokens = Lexer::new("%w[a b c]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "a b c"))
+    );
+}
+
+#[test]
+fn lexer_percent_w_bang() {
+    let tokens = Lexer::new("%w!a b c!").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "a b c"))
+    );
+}
+
+#[test]
+fn lexer_percent_w_parens() {
+    let tokens = Lexer::new("%w(one two)").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "one two"))
+    );
+}
+
+#[test]
+fn lexer_percent_w_braces() {
+    let tokens = Lexer::new("%w{x y z}").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "x y z"))
+    );
+}
+
+#[test]
+fn lexer_percent_w_angle_brackets() {
+    let tokens = Lexer::new("%w<p q r>").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "p q r"))
+    );
+}
+
+#[test]
+fn lexer_percent_w_with_escape() {
+    // Backslash escape should keep the next character literally.
+    let tokens = Lexer::new("%w[a\\ b c]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(_)))
+    );
+}
+
+#[test]
+fn lexer_percent_w_empty() {
+    let tokens = Lexer::new("%w[]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s.is_empty()))
+    );
+}
+
+// ── String escape sequences ────────────────────────────────────────────────
+
+#[test]
+fn lexer_string_escape_newline() {
+    let tokens = Lexer::new(r#""line1\nline2""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\n')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_tab() {
+    let tokens = Lexer::new(r#""a\tb""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\t')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_carriage_return() {
+    let tokens = Lexer::new(r#""a\rb""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\r')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_backslash() {
+    let tokens = Lexer::new(r#""a\\b""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\\')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_double_quote() {
+    let tokens = Lexer::new(r#""a\"b""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('"')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_single_quote() {
+    let tokens = Lexer::new(r#""a\'b""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\'')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_hash() {
+    // \# allows literal `#` followed by `{` without triggering interpolation.
+    let tokens = Lexer::new(r#""a\#{b}""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('#')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_esc_char() {
+    // \e produces ANSI ESC (0x1B).
+    let tokens = Lexer::new(r#""a\eb""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\x1B')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_null() {
+    let tokens = Lexer::new(r#""a\0b""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\0')))
+    );
+}
+
+#[test]
+fn lexer_string_escape_unrecognized_keeps_backslash() {
+    // Unknown escape sequences keep the backslash literally (e.g. \q -> \q).
+    let tokens = Lexer::new(r#""a\qb""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\\')))
+    );
+}
+
+#[test]
+fn lexer_string_unterminated_eof() {
+    // EOF inside a double-quoted string is an error path; tokenize() recovers.
+    let tokens = Lexer::new(r#""unterminated"#).tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}
+
+#[test]
+fn lexer_string_unterminated_with_newline() {
+    let tokens = Lexer::new("\"line1\nline2\"").tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}
+
+#[test]
+fn lexer_string_unterminated_after_backslash() {
+    // EOF immediately after a backslash inside a string.
+    let tokens = Lexer::new(r#""a\"#).tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}
+
+// ── String interpolation edge cases ────────────────────────────────────────
+
+#[test]
+fn lexer_interpolation_basic() {
+    let tokens = Lexer::new(r#""hello #{name}""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::InterpolatedString(_)))
+    );
+}
+
+#[test]
+fn lexer_interpolation_unterminated_eof() {
+    // EOF in the middle of #{ ... } is an error; tokenize recovers.
+    let tokens = Lexer::new(r#""hello #{name"#).tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}
+
+#[test]
+fn lexer_interpolation_unterminated_newline() {
+    let tokens = Lexer::new("\"hello #{name\nbroken\"").tokenize();
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::EOF));
+}
+
+#[test]
+fn lexer_interpolation_nested_braces() {
+    let tokens = Lexer::new(r#""x #{ {a: 1} } y""#).tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::InterpolatedString(_)))
+    );
+}
+
+// ── %r regex literal — various delimiters and escape sequences ────────────
+
+#[test]
+fn lexer_percent_r_brackets() {
+    let tokens = Lexer::new("%r[foo]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Regex(p, _) if p == "foo"))
+    );
+}
+
+#[test]
+fn lexer_percent_r_braces() {
+    let tokens = Lexer::new("%r{bar}").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Regex(p, _) if p == "bar"))
+    );
+}
+
+#[test]
+fn lexer_percent_r_angle_brackets() {
+    let tokens = Lexer::new("%r<baz>").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Regex(p, _) if p == "baz"))
+    );
+}
+
+#[test]
+fn lexer_percent_r_parens() {
+    let tokens = Lexer::new("%r(qux)").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Regex(p, _) if p == "qux"))
+    );
+}
+
+#[test]
+fn lexer_percent_r_with_escape() {
+    // Backslashes inside %r should be preserved.
+    let tokens = Lexer::new(r"%r[a\.b]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Regex(p, _) if p.contains("\\")))
+    );
+}
+
+#[test]
+fn lexer_percent_r_with_flags() {
+    let tokens = Lexer::new("%r[abc]im").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::Regex(_, f) if f == "im"))
+    );
+}
+
+// ── %Q[...] interpolation-friendly string literals ────────────────────────
+
+#[test]
+fn lexer_percent_q_string() {
+    let tokens = Lexer::new("%Q[hello]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "hello"))
+    );
+}
+
+#[test]
+fn lexer_percent_q_with_escape_n() {
+    let tokens = Lexer::new(r"%Q[a\nb]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\n')))
+    );
+}
+
+#[test]
+fn lexer_percent_q_with_escape_t() {
+    let tokens = Lexer::new(r"%Q[a\tb]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\t')))
+    );
+}
+
+#[test]
+fn lexer_percent_q_with_escape_backslash() {
+    let tokens = Lexer::new(r"%Q[a\\b]").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\\')))
+    );
+}
+
+#[test]
+fn lexer_percent_paren_string() {
+    let tokens = Lexer::new("%(hello)").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "hello"))
+    );
+}
+
+#[test]
+fn lexer_percent_brace_string() {
+    let tokens = Lexer::new("%{hello}").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "hello"))
+    );
+}
+
+#[test]
+fn lexer_percent_angle_string() {
+    let tokens = Lexer::new("%<hello>").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "hello"))
+    );
+}

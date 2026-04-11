@@ -232,6 +232,14 @@ fn real_main() {
 
     if let Err(err) = vm.execute_program(&program) {
         eprintln!("Runtime error: {}", err);
+        if let metorex::error::MetorexError::RuntimeError { stack_trace, .. } = &err
+            && !stack_trace.is_empty()
+        {
+            eprintln!("Stack trace:");
+            for frame in stack_trace {
+                eprintln!("{}", frame);
+            }
+        }
         process::exit(1);
     }
 }

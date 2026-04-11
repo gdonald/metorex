@@ -114,6 +114,11 @@ impl VirtualMachine {
                 combined.push_str(b.as_ref());
                 Ok(Object::String(Rc::new(combined)))
             }
+            (Object::Array(a), Object::Array(b)) => {
+                let mut combined = a.borrow().clone();
+                combined.extend(b.borrow().iter().cloned());
+                Ok(Object::Array(Rc::new(std::cell::RefCell::new(combined))))
+            }
             (lhs, rhs) => Err(binary_type_error(BinaryOp::Add, &lhs, &rhs, position)),
         }
     }

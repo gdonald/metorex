@@ -113,3 +113,19 @@ fn def_method_named_pipe() {
 fn def_method_named_ampersand() {
     parse_ok("class Bits\n  def &(other)\n    false\n  end\nend\n");
 }
+
+#[test]
+fn def_method_named_triple_equal() {
+    // Verify the method is parseable and callable via `.send`-style dispatch.
+    parse_ok("class M\n  def ===(other)\n    true\n  end\nend\n");
+}
+
+#[test]
+fn def_method_named_match_op() {
+    parse_ok("class Pat\n  def =~(other)\n    42\n  end\nend\n");
+}
+
+#[test]
+fn def_method_named_not_match_op() {
+    parse_ok("class Pat\n  def !~(other)\n    42\n  end\nend\n");
+}

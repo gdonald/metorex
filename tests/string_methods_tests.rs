@@ -139,6 +139,158 @@ fn string_ends_with_false() {
 }
 
 #[test]
+fn string_start_with_true() {
+    let result = run(r#""hello world".start_with?("hello")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_start_with_multiple_one_match() {
+    let result = run(r#""hello world".start_with?("nope", "hel")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_end_with_true() {
+    let result = run(r#""hello world".end_with?("world")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_ljust_pads_with_spaces() {
+    let result = run(r#""hi".ljust(5)"#);
+    assert_eq!(result, Some(Object::string("hi   ")));
+}
+
+#[test]
+fn string_ljust_with_pad_string() {
+    let result = run(r#""hi".ljust(6, "-")"#);
+    assert_eq!(result, Some(Object::string("hi----")));
+}
+
+#[test]
+fn string_ljust_no_change_when_wider() {
+    let result = run(r#""hello".ljust(3)"#);
+    assert_eq!(result, Some(Object::string("hello")));
+}
+
+#[test]
+fn string_rjust_pads_with_spaces() {
+    let result = run(r#""hi".rjust(5)"#);
+    assert_eq!(result, Some(Object::string("   hi")));
+}
+
+#[test]
+fn string_rjust_with_pad_string() {
+    let result = run(r#""7".rjust(4, "0")"#);
+    assert_eq!(result, Some(Object::string("0007")));
+}
+
+#[test]
+fn string_tty_returns_false() {
+    let result = run(r#""hello".tty?"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_isatty_returns_false() {
+    let result = run(r#""hello".isatty"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_flush_returns_nil() {
+    let result = run(r#""hello".flush"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn string_sync_returns_nil() {
+    let result = run(r#""hello".sync"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn string_fsync_returns_nil() {
+    let result = run(r#""hello".fsync"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn string_ljust_no_args_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hi".ljust"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_ljust_non_integer_width_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hi".ljust("3")"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_ljust_empty_pad_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hi".ljust(5, "")"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_ljust_non_string_pad_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hi".ljust(5, 42)"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_ljust_too_many_args_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hi".ljust(5, "-", "extra")"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_end_with_false() {
+    let result = run(r#""hello world".end_with?("hello")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_start_with_false_all() {
+    let result = run(r#""hello".start_with?("x", "y")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_start_with_no_args_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hello".start_with?"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_start_with_non_string_arg_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hello".start_with?(42)"#));
+    assert!(result.is_err());
+}
+
+// ── String#+ method (line 57-78) — exercised via .send(:+, …) ─────────────
+
+#[test]
+fn string_plus_method_via_send_concatenates() {
+    let result = run(r#""hello".send(:+, ", world")"#);
+    assert_eq!(result, Some(Object::string("hello, world")));
+}
+
+#[test]
+fn string_plus_method_via_send_no_args_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hello".send(:+)"#));
+    assert!(result.is_err());
+}
+
+#[test]
+fn string_plus_method_via_send_non_string_arg_errors() {
+    let result = std::panic::catch_unwind(|| run(r#""hello".send(:+, 42)"#));
+    assert!(result.is_err());
+}
+
+#[test]
 fn array_join_with_separator() {
     let result = run(r#"["one", "two", "three"].join(", ")"#);
     assert_eq!(result, Some(Object::string("one, two, three")));

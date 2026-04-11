@@ -68,22 +68,18 @@ h.fetch("missing", "default_val")
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn hash_each_return_in_method_errors() {
-    let err = run_err(
-        r#"
+fn hash_each_return_in_method_returns_from_method() {
+    // Ruby semantics: `return` inside a block returns from the enclosing method.
+    let result = run(r#"
 def test_hash_return
   {"a" => 1, "b" => 2}.each do |k, v|
     return k
   end
 end
 test_hash_return
-"#,
-    );
-    assert!(
-        err.contains("return") || err.contains("control") || err.contains("loop"),
-        "Error was: {}",
-        err
-    );
+"#);
+    // Iteration order for hashes may vary; assert we got a key, not an error.
+    assert!(matches!(result, Some(Object::String(_))));
 }
 
 #[test]
@@ -117,17 +113,12 @@ h["name"]
 
 #[test]
 fn hash_bracket_missing_key() {
-    let err = run_err(
-        r#"
+    // Ruby semantics: missing hash key returns nil (not an error).
+    let result = run(r#"
 h = {"a" => 1}
 h["missing"]
-"#,
-    );
-    assert!(
-        err.contains("not found") || err.contains("Key") || err.contains("missing"),
-        "Error was: {}",
-        err
-    );
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

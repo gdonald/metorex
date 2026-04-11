@@ -261,6 +261,59 @@ fn test_additional_operator_tokens_display() {
 }
 
 #[test]
+fn test_keyword_yield_defined_display() {
+    assert_eq!(TokenKind::Yield.to_string(), "yield");
+    assert_eq!(TokenKind::Defined.to_string(), "defined?");
+}
+
+#[test]
+fn test_magic_constants_display() {
+    assert_eq!(TokenKind::MagicFile.to_string(), "__FILE__");
+    assert_eq!(TokenKind::MagicLine.to_string(), "__LINE__");
+}
+
+#[test]
+fn test_percent_w_display() {
+    assert_eq!(
+        TokenKind::PercentW("a b c".to_string()).to_string(),
+        "%w[a b c]"
+    );
+}
+
+#[test]
+fn test_regex_token_display() {
+    assert_eq!(
+        TokenKind::Regex("foo".to_string(), "i".to_string()).to_string(),
+        "/foo/i"
+    );
+}
+
+#[test]
+fn test_string_literal_display() {
+    assert_eq!(TokenKind::String("hi".to_string()).to_string(), "\"hi\"");
+}
+
+#[test]
+fn test_star_star_display() {
+    assert_eq!(TokenKind::StarStar.to_string(), "**");
+}
+
+#[test]
+fn test_less_equal_display() {
+    assert_eq!(TokenKind::LessEqual.to_string(), "<=");
+}
+
+#[test]
+fn test_spaceship_display() {
+    assert_eq!(TokenKind::Spaceship.to_string(), "<=>");
+}
+
+#[test]
+fn test_shovel_display() {
+    assert_eq!(TokenKind::Shovel.to_string(), "<<");
+}
+
+#[test]
 fn test_token_kind_clone() {
     let kind1 = TokenKind::Int(42);
     let kind2 = kind1.clone();

@@ -260,3 +260,159 @@ fn range_include_string() {
         Some(metorex::object::Object::Bool(true))
     );
 }
+
+// ── class << self with attr_accessor in a class ────────────────────────────
+
+#[test]
+fn class_self_attr_accessor_creates_methods() {
+    let result = run_class(
+        r#"
+class Foo
+  class << self
+    attr_accessor :title, :version
+  end
+end
+Foo.title = "Bar"
+Foo.version = "1.0"
+Foo.title + Foo.version
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "Bar1.0".to_string()
+        )))
+    );
+}
+
+#[test]
+fn class_self_attr_accessor_default_nil() {
+    let result = run_class(
+        r#"
+class Foo
+  class << self
+    attr_accessor :unset
+  end
+end
+Foo.unset.nil?
+"#,
+    );
+    assert_eq!(result, Some(metorex::object::Object::Bool(true)));
+}
+
+// ── module body with class << self / attr_accessor ────────────────────────
+
+#[test]
+fn module_class_self_with_attr_reader() {
+    let result = run_class(
+        r#"
+module M
+  class << self
+    attr_reader :version
+  end
+end
+M.version.nil?
+"#,
+    );
+    assert_eq!(result, Some(metorex::object::Object::Bool(true)));
+}
+
+#[test]
+fn module_class_self_with_def_method() {
+    let result = run_class(
+        r#"
+module M
+  class << self
+    def hello
+      "world"
+    end
+  end
+end
+M.hello
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "world".to_string()
+        )))
+    );
+}
+
+// ── Setters on Class/Module receivers ─────────────────────────────────────
+
+#[test]
+fn setter_on_class_via_defined_method() {
+    let result = run_class(
+        r#"
+class Foo
+  def self.config=(v)
+    @config = v
+  end
+  def self.config
+    @config
+  end
+end
+Foo.config = 42
+Foo.config
+"#,
+    );
+    assert_eq!(result, Some(metorex::object::Object::Int(42)));
+}
+
+#[test]
+fn setter_on_class_falls_back_to_class_var() {
+    // No defined setter — assignment stores into a class variable.
+    let result = run_class(
+        r#"
+class Foo
+end
+Foo.title = "hello"
+Foo.instance_variable_get("@title")
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "hello".to_string()
+        )))
+    );
+}
+
+#[test]
+fn setter_on_module_falls_back_to_class_var() {
+    let result = run_class(
+        r#"
+module Mx
+end
+Mx.label = "world"
+Mx.instance_variable_get("@label")
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "world".to_string()
+        )))
+    );
+}
+
+// ── module body with constant assignment ──────────────────────────────────
+
+#[test]
+fn module_with_constant_assignment() {
+    let result = run_class(
+        r#"
+module M
+  VERSION = "1.0"
+end
+M::VERSION
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(metorex::object::Object::String(std::rc::Rc::new(
+            "1.0".to_string()
+        )))
+    );
+}

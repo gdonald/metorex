@@ -188,3 +188,10 @@ fn test_oop_empty_bracket_call_parens_execution() {
     let output = run_example("oop/empty_bracket_call_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_class_self_new_execution() {
+    let expected = "make: self=Foo\ninit called, @x=42\nmake: inst.class=Foo\nf.class=Foo\n";
+    let output = run_example("oop/class_self_new.rb");
+    assert_eq!(output, expected);
+}

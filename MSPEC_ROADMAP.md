@@ -132,6 +132,12 @@ Parser fixes during Phase 4 work:
 - Bare identifier → method dispatch fallback in `Expression::Call` (try `self.method(args)` when identifier fails)
 - Paren-less call with `:InterpolatedString` arg (e.g., `instance_variable_get :"@#{sym}"`)
 - **mspec runner `MSpecRun.main` begins executing.** `MSpecScript.new` → `check_version!` → `ruby_version_is` guard called. Next blocker: `MSpec.mode?` called with 0 args from guard dispatch (bare identifier dispatch auto-invokes 0-arg methods, but guard code calls `mode?` expecting 1 arg).
+- Bare `new` inside `def self.method` now properly instantiates the class (was returning the Class object). Fixed in `Expression::Identifier` evaluation.
+- `Expression::Call` with a bare identifier callee now dispatches to `self.method(args)` first (instead of auto-invoking the identifier with zero args, which discarded the supplied arguments and returned a value that was then "called").
+- `&block` parameter binds to `nil` when method is called without a block (was leaving the local variable undefined).
+- `String#ljust`, `String#rjust` (1-arg and 2-arg with pad string).
+- `String#start_with?`, `String#end_with?` (multi-arg form).
+- mspec progresses through `script.load_default` → `script.options`. Next blocker: line 256 in options.rb (`Undefined method 'empty?' for type 'Nil'`) — likely `&block` chain or arg parsing.
 
 ## Phase 4: Passing Specs
 

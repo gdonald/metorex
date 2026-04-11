@@ -35,41 +35,33 @@ impl VirtualMachine {
                     continue;
                 }
 
-                // Pattern and guard matched! Execute the body with bindings
-                self.environment_mut().push_scope();
+                // Ruby case/when branches do NOT introduce a new scope — assignments
+                // leak out, matching Ruby semantics. Pattern bindings are applied in-place.
                 self.apply_pattern_bindings(&bindings);
 
-                // Execute the body and track the last expression value
+                // Execute the body and capture the last expression's value so that
+                // case-as-expression produces a value without triggering a real return.
                 let mut last_value = Object::Nil;
                 for statement in &case.body {
-                    // If it's an expression statement, track its value
                     if let Statement::Expression { expression, .. } = statement {
                         last_value = self.evaluate_expression(expression)?;
                         continue;
                     }
 
-                    // Execute other statements
                     match self.execute_statement(statement)? {
                         ControlFlow::Next => {}
-                        flow => {
-                            self.environment_mut().pop_scope();
-                            return Ok(flow);
+                        ControlFlow::Value(v) => {
+                            last_value = v;
                         }
+                        flow => return Ok(flow),
                     }
                 }
 
-                self.environment_mut().pop_scope();
-
-                // Return the last expression value using Return control flow
-                // (but this is not a true return statement, just a value)
-                return Ok(ControlFlow::Return {
-                    value: last_value,
-                    position,
-                });
+                return Ok(ControlFlow::Value(last_value));
             }
         }
 
-        // No pattern matched
+        // No pattern matched — Ruby returns nil (no error for case/when).
         Err(MetorexError::runtime_error(
             format!("No pattern matched value: {}", match_value),
             position_to_location(position),

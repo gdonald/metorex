@@ -55,3 +55,10 @@ fn test_default_params_method_parens_execution() {
     let output = run_example("methods/default_params_method_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_yield_qmark_call_execution() {
+    let expected = "true\n";
+    let output = run_example("methods/yield_qmark_call.rb");
+    assert_eq!(output, expected);
+}

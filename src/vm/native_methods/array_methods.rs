@@ -74,6 +74,28 @@ impl VirtualMachine {
                 Ok(Some(array_rc.borrow_mut().pop().unwrap_or(Object::Nil)))
             }
             "[]" => {
+                if arguments.len() == 2 {
+                    let (start, len) = match (&arguments[0], &arguments[1]) {
+                        (Object::Int(s), Object::Int(l)) => (*s, *l),
+                        _ => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "Integer",
+                                &arguments[0],
+                                position,
+                            ));
+                        }
+                    };
+                    let array = array_rc.borrow();
+                    let total = array.len() as i64;
+                    let start_idx = if start < 0 { total + start } else { start };
+                    if start_idx < 0 || start_idx > total || len < 0 {
+                        return Ok(Some(Object::Nil));
+                    }
+                    let end_idx = (start_idx + len).min(total);
+                    let slice: Vec<Object> = array[start_idx as usize..end_idx as usize].to_vec();
+                    return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(slice)))));
+                }
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         method_name,
@@ -119,14 +141,16 @@ impl VirtualMachine {
                     let args = vec![element.clone()];
                     match self.execute_block_with_control_flow(&block, args)? {
                         super::super::ControlFlow::Next
+                        | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
                         super::super::ControlFlow::Break { .. } => break,
-                        super::super::ControlFlow::Return { value: _, position } => {
-                            return Err(super::super::errors::loop_control_error(
-                                "return", position,
-                            ));
+                        super::super::ControlFlow::Return { value, position } => {
+                            return Err(MetorexError::NonLocalReturn {
+                                value,
+                                location: super::super::utils::position_to_location(position),
+                            });
                         }
                         super::super::ControlFlow::Exception {
                             exception,

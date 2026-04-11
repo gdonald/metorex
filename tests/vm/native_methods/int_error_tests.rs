@@ -41,22 +41,17 @@ sum
 }
 
 #[test]
-fn int_times_return_in_method_errors() {
-    let err = run_err(
-        r#"
+fn int_times_return_in_method_returns_from_method() {
+    // Ruby semantics: `return` inside a block returns from the enclosing method.
+    let result = run(r#"
 def test_times_return
   3.times do |i|
     return i
   end
 end
 test_times_return
-"#,
-    );
-    assert!(
-        err.contains("return") || err.contains("control") || err.contains("loop"),
-        "Error was: {}",
-        err
-    );
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
 }
 
 #[test]

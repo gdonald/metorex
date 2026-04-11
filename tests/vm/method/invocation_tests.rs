@@ -358,3 +358,130 @@ Foo.new.test
         Some(Object::String(std::rc::Rc::new("hi world".to_string())))
     );
 }
+
+// ── Variadic insufficient args ─────────────────────────────────────────────
+
+#[test]
+fn variadic_method_with_required_before_splat_errors_on_too_few() {
+    let err = run_err(
+        r#"
+def f(a, *rest)
+  a
+end
+f
+"#,
+    );
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn variadic_method_with_required_after_splat_errors_on_too_few() {
+    let err = run_err(
+        r#"
+def f(*rest, last)
+  last
+end
+f
+"#,
+    );
+    assert!(err.contains("argument"));
+}
+
+// ── Method-level rescue propagating exception value out of body ───────────
+
+#[test]
+fn method_rescue_with_assignment_as_last_statement() {
+    let result = run(r#"
+def f
+  begin
+    x = 42
+  rescue => e
+    -1
+  end
+end
+f
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn method_rescue_else_clause_value_propagates() {
+    let result = run(r#"
+def f
+  begin
+    1
+  rescue => e
+    -1
+  else
+    99
+  end
+end
+f
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn method_with_begin_ensure_propagates_body_value() {
+    let result = run(r#"
+def f
+  begin
+    100
+  ensure
+    200
+  end
+end
+f
+"#);
+    assert_eq!(result, Some(Object::Int(100)));
+}
+
+// ── &block trailing arg passed positionally on instance method ────────────
+
+#[test]
+fn ampersand_block_arg_extracted_to_pending_block() {
+    let result = run(r#"
+class C
+  def calls(&blk)
+    blk.call(7)
+  end
+end
+square = lambda { |x| x * x }
+C.new.calls(&square)
+"#);
+    assert_eq!(result, Some(Object::Int(49)));
+}
+
+// ── return from inside a Begin propagates to method ───────────────────────
+
+#[test]
+fn return_from_begin_block_returns_from_method() {
+    let result = run(r#"
+def f
+  begin
+    return 99
+  rescue => e
+    -1
+  end
+  -2
+end
+f
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn return_from_rescue_block_returns_from_method() {
+    let result = run(r#"
+def f
+  begin
+    raise "boom"
+  rescue => e
+    return 88
+  end
+  -2
+end
+f
+"#);
+    assert_eq!(result, Some(Object::Int(88)));
+}

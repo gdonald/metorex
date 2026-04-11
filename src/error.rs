@@ -119,6 +119,14 @@ pub enum MetorexError {
         location: SourceLocation,
         message: String,
     },
+
+    /// A `return` from within a block - propagates to the enclosing method.
+    /// Not a user-visible error; it's caught at the method boundary.
+    #[error("Non-local return")]
+    NonLocalReturn {
+        value: crate::object::Object,
+        location: SourceLocation,
+    },
 }
 
 // Custom From implementation for std::io::Error
@@ -216,6 +224,7 @@ impl MetorexError {
             | Self::TypeError { message, .. }
             | Self::UncaughtException { message, .. } => message,
             Self::IoError(msg) | Self::InternalError(msg) => msg,
+            Self::NonLocalReturn { .. } => "non-local return",
         }
     }
 

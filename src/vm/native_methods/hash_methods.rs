@@ -221,14 +221,16 @@ impl VirtualMachine {
                     let args = vec![Object::string(key), value];
                     match self.execute_block_with_control_flow(&block, args)? {
                         super::super::ControlFlow::Next
+                        | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
                         super::super::ControlFlow::Break { .. } => break,
-                        super::super::ControlFlow::Return { value: _, position } => {
-                            return Err(super::super::errors::loop_control_error(
-                                "return", position,
-                            ));
+                        super::super::ControlFlow::Return { value, position } => {
+                            return Err(MetorexError::NonLocalReturn {
+                                value,
+                                location: super::super::utils::position_to_location(position),
+                            });
                         }
                         super::super::ControlFlow::Exception {
                             exception,

@@ -48,6 +48,9 @@ impl Parser {
             TokenKind::Slash => "/".to_string(),
             TokenKind::Percent => "%".to_string(),
             TokenKind::EqualEqual => "==".to_string(),
+            TokenKind::TripleEqual => "===".to_string(),
+            TokenKind::Match => "=~".to_string(),
+            TokenKind::NotMatch => "!~".to_string(),
             TokenKind::BangEqual => "!=".to_string(),
             TokenKind::Less => "<".to_string(),
             TokenKind::Greater => ">".to_string(),
@@ -71,12 +74,13 @@ impl Parser {
             _ => return Err(self.error_at_previous("Expected function name")),
         };
 
-        self.skip_whitespace();
-
-        // Parse parameters (optional parentheses)
+        // Parse parameters (optional parentheses). Parens for params must come
+        // immediately after the method name — do NOT skip newlines here, or
+        // `def foo\n(@x = y)` would eat the grouped expression as a param list.
         let parameters = if self.match_token(&[TokenKind::LParen]) {
             self.parse_parameters()?
         } else {
+            self.skip_whitespace();
             Vec::new()
         };
 

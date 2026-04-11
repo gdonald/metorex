@@ -16,6 +16,16 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         match name {
+            "private"
+            | "public"
+            | "protected"
+            | "module_function"
+            | "private_class_method"
+            | "public_class_method"
+            | "freeze" => {
+                // Visibility modifiers and Object#freeze — no-op stubs. Accept any args.
+                Ok(Object::Nil)
+            }
             "puts" => {
                 // puts prints each argument on a new line
                 for arg in &arguments {
@@ -102,13 +112,13 @@ impl VirtualMachine {
                 let mut found_path = None;
                 for dir in &search_dirs {
                     let base = std::path::PathBuf::from(dir);
-                    // Try exact name first, then with .rb extension
+                    // Prefer `.rb` file over a directory of the same name.
                     let candidates = [
-                        base.join(&require_name),
                         base.join(format!("{}.rb", require_name)),
+                        base.join(&require_name),
                     ];
                     for candidate in &candidates {
-                        if candidate.exists() {
+                        if candidate.is_file() {
                             found_path = Some(candidate.clone());
                             break;
                         }
@@ -118,15 +128,21 @@ impl VirtualMachine {
                     }
                 }
 
-                let resolved = found_path.ok_or_else(|| {
-                    MetorexError::runtime_error(
-                        format!(
-                            "cannot load such file -- {} (searched in $LOAD_PATH: {:?})",
-                            require_name, search_dirs
-                        ),
-                        crate::vm::utils::position_to_location(position),
-                    )
-                })?;
+                let resolved = match found_path {
+                    Some(p) => p,
+                    None => {
+                        // Raise a LoadError exception so Ruby-level rescue LoadError catches it.
+                        let exc = Object::exception(
+                            "LoadError",
+                            format!("cannot load such file -- {}", require_name),
+                        );
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc.clone(),
+                            location: crate::vm::utils::position_to_location(position),
+                            message: format!("{}", exc),
+                        });
+                    }
+                };
 
                 let canonical_path = resolved.canonicalize().map_err(|e| {
                     MetorexError::runtime_error(

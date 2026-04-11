@@ -177,22 +177,15 @@ i
     assert_eq!(result, Some(Object::Int(3)));
 }
 
-// ── Dictionary index key error on Dict ───────────────────────────────────────
+// ── Dictionary index on missing key returns nil (Ruby semantics) ─────────────
 
 #[test]
-fn dict_index_read_undefined_key_error() {
-    let err = run_err(
-        r#"
+fn dict_index_read_undefined_key_returns_nil() {
+    let result = run(r#"
 h = {"a" => 1}
 h["missing"]
-"#,
-    );
-    assert!(
-        err.contains("missing")
-            || err.contains("key")
-            || err.contains("undefined")
-            || err.contains("Undefined")
-    );
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 // ── unless expression with else (expression.rs line 162) ──

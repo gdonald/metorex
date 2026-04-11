@@ -196,3 +196,54 @@ fn load_file_source_nonexistent_with_extension() {
     let result = load_file_source(std::path::Path::new("/nonexistent/file.rb"));
     assert!(result.is_err());
 }
+
+#[test]
+fn find_file_with_extension_returns_not_found_directly() {
+    // When path includes an extension and the file doesn't exist, find_file_path
+    // should NOT try alternate extensions and should return the not-found error.
+    let result = find_file_path(Path::new("/tmp/no_such_metorex_file.rb"));
+    assert!(result.is_err());
+    let err = result.unwrap_err().to_string();
+    assert!(err.contains("File not found"));
+}
+
+#[test]
+fn find_file_path_root_path() {
+    // A path with no parent (like "/") shouldn't crash; should return error.
+    let result = find_file_path(Path::new("/"));
+    // "/" exists as a directory but isn't a file we can load — should be Ok though
+    // because find_file_path returns the path if it "exists".
+    assert!(result.is_ok());
+}
+
+#[test]
+fn find_file_no_parent_path() {
+    // A bare relative path (no parent slash) — parent is empty so we use ".".
+    let result = find_file_path(Path::new("nope_no_such_xyzzy"));
+    assert!(result.is_err());
+}
+
+#[test]
+fn find_file_dot_only_path() {
+    // Just "." is the current directory — should be Ok since "." exists.
+    let result = find_file_path(Path::new("."));
+    assert!(result.is_ok());
+}
+
+#[test]
+fn resolve_relative_path_simple_join() {
+    use metorex::file_loader::resolve_relative_path;
+    let base = Path::new("/tmp/dir/file.rb");
+    let result = resolve_relative_path(base, "other.rb");
+    assert!(result.is_ok());
+    let resolved = result.unwrap();
+    assert!(resolved.to_string_lossy().contains("other.rb"));
+}
+
+#[test]
+fn resolve_relative_path_parent_dir() {
+    use metorex::file_loader::resolve_relative_path;
+    let base = Path::new("/tmp/dir/sub/file.rb");
+    let result = resolve_relative_path(base, "../other.rb");
+    assert!(result.is_ok());
+}

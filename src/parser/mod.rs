@@ -21,6 +21,9 @@ pub struct Parser {
     error_handler: ErrorHandler,
     /// Track if we're currently parsing inside a class body
     in_class_body: bool,
+    /// Depth of nested ternary expressions currently being parsed. Used to
+    /// disambiguate `e.f?:sym` (symbol arg) from `cond ? e.f? : alt` (ternary).
+    pub(crate) ternary_depth: usize,
 }
 
 impl Parser {
@@ -30,6 +33,7 @@ impl Parser {
             stream: TokenStream::new(tokens),
             error_handler: ErrorHandler::new(),
             in_class_body: false,
+            ternary_depth: 0,
         }
     }
 

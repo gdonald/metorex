@@ -71,6 +71,7 @@ pub enum TokenKind {
     String(String),
     InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
     Regex(String, String),                      // pattern, flags
+    PercentW(String),                           // %w[...] array of whitespace-split words
     True,
     False,
     Nil,
@@ -95,6 +96,7 @@ pub enum TokenKind {
     BangEqual,    // !=
     Match,        // =~
     NotMatch,     // !~
+    StarStar,     // ** (double splat / exponent)
     Less,         // <
     Greater,      // >
     LessEqual,    // <=
@@ -191,6 +193,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Int(n) => write!(f, "{}", n),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
+            TokenKind::PercentW(s) => write!(f, "%w[{}]", s),
             TokenKind::InterpolatedString(parts) => {
                 write!(f, "\"")?;
                 for part in parts {
@@ -226,6 +229,7 @@ impl fmt::Display for TokenKind {
             TokenKind::BangEqual => write!(f, "!="),
             TokenKind::Match => write!(f, "=~"),
             TokenKind::NotMatch => write!(f, "!~"),
+            TokenKind::StarStar => write!(f, "**"),
             TokenKind::Less => write!(f, "<"),
             TokenKind::Greater => write!(f, ">"),
             TokenKind::LessEqual => write!(f, "<="),

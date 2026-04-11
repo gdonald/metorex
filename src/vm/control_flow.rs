@@ -13,6 +13,9 @@ pub(crate) enum ControlFlow {
     Next,
     /// A return statement was encountered with an associated value.
     Return { value: Object, position: Position },
+    /// A case/match arm produced a value (used so that the last statement of a
+    /// method body can pick up the case's value without triggering a true return).
+    Value(Object),
     /// A break statement was encountered.
     Break { position: Position },
     /// A continue statement was encountered.

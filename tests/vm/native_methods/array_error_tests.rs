@@ -70,22 +70,17 @@ fn array_append_wrong_arg_count() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn array_each_return_in_method_errors() {
-    let err = run_err(
-        r#"
+fn array_each_return_in_method_returns_from_method() {
+    // Ruby semantics: `return` inside a block returns from the enclosing method.
+    let result = run(r#"
 def test_return_in_each
   [1, 2, 3].each do |x|
     return x
   end
 end
 test_return_in_each
-"#,
-    );
-    assert!(
-        err.contains("return") || err.contains("control") || err.contains("loop"),
-        "Error was: {}",
-        err
-    );
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -201,4 +196,38 @@ fn array_size_method() {
 [1, 2, 3].size
 "#);
     assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── Array#[] two-argument (start, length) form ────────────────────────────
+
+#[test]
+fn array_bracket_start_length_non_integer_start_errors() {
+    let err = run_err(r#"[1, 2, 3][: "a", 2]"#);
+    assert!(
+        err.contains("Integer") || err.contains("parse"),
+        "Error: {}",
+        err
+    );
+}
+
+#[test]
+fn array_bracket_start_length_beyond_end_returns_nil() {
+    let result = run(r#"[1, 2, 3][100, 2]"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn array_bracket_start_length_negative_len_returns_nil() {
+    let result = run(r#"[1, 2, 3][0, -1]"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn array_bracket_start_length_clamps_to_end() {
+    let result = run(r#"[1, 2, 3, 4, 5][3, 100]"#);
+    // Starting at index 3, requesting 100, should clamp to elements [4, 5]
+    match result {
+        Some(Object::Array(arr)) => assert_eq!(arr.borrow().len(), 2),
+        other => panic!("expected Array, got {:?}", other),
+    }
 }

@@ -36,6 +36,8 @@ pub struct BuiltinClasses {
     pub value_error_class: Rc<Class>,
     /// File class for file I/O operations
     pub file_class: Rc<Class>,
+    /// Dir class for directory operations
+    pub dir_class: Rc<Class>,
 }
 
 impl BuiltinClasses {
@@ -57,6 +59,7 @@ impl BuiltinClasses {
 
         // Create utility classes
         let file_class = Rc::new(Class::new("File", Some(Rc::clone(&object_class))));
+        let dir_class = Rc::new(Class::new("Dir", Some(Rc::clone(&object_class))));
 
         // Create exception hierarchy
         let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
@@ -92,6 +95,7 @@ impl BuiltinClasses {
             type_error_class,
             value_error_class,
             file_class,
+            dir_class,
         }
     }
 
@@ -167,7 +171,17 @@ impl BuiltinClasses {
         classes.insert("TypeError".to_string(), Rc::clone(&self.type_error_class));
         classes.insert("ValueError".to_string(), Rc::clone(&self.value_error_class));
         classes.insert("File".to_string(), Rc::clone(&self.file_class));
+        classes.insert("Dir".to_string(), Rc::clone(&self.dir_class));
         classes.insert("Range".to_string(), Rc::clone(&self.range_class));
+        // BasicObject: alias of Object — Ruby's true root class, used as a
+        // superclass when code wants a near-empty object.
+        classes.insert("BasicObject".to_string(), Rc::clone(&self.object_class));
+        classes.insert("Symbol".to_string(), Rc::clone(&self.string_class));
+        classes.insert("Numeric".to_string(), Rc::clone(&self.integer_class));
+        classes.insert("Proc".to_string(), Rc::clone(&self.object_class));
+        classes.insert("NilClass".to_string(), Rc::clone(&self.object_class));
+        classes.insert("TrueClass".to_string(), Rc::clone(&self.object_class));
+        classes.insert("FalseClass".to_string(), Rc::clone(&self.object_class));
         classes
     }
 }

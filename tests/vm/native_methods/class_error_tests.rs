@@ -104,3 +104,155 @@ Solo.superclass
 "#);
     assert_eq!(result, Some(Object::Nil));
 }
+
+fn run_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
+// ── Class.const_defined? ───────────────────────────────────────────────────
+
+#[test]
+fn const_defined_true_for_existing_global() {
+    let result = run(r#"
+Foo = 42
+Object.const_defined?(:Foo)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn const_defined_false_for_missing() {
+    let result = run(r#"Object.const_defined?(:NopeNotHere)"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn const_defined_with_string_arg() {
+    let result = run(r#"
+Bar = 99
+Object.const_defined?("Bar")
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn const_defined_with_non_symbol_returns_false() {
+    let result = run(r#"Object.const_defined?(42)"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn const_defined_no_args_errors() {
+    let err = run_err("Object.const_defined?");
+    assert!(err.contains("argument"));
+}
+
+// ── File.expand_path error paths ──────────────────────────────────────────
+
+#[test]
+fn file_expand_path_no_args_errors() {
+    let err = run_err("File.expand_path");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn file_expand_path_too_many_args_errors() {
+    let err = run_err(r#"File.expand_path("a", "b", "c")"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn file_expand_path_non_string_arg_errors() {
+    let err = run_err("File.expand_path(42)");
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn file_expand_path_non_string_base_errors() {
+    let err = run_err(r#"File.expand_path("foo", 42)"#);
+    assert!(err.contains("String"));
+}
+
+#[test]
+fn file_expand_path_with_absolute_base() {
+    let result = run(r#"File.expand_path("a.txt", "/tmp")"#);
+    if let Some(Object::String(s)) = result {
+        assert!(s.contains("a.txt"));
+    } else {
+        panic!("expected string, got {:?}", result);
+    }
+}
+
+// ── module_function explicit-name form ─────────────────────────────────────
+
+#[test]
+fn module_function_with_symbol_name() {
+    // Make `helper` callable on the module itself.
+    let result = run(r#"
+module Util
+  def helper
+    "ok"
+  end
+  module_function :helper
+end
+Util.helper
+"#);
+    assert_eq!(result, Some(Object::string("ok")));
+}
+
+#[test]
+fn module_function_no_args_errors() {
+    let err = run_err(
+        r#"
+class Mod
+end
+Mod.send(:module_function)
+"#,
+    );
+    assert!(err.contains("argument") || err.contains("undefined"));
+}
+
+#[test]
+fn module_function_undefined_method_errors() {
+    // Send the message directly to bypass the visibility-stub fallthrough.
+    let err = run_err(
+        r#"
+module Util2
+end
+Util2.send(:module_function, :nonexistent_method)
+"#,
+    );
+    assert!(err.contains("undefined") || err.contains("nonexistent"));
+}
+
+#[test]
+fn module_function_non_string_arg_errors() {
+    let err = run_err(
+        r#"
+module Util3
+end
+Util3.send(:module_function, 42)
+"#,
+    );
+    assert!(err.contains("String") || err.contains("Symbol"));
+}
+
+// ── Signal.trap stub ─────────────────────────────────────────────────────
+
+#[test]
+fn signal_trap_with_block_is_noop() {
+    let result = run(r#"
+Signal.trap("INT") { puts "intercepted" }
+"#);
+    // The block is silently discarded; no output, return nil.
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn signal_trap_returns_nil() {
+    let result = run(r#"Signal.trap("INT")"#);
+    assert_eq!(result, Some(Object::Nil));
+}

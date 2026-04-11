@@ -198,3 +198,33 @@ fn parse_break_statement_additional() {
 fn parse_continue_statement_additional() {
     parse_cf_ok("while true\n  next\nend");
 }
+
+// ── If expression with empty branches (parser break-inside-body cases) ────
+
+#[test]
+fn if_with_empty_then_branch() {
+    parse_ok("if true\nend");
+}
+
+#[test]
+fn if_with_empty_then_and_else_branch() {
+    parse_ok("if true\nelse\nend");
+}
+
+#[test]
+fn if_with_empty_elsif_branch() {
+    parse_ok("if true\nelsif false\nelse\nend");
+}
+
+#[test]
+fn if_expression_with_empty_then_returns_none() {
+    let result = run("if true\nend");
+    assert_eq!(result, None);
+}
+
+#[test]
+fn if_with_empty_else_taken_runs() {
+    // No expression-value to capture, but no parse error either.
+    let result = run("if false\n  1\nelse\nend");
+    assert!(result.is_none() || result == Some(Object::Nil));
+}

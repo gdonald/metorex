@@ -141,6 +141,67 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(string_value.chars().count() as i64)))
             }
+            // Stream-like predicates so STDOUT/STDERR (stored as String) can be checked
+            "tty?" | "isatty" => Ok(Some(Object::Bool(false))),
+            "flush" | "sync" | "sync=" | "fsync" => Ok(Some(Object::Nil)),
+            "ljust" | "rjust" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let width = match &arguments[0] {
+                    Object::Int(n) => *n,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Integer",
+                            &arguments[0],
+                            position,
+                        ));
+                    }
+                };
+                let pad = if arguments.len() == 2 {
+                    match &arguments[1] {
+                        Object::String(s) if !s.is_empty() => (**s).clone(),
+                        Object::String(_) => {
+                            return Err(MetorexError::runtime_error(
+                                format!("zero width padding for {}", method_name),
+                                crate::vm::utils::position_to_location(position),
+                            ));
+                        }
+                        _ => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String",
+                                &arguments[1],
+                                position,
+                            ));
+                        }
+                    }
+                } else {
+                    " ".to_string()
+                };
+                let current_len = string_value.chars().count() as i64;
+                if width <= current_len {
+                    return Ok(Some(Object::string(string_value.to_string())));
+                }
+                let pad_chars: Vec<char> = pad.chars().collect();
+                let needed = (width - current_len) as usize;
+                let mut padding = String::new();
+                for i in 0..needed {
+                    padding.push(pad_chars[i % pad_chars.len()]);
+                }
+                let result = if method_name == "ljust" {
+                    format!("{}{}", string_value, padding)
+                } else {
+                    format!("{}{}", padding, string_value)
+                };
+                Ok(Some(Object::string(result)))
+            }
             "strip" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -240,6 +301,41 @@ impl VirtualMachine {
                         position,
                     )),
                 }
+            }
+            "start_with?" | "end_with?" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let mut result = false;
+                for arg in arguments {
+                    match arg {
+                        Object::String(s) => {
+                            if method_name == "start_with?" {
+                                if string_value.starts_with(s.as_ref()) {
+                                    result = true;
+                                    break;
+                                }
+                            } else if string_value.ends_with(s.as_ref()) {
+                                result = true;
+                                break;
+                            }
+                        }
+                        _ => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String",
+                                arg,
+                                position,
+                            ));
+                        }
+                    }
+                }
+                Ok(Some(Object::Bool(result)))
             }
             "starts_with?" => {
                 if arguments.len() != 1 {

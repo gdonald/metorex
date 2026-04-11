@@ -26,6 +26,19 @@ impl Parser {
                 value,
                 position: token.position,
             }),
+            TokenKind::PercentW(value) => {
+                let elements: Vec<Expression> = value
+                    .split_whitespace()
+                    .map(|word| Expression::StringLiteral {
+                        value: word.to_string(),
+                        position: token.position,
+                    })
+                    .collect();
+                Ok(Expression::Array {
+                    elements,
+                    position: token.position,
+                })
+            }
             TokenKind::Regex(pattern, flags) => Ok(Expression::RegexLiteral {
                 pattern,
                 flags,
@@ -328,9 +341,49 @@ impl Parser {
                 }
             }
 
-            // Grouped expression
+            // Leading `::Name` — top-level constant access. We don't have a dedicated
+            // top-level namespace distinct from the global one, so treat `::Name`
+            // exactly as `Name`.
+            TokenKind::ColonColon => {
+                let name = match self.advance().kind {
+                    TokenKind::Ident(n) => n,
+                    _ => {
+                        return Err(
+                            self.error_at_previous("Expected identifier after leading '::'")
+                        );
+                    }
+                };
+                Ok(Expression::Identifier {
+                    name,
+                    position: token.position,
+                })
+            }
+
+            // Grouped expression (or parenthesized assignment: `(target = value)`)
             TokenKind::LParen => {
                 let expr = self.parse_expression()?;
+                // Support parenthesized assignment: `(x = 5)`, `(@x = 5)`, etc.
+                let expr = if self.check(&[TokenKind::Equal])
+                    && matches!(
+                        expr,
+                        Expression::Identifier { .. }
+                            | Expression::InstanceVariable { .. }
+                            | Expression::ClassVariable { .. }
+                            | Expression::GlobalVariable { .. }
+                            | Expression::Index { .. }
+                    ) {
+                    let eq_pos = self.advance().position;
+                    self.skip_whitespace();
+                    let value = self.parse_expression()?;
+                    Expression::BinaryOp {
+                        op: crate::ast::BinaryOp::Assign,
+                        left: Box::new(expr),
+                        right: Box::new(value),
+                        position: eq_pos,
+                    }
+                } else {
+                    expr
+                };
                 self.expect(TokenKind::RParen, "Expected ')' after expression")?;
                 Ok(Expression::Grouped {
                     expression: Box::new(expr),

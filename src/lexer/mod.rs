@@ -653,6 +653,9 @@ impl<'a> Lexer<'a> {
                     if self.peek() == Some('=') {
                         self.advance();
                         Token::new(TokenKind::StarEqual, position)
+                    } else if self.peek() == Some('*') {
+                        self.advance();
+                        Token::new(TokenKind::StarStar, position)
                     } else {
                         Token::new(TokenKind::Star, position)
                     }
@@ -715,6 +718,39 @@ impl<'a> Lexer<'a> {
                             }
                         }
                         Token::new(TokenKind::Regex(pattern, flags), position)
+                    } else if !matches!(self.prev_significant, Some(TokenKind::Def))
+                        && self.peek() == Some('w')
+                    {
+                        // %w!...! or %w[...] etc. — array of words (whitespace-split).
+                        // Emits a single String literal of the raw content; a separate
+                        // parser path splits it into an array.
+                        self.advance(); // consume 'w'
+                        let open = self.peek().unwrap_or('(');
+                        let close = match open {
+                            '(' => ')',
+                            '[' => ']',
+                            '{' => '}',
+                            '<' => '>',
+                            _ => open,
+                        };
+                        self.advance(); // consume opening delimiter
+                        let mut content = String::new();
+                        while let Some(ch) = self.peek() {
+                            if ch == '\\' {
+                                self.advance();
+                                if let Some(esc) = self.peek() {
+                                    content.push(esc);
+                                    self.advance();
+                                }
+                            } else if ch == close {
+                                self.advance();
+                                break;
+                            } else {
+                                content.push(ch);
+                                self.advance();
+                            }
+                        }
+                        Token::new(TokenKind::PercentW(content), position)
                     } else if !matches!(self.prev_significant, Some(TokenKind::Def))
                         && (self.peek() == Some('Q')
                             || self.peek() == Some('[')
