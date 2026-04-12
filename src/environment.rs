@@ -36,6 +36,16 @@ impl Environment {
         self.depth += 1;
     }
 
+    /// Pushes an isolated scope (method boundary). The parent is the global
+    /// scope, not the caller's scope, so local variable assignment inside a
+    /// method body cannot accidentally modify the caller's variables.
+    pub fn push_isolated_scope(&mut self) {
+        let global = self.scopes[0].clone();
+        let new_scope = Rc::new(RefCell::new(Scope::with_parent(global)));
+        self.scopes.push(new_scope);
+        self.depth += 1;
+    }
+
     /// Pops the current scope from the stack
     /// Returns the popped scope, or None if we're at the global scope
     /// Note: The global scope can never be popped

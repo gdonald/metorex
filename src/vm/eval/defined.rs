@@ -58,7 +58,28 @@ impl VirtualMachine {
                     None
                 }
             }
-            Expression::MethodCall { .. } | Expression::Call { .. } => Some("method"),
+            Expression::MethodCall { receiver, .. } => {
+                // Only "defined" if the receiver can be evaluated without error.
+                if self.evaluate_expression(receiver).is_ok() {
+                    Some("method")
+                } else {
+                    None
+                }
+            }
+            Expression::Call { .. } => {
+                if self.evaluate_expression(expression).is_ok() {
+                    Some("method")
+                } else {
+                    None
+                }
+            }
+            Expression::Index { array, .. } => {
+                if self.evaluate_expression(array).is_ok() {
+                    Some("method")
+                } else {
+                    None
+                }
+            }
             Expression::Yield { .. } => {
                 if self.environment().get("__block__").is_some() {
                     Some("yield")

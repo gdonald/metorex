@@ -144,6 +144,31 @@ impl VirtualMachine {
             // Stream-like predicates so STDOUT/STDERR (stored as String) can be checked
             "tty?" | "isatty" => Ok(Some(Object::Bool(false))),
             "flush" | "sync" | "sync=" | "fsync" => Ok(Some(Object::Nil)),
+            // STDOUT/STDERR stream methods (receiver is the "STDOUT"/"STDERR" string).
+            "puts" | "print" | "write" => {
+                let to_stderr = string_value.as_str() == "STDERR";
+                let newline = method_name == "puts";
+                let mut out = String::new();
+                for arg in arguments.iter() {
+                    let s = match arg {
+                        Object::String(s) => s.as_str().to_string(),
+                        other => format!("{}", other),
+                    };
+                    out.push_str(&s);
+                    if newline && !s.ends_with('\n') {
+                        out.push('\n');
+                    }
+                }
+                if newline && arguments.is_empty() {
+                    out.push('\n');
+                }
+                if to_stderr {
+                    eprint!("{}", out);
+                } else {
+                    print!("{}", out);
+                }
+                Ok(Some(Object::Nil))
+            }
             "ljust" | "rjust" => {
                 if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(

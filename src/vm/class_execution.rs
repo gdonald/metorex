@@ -21,9 +21,16 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // Resolve superclass if specified
+        // Resolve superclass if specified. Check the environment first (for
+        // local class shadowing), then fall back to globals (for classes
+        // defined in previously-loaded files whose top-level scope has been
+        // torn down).
         let superclass = if let Some(super_name) = superclass_name {
-            match self.environment().get(super_name) {
+            let resolved = self
+                .environment()
+                .get(super_name)
+                .or_else(|| self.globals().get(super_name));
+            match resolved {
                 Some(Object::Class(class)) => Some(class),
                 Some(_) => {
                     return Err(MetorexError::runtime_error(

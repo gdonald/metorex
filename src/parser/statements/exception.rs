@@ -9,6 +9,38 @@ impl Parser {
     /// Parse a begin...rescue...else...ensure...end statement
     pub(crate) fn parse_begin_statement(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Begin, "Expected 'begin'")?.position;
+        let parts = self.parse_begin_body()?;
+
+        Ok(Statement::Begin {
+            body: parts.body,
+            rescue_clauses: parts.rescue_clauses,
+            else_clause: parts.else_clause,
+            ensure_block: parts.ensure_block,
+            position: start_pos,
+        })
+    }
+
+    /// Parse a `begin ... end` expression (RHS of an assignment, etc.) into
+    /// an `Expression::BeginRescue`. Called after the `begin` token has been
+    /// consumed by the primary-expression parser.
+    pub(crate) fn parse_begin_expression(
+        &mut self,
+        start_pos: crate::lexer::Position,
+    ) -> Result<Expression, MetorexError> {
+        let parts = self.parse_begin_body()?;
+        Ok(Expression::BeginRescue {
+            body: parts.body,
+            rescue_clauses: parts.rescue_clauses,
+            else_clause: parts.else_clause,
+            ensure_block: parts.ensure_block,
+            position: start_pos,
+        })
+    }
+
+    /// Shared parser for the body of a begin block, used by both the
+    /// statement and expression forms. The opening `begin` token must
+    /// already have been consumed.
+    fn parse_begin_body(&mut self) -> Result<BeginParts, MetorexError> {
         self.skip_whitespace();
 
         // Parse the main body
@@ -76,14 +108,25 @@ impl Parser {
 
         self.expect(TokenKind::End, "Expected 'end' after begin block")?;
 
-        Ok(Statement::Begin {
+        Ok(BeginParts {
             body,
             rescue_clauses,
             else_clause,
             ensure_block,
-            position: start_pos,
         })
     }
+}
+
+struct BeginParts {
+    body: Vec<Statement>,
+    rescue_clauses: Vec<RescueClause>,
+    else_clause: Option<Vec<Statement>>,
+    ensure_block: Option<Vec<Statement>>,
+}
+
+impl Parser {
+    // Sentinel impl to keep the file's `Parser` impl block contiguous —
+    // helpers added below.
 
     /// Parse a rescue clause
     pub(crate) fn parse_rescue_clause(&mut self) -> Result<RescueClause, MetorexError> {
@@ -193,12 +236,25 @@ impl Parser {
     /// Parse a raise statement
     pub(crate) fn parse_raise_statement(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Raise, "Expected 'raise'")?.position;
-        self.skip_whitespace();
+        // Do NOT skip newlines: a bare `raise` followed by a newline (or
+        // postfix `if`/`unless`, or `end` on the next line) means a re-raise
+        // with no explicit exception. Skipping newlines first would let
+        // `parse_expression` consume the next statement.
 
-        // Check if there's an exception expression
-        // If the next token is a newline, semicolon, or end, it's a bare raise
-        let exception = if self.check(&[TokenKind::Newline, TokenKind::Semicolon, TokenKind::End])
-            || self.is_at_end()
+        let exception = if self.check(&[
+            TokenKind::Newline,
+            TokenKind::Semicolon,
+            TokenKind::End,
+            TokenKind::RBrace,
+            TokenKind::If,
+            TokenKind::Unless,
+            TokenKind::While,
+            TokenKind::Else,
+            TokenKind::Elsif,
+            TokenKind::When,
+            TokenKind::Rescue,
+            TokenKind::Ensure,
+        ]) || self.is_at_end()
         {
             None
         } else {

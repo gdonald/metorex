@@ -143,8 +143,13 @@ impl<'a> Lexer<'a> {
                         Token::new(TokenKind::LessEqual, position)
                     }
                 } else if self.peek() == Some('<') {
-                    self.advance();
-                    Token::new(TokenKind::Shovel, position)
+                    self.advance(); // consume second '<'
+                    // Heredoc: `<<-IDENT` or `<<~IDENT` (with indent-strip)
+                    if let Some(heredoc) = self.try_read_heredoc() {
+                        Token::new(heredoc, position)
+                    } else {
+                        Token::new(TokenKind::Shovel, position)
+                    }
                 } else {
                     Token::new(TokenKind::Less, position)
                 }

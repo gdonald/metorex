@@ -7,7 +7,35 @@ use super::utils::*;
 
 use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
-use crate::object::Object;
+use crate::lexer::Position;
+use crate::object::{BlockStatement, Object};
+
+/// Build a `BlockStatement` for `&:symbol` (symbol-to-proc): a one-arg block
+/// `|x| x.send(:symbol)`.
+fn symbol_to_proc_block(sym: &str) -> BlockStatement {
+    let pos = Position::new(0, 0, 0);
+    let body = vec![Statement::Expression {
+        expression: Expression::MethodCall {
+            receiver: Box::new(Expression::Identifier {
+                name: "x".to_string(),
+                position: pos,
+            }),
+            method: "send".to_string(),
+            arguments: vec![Expression::Symbol {
+                value: sym.to_string(),
+                position: pos,
+            }],
+            trailing_block: None,
+            position: pos,
+        },
+        position: pos,
+    }];
+    BlockStatement::new(
+        vec!["x".to_string()],
+        body,
+        std::collections::HashMap::new(),
+    )
+}
 
 impl VirtualMachine {
     /// Execute a sequence of statements and return an optional result (from return statements).
@@ -97,26 +125,57 @@ impl VirtualMachine {
         Ok(last_value)
     }
 
-    /// Evaluate a list of argument expressions, expanding any splat (`*expr`) arguments.
+    /// Evaluate a list of argument expressions, expanding any splat (`*expr`)
+    /// arguments and routing block-arg (`&expr`) arguments to `pending_block`.
     pub(crate) fn evaluate_arguments(
         &mut self,
         argument_exprs: &[Expression],
     ) -> Result<Vec<Object>, MetorexError> {
         let mut args = Vec::with_capacity(argument_exprs.len());
         for arg in argument_exprs {
-            if let Expression::Splat { expression, .. } = arg {
-                let value = self.evaluate_expression(expression)?;
-                match value {
-                    Object::Array(arr) => {
-                        args.extend(arr.borrow().iter().cloned());
-                    }
-                    other => {
-                        // Non-array splat: treat as single argument
-                        args.push(other);
+            match arg {
+                Expression::Splat { expression, .. } => {
+                    let value = self.evaluate_expression(expression)?;
+                    match value {
+                        Object::Array(arr) => {
+                            args.extend(arr.borrow().iter().cloned());
+                        }
+                        other => {
+                            // Non-array splat: treat as single argument
+                            args.push(other);
+                        }
                     }
                 }
-            } else {
-                args.push(self.evaluate_expression(arg)?);
+                Expression::BlockArg { expression, .. } => {
+                    // `&expr`: bind the value as the pending block. If the
+                    // value is nil, the call is treated as if no block were
+                    // given (the arg is dropped, not pushed).
+                    let value = self.evaluate_expression(expression)?;
+                    match value {
+                        Object::Nil => {}
+                        Object::Block(_) => {
+                            self.pending_block = Some(value);
+                        }
+                        Object::Symbol(sym) => {
+                            // `&:method` is symbol-to-proc: synthesise a block
+                            // `|x| x.send(:method)`. The block has no captured
+                            // vars and a one-statement body that calls .send
+                            // on the parameter.
+                            self.pending_block =
+                                Some(Object::Block(std::rc::Rc::new(symbol_to_proc_block(&sym))));
+                        }
+                        other => {
+                            // Non-block, non-nil &arg: push as positional so
+                            // the existing trailing-block-extraction in
+                            // `invoke_method` can pick it up if it happens to
+                            // be a Method/Proc that the user wants to coerce.
+                            args.push(other);
+                        }
+                    }
+                }
+                _ => {
+                    args.push(self.evaluate_expression(arg)?);
+                }
             }
         }
         Ok(args)

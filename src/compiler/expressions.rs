@@ -158,7 +158,11 @@ impl Compiler {
                     BinaryOp::Greater => self.emit_op(OpCode::Greater, line),
                     BinaryOp::LessEqual => self.emit_op(OpCode::LessEqual, line),
                     BinaryOp::GreaterEqual => self.emit_op(OpCode::GreaterEqual, line),
-                    BinaryOp::Spaceship | BinaryOp::Xor => {
+                    BinaryOp::Spaceship
+                    | BinaryOp::Xor
+                    | BinaryOp::Power
+                    | BinaryOp::BitwiseAnd
+                    | BinaryOp::BitwiseOr => {
                         return Err(MetorexError::runtime_error(
                             format!("{} operator not yet supported in bytecode compiler", op),
                             SourceLocation::new(line, 0, 0),
@@ -367,8 +371,11 @@ impl Compiler {
             | Expression::ScopeResolution { position, .. }
             | Expression::MagicFile { position, .. }
             | Expression::MagicLine { position, .. }
+            | Expression::MagicDir { position, .. }
             | Expression::RegexLiteral { position, .. }
             | Expression::Splat { position, .. }
+            | Expression::BlockArg { position, .. }
+            | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }
             | Expression::Yield { position, .. } => {
                 let line = Self::pos_line(position);

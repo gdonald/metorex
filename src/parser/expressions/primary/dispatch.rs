@@ -37,6 +37,7 @@ impl Parser {
             TokenKind::GlobalVar(name) => Ok(literals::global_variable(name, position)),
             TokenKind::MagicFile => Ok(literals::magic_file(position)),
             TokenKind::MagicLine => Ok(literals::magic_line(position)),
+            TokenKind::MagicDir => Ok(Expression::MagicDir { position }),
 
             // ── Symbol literal: `:name`, `:@ivar`, `:[]`, `:+`, `:"..."` ────
             TokenKind::Colon => self.parse_symbol_literal(position),
@@ -58,6 +59,7 @@ impl Parser {
             TokenKind::Super => self.parse_super_call(position),
             TokenKind::Defined => self.parse_defined_expression(position),
             TokenKind::Yield => self.parse_yield_expression(position),
+            TokenKind::Begin => self.parse_begin_expression(position),
 
             // ── Control-flow expressions ────────────────────────────────────
             TokenKind::Case => self.parse_case_expression(position),

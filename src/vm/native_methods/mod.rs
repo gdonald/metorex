@@ -55,6 +55,66 @@ impl VirtualMachine {
 
         // Special handling for Class objects
         if let Object::Class(class_rc) = receiver {
+            // Dir.pwd / Dir.getwd — current working directory.
+            if class_rc.name() == "Dir" && (method_name == "pwd" || method_name == "getwd") {
+                let cwd = std::env::current_dir()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_default();
+                return Ok(Some(Object::string(cwd)));
+            }
+            // Dir.exist? / exists?
+            if class_rc.name() == "Dir" && (method_name == "exist?" || method_name == "exists?") {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let path = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                return Ok(Some(Object::Bool(std::path::Path::new(&path).is_dir())));
+            }
+            // Dir.mkdir / Dir.delete — wrap stdlib calls.
+            if class_rc.name() == "Dir"
+                && (method_name == "mkdir" || method_name == "delete" || method_name == "rmdir")
+            {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let path = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let _ = if method_name == "mkdir" {
+                    std::fs::create_dir_all(&path)
+                } else {
+                    std::fs::remove_dir(&path)
+                };
+                return Ok(Some(Object::Int(0)));
+            }
             // Dir["pattern"] / Dir.glob("pattern")
             if class_rc.name() == "Dir" && (method_name == "[]" || method_name == "glob") {
                 if arguments.is_empty() {
@@ -89,6 +149,13 @@ impl VirtualMachine {
                 )))));
             }
             match method_name {
+                "now" | "new" if class_rc.name() == "Time" => {
+                    let secs = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .unwrap_or_default()
+                        .as_secs_f64();
+                    return Ok(Some(Object::Float(secs)));
+                }
                 "new" if class_rc.name() == "Set" => {
                     // Set.new creates a new set, optionally from an array
                     use crate::object::ObjectHash;
@@ -236,7 +303,7 @@ impl VirtualMachine {
                     };
                     return Ok(Some(Object::Bool(std::path::Path::new(&path).exists())));
                 }
-                "realpath" if class_rc.name() == "File" => {
+                "realpath" | "realdirpath" if class_rc.name() == "File" => {
                     if arguments.is_empty() || arguments.len() > 2 {
                         return Err(method_argument_error(
                             "realpath",
@@ -576,9 +643,43 @@ impl VirtualMachine {
 
         // Module receivers: support the same methods as Class (remove_method, etc.)
         if let Object::Module(module_rc) = receiver {
+            // Kernel.load — delegates to the VM's file loader.
+            if module_rc.name() == "Kernel" && method_name == "load" {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error("load", 1, arguments.len(), position));
+                }
+                let path = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "load", "String", other, position,
+                        ));
+                    }
+                };
+                self.execute_file(std::path::Path::new(&path))?;
+                return Ok(Some(Object::Bool(true)));
+            }
             // Signal module stubs: trap is a no-op; the block is discarded.
             if module_rc.name() == "Signal" && method_name == "trap" {
                 self.pending_block.take();
+                return Ok(Some(Object::Nil));
+            }
+            // Process.pid returns the actual OS pid; the rest are stubs.
+            if module_rc.name() == "Process" {
+                match method_name {
+                    "pid" => return Ok(Some(Object::Int(std::process::id() as i64))),
+                    "ppid" => return Ok(Some(Object::Int(0))),
+                    "kill" | "wait" | "waitall" | "exit" | "exit!" | "abort" => {
+                        return Ok(Some(Object::Nil));
+                    }
+                    _ => {}
+                }
+            }
+            // GC.* / ObjectSpace.* — no-op stubs returning nil for everything
+            // except `name` (which falls through to the generic name handler).
+            if (module_rc.name() == "GC" || module_rc.name() == "ObjectSpace")
+                && method_name != "name"
+            {
                 return Ok(Some(Object::Nil));
             }
             match method_name {

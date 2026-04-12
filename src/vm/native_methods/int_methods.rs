@@ -54,6 +54,17 @@ impl VirtualMachine {
                 }
                 Ok(Some(receiver.clone()))
             }
+            "size" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Int(8)))
+            }
             "to_s" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

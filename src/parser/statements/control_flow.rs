@@ -239,7 +239,10 @@ impl Parser {
         let pos = self
             .expect(TokenKind::Return, "Expected 'return'")?
             .position;
-        self.skip_whitespace();
+        // Do NOT skip newlines here — bare `return` followed by a newline
+        // (or `end`/`}` on the next line) means a value-less return.
+        // We can however skip horizontal whitespace, which `skip_whitespace`
+        // doesn't see (the lexer already swallowed spaces and tabs).
 
         // Check if there's a return value
         let value = if self.check(&[
@@ -248,6 +251,13 @@ impl Parser {
             TokenKind::EOF,
             TokenKind::If,
             TokenKind::Unless,
+            TokenKind::End,
+            TokenKind::RBrace,
+            TokenKind::Else,
+            TokenKind::Elsif,
+            TokenKind::When,
+            TokenKind::Rescue,
+            TokenKind::Ensure,
         ]) || self.is_at_end()
         {
             None
@@ -332,21 +342,25 @@ impl Parser {
             let when_pos = self.previous().position;
             self.skip_whitespace();
 
-            // Parse the pattern (may include comma-separated alternatives)
+            // Parse the pattern (may include comma-separated alternatives).
+            // Note: do NOT call skip_whitespace here — we need to be able to
+            // distinguish a guard on the same line (`when pat if guard`) from
+            // an `if` statement on the next line (which is a body statement).
             let pattern = self.parse_case_pattern_with_alternatives()?;
-            self.skip_whitespace();
 
-            // Consume optional 'then' keyword (allows inline: when 1, 2 then body)
-            self.match_token(&[TokenKind::Then]);
-            self.skip_whitespace();
-
-            // Parse optional guard clause (if ...)
-            let guard = if self.match_token(&[TokenKind::If]) {
+            // Parse optional guard clause (`if expr`) on the SAME line as the
+            // pattern. We only consume horizontal whitespace, not newlines.
+            let guard = if matches!(self.peek().kind, TokenKind::If) {
+                self.advance(); // consume `if`
                 self.skip_whitespace();
                 Some(self.parse_expression()?)
             } else {
                 None
             };
+
+            self.skip_whitespace();
+            // Consume optional `then` keyword (allows inline: `when 1, 2 then body`).
+            self.match_token(&[TokenKind::Then]);
             self.skip_whitespace();
 
             // Parse the body
@@ -576,9 +590,10 @@ impl Parser {
     pub(in crate::parser) fn parse_case_pattern_with_alternatives(
         &mut self,
     ) -> Result<MatchPattern, MetorexError> {
-        // Parse the first pattern
+        // Parse the first pattern. Do NOT skip newlines after the pattern —
+        // the caller relies on being able to distinguish a same-line `if`
+        // (a guard clause) from a body `if` statement on the next line.
         let first_pattern = self.parse_case_pattern()?;
-        self.skip_whitespace();
 
         // Check if there's a comma indicating multiple patterns
         if !self.check(&[TokenKind::Comma]) {

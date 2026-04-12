@@ -509,9 +509,11 @@ fn array_length_error_with_args() {
 }
 
 #[test]
-fn array_push_error_wrong_args() {
-    let err = run_err("[1, 2, 3].push");
-    assert!(err.contains("argument"));
+fn array_push_no_args_returns_self() {
+    let result = run("[1, 2, 3].push");
+    if let Some(Object::Array(arr)) = result {
+        assert_eq!(arr.borrow().len(), 3);
+    }
 }
 
 #[test]

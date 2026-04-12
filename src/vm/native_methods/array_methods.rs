@@ -51,15 +51,14 @@ impl VirtualMachine {
                 Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
             }
             "push" | "append" | "<<" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        method_name,
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
+                if arguments.is_empty() {
+                    return Ok(Some(receiver.clone()));
                 }
-                array_rc.borrow_mut().push(arguments[0].clone());
+                let mut arr = array_rc.borrow_mut();
+                for arg in arguments {
+                    arr.push(arg.clone());
+                }
+                drop(arr);
                 Ok(Some(receiver.clone()))
             }
             "pop" => {
@@ -240,6 +239,49 @@ impl VirtualMachine {
                     }
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+            }
+            "partition" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "partition requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                let array = array_rc.borrow();
+                let mut truthy = Vec::new();
+                let mut falsy = Vec::new();
+                for element in array.iter() {
+                    let args = vec![element.clone()];
+                    let value = self.execute_block_body(&block, args)?;
+                    if !matches!(value, Object::Bool(false) | Object::Nil) {
+                        truthy.push(element.clone());
+                    } else {
+                        falsy.push(element.clone());
+                    }
+                }
+                Ok(Some(Object::Array(Rc::new(RefCell::new(vec![
+                    Object::Array(Rc::new(RefCell::new(truthy))),
+                    Object::Array(Rc::new(RefCell::new(falsy))),
+                ])))))
             }
             "reduce" => {
                 if arguments.len() > 1 {
@@ -717,6 +759,123 @@ impl VirtualMachine {
                     }
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(unique)))))
+            }
+            "any?" | "all?" | "none?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = self.pending_block.take();
+                let array = array_rc.borrow();
+                let truthy = |v: &Object| !matches!(v, Object::Bool(false) | Object::Nil);
+                let mut any_true = false;
+                let mut all_true = true;
+                for element in array.iter() {
+                    let result = match &block {
+                        Some(Object::Block(b)) => {
+                            let args = vec![element.clone()];
+                            self.execute_block_body(b, args)?
+                        }
+                        _ => element.clone(),
+                    };
+                    if truthy(&result) {
+                        any_true = true;
+                    } else {
+                        all_true = false;
+                    }
+                }
+                let value = match method_name {
+                    "any?" => any_true,
+                    "all?" => array.is_empty() || all_true,
+                    "none?" => !any_true,
+                    _ => unreachable!(),
+                };
+                Ok(Some(Object::Bool(value)))
+            }
+            "pack" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::String(format) = &arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                let array = array_rc.borrow();
+                let mut out: Vec<u8> = Vec::new();
+                let mut idx = 0usize;
+                let chars: Vec<char> = format.chars().collect();
+                let mut i = 0;
+                while i < chars.len() {
+                    let ch = chars[i];
+                    let native = i + 1 < chars.len() && chars[i + 1] == '!';
+                    if native {
+                        i += 1;
+                    }
+                    i += 1;
+                    let val = array.get(idx).cloned().unwrap_or(Object::Int(0));
+                    let effective = if native && (ch == 'l' || ch == 'L' || ch == 'i' || ch == 'I')
+                    {
+                        'j'
+                    } else {
+                        ch
+                    };
+                    match effective {
+                        'j' | 'J' | 'q' | 'Q' => {
+                            let n = match val {
+                                Object::Int(i) => i,
+                                _ => 0,
+                            };
+                            out.extend_from_slice(&n.to_le_bytes());
+                            idx += 1;
+                        }
+                        'l' | 'L' | 'i' | 'I' | 'V' => {
+                            let n = match val {
+                                Object::Int(i) => i as i32,
+                                _ => 0,
+                            };
+                            out.extend_from_slice(&n.to_le_bytes());
+                            idx += 1;
+                        }
+                        's' | 'S' | 'v' => {
+                            let n = match val {
+                                Object::Int(i) => i as i16,
+                                _ => 0,
+                            };
+                            out.extend_from_slice(&n.to_le_bytes());
+                            idx += 1;
+                        }
+                        'c' | 'C' => {
+                            let n = match val {
+                                Object::Int(i) => i as u8,
+                                _ => 0,
+                            };
+                            out.push(n);
+                            idx += 1;
+                        }
+                        _ => {
+                            return Err(MetorexError::runtime_error(
+                                format!("Array#pack: unsupported directive '{}'", ch),
+                                position_to_location(position),
+                            ));
+                        }
+                    }
+                }
+                let s: String = out.iter().map(|&b| b as char).collect();
+                let _ = idx;
+                Ok(Some(Object::String(Rc::new(s))))
             }
             _ => Ok(None),
         }

@@ -183,7 +183,7 @@ fn dead_code_after_return_in_unoptimized() {
 
 #[test]
 fn eliminate_double_negate() {
-    let chunk = compile_optimized("--5");
+    let chunk = compile_optimized("-(-5)");
     let ops = opcodes(&chunk);
     // Double negate should be eliminated — just the constant
     assert!(

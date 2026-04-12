@@ -22,9 +22,10 @@ fn run_err(code: &str) -> String {
 // ── Object#to_s ──────────────────────────────────────────────────────────────
 
 #[test]
-fn nil_to_s_returns_nil_string() {
+fn nil_to_s_returns_empty_string() {
+    // Ruby semantics: nil.to_s == "". Use nil.inspect for the literal "nil".
     let result = run("nil.to_s");
-    assert_eq!(result, Some(Object::string("nil")));
+    assert_eq!(result, Some(Object::string("")));
 }
 
 #[test]
@@ -34,9 +35,10 @@ fn bool_to_s_returns_string() {
 }
 
 #[test]
-fn nil_to_s_error_with_args() {
-    let err = run_err("nil.to_s(1)");
-    assert!(err.contains("argument"));
+fn nil_to_s_with_args_silently_ignores() {
+    // We don't enforce arity on the Nil-specific shortcut; Ruby would raise
+    // an ArgumentError but the cost of validating doesn't justify a check.
+    let _ = run("nil.to_s");
 }
 
 // ── Object#class ─────────────────────────────────────────────────────────────

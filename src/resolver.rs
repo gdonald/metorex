@@ -761,8 +761,11 @@ impl Resolver {
             | Expression::Super { .. }
             | Expression::MagicFile { .. }
             | Expression::MagicLine { .. }
+            | Expression::MagicDir { .. }
             | Expression::RegexLiteral { .. }
             | Expression::Splat { .. }
+            | Expression::BlockArg { .. }
+            | Expression::BeginRescue { .. }
             | Expression::Defined { .. }
             | Expression::Yield { .. } => {}
         }

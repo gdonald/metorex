@@ -26,9 +26,53 @@ impl VirtualMachine {
             return Ok(val);
         }
 
-        let Some(receiver) = self.environment().get("self") else {
+        // Constants (uppercase) resolve from globals regardless of scope.
+        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+            && let Some(val) = self.globals().get(name)
+        {
+            return Ok(val);
+        }
+
+        let receiver = if let Some(r) = self.environment().get("self") {
+            r
+        } else {
+            // Check global Object class for injected methods (mspec describe/it)
+            if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                && let Some(method) = object_class.find_method(name)
+                && !method.is_undefined
+            {
+                let required = method.parameters.len()
+                    - method.default_parameters.len()
+                    - if method.variadic_param.is_some() {
+                        1
+                    } else {
+                        0
+                    };
+                if required == 0 {
+                    return self.invoke_method(object_class, method, Object::Nil, vec![], position);
+                } else {
+                    let mut bound = method.as_ref().clone();
+                    bound.receiver = Some(Box::new(Object::Nil));
+                    return Ok(Object::Method(Rc::new(bound)));
+                }
+            }
             return Err(undefined_variable_error(name, position));
         };
+
+        // Constant lookup: bare `NAME` inside a class/method resolves to the
+        // class variable of the enclosing class (or the receiver's class).
+        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            let class_opt = match &receiver {
+                Object::Class(c) | Object::Module(c) => Some(Rc::clone(c)),
+                Object::Instance(inst) => Some(Rc::clone(&inst.borrow().class)),
+                _ => None,
+            };
+            if let Some(class) = class_opt
+                && let Some(val) = class.get_class_var(name)
+            {
+                return Ok(val);
+            }
+        }
 
         // In class/module body, bare identifiers resolve methods on self.
         // Guard: don't re-invoke the current method (prevents infinite recursion)
@@ -60,6 +104,27 @@ impl VirtualMachine {
             && let Object::Class(_) = &receiver
         {
             return self.invoke_callable(receiver, vec![], position);
+        }
+
+        // Fallback: check global Object class (mspec injects describe/it/before/after)
+        if let Some(Object::Class(object_class)) = self.globals().get("Object")
+            && let Some(method) = object_class.find_method(name)
+            && !method.is_undefined
+        {
+            let required = method.parameters.len()
+                - method.default_parameters.len()
+                - if method.variadic_param.is_some() {
+                    1
+                } else {
+                    0
+                };
+            if required == 0 {
+                return self.invoke_method(object_class, method, receiver, vec![], position);
+            } else {
+                let mut bound = method.as_ref().clone();
+                bound.receiver = Some(Box::new(receiver));
+                return Ok(Object::Method(Rc::new(bound)));
+            }
         }
 
         Err(undefined_variable_error(name, position))

@@ -104,6 +104,8 @@ impl Parser {
             TokenKind::Spaceship,
             TokenKind::Shovel,
             TokenKind::Caret,
+            TokenKind::Pipe,
+            TokenKind::Ampersand,
         ]) {
             let op_token = self.advance();
             if op_token.kind == TokenKind::Shovel {
@@ -126,6 +128,8 @@ impl Parser {
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
                 TokenKind::Spaceship => BinaryOp::Spaceship,
                 TokenKind::Caret => BinaryOp::Xor,
+                TokenKind::Pipe => BinaryOp::BitwiseOr,
+                TokenKind::Ampersand => BinaryOp::BitwiseAnd,
                 _ => unreachable!(),
             };
             let right = self.parse_range()?;

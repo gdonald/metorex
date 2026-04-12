@@ -12,6 +12,7 @@ pub enum BinaryOp {
     Multiply, // *
     Divide,   // /
     Modulo,   // %
+    Power,    // **
 
     // Comparison operators
     Equal,        // ==
@@ -22,8 +23,10 @@ pub enum BinaryOp {
     GreaterEqual, // >=
     Spaceship,    // <=>
 
-    // Bitwise/logical XOR
-    Xor, // ^
+    // Bitwise operators
+    BitwiseAnd, // &
+    BitwiseOr,  // |
+    Xor,        // ^
 
     // Logical operators
     And, // &&
@@ -103,6 +106,9 @@ pub enum Expression {
         position: Position,
     },
     MagicLine {
+        position: Position,
+    },
+    MagicDir {
         position: Position,
     },
 
@@ -187,6 +193,24 @@ pub enum Expression {
     // Splat expression (*expr) — expands an array into individual arguments
     Splat {
         expression: Box<Expression>,
+        position: Position,
+    },
+
+    // Block-arg expression (&expr) — converts the value to a block and binds
+    // it as the receiver method's `pending_block`. If the value is nil the
+    // call is treated as if no block were given.
+    BlockArg {
+        expression: Box<Expression>,
+        position: Position,
+    },
+
+    // begin/rescue/else/ensure used as an expression — yields the value of
+    // the last successfully-executed statement (in body, rescue, or else).
+    BeginRescue {
+        body: Vec<Statement>,
+        rescue_clauses: Vec<RescueClause>,
+        else_clause: Option<Vec<Statement>>,
+        ensure_block: Option<Vec<Statement>>,
         position: Position,
     },
 
@@ -627,6 +651,7 @@ impl fmt::Display for BinaryOp {
             BinaryOp::Multiply => write!(f, "*"),
             BinaryOp::Divide => write!(f, "/"),
             BinaryOp::Modulo => write!(f, "%"),
+            BinaryOp::Power => write!(f, "**"),
             BinaryOp::Equal => write!(f, "=="),
             BinaryOp::NotEqual => write!(f, "!="),
             BinaryOp::Less => write!(f, "<"),
@@ -641,6 +666,8 @@ impl fmt::Display for BinaryOp {
             BinaryOp::And => write!(f, "&&"),
             BinaryOp::Or => write!(f, "||"),
             BinaryOp::Spaceship => write!(f, "<=>"),
+            BinaryOp::BitwiseAnd => write!(f, "&"),
+            BinaryOp::BitwiseOr => write!(f, "|"),
             BinaryOp::Xor => write!(f, "^"),
         }
     }
@@ -676,6 +703,7 @@ impl Expression {
             | Expression::GlobalVariable { position, .. }
             | Expression::MagicFile { position, .. }
             | Expression::MagicLine { position, .. }
+            | Expression::MagicDir { position, .. }
             | Expression::BinaryOp { position, .. }
             | Expression::UnaryOp { position, .. }
             | Expression::Call { position, .. }
@@ -688,6 +716,8 @@ impl Expression {
             | Expression::SelfExpr { position, .. }
             | Expression::Super { position, .. }
             | Expression::Splat { position, .. }
+            | Expression::BlockArg { position, .. }
+            | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }
             | Expression::Yield { position, .. }
             | Expression::Range { position, .. }

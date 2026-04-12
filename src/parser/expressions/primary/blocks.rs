@@ -116,6 +116,11 @@ impl Parser {
 
     /// Parse `|param1, param2, ...|` parameter list, or `||` for an empty
     /// list. Returns an empty `Vec` if no leading `|` is present (no params).
+    ///
+    /// Accepts (and currently silently strips):
+    ///   - splat:        `*args`
+    ///   - block param:  `&blk`
+    ///   - default value: `name = expr`
     fn parse_pipe_params(&mut self) -> Result<Vec<String>, MetorexError> {
         if self.match_token(&[TokenKind::LogicalOr]) {
             // Empty parameter list: ||
@@ -131,6 +136,10 @@ impl Parser {
         if !self.check(&[TokenKind::Pipe]) {
             loop {
                 self.skip_whitespace();
+                // Allow `*name` (splat) and `&name` (block) modifiers; we
+                // strip the modifier and just record the bound name.
+                let _ = self.match_token(&[TokenKind::Star, TokenKind::Ampersand]);
+                self.skip_whitespace();
                 if let TokenKind::Ident(name) = self.peek().kind.clone() {
                     params.push(name);
                     self.advance();
@@ -139,6 +148,12 @@ impl Parser {
                 }
 
                 self.skip_whitespace();
+                // Allow `name = default_value` — parse and discard the default.
+                if self.match_token(&[TokenKind::Equal]) {
+                    self.skip_whitespace();
+                    let _ = self.parse_expression()?;
+                    self.skip_whitespace();
+                }
                 if !self.match_token(&[TokenKind::Comma]) {
                     break;
                 }

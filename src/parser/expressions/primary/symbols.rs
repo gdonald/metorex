@@ -13,7 +13,16 @@ impl Parser {
     ) -> Result<Expression, MetorexError> {
         let next = self.advance();
         match next.kind {
-            TokenKind::Ident(name) => Ok(symbol(name, symbol_position)),
+            TokenKind::Ident(name) => {
+                if self.check(&[TokenKind::Equal])
+                    && !matches!(self.peek_ahead(1).kind, TokenKind::Equal)
+                {
+                    self.advance(); // consume '='
+                    Ok(symbol(format!("{}=", name), symbol_position))
+                } else {
+                    Ok(symbol(name, symbol_position))
+                }
+            }
             TokenKind::InstanceVar(name) => Ok(symbol(format!("@{}", name), symbol_position)),
             TokenKind::ClassVar(name) => Ok(symbol(format!("@@{}", name), symbol_position)),
 

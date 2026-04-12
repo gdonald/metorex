@@ -35,9 +35,14 @@ fn unary_plus_float() {
 }
 
 #[test]
-fn unary_plus_error_on_string() {
-    let err = run_err(r#"+"hello""#);
-    assert!(err.contains("unary") || err.contains("+") || err.contains("operator"));
+fn unary_plus_on_string_returns_string() {
+    // Ruby semantics: `+"hello"` returns a mutable copy of the string. We
+    // don't track frozenness, so it's just an identity op.
+    let result = run(r#"+"hello""#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("hello".to_string())))
+    );
 }
 
 // ── UnaryOp::Minus on Float (line 32) ────────────────────────────────────────

@@ -13,6 +13,7 @@ pub mod token;
 
 mod cursor;
 mod dispatch;
+mod heredoc;
 mod identifiers;
 mod numbers;
 mod percent;
@@ -87,11 +88,18 @@ impl<'a> Lexer<'a> {
     /// Get the next token from the source code, updating regex disambiguation state.
     pub fn next_token(&mut self) -> Token {
         let token = self.next_token_inner();
-        if !matches!(
-            token.kind,
-            TokenKind::Newline | TokenKind::Comment(_) | TokenKind::EOF
-        ) {
-            self.prev_significant = Some(token.kind.clone());
+        match &token.kind {
+            // Newlines reset expression context for slash-vs-regex purposes:
+            // a `/` at the start of a fresh line should be parsed as a regex
+            // literal, not division applied to whatever ended the prior line.
+            TokenKind::Newline => {
+                self.prev_significant = None;
+            }
+            // Comments and EOF leave the previous significant token alone.
+            TokenKind::Comment(_) | TokenKind::EOF => {}
+            other => {
+                self.prev_significant = Some(other.clone());
+            }
         }
         token
     }

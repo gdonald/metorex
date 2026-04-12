@@ -52,6 +52,10 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("STDOUT", Object::String(Rc::new("STDOUT".to_string())));
     globals.set("STDERR", Object::String(Rc::new("STDERR".to_string())));
     globals.set("STDIN", Object::String(Rc::new("STDIN".to_string())));
+
+    // Object — root class that mspec reopens to inject describe/it/before/after
+    let object = Rc::new(Class::new("Object", None));
+    globals.set("Object", Object::Class(object));
 }
 
 /// Register built-in modules (Comparable, Enumerable, Kernel, etc.).
@@ -71,6 +75,38 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // Signal — stub module (trap is a no-op)
     let signal = Rc::new(Class::new("Signal", None));
     globals.set("Signal", Object::Module(signal));
+
+    // Process — stub module (pid is a no-op)
+    let process = Rc::new(Class::new("Process", None));
+    globals.set("Process", Object::Module(process));
+
+    // Math — stub module (constants will be added later if needed)
+    let math = Rc::new(Class::new("Math", None));
+    globals.set("Math", Object::Module(math));
+
+    // GC — no-op stub
+    let gc = Rc::new(Class::new("GC", None));
+    globals.set("GC", Object::Module(gc));
+
+    // ObjectSpace — no-op stub
+    let object_space = Rc::new(Class::new("ObjectSpace", None));
+    globals.set("ObjectSpace", Object::Module(object_space));
+
+    // Time / IO — placeholder stubs (used in mspec)
+    let time = Rc::new(Class::new(
+        "Time",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("Time", Object::Class(time));
+    let io = Rc::new(Class::new("IO", Some(Rc::new(Class::new("Object", None)))));
+    globals.set("IO", Object::Class(io));
+
+    // Thread — stub
+    let thread = Rc::new(Class::new(
+        "Thread",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("Thread", Object::Class(thread));
 
     // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)
     // because object_to_dict_key returns the raw String for Object::String.
@@ -170,6 +206,33 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         Object::NativeFunction("public_class_method".to_string()),
     );
     globals.set("freeze", Object::NativeFunction("freeze".to_string()));
+    // Lifecycle hooks — accept and discard the block, never run it.
+    globals.set("at_exit", Object::NativeFunction("at_exit".to_string()));
+    globals.set("END", Object::NativeFunction("at_exit".to_string()));
+    globals.set(
+        "trace_var",
+        Object::NativeFunction("noop_with_block".to_string()),
+    );
+    globals.set(
+        "untrace_var",
+        Object::NativeFunction("noop_with_block".to_string()),
+    );
+    // Misc Kernel methods used by mspec
+    globals.set("warn", Object::NativeFunction("warn".to_string()));
+    globals.set("sprintf", Object::NativeFunction("sprintf".to_string()));
+    globals.set("format", Object::NativeFunction("sprintf".to_string()));
+    globals.set(
+        "__method__",
+        Object::NativeFunction("__method__".to_string()),
+    );
+    globals.set("caller", Object::NativeFunction("caller".to_string()));
+    globals.set(
+        "binding",
+        Object::NativeFunction("binding_kernel".to_string()),
+    );
+    globals.set("rand", Object::NativeFunction("rand".to_string()));
+    globals.set("srand", Object::NativeFunction("srand".to_string()));
+    globals.set("sleep", Object::NativeFunction("sleep".to_string()));
 }
 
 /// Seed the environment with values from the global registry.

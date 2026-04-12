@@ -37,9 +37,7 @@ impl VirtualMachine {
             Some((class, method)) if !method.is_undefined => {
                 return self.invoke_method(class, method, receiver, arguments, position);
             }
-            _ => {
-                // Method not found or undefined via undef_method — continue to fallbacks
-            }
+            _ => {}
         }
 
         // For Class/Module receivers, check for extended methods (__ext__name class var)
@@ -76,6 +74,14 @@ impl VirtualMachine {
 
         if let Some(result) = object_result {
             return Ok(result);
+        }
+
+        // Fallback: methods defined on the global Object class (mspec injects
+        // describe/it/before/after there).
+        if let Some(Object::Class(object_class)) = self.globals().get("Object")
+            && let Some(method) = object_class.find_method(method_name)
+        {
+            return self.invoke_method(object_class, method, receiver, arguments, position);
         }
 
         // Try method_missing as a final fallback

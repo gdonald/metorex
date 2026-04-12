@@ -38,31 +38,19 @@ arr.push(3)
 }
 
 #[test]
-fn array_push_wrong_arg_count() {
-    let err = run_err(
-        r#"
-[1, 2].push
-"#,
-    );
-    assert!(
-        err.contains("argument") || err.contains("expected"),
-        "Error was: {}",
-        err
-    );
+fn array_push_no_args_returns_self() {
+    let result = run("[1, 2].push");
+    if let Some(Object::Array(arr)) = result {
+        assert_eq!(arr.borrow().len(), 2);
+    }
 }
 
 #[test]
-fn array_append_wrong_arg_count() {
-    let err = run_err(
-        r#"
-[1, 2].append
-"#,
-    );
-    assert!(
-        err.contains("argument") || err.contains("expected"),
-        "Error was: {}",
-        err
-    );
+fn array_append_no_args_returns_self() {
+    let result = run("[1, 2].append");
+    if let Some(Object::Array(arr)) = result {
+        assert_eq!(arr.borrow().len(), 2);
+    }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════

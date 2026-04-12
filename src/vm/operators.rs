@@ -24,7 +24,11 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         match op {
             UnaryOp::Plus => match value {
+                // Numeric `+x` is a no-op identity.
                 Object::Int(_) | Object::Float(_) => Ok(value),
+                // Ruby's `+"str"` returns a mutable copy of the string. We
+                // don't track frozenness, so this is just an identity op.
+                Object::String(_) => Ok(value),
                 _ => Err(unary_type_error(op, &value, position)),
             },
             UnaryOp::Minus => match value {
@@ -54,7 +58,7 @@ impl VirtualMachine {
             Modulo if matches!(left, Object::String(_)) => {
                 self.evaluate_string_format(left, right, position)
             }
-            Subtract | Multiply | Divide | Modulo => {
+            Subtract | Multiply | Divide | Modulo | Power => {
                 self.evaluate_numeric_binary(op, left, right, position)
             }
             Equal => {
@@ -74,16 +78,27 @@ impl VirtualMachine {
                 self.evaluate_comparison(op, left, right, position)
             }
             Spaceship => self.evaluate_spaceship(left, right, position),
-            Xor => {
-                // XOR: for booleans, logical XOR; for integers, bitwise XOR
-                match (left, right) {
-                    (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a ^ b)),
-                    (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a ^ b)),
-                    (Object::Bool(a), other) => Ok(Object::Bool(a ^ other.is_truthy())),
-                    (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() ^ b)),
-                    (lhs, rhs) => Err(binary_type_error(BinaryOp::Xor, &lhs, &rhs, position)),
-                }
-            }
+            BitwiseAnd => match (left, right) {
+                (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a & b)),
+                (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a & b)),
+                (Object::Bool(a), other) => Ok(Object::Bool(a & other.is_truthy())),
+                (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() & b)),
+                (lhs, rhs) => Err(binary_type_error(BitwiseAnd, &lhs, &rhs, position)),
+            },
+            BitwiseOr => match (left, right) {
+                (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a | b)),
+                (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a | b)),
+                (Object::Bool(a), other) => Ok(Object::Bool(a | other.is_truthy())),
+                (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() | b)),
+                (lhs, rhs) => Err(binary_type_error(BitwiseOr, &lhs, &rhs, position)),
+            },
+            Xor => match (left, right) {
+                (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a ^ b)),
+                (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a ^ b)),
+                (Object::Bool(a), other) => Ok(Object::Bool(a ^ other.is_truthy())),
+                (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() ^ b)),
+                (lhs, rhs) => Err(binary_type_error(Xor, &lhs, &rhs, position)),
+            },
             And | Or => Err(MetorexError::internal_error(format!(
                 "Logical operation '{:?}' should be handled by short-circuit evaluation",
                 op
@@ -151,6 +166,13 @@ impl VirtualMachine {
                         Ok(Object::Int(a % b))
                     }
                 }
+                BinaryOp::Power => {
+                    if b < 0 {
+                        Ok(Object::Float((a as f64).powf(b as f64)))
+                    } else {
+                        Ok(Object::Int((a as f64).powi(b as i32) as i64))
+                    }
+                }
                 _ => unreachable!(),
             },
             (Object::Float(a), Object::Float(b)) => match op {
@@ -170,6 +192,7 @@ impl VirtualMachine {
                         Ok(Object::Float(a % b))
                     }
                 }
+                BinaryOp::Power => Ok(Object::Float(a.powf(b))),
                 _ => unreachable!(),
             },
             (Object::Int(a), Object::Float(b)) => match op {
@@ -189,6 +212,7 @@ impl VirtualMachine {
                         Ok(Object::Float((a as f64) % b))
                     }
                 }
+                BinaryOp::Power => Ok(Object::Float((a as f64).powf(b))),
                 _ => unreachable!(),
             },
             (Object::Float(a), Object::Int(b)) => match op {
@@ -208,6 +232,7 @@ impl VirtualMachine {
                         Ok(Object::Float(a % (b as f64)))
                     }
                 }
+                BinaryOp::Power => Ok(Object::Float(a.powi(b as i32))),
                 _ => unreachable!(),
             },
             (lhs, rhs) => Err(binary_type_error(op.clone(), &lhs, &rhs, position)),

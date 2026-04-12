@@ -22,6 +22,30 @@ impl VirtualMachine {
             return Ok(None);
         };
         match method_name {
+            // No-op stub: metorex doesn't distinguish identity from equality
+            // for hash keys, so `compare_by_identity` just returns the receiver.
+            "compare_by_identity" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "compare_by_identity?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(false)))
+            }
             "keys" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

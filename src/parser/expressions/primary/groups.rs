@@ -53,6 +53,10 @@ impl Parser {
         if !self.check(&[TokenKind::RBracket]) {
             loop {
                 self.skip_whitespace();
+                // Allow trailing comma: stop the loop if we see `]` here.
+                if self.check(&[TokenKind::RBracket]) {
+                    break;
+                }
                 elements.push(self.parse_expression()?);
                 self.skip_whitespace();
 
@@ -82,18 +86,40 @@ impl Parser {
         if !self.check(&[TokenKind::RBrace]) {
             loop {
                 self.skip_whitespace();
-                let key = self.parse_expression()?;
-                self.skip_whitespace();
-
-                // Support both `:` and `=>` for hash syntax
-                if self.check(&[TokenKind::FatArrow]) {
-                    self.advance(); // consume =>
-                } else {
-                    self.expect(
-                        TokenKind::Colon,
-                        "Expected ':' or '=>' after dictionary key",
-                    )?;
+                // Allow trailing comma: stop the loop if we see `}` here.
+                if self.check(&[TokenKind::RBrace]) {
+                    break;
                 }
+                // `ident:` shorthand → Symbol key. Check before parse_expression
+                // so we don't resolve `ident` as a variable.
+                let key = if matches!(self.peek().kind, TokenKind::Ident(_))
+                    && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+                    && !matches!(self.peek_ahead(2).kind, TokenKind::Colon)
+                {
+                    let ident_token = self.advance();
+                    let name = match ident_token.kind {
+                        TokenKind::Ident(n) => n,
+                        _ => unreachable!(),
+                    };
+                    self.advance(); // consume ':'
+                    Expression::Symbol {
+                        value: name,
+                        position: ident_token.position,
+                    }
+                } else {
+                    let key = self.parse_expression()?;
+                    self.skip_whitespace();
+                    // Support both `:` and `=>` for hash syntax
+                    if self.check(&[TokenKind::FatArrow]) {
+                        self.advance(); // consume =>
+                    } else {
+                        self.expect(
+                            TokenKind::Colon,
+                            "Expected ':' or '=>' after dictionary key",
+                        )?;
+                    }
+                    key
+                };
 
                 self.skip_whitespace();
                 let value = self.parse_expression()?;

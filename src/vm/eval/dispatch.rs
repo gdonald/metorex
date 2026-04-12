@@ -55,6 +55,13 @@ impl VirtualMachine {
                 Ok(Object::String(Rc::new(path)))
             }
             Expression::MagicLine { position, .. } => Ok(Object::Int(position.line as i64)),
+            Expression::MagicDir { .. } => {
+                let dir = self
+                    .get_current_file()
+                    .and_then(|p| p.parent().map(|d| d.display().to_string()))
+                    .unwrap_or_else(|| ".".to_string());
+                Ok(Object::String(Rc::new(dir)))
+            }
 
             // ── Closures, grouping ──────────────────────────────────────────
             Expression::Lambda {
@@ -78,7 +85,12 @@ impl VirtualMachine {
                         }
                     }
                 }
-                // If captured_vars is None, don't capture anything (regular blocks for .each, etc.)
+                // If captured_vars is None, capture all current scope variables
+                // so blocks work correctly across method boundaries (which use
+                // isolated scopes).
+                if captured.is_empty() && captured_vars.is_none() {
+                    captured = self.environment().current_scope_var_refs();
+                }
                 let block = BlockStatement::new(parameters.clone(), body.clone(), captured);
                 Ok(Object::Block(Rc::new(block)))
             }
@@ -139,6 +151,36 @@ impl VirtualMachine {
                             vec![right_value],
                             *position,
                         );
+                    }
+                    // Comparable-style fallback: if the class defines `<=>`,
+                    // derive `<`, `<=`, `>`, `>=` from its result. (Ruby gets
+                    // these from the Comparable mixin; metorex synthesises
+                    // them.)
+                    if matches!(
+                        op,
+                        BinaryOp::Less
+                            | BinaryOp::LessEqual
+                            | BinaryOp::Greater
+                            | BinaryOp::GreaterEqual
+                    ) && let Some(spaceship) = class.find_method("<=>")
+                    {
+                        let cmp = self.invoke_method(
+                            Rc::clone(&class),
+                            spaceship,
+                            left_value.clone(),
+                            vec![right_value.clone()],
+                            *position,
+                        )?;
+                        if let Object::Int(c) = cmp {
+                            let result = match op {
+                                BinaryOp::Less => c < 0,
+                                BinaryOp::LessEqual => c <= 0,
+                                BinaryOp::Greater => c > 0,
+                                BinaryOp::GreaterEqual => c >= 0,
+                                _ => unreachable!(),
+                            };
+                            return Ok(Object::Bool(result));
+                        }
                     }
                 }
                 self.evaluate_binary_operation(op, left_value, right_value, *position)
@@ -220,6 +262,22 @@ impl VirtualMachine {
                     other => Ok(Object::Array(Rc::new(RefCell::new(vec![other])))),
                 }
             }
+            Expression::BlockArg { expression, .. } => {
+                // Outside of an argument list, `&expr` is just `expr`.
+                self.evaluate_expression(expression)
+            }
+            Expression::BeginRescue {
+                body,
+                rescue_clauses,
+                else_clause,
+                ensure_block,
+                ..
+            } => self.evaluate_begin_value(
+                body,
+                rescue_clauses,
+                else_clause.as_deref(),
+                ensure_block.as_deref(),
+            ),
             Expression::Range {
                 start,
                 end,
@@ -286,6 +344,7 @@ fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::Multiply => Some("*"),
         BinaryOp::Divide => Some("/"),
         BinaryOp::Modulo => Some("%"),
+        BinaryOp::Power => Some("**"),
         BinaryOp::Equal => Some("=="),
         BinaryOp::NotEqual => Some("!="),
         BinaryOp::Less => Some("<"),
@@ -293,6 +352,8 @@ fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::LessEqual => Some("<="),
         BinaryOp::GreaterEqual => Some(">="),
         BinaryOp::Spaceship => Some("<=>"),
+        BinaryOp::BitwiseAnd => Some("&"),
+        BinaryOp::BitwiseOr => Some("|"),
         BinaryOp::Xor => Some("^"),
         _ => None,
     }

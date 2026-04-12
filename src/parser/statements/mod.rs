@@ -18,6 +18,22 @@ impl Parser {
         // Skip leading whitespace
         self.skip_whitespace();
 
+        // Recognise `private def …` / `public def …` / `protected def …` /
+        // `module_function def …` as a special two-keyword form. The
+        // visibility modifier is parsed and discarded; the wrapped `def`
+        // becomes a normal method definition.
+        if let TokenKind::Ident(name) = &self.peek().kind
+            && matches!(
+                name.as_str(),
+                "private" | "public" | "protected" | "module_function"
+            )
+            && matches!(self.peek_ahead(1).kind, TokenKind::Def)
+        {
+            self.advance(); // consume the visibility ident
+            self.skip_whitespace();
+            return self.parse_function_def();
+        }
+
         let token = self.peek().clone();
         match &token.kind {
             TokenKind::Class => self.parse_class_def(),

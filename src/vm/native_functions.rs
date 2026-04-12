@@ -22,10 +22,75 @@ impl VirtualMachine {
             | "module_function"
             | "private_class_method"
             | "public_class_method"
-            | "freeze" => {
+            | "freeze"
+            | "noop_with_block" => {
                 // Visibility modifiers and Object#freeze — no-op stubs. Accept any args.
+                self.pending_block.take();
                 Ok(Object::Nil)
             }
+            "at_exit" => {
+                // Discard the block; we never invoke at_exit handlers.
+                self.pending_block.take();
+                Ok(Object::Nil)
+            }
+            "warn" => {
+                for arg in &arguments {
+                    let s = self.get_string_representation(arg, position)?;
+                    eprintln!("{}", s);
+                }
+                Ok(Object::Nil)
+            }
+            "sprintf" => {
+                if arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        "sprintf requires at least 1 argument".to_string(),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let fmt = arguments[0].clone();
+                let rest: Vec<Object> = arguments.into_iter().skip(1).collect();
+                let rest_obj = if rest.len() == 1 {
+                    rest.into_iter().next().unwrap()
+                } else {
+                    Object::Array(std::rc::Rc::new(std::cell::RefCell::new(rest)))
+                };
+                self.evaluate_string_format(fmt, rest_obj, position)
+            }
+            "__method__" => {
+                let name = self
+                    .call_stack()
+                    .last()
+                    .map(|f| {
+                        let n = f.name();
+                        n.rsplit('#').next().unwrap_or(n).to_string()
+                    })
+                    .unwrap_or_default();
+                Ok(Object::Symbol(std::rc::Rc::new(name)))
+            }
+            "caller" => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                Vec::new(),
+            )))),
+            "binding_kernel" => Ok(Object::Nil),
+            "rand" => {
+                use std::time::{SystemTime, UNIX_EPOCH};
+                let nanos = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos())
+                    .unwrap_or(0);
+                if arguments.is_empty() {
+                    Ok(Object::Float((nanos as f64 / u32::MAX as f64).abs()))
+                } else if let Object::Int(n) = &arguments[0] {
+                    if *n > 0 {
+                        Ok(Object::Int((nanos as i64) % n))
+                    } else {
+                        Ok(Object::Int(0))
+                    }
+                } else {
+                    Ok(Object::Int(0))
+                }
+            }
+            "srand" => Ok(Object::Int(0)),
+            "sleep" => Ok(Object::Int(0)),
             "puts" => {
                 // puts prints each argument on a new line
                 for arg in &arguments {

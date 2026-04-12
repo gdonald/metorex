@@ -64,6 +64,7 @@ pub enum TokenKind {
     Extend,
     MagicFile,
     MagicLine,
+    MagicDir,
 
     // Literals
     Int(i64),
@@ -188,6 +189,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Extend => write!(f, "extend"),
             TokenKind::MagicFile => write!(f, "__FILE__"),
             TokenKind::MagicLine => write!(f, "__LINE__"),
+            TokenKind::MagicDir => write!(f, "__dir__"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),

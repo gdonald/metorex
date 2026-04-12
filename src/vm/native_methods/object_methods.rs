@@ -5,6 +5,7 @@ use crate::lexer::Position;
 use crate::object::Object;
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
+use crate::vm::utils::position_to_location;
 
 impl VirtualMachine {
     /// Execute native methods for the Object class.
@@ -15,6 +16,29 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        // Nil-specific conversions: in Ruby `nil.to_i == 0`, `nil.to_s == ""`,
+        // `nil.to_a == []`, `nil.to_f == 0.0`. The dispatch above checks the
+        // class of the receiver first, so we have to intercept here for Nil
+        // before falling through to the generic Object methods.
+        if matches!(receiver, Object::Nil) {
+            match method_name {
+                "to_i" => return Ok(Some(Object::Int(0))),
+                "to_f" => return Ok(Some(Object::Float(0.0))),
+                "to_a" => {
+                    return Ok(Some(Object::Array(std::rc::Rc::new(
+                        std::cell::RefCell::new(Vec::new()),
+                    ))));
+                }
+                "to_h" => {
+                    return Ok(Some(Object::Dict(std::rc::Rc::new(
+                        std::cell::RefCell::new(std::collections::HashMap::new()),
+                    ))));
+                }
+                "to_s" => return Ok(Some(Object::string(""))),
+                "inspect" => return Ok(Some(Object::string("nil"))),
+                _ => {}
+            }
+        }
         match method_name {
             "to_s" => {
                 if !arguments.is_empty() {
@@ -39,7 +63,9 @@ impl VirtualMachine {
                 Ok(Some(Object::Class(self.builtins().class_of(receiver))))
             }
             "respond_to?" => {
-                if arguments.len() != 1 {
+                // Accept String or Symbol method name; ignore optional second
+                // `include_private` argument (Ruby's signature).
+                if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         method_name,
                         1,
@@ -49,10 +75,11 @@ impl VirtualMachine {
                 }
                 let method_query = match &arguments[0] {
                     Object::String(name) => name.as_str().to_string(),
+                    Object::Symbol(name) => name.as_str().to_string(),
                     other => {
                         return Err(method_argument_type_error(
                             method_name,
-                            "String",
+                            "String or Symbol",
                             other,
                             position,
                         ));
@@ -432,6 +459,28 @@ impl VirtualMachine {
                         }
                     }
                     _ => Ok(Some(Object::Bool(true))),
+                }
+            }
+            "instance_exec" | "instance_eval" => {
+                let block = self.pending_block.take().or_else(|| {
+                    if !arguments.is_empty()
+                        && let Object::Block(_) = &arguments[0]
+                    {
+                        Some(arguments[0].clone())
+                    } else {
+                        None
+                    }
+                });
+                match block {
+                    Some(Object::Block(b)) => {
+                        self.environment_mut().set("self", receiver.clone());
+                        let result = b.call(self, arguments.to_vec(), position)?;
+                        Ok(Some(result))
+                    }
+                    _ => Err(MetorexError::runtime_error(
+                        format!("{} requires a block", method_name),
+                        position_to_location(position),
+                    )),
                 }
             }
             _ => Ok(None),

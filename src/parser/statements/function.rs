@@ -20,6 +20,35 @@ impl Parser {
                     _singleton_receiver = Some(name);
                     let method_name = match self.advance().kind {
                         TokenKind::Ident(method_name) => method_name,
+                        TokenKind::Plus => "+".to_string(),
+                        TokenKind::Minus => "-".to_string(),
+                        TokenKind::Star => "*".to_string(),
+                        TokenKind::StarStar => "**".to_string(),
+                        TokenKind::Slash => "/".to_string(),
+                        TokenKind::Percent => "%".to_string(),
+                        TokenKind::EqualEqual => "==".to_string(),
+                        TokenKind::TripleEqual => "===".to_string(),
+                        TokenKind::BangEqual => "!=".to_string(),
+                        TokenKind::Less => "<".to_string(),
+                        TokenKind::Greater => ">".to_string(),
+                        TokenKind::LessEqual => "<=".to_string(),
+                        TokenKind::GreaterEqual => ">=".to_string(),
+                        TokenKind::Spaceship => "<=>".to_string(),
+                        TokenKind::Shovel => "<<".to_string(),
+                        TokenKind::Pipe => "|".to_string(),
+                        TokenKind::Ampersand => "&".to_string(),
+                        TokenKind::Match => "=~".to_string(),
+                        TokenKind::LBracket => {
+                            self.expect(
+                                TokenKind::RBracket,
+                                "Expected ']' after '[' in method name",
+                            )?;
+                            if self.match_token(&[TokenKind::Equal]) {
+                                "[]=".to_string()
+                            } else {
+                                "[]".to_string()
+                            }
+                        }
                         _ => return Err(self.error_at_previous("Expected method name after '.'")),
                     };
                     // Check for setter: def obj.name=(...)
@@ -62,6 +91,21 @@ impl Parser {
             TokenKind::Shovel => "<<".to_string(),
             // Allow keywords as method names
             TokenKind::Continue => "next".to_string(),
+            TokenKind::Include => "include".to_string(),
+            TokenKind::Extend => "extend".to_string(),
+            TokenKind::Module => "module".to_string(),
+            TokenKind::Class => "class".to_string(),
+            TokenKind::Raise => "raise".to_string(),
+            TokenKind::Begin => "begin".to_string(),
+            TokenKind::End => "end".to_string(),
+            TokenKind::Lambda => "lambda".to_string(),
+            TokenKind::Yield => "yield".to_string(),
+            TokenKind::Return => "return".to_string(),
+            TokenKind::Break => "break".to_string(),
+            TokenKind::Defined => "defined?".to_string(),
+            TokenKind::True => "true".to_string(),
+            TokenKind::False => "false".to_string(),
+            TokenKind::Nil => "nil".to_string(),
             // [] and []= operator method names
             TokenKind::LBracket => {
                 self.expect(TokenKind::RBracket, "Expected ']' after '[' in method name")?;

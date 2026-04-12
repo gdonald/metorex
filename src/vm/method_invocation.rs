@@ -398,7 +398,7 @@ impl VirtualMachine {
         self_value: Object,
         arguments: Vec<Object>,
     ) -> Result<Object, MetorexError> {
-        self.environment_mut().push_scope();
+        self.environment_mut().push_isolated_scope();
 
         // Take the pending block now so nested calls don't see it.
         let block = self.pending_block.take();
@@ -553,7 +553,7 @@ impl VirtualMachine {
         function: &Method,
         arguments: Vec<Object>,
     ) -> Result<Object, MetorexError> {
-        self.environment_mut().push_scope();
+        self.environment_mut().push_isolated_scope();
 
         // Take the pending block now so nested calls don't see it.
         let block = self.pending_block.take();

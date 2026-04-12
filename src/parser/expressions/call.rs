@@ -16,7 +16,26 @@ impl Parser {
                 // Function call with parentheses
                 expr = self.finish_call(expr)?;
             } else if self.match_token(&[TokenKind::Dot]) {
-                // Method call
+                // Method call. Trailing-dot continuation: `.foo.\n  .bar` —
+                // after a `.` we may skip newlines/comments before the method
+                // name. This lets multi-line method chains parse correctly.
+                self.skip_whitespace();
+                // Allow `.[]` to name the `[]` method explicitly.
+                if self.check(&[TokenKind::LBracket])
+                    && matches!(self.peek_ahead(1).kind, TokenKind::RBracket)
+                {
+                    self.advance();
+                    self.advance();
+                    let position = expr.position();
+                    expr = Expression::MethodCall {
+                        receiver: Box::new(expr),
+                        method: "[]".to_string(),
+                        arguments: vec![],
+                        trailing_block: None,
+                        position,
+                    };
+                    continue;
+                }
                 let method_name = match self.advance().kind {
                     TokenKind::Ident(name) => name,
                     // Allow keywords as method names (e.g., obj.class, obj.if, etc.)
@@ -224,6 +243,20 @@ impl Parser {
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
                 keyword_pairs.push((name, value));
+            } else if matches!(self.peek().kind, TokenKind::Colon)
+                && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))
+                && matches!(self.peek_ahead(2).kind, TokenKind::FatArrow)
+            {
+                // Old-style hash arg: `:name => value`. Equivalent to `name: value`.
+                self.advance(); // consume ':'
+                let name = match self.advance().kind {
+                    TokenKind::Ident(n) => n,
+                    _ => unreachable!(),
+                };
+                self.advance(); // consume '=>'
+                self.skip_whitespace();
+                let value = self.parse_expression()?;
+                keyword_pairs.push((name, value));
             } else if self.match_token(&[TokenKind::Star]) {
                 // Splat argument: *expr — expand array into individual args
                 let position = self.previous().position;
@@ -238,9 +271,17 @@ impl Parser {
                 let _position = self.previous().position;
                 let expr = self.parse_expression()?;
                 arguments.push(expr);
+            } else if self.match_token(&[TokenKind::Ampersand]) {
+                // `&expr`: convert to a block argument. The runtime drops it
+                // entirely if `expr` evaluates to nil and binds it as the
+                // pending block otherwise.
+                let position = self.previous().position;
+                let expr = self.parse_expression()?;
+                arguments.push(Expression::BlockArg {
+                    expression: Box::new(expr),
+                    position,
+                });
             } else {
-                // Handle &expr (block-to-proc conversion) — treat as regular arg for now
-                self.match_token(&[TokenKind::Ampersand]);
                 arguments.push(self.parse_expression()?);
             }
 
@@ -362,9 +403,8 @@ impl Parser {
         }
 
         // Colon could start a symbol arg (:sym) or be a ternary else (:).
-        // Allow when followed by InterpolatedString (dynamic symbol — never ternary).
-        // Otherwise require a comma after to confirm it's a call arg.
-        if self.peek().kind == TokenKind::Colon {
+        // Outside a ternary, treat it as a paren-less symbol argument.
+        if self.peek().kind == TokenKind::Colon && self.ternary_depth > 0 {
             let after_colon = &self.peek_ahead(1).kind;
             let is_dynamic_symbol = matches!(after_colon, TokenKind::InterpolatedString(_));
             if !is_dynamic_symbol && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
@@ -475,12 +515,13 @@ impl Parser {
                 return true;
             }
             // For other methods, `:` is ambiguous with ternary colon.
-            // Only allow when followed by InterpolatedString (dynamic symbol)
-            // or when comma follows (multi-arg pattern).
-            let after_colon = &self.peek_ahead(1).kind;
-            let is_unambiguous = matches!(after_colon, TokenKind::InterpolatedString(_));
-            if !is_unambiguous && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
-                return false;
+            // Outside a ternary, allow `:sym` as a paren-less arg.
+            if self.ternary_depth > 0 {
+                let after_colon = &self.peek_ahead(1).kind;
+                let is_unambiguous = matches!(after_colon, TokenKind::InterpolatedString(_));
+                if !is_unambiguous && !matches!(self.peek_ahead(2).kind, TokenKind::Comma) {
+                    return false;
+                }
             }
         }
 
@@ -557,9 +598,14 @@ impl Parser {
                     expression: Box::new(expr),
                     position,
                 });
+            } else if self.match_token(&[TokenKind::Ampersand]) {
+                let position = self.previous().position;
+                let expr = self.parse_expression()?;
+                arguments.push(Expression::BlockArg {
+                    expression: Box::new(expr),
+                    position,
+                });
             } else {
-                // Handle &expr (block-to-proc conversion)
-                self.match_token(&[TokenKind::Ampersand]);
                 arguments.push(self.parse_expression()?);
             }
             // Don't skip newlines here — the newline terminates paren-less args

@@ -135,6 +135,7 @@ impl<'a> Lexer<'a> {
             "nil" => TokenKind::Nil,
             "__FILE__" => TokenKind::MagicFile,
             "__LINE__" => TokenKind::MagicLine,
+            "__dir__" => TokenKind::MagicDir,
             "and" => TokenKind::LogicalAnd,
             "or" => TokenKind::LogicalOr,
             "not" => TokenKind::Bang,

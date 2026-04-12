@@ -128,8 +128,9 @@ fn integer_to_s() {
 
 #[test]
 fn nil_to_s() {
+    // Ruby semantics: nil.to_s == "". Use nil.inspect for the literal "nil".
     let result = run("nil.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("nil".to_string()))));
+    assert_eq!(result, Some(Object::String(Rc::new("".to_string()))));
 }
 
 #[test]

@@ -322,12 +322,22 @@ impl Parser {
             if !self.check(&[TokenKind::Pipe]) {
                 loop {
                     self.skip_whitespace();
+                    // Allow `*name` (splat) and `&name` (block) modifiers; we
+                    // strip the modifier and just record the bound name.
+                    let _ = self.match_token(&[TokenKind::Star, TokenKind::Ampersand]);
+                    self.skip_whitespace();
                     let param_token = self.advance();
                     match param_token.kind {
                         TokenKind::Ident(name) => params.push(name),
                         _ => return Err(self.error_at_previous("Expected parameter name")),
                     }
                     self.skip_whitespace();
+                    // Allow `name = default_value` — parse and discard the default.
+                    if self.match_token(&[TokenKind::Equal]) {
+                        self.skip_whitespace();
+                        let _ = self.parse_expression()?;
+                        self.skip_whitespace();
+                    }
 
                     if !self.match_token(&[TokenKind::Comma]) {
                         break;
@@ -380,12 +390,22 @@ impl Parser {
             if !self.check(&[TokenKind::Pipe]) {
                 loop {
                     self.skip_whitespace();
+                    // Allow `*name` (splat) and `&name` (block) modifiers; we
+                    // strip the modifier and just record the bound name.
+                    let _ = self.match_token(&[TokenKind::Star, TokenKind::Ampersand]);
+                    self.skip_whitespace();
                     let param_token = self.advance();
                     match param_token.kind {
                         TokenKind::Ident(name) => params.push(name),
                         _ => return Err(self.error_at_previous("Expected parameter name")),
                     }
                     self.skip_whitespace();
+                    // Allow `name = default_value` — parse and discard the default.
+                    if self.match_token(&[TokenKind::Equal]) {
+                        self.skip_whitespace();
+                        let _ = self.parse_expression()?;
+                        self.skip_whitespace();
+                    }
 
                     if !self.match_token(&[TokenKind::Comma]) {
                         break;
