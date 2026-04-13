@@ -1,5 +1,6 @@
 mod basics;
 mod errors;
+mod heredoc;
 mod identifiers;
 mod integration;
 mod interpolation;

@@ -108,3 +108,133 @@ fn method_rescue_else_parsing() {
 fn method_rescue_else_ensure_parsing() {
     parse_ok("def full\n  42\nrescue => e\n  -1\nelse\n  99\nensure\n  0\nend");
 }
+
+// ── Singleton operator methods (def self.op) ─────────────────────────────────
+
+#[test]
+fn parse_def_self_dot_plus() {
+    parse_ok("class X\n  def self.+(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_minus() {
+    parse_ok("class X\n  def self.-(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_star() {
+    parse_ok("class X\n  def self.*(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_starstar() {
+    parse_ok("class X\n  def self.**(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_equalequal() {
+    parse_ok("class X\n  def self.==(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_tripleequal() {
+    parse_ok("class X\n  def self.===(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_bangequal() {
+    parse_ok("class X\n  def self.!=(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_less() {
+    parse_ok("class X\n  def self.<(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_greater() {
+    parse_ok("class X\n  def self.>(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_lessequal() {
+    parse_ok("class X\n  def self.<=(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_greaterequal() {
+    parse_ok("class X\n  def self.>=(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_spaceship() {
+    parse_ok("class X\n  def self.<=>(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_shovel() {
+    parse_ok("class X\n  def self.<<(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_pipe() {
+    parse_ok("class X\n  def self.|(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_ampersand() {
+    parse_ok("class X\n  def self.&(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_match() {
+    parse_ok("class X\n  def self.=~(other)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_brackets() {
+    parse_ok("class X\n  def self.[](key)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_brackets_assign() {
+    parse_ok("class X\n  def self.[]=(key, val)\n    1\n  end\nend");
+}
+
+#[test]
+fn parse_def_self_dot_setter() {
+    parse_ok("class X\n  def self.name=(val)\n    @name = val\n  end\nend");
+}
+
+// ── Function body with rescue/ensure ─────────────────────────────────────────
+
+#[test]
+fn parse_def_with_rescue() {
+    parse_ok(
+        r#"
+def risky
+  1 / 0
+rescue => e
+  0
+end
+"#,
+    );
+}
+
+#[test]
+fn parse_def_with_ensure() {
+    parse_ok(
+        r#"
+def cleanup
+  open_resource
+ensure
+  close_resource
+end
+"#,
+    );
+}
+
+#[test]
+fn parse_def_empty_body() {
+    parse_ok("def noop\nend");
+}

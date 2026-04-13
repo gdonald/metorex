@@ -864,3 +864,256 @@ fn array_dup_independent_coverage() {
     let result = run("a = [1, 2, 3]\nb = a.dup\nb << 4\na.length");
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── Array#[] with start,length ──────────────────────────────────────────────
+
+#[test]
+fn array_slice_with_start_and_length() {
+    let result = run("[10, 20, 30, 40, 50][1, 3]");
+    if let Some(Object::Array(arr)) = result {
+        assert_eq!(arr.borrow().len(), 3);
+    } else {
+        panic!("expected array");
+    }
+}
+
+// ── Array#select ─────────────────────────────────────────────────────────────
+
+#[test]
+fn array_select_filters() {
+    let result = run("[1, 2, 3, 4, 5].select { |x| x > 3 }");
+    if let Some(Object::Array(arr)) = result {
+        assert_eq!(arr.borrow().len(), 2);
+    } else {
+        panic!("expected array");
+    }
+}
+
+// ── Array#partition ──────────────────────────────────────────────────────────
+
+#[test]
+fn array_partition_splits() {
+    let result = run(r#"
+result = [1, 2, 3, 4].partition { |x| x > 2 }
+result.length
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn array_partition_empty() {
+    let result = run("[].partition { |x| x }");
+    if let Some(Object::Array(arr)) = result {
+        assert_eq!(arr.borrow().len(), 2);
+    } else {
+        panic!("expected array");
+    }
+}
+
+// ── Array#reduce / inject ────────────────────────────────────────────────────
+
+#[test]
+fn array_reduce_sum() {
+    let result = run("[1, 2, 3].reduce { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn array_reduce_with_initial_value() {
+    let result = run("[1, 2, 3].reduce(10) { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(16)));
+}
+
+#[test]
+fn array_reduce_empty() {
+    let result = run("[].reduce { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn array_inject_alias() {
+    let result = run("[1, 2, 3, 4].inject { |sum, x| sum + x }");
+    assert_eq!(result, Some(Object::Int(10)));
+}
+
+// ── Array#any? / all? / none? ────────────────────────────────────────────────
+
+#[test]
+fn array_any_with_block() {
+    let result = run("[1, 2, 3].any? { |x| x > 2 }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_any_without_block() {
+    let result = run("[nil, false, 1].any?");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_any_empty() {
+    let result = run("[].any?");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn array_all_with_block() {
+    let result = run("[2, 4, 6].all? { |x| x > 0 }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_all_false() {
+    let result = run("[2, 4, 6].all? { |x| x > 3 }");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn array_all_empty() {
+    let result = run("[].all?");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_none_with_block() {
+    let result = run("[1, 2, 3].none? { |x| x > 5 }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_none_empty() {
+    let result = run("[].none?");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_none_false() {
+    let result = run("[1, 2, 3].none? { |x| x > 2 }");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+// ── Array#pack ───────────────────────────────────────────────────────────────
+
+#[test]
+fn array_pack_char() {
+    let result = run("[65].pack('c')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 1);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_short() {
+    let result = run("[1].pack('s')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 2);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_int() {
+    let result = run("[1].pack('l')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 4);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_long() {
+    let result = run("[1].pack('q')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 8);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_native_long() {
+    let result = run("[0].pack('l!')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 8);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_unsupported_directive_error() {
+    let err = run_err("[1].pack('Z')");
+    assert!(err.contains("unsupported"));
+}
+
+#[test]
+fn array_pack_wrong_arg_type_error() {
+    let err = run_err("[1].pack(42)");
+    assert!(err.contains("String"));
+}
+
+// ── Array#min / max ──────────────────────────────────────────────────────────
+
+#[test]
+fn array_max_integers_coverage() {
+    let result = run("[3, 1, 4, 1, 5].max");
+    assert_eq!(result, Some(Object::Int(5)));
+}
+
+#[test]
+fn array_max_floats_coverage() {
+    let result = run("[1.5, 2.7, 0.3].max");
+    assert_eq!(result, Some(Object::Float(2.7)));
+}
+
+#[test]
+fn array_max_empty_coverage() {
+    let result = run("[].max");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn array_min_integers_coverage() {
+    let result = run("[3, 1, 4, 1, 5].min");
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn array_min_empty_coverage() {
+    let result = run("[].min");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── Array#each error cases ───────────────────────────────────────────────────
+
+#[test]
+fn array_each_with_args_error() {
+    let err = run_err("[1].each(1) { |x| x }");
+    assert!(err.contains("argument"));
+}
+
+// ── Array#map error cases ────────────────────────────────────────────────────
+
+#[test]
+fn array_map_with_args_error() {
+    let err = run_err("[1].map(1) { |x| x }");
+    assert!(err.contains("argument"));
+}
+
+// ── Array#uniq ───────────────────────────────────────────────────────────────
+
+#[test]
+fn array_uniq_removes_duplicates_coverage() {
+    let result = run("[1, 2, 2, 3, 3, 3].uniq.length");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn array_uniq_empty_coverage() {
+    let result = run("[].uniq.length");
+    assert_eq!(result, Some(Object::Int(0)));
+}

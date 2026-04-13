@@ -425,3 +425,48 @@ fn lexer_position_tracking_across_newlines() {
         .unwrap();
     assert_eq!(y_token.position.line, 2);
 }
+
+#[test]
+fn line_continuation_backslash_newline() {
+    let tokens = Lexer::new("a +\\\nb").tokenize();
+    let idents: Vec<_> = tokens
+        .iter()
+        .filter(|t| matches!(&t.kind, TokenKind::Ident(_)))
+        .collect();
+    assert_eq!(idents.len(), 2);
+    assert!(tokens.iter().any(|t| t.kind == TokenKind::Plus));
+}
+
+#[test]
+fn line_continuation_backslash_not_followed_by_newline() {
+    let tokens = Lexer::new("/a\\/b/").tokenize();
+    assert!(matches!(&tokens[0].kind, TokenKind::Regex(_, _)));
+}
+
+#[test]
+fn advance_returns_none_past_eof() {
+    let mut lexer = Lexer::new("x");
+    let _ = lexer.next_token(); // x
+    let eof = lexer.next_token();
+    assert_eq!(eof.kind, TokenKind::EOF);
+}
+
+#[test]
+fn line_continuation_backslash_at_end_of_input() {
+    let tokens = Lexer::new("a \\").tokenize();
+    let idents: Vec<_> = tokens
+        .iter()
+        .filter(|t| matches!(&t.kind, TokenKind::Ident(_)))
+        .collect();
+    assert_eq!(idents.len(), 1);
+}
+
+#[test]
+fn line_continuation_multiple() {
+    let tokens = Lexer::new("a +\\\n\\\nb").tokenize();
+    let idents: Vec<_> = tokens
+        .iter()
+        .filter(|t| matches!(&t.kind, TokenKind::Ident(_)))
+        .collect();
+    assert_eq!(idents.len(), 2);
+}

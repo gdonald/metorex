@@ -422,3 +422,151 @@ try_load
 "#);
     assert_eq!(result, Some(Object::string("caught")));
 }
+
+// ── at_exit ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn at_exit_returns_nil() {
+    let result = run("at_exit { puts 'bye' }");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── warn ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn warn_returns_nil() {
+    let result = run("warn 'test warning'");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn warn_multiple_args() {
+    let result = run("warn 'a', 'b'");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── sprintf / format ─────────────────────────────────────────────────────────
+
+#[test]
+fn sprintf_basic() {
+    let result = run("sprintf '%s is %d', 'age', 25");
+    assert!(result.is_some());
+}
+
+#[test]
+fn sprintf_no_args_error() {
+    let err = run_err("sprintf()");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn format_alias() {
+    let result = run("format '%d', 42");
+    assert!(result.is_some());
+}
+
+// ── __method__ ───────────────────────────────────────────────────────────────
+
+#[test]
+fn dunder_method_returns_symbol() {
+    let result = run(r#"
+def foo
+  __method__()
+end
+foo
+"#);
+    assert!(matches!(result, Some(Object::Symbol(_))));
+}
+
+// ── caller ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn caller_returns_array() {
+    let result = run("caller()");
+    assert!(matches!(result, Some(Object::Array(_))));
+}
+
+// ── rand ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn rand_no_args_returns_float() {
+    let result = run("rand()");
+    assert!(matches!(result, Some(Object::Float(_))));
+}
+
+#[test]
+fn rand_with_int_arg() {
+    let result = run("rand(100)");
+    assert!(matches!(result, Some(Object::Int(_))));
+}
+
+#[test]
+fn rand_with_zero_arg() {
+    let result = run("rand(0)");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+// ── sleep ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn sleep_with_zero() {
+    let result = run("sleep(0)");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+// ── srand ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn srand_returns_int() {
+    let result = run("srand()");
+    assert!(matches!(result, Some(Object::Int(_))));
+}
+
+// ── load function ────────────────────────────────────────────────────────────
+
+#[test]
+fn load_nonexistent_file_error() {
+    let err = run_err("load 'nonexistent_file_xyz.rb'");
+    assert!(err.contains("cannot load"));
+}
+
+// ── symbol_to_proc via &:symbol ──────────────────────────────────────────────
+
+#[test]
+fn symbol_to_proc_in_map() {
+    let result = run("[1, 2, 3].map(&:to_s)");
+    if let Some(Object::Array(arr)) = &result {
+        let items: Vec<_> = arr.borrow().iter().map(|o| format!("{}", o)).collect();
+        assert_eq!(items, vec!["1", "2", "3"]);
+    } else {
+        panic!("expected array");
+    }
+}
+
+// ── block_arg nil is dropped ─────────────────────────────────────────────────
+
+#[test]
+fn block_arg_nil_dropped() {
+    let result = run(r#"
+def foo(&block)
+  block_given?
+end
+b = nil
+foo(&b)
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+// ── block_arg with block object ──────────────────────────────────────────────
+
+#[test]
+fn block_arg_with_block() {
+    let result = run(r#"
+def foo(&block)
+  block.call
+end
+b = lambda { 42 }
+foo(&b)
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}

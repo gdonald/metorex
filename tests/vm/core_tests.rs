@@ -775,3 +775,317 @@ Foo.config
     assert!(result.is_some());
     assert!(!matches!(result, Some(Object::Nil)));
 }
+
+// ── Identifier resolution: class constants from instance methods ──────────
+
+#[test]
+fn identifier_class_constant_from_instance_method() {
+    let result = run(r#"
+class Foo
+  BAR = 42
+  def get_bar
+    BAR
+  end
+end
+Foo.new.get_bar
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn identifier_class_constant_from_class_method() {
+    let result = run(r#"
+class Foo
+  BAR = 99
+  def self.get_bar
+    BAR
+  end
+end
+Foo.get_bar
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn identifier_class_constant_from_module_context() {
+    let result = run(r#"
+module M
+  X = 7
+  def self.get_x
+    X
+  end
+end
+M.get_x
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn identifier_bare_new_in_class_method() {
+    let result = run(r#"
+class Foo
+  def self.create
+    new
+  end
+  def to_s
+    "a Foo"
+  end
+end
+Foo.create.to_s
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("a Foo".to_string()))));
+}
+
+#[test]
+fn identifier_object_class_method_zero_arg() {
+    let result = run(r#"
+class Object
+  def helper
+    42
+  end
+end
+helper
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn identifier_object_class_method_with_args_returns_bound() {
+    let result = run(r#"
+class Object
+  def helper(x)
+    x + 1
+  end
+end
+helper(10)
+"#);
+    assert_eq!(result, Some(Object::Int(11)));
+}
+
+#[test]
+fn identifier_object_method_fallback_with_receiver() {
+    let result = run(r#"
+class Object
+  def greet(name)
+    "hi #{name}"
+  end
+end
+class Foo
+  def test
+    greet("world")
+  end
+end
+Foo.new.test
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("hi world".to_string())))
+    );
+}
+
+#[test]
+fn identifier_undefined_variable_error() {
+    let err = run_err("nonexistent_var");
+    assert!(err.contains("Undefined"));
+}
+
+#[test]
+fn identifier_global_constant_resolution() {
+    let result = run(r#"
+class MyClass
+end
+def check
+  MyClass
+end
+check
+"#);
+    assert!(matches!(result, Some(Object::Class(_))));
+}
+
+#[test]
+fn identifier_no_self_no_global_error() {
+    let err = run_err("unknown_thing");
+    assert!(err.contains("Undefined"));
+}
+
+#[test]
+fn identifier_object_method_zero_arg_fallback_with_self() {
+    let result = run(r#"
+class Object
+  def injected_helper
+    "from object"
+  end
+end
+class Foo
+  def test
+    injected_helper
+  end
+end
+Foo.new.test
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("from object".to_string())))
+    );
+}
+
+#[test]
+fn identifier_object_method_with_args_fallback_with_self() {
+    let result = run(r#"
+class Object
+  def injected_add(a, b)
+    a + b
+  end
+end
+class Foo
+  def test
+    injected_add(3, 4)
+  end
+end
+Foo.new.test
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn identifier_variadic_object_method() {
+    let result = run(r#"
+class Object
+  def variadic_helper(*args)
+    args.length
+  end
+end
+variadic_helper
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn identifier_undefined_with_self_in_scope() {
+    let err = run_err(
+        r#"
+class Foo
+  def test
+    totally_unknown
+  end
+end
+Foo.new.test
+"#,
+    );
+    assert!(err.contains("Undefined"));
+}
+
+#[test]
+fn identifier_class_constant_not_on_non_class_receiver() {
+    let result = run(r#"
+class Foo
+  BAR = 42
+  def get_bar
+    BAR
+  end
+end
+Foo.new.get_bar
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn identifier_method_with_args_returns_bound_method_on_self() {
+    let result = run(r#"
+class Foo
+  def add(a, b)
+    a + b
+  end
+  def test
+    add(3, 4)
+  end
+end
+Foo.new.test
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn identifier_variadic_method_on_self_auto_calls() {
+    let result = run(r#"
+class Foo
+  def items(*args)
+    args
+  end
+  def test
+    items
+  end
+end
+Foo.new.test.length
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn identifier_object_variadic_method_with_self() {
+    let result = run(r#"
+class Object
+  def obj_variadic(*args)
+    args.length
+  end
+end
+class Bar
+  def test
+    obj_variadic
+  end
+end
+Bar.new.test
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn identifier_object_method_with_args_and_self() {
+    let result = run(r#"
+class Object
+  def obj_calc(x, y)
+    x * y
+  end
+end
+class Baz
+  def test
+    obj_calc(5, 6)
+  end
+end
+Baz.new.test
+"#);
+    assert_eq!(result, Some(Object::Int(30)));
+}
+
+#[test]
+fn identifier_bare_method_name_returns_bound() {
+    let result = run(r#"
+class Foo
+  def compute(x)
+    x * 2
+  end
+  def get_method
+    compute
+  end
+end
+f = Foo.new
+m = f.get_method
+m.class.to_s
+"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn identifier_constant_from_globals_inside_method() {
+    let result = run(r#"
+class Widget
+end
+class Foo
+  def check
+    Widget
+  end
+end
+Foo.new.check.name
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("Widget".to_string()))));
+}

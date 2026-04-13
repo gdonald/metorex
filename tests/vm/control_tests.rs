@@ -160,3 +160,19 @@ fn break_in_while_loop_remaining() {
         Some(metorex::object::Object::Int(3))
     );
 }
+
+// ── break outside loop is error ──────────────────────────────────────────────
+
+#[test]
+fn break_outside_loop_error() {
+    let err = run_err("break");
+    assert!(err.contains("break") || err.contains("loop"));
+}
+
+// ── next outside loop is error ───────────────────────────────────────────────
+
+#[test]
+fn next_outside_loop_error() {
+    let err = run_err("next");
+    assert!(err.contains("next") || err.contains("loop") || err.contains("continue"));
+}
