@@ -1089,3 +1089,592 @@ Foo.new.check.name
 "#);
     assert_eq!(result, Some(Object::String(Rc::new("Widget".to_string()))));
 }
+
+// ── defined? coverage (additional paths) ─────────────────────────────────────
+
+#[test]
+fn defined_class_variable_from_method() {
+    let result = run(r#"
+class Foo
+  @@x = 1
+  def self.check
+    defined?(@@x)
+  end
+end
+Foo.check
+"#);
+    assert!(result.is_some());
+    assert!(!matches!(result, Some(Object::Nil)));
+}
+
+#[test]
+fn defined_scope_resolution_class() {
+    let result = run(r#"
+class Foo
+end
+defined?(Foo)
+"#);
+    assert!(result.is_some());
+    assert!(!matches!(result, Some(Object::Nil)));
+}
+
+#[test]
+fn defined_undefined_scope_resolution() {
+    let result = run("defined?(NonExistent)");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn defined_method_call_on_receiver() {
+    let result = run(r#"defined?("hello".length)"#);
+    assert!(result.is_some());
+    assert!(!matches!(result, Some(Object::Nil)));
+}
+
+#[test]
+fn defined_method_call_undefined_receiver() {
+    let result = run("defined?(nonexist.method)");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn defined_call_expression_coverage() {
+    let result = run(r#"defined?(puts("hi"))"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn defined_index_expression() {
+    let result = run("defined?([1,2,3][0])");
+    assert!(result.is_some());
+    assert!(!matches!(result, Some(Object::Nil)));
+}
+
+#[test]
+fn defined_index_undefined_receiver() {
+    let result = run("defined?(nonexist[0])");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn defined_super() {
+    let result = run(r#"
+class Foo
+  def test
+    defined?(super)
+  end
+end
+Foo.new.test
+"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn defined_self() {
+    let result = run(r#"
+class Foo
+  def test
+    defined?(self)
+  end
+end
+Foo.new.test
+"#);
+    assert!(result.is_some());
+    assert!(!matches!(result, Some(Object::Nil)));
+}
+
+// ── Splat in expression context ──────────────────────────────────────────────
+
+#[test]
+fn splat_non_array_wraps() {
+    let result = run("a = *42\na.length");
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn splat_array_passes_through() {
+    let result = run("a = *[1, 2]\na.length");
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+// ── BlockArg in argument position ────────────────────────────────────────────
+
+#[test]
+fn blockarg_passes_block_to_method() {
+    let result = run(r#"
+def run_block(&block)
+  block.call(5)
+end
+b = lambda { |x| x * 2 }
+run_block(&b)
+"#);
+    assert_eq!(result, Some(Object::Int(10)));
+}
+
+// ── begin/rescue as expression ───────────────────────────────────────────────
+
+#[test]
+fn begin_rescue_expression() {
+    let result = run(r#"
+x = begin
+  raise "oops"
+rescue
+  99
+end
+x
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn begin_rescue_with_ensure_expression() {
+    let result = run(r#"
+x = begin
+  42
+ensure
+  nil
+end
+x
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+// ── Comparable derivation from <=> ───────────────────────────────────────────
+
+#[test]
+fn comparable_less_from_spaceship() {
+    let result = run(r#"
+class Weight
+  def initialize(n)
+    @n = n
+  end
+  def <=>(other)
+    @n <=> other.value
+  end
+  def value
+    @n
+  end
+end
+a = Weight.new(1)
+b = Weight.new(2)
+a < b
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn comparable_greater_equal_from_spaceship() {
+    let result = run(r#"
+class Weight
+  def initialize(n)
+    @n = n
+  end
+  def <=>(other)
+    @n <=> other.value
+  end
+  def value
+    @n
+  end
+end
+a = Weight.new(3)
+b = Weight.new(2)
+a >= b
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn comparable_less_equal_from_spaceship() {
+    let result = run(r#"
+class Weight
+  def initialize(n)
+    @n = n
+  end
+  def <=>(other)
+    @n <=> other.value
+  end
+  def value
+    @n
+  end
+end
+a = Weight.new(2)
+b = Weight.new(2)
+a <= b
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── super error paths ────────────────────────────────────────────────────────
+
+#[test]
+fn super_outside_method_error() {
+    let err = run_err("super");
+    assert!(err.contains("super") || err.contains("method"));
+}
+
+#[test]
+fn super_with_no_parent_class_error() {
+    let err = run_err(
+        r#"
+class Base
+  def greet
+    super
+  end
+end
+Base.new.greet
+"#,
+    );
+    assert!(err.contains("super") || err.contains("parent") || err.contains("superclass"));
+}
+
+// ── nil conversion methods ───────────────────────────────────────────────────
+
+#[test]
+fn nil_to_a_returns_empty_array() {
+    let result = run("nil.to_a.length");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn nil_to_h_returns_empty_hash() {
+    let result = run("nil.to_h.length");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn nil_to_i_returns_zero() {
+    let result = run("nil.to_i");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn nil_to_f_returns_zero() {
+    let result = run("nil.to_f");
+    assert_eq!(result, Some(Object::Float(0.0)));
+}
+
+#[test]
+fn nil_inspect_returns_nil_string() {
+    let result = run("nil.inspect");
+    assert_eq!(result, Some(Object::string("nil")));
+}
+
+// ── dup / clone ──────────────────────────────────────────────────────────────
+
+#[test]
+fn dup_instance() {
+    let result = run(r#"
+class Foo
+  attr_accessor :x
+  def initialize(x)
+    @x = x
+  end
+end
+a = Foo.new(1)
+b = a.dup
+b.x = 2
+a.x
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn dup_array() {
+    let result = run(r#"
+a = [1, 2, 3]
+b = a.dup
+b.push(4)
+a.length
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn dup_hash() {
+    let result = run(r#"
+a = {"x" => 1}
+b = a.dup
+b["y"] = 2
+a.length
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn dup_immutable_returns_self() {
+    let result = run("42.dup");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+// ── send ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn send_with_symbol() {
+    let result = run("'hello'.send(:length)");
+    assert_eq!(result, Some(Object::Int(5)));
+}
+
+#[test]
+fn send_with_args() {
+    let result = run("[1, 2, 3].send(:push, 4).length");
+    assert_eq!(result, Some(Object::Int(4)));
+}
+
+#[test]
+fn send_no_args_error() {
+    let err = run_err("'hello'.send");
+    assert!(err.contains("argument"));
+}
+
+// ── =~ and !~ operators ─────────────────────────────────────────────────────
+
+#[test]
+fn regex_match_operator() {
+    let result = run("'hello' =~ /ell/");
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn regex_match_no_match() {
+    let result = run("'hello' =~ /xyz/");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn regex_not_match_operator() {
+    let result = run("'hello' !~ /xyz/");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn regex_not_match_does_match() {
+    let result = run("'hello' !~ /ell/");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+// ── unless expression ────────────────────────────────────────────────────────
+
+#[test]
+fn unless_expression_falsy_branch() {
+    let result = run(r#"
+x = unless true
+  1
+else
+  2
+end
+x
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn unless_expression_truthy_branch() {
+    let result = run(r#"
+x = unless false
+  1
+else
+  2
+end
+x
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+// ── String range indexing ────────────────────────────────────────────────────
+
+#[test]
+fn string_range_index() {
+    let result = run("'hello'[1..3]");
+    assert_eq!(result, Some(Object::string("ell")));
+}
+
+#[test]
+fn string_range_exclusive() {
+    let result = run("'hello'[1...3]");
+    assert_eq!(result, Some(Object::string("el")));
+}
+
+// ── STDOUT/STDERR stream methods ─────────────────────────────────────────────
+
+#[test]
+fn stdout_puts_returns_nil() {
+    let result = run("STDOUT.puts 'test'");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn stderr_puts_returns_nil() {
+    let result = run("STDERR.puts 'test'");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn stdout_print_returns_nil() {
+    let result = run("STDOUT.print 'test'");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn stdout_puts_no_args() {
+    let result = run("STDOUT.puts");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── Range#each error paths ──────────────────────────────────────────────────
+
+#[test]
+fn range_each_with_args_error() {
+    let err = run_err("(1..3).each(1) { |x| x }");
+    assert!(err.contains("argument"));
+}
+
+// ── Range#map error paths ───────────────────────────────────────────────────
+
+#[test]
+fn range_map_with_args_error() {
+    let err = run_err("(1..3).map(1) { |x| x }");
+    assert!(err.contains("argument"));
+}
+
+// ── eval_call fallback to method on self ─────────────────────────────────────
+
+#[test]
+fn call_bare_identifier_dispatches_to_self() {
+    let result = run(r#"
+class Foo
+  def helper(x)
+    x + 10
+  end
+  def test
+    helper(5)
+  end
+end
+Foo.new.test
+"#);
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+// ── exception handling: ensure overrides ─────────────────────────────────────
+
+#[test]
+fn begin_rescue_ensure_runs_always() {
+    let result = run(r#"
+x = 0
+begin
+  raise "oops"
+rescue
+  x = 1
+ensure
+  x = x + 10
+end
+x
+"#);
+    assert_eq!(result, Some(Object::Int(11)));
+}
+
+// ── String#each_char ─────────────────────────────────────────────────────────
+
+#[test]
+fn string_each_char() {
+    let result = run(r#"
+count = 0
+"hello".each_char { |c| count = count + 1 }
+count
+"#);
+    assert_eq!(result, Some(Object::Int(5)));
+}
+
+// ── Method invocation: variadic required check ───────────────────────────────
+
+#[test]
+fn variadic_method_requires_mandatory_params() {
+    let err = run_err(
+        r#"
+class Foo
+  def need_one(x, *rest)
+    x
+  end
+end
+Foo.new.need_one
+"#,
+    );
+    assert!(err.contains("argument"));
+}
+
+// ── Method invocation: too many args without variadic ────────────────────────
+
+#[test]
+fn too_many_args_without_variadic() {
+    let err = run_err(
+        r#"
+class Foo
+  def one_arg(x)
+    x
+  end
+end
+Foo.new.one_arg(1, 2, 3)
+"#,
+    );
+    assert!(err.contains("argument"));
+}
+
+// ── Method value from non-last statement ─────────────────────────────────────
+
+#[test]
+fn method_returns_last_expression_value() {
+    let result = run(r#"
+class Foo
+  def calc
+    x = 1
+    y = 2
+    x + y
+  end
+end
+Foo.new.calc
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── Method with block parameter extracts trailing block ──────────────────────
+
+#[test]
+fn method_block_parameter_receives_block() {
+    let result = run(r#"
+class Foo
+  def with_block(&blk)
+    blk.call(10)
+  end
+end
+Foo.new.with_block { |x| x * 3 }
+"#);
+    assert_eq!(result, Some(Object::Int(30)));
+}
+
+// ── Standalone function call ─────────────────────────────────────────────────
+
+#[test]
+fn standalone_function_with_args() {
+    let result = run(r#"
+def add(a, b)
+  a + b
+end
+add(3, 7)
+"#);
+    assert_eq!(result, Some(Object::Int(10)));
+}
+
+// ── String negative range index ──────────────────────────────────────────────
+
+#[test]
+fn string_negative_range_index() {
+    let result = run("'hello'[1..-1]");
+    assert_eq!(result, Some(Object::string("ello")));
+}
+
+// ── String exclusive range index ─────────────────────────────────────────────
+
+#[test]
+fn string_exclusive_range_index() {
+    let result = run("'hello'[0...2]");
+    assert_eq!(result, Some(Object::string("he")));
+}

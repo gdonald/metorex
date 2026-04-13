@@ -238,3 +238,120 @@ end
 fn parse_def_empty_body() {
     parse_ok("def noop\nend");
 }
+
+// ── Keyword method names (top-level def) ─────────────────────────────────────
+
+#[test]
+fn parse_def_next() {
+    parse_ok("def next\n  1\nend");
+}
+
+#[test]
+fn parse_def_include() {
+    parse_ok("def include\n  1\nend");
+}
+
+#[test]
+fn parse_def_extend() {
+    parse_ok("def extend\n  1\nend");
+}
+
+#[test]
+fn parse_def_module() {
+    parse_ok("def module\n  1\nend");
+}
+
+#[test]
+fn parse_def_class() {
+    parse_ok("def class\n  1\nend");
+}
+
+#[test]
+fn parse_def_raise() {
+    parse_ok("def raise\n  1\nend");
+}
+
+#[test]
+fn parse_def_begin() {
+    parse_ok("def begin\n  1\nend");
+}
+
+#[test]
+fn parse_def_lambda() {
+    parse_ok("def lambda\n  1\nend");
+}
+
+#[test]
+fn parse_def_yield_method() {
+    parse_ok("def yield\n  1\nend");
+}
+
+#[test]
+fn parse_def_return_method() {
+    parse_ok("def return\n  1\nend");
+}
+
+#[test]
+fn parse_def_break_method() {
+    parse_ok("def break\n  1\nend");
+}
+
+#[test]
+fn parse_def_defined() {
+    parse_ok("def defined?\n  1\nend");
+}
+
+#[test]
+fn parse_def_true_method() {
+    parse_ok("def true\n  1\nend");
+}
+
+#[test]
+fn parse_def_false_method() {
+    parse_ok("def false\n  1\nend");
+}
+
+#[test]
+fn parse_def_nil_method() {
+    parse_ok("def nil\n  1\nend");
+}
+
+#[test]
+fn parse_def_pipe_operator() {
+    parse_ok("def |(other)\n  1\nend");
+}
+
+#[test]
+fn parse_def_ampersand_operator() {
+    parse_ok("def &(other)\n  1\nend");
+}
+
+#[test]
+fn parse_def_shovel_operator() {
+    parse_ok("def <<(other)\n  1\nend");
+}
+
+// ── Setter method name ──────────────────────────────────────────────────────
+
+#[test]
+fn parse_def_setter_method() {
+    parse_ok("def name=(val)\n  @name = val\nend");
+}
+
+// ── Singleton method setter ─────────────────────────────────────────────────
+
+#[test]
+fn parse_def_self_dot_setter_method() {
+    run(r#"
+class Foo
+  def self.value=(v)
+    @val = v
+  end
+  def self.value
+    @val
+  end
+end
+Foo.value = 42
+Foo.value
+"#);
+}

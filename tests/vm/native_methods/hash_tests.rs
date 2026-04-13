@@ -289,3 +289,57 @@ fn bool_as_hash_key_misc() {
         Some(Object::String(std::rc::Rc::new("yes".to_string())))
     );
 }
+
+// ── compare_by_identity ─────────────────────────────────────────────────────
+
+#[test]
+fn hash_compare_by_identity_returns_self() {
+    let result = run(r#"
+h = {"a" => 1}
+h.compare_by_identity
+h["a"]
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_compare_by_identity_query_returns_false() {
+    let result = run(r#"
+h = {"a" => 1}
+h.compare_by_identity?
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn hash_compare_by_identity_with_args_error() {
+    let err = run_err(r#"{"a" => 1}.compare_by_identity(1)"#);
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn hash_compare_by_identity_query_with_args_error() {
+    let err = run_err(r#"{"a" => 1}.compare_by_identity?(1)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── Hash#[] error ───────────────────────────────────────────────────────────
+
+#[test]
+fn hash_index_wrong_arg_count_error() {
+    let err = run_err(r#"{"a" => 1}.[](1, 2)"#);
+    assert!(err.contains("argument"));
+}
+
+// ── Hash#each ───────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_each_iterates_coverage() {
+    let result = run(r#"
+h = {"a" => 1, "b" => 2}
+sum = 0
+h.each { |k, v| sum = sum + v }
+sum
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}

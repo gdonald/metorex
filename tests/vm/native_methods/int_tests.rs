@@ -115,3 +115,33 @@ fn int_times_iteration_remaining() {
         Some(Object::Int(3))
     );
 }
+
+// ── Integer#size ─────────────────────────────────────────────────────────────
+
+#[test]
+fn int_size_returns_8() {
+    let result = run("1.size");
+    assert_eq!(result, Some(Object::Int(8)));
+}
+
+#[test]
+fn int_size_with_args_error() {
+    let err = run_err("1.size(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── Integer#to_i returns self ────────────────────────────────────────────────
+
+#[test]
+fn int_to_i_with_args_error() {
+    let err = run_err("1.to_i(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── Integer#times error cases ────────────────────────────────────────────────
+
+#[test]
+fn int_times_with_args_error() {
+    let err = run_err("3.times(1) { |i| i }");
+    assert!(err.contains("argument"));
+}

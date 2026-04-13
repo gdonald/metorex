@@ -1117,3 +1117,151 @@ fn array_uniq_empty_coverage() {
     let result = run("[].uniq.length");
     assert_eq!(result, Some(Object::Int(0)));
 }
+
+// ── Array#[] wrong arg count ─────────────────────────────────────────────────
+
+#[test]
+fn array_index_wrong_arg_count() {
+    let err = run_err("[1, 2, 3].[](1, 2, 3)");
+    assert!(err.contains("argument"));
+}
+
+// ── Array#each without block ─────────────────────────────────────────────────
+
+#[test]
+fn array_each_without_block() {
+    let err = run_err("[1, 2, 3].each");
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── Array#map without block ──────────────────────────────────────────────────
+
+#[test]
+fn array_map_without_block() {
+    let err = run_err("[1, 2, 3].map");
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── Array#select without block ───────────────────────────────────────────────
+
+#[test]
+fn array_select_without_block() {
+    let err = run_err("[1, 2, 3].select");
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── Array#partition without block ────────────────────────────────────────────
+
+#[test]
+fn array_partition_without_block() {
+    let err = run_err("[1, 2, 3].partition");
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── Array#reduce without block ───────────────────────────────────────────────
+
+#[test]
+fn array_reduce_without_block() {
+    let err = run_err("[1, 2, 3].reduce");
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── Array#inject without block ───────────────────────────────────────────────
+
+#[test]
+fn array_inject_without_block() {
+    let err = run_err("[1, 2, 3].inject");
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── Array#pack various directives ────────────────────────────────────────────
+
+#[test]
+fn array_pack_v_directive() {
+    let result = run("[1].pack('V')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 4);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_big_q_directive() {
+    let result = run("[1].pack('Q')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 8);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_big_c_directive() {
+    let result = run("[65].pack('C')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 1);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_big_s_directive() {
+    let result = run("[1].pack('S')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 2);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_v_lowercase_directive() {
+    let result = run("[1].pack('v')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 2);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_big_i_directive() {
+    let result = run("[1].pack('I')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 4);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_big_l_directive() {
+    let result = run("[1].pack('L')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 4);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_big_j_directive() {
+    let result = run("[1].pack('J')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 8);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_native_i_directive() {
+    let result = run("[0].pack('i!')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 8);
+    } else {
+        panic!("expected string");
+    }
+}

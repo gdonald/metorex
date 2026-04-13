@@ -756,3 +756,182 @@ fn string_format_zero_pad() {
         Some(Object::String(std::rc::Rc::new("00042".to_string())))
     );
 }
+
+// ── BitwiseAnd (&) ──────────────────────────────────────────────────────────
+
+#[test]
+fn bitwise_and_bool_bool() {
+    let result = run("true & false");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn bitwise_and_int_int() {
+    let result = run("12 & 10");
+    assert_eq!(result, Some(Object::Int(8)));
+}
+
+#[test]
+fn bitwise_and_bool_int() {
+    // 0 is truthy in Ruby, so true & 0 => true & true => true
+    let result = run("true & 0");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn bitwise_and_int_bool() {
+    let result = run("1 & true");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn bitwise_and_type_error() {
+    let err = run_err("'a' & 'b'");
+    assert!(err.contains("type") || err.contains("Cannot"));
+}
+
+// ── BitwiseOr (|) ───────────────────────────────────────────────────────────
+
+#[test]
+fn bitwise_or_bool_bool() {
+    let result = run("false | true");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn bitwise_or_int_int() {
+    let result = run("12 | 3");
+    assert_eq!(result, Some(Object::Int(15)));
+}
+
+#[test]
+fn bitwise_or_bool_int() {
+    let result = run("false | 1");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn bitwise_or_int_bool() {
+    // 0 is truthy in Ruby, so 0 | false => true | false => true
+    let result = run("0 | false");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn bitwise_or_type_error() {
+    let err = run_err("'a' | 'b'");
+    assert!(err.contains("type") || err.contains("Cannot"));
+}
+
+// ── Xor (^) with mixed types ────────────────────────────────────────────────
+
+#[test]
+fn xor_bool_int() {
+    // 0 is truthy in Ruby, so true ^ 0 => true ^ true => false
+    let result = run("true ^ 0");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_int_bool() {
+    let result = run("1 ^ false");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn xor_type_error() {
+    let err = run_err("'a' ^ 'b'");
+    assert!(err.contains("type") || err.contains("Cannot"));
+}
+
+// ── Power (**) with various types ───────────────────────────────────────────
+
+#[test]
+fn power_int_negative_exponent() {
+    let result = run("2**-1");
+    assert!(matches!(result, Some(Object::Float(_))));
+}
+
+#[test]
+fn power_float_float() {
+    let result = run("2.0**3.0");
+    assert_eq!(result, Some(Object::Float(8.0)));
+}
+
+#[test]
+fn power_int_float() {
+    let result = run("2**3.0");
+    assert_eq!(result, Some(Object::Float(8.0)));
+}
+
+#[test]
+fn power_float_int() {
+    let result = run("2.0**3");
+    assert_eq!(result, Some(Object::Float(8.0)));
+}
+
+// ── Spaceship (<=>) ─────────────────────────────────────────────────────────
+
+#[test]
+fn spaceship_int_int() {
+    assert_eq!(run("1 <=> 2"), Some(Object::Int(-1)));
+    assert_eq!(run("2 <=> 2"), Some(Object::Int(0)));
+    assert_eq!(run("3 <=> 2"), Some(Object::Int(1)));
+}
+
+#[test]
+fn spaceship_float_float() {
+    assert_eq!(run("1.0 <=> 2.0"), Some(Object::Int(-1)));
+}
+
+#[test]
+fn spaceship_int_float() {
+    assert_eq!(run("1 <=> 2.0"), Some(Object::Int(-1)));
+}
+
+#[test]
+fn spaceship_float_int() {
+    assert_eq!(run("2.0 <=> 1"), Some(Object::Int(1)));
+}
+
+#[test]
+fn spaceship_string_string() {
+    assert_eq!(run("'a' <=> 'b'"), Some(Object::Int(-1)));
+}
+
+#[test]
+fn spaceship_type_error() {
+    let err = run_err("1 <=> 'a'");
+    assert!(err.contains("type") || err.contains("Cannot"));
+}
+
+// ── String format (%s, %d, %c, etc.) ────────────────────────────────────────
+
+#[test]
+fn string_format_percent_c() {
+    let result = run("'%c' % 65");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("A".to_string())))
+    );
+}
+
+#[test]
+fn string_format_left_align_coverage() {
+    let result = run("'%-10s' % 'hi'");
+    if let Some(Object::String(s)) = result {
+        assert!(s.starts_with("hi"));
+        assert_eq!(s.len(), 10);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn string_format_zero_pad_coverage() {
+    let result = run("'%05d' % 42");
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("00042".to_string())))
+    );
+}

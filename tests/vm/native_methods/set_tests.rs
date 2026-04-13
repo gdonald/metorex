@@ -251,3 +251,48 @@ fn set_difference_method_remaining() {
     let result = run("a = Set.new([1,2,3]); b = Set.new([2,3]); a.difference(b).size");
     assert_eq!(result, Some(Object::Int(1)));
 }
+
+// ── Set#intersection ─────────────────────────────────────────────────────────
+
+#[test]
+fn set_intersection() {
+    let result = run(r#"
+a = Set.new([1, 2, 3])
+b = Set.new([2, 3, 4])
+c = a.intersection(b)
+c.length
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+// ── Set#difference ───────────────────────────────────────────────────────────
+
+#[test]
+fn set_difference() {
+    let result = run(r#"
+a = Set.new([1, 2, 3])
+b = Set.new([2, 3, 4])
+c = a.difference(b)
+c.length
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+// ── Set#each ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn set_each_iterates() {
+    let result = run(r#"
+s = Set.new([10, 20, 30])
+count = 0
+s.each { |x| count = count + 1 }
+count
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn set_each_with_args_error() {
+    let err = run_err("Set.new([1]).each(1) { |x| x }");
+    assert!(err.contains("argument"));
+}

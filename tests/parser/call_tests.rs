@@ -141,3 +141,78 @@ fn attr_reader_missing_colon_errors() {
     let err = parse_err("class Foo\n  attr_reader name\nend");
     assert!(err.contains("Expected") || err.contains("symbol") || err.contains("attribute"));
 }
+
+// ── Keyword method names on receiver ─────────────────────────────────────────
+
+#[test]
+fn call_method_named_then() {
+    parse_ok("x.then");
+}
+
+#[test]
+fn call_method_named_module() {
+    parse_ok("x.module");
+}
+
+#[test]
+fn call_method_named_include() {
+    parse_ok("x.include");
+}
+
+#[test]
+fn call_method_named_extend() {
+    parse_ok("x.extend");
+}
+
+#[test]
+fn call_method_named_yield() {
+    parse_ok("x.yield");
+}
+
+#[test]
+fn call_method_named_defined() {
+    parse_ok("x.defined?");
+}
+
+#[test]
+fn call_method_named_nil() {
+    parse_ok("x.nil");
+}
+
+#[test]
+fn call_method_named_true() {
+    parse_ok("x.true");
+}
+
+#[test]
+fn call_method_named_false() {
+    parse_ok("x.false");
+}
+
+// ── Multi-arg bracket indexing ───────────────────────────────────────────────
+
+#[test]
+fn multi_arg_bracket_index() {
+    parse_ok("x[1, 2]");
+}
+
+// ── Paren-less args with splat ───────────────────────────────────────────────
+
+#[test]
+fn paren_less_args_with_splat() {
+    parse_ok("x.push *arr");
+}
+
+// ── Paren-less args with double splat ────────────────────────────────────────
+
+#[test]
+fn paren_less_args_with_block_arg() {
+    parse_ok("x.each &block");
+}
+
+// ── Old-style hash args :sym => val ──────────────────────────────────────────
+
+#[test]
+fn old_style_hash_args_in_call() {
+    parse_ok("foo(:a => 1, :b => 2)");
+}
