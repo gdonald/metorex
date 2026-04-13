@@ -260,3 +260,31 @@ fn test_stdlib_error_paths_test_execution() {
     let output = run_example("stdlib/error_paths_test.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_stdlib_array_functional_execution() {
+    let expected = "true\nfalse\ntrue\nfalse\ntrue\nfalse\n2\n2\n4\n2\n3\n15\n120\n";
+    let output = run_example("stdlib/array_functional.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_array_functional_parens_execution() {
+    let expected = "true\nfalse\ntrue\nfalse\ntrue\nfalse\n2\n2\n4\n2\n3\n15\n120\n";
+    let output = run_example("stdlib/array_functional_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_hash_shorthand_execution() {
+    let expected = "Alice\n30\nlocalhost\n8080\ntrue\n3\n2\n";
+    let output = run_example("stdlib/hash_shorthand.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_hash_shorthand_parens_execution() {
+    let expected = "Alice\n30\nlocalhost\n8080\ntrue\n3\n2\n";
+    let output = run_example("stdlib/hash_shorthand_parens.rb");
+    assert_eq!(output, expected);
+}

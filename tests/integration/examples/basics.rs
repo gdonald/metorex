@@ -104,6 +104,48 @@ fn test_spaceship_operator_parens_execution() {
 }
 
 #[test]
+fn test_power_operator_execution() {
+    let expected = "1024\n27\n1\n0.1\n2\n25\n256\n";
+    let output = run_example("basics/power_operator.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_power_operator_parens_execution() {
+    let expected = "1024\n27\n1\n0.1\n2\n25\n256\n";
+    let output = run_example("basics/power_operator_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_bitwise_ops_execution() {
+    let expected = "8\n14\n6\n170\n255\n85\n0\n255\n255\n";
+    let output = run_example("basics/bitwise_ops.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_bitwise_ops_parens_execution() {
+    let expected = "8\n14\n6\n170\n255\n85\n0\n255\n255\n";
+    let output = run_example("basics/bitwise_ops_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_heredoc_execution() {
+    let expected = "Hello, World!\nThis is a heredoc.\n\nGood morning!\n";
+    let output = run_example("basics/heredoc.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_heredoc_parens_execution() {
+    let expected = "Hello, World!\nThis is a heredoc.\n\nGood morning!\n";
+    let output = run_example("basics/heredoc_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_type_annotations_collection_types_execution() {
     let output = run_example("type_annotations/collection_types.rb");
     let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {Bob: 85, Alice: 90}\nlength of numbers: 5\nAlice's score: 90\n";

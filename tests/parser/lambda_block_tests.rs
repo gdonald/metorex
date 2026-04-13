@@ -153,3 +153,59 @@ fn parse_lambda_empty_params_additional() {
 fn parse_do_block_with_params_additional() {
     parse_lb_ok("[1].each do |x|\n  x\nend");
 }
+
+// ── Block params with default values ────────────────────────────────────────
+
+#[test]
+fn brace_block_param_with_default_value() {
+    // mod.rs lines 405-407: brace block param default parsing.
+    // Default value must be followed by comma (not |) so parse_expression stops
+    // at the comma, not consuming the closing |.
+    parse_ok("[1].map { |x = 0, y| x }");
+}
+
+#[test]
+fn do_block_param_with_default_value() {
+    // mod.rs lines 337-339: do-block param default parsing (comma stops parse_expression)
+    parse_ok("[1].map do |x = 0, y|\n  x\nend");
+}
+
+#[test]
+fn lambda_param_with_default_value() {
+    // blocks.rs lines 153-155: lambda do-block param default parsing
+    let result = run("f = lambda do |x = 99, y|\n  [x, y]\nend\nf.call(1, 2)");
+    assert_eq!(
+        result,
+        Some(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+            vec![Object::Int(1), Object::Int(2),]
+        ))))
+    );
+}
+
+// ── Stabby lambda with parens and expression body ────────────────────────────
+
+#[test]
+fn stabby_lambda_with_parens_and_expression_body() {
+    // blocks.rs lines 244-252: stabby lambda with (params) and expression body
+    // -> (x) expr (no brace block)
+    let result = run("f = -> (x) x + 1\nf.call(5)");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+#[test]
+fn stabby_lambda_as_primary_expression_in_array() {
+    // blocks.rs lines 244-252: stabby_lambda_with_params via parse_primary (Arrow token
+    // inside an array literal goes through parse_primary -> parse_stabby_lambda).
+    // This differs from statement-level `f = -> (x) ...` which uses parse_arrow_lambda.
+    let result = run("[-> (x) x + 1][0].call(5)");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
+// ── Parenthesized assignment ─────────────────────────────────────────────────
+
+#[test]
+fn parenthesized_assignment_parses() {
+    // groups.rs line 18: parse_paren_group sees `=` after identifier, builds BinaryOp::Assign
+    let result = run("(x = 5)\nx");
+    assert_eq!(result, Some(Object::Int(5)));
+}

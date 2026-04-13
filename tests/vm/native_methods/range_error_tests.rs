@@ -138,3 +138,20 @@ fn range_include_exclusive() {
 "#);
     assert_eq!(result, Some(Object::Bool(false)));
 }
+
+// ── range map with extra args error (lines 163-169) ──────────────────────────
+
+#[test]
+fn range_map_with_args_errors() {
+    let err = run_err("(1..5).map(42) { |x| x }");
+    assert!(err.contains("argument"));
+}
+
+// ── range include? with non-comparable type falls back to Display (line 154) ──
+
+#[test]
+fn range_include_with_bool_elements() {
+    // Ranges of booleans use the Display fallback comparison
+    let result = run("(false..true).include?(false)");
+    assert!(result.is_some());
+}

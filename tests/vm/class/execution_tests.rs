@@ -416,3 +416,51 @@ M::VERSION
         )))
     );
 }
+
+// ── parser/statements/mod.rs lines 32-34: private/public def ─────────────────
+
+#[test]
+fn private_def_defines_callable_method() {
+    let result = run(r#"
+class Foo
+  private def secret
+    42
+  end
+  def reveal
+    secret
+  end
+end
+Foo.new.reveal
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn public_def_defines_callable_method() {
+    let result = run(r#"
+class Bar
+  public def visible
+    99
+  end
+end
+Bar.new.visible
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+// ── define_method on class object (native_methods/mod.rs line 497) ───────────
+
+#[test]
+fn define_method_on_class_object_no_captured_vars() {
+    // Calling define_method on a Class object at runtime (not inside class body)
+    // with a block that has no captured variables covers the empty captured_vars branch.
+    let result = run(r#"
+class Widget
+end
+Widget.define_method("value") do
+  42
+end
+Widget.new.value
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}

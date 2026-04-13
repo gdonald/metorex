@@ -1,6 +1,10 @@
 // Main test integration file that organizes all tests by topic
 
+mod array_error_path_tests;
+mod array_functional_tests;
 mod array_methods_tests;
+mod array_pack_tests;
+mod array_sort_zip_tests;
 mod ast;
 mod blocks;
 mod bytecode;

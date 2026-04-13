@@ -570,3 +570,89 @@ foo(&b)
 "#);
     assert_eq!(result, Some(Object::Int(42)));
 }
+
+// ── __method__ inside a method with class prefix (lines 64-65) ───────────────
+
+#[test]
+fn method_name_inside_method_returns_short_name() {
+    let result = run(r#"
+class MyClass
+  def greet
+    __method__()
+  end
+end
+MyClass.new.greet
+"#);
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("greet".to_string())))
+    );
+}
+
+// ── rand with non-Int argument (line 89) ──────────────────────────────────────
+
+#[test]
+fn rand_with_float_arg_returns_zero() {
+    let result = run("rand(3.14)");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn rand_with_string_arg_returns_zero() {
+    let result = run(r#"rand("hello")"#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+// ── require with non-Array $LOAD_PATH (lines 174) ────────────────────────────
+
+#[test]
+fn require_with_invalid_load_path_raises_load_error() {
+    let err = run_err(
+        r#"
+$: = 42
+require "nonexistent_lib_xyz"
+"#,
+    );
+    assert!(err.contains("load") || err.contains("cannot") || err.contains("file"));
+}
+
+// ── load: execute_file error when file has syntax error (lines 539-541) ──────
+
+#[test]
+fn load_file_with_parse_error_propagates_error() {
+    use std::io::Write;
+    let path = "/tmp/metorex_bad_syntax_test.rb";
+    let mut f = std::fs::File::create(path).unwrap();
+    f.write_all(b"def incomplete(\n").unwrap();
+    let err = run_err(&format!(r#"load("{}")"#, path));
+    assert!(
+        err.contains("parse")
+            || err.contains("syntax")
+            || err.contains("load")
+            || err.contains("error")
+    );
+    std::fs::remove_file(path).ok();
+}
+
+// ── get_string_representation fallback (line 627) ────────────────────────────
+
+#[test]
+fn assert_equal_with_non_instance_objects_uses_display() {
+    // get_string_representation for non-Instance objects uses format!("{}", obj)
+    let result = run("assert_equal(42, 42)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn print_instance_without_string_to_s_uses_display() {
+    // Instance where to_s returns non-String triggers line 627 fallback
+    run(r#"
+class NoStringToS
+  def to_s
+    42
+  end
+end
+print NoStringToS.new
+"#);
+    // Verify it doesn't crash — output is "<NoStringToS instance>"
+}

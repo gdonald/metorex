@@ -266,4 +266,65 @@ fn range_pattern_exclusive_float() {
     assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
 }
 
+// ── control_flow.rs lines 768-769: :@ivar and :@@cvar symbol patterns ────────
+
+#[test]
+fn pattern_match_ivar_symbol() {
+    let result = run(r#"
+x = :@hello
+case x
+in :@hello
+  "matched"
+else
+  "no"
+end
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("matched".to_string()))));
+}
+
+#[test]
+fn pattern_match_cvar_symbol() {
+    let result = run(r#"
+x = :@@count
+case x
+in :@@count
+  "matched"
+else
+  "no"
+end
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("matched".to_string()))));
+}
+
+// ── pattern_matching.rs line 153: SymbolLiteral pattern with non-symbol ──────
+
+#[test]
+fn symbol_pattern_against_non_symbol_no_match() {
+    let result = run(r#"
+case 42
+when :foo
+  "matched"
+else
+  "no"
+end
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("no".to_string()))));
+}
+
+// ── pattern_matching.rs lines 276, 283: range pattern with non-numeric bounds ─
+
+#[test]
+fn range_pattern_with_string_bounds_no_match_numeric_value() {
+    // Integer value matched against string-bounded range → no match (returns else)
+    let result = run(r#"
+case 5
+in "a".."z"
+  "matched"
+else
+  "no"
+end
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("no".to_string()))));
+}
+
 // ── From vm/additional_tests ────────────────────────────────────────────────

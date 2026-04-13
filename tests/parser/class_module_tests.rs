@@ -67,3 +67,37 @@ fn define_method_with_string_name() {
         Some(Object::String(std::rc::Rc::new("world".to_string())))
     );
 }
+
+// ── attributes.rs lines 90, 93, 95-97: attr with keyword names ──────────────
+
+#[test]
+fn attr_accessor_with_keyword_names() {
+    // attr_accessor with keyword names like :module, :include
+    // exercises lines 90, 93 in attributes.rs
+    let result = run(r#"
+class Config
+  attr_accessor :include, :module
+end
+c = Config.new
+c.include = "test"
+c.include
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("test".to_string())))
+    );
+}
+
+#[test]
+fn attr_accessor_with_more_keyword_names() {
+    // Exercises lines 95-97: :end, :if, :else as attr names
+    let result = run(r#"
+class Flags
+  attr_accessor :end, :if, :else
+end
+f = Flags.new
+f.end = true
+f.end
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}

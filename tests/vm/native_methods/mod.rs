@@ -1,5 +1,6 @@
 mod array_error_tests;
 mod array_tests;
+mod ast_coverage_tests;
 mod block_error_tests;
 mod class_error_tests;
 mod exception_error_tests;

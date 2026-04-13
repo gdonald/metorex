@@ -159,3 +159,31 @@ s.size
 "#);
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── intersection no-args error (lines 147-151) ────────────────────────────────
+
+#[test]
+fn set_intersection_no_args_errors() {
+    let err = run_err(
+        r#"
+s = Set.new
+s.add("a")
+s.intersection
+"#,
+    );
+    assert!(err.contains("argument"));
+}
+
+// ── difference no-args error (lines 174-178) ─────────────────────────────────
+
+#[test]
+fn set_difference_no_args_errors() {
+    let err = run_err(
+        r#"
+s = Set.new
+s.add("a")
+s.difference
+"#,
+    );
+    assert!(err.contains("argument"));
+}

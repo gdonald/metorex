@@ -311,3 +311,164 @@ fn dup_with_args_errors() {
     let err = run_err("[1, 2].dup(3)");
     assert!(err.contains("argument"));
 }
+
+// ── object_methods.rs: to_s with arguments error (lines 44-49) ─────────────
+
+#[test]
+fn object_to_s_with_args_error() {
+    let err = run_err("42.to_s(10)");
+    assert!(err.contains("argument"));
+}
+
+// ── object_methods.rs: respond_to? with non-String/Symbol arg error (line 78) ─
+
+#[test]
+fn object_respond_to_non_string_arg_error() {
+    let err = run_err(r#"42.respond_to?(123)"#);
+    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+}
+
+// ── object_methods.rs: instance_variable_set on plain (non-instance) object (line 256) ─
+
+#[test]
+fn instance_variable_set_on_plain_object_returns_nil() {
+    let result = run(r#"42.instance_variable_set(:@x, 99)"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── object_methods.rs: methods on instance with superclass (lines 308, 315) ─
+
+#[test]
+fn object_methods_includes_inherited_methods() {
+    let result = run(r#"
+class Animal
+  def speak
+    "..."
+  end
+end
+class Dog < Animal
+  def bark
+    "woof"
+  end
+end
+d = Dog.new
+m = d.methods
+m.include?("speak")
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn object_methods_returns_array() {
+    let result = run(r#"42.methods"#);
+    assert!(matches!(result, Some(Object::Array(_))));
+}
+
+// ── object_methods.rs: send with non-String/Symbol method name error (lines 368) ─
+
+#[test]
+fn object_send_non_string_method_name_error() {
+    let err = run_err(r#"42.send(123)"#);
+    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+}
+
+// ── object_methods.rs: send dispatching native method (lines 370-376) ─────
+
+#[test]
+fn object_send_dispatches_native_method() {
+    let result = run(r#"[1, 2, 3].send("length")"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn object_send_dispatches_object_method() {
+    let result = run(r#"42.send("to_s")"#);
+    assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
+}
+
+#[test]
+fn object_send_undefined_method_error() {
+    let err = run_err(r#"42.send("totally_nonexistent_xyz")"#);
+    assert!(err.contains("method") || err.contains("undefined") || err.contains("nonexistent"));
+}
+
+// ── object_methods.rs: dup/clone on Array via object_methods (lines 399-402) ─
+
+#[test]
+fn object_dup_on_set_returns_copy() {
+    let result = run(r#"
+s = Set.new([1, 2, 3])
+t = s.dup
+t.size
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── object_methods.rs: =~ on non-string/regex pair returns Nil (line 418) ──
+
+#[test]
+fn object_match_operator_non_string_returns_nil() {
+    let result = run(r#"42 =~ 99"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── object_methods.rs: =~ with invalid regex returns Nil (line 437) ────────
+
+#[test]
+fn object_match_operator_invalid_regex_returns_nil() {
+    // An invalid regex pattern should return nil rather than error
+    let result = run(r#""hello" =~ /[invalid(/"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── object_methods.rs: !~ on non-string/regex pair returns true (lines 440, 452) ─
+
+#[test]
+fn object_not_match_operator_non_string_returns_true() {
+    let result = run(r#"42 !~ 99"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── object_methods.rs: !~ with invalid regex returns true (lines 445-448) ──
+
+#[test]
+fn object_not_match_operator_invalid_regex_returns_true() {
+    let result = run(r#""hello" !~ /[invalid(/"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── object_methods.rs: instance_exec with block (lines 466-471) ─────────────
+
+#[test]
+fn object_instance_exec_with_block() {
+    let result = run(r#"
+x = 42
+result = x.instance_exec { 100 }
+result
+"#);
+    assert_eq!(result, Some(Object::Int(100)));
+}
+
+#[test]
+fn object_instance_eval_with_block() {
+    let result = run(r#"
+x = 42
+result = x.instance_eval { 200 }
+result
+"#);
+    assert_eq!(result, Some(Object::Int(200)));
+}
+
+// ── object_methods.rs: instance_exec without block error (lines 480-482) ───
+
+#[test]
+fn object_instance_exec_without_block_error() {
+    let err = run_err(r#"42.instance_exec"#);
+    assert!(err.contains("block") || err.contains("requires"));
+}
+
+#[test]
+fn object_instance_eval_without_block_error() {
+    let err = run_err(r#"42.instance_eval"#);
+    assert!(err.contains("block") || err.contains("requires"));
+}

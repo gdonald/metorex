@@ -486,6 +486,20 @@ Array
 }
 
 #[test]
+fn test_metaprogramming_instance_exec_execution() {
+    let expected = "10\n20\n105\n";
+    let output = run_example("metaprogramming/instance_exec.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_instance_exec_parens_execution() {
+    let expected = "10\n20\n105\n";
+    let output = run_example("metaprogramming/instance_exec_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_ast_manipulation_no_parens_execution() {
     let expected = r#"=== eval ===
 6

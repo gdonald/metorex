@@ -195,3 +195,17 @@ fn test_oop_class_self_new_execution() {
     let output = run_example("oop/class_self_new.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_comparable_execution() {
+    let expected = "true\nfalse\ntrue\nfalse\ntrue\ntrue\nfalse\ntrue\n";
+    let output = run_example("oop/comparable.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_comparable_parens_execution() {
+    let expected = "true\nfalse\ntrue\nfalse\ntrue\ntrue\nfalse\ntrue\n";
+    let output = run_example("oop/comparable_parens.rb");
+    assert_eq!(output, expected);
+}

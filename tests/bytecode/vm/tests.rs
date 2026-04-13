@@ -642,6 +642,26 @@ fn execute_compare_type_error() {
     assert!(result.is_err());
 }
 
+// ── Comparison type errors for >, <=, >= (covers error branches in comparison.rs) ─
+
+#[test]
+fn execute_compare_greater_type_error() {
+    let result = run("return \"hello\" > 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_compare_less_equal_type_error() {
+    let result = run("return \"hello\" <= 1");
+    assert!(result.is_err());
+}
+
+#[test]
+fn execute_compare_greater_equal_type_error() {
+    let result = run("return \"hello\" >= 1");
+    assert!(result.is_err());
+}
+
 // ── Float-Int mixed arithmetic (covers reverse operand paths) ───────
 
 #[test]
@@ -809,6 +829,16 @@ fn execute_array_negative_index() {
     assert_eq!(result, Object::Int(30));
 }
 
+// ── bytecode/vm/collections.rs line 37: negative index in index_set ─
+
+#[test]
+fn execute_array_negative_index_set() {
+    // a[-1] = 99 exercises the negative-index calculation in index_set
+    // (collections.rs line 37: `(arr.len() as i64 + i) as usize`)
+    let result = run_ok("a = [10, 20, 30]\na[-1] = 99\nreturn a[2]");
+    assert_eq!(result, Object::Int(99));
+}
+
 // ── Mixed-type subtraction (Int-Float, Float-Int) ──────────────────
 
 #[test]
@@ -871,6 +901,40 @@ fn execute_float_greater_equal_float() {
     assert_eq!(result, Object::Bool(true));
 }
 
+// ── arithmetic.rs: Float-Float and Int-Float uncovered paths ───────
+
+#[test]
+fn execute_float_float_subtraction() {
+    let result = run_ok("return 5.0 - 2.0");
+    assert_eq!(result, Object::Float(3.0));
+}
+
+#[test]
+fn execute_float_float_multiplication() {
+    let result = run_ok("return 2.0 * 3.0");
+    assert_eq!(result, Object::Float(6.0));
+}
+
+#[test]
+fn execute_float_float_division() {
+    let result = run_ok("return 10.0 / 2.0");
+    assert_eq!(result, Object::Float(5.0));
+}
+
+#[test]
+fn execute_int_float_division() {
+    let result = run_ok("return 10 / 2.5");
+    assert_eq!(result, Object::Float(4.0));
+}
+
+#[test]
+fn execute_divide_type_error() {
+    let result = run("return \"hello\" / 1");
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.contains("Cannot divide"), "Error was: {}", err);
+}
+
 // ── OP_CLOSE_UPVALUE ───────────────────────────────────────────────
 
 #[test]
@@ -892,4 +956,72 @@ return f()
 "#;
     let result = run_ok(src);
     assert_eq!(result, Object::Int(2));
+}
+
+// ── VM: ip >= chunk_len returns Nil (execution.rs line 26) ─────────────────
+
+#[test]
+fn execute_empty_chunk_past_end_returns_nil() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let chunk = Chunk::new(); // empty chunk: ip immediately >= len
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Nil);
+}
+
+// ── VM: Exception placeholder opcodes (execution.rs lines 497-502) ─────────
+
+#[test]
+fn execute_try_opcode_is_noop() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // Try opcode reads a u16 operand, then we Return
+    chunk.write_op_u16(OpCode::Try, 0, 1);
+    chunk.write_opcode(OpCode::Nil, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Nil);
+}
+
+#[test]
+fn execute_catch_opcode_is_noop() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    chunk.write_opcode(OpCode::Catch, 1);
+    chunk.write_opcode(OpCode::Nil, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Nil);
+}
+
+#[test]
+fn execute_match_opcode_is_noop() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    chunk.write_opcode(OpCode::Match, 1);
+    chunk.write_opcode(OpCode::Nil, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Nil);
+}
+
+#[test]
+fn execute_match_pattern_opcode_is_noop() {
+    use metorex::bytecode::chunk::Chunk;
+
+    let mut chunk = Chunk::new();
+    // MatchPattern reads a u16 operand
+    chunk.write_op_u16(OpCode::MatchPattern, 0, 1);
+    chunk.write_opcode(OpCode::Nil, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk).unwrap();
+    assert_eq!(result, Object::Nil);
 }

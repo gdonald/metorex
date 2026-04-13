@@ -976,3 +976,98 @@ fn compile_break_with_local_in_loop_body() {
     // The break needs to pop the local x before jumping
     assert!(ops.contains(&OpCode::Jump));
 }
+
+// ── node.rs BinaryOp Display (lines 654, 668-671) ─────────────────────────
+// Compiler errors on these ops include the Display formatting of the op name.
+
+#[test]
+fn compile_power_op_not_supported() {
+    let tokens = metorex::lexer::Lexer::new("2 ** 3").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("**"), "Error was: {}", err);
+}
+
+#[test]
+fn compile_spaceship_op_not_supported() {
+    let tokens = metorex::lexer::Lexer::new("1 <=> 2").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("<=>"), "Error was: {}", err);
+}
+
+#[test]
+fn compile_bitwise_and_op_not_supported() {
+    let tokens = metorex::lexer::Lexer::new("3 & 1").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("&"), "Error was: {}", err);
+}
+
+#[test]
+fn compile_bitwise_or_op_not_supported() {
+    let tokens = metorex::lexer::Lexer::new("3 | 1").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("|"), "Error was: {}", err);
+}
+
+#[test]
+fn compile_xor_op_not_supported() {
+    let tokens = metorex::lexer::Lexer::new("3 ^ 1").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("^"), "Error was: {}", err);
+}
+
+// ── compiler/expressions.rs lines 372-380: "not yet implemented" expressions ─
+
+#[test]
+fn compile_magic_file_not_supported() {
+    let tokens = Lexer::new("__FILE__").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("not yet implemented") || err.contains("Compilation"));
+}
+
+#[test]
+fn compile_magic_line_not_supported() {
+    let tokens = Lexer::new("__LINE__").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("not yet implemented") || err.contains("Compilation"));
+}
+
+#[test]
+fn compile_magic_dir_not_supported() {
+    let tokens = Lexer::new("__dir__").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("not yet implemented") || err.contains("Compilation"));
+}
+
+#[test]
+fn compile_regex_literal_not_supported() {
+    let tokens = Lexer::new("/hello/").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("not yet implemented") || err.contains("Compilation"));
+}
+
+#[test]
+fn compile_defined_not_supported() {
+    let tokens = Lexer::new("defined?(x)").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens).parse().expect("parse");
+    let compiler = Compiler::new();
+    let err = compiler.compile(&stmts).unwrap_err().to_string();
+    assert!(err.contains("not yet implemented") || err.contains("Compilation"));
+}

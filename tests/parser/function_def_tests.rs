@@ -355,3 +355,12 @@ Foo.value = 42
 Foo.value
 "#);
 }
+
+// ── Singleton method with invalid token after dot ─────────────────────────────
+
+#[test]
+fn parse_def_self_dot_invalid_token_error() {
+    // function.rs line 52: _ => error for unexpected token after '.' in singleton def
+    let err = parse_err("def Foo.@x\n  1\nend");
+    assert!(err.contains("method name") || err.contains("Expected") || err.contains("after"));
+}

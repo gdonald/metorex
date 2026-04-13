@@ -343,3 +343,58 @@ sum
 "#);
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+// ── hash_methods.rs: merge with non-Hash argument error (lines 144-147) ─────
+
+#[test]
+fn hash_merge_non_hash_arg_error() {
+    let err = run_err(
+        r#"
+h = {"a" => 1}
+h.merge(42)
+"#,
+    );
+    assert!(
+        err.contains("Hash") || err.contains("type") || err.contains("argument"),
+        "Error was: {}",
+        err
+    );
+}
+
+#[test]
+fn hash_merge_string_arg_error() {
+    let err = run_err(
+        r#"
+h = {"a" => 1}
+h.merge("not a hash")
+"#,
+    );
+    assert!(
+        err.contains("Hash") || err.contains("type") || err.contains("argument"),
+        "Error was: {}",
+        err
+    );
+}
+
+// ── hash_methods.rs: each with block (lines 224-229 – the None branch when no block) ─
+
+#[test]
+fn hash_each_without_block_raises_error() {
+    let err = run_err(r#"{"a" => 1, "b" => 2}.each"#);
+    assert!(
+        err.contains("block") || err.contains("each") || err.contains("requires"),
+        "Error was: {}",
+        err
+    );
+}
+
+// ── hash_methods.rs lines 144-147: Hash#[] via send ──────────────────────────
+
+#[test]
+fn hash_bracket_via_send() {
+    let result = run(r#"
+h = {"x" => 10, "y" => 20}
+h.send(:[], "x")
+"#);
+    assert_eq!(result, Some(Object::Int(10)));
+}

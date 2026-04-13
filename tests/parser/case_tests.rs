@@ -28,6 +28,15 @@ fn parser_case_when_multiline_body() {
     assert_eq!(result, Some(Object::Int(21)));
 }
 
+// ── Invalid symbol pattern in case/in (control_flow.rs lines 771-772) ─────────
+
+#[test]
+fn case_in_invalid_symbol_pattern_error() {
+    // control_flow.rs lines 771-772: symbol pattern with non-ident token after ':'
+    let err = parse_err("case x\nin :123\n  1\nend");
+    assert!(err.contains("Expected") || err.contains("identifier") || err.contains("pattern"));
+}
+
 #[test]
 fn parser_case_else_multiline_body() {
     let result = run("case 99\nwhen 1\n  10\nelse\n  51\nend");

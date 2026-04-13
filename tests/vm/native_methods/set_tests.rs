@@ -296,3 +296,63 @@ fn set_each_with_args_error() {
     let err = run_err("Set.new([1]).each(1) { |x| x }");
     assert!(err.contains("argument"));
 }
+
+// ── set_methods.rs: union with non-Set argument error (lines 147-151) ────────
+
+#[test]
+fn set_union_wrong_type_error() {
+    let err = run_err(
+        r#"
+s = Set.new
+s.add("a")
+s.union(42)
+"#,
+    );
+    assert!(
+        err.contains("Set") || err.contains("type") || err.contains("argument"),
+        "Error was: {}",
+        err
+    );
+}
+
+// ── set_methods.rs: intersection with non-Set argument error (lines 174-179) ─
+
+#[test]
+fn set_intersection_non_set_type_error() {
+    let err = run_err(
+        r#"
+s = Set.new
+s.add("a")
+s.intersection("not a set")
+"#,
+    );
+    assert!(
+        err.contains("Set") || err.contains("type") || err.contains("argument"),
+        "Error was: {}",
+        err
+    );
+}
+
+// ── set_methods.rs: difference result (lines 210-215 success path) ───────────
+
+#[test]
+fn set_difference_result_is_set() {
+    let result = run(r#"
+s1 = Set.new([1, 2, 3])
+s2 = Set.new([2])
+s3 = s1.difference(s2)
+s3.size
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn set_difference_empty_result() {
+    let result = run(r#"
+s1 = Set.new([1, 2])
+s2 = Set.new([1, 2])
+s3 = s1.difference(s2)
+s3.empty?
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}

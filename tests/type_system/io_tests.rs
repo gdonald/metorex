@@ -349,3 +349,32 @@ fn dir_glob_non_string_arg_errors() {
     let err = run_err("Dir[42]");
     assert!(err.contains("String"));
 }
+
+// ── Kernel.load (native_methods/mod.rs lines 648-660) ──────────────────────
+
+#[test]
+fn kernel_load_executes_file() {
+    // Kernel.load covers the Module receiver path in native_methods/mod.rs
+    let tokens =
+        metorex::lexer::Lexer::new(r#"Kernel.load("tests/_examples/require/lib/helper.rb")"#)
+            .tokenize();
+    let stmts = metorex::parser::Parser::new(tokens)
+        .parse()
+        .expect("parse failed");
+    let mut vm = metorex::vm::VirtualMachine::new();
+    // Run from the project root so the relative path resolves
+    let result = vm.execute_program(&stmts);
+    assert!(result.is_ok());
+}
+
+#[test]
+fn kernel_load_wrong_arg_count_errors() {
+    let err = run_err("Kernel.load");
+    assert!(err.contains("argument") || err.contains("load") || err.contains("expected"));
+}
+
+#[test]
+fn kernel_load_non_string_arg_errors() {
+    let err = run_err("Kernel.load(42)");
+    assert!(err.contains("String") || err.contains("argument") || err.contains("type"));
+}

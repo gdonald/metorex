@@ -219,3 +219,52 @@ fn array_bracket_start_length_clamps_to_end() {
         other => panic!("expected Array, got {:?}", other),
     }
 }
+
+// ── partition with extra args error (lines 245-250) ──────────────────────────
+
+#[test]
+fn array_partition_with_arg_errors() {
+    let err = run_err("[1,2,3].partition(42) { |x| x > 1 }");
+    assert!(err.contains("argument"));
+}
+
+// ── reduce/inject with too many args error (lines 288-294, 527-532) ──────────
+
+#[test]
+fn array_reduce_too_many_args_errors() {
+    let err = run_err("[1,2,3].reduce(0, 1) { |acc, x| acc + x }");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn array_inject_too_many_args_errors() {
+    let err = run_err("[1,2,3].inject(0, 1) { |acc, x| acc + x }");
+    assert!(err.contains("argument"));
+}
+
+// ── pack with non-Int values in various directives (lines 839, 847, 855, 863) ─
+
+#[test]
+fn array_pack_j_with_non_int_defaults_to_zero() {
+    // 'q' is 64-bit signed — non-Int defaults to 0
+    let result = run(r#"["not_an_int"].pack("q")"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn array_pack_l_with_non_int_defaults_to_zero() {
+    let result = run(r#"["string"].pack("l")"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn array_pack_s_with_non_int_defaults_to_zero() {
+    let result = run(r#"["string"].pack("s")"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn array_pack_c_with_non_int_defaults_to_zero() {
+    let result = run(r#"["string"].pack("c")"#);
+    assert!(result.is_some());
+}
