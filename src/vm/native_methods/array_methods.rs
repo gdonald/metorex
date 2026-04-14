@@ -50,6 +50,10 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
             }
+            "clear" => {
+                array_rc.borrow_mut().clear();
+                Ok(Some(receiver.clone()))
+            }
             "push" | "append" | "<<" => {
                 if arguments.is_empty() {
                     return Ok(Some(receiver.clone()));

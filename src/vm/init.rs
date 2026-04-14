@@ -64,6 +64,14 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("FalseClass", Object::Class(false_class));
     let nil_class = Rc::new(Class::new("NilClass", Some(Rc::clone(&object))));
     globals.set("NilClass", Object::Class(nil_class));
+
+    // Numeric types
+    let numeric = Rc::new(Class::new("Numeric", Some(Rc::clone(&object))));
+    globals.set("Numeric", Object::Class(Rc::clone(&numeric)));
+    let rational_class = Rc::new(Class::new("Rational", Some(Rc::clone(&numeric))));
+    globals.set("Rational", Object::Class(rational_class));
+    let complex_class = Rc::new(Class::new("Complex", Some(Rc::clone(&numeric))));
+    globals.set("Complex", Object::Class(complex_class));
 }
 
 /// Register standard Ruby exception class hierarchy as stubs.

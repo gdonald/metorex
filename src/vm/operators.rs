@@ -95,6 +95,8 @@ impl VirtualMachine {
             }
             Spaceship => self.evaluate_spaceship(left, right, position),
             BitwiseAnd => match (left, right) {
+                // nil & x always returns false (Ruby semantics)
+                (Object::Nil, _) | (_, Object::Nil) => Ok(Object::Bool(false)),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a & b)),
                 (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a & b)),
                 (Object::Bool(a), other) => Ok(Object::Bool(a & other.is_truthy())),
@@ -102,6 +104,8 @@ impl VirtualMachine {
                 (lhs, rhs) => Err(binary_type_error(BitwiseAnd, &lhs, &rhs, position)),
             },
             BitwiseOr => match (left, right) {
+                // nil | x returns truthiness of x
+                (Object::Nil, other) => Ok(Object::Bool(other.is_truthy())),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a | b)),
                 (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a | b)),
                 (Object::Bool(a), other) => Ok(Object::Bool(a | other.is_truthy())),
@@ -109,6 +113,8 @@ impl VirtualMachine {
                 (lhs, rhs) => Err(binary_type_error(BitwiseOr, &lhs, &rhs, position)),
             },
             Xor => match (left, right) {
+                // nil ^ x returns truthiness of x
+                (Object::Nil, other) => Ok(Object::Bool(other.is_truthy())),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a ^ b)),
                 (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a ^ b)),
                 (Object::Bool(a), other) => Ok(Object::Bool(a ^ other.is_truthy())),

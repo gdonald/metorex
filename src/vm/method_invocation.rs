@@ -102,6 +102,24 @@ impl VirtualMachine {
                     }
                 }
 
+                // Rational(numerator, denominator) and Complex(real, imaginary) kernel functions
+                if class.name() == "Rational" && arguments.len() <= 2 {
+                    let num = arguments.first().cloned().unwrap_or(Object::Int(0));
+                    let den = arguments.get(1).cloned().unwrap_or(Object::Int(1));
+                    let mut inst = crate::object::Instance::new(Rc::clone(&class));
+                    inst.set_var("numerator".to_string(), num);
+                    inst.set_var("denominator".to_string(), den);
+                    return Ok(Object::Instance(Rc::new(RefCell::new(inst))));
+                }
+                if class.name() == "Complex" && arguments.len() <= 2 {
+                    let real = arguments.first().cloned().unwrap_or(Object::Int(0));
+                    let imag = arguments.get(1).cloned().unwrap_or(Object::Int(0));
+                    let mut inst = crate::object::Instance::new(Rc::clone(&class));
+                    inst.set_var("real".to_string(), real);
+                    inst.set_var("imaginary".to_string(), imag);
+                    return Ok(Object::Instance(Rc::new(RefCell::new(inst))));
+                }
+
                 // Check if this is an exception class
                 let is_exception_class = self.is_exception_class(&class);
 

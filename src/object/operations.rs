@@ -60,8 +60,26 @@ impl Object {
                 (Err(a_err), Err(b_err)) => a_err.equals(b_err),
                 _ => false,
             },
-            // Instance, Class, Method, Block, Binding, and Exception comparisons by reference
-            (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
+            // Instance comparisons: value equality for Rational/Complex, reference for others
+            (Object::Instance(a), Object::Instance(b)) => {
+                let inst_a = a.borrow();
+                let inst_b = b.borrow();
+                let class_name = inst_a.class.name();
+                if class_name == inst_b.class.name() && matches!(class_name, "Rational" | "Complex")
+                {
+                    // Compare by stored instance variables
+                    let vars_a = &inst_a.instance_vars;
+                    let vars_b = &inst_b.instance_vars;
+                    vars_a.len() == vars_b.len()
+                        && vars_a
+                            .iter()
+                            .all(|(k, v)| vars_b.get(k).is_some_and(|v2| v.equals(v2)))
+                } else {
+                    drop(inst_a);
+                    drop(inst_b);
+                    Rc::ptr_eq(a, b)
+                }
+            }
             (Object::Class(a), Object::Class(b)) => Rc::ptr_eq(a, b),
             (Object::Module(a), Object::Module(b)) => Rc::ptr_eq(a, b),
             (Object::Method(a), Object::Method(b)) => Rc::ptr_eq(a, b),

@@ -36,6 +36,46 @@ impl VirtualMachine {
                 }
                 "to_s" => return Ok(Some(Object::string(""))),
                 "inspect" => return Ok(Some(Object::string("nil"))),
+                "to_r" | "rationalize" => {
+                    if method_name == "rationalize" && arguments.len() > 1 {
+                        let exc = Object::exception(
+                            "ArgumentError",
+                            format!(
+                                "wrong number of arguments (given {}, expected 0..1)",
+                                arguments.len()
+                            ),
+                        );
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: format!(
+                                "wrong number of arguments (given {}, expected 0..1)",
+                                arguments.len()
+                            ),
+                        });
+                    }
+                    // Return Rational(0, 1) — create an instance via global function
+                    if let Some(Object::Class(rational_class)) = self.globals().get("Rational") {
+                        let mut inst = crate::object::Instance::new(rational_class);
+                        inst.set_var("numerator".to_string(), Object::Int(0));
+                        inst.set_var("denominator".to_string(), Object::Int(1));
+                        return Ok(Some(Object::Instance(std::rc::Rc::new(
+                            std::cell::RefCell::new(inst),
+                        ))));
+                    }
+                    return Ok(Some(Object::Int(0)));
+                }
+                "to_c" => {
+                    if let Some(Object::Class(complex_class)) = self.globals().get("Complex") {
+                        let mut inst = crate::object::Instance::new(complex_class);
+                        inst.set_var("real".to_string(), Object::Int(0));
+                        inst.set_var("imaginary".to_string(), Object::Int(0));
+                        return Ok(Some(Object::Instance(std::rc::Rc::new(
+                            std::cell::RefCell::new(inst),
+                        ))));
+                    }
+                    return Ok(Some(Object::Int(0)));
+                }
                 _ => {}
             }
         }
@@ -435,6 +475,17 @@ impl VirtualMachine {
                 Ok(Some(Object::Array(std::rc::Rc::new(
                     std::cell::RefCell::new(method_strings),
                 ))))
+            }
+            "eql?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(receiver.equals(&arguments[0]))))
             }
             "equal?" => {
                 if arguments.len() != 1 {

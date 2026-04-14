@@ -151,14 +151,16 @@ Parser fixes during Phase 4 work:
 ## Phase 4: Passing Specs
 
 - [x] 4.1. core/true — 9 files, 13 examples, 28 expectations, 0 failures, 0 errors
-- [ ] 4.2. core/nil
+- [x] 4.2. core/nil — 18 files, 27 examples, 50 expectations, 0 failures, 0 errors
 
 Fixes during Phase 4 work:
 - **Scope leak in `evaluate_branch_value`** — `?` operator could skip `pop_scope()`, causing method parameters to become invisible in rescue blocks. Same bug fixed in pattern matching (`execute_match`, `evaluate_guard_with_bindings`, `evaluate_case_expression`).
 - Any object as hash key (Ruby semantics) — `object_to_dict_key` and hash index assignment accept all types
 - `Array#index`/`Array#find_index` with value and block forms
+- `Array#clear`
 - `__send__`/`send`/`public_send` — method dispatch by name
 - `frozen?` — returns true for immutable types (booleans, nil, integers, floats, symbols, strings)
+- `eql?` — value equality method
 - `singleton_method` — raises `NameError` (singleton methods not supported)
 - `TrueClass`/`FalseClass`/`NilClass` registered as proper classes
 - `true.class` → `TrueClass`, `false.class` → `FalseClass`, `nil.class` → `NilClass`
@@ -166,3 +168,9 @@ Fixes during Phase 4 work:
 - Exception `class` method returns specific type class (e.g., `NameError` not generic `Exception`)
 - `===` (case equality) separated from `==` — `Class === obj` checks type membership
 - `def (true).foo; end` defines method on `TrueClass` (singleton method on literal)
+- Bitwise operators on nil: `nil & x` → false, `nil | x` / `nil ^ x` → truthiness of x
+- `Hash#default` returns nil
+- `Hash#key?`/`has_key?` accepts any key type
+- `nil.to_r`/`nil.rationalize` → `Rational(0, 1)`
+- `nil.to_c` → `Complex(0, 0)`
+- `Rational()` and `Complex()` kernel functions with value equality

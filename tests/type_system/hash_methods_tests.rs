@@ -86,9 +86,10 @@ fn hash_has_key_error_no_args() {
 }
 
 #[test]
-fn hash_has_key_error_wrong_type() {
-    let err = run_err(r#"{"a" => 1}.has_key?([1, 2])"#);
-    assert!(err.contains("String"));
+fn hash_has_key_any_type() {
+    // Ruby allows any object as hash key; missing key returns false
+    let result = run(r#"{"a" => 1}.has_key?([1, 2])"#);
+    assert_eq!(result, Some(Object::Bool(false)));
 }
 
 #[test]

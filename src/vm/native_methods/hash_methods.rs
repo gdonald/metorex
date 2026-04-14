@@ -82,21 +82,7 @@ impl VirtualMachine {
                     ));
                 }
                 let key_obj = &arguments[0];
-                let key_str = match key_obj {
-                    Object::String(s) => s.as_str().to_string(),
-                    Object::Int(i) => i.to_string(),
-                    Object::Float(f) => f.to_string(),
-                    Object::Bool(b) => b.to_string(),
-                    Object::Nil => "nil".to_string(),
-                    _ => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String, Integer, Float, Bool, or Nil",
-                            key_obj,
-                            position,
-                        ));
-                    }
-                };
+                let key_str = crate::vm::utils::object_to_dict_key(key_obj).unwrap_or_default();
                 let dict = dict_rc.borrow();
                 Ok(Some(Object::Bool(dict.contains_key(&key_str))))
             }
@@ -120,6 +106,10 @@ impl VirtualMachine {
                     })
                     .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(entries)))))
+            }
+            "default" => {
+                // Return nil (we don't track custom defaults yet)
+                Ok(Some(Object::Nil))
             }
             "length" | "size" => {
                 if !arguments.is_empty() {
