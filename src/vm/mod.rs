@@ -2,6 +2,8 @@
 //!
 //! This module contains the core virtual machine implementation and related support structures.
 
+mod begin_rescue;
+mod block_execution;
 mod call_frame;
 mod class_execution;
 mod control_flow;
@@ -15,11 +17,13 @@ mod global_registry;
 mod heap;
 mod init;
 mod loading;
+mod method_execution;
 mod method_invocation;
 mod method_lookup;
 mod native_functions;
 mod native_methods;
 mod operators;
+pub(super) mod param_binding;
 mod pattern_matching;
 mod program;
 mod statement;
