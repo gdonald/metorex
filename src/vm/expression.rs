@@ -58,21 +58,24 @@ impl VirtualMachine {
         entries: &[(Expression, Expression)],
     ) -> Result<Object, MetorexError> {
         let mut map = HashMap::with_capacity(entries.len());
+        let mut key_objs: HashMap<String, Object> = HashMap::new();
 
         for (key_expr, value_expr) in entries {
             let key_value = self.evaluate_expression(key_expr)?;
-            let key_string = object_to_dict_key(&key_value).ok_or_else(|| {
-                MetorexError::type_error(
-                    format!(
-                        "Dictionary keys must be String, Symbol, Integer, Float, Bool, or Nil, found {}",
-                        key_value.type_name()
-                    ),
-                    position_to_location(key_expr.position()),
-                )
-            })?;
+            let key_string = object_to_dict_key(&key_value).unwrap_or_default();
+            if !crate::vm::utils::is_primitive_key(&key_value) {
+                key_objs.insert(key_string.clone(), key_value.clone());
+            }
 
             let value = self.evaluate_expression(value_expr)?;
             map.insert(key_string, value);
+        }
+
+        if !key_objs.is_empty() {
+            map.insert(
+                "__MX_KEY_OBJECTS__".to_string(),
+                Object::Dict(Rc::new(RefCell::new(key_objs))),
+            );
         }
 
         Ok(Object::Dict(Rc::new(RefCell::new(map))))
@@ -112,7 +115,32 @@ impl VirtualMachine {
                 })?;
 
                 let dict = dict_rc.borrow();
-                Ok(dict.get(&key_string).cloned().unwrap_or(Object::Nil))
+                if let Some(value) = dict.get(&key_string) {
+                    Ok(value.clone())
+                } else if let Some(Object::Block(default_proc)) = dict.get("__MX_DEFAULT_PROC__") {
+                    // Auto-vivify: call the default block with (hash, key)
+                    // The block typically does h[k] = default_value, which sets
+                    // the value directly in the hash.
+                    let block = default_proc.clone();
+                    drop(dict);
+                    let hash_obj = Object::Dict(Rc::clone(&dict_rc));
+                    let block_result =
+                        self.execute_block_body(&block, vec![hash_obj, key.clone()])?;
+                    // The block may have set the key directly (h[k] = val), or
+                    // returned a value. Check the hash first, fall back to block result.
+                    let stored = dict_rc.borrow().get(&key_string).cloned();
+                    if let Some(value) = stored {
+                        Ok(value)
+                    } else {
+                        // Block didn't set the key — store the return value
+                        dict_rc
+                            .borrow_mut()
+                            .insert(key_string, block_result.clone());
+                        Ok(block_result)
+                    }
+                } else {
+                    Ok(Object::Nil)
+                }
             }
 
             Object::String(s) => match key {

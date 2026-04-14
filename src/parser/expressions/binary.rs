@@ -147,12 +147,42 @@ impl Parser {
 
     /// Parse range operators (.., ...)
     pub(crate) fn parse_range(&mut self) -> Result<Expression, MetorexError> {
+        // Beginless range: `..expr` or `...expr`
+        if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
+            let op_token = self.advance();
+            let exclusive = op_token.kind == TokenKind::DotDotDot;
+            let end = self.parse_term()?;
+            return Ok(Expression::Range {
+                start: Box::new(Expression::NilLiteral {
+                    position: op_token.position,
+                }),
+                end: Box::new(end),
+                exclusive,
+                position: op_token.position,
+            });
+        }
+
         let mut expr = self.parse_term()?;
 
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             let op_token = self.advance();
             let exclusive = op_token.kind == TokenKind::DotDotDot;
-            let end = self.parse_term()?;
+            // Endless range: `x..` followed by `)`, `]`, `,`, `}`, newline, or EOF.
+            let is_endless = self.check(&[
+                TokenKind::RParen,
+                TokenKind::RBracket,
+                TokenKind::RBrace,
+                TokenKind::Comma,
+                TokenKind::Newline,
+                TokenKind::Semicolon,
+            ]) || self.is_at_end();
+            let end = if is_endless {
+                Expression::NilLiteral {
+                    position: op_token.position,
+                }
+            } else {
+                self.parse_term()?
+            };
             expr = Expression::Range {
                 start: Box::new(expr),
                 end: Box::new(end),

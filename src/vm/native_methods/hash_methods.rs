@@ -9,6 +9,27 @@ use crate::vm::utils::position_to_location;
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Sentinel key for storing the default proc on hashes created with Hash.new { ... }
+const DEFAULT_PROC_KEY: &str = "__MX_DEFAULT_PROC__";
+/// Sentinel key for storing original non-primitive key objects
+const KEY_OBJECTS_KEY: &str = "__MX_KEY_OBJECTS__";
+
+/// Check if a key is an internal sentinel key
+fn is_internal_key(key: &str) -> bool {
+    key == DEFAULT_PROC_KEY || key == "__MX_KWARGS__" || key == KEY_OBJECTS_KEY
+}
+
+/// Reconstruct the original key Object from its string key, using the sentinel
+/// __MX_KEY_OBJECTS__ sub-map if present for non-primitive keys.
+fn reconstruct_key(dict: &std::collections::HashMap<String, Object>, key_str: &str) -> Object {
+    if let Some(Object::Dict(key_objs)) = dict.get(KEY_OBJECTS_KEY)
+        && let Some(obj) = key_objs.borrow().get(key_str)
+    {
+        return obj.clone();
+    }
+    crate::vm::utils::dict_key_to_object(key_str)
+}
+
 impl VirtualMachine {
     /// Execute native methods for the Hash class.
     pub(crate) fn call_hash_method(
@@ -56,7 +77,11 @@ impl VirtualMachine {
                     ));
                 }
                 let dict = dict_rc.borrow();
-                let keys: Vec<Object> = dict.keys().map(|k| Object::string(k.clone())).collect();
+                let keys: Vec<Object> = dict
+                    .keys()
+                    .filter(|k| !is_internal_key(k))
+                    .map(|k| reconstruct_key(&dict, k))
+                    .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(keys)))))
             }
             "values" => {
@@ -69,10 +94,14 @@ impl VirtualMachine {
                     ));
                 }
                 let dict = dict_rc.borrow();
-                let values: Vec<Object> = dict.values().cloned().collect();
+                let values: Vec<Object> = dict
+                    .iter()
+                    .filter(|(k, _)| !is_internal_key(k))
+                    .map(|(_, v)| v.clone())
+                    .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(values)))))
             }
-            "has_key?" | "key?" => {
+            "has_key?" | "key?" | "include?" | "member?" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         method_name,
@@ -98,14 +127,34 @@ impl VirtualMachine {
                 let dict = dict_rc.borrow();
                 let entries: Vec<Object> = dict
                     .iter()
+                    .filter(|(k, _)| !is_internal_key(k))
                     .map(|(k, v)| {
                         Object::Array(Rc::new(RefCell::new(vec![
-                            Object::string(k.clone()),
+                            reconstruct_key(&dict, k),
                             v.clone(),
                         ])))
                     })
                     .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(entries)))))
+            }
+            "delete" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key_str =
+                    crate::vm::utils::object_to_dict_key(&arguments[0]).unwrap_or_default();
+                let mut dict = dict_rc.borrow_mut();
+                let removed = dict.remove(&key_str).unwrap_or(Object::Nil);
+                // Also remove from key objects sentinel if present
+                if let Some(Object::Dict(key_objs)) = dict.get(KEY_OBJECTS_KEY) {
+                    key_objs.borrow_mut().remove(&key_str);
+                }
+                Ok(Some(removed))
             }
             "default" => {
                 // Return nil (we don't track custom defaults yet)
@@ -120,7 +169,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(dict_rc.borrow().len() as i64)))
+                let dict = dict_rc.borrow();
+                let count = dict.keys().filter(|k| !is_internal_key(k)).count();
+                Ok(Some(Object::Int(count as i64)))
             }
             "[]" => {
                 if arguments.len() != 1 {
@@ -226,13 +277,15 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let entries: Vec<(String, Object)> = dict_rc
-                    .borrow()
+                let dict = dict_rc.borrow();
+                let entries: Vec<(Object, Object)> = dict
                     .iter()
-                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .filter(|(k, _)| !is_internal_key(k))
+                    .map(|(k, v)| (reconstruct_key(&dict, k), v.clone()))
                     .collect();
+                drop(dict);
                 for (key, value) in entries {
-                    let args = vec![Object::string(key), value];
+                    let args = vec![key, value];
                     match self.execute_block_with_control_flow(&block, args)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
@@ -250,13 +303,11 @@ impl VirtualMachine {
                             exception,
                             position,
                         } => {
-                            return Err(MetorexError::runtime_error(
-                                format!(
-                                    "Uncaught exception: {}",
-                                    super::super::utils::format_exception(&exception)
-                                ),
-                                super::super::utils::position_to_location(position),
-                            ));
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: super::super::utils::position_to_location(position),
+                                message: super::super::utils::format_exception(&exception),
+                            });
                         }
                     }
                 }

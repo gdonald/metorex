@@ -159,13 +159,11 @@ impl VirtualMachine {
                             exception,
                             position,
                         } => {
-                            return Err(MetorexError::runtime_error(
-                                format!(
-                                    "Uncaught exception: {}",
-                                    super::super::utils::format_exception(&exception)
-                                ),
-                                super::super::utils::position_to_location(position),
-                            ));
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: super::super::utils::position_to_location(position),
+                                message: super::super::utils::format_exception(&exception),
+                            });
                         }
                     }
                 }

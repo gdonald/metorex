@@ -323,8 +323,38 @@ impl VirtualMachine {
                     }
                 }
                 _ => {
-                    // Handle define_method(:name) { |args| body } calls in class body
+                    // Handle alias_method in class body
                     if let Statement::Expression {
+                        expression:
+                            Expression::Call {
+                                callee,
+                                arguments: call_args,
+                                ..
+                            },
+                        ..
+                    } = statement
+                        && let Expression::Identifier {
+                            name: callee_name, ..
+                        } = callee.as_ref()
+                        && callee_name == "alias_method"
+                        && call_args.len() == 2
+                    {
+                        let new_name = match self.evaluate_expression(&call_args[0])? {
+                            Object::String(s) => (*s).clone(),
+                            Object::Symbol(s) => (*s).clone(),
+                            _ => String::new(),
+                        };
+                        let old_name = match self.evaluate_expression(&call_args[1])? {
+                            Object::String(s) => (*s).clone(),
+                            Object::Symbol(s) => (*s).clone(),
+                            _ => String::new(),
+                        };
+                        if !new_name.is_empty() && !old_name.is_empty() {
+                            class.alias_method(&new_name, &old_name);
+                        }
+                    }
+                    // Handle define_method(:name) { |args| body } calls in class body
+                    else if let Statement::Expression {
                         expression:
                             Expression::Call {
                                 callee,
@@ -602,6 +632,48 @@ impl VirtualMachine {
                                 self.execute_statement(inner_stmt)?;
                             }
                         }
+                    }
+                }
+                // ClassDef inside module — execute and store as module constant
+                Statement::ClassDef {
+                    name: class_name,
+                    superclass,
+                    body: class_body,
+                    position: class_pos,
+                } => {
+                    self.execute_class_def(
+                        class_name,
+                        superclass.as_deref(),
+                        class_body,
+                        *class_pos,
+                    )?;
+                    // After class definition, grab it from globals/env and store as module constant
+                    if let Some(class_obj) = self.globals().get(class_name) {
+                        module.set_class_var(class_name, class_obj);
+                    }
+                }
+                // Nested module inside module
+                Statement::ModuleDef {
+                    name: mod_name,
+                    body: mod_body,
+                    position: mod_pos,
+                } => {
+                    self.execute_module_def(mod_name, mod_body, *mod_pos)?;
+                    if let Some(mod_obj) = self.globals().get(mod_name) {
+                        module.set_class_var(mod_name, mod_obj);
+                    }
+                }
+                // Include inside module body
+                Statement::Include {
+                    module_name: inc_name,
+                    ..
+                } => {
+                    if let Some(Object::Module(inc_module)) = self
+                        .environment()
+                        .get(inc_name)
+                        .or_else(|| self.globals().get(inc_name))
+                    {
+                        module.add_mixin(inc_module);
                     }
                 }
                 // Other statements in module body

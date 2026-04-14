@@ -482,6 +482,27 @@ impl VirtualMachine {
                     };
                     return Ok(Some(Object::string(result)));
                 }
+                "class_eval" | "module_eval" => {
+                    // Execute a block in the context of this class
+                    let block = self.pending_block.take();
+                    match block {
+                        Some(Object::Block(b)) => {
+                            let result = self.execute_block_with_receiver(
+                                &b,
+                                Object::Class(Rc::clone(class_rc)),
+                                vec![],
+                                position,
+                            )?;
+                            return Ok(Some(result));
+                        }
+                        _ => {
+                            return Err(MetorexError::runtime_error(
+                                "class_eval requires a block".to_string(),
+                                position_to_location(position),
+                            ));
+                        }
+                    }
+                }
                 "define_method" => {
                     if arguments.is_empty() {
                         return Err(method_argument_error("define_method", 1, 0, position));
@@ -511,11 +532,24 @@ impl VirtualMachine {
                             ));
                         }
                     };
-                    let mut method = Method::new(
-                        method_name_str.clone(),
-                        block.parameters.clone(),
-                        block.body.clone(),
-                    );
+                    // Parse out variadic (*args) and block (&block) from parameter names
+                    let mut regular_params: Vec<String> = Vec::new();
+                    let mut variadic_param: Option<(usize, String)> = None;
+                    let mut block_parameter: Option<String> = None;
+                    for (i, param) in block.parameters.iter().enumerate() {
+                        if let Some(name) = param.strip_prefix('*') {
+                            variadic_param = Some((i, name.to_string()));
+                            regular_params.push(name.to_string());
+                        } else if let Some(name) = param.strip_prefix('&') {
+                            block_parameter = Some(name.to_string());
+                        } else {
+                            regular_params.push(param.clone());
+                        }
+                    }
+                    let mut method =
+                        Method::new(method_name_str.clone(), regular_params, block.body.clone());
+                    method.variadic_param = variadic_param;
+                    method.block_parameter = block_parameter;
                     // Capture closure: prefer existing captured_vars, otherwise snap current scope
                     method.captured_vars = Some(if block.captured_vars.is_empty() {
                         self.environment().current_scope_var_refs()

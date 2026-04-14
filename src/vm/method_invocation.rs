@@ -73,10 +73,12 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         // Hash.new (with or without default block) returns a native Dict.
         if class.name() == "Hash" && arguments.is_empty() {
-            let _ = self.pending_block.take();
-            return Ok(Object::Dict(Rc::new(RefCell::new(
-                std::collections::HashMap::new(),
-            ))));
+            let block = self.pending_block.take();
+            let mut map = std::collections::HashMap::new();
+            if let Some(block_obj) = block {
+                map.insert("__MX_DEFAULT_PROC__".to_string(), block_obj);
+            }
+            return Ok(Object::Dict(Rc::new(RefCell::new(map))));
         }
 
         // Kernel conversion functions: Integer(), String(), Array()

@@ -158,7 +158,7 @@ Parser fixes during Phase 4 work:
 
 ### Core Classes and Modules
 
-- [ ] 4.4. core/comparable
+- [x] 4.4. core/comparable — 7 files, 54 examples, 103 expectations, 0 failures, 0 errors
 - [ ] 4.5. core/main
 - [ ] 4.6. core/class
 - [ ] 4.7. core/module
@@ -256,3 +256,13 @@ Fixes during Phase 4 work:
 - `nil.to_r`/`nil.rationalize` → `Rational(0, 1)`
 - `nil.to_c` → `Complex(0, 0)`
 - `Rational()` and `Complex()` kernel functions with value equality
+- Nested class/module definitions inside `module` bodies stored as module constants (`Foo::Bar`)
+- `alias_method` in class bodies handled at class definition time
+- `to_sym` on String and Symbol
+- `object_id` / `__id__` for all types
+- `between?` method using `<=>` dispatch
+- `singleton_class` returns receiver's class (stub)
+- Comparison operators (`<`, `>`, `<=`, `>=`) dispatch to `<=>` for non-numeric types (Comparable protocol)
+- Comparison type mismatch raises `ArgumentError` instead of `TypeError`
+- Exception `status` field for `SystemExit`
+- `Include` inside module body adds mixin to module

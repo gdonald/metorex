@@ -82,13 +82,34 @@ impl VirtualMachine {
             )
         })?;
 
-        // Get the parent class of the defining class
-        let parent_class = defining_class.superclass().ok_or_else(|| {
-            MetorexError::runtime_error(
-                format!("Class {} has no superclass", class_name),
-                position_to_location(position),
-            )
-        })?;
+        // Get the parent class of the defining class. If there's no superclass,
+        // fall back to Object semantics for well-known methods.
+        let parent_class = match defining_class.superclass() {
+            Some(p) => p,
+            None => {
+                // Object#<=> returns 0 if self.equal?(other), else nil
+                if method_name == "<=>" {
+                    drop(instance_borrowed);
+                    let mut evaluated_args = Vec::with_capacity(arguments.len());
+                    for arg in arguments {
+                        evaluated_args.push(self.evaluate_expression(arg)?);
+                    }
+                    let self_val = self.environment().get("self").unwrap_or(Object::Nil);
+                    if let Some(other) = evaluated_args.first() {
+                        let same = matches!(
+                            (&self_val, other),
+                            (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b)
+                        );
+                        return Ok(if same { Object::Int(0) } else { Object::Nil });
+                    }
+                    return Ok(Object::Nil);
+                }
+                return Err(MetorexError::runtime_error(
+                    format!("Class {} has no superclass", class_name),
+                    position_to_location(position),
+                ));
+            }
+        };
 
         // Look up the method in the parent class
         let method = parent_class.find_method(method_name).ok_or_else(|| {

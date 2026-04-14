@@ -35,6 +35,42 @@ pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
     }
 }
 
+/// Check if a key value is primitive (reconstructible from string alone).
+pub(super) fn is_primitive_key(value: &Object) -> bool {
+    matches!(
+        value,
+        Object::String(_)
+            | Object::Symbol(_)
+            | Object::Int(_)
+            | Object::Float(_)
+            | Object::Bool(_)
+            | Object::Nil
+    )
+}
+
+/// Reconstruct a primitive key Object from its string representation.
+pub(super) fn dict_key_to_object(key_str: &str) -> Object {
+    if key_str == "nil" {
+        return Object::Nil;
+    }
+    if key_str == "true" {
+        return Object::Bool(true);
+    }
+    if key_str == "false" {
+        return Object::Bool(false);
+    }
+    if let Some(sym) = key_str.strip_prefix(':') {
+        return Object::Symbol(std::rc::Rc::new(sym.to_string()));
+    }
+    if let Ok(n) = key_str.parse::<i64>() {
+        return Object::Int(n);
+    }
+    if let Ok(f) = key_str.parse::<f64>() {
+        return Object::Float(f);
+    }
+    Object::String(std::rc::Rc::new(key_str.to_string()))
+}
+
 /// Determine if a value is truthy for conditional statements.
 /// In Metorex, only `false` and `nil` are falsy; everything else is truthy.
 pub(super) fn is_truthy(value: &Object) -> bool {

@@ -9,6 +9,7 @@ use crate::ast::{BinaryOp, UnaryOp};
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
+use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
@@ -45,7 +46,7 @@ impl VirtualMachine {
 
     /// Evaluate a binary operation across runtime values.
     pub(crate) fn evaluate_binary_operation(
-        &self,
+        &mut self,
         op: &BinaryOp,
         left: Object,
         right: Object,
@@ -61,7 +62,64 @@ impl VirtualMachine {
             Subtract | Multiply | Divide | Modulo | Power => {
                 self.evaluate_numeric_binary(op, left, right, position)
             }
-            Equal => Ok(Object::Bool(left.equals(&right))),
+            Equal => {
+                // For instances, dispatch to user-defined == method if present,
+                // or to <=> (Comparable protocol) if the class has <=> defined.
+                if let Object::Instance(inst_rc) = &left {
+                    let class = Rc::clone(&inst_rc.borrow().class);
+                    // Identity shortcut: same object is always ==
+                    if let Object::Instance(rhs) = &right
+                        && Rc::ptr_eq(inst_rc, rhs)
+                    {
+                        return Ok(Object::Bool(true));
+                    }
+                    if let Some(method) = class.find_method("==")
+                        && !method.is_undefined
+                    {
+                        let result = self.invoke_method(
+                            class,
+                            method,
+                            left.clone(),
+                            vec![right.clone()],
+                            position,
+                        )?;
+                        return Ok(Object::Bool(result.is_truthy()));
+                    }
+                    // Comparable protocol: if <=> is defined, use it for ==
+                    if class.find_method("<=>").is_some() {
+                        let cmp_obj = {
+                            let method = class.find_method("<=>").unwrap();
+                            self.invoke_method(
+                                Rc::clone(&class),
+                                method,
+                                left.clone(),
+                                vec![right.clone()],
+                                position,
+                            )?
+                        };
+                        return match cmp_obj {
+                            Object::Int(n) => Ok(Object::Bool(n == 0)),
+                            Object::Float(f) => Ok(Object::Bool(f == 0.0)),
+                            Object::Nil => Ok(Object::Bool(false)),
+                            other => {
+                                // ArgumentError: <=> must return Integer, Float, or nil
+                                let msg = format!(
+                                    "comparison of {} with {} failed",
+                                    left.type_name(),
+                                    other.type_name()
+                                );
+                                let exc = Object::exception("ArgumentError", msg.clone());
+                                Err(MetorexError::UncaughtException {
+                                    exception: exc,
+                                    location: position_to_location(position),
+                                    message: msg,
+                                })
+                            }
+                        };
+                    }
+                }
+                Ok(Object::Bool(left.equals(&right)))
+            }
             CaseEqual => {
                 // Class === obj: check type membership (Ruby's case equality)
                 if let Object::Class(class_rc) = &left {
@@ -263,31 +321,95 @@ impl VirtualMachine {
 
     /// Evaluate comparison operations on numeric operands.
     pub(crate) fn evaluate_comparison(
-        &self,
+        &mut self,
         op: &BinaryOp,
         left: Object,
         right: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let (lhs, rhs) = match (&left, &right) {
-            (Object::Int(a), Object::Int(b)) => (*a as f64, *b as f64),
-            (Object::Float(a), Object::Float(b)) => (*a, *b),
-            (Object::Int(a), Object::Float(b)) => (*a as f64, *b),
-            (Object::Float(a), Object::Int(b)) => (*a, *b as f64),
-            (lhs, rhs) => {
-                return Err(binary_type_error(op.clone(), lhs, rhs, position));
+        // Numeric comparisons
+        let numeric_result = match (&left, &right) {
+            (Object::Int(a), Object::Int(b)) => Some((*a as f64, *b as f64)),
+            (Object::Float(a), Object::Float(b)) => Some((*a, *b)),
+            (Object::Int(a), Object::Float(b)) => Some((*a as f64, *b)),
+            (Object::Float(a), Object::Int(b)) => Some((*a, *b as f64)),
+            // String comparison
+            (Object::String(a), Object::String(b)) => {
+                let result = match op {
+                    BinaryOp::Less => **a < **b,
+                    BinaryOp::Greater => **a > **b,
+                    BinaryOp::LessEqual => **a <= **b,
+                    BinaryOp::GreaterEqual => **a >= **b,
+                    _ => unreachable!(),
+                };
+                return Ok(Object::Bool(result));
             }
+            _ => None,
         };
 
-        let result = match op {
-            BinaryOp::Less => lhs < rhs,
-            BinaryOp::Greater => lhs > rhs,
-            BinaryOp::LessEqual => lhs <= rhs,
-            BinaryOp::GreaterEqual => lhs >= rhs,
-            _ => unreachable!(),
-        };
+        if let Some((lhs, rhs)) = numeric_result {
+            let result = match op {
+                BinaryOp::Less => lhs < rhs,
+                BinaryOp::Greater => lhs > rhs,
+                BinaryOp::LessEqual => lhs <= rhs,
+                BinaryOp::GreaterEqual => lhs >= rhs,
+                _ => unreachable!(),
+            };
+            return Ok(Object::Bool(result));
+        }
 
-        Ok(Object::Bool(result))
+        // For instances, try dispatching to <=> method (Comparable protocol)
+        if let Some((class, method)) = self.lookup_method(&left, "<=>") {
+            let left_type = left.type_name().to_string();
+            let right_type = right.type_name().to_string();
+            let cmp_result = self.invoke_method(class, method, left, vec![right], position)?;
+            let cmp_value: Option<f64> = match &cmp_result {
+                Object::Int(n) => Some(*n as f64),
+                Object::Float(f) => Some(*f),
+                _ => None,
+            };
+            if let Some(n) = cmp_value {
+                let result = match op {
+                    BinaryOp::Less => n < 0.0,
+                    BinaryOp::Greater => n > 0.0,
+                    BinaryOp::LessEqual => n <= 0.0,
+                    BinaryOp::GreaterEqual => n >= 0.0,
+                    _ => unreachable!(),
+                };
+                return Ok(Object::Bool(result));
+            }
+            // nil or other: raise ArgumentError
+            let exc = Object::exception(
+                "ArgumentError",
+                format!("comparison of {} with {} failed", left_type, right_type),
+            );
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: "comparison failed".to_string(),
+            });
+        }
+
+        // Comparison type mismatch is ArgumentError in Ruby, not TypeError.
+        // Ruby's format: "comparison of <LeftClass> with <right_value> failed"
+        let right_repr = match &right {
+            Object::Int(n) => n.to_string(),
+            Object::Float(f) => f.to_string(),
+            Object::Nil => "nil".to_string(),
+            Object::Bool(true) => "true".to_string(),
+            Object::Bool(false) => "false".to_string(),
+            _ => right.type_name().to_string(),
+        };
+        let msg = format!(
+            "comparison of {} with {} failed",
+            left.type_name(),
+            right_repr
+        );
+        Err(MetorexError::UncaughtException {
+            exception: Object::exception("ArgumentError", msg.clone()),
+            location: position_to_location(position),
+            message: msg,
+        })
     }
 
     /// Evaluate Ruby-style String `%` formatting (`"hello %s" % "world"`).

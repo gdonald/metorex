@@ -100,6 +100,14 @@ impl VirtualMachine {
                 let reversed: String = string_value.chars().rev().collect();
                 Ok(Some(Object::string(reversed)))
             }
+            "last" => {
+                let chars: Vec<char> = string_value.chars().collect();
+                if chars.is_empty() {
+                    Ok(Some(Object::Nil))
+                } else {
+                    Ok(Some(Object::string(chars.last().unwrap().to_string())))
+                }
+            }
             "chars" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

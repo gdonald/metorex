@@ -326,16 +326,23 @@ impl VirtualMachine {
                     }
                     Object::Dict(dict_rc) => {
                         // Hash/Dict index assignment — Ruby allows any object as a key
-                        let key_str = match idx {
-                            Object::String(s) => s.as_str().to_string(),
-                            Object::Symbol(s) => format!(":{}", s),
-                            Object::Int(i) => i.to_string(),
-                            Object::Float(f) => f.to_string(),
-                            Object::Bool(b) => b.to_string(),
-                            Object::Nil => "nil".to_string(),
-                            other => format!("{}", other),
-                        };
+                        let key_str =
+                            crate::vm::utils::object_to_dict_key(&idx).unwrap_or_default();
+                        let is_primitive = crate::vm::utils::is_primitive_key(&idx);
                         let mut dict = dict_rc.borrow_mut();
+                        // Store non-primitive key objects in a sentinel sub-map
+                        if !is_primitive {
+                            let key_objs_key = "__MX_KEY_OBJECTS__".to_string();
+                            let mut key_objs = match dict.get(&key_objs_key) {
+                                Some(Object::Dict(d)) => d.borrow().clone(),
+                                _ => std::collections::HashMap::new(),
+                            };
+                            key_objs.insert(key_str.clone(), idx.clone());
+                            dict.insert(
+                                key_objs_key,
+                                Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(key_objs))),
+                            );
+                        }
                         dict.insert(key_str, value);
                         Ok(())
                     }

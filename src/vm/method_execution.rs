@@ -136,9 +136,14 @@ impl VirtualMachine {
             self.environment_mut()
                 .define("self".to_string(), self_value.clone());
 
-            // Inject captured closure variables (from define_method blocks)
+            // Inject captured closure variables (from define_method blocks).
+            // Skip `self` — the method receiver should always be the method's
+            // `self_value`, not the captured `self` from where the block was created.
             if let Some(captured) = &method.captured_vars {
                 for (name, value_ref) in captured {
+                    if name == "self" {
+                        continue;
+                    }
                     self.environment_mut()
                         .define_shared(name.clone(), value_ref.clone());
                 }

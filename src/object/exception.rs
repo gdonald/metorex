@@ -33,6 +33,8 @@ pub struct Exception {
     pub location: Option<SourceLocation>,
     /// Cause chain (wrapped exception)
     pub cause: Option<Box<Object>>,
+    /// Exit status (used by SystemExit)
+    pub status: Option<i64>,
 }
 
 impl Exception {
@@ -44,6 +46,7 @@ impl Exception {
             backtrace: None,
             location: None,
             cause: None,
+            status: None,
         }
     }
 
@@ -55,6 +58,7 @@ impl Exception {
             backtrace: Some(backtrace),
             location: None,
             cause: None,
+            status: None,
         }
     }
 
@@ -70,6 +74,7 @@ impl Exception {
             backtrace: None,
             location: Some(location),
             cause: None,
+            status: None,
         }
     }
 
@@ -81,6 +86,7 @@ impl Exception {
             backtrace: None,
             location: None,
             cause: Some(Box::new(cause)),
+            status: None,
         }
     }
 
@@ -98,6 +104,7 @@ impl Exception {
             backtrace,
             location,
             cause: cause.map(Box::new),
+            status: None,
         }
     }
 

@@ -138,6 +138,139 @@ impl VirtualMachine {
                 Ok(Some(Object::Bool(frozen)))
             }
             "freeze" => Ok(Some(receiver.clone())),
+            "to_sym" => match receiver {
+                Object::Symbol(_) => Ok(Some(receiver.clone())),
+                Object::String(s) => Ok(Some(Object::Symbol(s.clone()))),
+                _ => Ok(None),
+            },
+            "object_id" | "__id__" => {
+                // Return a unique integer for the object (use pointer address for ref types)
+                let id = match receiver {
+                    Object::Instance(inst) => std::rc::Rc::as_ptr(inst) as i64,
+                    Object::Array(arr) => std::rc::Rc::as_ptr(arr) as i64,
+                    Object::Dict(dict) => std::rc::Rc::as_ptr(dict) as i64,
+                    Object::Class(cls) => std::rc::Rc::as_ptr(cls) as i64,
+                    Object::Module(m) => std::rc::Rc::as_ptr(m) as i64,
+                    Object::Int(n) => 2 * n + 1, // Ruby's fixnum object_id
+                    Object::Bool(true) => 2,
+                    Object::Bool(false) => 0,
+                    Object::Nil => 4,
+                    _ => 0,
+                };
+                Ok(Some(Object::Int(id)))
+            }
+            "clamp" => {
+                // Comparable#clamp — 1 or 2 args, Range, or beginless/endless ranges
+                let (min, max) = if arguments.len() == 1 {
+                    // Range argument
+                    match &arguments[0] {
+                        Object::Range {
+                            start,
+                            end,
+                            exclusive,
+                        } => {
+                            // Exclusive range is an error — except when end is nil
+                            // (endless exclusive range like `x...` is allowed).
+                            if *exclusive && !matches!(**end, Object::Nil) {
+                                let exc = Object::exception(
+                                    "ArgumentError",
+                                    "cannot clamp with an exclusive range".to_string(),
+                                );
+                                return Err(MetorexError::UncaughtException {
+                                    exception: exc,
+                                    location: position_to_location(position),
+                                    message: "cannot clamp with an exclusive range".to_string(),
+                                });
+                            }
+                            ((**start).clone(), (**end).clone())
+                        }
+                        _ => {
+                            return Err(method_argument_error(
+                                method_name,
+                                1,
+                                arguments.len(),
+                                position,
+                            ));
+                        }
+                    }
+                } else if arguments.len() == 2 {
+                    (arguments[0].clone(), arguments[1].clone())
+                } else {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                };
+
+                // Verify min <= max when both are non-nil (also raise if incomparable)
+                if !matches!(min, Object::Nil) && !matches!(max, Object::Nil) {
+                    let cmp = self.dispatch_spaceship(&min, &max, position)?;
+                    match cmp {
+                        Some(n) if n > 0 => {
+                            let exc = Object::exception(
+                                "ArgumentError",
+                                "min argument must be smaller than max argument".to_string(),
+                            );
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc,
+                                location: position_to_location(position),
+                                message: "min argument must be smaller than max argument"
+                                    .to_string(),
+                            });
+                        }
+                        None => {
+                            let exc =
+                                Object::exception("ArgumentError", "comparison failed".to_string());
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc,
+                                location: position_to_location(position),
+                                message: "comparison failed".to_string(),
+                            });
+                        }
+                        _ => {}
+                    }
+                }
+
+                // Clamp: return min if self < min, max if self > max, else self
+                if !matches!(min, Object::Nil) {
+                    let cmp = self.dispatch_spaceship(receiver, &min, position)?;
+                    if matches!(cmp, Some(n) if n < 0) {
+                        return Ok(Some(min));
+                    }
+                }
+                if !matches!(max, Object::Nil) {
+                    let cmp = self.dispatch_spaceship(receiver, &max, position)?;
+                    if matches!(cmp, Some(n) if n > 0) {
+                        return Ok(Some(max));
+                    }
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "between?" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // between?(min, max) returns true if min <= self <= max
+                // Try <=> dispatch
+                let cmp_min = self.dispatch_spaceship(receiver, &arguments[0], position)?;
+                let cmp_max = self.dispatch_spaceship(receiver, &arguments[1], position)?;
+                let result = match (cmp_min, cmp_max) {
+                    (Some(a), Some(b)) => a >= 0 && b <= 0,
+                    _ => false,
+                };
+                Ok(Some(Object::Bool(result)))
+            }
+            "singleton_class" => {
+                // Return the class of the receiver (stub — true singleton classes not supported)
+                Ok(Some(Object::Class(self.builtins().class_of(receiver))))
+            }
             "singleton_method" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -622,6 +755,37 @@ impl VirtualMachine {
                 }
             }
             _ => Ok(None),
+        }
+    }
+
+    /// Dispatch <=> on receiver with other, returning Some(i64) or None.
+    fn dispatch_spaceship(
+        &mut self,
+        receiver: &Object,
+        other: &Object,
+        position: Position,
+    ) -> Result<Option<i64>, MetorexError> {
+        if let Some((class, method)) = self.lookup_method(receiver, "<=>") {
+            let result = self.invoke_method(
+                class,
+                method,
+                receiver.clone(),
+                vec![other.clone()],
+                position,
+            )?;
+            match result {
+                Object::Int(n) => Ok(Some(n)),
+                Object::Nil => Ok(None),
+                _ => Ok(None),
+            }
+        } else {
+            // Fallback for built-in types
+            match (receiver, other) {
+                (Object::Int(a), Object::Int(b)) => Ok(Some((*a).cmp(b) as i64)),
+                (Object::Float(a), Object::Float(b)) => Ok(a.partial_cmp(b).map(|o| o as i64)),
+                (Object::String(a), Object::String(b)) => Ok(Some((**a).cmp(b) as i64)),
+                _ => Ok(None),
+            }
         }
     }
 }

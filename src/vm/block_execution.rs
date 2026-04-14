@@ -12,6 +12,53 @@ use crate::error::{MetorexError, StackFrame};
 use crate::lexer::Position;
 use crate::object::{BlockStatement, Object};
 
+/// Bind block parameters to arguments, handling `*args` (variadic) and
+/// `&block` (block) prefixes in parameter names.
+fn bind_block_params(vm: &mut VirtualMachine, params: &[String], arguments: Vec<Object>) {
+    // Find variadic param index (if any)
+    let variadic_idx = params.iter().position(|p| p.starts_with('*'));
+    let block_idx = params.iter().position(|p| p.starts_with('&'));
+    let has_variadic = variadic_idx.is_some();
+
+    if has_variadic {
+        let vi = variadic_idx.unwrap();
+        // Count non-block positional params
+        let positional_params: Vec<&String> =
+            params.iter().filter(|p| !p.starts_with('&')).collect();
+        let params_after_splat = positional_params.len() - vi - 1;
+        let min_positional = vi + params_after_splat;
+        let splat_count = arguments.len().saturating_sub(min_positional);
+
+        for (i, param) in positional_params.iter().enumerate() {
+            let name = param.trim_start_matches('*').to_string();
+            let value = if i < vi {
+                arguments.get(i).cloned().unwrap_or(Object::Nil)
+            } else if i == vi {
+                let rest: Vec<Object> = arguments.get(vi..vi + splat_count).unwrap_or(&[]).to_vec();
+                Object::Array(std::rc::Rc::new(std::cell::RefCell::new(rest)))
+            } else {
+                let offset_from_end = positional_params.len() - i;
+                let idx = arguments.len().saturating_sub(offset_from_end);
+                arguments.get(idx).cloned().unwrap_or(Object::Nil)
+            };
+            vm.environment_mut().define(name, value);
+        }
+    } else {
+        for (param, argument) in params.iter().zip(arguments.into_iter()) {
+            if param.starts_with('&') {
+                continue; // block param, handled separately
+            }
+            vm.environment_mut().define(param.clone(), argument);
+        }
+    }
+
+    // Bind block param to nil for now (no block passing through blocks)
+    if let Some(bi) = block_idx {
+        let name = params[bi].trim_start_matches('&').to_string();
+        vm.environment_mut().define(name, Object::Nil);
+    }
+}
+
 impl VirtualMachine {
     /// Execute a block callable within the VM, handling scope capture and return semantics.
     pub(crate) fn execute_block_callable(
@@ -22,8 +69,11 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         let expected = block.arity();
         let found = arguments.len();
+        let has_variadic = block.parameters().iter().any(|p| p.starts_with('*'));
+        let has_block_param = block.parameters().iter().any(|p| p.starts_with('&'));
 
-        if expected != found {
+        // Variadic params accept any number of args; skip strict arity check
+        if !has_variadic && !has_block_param && expected != found {
             return Err(callable_argument_error(
                 block.name(),
                 expected,
@@ -72,9 +122,7 @@ impl VirtualMachine {
                     // Override `self` with the instance_exec receiver
                     vm.environment_mut().define("self".to_string(), receiver);
 
-                    for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
-                        vm.environment_mut().define(param.clone(), argument);
-                    }
+                    bind_block_params(vm, block.parameters(), arguments);
 
                     let mut last_value = Object::Nil;
                     for statement in block.body() {
@@ -137,10 +185,8 @@ impl VirtualMachine {
                     .define_shared(name.clone(), value_ref.clone());
             }
 
-            // Define parameters as regular variables
-            for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
-                self.environment_mut().define(param.clone(), argument);
-            }
+            // Define parameters as regular variables (handles *args/&block prefixes)
+            bind_block_params(self, block.parameters(), arguments);
 
             let mut last_value = Object::Nil;
 
@@ -201,10 +247,8 @@ impl VirtualMachine {
                     .define_shared(name.clone(), value_ref.clone());
             }
 
-            // Define parameters as regular variables
-            for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
-                self.environment_mut().define(param.clone(), argument);
-            }
+            // Define parameters as regular variables (handles *args/&block prefixes)
+            bind_block_params(self, block.parameters(), arguments);
 
             for statement in block.body() {
                 match self.execute_statement(statement)? {

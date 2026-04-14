@@ -324,13 +324,21 @@ impl Parser {
             if !self.check(&[TokenKind::Pipe]) {
                 loop {
                     self.skip_whitespace();
-                    // Allow `*name` (splat) and `&name` (block) modifiers; we
-                    // strip the modifier and just record the bound name.
-                    let _ = self.match_token(&[TokenKind::Star, TokenKind::Ampersand]);
+                    // Preserve `*` (splat) and `&` (block) modifiers in the name
+                    // so block execution can recognize them.
+                    let prefix = if self.match_token(&[TokenKind::Star]) {
+                        "*"
+                    } else if self.match_token(&[TokenKind::Ampersand]) {
+                        "&"
+                    } else {
+                        ""
+                    };
                     self.skip_whitespace();
                     let param_token = self.advance();
                     match param_token.kind {
-                        TokenKind::Ident(name) => params.push(name),
+                        TokenKind::Ident(name) => {
+                            params.push(format!("{}{}", prefix, name));
+                        }
                         _ => return Err(self.error_at_previous("Expected parameter name")),
                     }
                     self.skip_whitespace();
@@ -392,13 +400,21 @@ impl Parser {
             if !self.check(&[TokenKind::Pipe]) {
                 loop {
                     self.skip_whitespace();
-                    // Allow `*name` (splat) and `&name` (block) modifiers; we
-                    // strip the modifier and just record the bound name.
-                    let _ = self.match_token(&[TokenKind::Star, TokenKind::Ampersand]);
+                    // Preserve `*` (splat) and `&` (block) modifiers in the name
+                    // so block execution can recognize them.
+                    let prefix = if self.match_token(&[TokenKind::Star]) {
+                        "*"
+                    } else if self.match_token(&[TokenKind::Ampersand]) {
+                        "&"
+                    } else {
+                        ""
+                    };
                     self.skip_whitespace();
                     let param_token = self.advance();
                     match param_token.kind {
-                        TokenKind::Ident(name) => params.push(name),
+                        TokenKind::Ident(name) => {
+                            params.push(format!("{}{}", prefix, name));
+                        }
                         _ => return Err(self.error_at_previous("Expected parameter name")),
                     }
                     self.skip_whitespace();
