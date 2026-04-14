@@ -40,7 +40,7 @@ impl VirtualMachine {
             }
         }
         match method_name {
-            "to_s" => {
+            "to_s" | "inspect" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -375,6 +375,27 @@ impl VirtualMachine {
                 }
                 Err(undefined_method_error(&target_method, receiver, position))
             }
+            "equal?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let other = &arguments[0];
+                let identity = match (receiver, other) {
+                    (Object::Instance(a), Object::Instance(b)) => std::rc::Rc::ptr_eq(a, b),
+                    (Object::Array(a), Object::Array(b)) => std::rc::Rc::ptr_eq(a, b),
+                    (Object::Dict(a), Object::Dict(b)) => std::rc::Rc::ptr_eq(a, b),
+                    (Object::Class(a), Object::Class(b)) => std::rc::Rc::ptr_eq(a, b),
+                    (Object::Module(a), Object::Module(b)) => std::rc::Rc::ptr_eq(a, b),
+                    // For value types, equal? is the same as ==
+                    (a, b) => a == b,
+                };
+                Ok(Some(Object::Bool(identity)))
+            }
             "dup" | "clone" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -473,8 +494,13 @@ impl VirtualMachine {
                 });
                 match block {
                     Some(Object::Block(b)) => {
-                        self.environment_mut().set("self", receiver.clone());
-                        let result = b.call(self, arguments.to_vec(), position)?;
+                        let args: Vec<Object> = arguments
+                            .iter()
+                            .filter(|a| !matches!(a, Object::Block(_)))
+                            .cloned()
+                            .collect();
+                        let result =
+                            self.execute_block_with_receiver(&b, receiver.clone(), args, position)?;
                         Ok(Some(result))
                     }
                     _ => Err(MetorexError::runtime_error(

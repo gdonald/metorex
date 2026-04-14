@@ -2,6 +2,15 @@
 
 Goal: Get the official Ruby spec suite (ruby/spec) running against Metorex via mspec, progressively passing more specs.
 
+## The `ruby/` directory
+
+The `ruby/` directory contains two git submodules:
+
+- **`ruby/mspec/`** — The [mspec](https://github.com/ruby/mspec) test runner. Provides the `mspec-run` binary (`ruby/mspec/bin/mspec-run`), the `describe`/`it`/`before`/`after` DSL, matchers (`should`, `should_not`, `equal`, `raise_error`, etc.), guards (`ruby_version_is`, `platform_is`, etc.), and helpers (`MSpec.protect`, `ExceptionState`, `MSpecScript`, etc.). The main library entry point is `ruby/mspec/lib/mspec.rb` which requires the sub-libraries under `ruby/mspec/lib/mspec/`.
+- **`ruby/spec/`** — The [ruby/spec](https://github.com/ruby/spec) test suite. Contains the actual spec files organized by category: `core/` (built-in classes like `TrueClass`, `NilClass`, `String`, `Array`, etc.), `language/` (Ruby language semantics), `library/` (stdlib), and others. Each spec file uses the mspec DSL to define expectations.
+
+To run specs against Metorex: `cargo run -- ruby/mspec/bin/mspec-run -t ./target/debug/metorex spec/core/true`
+
 ## Phase 1: CLI Harness
 
 - [x] 1.1. Accept `-v` flag and output Ruby-compatible version string (ruby 4.0.2)

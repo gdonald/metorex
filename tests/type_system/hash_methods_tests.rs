@@ -334,15 +334,17 @@ end
 }
 
 #[test]
-fn hash_get_error_non_hashable_key() {
-    let err = run_err(r#"{"a" => 1}.get([1, 2])"#);
-    assert!(err.contains("String") || err.contains("type"));
+fn hash_get_array_key_returns_nil() {
+    // Ruby allows any object as hash key; missing key returns nil
+    let result = run(r#"{"a" => 1}[[1, 2]]"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]
-fn hash_fetch_error_non_hashable_key() {
+fn hash_fetch_array_key_raises() {
+    // fetch with missing key raises KeyError
     let err = run_err(r#"{"a" => 1}.fetch([1, 2])"#);
-    assert!(err.contains("String") || err.contains("type"));
+    assert!(err.contains("key") || err.contains("Key") || err.contains("not found"));
 }
 
 #[test]

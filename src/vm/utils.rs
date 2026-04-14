@@ -31,7 +31,7 @@ pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
         Object::Float(f) => Some(f.to_string()),
         Object::Bool(b) => Some(b.to_string()),
         Object::Nil => Some("nil".to_string()),
-        _ => None,
+        other => Some(format!("{}", other)),
     }
 }
 

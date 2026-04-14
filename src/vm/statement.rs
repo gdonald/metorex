@@ -318,7 +318,7 @@ impl VirtualMachine {
                         }
                     }
                     Object::Dict(dict_rc) => {
-                        // Hash/Dict index assignment
+                        // Hash/Dict index assignment — Ruby allows any object as a key
                         let key_str = match idx {
                             Object::String(s) => s.as_str().to_string(),
                             Object::Symbol(s) => format!(":{}", s),
@@ -326,12 +326,7 @@ impl VirtualMachine {
                             Object::Float(f) => f.to_string(),
                             Object::Bool(b) => b.to_string(),
                             Object::Nil => "nil".to_string(),
-                            _ => {
-                                return Err(MetorexError::runtime_error(
-                                    "Hash key must be a String, Integer, Float, Bool, or Nil",
-                                    position_to_location(*position),
-                                ));
-                            }
+                            other => format!("{}", other),
                         };
                         let mut dict = dict_rc.borrow_mut();
                         dict.insert(key_str, value);

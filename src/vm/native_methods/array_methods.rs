@@ -452,16 +452,13 @@ impl VirtualMachine {
                     Ok(Some(array.remove(0)))
                 }
             }
-            "unshift" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        method_name,
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
+            "unshift" | "prepend" => {
+                // Ruby: unshift(*items) prepends all items in order, accepts 0+ args
+                let mut arr = array_rc.borrow_mut();
+                for (i, item) in arguments.iter().enumerate() {
+                    arr.insert(i, item.clone());
                 }
-                array_rc.borrow_mut().insert(0, arguments[0].clone());
+                drop(arr);
                 Ok(Some(receiver.clone()))
             }
             "sort" => {
@@ -657,6 +654,29 @@ impl VirtualMachine {
                 Ok(Some(
                     array_rc.borrow().last().cloned().unwrap_or(Object::Nil),
                 ))
+            }
+            "index" | "find_index" => {
+                let array = array_rc.borrow();
+                if arguments.len() == 1 {
+                    let result = array
+                        .iter()
+                        .position(|obj| obj.equals(&arguments[0]))
+                        .map(|i| Object::Int(i as i64))
+                        .unwrap_or(Object::Nil);
+                    Ok(Some(result))
+                } else if let Some(Object::Block(block)) = self.pending_block.take() {
+                    let mut result = Object::Nil;
+                    for (i, element) in array.iter().enumerate() {
+                        let val = self.execute_block_body(&block, vec![element.clone()])?;
+                        if !matches!(val, Object::Bool(false) | Object::Nil) {
+                            result = Object::Int(i as i64);
+                            break;
+                        }
+                    }
+                    Ok(Some(result))
+                } else {
+                    Ok(Some(Object::Nil))
+                }
             }
             "include?" | "contains?" => {
                 if arguments.len() != 1 {

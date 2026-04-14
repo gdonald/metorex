@@ -72,6 +72,12 @@ impl VirtualMachine {
             {
                 return Ok(val);
             }
+            // Constants defined in `class Object` are globally accessible (Ruby semantics).
+            if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                && let Some(val) = object_class.get_class_var(name)
+            {
+                return Ok(val);
+            }
         }
 
         // In class/module body, bare identifiers resolve methods on self.

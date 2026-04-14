@@ -115,6 +115,19 @@ impl Parser {
                     "[]".to_string()
                 }
             }
+            // def (expr).method_name — singleton method on expression result.
+            // Parse the receiver expression and method name; treat as a named
+            // function definition (singleton dispatch is not yet implemented).
+            TokenKind::LParen => {
+                // Consume the parenthesised receiver expression (parse and discard)
+                let _ = self.parse_expression()?;
+                self.expect(TokenKind::RParen, "Expected ')' after singleton receiver")?;
+                self.expect(TokenKind::Dot, "Expected '.' after singleton receiver")?;
+                match self.advance().kind {
+                    TokenKind::Ident(method_name) => method_name,
+                    _ => return Err(self.error_at_previous("Expected method name after '.'")),
+                }
+            }
             _ => return Err(self.error_at_previous("Expected function name")),
         };
 

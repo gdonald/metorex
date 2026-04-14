@@ -22,13 +22,13 @@ fn run_err(code: &str) -> String {
 // ── Dictionary literal with invalid key type ──────────────────────────────────
 
 #[test]
-fn dict_literal_array_key_error() {
-    let err = run_err(
-        r#"
+fn dict_literal_array_key_works() {
+    // Ruby allows any object as a hash key
+    let result = run(r#"
 h = {[1, 2] => "val"}
-"#,
-    );
-    assert!(err.contains("Dictionary keys") || err.contains("key") || err.contains("String"));
+h[[1, 2]]
+"#);
+    assert_eq!(result, Some(Object::string("val".to_string())));
 }
 
 // ── Array index read with non-integer ────────────────────────────────────────
@@ -47,15 +47,14 @@ arr["x"]
 // ── Dictionary index read with invalid key type ───────────────────────────────
 
 #[test]
-fn dict_index_read_invalid_key_error() {
-    let err = run_err(
-        r#"
+fn dict_index_read_array_key_returns_nil() {
+    // Ruby allows any object as hash key; missing key returns nil
+    let result = run(r#"
 h = {}
 h["key"] = 1
 h[[1, 2]]
-"#,
-    );
-    assert!(err.contains("Dictionary") || err.contains("key") || err.contains("index"));
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 // ── Index on non-container type (read) ───────────────────────────────────────

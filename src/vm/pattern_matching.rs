@@ -88,26 +88,29 @@ impl VirtualMachine {
                 self.environment_mut().push_scope();
                 self.apply_pattern_bindings(&bindings);
 
-                let mut last_value = Object::Nil;
-                for statement in &case.body {
-                    if let Statement::Expression { expression, .. } = statement {
-                        last_value = self.evaluate_expression(expression)?;
-                        continue;
-                    }
-                    match self.execute_statement(statement)? {
-                        ControlFlow::Next => {}
-                        flow => {
-                            self.environment_mut().pop_scope();
-                            return Ok(flow);
+                let result = (|| -> Result<ControlFlow, MetorexError> {
+                    let mut last_value = Object::Nil;
+                    for statement in &case.body {
+                        if let Statement::Expression { expression, .. } = statement {
+                            last_value = self.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        match self.execute_statement(statement)? {
+                            ControlFlow::Next => {}
+                            flow => {
+                                return Ok(flow);
+                            }
                         }
                     }
-                }
+
+                    Ok(ControlFlow::Return {
+                        value: last_value,
+                        position,
+                    })
+                })();
 
                 self.environment_mut().pop_scope();
-                return Ok(ControlFlow::Return {
-                    value: last_value,
-                    position,
-                });
+                return result;
             }
         }
 
@@ -417,11 +420,11 @@ impl VirtualMachine {
             self.environment_mut().push_scope();
             self.apply_pattern_bindings(bindings);
 
-            let guard_result = self.evaluate_expression(guard)?;
+            let guard_result = self.evaluate_expression(guard);
             self.environment_mut().pop_scope();
 
             // Return whether the guard is truthy
-            Ok(is_truthy(&guard_result))
+            Ok(is_truthy(&guard_result?))
         } else {
             // No guard means it always passes
             Ok(true)
@@ -454,10 +457,10 @@ impl VirtualMachine {
                 self.environment_mut().push_scope();
                 self.apply_pattern_bindings(&bindings);
 
-                let result = self.evaluate_expression(&case.body)?;
+                let result = self.evaluate_expression(&case.body);
                 self.environment_mut().pop_scope();
 
-                return Ok(result);
+                return result;
             }
         }
 

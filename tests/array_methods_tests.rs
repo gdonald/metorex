@@ -368,9 +368,10 @@ fn array_shift_error_with_args() {
 }
 
 #[test]
-fn array_unshift_error_wrong_args() {
-    let err = run_err("[1, 2, 3].unshift");
-    assert!(err.contains("argument"));
+fn array_unshift_zero_args_returns_self() {
+    // Ruby: unshift with 0 args returns the array unchanged
+    let result = run("[1, 2, 3].unshift");
+    assert!(result.is_some());
 }
 
 #[test]

@@ -142,6 +142,40 @@ impl VirtualMachine {
             });
         }
 
+        // Also convert internal RuntimeError / TypeError / InternalError to rescuable exceptions.
+        // In Ruby, all internal errors (undefined method, type errors, etc.) are rescuable.
+        let runtime_exception = match &final_result {
+            Err(MetorexError::RuntimeError {
+                message, location, ..
+            }) => {
+                let msg = message.clone();
+                let pos = Position {
+                    line: location.line,
+                    column: location.column,
+                    offset: 0,
+                };
+                Some((Object::exception("RuntimeError", msg), pos))
+            }
+            Err(MetorexError::TypeError {
+                message, location, ..
+            }) => {
+                let msg = message.clone();
+                let pos = Position {
+                    line: location.line,
+                    column: location.column,
+                    offset: 0,
+                };
+                Some((Object::exception("TypeError", msg), pos))
+            }
+            _ => None,
+        };
+        if let Some((exception_obj, pos)) = runtime_exception {
+            final_result = Ok(ControlFlow::Exception {
+                exception: exception_obj,
+                position: pos,
+            });
+        }
+
         // If an exception occurred, try to match rescue clauses
         if let Ok(ControlFlow::Exception {
             exception,
@@ -231,6 +265,10 @@ impl VirtualMachine {
         for type_name in exception_types {
             // Exact name match (covers stdlib exceptions like LoadError, Errno::*, etc.)
             if type_name == &exception_type_name {
+                return Ok(true);
+            }
+            // `rescue Object` / `rescue BasicObject` catch everything (Ruby semantics).
+            if type_name == "Object" || type_name == "BasicObject" {
                 return Ok(true);
             }
             // Well-known ancestor catches: StandardError/Exception catches most errors.

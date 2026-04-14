@@ -14,6 +14,8 @@ pub struct Class {
     methods: RefCell<HashMap<String, Rc<Method>>>,
     instance_variables: RefCell<HashSet<String>>,
     class_variables: RefCell<HashMap<String, crate::object::Object>>,
+    /// Included modules, in reverse inclusion order (last included = first searched).
+    mixins: RefCell<Vec<Rc<Class>>>,
 }
 
 impl Class {
@@ -25,6 +27,7 @@ impl Class {
             methods: RefCell::new(HashMap::new()),
             instance_variables: RefCell::new(HashSet::new()),
             class_variables: RefCell::new(HashMap::new()),
+            mixins: RefCell::new(Vec::new()),
         }
     }
 
@@ -76,10 +79,23 @@ impl Class {
         self.methods.borrow().contains_key(name)
     }
 
-    /// Look up a method by walking the inheritance chain.
+    /// Add an included module to the mixin chain.
+    /// The module is prepended to the list so the most-recently-included module
+    /// is searched first (Ruby's MRO).
+    pub fn add_mixin(&self, module: Rc<Class>) {
+        self.mixins.borrow_mut().insert(0, module);
+    }
+
+    /// Look up a method by walking the inheritance chain (own → mixins → superclass).
     pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
         if let Some(method) = self.methods.borrow().get(name) {
             return Some(Rc::clone(method));
+        }
+
+        for mixin in self.mixins.borrow().iter() {
+            if let Some(method) = mixin.methods.borrow().get(name) {
+                return Some(Rc::clone(method));
+            }
         }
 
         self.superclass
@@ -132,6 +148,7 @@ impl Clone for Class {
             methods: RefCell::new(self.methods.borrow().clone()),
             instance_variables: RefCell::new(self.instance_variables.borrow().clone()),
             class_variables: RefCell::new(self.class_variables.borrow().clone()),
+            mixins: RefCell::new(self.mixins.borrow().clone()),
         }
     }
 }

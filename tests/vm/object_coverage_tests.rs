@@ -301,11 +301,11 @@ fn regex_not_match_wrong_arg_count_error() {
 // ── object_methods.rs lines 467-469: instance_eval with block as positional arg
 
 #[test]
-fn instance_eval_with_block_as_positional_arg() {
+fn instance_eval_with_block_arg() {
     let result = run(r#"
 o = Object.new
-b = lambda { |x| x.class }
-o.instance_eval(b)
+b = lambda { self.class }
+o.instance_eval(&b)
 "#);
     assert!(result.is_some());
 }

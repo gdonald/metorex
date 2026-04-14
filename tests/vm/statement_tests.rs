@@ -492,14 +492,14 @@ h[nil]
 // ── Hash index assignment with invalid key type ───────────────────────────────
 
 #[test]
-fn hash_index_assignment_with_array_key_error() {
-    let err = run_err(
-        r#"
+fn hash_index_assignment_with_array_key_works() {
+    // Ruby allows any object as a hash key
+    let result = run(r#"
 h = {}
 h[[1, 2]] = "val"
-"#,
-    );
-    assert!(err.contains("Hash key") || err.contains("String") || err.contains("key"));
+h[[1, 2]]
+"#);
+    assert_eq!(result, Some(Object::string("val".to_string())));
 }
 
 // ── Index assignment on non-container type ────────────────────────────────────

@@ -54,6 +54,15 @@ impl VirtualMachine {
                 self.execute_function_body(&method, arguments)
             }
             Object::Class(class) => {
+                // Hash.new (with or without default block) returns a native Dict.
+                // The default block is accepted but its auto-vivification is not modelled.
+                if class.name() == "Hash" && arguments.is_empty() {
+                    let _ = self.pending_block.take();
+                    return Ok(Object::Dict(Rc::new(RefCell::new(
+                        std::collections::HashMap::new(),
+                    ))));
+                }
+
                 // Kernel conversion functions: Integer(), String(), Array()
                 if arguments.len() == 1 {
                     match class.name() {
@@ -179,6 +188,81 @@ impl VirtualMachine {
         let execution_result = self.with_call_frame(
             CallFrame::new(frame_name.clone(), frame_location_string),
             move |vm| vm.execute_block_body(block, arguments),
+        );
+
+        match execution_result {
+            Ok(value) => Ok(value),
+            Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
+        }
+    }
+
+    /// Execute a block with a specific `self` receiver (for instance_exec/instance_eval).
+    /// The receiver overrides any captured `self` from the block's closure.
+    pub(crate) fn execute_block_with_receiver(
+        &mut self,
+        block: &BlockStatement,
+        receiver: Object,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let frame_name = block.name().to_string();
+        let frame_location = position_to_location(position);
+        let frame_location_string = Some(format!("{}", frame_location));
+
+        let execution_result = self.with_call_frame(
+            CallFrame::new(frame_name.clone(), frame_location_string),
+            move |vm| {
+                vm.environment_mut().push_scope();
+                let result = (|| -> Result<Object, MetorexError> {
+                    for (name, value_ref) in block.captured_vars() {
+                        vm.environment_mut()
+                            .define_shared(name.clone(), value_ref.clone());
+                    }
+                    // Override `self` with the instance_exec receiver
+                    vm.environment_mut().define("self".to_string(), receiver);
+
+                    for (param, argument) in block.parameters().iter().zip(arguments.into_iter()) {
+                        vm.environment_mut().define(param.clone(), argument);
+                    }
+
+                    let mut last_value = Object::Nil;
+                    for statement in block.body() {
+                        if let Statement::Expression { expression, .. } = statement {
+                            last_value = vm.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        match vm.execute_statement(statement)? {
+                            ControlFlow::Next => {}
+                            ControlFlow::Value(value) => {
+                                last_value = value;
+                            }
+                            ControlFlow::Return { value, .. } => {
+                                last_value = value;
+                                break;
+                            }
+                            ControlFlow::Exception {
+                                exception,
+                                position,
+                            } => {
+                                return Err(MetorexError::UncaughtException {
+                                    exception: exception.clone(),
+                                    location: position_to_location(position),
+                                    message: format_exception(&exception),
+                                });
+                            }
+                            ControlFlow::Break { position } => {
+                                return Err(loop_control_error("break", position));
+                            }
+                            ControlFlow::Continue { position } => {
+                                return Err(loop_control_error("continue", position));
+                            }
+                        }
+                    }
+                    Ok(last_value)
+                })();
+                vm.environment_mut().pop_scope();
+                result
+            },
         );
 
         match execution_result {
@@ -702,6 +786,38 @@ impl VirtualMachine {
         ensure_block: Option<&[Statement]>,
     ) -> Result<Object, MetorexError> {
         let body_result = self.execute_statements_for_value(body);
+
+        // Convert internal RuntimeError/TypeError to a rescuable UncaughtException so that
+        // `rescue Object => e` (and other rescue clauses) can catch them — mirroring Ruby's
+        // behaviour where all errors are rescuable.
+        let body_result = match body_result {
+            Err(MetorexError::RuntimeError {
+                ref message,
+                ref location,
+                ..
+            }) => {
+                let exc = Object::exception("RuntimeError", message.clone());
+                Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: location.clone(),
+                    message: message.clone(),
+                })
+            }
+            Err(MetorexError::TypeError {
+                ref message,
+                ref location,
+                ..
+            }) => {
+                let exc = Object::exception("TypeError", message.clone());
+                Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: location.clone(),
+                    message: message.clone(),
+                })
+            }
+            other => other,
+        };
+
         let mut final_value = body_result.clone();
         let mut handled = false;
 

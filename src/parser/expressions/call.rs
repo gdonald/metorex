@@ -192,6 +192,61 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Parse any `.method`, `[index]`, or `::Const` postfix operations on an
+    /// already-parsed expression. Used so that lambda literals produced outside
+    /// of `parse_call` (e.g. `parse_arrow_lambda`) can still have method chains
+    /// like `-> { ... }.should raise_error(NameError)`.
+    pub(crate) fn parse_postfix_calls(
+        &mut self,
+        initial: Expression,
+    ) -> Result<Expression, MetorexError> {
+        // Re-enter the same postfix loop that `parse_call` uses, seeded with
+        // the already-parsed expression.
+        let mut expr = initial;
+        loop {
+            if self.match_token(&[TokenKind::Dot]) {
+                self.skip_whitespace();
+                let method_name = match self.advance().kind {
+                    TokenKind::Ident(name) => name,
+                    TokenKind::Class => "class".to_string(),
+                    other => {
+                        return Err(self.error_at_previous(&format!(
+                            "Expected method name after '.', got {:?}",
+                            other
+                        )));
+                    }
+                };
+                let arguments = if self.match_token(&[TokenKind::LParen]) {
+                    self.parse_arguments()?
+                } else if self.can_start_argument_for_method_call(&method_name) {
+                    self.parse_arguments_without_parens()?
+                } else {
+                    Vec::new()
+                };
+                let trailing_block = if self.check(&[TokenKind::Do]) {
+                    Some(Box::new(self.parse_block()?))
+                } else if self.check(&[TokenKind::LBrace]) {
+                    Some(Box::new(self.parse_brace_block()?))
+                } else {
+                    None
+                };
+                let position = expr.position();
+                expr = Expression::MethodCall {
+                    receiver: Box::new(expr),
+                    method: method_name,
+                    arguments,
+                    trailing_block,
+                    position,
+                };
+            } else if self.match_token(&[TokenKind::LParen]) {
+                expr = self.finish_call(expr)?;
+            } else {
+                break;
+            }
+        }
+        Ok(expr)
+    }
+
     /// Finish parsing a function call
     pub(crate) fn finish_call(&mut self, callee: Expression) -> Result<Expression, MetorexError> {
         let arguments = self.parse_arguments()?;

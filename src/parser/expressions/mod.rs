@@ -39,12 +39,13 @@ impl Parser {
                     ..
                 } = block
                 {
-                    return Ok(Expression::Lambda {
+                    let lambda = Expression::Lambda {
                         parameters,
                         body,
                         captured_vars: Some(Vec::new()),
                         position,
-                    });
+                    };
+                    return self.parse_postfix_calls(lambda);
                 }
             } else if self.check(&[TokenKind::Do]) {
                 let block = self.parse_block()?;
@@ -55,12 +56,13 @@ impl Parser {
                     ..
                 } = block
                 {
-                    return Ok(Expression::Lambda {
+                    let lambda = Expression::Lambda {
                         parameters,
                         body,
                         captured_vars: Some(Vec::new()),
                         position,
-                    });
+                    };
+                    return self.parse_postfix_calls(lambda);
                 }
             }
 

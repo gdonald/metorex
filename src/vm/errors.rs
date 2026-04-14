@@ -59,12 +59,13 @@ pub(super) fn undefined_method_error(
     receiver: &Object,
     position: Position,
 ) -> MetorexError {
+    let class_info = if let Object::Instance(inst) = receiver {
+        format!("Instance({})", inst.borrow().class.name())
+    } else {
+        receiver.type_name().to_string()
+    };
     MetorexError::runtime_error(
-        format!(
-            "Undefined method '{}' for type '{}'",
-            method,
-            receiver.type_name()
-        ),
+        format!("Undefined method '{}' for type '{}'", method, class_info),
         position_to_location(position),
     )
 }

@@ -227,16 +227,13 @@ impl VirtualMachine {
                     module_name,
                     position,
                 } => {
-                    // include ModuleName: copy module instance methods into this class
+                    // include ModuleName: add module to mixin chain so methods added
+                    // to the module later are still visible (Ruby ancestor-chain semantics).
                     match self.environment().get(module_name) {
                         Some(Object::Module(module)) => {
-                            for method_name in module.method_names() {
-                                if let Some(method) = module.find_method(&method_name) {
-                                    class.define_method(&method_name, method);
-                                }
-                            }
+                            class.add_mixin(Rc::clone(&module));
                         }
-                        Some(_) => {
+                        Some(Object::Class(_)) | Some(_) => {
                             return Err(MetorexError::runtime_error(
                                 format!("'{}' is not a module", module_name),
                                 position_to_location(*position),
@@ -456,9 +453,15 @@ impl VirtualMachine {
         function.variadic_param = variadic_param;
         let function = Rc::new(function);
 
-        // Register the function in the environment
+        // Register the function in the environment (for immediate local access)
         self.environment_mut()
-            .define(name.to_string(), Object::Method(function));
+            .define(name.to_string(), Object::Method(Rc::clone(&function)));
+
+        // Also register as a method on the global Object class (Ruby semantics:
+        // top-level `def` defines a method on Object, globally accessible).
+        if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+            object_class.define_method(name, Rc::clone(&function));
+        }
 
         Ok(ControlFlow::Next)
     }

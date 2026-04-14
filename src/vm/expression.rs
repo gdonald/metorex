@@ -233,36 +233,37 @@ impl VirtualMachine {
     fn evaluate_branch_value(&mut self, stmts: &[Statement]) -> Result<Object, MetorexError> {
         use super::ControlFlow;
         self.environment_mut().push_scope();
-        let mut last_value = Object::Nil;
-        for stmt in stmts {
-            if let Statement::Expression { expression, .. } = stmt {
-                last_value = self.evaluate_expression(expression)?;
-                continue;
+        let result = (|| -> Result<Object, MetorexError> {
+            let mut last_value = Object::Nil;
+            for stmt in stmts {
+                if let Statement::Expression { expression, .. } = stmt {
+                    last_value = self.evaluate_expression(expression)?;
+                    continue;
+                }
+                match self.execute_statement(stmt)? {
+                    ControlFlow::Next => {}
+                    ControlFlow::Return { value, .. } => {
+                        return Ok(value);
+                    }
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Err(MetorexError::UncaughtException {
+                            exception: exception.clone(),
+                            location: position_to_location(position),
+                            message: format_exception(&exception),
+                        });
+                    }
+                    _ => {
+                        // Break/Continue — fall through
+                        break;
+                    }
+                }
             }
-            match self.execute_statement(stmt)? {
-                ControlFlow::Next => {}
-                ControlFlow::Return { value, .. } => {
-                    self.environment_mut().pop_scope();
-                    return Ok(value);
-                }
-                ControlFlow::Exception {
-                    exception,
-                    position,
-                } => {
-                    self.environment_mut().pop_scope();
-                    return Err(MetorexError::UncaughtException {
-                        exception: exception.clone(),
-                        location: position_to_location(position),
-                        message: format_exception(&exception),
-                    });
-                }
-                _ => {
-                    // Break/Continue — fall through to pop_scope at end of function
-                    break;
-                }
-            }
-        }
+            Ok(last_value)
+        })();
         self.environment_mut().pop_scope();
-        Ok(last_value)
+        result
     }
 }

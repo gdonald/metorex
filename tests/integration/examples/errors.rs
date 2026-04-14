@@ -91,3 +91,45 @@ fn test_begin_else_ensure_parens_execution() {
     let output = run_example("errors/begin_else_ensure_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_rescue_class_method_scope() {
+    let expected = "rescued: location=test_loc\n";
+    let output = run_example("rescue_class_method_test.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_rescue_param_scope() {
+    let expected = "caught: loc=my_location\n";
+    let output = run_example("rescue_param_scope_test.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_rescue_reraise_scope() {
+    let expected = "outer rescue: location=nil, exc class=Exception\n";
+    let output = run_example("rescue_reraise_scope_test.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_rescue_rerescue() {
+    let expected = "rescue caught: location=test_loc\n";
+    let output = run_example("rescue_rerescue_test.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_rescue_instance_exec_scope() {
+    let expected = "rescued: location=my_location, exc=Exception\nfalse\n";
+    let output = run_example("rescue_instance_exec_scope_test.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_rescue_mspec_flow() {
+    let expected = "......rescued: location=nil, exc=Exception\n\ndone\n";
+    let output = run_example("rescue_mspec_flow_test.rb");
+    assert_eq!(output, expected);
+}

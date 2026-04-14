@@ -58,6 +58,88 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("Object", Object::Class(object));
 }
 
+/// Register standard Ruby exception class hierarchy as stubs.
+pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
+    // Reuse Exception/StandardError/RuntimeError/TypeError already in BuiltinClasses;
+    // add the remaining subclasses that specs and mspec reference.
+    let exception = Rc::new(Class::new("Exception", None));
+    let standard_error = Rc::new(Class::new("StandardError", Some(Rc::clone(&exception))));
+    let runtime_error = Rc::new(Class::new("RuntimeError", Some(Rc::clone(&standard_error))));
+    let name_error = Rc::new(Class::new("NameError", Some(Rc::clone(&standard_error))));
+    let no_method_error = Rc::new(Class::new("NoMethodError", Some(Rc::clone(&name_error))));
+    let argument_error = Rc::new(Class::new(
+        "ArgumentError",
+        Some(Rc::clone(&standard_error)),
+    ));
+    let type_error = Rc::new(Class::new("TypeError", Some(Rc::clone(&standard_error))));
+    let range_error = Rc::new(Class::new("RangeError", Some(Rc::clone(&standard_error))));
+    let io_error = Rc::new(Class::new("IOError", Some(Rc::clone(&standard_error))));
+    let index_error = Rc::new(Class::new("IndexError", Some(Rc::clone(&standard_error))));
+    let key_error = Rc::new(Class::new("KeyError", Some(Rc::clone(&index_error))));
+    let stop_iteration = Rc::new(Class::new("StopIteration", Some(Rc::clone(&index_error))));
+    let zero_division_error = Rc::new(Class::new(
+        "ZeroDivisionError",
+        Some(Rc::clone(&standard_error)),
+    ));
+    let float_domain_error = Rc::new(Class::new(
+        "FloatDomainError",
+        Some(Rc::clone(&range_error)),
+    ));
+    let script_error = Rc::new(Class::new("ScriptError", Some(Rc::clone(&exception))));
+    let load_error = Rc::new(Class::new("LoadError", Some(Rc::clone(&script_error))));
+    let syntax_error = Rc::new(Class::new("SyntaxError", Some(Rc::clone(&script_error))));
+    let not_implemented_error = Rc::new(Class::new(
+        "NotImplementedError",
+        Some(Rc::clone(&script_error)),
+    ));
+    let system_exit = Rc::new(Class::new("SystemExit", Some(Rc::clone(&exception))));
+    let interrupt = Rc::new(Class::new("Interrupt", Some(Rc::clone(&exception))));
+    let signal_exception = Rc::new(Class::new("SignalException", Some(Rc::clone(&exception))));
+    let system_call_error = Rc::new(Class::new(
+        "SystemCallError",
+        Some(Rc::clone(&standard_error)),
+    ));
+    let errno_module = Rc::new(Class::new("Errno", None));
+    let encoding_error = Rc::new(Class::new(
+        "EncodingError",
+        Some(Rc::clone(&standard_error)),
+    ));
+    let frozen_error = Rc::new(Class::new("FrozenError", Some(Rc::clone(&runtime_error))));
+    let regexp_error = Rc::new(Class::new("RegexpError", Some(Rc::clone(&standard_error))));
+    let math_domain_error = Rc::new(Class::new(
+        "Math::DomainError",
+        Some(Rc::clone(&argument_error)),
+    ));
+
+    globals.set("Exception", Object::Class(exception));
+    globals.set("StandardError", Object::Class(standard_error));
+    globals.set("RuntimeError", Object::Class(runtime_error));
+    globals.set("NameError", Object::Class(name_error));
+    globals.set("NoMethodError", Object::Class(no_method_error));
+    globals.set("ArgumentError", Object::Class(argument_error));
+    globals.set("TypeError", Object::Class(type_error));
+    globals.set("RangeError", Object::Class(range_error));
+    globals.set("IOError", Object::Class(io_error));
+    globals.set("IndexError", Object::Class(index_error));
+    globals.set("KeyError", Object::Class(key_error));
+    globals.set("StopIteration", Object::Class(stop_iteration));
+    globals.set("ZeroDivisionError", Object::Class(zero_division_error));
+    globals.set("FloatDomainError", Object::Class(float_domain_error));
+    globals.set("ScriptError", Object::Class(script_error));
+    globals.set("LoadError", Object::Class(load_error));
+    globals.set("SyntaxError", Object::Class(syntax_error));
+    globals.set("NotImplementedError", Object::Class(not_implemented_error));
+    globals.set("SystemExit", Object::Class(system_exit));
+    globals.set("Interrupt", Object::Class(interrupt));
+    globals.set("SignalException", Object::Class(signal_exception));
+    globals.set("SystemCallError", Object::Class(system_call_error));
+    globals.set("Errno", Object::Module(errno_module));
+    globals.set("EncodingError", Object::Class(encoding_error));
+    globals.set("FrozenError", Object::Class(frozen_error));
+    globals.set("RegexpError", Object::Class(regexp_error));
+    globals.set("Math::DomainError", Object::Class(math_domain_error));
+}
+
 /// Register built-in modules (Comparable, Enumerable, Kernel, etc.).
 pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // Comparable — stub module, methods will be added later
