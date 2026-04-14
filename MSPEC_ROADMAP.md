@@ -150,8 +150,90 @@ Parser fixes during Phase 4 work:
 
 ## Phase 4: Passing Specs
 
+### Primitives and Singletons
+
 - [x] 4.1. core/true — 9 files, 13 examples, 28 expectations, 0 failures, 0 errors
 - [x] 4.2. core/nil — 18 files, 27 examples, 50 expectations, 0 failures, 0 errors
+- [x] 4.3. core/false — 9 files, 13 examples, 29 expectations, 0 failures, 0 errors
+
+### Core Classes and Modules
+
+- [ ] 4.4. core/comparable
+- [ ] 4.5. core/main
+- [ ] 4.6. core/class
+- [ ] 4.7. core/module
+- [ ] 4.8. core/kernel
+- [ ] 4.9. core/basicobject
+
+### Exceptions and Signals
+
+- [ ] 4.10. core/exception
+- [ ] 4.11. core/systemexit
+- [ ] 4.12. core/signal
+- [ ] 4.13. core/warning
+
+### Numeric Types
+
+- [ ] 4.14. core/integer
+- [ ] 4.15. core/float
+- [ ] 4.16. core/numeric
+- [ ] 4.17. core/complex
+- [ ] 4.18. core/rational
+- [ ] 4.19. core/math
+
+### Collections
+
+- [ ] 4.20. core/array
+- [ ] 4.21. core/hash
+- [ ] 4.22. core/set
+- [ ] 4.23. core/range
+- [ ] 4.24. core/struct
+- [ ] 4.25. core/data
+
+### Strings and Patterns
+
+- [ ] 4.26. core/string
+- [ ] 4.27. core/symbol
+- [ ] 4.28. core/regexp
+- [ ] 4.29. core/encoding
+- [ ] 4.30. core/matchdata
+
+### Callables and Introspection
+
+- [ ] 4.31. core/proc
+- [ ] 4.32. core/method
+- [ ] 4.33. core/unboundmethod
+- [ ] 4.34. core/binding
+
+### IO and Filesystem
+
+- [ ] 4.35. core/io
+- [ ] 4.36. core/file
+- [ ] 4.37. core/dir
+- [ ] 4.38. core/filetest
+- [ ] 4.39. core/env
+
+### Concurrency
+
+- [ ] 4.40. core/thread
+- [ ] 4.41. core/fiber
+- [ ] 4.42. core/mutex
+- [ ] 4.43. core/conditionvariable
+- [ ] 4.44. core/queue
+- [ ] 4.45. core/sizedqueue
+- [ ] 4.46. core/threadgroup
+
+### Other
+
+- [ ] 4.47. core/gc
+- [ ] 4.48. core/objectspace
+- [ ] 4.49. core/random
+- [ ] 4.50. core/time
+- [ ] 4.51. core/process
+- [ ] 4.52. core/marshal
+- [ ] 4.53. core/tracepoint
+- [ ] 4.54. core/refinement
+- [ ] 4.55. core/builtin_constants
 
 Fixes during Phase 4 work:
 - **Scope leak in `evaluate_branch_value`** — `?` operator could skip `pop_scope()`, causing method parameters to become invisible in rescue blocks. Same bug fixed in pattern matching (`execute_match`, `evaluate_guard_with_bindings`, `evaluate_case_expression`).
