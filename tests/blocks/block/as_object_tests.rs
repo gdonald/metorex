@@ -132,6 +132,7 @@ fn test_block_passed_as_argument_with_function() {
                 },
             ],
             position: pos(1, 1),
+            singleton_class: None,
         },
         // Create increment block
         Statement::Assignment {
@@ -237,6 +238,7 @@ fn test_block_returned_from_function_standalone() {
                 position: pos(2, 3),
             }],
             position: pos(1, 1),
+            singleton_class: None,
         },
         // Call function to get block
         Statement::Assignment {

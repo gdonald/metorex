@@ -33,7 +33,7 @@ fn test_block_as_arg() {
 #[test]
 fn test_block_param_inspect() {
     let output = run_example("advanced/block_param_inspect.rb");
-    assert_eq!(output, "Object\ntrue\n");
+    assert_eq!(output, "NilClass\ntrue\n");
 }
 
 #[test]

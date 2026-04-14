@@ -152,7 +152,7 @@ impl Compiler {
                     BinaryOp::Multiply => self.emit_op(OpCode::Multiply, line),
                     BinaryOp::Divide => self.emit_op(OpCode::Divide, line),
                     BinaryOp::Modulo => self.emit_op(OpCode::Modulo, line),
-                    BinaryOp::Equal => self.emit_op(OpCode::Equal, line),
+                    BinaryOp::Equal | BinaryOp::CaseEqual => self.emit_op(OpCode::Equal, line),
                     BinaryOp::NotEqual => self.emit_op(OpCode::NotEqual, line),
                     BinaryOp::Less => self.emit_op(OpCode::Less, line),
                     BinaryOp::Greater => self.emit_op(OpCode::Greater, line),

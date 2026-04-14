@@ -34,6 +34,7 @@ fn binary_op_str(op: &BinaryOp) -> &'static str {
         BinaryOp::Modulo => "%",
         BinaryOp::Power => "**",
         BinaryOp::Equal => "==",
+        BinaryOp::CaseEqual => "===",
         BinaryOp::NotEqual => "!=",
         BinaryOp::Less => "<",
         BinaryOp::Greater => ">",

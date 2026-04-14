@@ -76,7 +76,8 @@ impl Parser {
                 continue;
             }
             let op = match op_token.kind {
-                TokenKind::EqualEqual | TokenKind::TripleEqual => BinaryOp::Equal,
+                TokenKind::EqualEqual => BinaryOp::Equal,
+                TokenKind::TripleEqual => BinaryOp::CaseEqual,
                 TokenKind::BangEqual => BinaryOp::NotEqual,
                 _ => unreachable!(),
             };

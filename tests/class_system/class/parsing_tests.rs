@@ -804,6 +804,7 @@ fn test_class_with_nested_function() {
                     position: pos(4, 7),
                 }],
                 position: pos(3, 5),
+                singleton_class: None,
             }],
             position: pos(2, 3),
         }],

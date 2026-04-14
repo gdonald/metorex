@@ -55,7 +55,15 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
 
     // Object — root class that mspec reopens to inject describe/it/before/after
     let object = Rc::new(Class::new("Object", None));
-    globals.set("Object", Object::Class(object));
+    globals.set("Object", Object::Class(Rc::clone(&object)));
+
+    // TrueClass, FalseClass, NilClass — can't be instantiated
+    let true_class = Rc::new(Class::new("TrueClass", Some(Rc::clone(&object))));
+    globals.set("TrueClass", Object::Class(true_class));
+    let false_class = Rc::new(Class::new("FalseClass", Some(Rc::clone(&object))));
+    globals.set("FalseClass", Object::Class(false_class));
+    let nil_class = Rc::new(Class::new("NilClass", Some(Rc::clone(&object))));
+    globals.set("NilClass", Object::Class(nil_class));
 }
 
 /// Register standard Ruby exception class hierarchy as stubs.

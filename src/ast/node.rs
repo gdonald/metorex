@@ -16,6 +16,7 @@ pub enum BinaryOp {
 
     // Comparison operators
     Equal,        // ==
+    CaseEqual,    // ===
     NotEqual,     // !=
     Less,         // <
     Greater,      // >
@@ -504,6 +505,8 @@ pub enum Statement {
         parameters: Vec<Parameter>,
         body: Vec<Statement>,
         position: Position,
+        /// For `def (expr).method_name`, the singleton receiver class name
+        singleton_class: Option<String>,
     },
 
     // Method definition (function within a class)
@@ -653,6 +656,7 @@ impl fmt::Display for BinaryOp {
             BinaryOp::Modulo => write!(f, "%"),
             BinaryOp::Power => write!(f, "**"),
             BinaryOp::Equal => write!(f, "=="),
+            BinaryOp::CaseEqual => write!(f, "==="),
             BinaryOp::NotEqual => write!(f, "!="),
             BinaryOp::Less => write!(f, "<"),
             BinaryOp::Greater => write!(f, ">"),

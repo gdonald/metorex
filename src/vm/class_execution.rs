@@ -399,6 +399,7 @@ impl VirtualMachine {
         parameters: &[crate::ast::Parameter],
         body: &[Statement],
         position: crate::lexer::Position,
+        singleton_class: Option<&str>,
     ) -> Result<ControlFlow, MetorexError> {
         // Extract positional parameter names (exclude named keyword and block params)
         let param_names: Vec<String> = parameters
@@ -452,6 +453,14 @@ impl VirtualMachine {
         function.block_parameter = block_parameter;
         function.variadic_param = variadic_param;
         let function = Rc::new(function);
+
+        // Singleton method: define on the specific class (e.g., TrueClass)
+        if let Some(class_name) = singleton_class {
+            if let Some(Object::Class(target_class)) = self.globals().get(class_name) {
+                target_class.define_method(name, Rc::clone(&function));
+            }
+            return Ok(ControlFlow::Next);
+        }
 
         // Register the function in the environment (for immediate local access)
         self.environment_mut()

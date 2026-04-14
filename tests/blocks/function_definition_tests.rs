@@ -23,6 +23,7 @@ fn test_simple_function_definition() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -42,6 +43,7 @@ fn test_function_with_no_parameters() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -71,6 +73,7 @@ fn test_function_with_multiple_parameters() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -126,6 +129,7 @@ fn test_function_with_default_parameters() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -156,6 +160,7 @@ fn test_function_with_multiple_default_parameters() {
         ],
         body: vec![],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -199,6 +204,7 @@ fn test_function_with_variadic_parameter() {
             },
         ],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -214,6 +220,7 @@ fn test_function_with_regular_and_variadic_parameters() {
         ],
         body: vec![],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -252,6 +259,7 @@ fn test_function_with_keyword_parameter() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -278,6 +286,7 @@ fn test_function_with_all_parameter_types() {
         ],
         body: vec![],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -415,6 +424,7 @@ fn test_function_with_conditional_body() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -501,6 +511,7 @@ fn test_function_with_loop_body() {
             },
         ],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -543,6 +554,7 @@ fn test_function_with_exception_handling() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -574,8 +586,10 @@ fn test_nested_function_definition() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            singleton_class: None,
         }],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -640,6 +654,7 @@ fn test_function_with_empty_body() {
         parameters: vec![],
         body: vec![],
         position: pos(1, 1),
+        singleton_class: None,
     };
 
     assert_eq!(stmt.position(), pos(1, 1));

@@ -157,6 +157,7 @@ fn captured_variable_emits_close_upvalue() {
                     position: pos(),
                 }],
                 position: pos(),
+                singleton_class: None,
             },
         ],
         position: pos(),

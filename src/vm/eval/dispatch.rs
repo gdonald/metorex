@@ -346,6 +346,7 @@ fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::Modulo => Some("%"),
         BinaryOp::Power => Some("**"),
         BinaryOp::Equal => Some("=="),
+        BinaryOp::CaseEqual => Some("==="),
         BinaryOp::NotEqual => Some("!="),
         BinaryOp::Less => Some("<"),
         BinaryOp::Greater => Some(">"),

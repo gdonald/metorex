@@ -253,6 +253,7 @@ impl Resolver {
                 parameters,
                 body,
                 position,
+                singleton_class: _,
             } => {
                 // Declare function name in current scope
                 self.declare(name.clone(), *position);

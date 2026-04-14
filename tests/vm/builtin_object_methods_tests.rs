@@ -56,7 +56,7 @@ fn bool_class() {
     let result = run("true.class");
     assert!(matches!(result, Some(Object::Class(_))));
     if let Some(Object::Class(c)) = result {
-        assert_eq!(c.name(), "Object");
+        assert_eq!(c.name(), "TrueClass");
     }
 }
 
@@ -65,7 +65,7 @@ fn nil_class() {
     let result = run("nil.class");
     assert!(matches!(result, Some(Object::Class(_))));
     if let Some(Object::Class(c)) = result {
-        assert_eq!(c.name(), "Object");
+        assert_eq!(c.name(), "NilClass");
     }
 }
 

@@ -55,6 +55,30 @@ impl VirtualMachine {
 
         // Special handling for Class objects
         if let Object::Class(class_rc) = receiver {
+            let non_instantiable =
+                matches!(class_rc.name(), "TrueClass" | "FalseClass" | "NilClass");
+            if non_instantiable && method_name == "allocate" {
+                let exc = Object::exception(
+                    "TypeError",
+                    format!("allocator undefined for {}", class_rc.name()),
+                );
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: format!("allocator undefined for {}", class_rc.name()),
+                });
+            }
+            if non_instantiable && method_name == "new" {
+                let exc = Object::exception(
+                    "NoMethodError",
+                    format!("undefined method 'new' for {}:Class", class_rc.name()),
+                );
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: format!("undefined method 'new' for {}:Class", class_rc.name()),
+                });
+            }
             // Dir.pwd / Dir.getwd — current working directory.
             if class_rc.name() == "Dir" && (method_name == "pwd" || method_name == "getwd") {
                 let cwd = std::env::current_dir()

@@ -379,6 +379,7 @@ fn resolver_call_expression() {
         parameters: vec![],
         body: vec![assign("r", int_lit(0))],
         position: pos(),
+        singleton_class: None,
     };
     let call = Statement::Expression {
         expression: Expression::Call {
@@ -695,6 +696,7 @@ fn resolver_function_def_with_default_param() {
         parameters: vec![param],
         body: vec![],
         position: pos(),
+        singleton_class: None,
     };
     let result = r.resolve(&[stmt]);
     assert!(!result.has_errors());
@@ -730,6 +732,7 @@ fn resolver_variable_redeclaration_via_duplicate_params() {
         ],
         body: vec![],
         position: pos(),
+        singleton_class: None,
     };
     let result = r.resolve(&[stmt]);
     // Duplicate param name should produce a redeclaration error
@@ -800,6 +803,7 @@ fn resolver_module_def_with_body() {
             parameters: vec![],
             body: vec![assign("msg", int_lit(1))],
             position: pos(),
+            singleton_class: None,
         }],
         position: pos(),
     };
@@ -898,6 +902,7 @@ fn resolver_variable_reassignment_in_function_scope() {
             },
         ],
         position: pos(),
+        singleton_class: None,
     };
     let result = r.resolve(&[stmt]);
     assert!(!result.has_errors());

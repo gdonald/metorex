@@ -61,16 +61,32 @@ impl VirtualMachine {
             Subtract | Multiply | Divide | Modulo | Power => {
                 self.evaluate_numeric_binary(op, left, right, position)
             }
-            Equal => {
-                // For Class === non-Class, check type membership (Ruby's case equality)
-                if let Object::Class(class_rc) = &left
-                    && !matches!(right, Object::Class(_) | Object::Module(_))
-                {
-                    let right_class = self.builtins().class_of(&right);
-                    return Ok(Object::Bool(
-                        self.builtins().is_subclass_of(&right_class, class_rc),
-                    ));
+            Equal => Ok(Object::Bool(left.equals(&right))),
+            CaseEqual => {
+                // Class === obj: check type membership (Ruby's case equality)
+                if let Object::Class(class_rc) = &left {
+                    if let Object::Exception(exc_ref) = &right {
+                        // Check if exception type matches or is a subclass
+                        let exc_type = exc_ref.borrow().exception_type.clone();
+                        if exc_type == class_rc.name() {
+                            return Ok(Object::Bool(true));
+                        }
+                        // Check exception class hierarchy via globals
+                        if let Some(Object::Class(exc_class)) = self.globals().get(&exc_type) {
+                            return Ok(Object::Bool(
+                                self.builtins().is_subclass_of(&exc_class, class_rc),
+                            ));
+                        }
+                        return Ok(Object::Bool(false));
+                    }
+                    if !matches!(right, Object::Class(_) | Object::Module(_)) {
+                        let right_class = self.builtins().class_of(&right);
+                        return Ok(Object::Bool(
+                            self.builtins().is_subclass_of(&right_class, class_rc),
+                        ));
+                    }
                 }
+                // Fallback: === behaves like ==
                 Ok(Object::Bool(left.equals(&right)))
             }
             NotEqual => Ok(Object::Bool(!left.equals(&right))),

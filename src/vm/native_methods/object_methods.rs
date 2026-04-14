@@ -40,6 +40,91 @@ impl VirtualMachine {
             }
         }
         match method_name {
+            "__send__" | "send" | "public_send" => {
+                if arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        "wrong number of arguments (given 0, expected 1+)".to_string(),
+                        position_to_location(position),
+                    ));
+                }
+                let method = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            format!("{} requires a String or Symbol method name", method_name),
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                let rest_args: Vec<Object> = arguments[1..].to_vec();
+                let class = self.builtins().class_of(receiver);
+                if let Some(m) = class.find_method(&method) {
+                    return Ok(Some(self.invoke_method(
+                        class,
+                        m,
+                        receiver.clone(),
+                        rest_args,
+                        position,
+                    )?));
+                }
+                if let Some(result) = self.call_native_method(
+                    class.as_ref(),
+                    receiver,
+                    &method,
+                    &rest_args,
+                    position,
+                )? {
+                    return Ok(Some(result));
+                }
+                if let Some(result) =
+                    self.call_object_method(receiver, &method, &rest_args, position)?
+                {
+                    return Ok(Some(result));
+                }
+                Err(undefined_method_error(&method, receiver, position))
+            }
+            "frozen?" => {
+                // In Metorex, booleans, nil, integers, floats, and symbols are frozen
+                let frozen = matches!(
+                    receiver,
+                    Object::Bool(_)
+                        | Object::Nil
+                        | Object::Int(_)
+                        | Object::Float(_)
+                        | Object::Symbol(_)
+                        | Object::String(_)
+                );
+                Ok(Some(Object::Bool(frozen)))
+            }
+            "freeze" => Ok(Some(receiver.clone())),
+            "singleton_method" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let method = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            "no implicit conversion into String".to_string(),
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                let msg = format!("undefined singleton method '{}' for {}", method, receiver);
+                let exc = Object::exception("NameError", msg.clone());
+                Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                })
+            }
             "to_s" | "inspect" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -59,6 +144,32 @@ impl VirtualMachine {
                         arguments.len(),
                         position,
                     ));
+                }
+                // For exceptions, return the specific exception class, not generic Exception
+                if let Object::Exception(exc_ref) = receiver {
+                    let exc_type = exc_ref.borrow().exception_type.clone();
+                    if let Some(Object::Class(cls)) = self.globals().get(&exc_type) {
+                        return Ok(Some(Object::Class(cls)));
+                    }
+                }
+                // For booleans and nil, return the specific class
+                match receiver {
+                    Object::Bool(true) => {
+                        if let Some(Object::Class(cls)) = self.globals().get("TrueClass") {
+                            return Ok(Some(Object::Class(cls)));
+                        }
+                    }
+                    Object::Bool(false) => {
+                        if let Some(Object::Class(cls)) = self.globals().get("FalseClass") {
+                            return Ok(Some(Object::Class(cls)));
+                        }
+                    }
+                    Object::Nil => {
+                        if let Some(Object::Class(cls)) = self.globals().get("NilClass") {
+                            return Ok(Some(Object::Class(cls)));
+                        }
+                    }
+                    _ => {}
                 }
                 Ok(Some(Object::Class(self.builtins().class_of(receiver))))
             }
@@ -324,56 +435,6 @@ impl VirtualMachine {
                 Ok(Some(Object::Array(std::rc::Rc::new(
                     std::cell::RefCell::new(method_strings),
                 ))))
-            }
-            "send" => {
-                if arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let target_method = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
-                    Object::Symbol(s) => s.as_str().to_string(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                let send_args = arguments[1..].to_vec();
-                // Try user-defined method lookup
-                if let Some((class, method)) = self.lookup_method(receiver, &target_method)
-                    && !method.is_undefined
-                {
-                    return self
-                        .invoke_method(class, method, receiver.clone(), send_args, position)
-                        .map(Some);
-                }
-                // Try native method
-                let class = self.builtins().class_of(receiver);
-                let native_result = self.call_native_method(
-                    &class,
-                    receiver,
-                    &target_method,
-                    &send_args,
-                    position,
-                )?;
-                if let Some(result) = native_result {
-                    return Ok(Some(result));
-                }
-                // Try object methods
-                let object_result =
-                    self.call_object_method(receiver, &target_method, &send_args, position)?;
-                if let Some(result) = object_result {
-                    return Ok(Some(result));
-                }
-                Err(undefined_method_error(&target_method, receiver, position))
             }
             "equal?" => {
                 if arguments.len() != 1 {

@@ -165,7 +165,14 @@ impl VirtualMachine {
                 parameters,
                 body,
                 position,
-            } => self.execute_function_def(name, parameters, body, *position),
+                singleton_class,
+            } => self.execute_function_def(
+                name,
+                parameters,
+                body,
+                *position,
+                singleton_class.as_deref(),
+            ),
             Statement::AttrReader { position, .. }
             | Statement::AttrWriter { position, .. }
             | Statement::AttrAccessor { position, .. } => {

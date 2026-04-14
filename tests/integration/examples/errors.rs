@@ -108,7 +108,7 @@ fn test_rescue_param_scope() {
 
 #[test]
 fn test_rescue_reraise_scope() {
-    let expected = "outer rescue: location=nil, exc class=Exception\n";
+    let expected = "outer rescue: location=nil, exc class=RuntimeError\n";
     let output = run_example("rescue_reraise_scope_test.rb");
     assert_eq!(output, expected);
 }
@@ -122,14 +122,14 @@ fn test_rescue_rerescue() {
 
 #[test]
 fn test_rescue_instance_exec_scope() {
-    let expected = "rescued: location=my_location, exc=Exception\nfalse\n";
+    let expected = "rescued: location=my_location, exc=RuntimeError\nfalse\n";
     let output = run_example("rescue_instance_exec_scope_test.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_rescue_mspec_flow() {
-    let expected = "......rescued: location=nil, exc=Exception\n\ndone\n";
+    let expected = "......rescued: location=nil, exc=RuntimeError\n\ndone\n";
     let output = run_example("rescue_mspec_flow_test.rb");
     assert_eq!(output, expected);
 }

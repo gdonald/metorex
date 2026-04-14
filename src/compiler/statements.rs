@@ -368,6 +368,7 @@ impl Compiler {
                 parameters,
                 body,
                 position,
+                singleton_class: _,
             } => {
                 let line = Self::pos_line(position);
                 let (func, upvalues) = self.compile_function_body(name, parameters, body)?;
