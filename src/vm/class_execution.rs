@@ -697,16 +697,60 @@ impl VirtualMachine {
         Ok(ControlFlow::Next)
     }
 
-    /// Execute include at statement level (outside class body - error).
+    /// Execute include at statement level (outside class body).
+    /// Top-level `include Mod` adds the module to Object's mixin chain
+    /// (Ruby semantics for `include` at the main scope).
+    /// Suppressed when running inside `load(path, true)` (wrapped load).
     pub(crate) fn execute_include(
         &mut self,
-        _module_name: &str,
+        module_name: &str,
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        Err(MetorexError::runtime_error(
-            "include can only be used inside a class definition",
-            position_to_location(position),
-        ))
+        if self.load_wrap_depth > 0 {
+            return Ok(ControlFlow::Next);
+        }
+        let module = self
+            .resolve_qualified_constant(module_name)
+            .or_else(|| self.environment().get(module_name))
+            .or_else(|| self.globals().get(module_name));
+        let module_rc = match module {
+            Some(Object::Module(m)) => m,
+            Some(_) => {
+                return Err(MetorexError::runtime_error(
+                    format!("'{}' is not a module", module_name),
+                    position_to_location(position),
+                ));
+            }
+            None => {
+                return Err(MetorexError::runtime_error(
+                    format!("Undefined module '{}'", module_name),
+                    position_to_location(position),
+                ));
+            }
+        };
+        if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+            object_class.add_mixin(module_rc);
+        }
+        Ok(ControlFlow::Next)
+    }
+
+    /// Resolve a `Foo::Bar::Baz` qualified constant by walking from the
+    /// outermost name through nested module/class constants.
+    fn resolve_qualified_constant(&self, qualified: &str) -> Option<Object> {
+        let mut parts = qualified.split("::");
+        let head = parts.next()?;
+        let mut current = self
+            .environment()
+            .get(head)
+            .or_else(|| self.globals().get(head))?;
+        for part in parts {
+            let class_rc = match &current {
+                Object::Class(c) | Object::Module(c) => Rc::clone(c),
+                _ => return None,
+            };
+            current = class_rc.get_class_var(part)?;
+        }
+        Some(current)
     }
 
     /// Execute extend at statement level (outside class body - error).

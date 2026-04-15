@@ -86,6 +86,11 @@ impl Class {
         self.mixins.borrow_mut().insert(0, module);
     }
 
+    /// Snapshot of the mixin chain (most-recently-included first).
+    pub fn mixin_chain(&self) -> Vec<Rc<Class>> {
+        self.mixins.borrow().clone()
+    }
+
     /// Look up a method by walking the inheritance chain (own → mixins → superclass).
     pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
         if let Some(method) = self.methods.borrow().get(name) {

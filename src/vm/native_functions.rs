@@ -72,6 +72,56 @@ impl VirtualMachine {
             )))),
             "binding_kernel" => Ok(Object::Nil),
             "top_level_to_s" => Ok(Object::string("main".to_string())),
+            "define_method" => {
+                use crate::object::Method;
+                use std::rc::Rc;
+                if arguments.len() != 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("define_method expects 1 argument, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let method_name = match &arguments[0] {
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "define_method expects a Symbol or String, got {}",
+                                other.type_name()
+                            ),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            "define_method requires a block".to_string(),
+                            crate::vm::utils::position_to_location(position),
+                        ));
+                    }
+                };
+                let params: Vec<String> = block.parameters.clone();
+                let body: Vec<crate::ast::Statement> = block.body.clone();
+                let mut method = Method::new(method_name.clone(), params, body);
+                method.captured_vars = Some(block.captured_vars().clone());
+                let method_rc = Rc::new(method);
+                // Install on current self if it's a Class/Module (e.g. inside class_eval),
+                // otherwise on global Object (top-level `define_method` semantics).
+                let target = match self.environment().get("self") {
+                    Some(Object::Class(c)) | Some(Object::Module(c)) => Some(c),
+                    _ => match self.globals().get("Object") {
+                        Some(Object::Class(c)) => Some(c),
+                        _ => None,
+                    },
+                };
+                if let Some(class) = target {
+                    class.define_method(method_name.clone(), method_rc);
+                }
+                Ok(Object::Symbol(Rc::new(method_name)))
+            }
             "rand" => {
                 use std::time::{SystemTime, UNIX_EPOCH};
                 let nanos = SystemTime::now()
@@ -514,12 +564,13 @@ impl VirtualMachine {
                 Ok(result.unwrap_or(Object::Nil))
             }
             "load" => {
-                if arguments.len() != 1 {
+                if arguments.is_empty() || arguments.len() > 2 {
                     return Err(MetorexError::runtime_error(
-                        format!("load() expects 1 argument, got {}", arguments.len()),
+                        format!("load() expects 1-2 arguments, got {}", arguments.len()),
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
+                let wrap = matches!(arguments.get(1), Some(Object::Bool(true)));
                 let path_str = match &arguments[0] {
                     Object::String(s) => s.as_ref().clone(),
                     _ => {
@@ -533,16 +584,18 @@ impl VirtualMachine {
                     }
                 };
                 let path = std::path::Path::new(&path_str);
+                if wrap {
+                    self.load_wrap_depth += 1;
+                }
                 // load always executes the file (no deduplication)
                 // Try the path directly first, then search $LOAD_PATH
-                if path.exists() {
+                let result = if path.exists() {
                     self.execute_file(path).map_err(|e| {
                         MetorexError::runtime_error(
                             format!("load('{}') — {}", path_str, e.message()),
                             crate::vm::utils::position_to_location(position),
                         )
-                    })?;
-                    Ok(Object::Bool(true))
+                    })
                 } else {
                     // Search $LOAD_PATH
                     let load_path = self.globals().get(":").unwrap_or(Object::Nil);
@@ -565,20 +618,24 @@ impl VirtualMachine {
                             break;
                         }
                     }
-                    let resolved = found.ok_or_else(|| {
-                        MetorexError::runtime_error(
+                    match found {
+                        Some(resolved) => self.execute_file(&resolved).map_err(|e| {
+                            MetorexError::runtime_error(
+                                format!("load('{}') — {}", path_str, e.message()),
+                                crate::vm::utils::position_to_location(position),
+                            )
+                        }),
+                        None => Err(MetorexError::runtime_error(
                             format!("cannot load such file -- {}", path_str),
                             crate::vm::utils::position_to_location(position),
-                        )
-                    })?;
-                    self.execute_file(&resolved).map_err(|e| {
-                        MetorexError::runtime_error(
-                            format!("load('{}') — {}", path_str, e.message()),
-                            crate::vm::utils::position_to_location(position),
-                        )
-                    })?;
-                    Ok(Object::Bool(true))
+                        )),
+                    }
+                };
+                if wrap {
+                    self.load_wrap_depth -= 1;
                 }
+                result?;
+                Ok(Object::Bool(true))
             }
             "exit" => {
                 let code = if arguments.is_empty() {

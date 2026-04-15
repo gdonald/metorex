@@ -1,6 +1,13 @@
 use super::run_example;
 
 #[test]
+fn test_metaprogramming_top_level_define_method_execution() {
+    let expected = "true\n:boing\nfalse\nfalse\n";
+    let output = run_example("metaprogramming/top_level_define_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_implicit_blocks_execution() {
     let expected = r#"Howdy, Alice!
 Hey, Bob!

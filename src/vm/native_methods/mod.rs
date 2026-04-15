@@ -235,10 +235,17 @@ impl VirtualMachine {
                     };
                 }
                 "ancestors" => {
-                    let mut chain = vec![Object::Class(Rc::clone(class_rc))];
+                    let mut chain: Vec<Object> = Vec::new();
+                    chain.push(Object::Class(Rc::clone(class_rc)));
+                    for mixin in class_rc.mixin_chain() {
+                        chain.push(Object::Module(mixin));
+                    }
                     let mut current = class_rc.superclass();
                     while let Some(parent) = current {
                         chain.push(Object::Class(Rc::clone(&parent)));
+                        for mixin in parent.mixin_chain() {
+                            chain.push(Object::Module(mixin));
+                        }
                         current = parent.superclass();
                     }
                     return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(chain)))));

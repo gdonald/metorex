@@ -1,6 +1,13 @@
 use super::run_example;
 
 #[test]
+fn test_oop_top_level_include_execution() {
+    let expected = "true\nhi from greeter\n";
+    let output = run_example("oop/top_level_include.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_oop_super_basic_execution() {
     let expected = "Buddy\nGolden Retriever\nSome sound -> Woof!\nI am an animal named Buddy\n";
     let output = run_example("oop/super_basic.rb");

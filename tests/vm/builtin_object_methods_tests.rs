@@ -353,7 +353,7 @@ class Dog < Animal
 end
 d = Dog.new
 m = d.methods
-m.include?("speak")
+m.include?(:speak)
 "#);
     assert_eq!(result, Some(Object::Bool(true)));
 }

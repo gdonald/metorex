@@ -29,6 +29,7 @@ impl Object {
                 (a - b).abs() < 1e-9
             }
             (Object::String(a), Object::String(b)) => a == b,
+            (Object::Symbol(a), Object::Symbol(b)) => a == b,
             (Object::Array(a), Object::Array(b)) => {
                 let arr_a = a.borrow();
                 let arr_b = b.borrow();

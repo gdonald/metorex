@@ -340,6 +340,12 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("sleep", Object::NativeFunction("sleep".to_string()));
     // Top-level `to_s` — Ruby's top-level self is "main", so bare to_s returns "main"
     globals.set("to_s", Object::NativeFunction("top_level_to_s".to_string()));
+    // Top-level `define_method` — installs a method on Object (or current
+    // class when invoked inside a class_eval / class body).
+    globals.set(
+        "define_method",
+        Object::NativeFunction("define_method".to_string()),
+    );
 }
 
 /// Seed the environment with values from the global registry.

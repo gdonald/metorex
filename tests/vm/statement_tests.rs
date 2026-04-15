@@ -387,14 +387,15 @@ fn attr_accessor_outside_class_error() {
 
 #[test]
 fn include_outside_class_error() {
+    // Top-level `include Mod` adds the module to Object's mixin chain,
+    // matching Ruby's main-scope `include` semantics. An undefined constant
+    // still raises.
     let err = run_err(
         r#"
-module M
-end
-include M
+include UndefinedNopeNope
 "#,
     );
-    assert!(err.contains("include") || err.contains("class"));
+    assert!(err.contains("Undefined module") || err.contains("UndefinedNopeNope"));
 }
 
 #[test]

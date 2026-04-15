@@ -267,7 +267,7 @@ class Object
     42
   end
 end
-Object.new.methods.include?("custom_xyz")
+Object.new.methods.include?(:custom_xyz)
 "#);
     assert_eq!(result, Some(Object::Bool(true)));
 }

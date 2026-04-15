@@ -604,9 +604,12 @@ impl VirtualMachine {
                 }
                 names.sort();
                 names.dedup();
-                let method_strings: Vec<Object> = names.into_iter().map(Object::string).collect();
+                let method_symbols: Vec<Object> = names
+                    .into_iter()
+                    .map(|n| Object::Symbol(std::rc::Rc::new(n)))
+                    .collect();
                 Ok(Some(Object::Array(std::rc::Rc::new(
-                    std::cell::RefCell::new(method_strings),
+                    std::cell::RefCell::new(method_symbols),
                 ))))
             }
             "eql?" => {

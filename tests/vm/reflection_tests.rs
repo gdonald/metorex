@@ -91,8 +91,8 @@ Foo.new.methods
 "#);
     if let Some(Object::Array(arr)) = result {
         let names: Vec<String> = arr.borrow().iter().map(|o| o.to_string()).collect();
-        assert!(names.contains(&"bar".to_string()));
-        assert!(names.contains(&"baz".to_string()));
+        assert!(names.contains(&":bar".to_string()));
+        assert!(names.contains(&":baz".to_string()));
     } else {
         panic!("Expected Array");
     }
@@ -115,8 +115,8 @@ Child.new.methods
 "#);
     if let Some(Object::Array(arr)) = result {
         let names: Vec<String> = arr.borrow().iter().map(|o| o.to_string()).collect();
-        assert!(names.contains(&"greet".to_string()));
-        assert!(names.contains(&"wave".to_string()));
+        assert!(names.contains(&":greet".to_string()));
+        assert!(names.contains(&":wave".to_string()));
     } else {
         panic!("Expected Array");
     }

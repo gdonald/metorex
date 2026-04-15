@@ -451,6 +451,8 @@ impl Parser {
                 | TokenKind::MagicLine
                 | TokenKind::Ampersand
                 | TokenKind::Colon
+                | TokenKind::Include
+                | TokenKind::Extend
         );
 
         if !can_be_arg {
@@ -549,6 +551,8 @@ impl Parser {
                 | TokenKind::MagicLine
                 | TokenKind::Ampersand
                 | TokenKind::Colon
+                | TokenKind::Include
+                | TokenKind::Extend
         );
 
         if !can_be_arg {

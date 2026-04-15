@@ -32,6 +32,11 @@ impl Parser {
 
             // ── Identifiers and variables ───────────────────────────────────
             TokenKind::Ident(name) => Ok(literals::identifier(name, position)),
+            // `include`/`extend` as a method call in expression context
+            // (e.g. `should include(Foo)`). Statement-level `include Foo`
+            // is dispatched before reaching primary parsing.
+            TokenKind::Include => Ok(literals::identifier("include".to_string(), position)),
+            TokenKind::Extend => Ok(literals::identifier("extend".to_string(), position)),
             TokenKind::InstanceVar(name) => Ok(literals::instance_variable(name, position)),
             TokenKind::ClassVar(name) => Ok(literals::class_variable(name, position)),
             TokenKind::GlobalVar(name) => Ok(literals::global_variable(name, position)),

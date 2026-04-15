@@ -32,6 +32,10 @@ pub struct VirtualMachine {
     /// Trailing block passed to the current call (e.g., `foo() do |x| ... end`).
     /// Set before invoke_method/invoke_callable; taken at method body entry.
     pub(crate) pending_block: Option<Object>,
+    /// Depth of nested wrapped `load(path, true)` calls. While >0, top-level
+    /// `include` is suppressed (Ruby wraps the loaded scope in an anonymous
+    /// module so includes don't pollute Object).
+    pub(crate) load_wrap_depth: u32,
 }
 
 impl VirtualMachine {
@@ -61,6 +65,7 @@ impl VirtualMachine {
             current_file: None,
             loaded_files: HashSet::new(),
             pending_block: None,
+            load_wrap_depth: 0,
         }
     }
 

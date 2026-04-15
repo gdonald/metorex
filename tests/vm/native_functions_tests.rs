@@ -210,7 +210,7 @@ fn load_missing_file_errors() {
 #[test]
 fn load_wrong_arg_count_errors() {
     let err = run_err("load()");
-    assert!(err.contains("1 argument"));
+    assert!(err.contains("1-2 arguments"));
 }
 
 #[test]
@@ -221,8 +221,8 @@ fn load_non_string_arg_errors() {
 
 #[test]
 fn load_too_many_args_errors() {
-    let err = run_err(r#"load("a", "b")"#);
-    assert!(err.contains("1 argument"));
+    let err = run_err(r#"load("a", "b", "c")"#);
+    assert!(err.contains("1-2 arguments"));
 }
 
 #[test]
