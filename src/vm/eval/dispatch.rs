@@ -200,6 +200,11 @@ impl VirtualMachine {
                 if let Object::Block(block) = &collection {
                     return block.call(self, vec![key], *position);
                 }
+                // `native_fn [args]` — treat as a call with the bracketed array as a single argument.
+                // This matches Ruby's `private [:foo, :bar]` which passes an Array to `private`.
+                if let Object::NativeFunction(name) = &collection {
+                    return self.call_native_function(&name.clone(), vec![key], *position);
+                }
                 // Check for user-defined [] method on instances
                 if let Object::Instance(instance_rc) = &collection {
                     let class = Rc::clone(&instance_rc.borrow().class);

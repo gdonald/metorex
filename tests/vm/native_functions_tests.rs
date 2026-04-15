@@ -280,9 +280,19 @@ fn public_class_method_stub_is_noop() {
 }
 
 #[test]
-fn private_with_argument_still_noop() {
-    // `private :foo` should not error even though it's a stub.
-    assert_eq!(run("private(:foo)"), Some(Object::Nil));
+fn private_with_defined_method_returns_symbol() {
+    // `private :foo` after defining `foo` returns :foo and marks it private on Object.
+    assert_eq!(
+        run("def foo; end\nprivate(:foo)"),
+        Some(Object::Symbol(std::rc::Rc::new("foo".to_string())))
+    );
+}
+
+#[test]
+fn private_with_undefined_method_raises_name_error() {
+    // `private :foo` without a definition raises NameError (Ruby semantics).
+    let err = run_err("private(:foo)");
+    assert!(err.contains("NameError") || err.contains("undefined method 'foo'"));
 }
 
 // ── require() error paths ──────────────────────────────────────────────────

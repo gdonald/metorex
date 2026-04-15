@@ -228,6 +228,29 @@ impl VirtualMachine {
                 "name" => {
                     return Ok(Some(Object::String(Rc::new(class_rc.name().to_string()))));
                 }
+                "private" | "public" => {
+                    return self
+                        .apply_class_visibility_modifier(class_rc, method_name, arguments, position)
+                        .map(Some);
+                }
+                "private_methods" => {
+                    let include_super = !matches!(arguments.first(), Some(Object::Bool(false)));
+                    let mut names: Vec<String> = class_rc.private_method_names();
+                    if include_super {
+                        let mut current = class_rc.superclass();
+                        while let Some(parent) = current {
+                            names.extend(parent.private_method_names());
+                            current = parent.superclass();
+                        }
+                    }
+                    names.sort();
+                    names.dedup();
+                    let syms: Vec<Object> = names
+                        .into_iter()
+                        .map(|n| Object::Symbol(Rc::new(n)))
+                        .collect();
+                    return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(syms)))));
+                }
                 "superclass" => {
                     return match class_rc.superclass() {
                         Some(parent) => Ok(Some(Object::Class(parent))),
@@ -952,6 +975,72 @@ impl VirtualMachine {
             "Set" => self.call_set_method(receiver, method_name, arguments, position),
             "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
             _ => Ok(None),
+        }
+    }
+
+    /// Apply `private` / `public` visibility modifier as a Class-level method.
+    pub(crate) fn apply_class_visibility_modifier(
+        &mut self,
+        class_rc: &Rc<crate::class::Class>,
+        modifier: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if arguments.is_empty() {
+            return Ok(Object::Nil);
+        }
+        let flat: Vec<Object> = if arguments.len() == 1 {
+            if let Object::Array(arr) = &arguments[0] {
+                arr.borrow().clone()
+            } else {
+                arguments.to_vec()
+            }
+        } else {
+            arguments.to_vec()
+        };
+        let mut names: Vec<String> = Vec::with_capacity(flat.len());
+        for arg in &flat {
+            let n = match arg {
+                Object::Symbol(s) => s.as_str().to_string(),
+                Object::String(s) => s.as_str().to_string(),
+                _ => {
+                    let exc = Object::exception(
+                        "TypeError",
+                        format!("{} is not a symbol nor a string", arg),
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: format!("{} is not a symbol nor a string", arg),
+                    });
+                }
+            };
+            if class_rc.find_method(&n).is_none() {
+                let msg = format!("undefined method '{}' for class '{}'", n, class_rc.name());
+                let exc = Object::exception("NameError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            names.push(n);
+        }
+        for n in &names {
+            if modifier == "private" {
+                class_rc.set_method_private(n.clone());
+            } else {
+                class_rc.set_method_public(n);
+            }
+        }
+        match flat.len() {
+            1 => Ok(Object::Symbol(Rc::new(names[0].clone()))),
+            _ => Ok(Object::Array(Rc::new(std::cell::RefCell::new(
+                names
+                    .into_iter()
+                    .map(|n| Object::Symbol(Rc::new(n)))
+                    .collect(),
+            )))),
         }
     }
 }

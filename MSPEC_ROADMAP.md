@@ -162,7 +162,7 @@ Parser fixes during Phase 4 work:
 - [ ] 4.5. core/main
   - [x] 4.5.1. core/main/define_method_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.5.2. core/main/include_spec — 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
-  - [ ] 4.5.3. core/main/private_spec
+  - [x] 4.5.3. core/main/private_spec — 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.5.4. core/main/public_spec
   - [ ] 4.5.5. core/main/ruby2_keywords_spec
   - [x] 4.5.6. core/main/to_s_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors

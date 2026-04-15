@@ -16,9 +16,11 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         match name {
-            "private"
-            | "public"
-            | "protected"
+            "private" | "public" => {
+                self.pending_block.take();
+                self.apply_visibility_modifier(name, arguments, position)
+            }
+            "protected"
             | "module_function"
             | "private_class_method"
             | "public_class_method"
@@ -685,6 +687,83 @@ impl VirtualMachine {
                 Ok(format!("{}", obj))
             }
             _ => Ok(format!("{}", obj)),
+        }
+    }
+
+    /// Apply `private` / `public` visibility modifier to top-level methods.
+    /// At top level, method definitions target the Object class.
+    pub(crate) fn apply_visibility_modifier(
+        &mut self,
+        modifier: &str,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        // No arguments: no-op (in Ruby this toggles subsequent-definition visibility).
+        if arguments.is_empty() {
+            return Ok(Object::Nil);
+        }
+
+        // A single array argument is unpacked.
+        let flat: Vec<Object> = if arguments.len() == 1 {
+            if let Object::Array(arr) = &arguments[0] {
+                arr.borrow().clone()
+            } else {
+                arguments.clone()
+            }
+        } else {
+            arguments.clone()
+        };
+
+        let Some(Object::Class(object_class)) = self.globals().get("Object") else {
+            return Ok(Object::Nil);
+        };
+
+        let mut names: Vec<String> = Vec::with_capacity(flat.len());
+        for arg in &flat {
+            let n = match arg {
+                Object::Symbol(s) => s.as_str().to_string(),
+                Object::String(s) => s.as_str().to_string(),
+                _ => {
+                    let exc = Object::exception(
+                        "TypeError",
+                        format!("{} is not a symbol nor a string", arg),
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: crate::vm::utils::position_to_location(position),
+                        message: format!("{} is not a symbol nor a string", arg),
+                    });
+                }
+            };
+            if object_class.find_method(&n).is_none() {
+                let msg = format!("undefined method '{}' for class 'Object'", n);
+                let exc = Object::exception("NameError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: crate::vm::utils::position_to_location(position),
+                    message: msg,
+                });
+            }
+            names.push(n);
+        }
+
+        for n in &names {
+            if modifier == "private" {
+                object_class.set_method_private(n.clone());
+            } else {
+                object_class.set_method_public(n);
+            }
+        }
+
+        // Return first symbol argument (Ruby returns single sym or array for multi).
+        match flat.len() {
+            1 => Ok(Object::Symbol(std::rc::Rc::new(names[0].clone()))),
+            _ => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                names
+                    .into_iter()
+                    .map(|n| Object::Symbol(std::rc::Rc::new(n)))
+                    .collect(),
+            )))),
         }
     }
 }

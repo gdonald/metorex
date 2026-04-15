@@ -16,6 +16,8 @@ pub struct Class {
     class_variables: RefCell<HashMap<String, crate::object::Object>>,
     /// Included modules, in reverse inclusion order (last included = first searched).
     mixins: RefCell<Vec<Rc<Class>>>,
+    /// Names of methods whose visibility has been set to private.
+    private_method_names: RefCell<HashSet<String>>,
 }
 
 impl Class {
@@ -28,7 +30,35 @@ impl Class {
             instance_variables: RefCell::new(HashSet::new()),
             class_variables: RefCell::new(HashMap::new()),
             mixins: RefCell::new(Vec::new()),
+            private_method_names: RefCell::new(HashSet::new()),
         }
+    }
+
+    /// Mark a method name as private on this class.
+    pub fn set_method_private(&self, name: impl Into<String>) {
+        self.private_method_names.borrow_mut().insert(name.into());
+    }
+
+    /// Mark a method name as public on this class (removes private flag).
+    pub fn set_method_public(&self, name: &str) {
+        self.private_method_names.borrow_mut().remove(name);
+    }
+
+    /// Check if a method is marked private on this class (own table only).
+    pub fn is_method_private(&self, name: &str) -> bool {
+        self.private_method_names.borrow().contains(name)
+    }
+
+    /// Return the list of private method names defined directly on this class.
+    pub fn private_method_names(&self) -> Vec<String> {
+        let mut names = self
+            .private_method_names
+            .borrow()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        names.sort();
+        names
     }
 
     /// Return the class name.
@@ -154,6 +184,7 @@ impl Clone for Class {
             instance_variables: RefCell::new(self.instance_variables.borrow().clone()),
             class_variables: RefCell::new(self.class_variables.borrow().clone()),
             mixins: RefCell::new(self.mixins.borrow().clone()),
+            private_method_names: RefCell::new(self.private_method_names.borrow().clone()),
         }
     }
 }
