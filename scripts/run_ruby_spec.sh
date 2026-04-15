@@ -26,7 +26,7 @@ fi
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/include_spec.rb"
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/private_spec.rb"
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/public_spec.rb"
-# "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/ruby2_keywords_spec.rb"
+"$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/ruby2_keywords_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/using_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/allocate_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/attached_object_spec.rb"

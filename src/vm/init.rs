@@ -54,15 +54,22 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("STDERR", Object::String(Rc::new("STDERR".to_string())));
     globals.set("STDIN", Object::String(Rc::new("STDIN".to_string())));
 
-    // TOPLEVEL_BINDING — used by eval('code', TOPLEVEL_BINDING) at top level
-    globals.set(
-        "TOPLEVEL_BINDING",
-        Object::Binding(Rc::new(Binding::new(HashMap::new()))),
-    );
-
     // Object — root class that mspec reopens to inject describe/it/before/after
     let object = Rc::new(Class::new("Object", None));
+    // Ruby's Object has `ruby2_keywords` as a private method; main inherits from Object.
+    object.set_method_private("ruby2_keywords");
     globals.set("Object", Object::Class(Rc::clone(&object)));
+
+    // TOPLEVEL_BINDING — used by eval('code', TOPLEVEL_BINDING) at top level.
+    // Its receiver is the top-level `main` object (an Object instance in Ruby; we
+    // reuse the Object class here since private_methods dispatch works on Class).
+    globals.set(
+        "TOPLEVEL_BINDING",
+        Object::Binding(Rc::new(Binding::with_receiver(
+            HashMap::new(),
+            Object::Class(Rc::clone(&object)),
+        ))),
+    );
 
     // TrueClass, FalseClass, NilClass — can't be instantiated
     let true_class = Rc::new(Class::new("TrueClass", Some(Rc::clone(&object))));

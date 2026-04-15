@@ -11,12 +11,28 @@ use super::Object;
 pub struct Binding {
     /// Captured variables from the binding's scope
     pub variables: HashMap<String, Rc<RefCell<Object>>>,
+    /// Receiver (self) at the point the binding was captured
+    pub receiver: Option<Object>,
 }
 
 impl Binding {
     /// Create a new binding with the given variables
     pub fn new(variables: HashMap<String, Rc<RefCell<Object>>>) -> Self {
-        Self { variables }
+        Self {
+            variables,
+            receiver: None,
+        }
+    }
+
+    /// Create a new binding with a receiver.
+    pub fn with_receiver(
+        variables: HashMap<String, Rc<RefCell<Object>>>,
+        receiver: Object,
+    ) -> Self {
+        Self {
+            variables,
+            receiver: Some(receiver),
+        }
     }
 
     /// Get a variable from the binding

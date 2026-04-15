@@ -37,6 +37,13 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        // Special handling for Binding objects
+        if let Object::Binding(binding) = receiver
+            && method_name == "receiver"
+        {
+            return Ok(Some(binding.receiver.clone().unwrap_or(Object::Nil)));
+        }
+
         // Special handling for Block/Lambda objects
         if let Object::Block(block) = receiver {
             match method_name {
