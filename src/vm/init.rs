@@ -7,8 +7,9 @@ use super::GlobalRegistry;
 use crate::builtin_classes::{self, BuiltinClasses};
 use crate::class::Class;
 use crate::environment::Environment;
-use crate::object::Object;
+use crate::object::{Binding, Object};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Initialize built-in methods for core classes.
@@ -52,6 +53,12 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("STDOUT", Object::String(Rc::new("STDOUT".to_string())));
     globals.set("STDERR", Object::String(Rc::new("STDERR".to_string())));
     globals.set("STDIN", Object::String(Rc::new("STDIN".to_string())));
+
+    // TOPLEVEL_BINDING — used by eval('code', TOPLEVEL_BINDING) at top level
+    globals.set(
+        "TOPLEVEL_BINDING",
+        Object::Binding(Rc::new(Binding::new(HashMap::new()))),
+    );
 
     // Object — root class that mspec reopens to inject describe/it/before/after
     let object = Rc::new(Class::new("Object", None));
@@ -331,6 +338,8 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("rand", Object::NativeFunction("rand".to_string()));
     globals.set("srand", Object::NativeFunction("srand".to_string()));
     globals.set("sleep", Object::NativeFunction("sleep".to_string()));
+    // Top-level `to_s` — Ruby's top-level self is "main", so bare to_s returns "main"
+    globals.set("to_s", Object::NativeFunction("top_level_to_s".to_string()));
 }
 
 /// Seed the environment with values from the global registry.

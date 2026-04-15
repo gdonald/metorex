@@ -54,6 +54,27 @@ impl VirtualMachine {
                 array_rc.borrow_mut().clear();
                 Ok(Some(receiver.clone()))
             }
+            "delete" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let target = &arguments[0];
+                let mut arr = array_rc.borrow_mut();
+                let before = arr.len();
+                arr.retain(|obj| !obj.equals(target));
+                let removed = arr.len() != before;
+                drop(arr);
+                if removed {
+                    Ok(Some(target.clone()))
+                } else {
+                    Ok(Some(Object::Nil))
+                }
+            }
             "push" | "append" | "<<" => {
                 if arguments.is_empty() {
                     return Ok(Some(receiver.clone()));

@@ -29,6 +29,9 @@ use std::str::Chars;
 pub struct Lexer<'a> {
     /// Peekable iterator over the characters
     pub(super) chars: Peekable<Chars<'a>>,
+    /// Characters injected back into the stream (consumed before `chars`).
+    /// Stored in reverse order so `pop` yields the next char.
+    pub(super) prepend: Vec<char>,
     /// Current position in the source
     pub(super) line: usize,
     pub(super) column: usize,
@@ -42,6 +45,7 @@ impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             chars: source.chars().peekable(),
+            prepend: Vec::new(),
             line: 1,
             column: 1,
             offset: 0,
@@ -53,6 +57,7 @@ impl<'a> Lexer<'a> {
     pub fn peek_token(&mut self) -> Token {
         // Save current state
         let saved_chars = self.chars.clone();
+        let saved_prepend = self.prepend.clone();
         let saved_line = self.line;
         let saved_column = self.column;
         let saved_offset = self.offset;
@@ -63,6 +68,7 @@ impl<'a> Lexer<'a> {
 
         // Restore state
         self.chars = saved_chars;
+        self.prepend = saved_prepend;
         self.line = saved_line;
         self.column = saved_column;
         self.offset = saved_offset;

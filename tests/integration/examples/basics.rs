@@ -1,6 +1,20 @@
 use super::run_example;
 
 #[test]
+fn test_basics_heredoc_with_args_execution() {
+    let expected = "first line\nsecond line\n|second\nhello\n world\n";
+    let output = run_example("basics/heredoc_with_args.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_array_delete_execution() {
+    let expected = "2\n3\ntrue\n1\n2\nfalse\n";
+    let output = run_example("basics/array_delete.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_basics_greeting_line_execution() {
     let output = run_example("basics/greeting_line.rb");
     assert_eq!(output, "Hello, Ada!\n");

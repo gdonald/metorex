@@ -200,7 +200,10 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         match (left, right) {
-            (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a + b)),
+            (Object::Int(a), Object::Int(b)) => match a.checked_add(b) {
+                Some(v) => Ok(Object::Int(v)),
+                None => Ok(Object::Float((a as f64) + (b as f64))),
+            },
             (Object::Float(a), Object::Float(b)) => Ok(Object::Float(a + b)),
             (Object::Int(a), Object::Float(b)) => Ok(Object::Float((a as f64) + b)),
             (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + (b as f64))),
@@ -228,8 +231,14 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         match (left, right) {
             (Object::Int(a), Object::Int(b)) => match op {
-                BinaryOp::Subtract => Ok(Object::Int(a - b)),
-                BinaryOp::Multiply => Ok(Object::Int(a * b)),
+                BinaryOp::Subtract => match a.checked_sub(b) {
+                    Some(v) => Ok(Object::Int(v)),
+                    None => Ok(Object::Float((a as f64) - (b as f64))),
+                },
+                BinaryOp::Multiply => match a.checked_mul(b) {
+                    Some(v) => Ok(Object::Int(v)),
+                    None => Ok(Object::Float((a as f64) * (b as f64))),
+                },
                 BinaryOp::Divide => {
                     if b == 0 {
                         Err(divide_by_zero_error(position))

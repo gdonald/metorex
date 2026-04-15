@@ -1,6 +1,13 @@
 use super::run_example;
 
 #[test]
+fn test_toplevel_binding_execution() {
+    let expected = "false\nmain\nmain\nmain\n";
+    let output = run_example("globals/toplevel_binding.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_special_globals_execution() {
     let expected = "Array\n0\n1\n1\nString\n\n\nNilClass\nFalseClass\n";
     let output = run_example("globals/special_globals.rb");

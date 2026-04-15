@@ -23,6 +23,12 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         if let Some(val) = self.environment().get(name) {
+            // Bare `to_s` at top-level must return "main" (Ruby's top-level self).
+            if let Object::NativeFunction(fn_name) = &val
+                && fn_name == "top_level_to_s"
+            {
+                return self.call_native_function(fn_name, vec![], position);
+            }
             return Ok(val);
         }
 

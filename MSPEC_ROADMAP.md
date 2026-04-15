@@ -160,9 +160,11 @@ Parser fixes during Phase 4 work:
 
 - [x] 4.4. core/comparable — 7 files, 54 examples, 103 expectations, 0 failures, 0 errors
 - [ ] 4.5. core/main
+  - [x] 4.5.1. core/main/to_s_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
 - [ ] 4.6. core/class
 - [ ] 4.7. core/module
 - [ ] 4.8. core/kernel
+  - [x] 4.8.1. core/kernel/match_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
 - [ ] 4.9. core/basicobject
 
 ### Exceptions and Signals

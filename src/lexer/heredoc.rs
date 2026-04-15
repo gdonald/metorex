@@ -34,6 +34,7 @@ impl<'a> Lexer<'a> {
         // Save state so we can roll back if the next characters don't form
         // a valid heredoc terminator.
         let saved_chars = self.chars.clone();
+        let saved_prepend = self.prepend.clone();
         let saved_line = self.line;
         let saved_column = self.column;
         let saved_offset = self.offset;
@@ -71,21 +72,25 @@ impl<'a> Lexer<'a> {
             // Not actually a heredoc — restore the state and let the caller
             // fall back to the shovel operator.
             self.chars = saved_chars;
+            self.prepend = saved_prepend;
             self.line = saved_line;
             self.column = saved_column;
             self.offset = saved_offset;
             return None;
         }
 
-        // Skip everything up to and including the next newline. Anything on
-        // the same line after the heredoc opener is silently dropped — this is
-        // a known limitation; in idiomatic Ruby the opener is the last token
-        // on its line.
+        // Capture anything on the same line after the heredoc opener. These
+        // characters (e.g. `, TOPLEVEL_BINDING)` in `eval(<<-EOS, TOPLEVEL_BINDING)`)
+        // need to be re-lexed as tokens AFTER the heredoc string is emitted,
+        // then followed by the newline that originally terminated the line.
+        let mut rest_of_line = String::new();
         while let Some(ch) = self.peek() {
-            self.advance();
             if ch == '\n' {
+                self.advance();
                 break;
             }
+            rest_of_line.push(ch);
+            self.advance();
         }
 
         // Read body lines until a line that (after optional leading
@@ -156,6 +161,18 @@ impl<'a> Lexer<'a> {
         } else {
             format!("{}\n", body)
         };
+
+        // Inject the captured rest-of-line (followed by a newline) so those
+        // tokens are lexed next, before the scanner proceeds past the
+        // terminator line.
+        if !rest_of_line.is_empty() {
+            let mut injection = rest_of_line;
+            injection.push('\n');
+            // `prepend` is LIFO (pop yields last), so push chars in reverse.
+            for ch in injection.chars().rev() {
+                self.prepend.push(ch);
+            }
+        }
 
         Some(TokenKind::String(body))
     }

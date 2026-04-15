@@ -71,6 +71,7 @@ impl VirtualMachine {
                 Vec::new(),
             )))),
             "binding_kernel" => Ok(Object::Nil),
+            "top_level_to_s" => Ok(Object::string("main".to_string())),
             "rand" => {
                 use std::time::{SystemTime, UNIX_EPOCH};
                 let nanos = SystemTime::now()
@@ -475,9 +476,9 @@ impl VirtualMachine {
                 Ok(ast_methods::serialize_statements(&statements))
             }
             "eval" => {
-                if arguments.len() != 1 {
+                if arguments.is_empty() || arguments.len() > 4 {
                     return Err(MetorexError::runtime_error(
-                        format!("eval() expects 1 argument, got {}", arguments.len()),
+                        format!("eval() expects 1-4 arguments, got {}", arguments.len()),
                         crate::vm::utils::position_to_location(position),
                     ));
                 }

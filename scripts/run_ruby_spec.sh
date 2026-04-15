@@ -21,9 +21,11 @@ fi
 
 # 4.4 - 4.9: Core Classes and Modules
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/comparable"
+"$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/to_s_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/module"
+"$MSPEC" -t "$METOREX" "$SPEC_DIR/core/kernel/match_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/kernel"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/basicobject"
 

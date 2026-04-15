@@ -17,6 +17,7 @@ impl<'a> Lexer<'a> {
                 // Need to peek ahead to see if this is a float or a range/method call
                 // Save current state to peek ahead
                 let saved_chars = self.chars.clone();
+                let saved_prepend = self.prepend.clone();
                 let saved_line = self.line;
                 let saved_column = self.column;
                 let saved_offset = self.offset;
@@ -26,6 +27,7 @@ impl<'a> Lexer<'a> {
 
                 // Restore state
                 self.chars = saved_chars;
+                self.prepend = saved_prepend;
                 self.line = saved_line;
                 self.column = saved_column;
                 self.offset = saved_offset;

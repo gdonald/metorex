@@ -10,23 +10,28 @@ impl<'a> Lexer<'a> {
 
     /// Advance to the next character and return it
     pub(super) fn advance(&mut self) -> Option<char> {
-        if let Some(ch) = self.chars.next() {
-            self.offset += ch.len_utf8();
-            if ch == '\n' {
-                self.line += 1;
-                self.column = 1;
-            } else {
-                self.column += 1;
-            }
-            Some(ch)
+        let ch = if let Some(c) = self.prepend.pop() {
+            c
         } else {
-            None
+            self.chars.next()?
+        };
+        self.offset += ch.len_utf8();
+        if ch == '\n' {
+            self.line += 1;
+            self.column = 1;
+        } else {
+            self.column += 1;
         }
+        Some(ch)
     }
 
     /// Peek at the next character without consuming it
     pub(super) fn peek(&mut self) -> Option<char> {
-        self.chars.peek().copied()
+        if let Some(&c) = self.prepend.last() {
+            Some(c)
+        } else {
+            self.chars.peek().copied()
+        }
     }
 
     /// Skip whitespace characters (spaces and tabs, but not newlines).
@@ -43,6 +48,7 @@ impl<'a> Lexer<'a> {
                     // (line continuation). Otherwise leave the backslash
                     // alone for the regular dispatch.
                     let saved_chars = self.chars.clone();
+                    let saved_prepend = self.prepend.clone();
                     let saved_line = self.line;
                     let saved_column = self.column;
                     let saved_offset = self.offset;
@@ -52,6 +58,7 @@ impl<'a> Lexer<'a> {
                     } else {
                         // Roll back: not a line continuation.
                         self.chars = saved_chars;
+                        self.prepend = saved_prepend;
                         self.line = saved_line;
                         self.column = saved_column;
                         self.offset = saved_offset;
