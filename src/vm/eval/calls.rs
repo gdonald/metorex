@@ -51,6 +51,21 @@ impl VirtualMachine {
             }
         }
 
+        // `using` is a special native whose identifier resolution auto-invokes
+        // with zero args; when args are present we must bypass that and call
+        // directly with the evaluated args.
+        if let Expression::Identifier { name, .. } = callee
+            && name == "using"
+            && let Some(Object::NativeFunction(fn_name)) = self.environment().get("using")
+            && fn_name == "using"
+        {
+            let evaluated_args = self.evaluate_arguments(arguments)?;
+            if let Some(block_expr) = trailing_block {
+                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+            }
+            return self.call_native_function("using", evaluated_args, position);
+        }
+
         let callable = self.evaluate_expression(callee);
         let evaluated_args = self.evaluate_arguments(arguments)?;
         if let Some(block_expr) = trailing_block {

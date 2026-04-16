@@ -54,8 +54,27 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                // Execute function body without self
-                self.execute_function_body(&method, arguments)
+                // Execute function body without self.
+                self.user_def_nesting += 1;
+                let has_captured = !method.captured_refinements.is_empty();
+                if has_captured {
+                    self.refinement_scopes.push(
+                        method
+                            .captured_refinements
+                            .iter()
+                            .map(|(m, cs)| crate::vm::core::RefinementEntry {
+                                module: Rc::clone(m),
+                                classes: cs.iter().cloned().collect(),
+                            })
+                            .collect(),
+                    );
+                }
+                let result = self.execute_function_body(&method, arguments);
+                if has_captured {
+                    self.refinement_scopes.pop();
+                }
+                self.user_def_nesting = self.user_def_nesting.saturating_sub(1);
+                result
             }
             Object::Class(class) => self.invoke_class(class, arguments, position),
             Object::NativeFunction(name) => self.call_native_function(&name, arguments, position),

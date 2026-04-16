@@ -60,6 +60,12 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     object.set_method_private("ruby2_keywords");
     globals.set("Object", Object::Class(Rc::clone(&object)));
 
+    // Class and Module — used by `Class.new { ... }` and `Module.new { ... }`.
+    let module_class = Rc::new(Class::new("Module", Some(Rc::clone(&object))));
+    globals.set("Module", Object::Class(Rc::clone(&module_class)));
+    let class_class = Rc::new(Class::new("Class", Some(Rc::clone(&module_class))));
+    globals.set("Class", Object::Class(class_class));
+
     // TOPLEVEL_BINDING — used by eval('code', TOPLEVEL_BINDING) at top level.
     // Its receiver is the top-level `main` object (an Object instance in Ruby; we
     // reuse the Object class here since private_methods dispatch works on Class).
@@ -301,6 +307,9 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("parse", Object::NativeFunction("parse".to_string()));
     globals.set("exit", Object::NativeFunction("exit".to_string()));
     globals.set("load", Object::NativeFunction("load".to_string()));
+    // Refinements — `using` activates a refinement module (stub for now).
+    globals.set("using", Object::NativeFunction("using".to_string()));
+
     // Visibility modifiers — stubs (no access control enforced).
     globals.set("private", Object::NativeFunction("private".to_string()));
     globals.set("public", Object::NativeFunction("public".to_string()));

@@ -8,6 +8,13 @@ fn test_metaprogramming_top_level_define_method_execution() {
 }
 
 #[test]
+fn test_metaprogramming_anonymous_class_execution() {
+    let expected = "foo\nfoo\nbaz\nObject\n";
+    let output = run_example("metaprogramming/anonymous_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_implicit_blocks_execution() {
     let expected = r#"Howdy, Alice!
 Hey, Bob!

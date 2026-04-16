@@ -62,9 +62,83 @@ impl VirtualMachine {
             Rc::new(Class::new(name, superclass))
         };
 
-        // Process the class body to extract methods and instance variable declarations
+        self.apply_class_body(&class, body, position)?;
+
+        // Register the class in the environment and globals
+        let class_obj = Object::Class(class);
+        self.environment_mut()
+            .define(name.to_string(), class_obj.clone());
+        self.globals_mut().set(name.to_string(), class_obj);
+
+        Ok(ControlFlow::Next)
+    }
+
+    /// Evaluate a block with `self` bound to the given class/module, executing
+    /// the block's body as if it were a class/module definition body.
+    pub(crate) fn apply_block_as_class_body(
+        &mut self,
+        class: &Rc<Class>,
+        block: &crate::object::BlockStatement,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        self.apply_block_as_class_body_with_self(
+            class,
+            block,
+            position,
+            Object::Class(Rc::clone(class)),
+        )
+    }
+
+    /// Same as `apply_block_as_class_body` but explicit about the `self` kind
+    /// (use `Object::Module(...)` when the receiver should behave as a module).
+    pub(crate) fn apply_block_as_class_body_with_self(
+        &mut self,
+        class: &Rc<Class>,
+        block: &crate::object::BlockStatement,
+        position: Position,
+        self_obj: Object,
+    ) -> Result<(), MetorexError> {
+        let prev_self = self.environment().get("self");
+        self.environment_mut().define("self".to_string(), self_obj);
+        for (name, cell) in block.captured_vars.iter() {
+            if self.environment().get(name).is_none() {
+                self.environment_mut()
+                    .define(name.clone(), cell.borrow().clone());
+            }
+        }
+        let result = self.apply_class_body(class, &block.body, position);
+        if let Some(prev) = prev_self {
+            self.environment_mut().define("self".to_string(), prev);
+        }
+        result
+    }
+
+    /// Apply a class-body statement list to the given class (also used for
+    /// `Class.new { ... }` / anonymous classes).
+    pub(crate) fn apply_class_body(
+        &mut self,
+        class: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<(), MetorexError> {
         for statement in body {
             match statement {
+                Statement::FunctionDef {
+                    name: method_name,
+                    parameters,
+                    body: method_body,
+                    singleton_class: None,
+                    ..
+                } => {
+                    let param_names: Vec<String> = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .map(|p| p.name.clone())
+                        .collect();
+                    let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.captured_refinements = self.snapshot_active_refinements();
+                    class.define_method(method_name, Rc::new(m));
+                }
                 Statement::MethodDef {
                     name: method_name,
                     parameters,
@@ -105,6 +179,7 @@ impl VirtualMachine {
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
+                    m.captured_refinements = self.snapshot_active_refinements();
                     let method = Rc::new(m);
                     if *is_class_method {
                         // def self.method_name — store as class method with __class__ prefix
@@ -323,6 +398,7 @@ impl VirtualMachine {
                     }
                 }
                 _ => {
+                    let mut handled = false;
                     // Handle alias_method in class body
                     if let Statement::Expression {
                         expression:
@@ -339,6 +415,7 @@ impl VirtualMachine {
                         && callee_name == "alias_method"
                         && call_args.len() == 2
                     {
+                        handled = true;
                         let new_name = match self.evaluate_expression(&call_args[0])? {
                             Object::String(s) => (*s).clone(),
                             Object::Symbol(s) => (*s).clone(),
@@ -369,6 +446,7 @@ impl VirtualMachine {
                         } = callee.as_ref()
                         && callee_name == "define_method"
                     {
+                        handled = true;
                         let method_name_str = if let Some(name_expr) = call_args.first() {
                             match self.evaluate_expression(name_expr)? {
                                 Object::String(s) => (*s).clone(),
@@ -409,17 +487,37 @@ impl VirtualMachine {
                         });
                         class.define_method(&method_name_str, Rc::new(method));
                     }
+                    // `refine(target) { body }` inside a module body — dispatch
+                    // to the module's refine method, preserving the block.
+                    else if let Statement::Expression {
+                        expression:
+                            Expression::Call {
+                                callee,
+                                arguments: call_args,
+                                trailing_block,
+                                ..
+                            },
+                        ..
+                    } = statement
+                        && let Expression::Identifier {
+                            name: callee_name, ..
+                        } = callee.as_ref()
+                        && callee_name == "refine"
+                    {
+                        handled = true;
+                        self.evaluate_method_call(
+                            &Expression::SelfExpr { position },
+                            "refine",
+                            call_args,
+                            trailing_block.as_deref(),
+                            position,
+                        )?;
+                    }
+                    let _ = handled;
                 }
             }
         }
-
-        // Register the class in the environment and globals
-        let class_obj = Object::Class(class);
-        self.environment_mut()
-            .define(name.to_string(), class_obj.clone());
-        self.globals_mut().set(name.to_string(), class_obj);
-
-        Ok(ControlFlow::Next)
+        Ok(())
     }
 
     /// Execute function definition - create a Method object and register it in the environment as a function.
@@ -482,12 +580,28 @@ impl VirtualMachine {
         function.keyword_parameters = keyword_parameters;
         function.block_parameter = block_parameter;
         function.variadic_param = variadic_param;
+        function.captured_refinements = self.snapshot_active_refinements();
         let function = Rc::new(function);
 
         // Singleton method: define on the specific class (e.g., TrueClass)
-        if let Some(class_name) = singleton_class {
-            if let Some(Object::Class(target_class)) = self.globals().get(class_name) {
-                target_class.define_method(name, Rc::clone(&function));
+        // or on a specific instance (`def x.foo` where `x` is an Object).
+        if let Some(receiver_name) = singleton_class {
+            let resolved = self
+                .environment()
+                .get(receiver_name)
+                .or_else(|| self.globals().get(receiver_name));
+            match resolved {
+                Some(Object::Class(target_class)) => {
+                    target_class.define_method(name, Rc::clone(&function));
+                }
+                Some(Object::Module(target_mod)) => {
+                    target_mod.define_method(name, Rc::clone(&function));
+                }
+                Some(Object::Instance(inst)) => {
+                    inst.borrow()
+                        .define_singleton_method(name.to_string(), Rc::clone(&function));
+                }
+                _ => {}
             }
             return Ok(ControlFlow::Next);
         }
@@ -512,14 +626,19 @@ impl VirtualMachine {
         body: &[Statement],
         _position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // Reopen existing module if it exists (Ruby semantics)
-        let module = if let Some(Object::Module(existing)) = self.globals().get(name) {
-            existing
-        } else if let Some(Object::Module(existing)) = self.environment().get(name) {
-            existing
-        } else {
-            Rc::new(Class::new(name, None))
-        };
+        // Reopen existing module (or class, e.g. builtin `Module`/`Class`) if it exists.
+        let (module, existing_as_class) =
+            if let Some(Object::Module(existing)) = self.globals().get(name) {
+                (existing, false)
+            } else if let Some(Object::Module(existing)) = self.environment().get(name) {
+                (existing, false)
+            } else if let Some(Object::Class(existing)) = self.globals().get(name) {
+                (existing, true)
+            } else if let Some(Object::Class(existing)) = self.environment().get(name) {
+                (existing, true)
+            } else {
+                (Rc::new(Class::new(name, None)), false)
+            };
 
         // Set 'self' to the module for instance variable access in module body
         let prev_self = self.environment().get("self");
@@ -567,6 +686,7 @@ impl VirtualMachine {
                     m.keyword_parameters = keyword_parameters;
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
+                    m.captured_refinements = self.snapshot_active_refinements();
                     let method = Rc::new(m);
                     if *is_class_method {
                         module.define_method(format!("__class__{}", method_name), method);
@@ -688,7 +808,11 @@ impl VirtualMachine {
             self.environment_mut().define("self".to_string(), prev);
         }
 
-        let module_obj = Object::Module(module);
+        let module_obj = if existing_as_class {
+            Object::Class(module)
+        } else {
+            Object::Module(module)
+        };
         self.environment_mut()
             .define(name.to_string(), module_obj.clone());
         // Also register in globals so the module persists across file scopes

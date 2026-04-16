@@ -29,6 +29,12 @@ impl VirtualMachine {
             {
                 return self.call_native_function(fn_name, vec![], position);
             }
+            // Bare `using` always invokes (0-arg form raises ArgumentError).
+            if let Object::NativeFunction(fn_name) = &val
+                && fn_name == "using"
+            {
+                return self.call_native_function(fn_name, vec![], position);
+            }
             return Ok(val);
         }
 

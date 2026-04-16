@@ -67,6 +67,7 @@ fn test_hash_non_hashable() {
     let inst = Object::Instance(Rc::new(RefCell::new(Instance {
         class,
         instance_vars: HashMap::new(),
+        singleton_methods: Rc::new(RefCell::new(HashMap::new())),
     })));
     assert!(inst.hash().is_none());
 }

@@ -173,6 +173,11 @@ impl Class {
     pub fn get_class_var(&self, name: &str) -> Option<Object> {
         self.class_variables.borrow().get(name).cloned()
     }
+
+    /// List all class-variable names (used by refinement bookkeeping).
+    pub fn class_var_names(&self) -> Vec<String> {
+        self.class_variables.borrow().keys().cloned().collect()
+    }
 }
 
 impl Clone for Class {

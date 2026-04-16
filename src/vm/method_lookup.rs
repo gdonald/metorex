@@ -13,6 +13,36 @@ use crate::object::{Method, Object};
 use std::cell::RefCell;
 use std::rc::Rc;
 
+/// Build the refinement lookup key for a receiver. For user-defined class
+/// instances we key by pointer (to avoid anonymous-class name collisions);
+/// for builtin types we use the well-known class name alone.
+pub(crate) fn refinement_target_name(
+    receiver: &Object,
+    vm: &crate::vm::VirtualMachine,
+) -> Option<String> {
+    match receiver {
+        Object::String(_) => Some(builtin_key(vm, "String")),
+        Object::Int(_) => Some(builtin_key(vm, "Integer")),
+        Object::Float(_) => Some(builtin_key(vm, "Float")),
+        Object::Array(_) => Some(builtin_key(vm, "Array")),
+        Object::Dict(_) => Some(builtin_key(vm, "Hash")),
+        Object::Symbol(_) => Some(builtin_key(vm, "Symbol")),
+        Object::Instance(inst) => {
+            let cls = &inst.borrow().class;
+            Some(format!("__refine__{}@{:p}", cls.name(), Rc::as_ptr(cls)))
+        }
+        _ => None,
+    }
+}
+
+fn builtin_key(vm: &crate::vm::VirtualMachine, name: &str) -> String {
+    if let Some(Object::Class(c)) = vm.globals().get(name) {
+        format!("__refine__{}@{:p}", name, Rc::as_ptr(&c))
+    } else {
+        format!("__refine__{}", name)
+    }
+}
+
 impl VirtualMachine {
     /// Evaluate a method call expression on a receiver object.
     pub(crate) fn evaluate_method_call(
@@ -39,6 +69,15 @@ impl VirtualMachine {
         // Native methods (each, map, etc.) will take it from self.pending_block.
         if let Some(block_expr) = trailing_block {
             self.pending_block = Some(self.evaluate_expression(block_expr)?);
+        }
+
+        // Refinement dispatch: if an active refinement covers this receiver's
+        // class and defines this method, use it.
+        if let Some(target_key) = refinement_target_name(&receiver, self)
+            && let Some(method) = self.find_refined_method(&target_key, method_name)
+        {
+            let class = self.builtins().class_of(&receiver);
+            return self.invoke_method(class, method, receiver, arguments, position);
         }
 
         // Try user-defined method lookup first
@@ -127,6 +166,9 @@ impl VirtualMachine {
             Object::Instance(instance_rc) => {
                 let instance_ref = instance_rc.borrow();
                 let class = Rc::clone(&instance_ref.class);
+                if let Some(sing) = instance_ref.find_singleton_method(method_name) {
+                    return Some((class, sing));
+                }
                 drop(instance_ref);
                 class.find_method(method_name).map(|method| (class, method))
             }

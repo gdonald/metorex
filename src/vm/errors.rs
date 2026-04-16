@@ -64,10 +64,13 @@ pub(super) fn undefined_method_error(
     } else {
         receiver.type_name().to_string()
     };
-    MetorexError::runtime_error(
-        format!("Undefined method '{}' for type '{}'", method, class_info),
-        position_to_location(position),
-    )
+    let message = format!("Undefined method '{}' for type '{}'", method, class_info);
+    let exc = Object::exception("NoMethodError", message.clone());
+    MetorexError::UncaughtException {
+        exception: exc,
+        location: position_to_location(position),
+        message,
+    }
 }
 
 /// Produce a runtime error when a method receives the wrong number of arguments.

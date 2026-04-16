@@ -194,7 +194,10 @@ fn undefined_method_returns_runtime_error() {
     }];
 
     let result = vm.execute_program(&statements);
-    assert!(matches!(result, Err(MetorexError::RuntimeError { .. })));
+    assert!(matches!(
+        result,
+        Err(MetorexError::UncaughtException { .. })
+    ));
 }
 
 #[test]

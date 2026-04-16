@@ -36,6 +36,21 @@ pub struct VirtualMachine {
     /// `include` is suppressed (Ruby wraps the loaded scope in an anonymous
     /// module so includes don't pollute Object).
     pub(crate) load_wrap_depth: u32,
+    /// Depth of user-defined method bodies we're currently inside (lexical
+    /// nesting). Reset to 0 when executing a file top-level via load/require.
+    pub(crate) user_def_nesting: u32,
+    /// Stack of refinement scopes. Each scope holds a list of activated
+    /// refinement modules (from `using`) with the snapshot of refined classes
+    /// at activation time. Pushed on file load / eval; popped on exit.
+    pub(crate) refinement_scopes: Vec<Vec<RefinementEntry>>,
+}
+
+/// A single activated refinement: the refinement module and the set of target
+/// class names that were refined by it at activation time.
+#[derive(Debug, Clone)]
+pub struct RefinementEntry {
+    pub module: Rc<crate::class::Class>,
+    pub classes: std::collections::HashSet<String>,
 }
 
 impl VirtualMachine {
@@ -66,7 +81,79 @@ impl VirtualMachine {
             loaded_files: HashSet::new(),
             pending_block: None,
             load_wrap_depth: 0,
+            user_def_nesting: 0,
+            refinement_scopes: vec![Vec::new()],
         }
+    }
+
+    /// Activate a refinement module in the innermost scope.
+    pub(crate) fn activate_refinement(&mut self, module: Rc<crate::class::Class>) {
+        // Snapshot the set of keyed targets refined at activation time.
+        let mut classes = std::collections::HashSet::new();
+        for key in module.class_var_names() {
+            if key.starts_with("__refine__") {
+                classes.insert(key.clone());
+            }
+        }
+        let entry = RefinementEntry { module, classes };
+        if let Some(top) = self.refinement_scopes.last_mut() {
+            top.push(entry);
+        }
+    }
+
+    /// Look up a refined method for the given target class (keyed by pointer
+    /// + name), scanning active refinement scopes outermost-first.
+    pub(crate) fn find_refined_method(
+        &self,
+        target_key: &str,
+        method_name: &str,
+    ) -> Option<Rc<crate::object::Method>> {
+        for scope in self.refinement_scopes.iter().rev() {
+            for entry in scope.iter().rev() {
+                if !entry.classes.contains(target_key) {
+                    continue;
+                }
+                if let Some(Object::Class(holder)) = entry.module.get_class_var(target_key)
+                    && let Some(m) = holder.find_method(method_name)
+                {
+                    return Some(m);
+                }
+            }
+        }
+        None
+    }
+
+    /// Snapshot all currently active refinement entries (for lexical capture
+    /// into a method definition).
+    pub(crate) fn snapshot_active_refinements(
+        &self,
+    ) -> Vec<(Rc<crate::class::Class>, Vec<String>)> {
+        let mut out = Vec::new();
+        for scope in &self.refinement_scopes {
+            for entry in scope {
+                out.push((
+                    Rc::clone(&entry.module),
+                    entry.classes.iter().cloned().collect(),
+                ));
+            }
+        }
+        out
+    }
+
+    pub(crate) fn push_refinement_scope(&mut self) {
+        self.refinement_scopes.push(Vec::new());
+    }
+
+    pub(crate) fn pop_refinement_scope(&mut self) {
+        if self.refinement_scopes.len() > 1 {
+            self.refinement_scopes.pop();
+        }
+    }
+
+    /// True if we are lexically inside a `def` body relative to the current
+    /// file-top-level / eval context.
+    pub(crate) fn inside_user_method(&self) -> bool {
+        self.user_def_nesting > 0
     }
 
     /// Access the environment.

@@ -137,11 +137,13 @@ fn test_equals_instance() {
     let inst1 = Rc::new(RefCell::new(Instance {
         class: Rc::clone(&class),
         instance_vars: HashMap::new(),
+        singleton_methods: Rc::new(RefCell::new(HashMap::new())),
     }));
     let inst2 = Rc::clone(&inst1);
     let inst3 = Rc::new(RefCell::new(Instance {
         class: Rc::clone(&class),
         instance_vars: HashMap::new(),
+        singleton_methods: Rc::new(RefCell::new(HashMap::new())),
     }));
 
     let obj1 = Object::Instance(inst1);
@@ -181,6 +183,7 @@ fn test_equals_method() {
         source_location: None,
         captured_vars: None,
         is_undefined: false,
+        captured_refinements: Vec::new(),
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -196,6 +199,7 @@ fn test_equals_method() {
         source_location: None,
         captured_vars: None,
         is_undefined: false,
+        captured_refinements: Vec::new(),
     });
 
     let obj1 = Object::Method(method1);

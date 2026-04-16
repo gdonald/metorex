@@ -103,6 +103,24 @@ impl VirtualMachine {
             .cloned()
             .unwrap_or_else(|| receiver.clone());
         let arguments_for_body = arguments.clone();
+        self.user_def_nesting += 1;
+        // Activate the lexically-captured refinements from when this method
+        // was defined, as a fresh scope. Reset the live user_def_nesting to 0
+        // while these refinements are active (method body re-enters top-level
+        // lexical scope semantically for nested defs).
+        let has_captured = !method.captured_refinements.is_empty();
+        if has_captured {
+            self.refinement_scopes.push(
+                method
+                    .captured_refinements
+                    .iter()
+                    .map(|(m, cs)| crate::vm::core::RefinementEntry {
+                        module: Rc::clone(m),
+                        classes: cs.iter().cloned().collect(),
+                    })
+                    .collect(),
+            );
+        }
         let execution_result = self.with_call_frame(
             CallFrame::new(frame_name.clone(), frame_location_string),
             move |vm| {
@@ -113,6 +131,10 @@ impl VirtualMachine {
                 )
             },
         );
+        if has_captured {
+            self.refinement_scopes.pop();
+        }
+        self.user_def_nesting = self.user_def_nesting.saturating_sub(1);
 
         match execution_result {
             Ok(value) => Ok(value),

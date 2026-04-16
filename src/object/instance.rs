@@ -1,6 +1,7 @@
 // Instance struct - represents an instance of a class
 
 use crate::class::Class;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -13,6 +14,8 @@ pub struct Instance {
     pub class: Rc<Class>,
     /// Instance variables (@variable)
     pub instance_vars: HashMap<String, Object>,
+    /// Singleton methods defined directly on this instance (def obj.method).
+    pub singleton_methods: Rc<RefCell<HashMap<String, Rc<Method>>>>,
 }
 
 impl Instance {
@@ -21,7 +24,18 @@ impl Instance {
         Self {
             class,
             instance_vars: HashMap::new(),
+            singleton_methods: Rc::new(RefCell::new(HashMap::new())),
         }
+    }
+
+    /// Attach a singleton method to this instance.
+    pub fn define_singleton_method(&self, name: String, method: Rc<Method>) {
+        self.singleton_methods.borrow_mut().insert(name, method);
+    }
+
+    /// Look up a singleton method on this instance.
+    pub fn find_singleton_method(&self, name: &str) -> Option<Rc<Method>> {
+        self.singleton_methods.borrow().get(name).cloned()
     }
 
     /// Get an instance variable

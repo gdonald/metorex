@@ -60,6 +60,53 @@ impl VirtualMachine {
             }
         }
 
+        // Module#refine(target_class) { body } — store refinement methods on
+        // the module keyed by the target class name.
+        // Module#module_eval { body } — execute a block with self=module.
+        if let Object::Module(module_rc) = receiver
+            && (method_name == "module_eval" || method_name == "class_eval")
+            && let Some(Object::Block(block)) = self.pending_block.take()
+        {
+            self.apply_block_as_class_body_with_self(
+                module_rc,
+                &block,
+                position,
+                Object::Module(Rc::clone(module_rc)),
+            )?;
+            return Ok(Some(Object::Module(Rc::clone(module_rc))));
+        }
+
+        if let Object::Module(module_rc) = receiver
+            && method_name == "refine"
+        {
+            if arguments.len() != 1 {
+                return Err(method_argument_error(
+                    "refine",
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let target = match &arguments[0] {
+                Object::Class(c) => Rc::clone(c),
+                other => {
+                    return Err(method_argument_type_error(
+                        "refine", "Class", other, position,
+                    ));
+                }
+            };
+            let refinement_key = format!("__refine__{}@{:p}", target.name(), Rc::as_ptr(&target));
+            let holder = match module_rc.get_class_var(&refinement_key) {
+                Some(Object::Class(existing)) => existing,
+                _ => Rc::new(Class::new(format!("<refinement:{}>", target.name()), None)),
+            };
+            if let Some(Object::Block(block)) = self.pending_block.take() {
+                self.apply_block_as_class_body(&holder, &block, position)?;
+            }
+            module_rc.set_class_var(&refinement_key, Object::Class(Rc::clone(&holder)));
+            return Ok(Some(Object::Module(holder)));
+        }
+
         // Special handling for Class objects
         if let Object::Class(class_rc) = receiver {
             let non_instantiable =
@@ -85,6 +132,43 @@ impl VirtualMachine {
                     location: position_to_location(position),
                     message: format!("undefined method 'new' for {}:Class", class_rc.name()),
                 });
+            }
+            // Class.new([superclass]) { body } — anonymous class with optional superclass.
+            if method_name == "new" && class_rc.name() == "Class" {
+                let superclass = match arguments.first() {
+                    Some(Object::Class(c)) => Some(Rc::clone(c)),
+                    Some(other) => {
+                        return Err(MetorexError::type_error(
+                            format!("superclass must be a Class (given {})", other.type_name()),
+                            position_to_location(position),
+                        ));
+                    }
+                    None => self.globals().get("Object").and_then(|o| {
+                        if let Object::Class(c) = o {
+                            Some(c)
+                        } else {
+                            None
+                        }
+                    }),
+                };
+                let anon = Rc::new(Class::new("", superclass));
+                if let Some(Object::Block(block)) = self.pending_block.take() {
+                    self.apply_block_as_class_body(&anon, &block, position)?;
+                }
+                return Ok(Some(Object::Class(anon)));
+            }
+            // Module.new { body } — anonymous module.
+            if method_name == "new" && class_rc.name() == "Module" {
+                let anon = Rc::new(Class::new("", None));
+                if let Some(Object::Block(block)) = self.pending_block.take() {
+                    self.apply_block_as_class_body_with_self(
+                        &anon,
+                        &block,
+                        position,
+                        Object::Module(Rc::clone(&anon)),
+                    )?;
+                }
+                return Ok(Some(Object::Module(anon)));
             }
             // Dir.pwd / Dir.getwd — current working directory.
             if class_rc.name() == "Dir" && (method_name == "pwd" || method_name == "getwd") {

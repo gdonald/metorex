@@ -35,6 +35,53 @@ impl VirtualMachine {
                 self.pending_block.take();
                 Ok(Object::Nil)
             }
+            "using" => {
+                if arguments.len() != 1 {
+                    let exc = Object::exception(
+                        "ArgumentError",
+                        format!(
+                            "wrong number of arguments (given {}, expected 1)",
+                            arguments.len()
+                        ),
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: crate::vm::utils::position_to_location(position),
+                        message: "wrong number of arguments for using".to_string(),
+                    });
+                }
+                let module = match &arguments[0] {
+                    Object::Module(m) => std::rc::Rc::clone(m),
+                    other => {
+                        let exc = Object::exception(
+                            "TypeError",
+                            format!(
+                                "wrong argument type {} (expected Module)",
+                                other.type_name()
+                            ),
+                        );
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: crate::vm::utils::position_to_location(position),
+                            message: "wrong argument type for using".to_string(),
+                        });
+                    }
+                };
+                // `using` is forbidden inside a method body.
+                if self.inside_user_method() {
+                    let exc = Object::exception(
+                        "RuntimeError",
+                        "Module#using is not permitted in methods".to_string(),
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: crate::vm::utils::position_to_location(position),
+                        message: "using in method".to_string(),
+                    });
+                }
+                self.activate_refinement(module);
+                Ok(Object::Nil)
+            }
             "warn" => {
                 for arg in &arguments {
                     let s = self.get_string_representation(arg, position)?;
@@ -562,8 +609,15 @@ impl VirtualMachine {
                             crate::vm::utils::position_to_location(position),
                         )
                     })?;
-                let result = self.execute_program(&statements)?;
-                Ok(result.unwrap_or(Object::Nil))
+                // eval runs at top-level of its string: treat as non-method scope.
+                // Refinements activated inside eval are lexical to the eval string.
+                let saved_nesting = self.user_def_nesting;
+                self.user_def_nesting = 0;
+                self.push_refinement_scope();
+                let result = self.execute_program(&statements);
+                self.pop_refinement_scope();
+                self.user_def_nesting = saved_nesting;
+                Ok(result?.unwrap_or(Object::Nil))
             }
             "load" => {
                 if arguments.is_empty() || arguments.len() > 2 {
@@ -589,6 +643,11 @@ impl VirtualMachine {
                 if wrap {
                     self.load_wrap_depth += 1;
                 }
+                // Each load() has its own refinement scope and a fresh
+                // user-method-nesting counter for its top-level statements.
+                self.push_refinement_scope();
+                let saved_nesting = self.user_def_nesting;
+                self.user_def_nesting = 0;
                 // load always executes the file (no deduplication)
                 // Try the path directly first, then search $LOAD_PATH
                 let result = if path.exists() {
@@ -636,6 +695,8 @@ impl VirtualMachine {
                 if wrap {
                     self.load_wrap_depth -= 1;
                 }
+                self.pop_refinement_scope();
+                self.user_def_nesting = saved_nesting;
                 result?;
                 Ok(Object::Bool(true))
             }

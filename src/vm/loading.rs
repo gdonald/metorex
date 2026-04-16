@@ -145,18 +145,17 @@ impl VirtualMachine {
         // Update current file path for require_relative calls within this file
         self.set_current_file(canonical_path.clone());
 
-        // Execute the parsed statements
-        let result = self.execute_program(&statements).map_err(|e| {
+        // Execute the parsed statements (always restore current_file, even on error).
+        let result = self.execute_program(&statements);
+        self.current_file = previous_file;
+        let value = result.map_err(|e| {
             MetorexError::runtime_error(
                 format!("Error executing file '{}': {}", canonical_path.display(), e),
                 SourceLocation::new(0, 0, 0),
             )
         })?;
 
-        // Restore previous current file path
-        self.current_file = previous_file;
-
         // Return the result or Nil if no return value
-        Ok(result.unwrap_or(Object::Nil))
+        Ok(value.unwrap_or(Object::Nil))
     }
 }

@@ -37,6 +37,9 @@ pub struct Method {
     pub captured_vars: Option<HashMap<String, Rc<RefCell<Object>>>>,
     /// True if this method was undefined via undef_method (calling it raises an error)
     pub is_undefined: bool,
+    /// Refinement modules active (lexically) when this method was defined,
+    /// each paired with the snapshot of refined-class names at that moment.
+    pub captured_refinements: Vec<(Rc<crate::class::Class>, Vec<String>)>,
 }
 
 impl Method {
@@ -55,6 +58,7 @@ impl Method {
             source_location: None,
             captured_vars: None,
             is_undefined: false,
+            captured_refinements: Vec::new(),
         }
     }
 
@@ -78,6 +82,7 @@ impl Method {
             source_location: None,
             captured_vars: None,
             is_undefined: false,
+            captured_refinements: Vec::new(),
         }
     }
 
@@ -101,6 +106,7 @@ impl Method {
             source_location: Some(source_location),
             captured_vars: None,
             is_undefined: false,
+            captured_refinements: Vec::new(),
         }
     }
 
@@ -125,6 +131,7 @@ impl Method {
             source_location: Some(source_location),
             captured_vars: None,
             is_undefined: false,
+            captured_refinements: Vec::new(),
         }
     }
 
@@ -143,6 +150,7 @@ impl Method {
             source_location: None,
             captured_vars: None,
             is_undefined: true,
+            captured_refinements: Vec::new(),
         }
     }
 
@@ -161,6 +169,7 @@ impl Method {
             source_location: self.source_location.clone(),
             captured_vars: self.captured_vars.clone(),
             is_undefined: self.is_undefined,
+            captured_refinements: self.captured_refinements.clone(),
         }
     }
 
