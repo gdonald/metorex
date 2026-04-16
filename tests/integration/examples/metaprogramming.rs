@@ -91,7 +91,7 @@ fn test_metaprogramming_define_method_execution() {
 #[test]
 fn test_metaprogramming_ast_inspection_execution() {
     let expected = "add\n2\n1\nBinaryOp\n+\n1\nBinaryOp\n*\n1\n1\n";
-    let output = run_example("metaprogramming/ast_inspection.rb");
+    let output = run_example("metaprogramming/ast/inspection.rb");
     assert_eq!(output, expected);
 }
 
@@ -111,7 +111,7 @@ Before: process
 [LOG] Processing: test data
 After: process -> processed: test data
 "#;
-    let output = run_example("metaprogramming/advanced/method_delegation.rb");
+    let output = run_example("metaprogramming/advanced/method/delegation.rb");
     assert_eq!(output, expected);
 }
 
@@ -129,7 +129,7 @@ Before: process
 [LOG] Processing: test data
 After: process -> processed: test data
 "#;
-    let output = run_example("metaprogramming/advanced/method_delegation_no_parens.rb");
+    let output = run_example("metaprogramming/advanced/method/delegation_no_parens.rb");
     assert_eq!(output, expected);
 }
 
@@ -248,7 +248,7 @@ Product: 120
 
 #[test]
 fn test_metaprogramming_advanced_method_chaining_dsl() {
-    let output = run_example("metaprogramming/advanced/method_chaining_dsl.rb");
+    let output = run_example("metaprogramming/advanced/method/chaining_dsl.rb");
     assert!(
         output.contains(
             "SELECT * FROM users WHERE age > 18 AND active = true ORDER BY name LIMIT 10"
@@ -289,7 +289,7 @@ ghost: fake_method
 Base caught: anything
 Base caught: whatever
 "#;
-    let output = run_example("metaprogramming/method_missing.rb");
+    let output = run_example("metaprogramming/method_missing/method_missing.rb");
     assert_eq!(output, expected);
 }
 
@@ -319,7 +319,7 @@ ghost: fake_method
 Base caught: anything
 Base caught: whatever
 "#;
-    let output = run_example("metaprogramming/method_missing_no_parens.rb");
+    let output = run_example("metaprogramming/method_missing/method_missing_no_parens.rb");
     assert_eq!(output, expected);
 }
 
@@ -351,7 +351,7 @@ HELLO
 === remove_method with inheritance ===
 Parent greet
 "#;
-    let output = run_example("metaprogramming/class_modification.rb");
+    let output = run_example("metaprogramming/class_modification/class_modification.rb");
     assert_eq!(output, expected);
 }
 
@@ -381,7 +381,7 @@ HELLO
 === remove_method with inheritance ===
 Parent greet
 "#;
-    let output = run_example("metaprogramming/class_modification_no_parens.rb");
+    let output = run_example("metaprogramming/class_modification/class_modification_no_parens.rb");
     assert_eq!(output, expected);
 }
 
@@ -423,7 +423,7 @@ Fetching stick
 HELLO
 5
 "#;
-    let output = run_example("metaprogramming/reflection.rb");
+    let output = run_example("metaprogramming/reflection/reflection.rb");
     assert_eq!(output, expected);
 }
 
@@ -463,7 +463,7 @@ Fetching stick
 HELLO
 5
 "#;
-    let output = run_example("metaprogramming/reflection_no_parens.rb");
+    let output = run_example("metaprogramming/reflection/reflection_no_parens.rb");
     assert_eq!(output, expected);
 }
 
@@ -495,21 +495,21 @@ Array
 8
 15
 "#;
-    let output = run_example("metaprogramming/ast_manipulation.rb");
+    let output = run_example("metaprogramming/ast/manipulation.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_metaprogramming_instance_exec_execution() {
     let expected = "10\n20\n105\n";
-    let output = run_example("metaprogramming/instance_exec.rb");
+    let output = run_example("metaprogramming/instance_exec/instance_exec.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_metaprogramming_instance_exec_parens_execution() {
     let expected = "10\n20\n105\n";
-    let output = run_example("metaprogramming/instance_exec_parens.rb");
+    let output = run_example("metaprogramming/instance_exec/instance_exec_parens.rb");
     assert_eq!(output, expected);
 }
 
@@ -539,7 +539,7 @@ Array
 8
 15
 "#;
-    let output = run_example("metaprogramming/ast_manipulation_no_parens.rb");
+    let output = run_example("metaprogramming/ast/manipulation_no_parens.rb");
     assert_eq!(output, expected);
 }
 

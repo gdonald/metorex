@@ -13,7 +13,7 @@ puts("")
 p(42)
 
 # File operations
-path = "tests/_examples/stdlib/io_temp_parens.txt"
+path = "tests/_examples/stdlib/io/io_temp_parens.txt"
 File.write(path, "Hello from file!")
 puts(File.read(path))
 puts(File.exist?(path))

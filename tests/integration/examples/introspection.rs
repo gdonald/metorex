@@ -5,7 +5,7 @@ fn test_introspection_function_name_execution() {
     let expected = r#"greet
 calculate
 "#;
-    let output = run_example("introspection/function_name.rb");
+    let output = run_example("introspection/function/name.rb");
     assert_eq!(output, expected);
 }
 
@@ -14,7 +14,7 @@ fn test_introspection_function_module_execution() {
     let expected = r#"main
 main
 "#;
-    let output = run_example("introspection/function_module.rb");
+    let output = run_example("introspection/function/module.rb");
     assert_eq!(output, expected);
 }
 
@@ -81,13 +81,14 @@ greet
 #[test]
 fn test_introspection_builtin_class_method() {
     let expected = "Array\nString\nInteger\nFloat\nTrueClass\nNilClass\nRange\nHash\nSet\n";
-    let output = run_example("introspection/builtin_class_method.rb");
+    let output = run_example("introspection/builtin_class_method/builtin_class_method.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_introspection_builtin_class_method_no_parens() {
     let expected = "Array\nString\nInteger\nFloat\nTrueClass\nNilClass\nRange\nHash\nSet\n";
-    let output = run_example("introspection/builtin_class_method_no_parens.rb");
+    let output =
+        run_example("introspection/builtin_class_method/builtin_class_method_no_parens.rb");
     assert_eq!(output, expected);
 }

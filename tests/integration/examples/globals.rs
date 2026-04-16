@@ -3,14 +3,14 @@ use super::run_example;
 #[test]
 fn test_toplevel_binding_execution() {
     let expected = "false\nmain\nmain\nmain\n";
-    let output = run_example("globals/toplevel_binding.rb");
+    let output = run_example("globals/toplevel_binding/toplevel_binding.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_toplevel_binding_receiver_execution() {
     let expected = "true\ntrue\n";
-    let output = run_example("globals/toplevel_binding_receiver.rb");
+    let output = run_example("globals/toplevel_binding/receiver.rb");
     assert_eq!(output, expected);
 }
 
@@ -23,7 +23,7 @@ fn test_special_globals_execution() {
 
 #[test]
 fn test_expand_path_execution() {
-    let output = run_example("globals/expand_path.rb");
+    let output = run_example("globals/expand_path/expand_path.rb");
     let lines: Vec<&str> = output.trim().split('\n').collect();
     assert!(lines[0].ends_with("/lib"));
     assert!(lines[1].ends_with("/tests/_examples/lib"));
@@ -54,13 +54,13 @@ fn test_modifier_if_unless_execution() {
 #[test]
 fn test_require_from_load_path_execution() {
     let expected = "hello from lib\n";
-    let output = run_example("globals/require_test.rb");
+    let output = run_example("globals/require/test.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_expand_path_nonexistent_execution() {
-    let output = run_example("globals/expand_path_nonexistent.rb");
+    let output = run_example("globals/expand_path/nonexistent.rb");
     let lines: Vec<&str> = output.trim().split('\n').collect();
     assert!(lines[0].ends_with("/foo/bar") || lines[0].contains("foo/bar"));
     assert!(lines[1].ends_with("/tmp/base/baz") || lines[1].contains("base/baz"));
@@ -68,7 +68,7 @@ fn test_expand_path_nonexistent_execution() {
 
 #[test]
 fn test_expand_path_nonexistent_parens_execution() {
-    let output = run_example("globals/expand_path_nonexistent_parens.rb");
+    let output = run_example("globals/expand_path/nonexistent_parens.rb");
     let lines: Vec<&str> = output.trim().split('\n').collect();
     assert!(lines[0].ends_with("/foo/bar") || lines[0].contains("foo/bar"));
     assert!(lines[1].ends_with("/tmp/base/baz") || lines[1].contains("base/baz"));

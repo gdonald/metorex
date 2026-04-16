@@ -166,7 +166,7 @@ fn runtime_error_to_stderr() {
 
 #[test]
 fn file_pipeline_fizzbuzz() {
-    let output = run_file("programs/fizzbuzz.rb");
+    let output = run_file("programs/fizzbuzz/fizzbuzz.rb");
     assert!(output.contains("FizzBuzz"));
     assert!(output.contains("Fizz"));
     assert!(output.contains("Buzz"));
@@ -174,7 +174,7 @@ fn file_pipeline_fizzbuzz() {
 
 #[test]
 fn file_pipeline_fibonacci() {
-    let output = run_file("programs/fibonacci.rb");
+    let output = run_file("programs/fibonacci/fibonacci.rb");
     assert!(output.contains("34"));
     assert!(output.contains("Iterative:"));
     assert!(output.contains("Recursive:"));
@@ -182,7 +182,7 @@ fn file_pipeline_fibonacci() {
 
 #[test]
 fn file_pipeline_oop_patterns() {
-    let output = run_file("programs/oop_patterns.rb");
+    let output = run_file("programs/oop_patterns/oop_patterns.rb");
     assert!(output.contains("Strategy Pattern"));
     assert!(output.contains("Decorator Pattern"));
 }
@@ -195,7 +195,10 @@ fn ast_flag_produces_output() {
     let manifest_dir = env!("CARGO_MANIFEST_DIR");
     let output = Command::new(binary)
         .current_dir(manifest_dir)
-        .args(["--ast", &format!("{}/programs/fizzbuzz.rb", EXAMPLES_DIR)])
+        .args([
+            "--ast",
+            &format!("{}/programs/fizzbuzz/fizzbuzz.rb", EXAMPLES_DIR),
+        ])
         .output()
         .expect("failed to execute");
     assert!(output.status.success());

@@ -1,0 +1,9 @@
+mod arithmetic_tests;
+mod bitwise_tests;
+mod comparison_tests;
+mod custom_tests;
+mod format_tests;
+mod logical_tests;
+mod regex_tests;
+mod spaceship_tests;
+mod unary_tests;

@@ -12,7 +12,7 @@ mod method;
 mod native_functions_tests;
 mod native_methods;
 mod object_coverage_tests;
-mod operators_tests;
+mod operators;
 mod pattern_matching_tests;
 mod reflection_tests;
 mod statement_tests;

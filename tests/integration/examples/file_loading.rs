@@ -61,7 +61,7 @@ fn test_require_return_values_execution() {
 fn test_require_extension_auto_detect() {
     // require_relative "lib/helper" should find lib/helper.rb
     let expected = "from helper\nhelper method called\n";
-    let output = run_example("require/extension_auto_detect.rb");
+    let output = run_example("require/extension/auto_detect.rb");
     assert_eq!(output, expected);
 }
 
@@ -69,7 +69,7 @@ fn test_require_extension_auto_detect() {
 fn test_require_extension_explicit() {
     // require_relative "lib/helper.rb" should work with explicit extension
     let expected = "from helper\nhelper method called\n";
-    let output = run_example("require/extension_explicit.rb");
+    let output = run_example("require/extension/explicit.rb");
     assert_eq!(output, expected);
 }
 
