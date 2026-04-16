@@ -484,3 +484,61 @@ fn array_bracket_via_send() {
     let result = run("[10, 20, 30].send(:[], 1)");
     assert_eq!(result, Some(Object::Int(20)));
 }
+
+// ── index / find_index ──────────────────────────────────────────────────────
+
+#[test]
+fn array_index_with_value() {
+    assert_eq!(run("[10, 20, 30].index(20)"), Some(Object::Int(1)));
+}
+
+#[test]
+fn array_index_not_found() {
+    assert_eq!(run("[10, 20, 30].index(99)"), Some(Object::Nil));
+}
+
+#[test]
+fn array_find_index_with_block() {
+    assert_eq!(
+        run("[10, 20, 30].find_index { |x| x > 15 }"),
+        Some(Object::Int(1))
+    );
+}
+
+#[test]
+fn array_find_index_with_block_not_found() {
+    assert_eq!(
+        run("[10, 20, 30].find_index { |x| x > 100 }"),
+        Some(Object::Nil)
+    );
+}
+
+#[test]
+fn array_index_no_args_no_block() {
+    assert_eq!(run("[1, 2].index"), Some(Object::Nil));
+}
+
+// ── clear ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_clear() {
+    assert_eq!(run("[1, 2, 3].clear.length"), Some(Object::Int(0)));
+}
+
+// ── delete ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_delete_existing() {
+    let result = run(r#"
+a = [1, 2, 3, 2, 4]
+a.delete(2)
+a.length
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn array_delete_wrong_args() {
+    let err = run_err("[1, 2].delete");
+    assert!(err.contains("argument"));
+}

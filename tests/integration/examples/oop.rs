@@ -216,3 +216,51 @@ fn test_oop_comparable_parens_execution() {
     let output = run_example("oop/comparable_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_singleton_method_execution() {
+    let output = run_example("oop/singleton_method.rb");
+    assert_eq!(output, "hello from singleton\n");
+}
+
+#[test]
+fn test_oop_singleton_method_no_parens_execution() {
+    let output = run_example("oop/singleton_method_no_parens.rb");
+    assert_eq!(output, "hello from singleton\n");
+}
+
+#[test]
+fn test_oop_module_nested_execution() {
+    let output = run_example("oop/module_nested.rb");
+    assert_eq!(output, "hello from Inner\nwidget\n");
+}
+
+#[test]
+fn test_oop_module_include_in_module_execution() {
+    let output = run_example("oop/module_include_in_module.rb");
+    assert_eq!(output, "hello\n");
+}
+
+#[test]
+fn test_oop_alias_method_strings_execution() {
+    let output = run_example("oop/alias_method_strings.rb");
+    assert_eq!(output, "original\noriginal\n");
+}
+
+#[test]
+fn test_oop_class_reopen_execution() {
+    let output = run_example("oop/class_reopen.rb");
+    assert_eq!(output, "bar\nbaz\n");
+}
+
+#[test]
+fn test_oop_module_reopen_execution() {
+    let output = run_example("oop/module_reopen.rb");
+    assert_eq!(output, "a\nb\n");
+}
+
+#[test]
+fn test_oop_module_self_method_execution() {
+    let output = run_example("oop/module_self_method.rb");
+    assert_eq!(output, "from module\nalso from module\n");
+}

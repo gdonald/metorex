@@ -542,3 +542,9 @@ Array
     let output = run_example("metaprogramming/ast_manipulation_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_refinement_execution() {
+    let output = run_example("metaprogramming/refinement.rb");
+    assert_eq!(output, "HELLO!\n");
+}

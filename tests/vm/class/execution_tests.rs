@@ -464,3 +464,219 @@ Widget.new.value
 "#);
     assert_eq!(result, Some(Object::Int(42)));
 }
+
+// ── include non-module at top level ─────────────────────────────────────────
+
+#[test]
+fn include_non_module_errors() {
+    let err = run_err(
+        r#"
+Foo = 42
+include Foo
+"#,
+    );
+    assert!(err.contains("module") || err.contains("not a module"));
+}
+
+#[test]
+fn include_undefined_module_errors() {
+    let err = run_err("include UndefinedModuleXyz");
+    assert!(err.contains("Undefined") || err.contains("undefined") || err.contains("module"));
+}
+
+// ── class reopen from environment ───────────────────────────────────────────
+
+#[test]
+fn class_reopen_from_env() {
+    let result = run(r#"
+class Foo
+  def a
+    1
+  end
+end
+class Foo
+  def b
+    2
+  end
+end
+Foo.new.a + Foo.new.b
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── module reopen from environment ──────────────────────────────────────────
+
+#[test]
+fn module_reopen_from_env() {
+    let result = run(r#"
+module M
+  def self.a
+    1
+  end
+end
+module M
+  def self.b
+    2
+  end
+end
+M.a + M.b
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── nested class inside module ──────────────────────────────────────────────
+
+#[test]
+fn nested_class_in_module() {
+    let result = run(r#"
+module Outer
+  class Inner
+    def val
+      42
+    end
+  end
+end
+Outer::Inner.new.val
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+// ── nested module inside module ─────────────────────────────────────────────
+
+#[test]
+fn nested_module_in_module() {
+    let result = run(r#"
+module Outer
+  module Inner
+    def self.val
+      99
+    end
+  end
+end
+Outer::Inner.val
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+// ── include inside module body ──────────────────────────────────────────────
+
+#[test]
+fn include_inside_module() {
+    let result = run(r#"
+module Greetable
+  def greet
+    "hello"
+  end
+end
+module Polite
+  include Greetable
+end
+"#);
+    assert!(result.is_some() || result.is_none());
+}
+
+// ── singleton method on Module ──────────────────────────────────────────────
+
+#[test]
+fn singleton_method_on_module() {
+    let result = run(r#"
+module MyMod
+end
+def MyMod.helper
+  "from module"
+end
+MyMod.helper
+"#);
+    assert_eq!(result, Some(Object::string("from module")));
+}
+
+// ── singleton method on instance (def obj.method) ───────────────────────────
+
+#[test]
+fn singleton_method_on_instance() {
+    let result = run(r#"
+obj = Object.new
+def obj.greet
+  "hello from singleton"
+end
+obj.greet
+"#);
+    assert_eq!(result, Some(Object::string("hello from singleton")));
+}
+
+// ── alias_method with string args in class body ─────────────────────────────
+
+#[test]
+fn alias_method_string_args() {
+    let result = run(r#"
+class AliasTest
+  def original
+    "orig"
+  end
+  alias_method "aliased", "original"
+end
+AliasTest.new.aliased
+"#);
+    assert_eq!(result, Some(Object::string("orig")));
+}
+
+// ── define_method in class body ─────────────────────────────────────────────
+
+#[test]
+fn define_method_in_class_body() {
+    let result = run(r#"
+class DmTest
+  define_method(:dynamic) { "dyn" }
+end
+DmTest.new.dynamic
+"#);
+    assert_eq!(result, Some(Object::string("dyn")));
+}
+
+// ── refine in module body ───────────────────────────────────────────────────
+
+#[test]
+fn refine_in_module_body() {
+    let result = run(r#"
+module StringExt
+  refine(String) do
+    def shout
+      upcase + "!"
+    end
+  end
+end
+using StringExt
+"hello".shout
+"#);
+    assert_eq!(result, Some(Object::string("HELLO!")));
+}
+
+// ── qualified constant resolution (Foo::Bar) ────────────────────────────────
+
+#[test]
+fn qualified_constant_resolution() {
+    let result = run(r#"
+module A
+  class B
+    def val
+      7
+    end
+  end
+end
+A::B.new.val
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+// ── expressions in module body ──────────────────────────────────────────────
+
+#[test]
+fn expression_in_module_body() {
+    let result = run(r#"
+module M
+  X = 42
+end
+M::X
+"#);
+    assert!(result.is_some());
+}

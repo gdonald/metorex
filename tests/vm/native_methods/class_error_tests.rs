@@ -587,3 +587,239 @@ fn process_unknown_method_falls_through() {
         Ok(Ok(_)) => {}  // fell through and returned something
     }
 }
+
+// ── apply_class_visibility_modifier (mod.rs lines 1073-1135) ────────────────
+
+#[test]
+fn class_private_with_symbol_via_send() {
+    let result = run(r#"
+class Priv
+  def secret
+    42
+  end
+end
+Priv.send(:private, :secret)
+"#);
+    assert!(matches!(result, Some(Object::Symbol(_))));
+}
+
+#[test]
+fn class_public_with_symbol_via_send() {
+    let result = run(r#"
+class Pub
+  def greet
+    "hi"
+  end
+end
+Pub.send(:private, :greet)
+Pub.send(:public, :greet)
+"#);
+    assert!(matches!(result, Some(Object::Symbol(_))));
+}
+
+#[test]
+fn class_private_multiple_args_via_send() {
+    let result = run(r#"
+class Multi
+  def a
+    1
+  end
+  def b
+    2
+  end
+end
+Multi.send(:private, :a, :b)
+"#);
+    assert!(matches!(result, Some(Object::Array(_))));
+}
+
+#[test]
+fn class_private_undefined_method_via_send_errors() {
+    let err = run_err(
+        r#"
+class Undef2
+  def real
+    1
+  end
+end
+Undef2.send(:private, :nonexistent)
+"#,
+    );
+    assert!(err.contains("undefined") || err.contains("nonexistent"));
+}
+
+#[test]
+fn class_private_non_symbol_via_send_errors() {
+    let err = run_err(
+        r#"
+class BadArg2
+  def real
+    1
+  end
+end
+BadArg2.send(:private, 42)
+"#,
+    );
+    assert!(err.contains("symbol") || err.contains("string") || err.contains("TypeError"));
+}
+
+#[test]
+fn class_private_no_args_via_send() {
+    let result = run(r#"
+class NoArg2
+end
+NoArg2.send(:private)
+"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── TrueClass.new / FalseClass.new / NilClass.new errors ───────────────────
+
+#[test]
+fn true_class_new_errors() {
+    let err = run_err("TrueClass.new");
+    assert!(err.contains("TrueClass") || err.contains("undefined"));
+}
+
+#[test]
+fn false_class_new_errors() {
+    let err = run_err("FalseClass.new");
+    assert!(err.contains("FalseClass") || err.contains("undefined"));
+}
+
+#[test]
+fn nil_class_new_errors() {
+    let err = run_err("NilClass.new");
+    assert!(err.contains("NilClass") || err.contains("undefined"));
+}
+
+#[test]
+fn true_class_allocate_errors() {
+    let err = run_err("TrueClass.allocate");
+    assert!(err.contains("allocator") || err.contains("TrueClass") || err.contains("undefined"));
+}
+
+// ── Class.new { block } (anonymous class) ───────────────────────────────────
+
+#[test]
+fn anonymous_class_with_block() {
+    let result = run(r#"
+klass = Class.new {
+  def greet
+    "anon"
+  end
+}
+klass.new.greet
+"#);
+    assert_eq!(result, Some(Object::string("anon")));
+}
+
+#[test]
+fn anonymous_class_with_superclass() {
+    let result = run(r#"
+class Base
+  def base_method
+    "base"
+  end
+end
+klass = Class.new(Base) {
+  def child_method
+    "child"
+  end
+}
+klass.new.base_method
+"#);
+    assert_eq!(result, Some(Object::string("base")));
+}
+
+#[test]
+fn class_new_non_class_superclass_errors() {
+    let err = run_err(r#"Class.new("not a class")"#);
+    assert!(err.contains("Class") || err.contains("superclass"));
+}
+
+// ── Module.new { block } (anonymous module) ─────────────────────────────────
+
+#[test]
+fn anonymous_module_with_block() {
+    let result = run(r#"
+m = Module.new {
+  def helper
+    "helping"
+  end
+}
+class User
+  include m
+end
+User.new.helper
+"#);
+    assert_eq!(result, Some(Object::string("helping")));
+}
+
+// ── class_eval / module_eval on Class ───────────────────────────────────────
+
+#[test]
+fn class_eval_adds_method() {
+    let result = run(r#"
+class Target
+end
+Target.class_eval {
+  def dynamic
+    "added"
+  end
+}
+Target.new.dynamic
+"#);
+    assert_eq!(result, Some(Object::string("added")));
+}
+
+#[test]
+fn class_eval_without_block_errors() {
+    let err = run_err(
+        r#"
+class Target2
+end
+Target2.class_eval
+"#,
+    );
+    assert!(err.contains("block") || err.contains("class_eval"));
+}
+
+// ── module_eval on Module ───────────────────────────────────────────────────
+
+#[test]
+fn module_eval_adds_method() {
+    let result = run(r#"
+module Ext
+end
+Ext.module_eval {
+  def helper
+    "mod helper"
+  end
+}
+class User
+  include Ext
+end
+User.new.helper
+"#);
+    assert_eq!(result, Some(Object::string("mod helper")));
+}
+
+// ── private_methods on class ────────────────────────────────────────────────
+
+#[test]
+fn class_private_methods_returns_array() {
+    let result = run(r#"
+class WithPriv
+  def public_one
+    1
+  end
+  private
+  def secret
+    2
+  end
+end
+WithPriv.private_methods(false).length
+"#);
+    assert!(result.is_some());
+}

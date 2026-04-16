@@ -71,3 +71,21 @@ fn test_defined_extended_execution() {
     let output = run_example("builtins/defined_extended.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_operators_coverage_execution() {
+    let output = run_example("builtins/operators_coverage.rb");
+    assert_eq!(
+        output,
+        "9223372036854775806\n13835058055282164000\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\n"
+    );
+}
+
+#[test]
+fn test_operators_coverage_no_parens_execution() {
+    let output = run_example("builtins/operators_coverage_no_parens.rb");
+    assert_eq!(
+        output,
+        "9223372036854775806\n13835058055282164000\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\n"
+    );
+}

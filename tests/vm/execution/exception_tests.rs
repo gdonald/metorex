@@ -305,3 +305,82 @@ BaseNoParent.new.foo
         err
     );
 }
+
+// ── rescue RuntimeError internally converted ────────────────────────────────
+
+#[test]
+fn rescue_runtime_error_from_undefined_method() {
+    let result = run(r#"
+val = nil
+begin
+  "hello".nonexistent_method_xyz
+rescue => e
+  val = e.message
+end
+val
+"#);
+    assert!(result.is_some());
+}
+
+#[test]
+fn rescue_type_error() {
+    let result = run(r#"
+val = nil
+begin
+  1 + "a"
+rescue TypeError => e
+  val = e.message
+end
+val
+"#);
+    assert!(result.is_some());
+}
+
+// ── Hash.new with default block ─────────────────────────────────────────────
+
+#[test]
+fn hash_new_with_default_block() {
+    let result = run(r#"
+h = Hash.new { |hash, key| hash[key] = key.to_s + "!" }
+h["foo"]
+"#);
+    assert_eq!(result, Some(Object::string("foo!")));
+}
+
+// ── Rational and Complex construction ───────────────────────────────────────
+
+#[test]
+fn rational_construction() {
+    let result = run("Rational(3, 4)");
+    assert!(matches!(result, Some(Object::Instance(_))));
+}
+
+#[test]
+fn complex_construction() {
+    let result = run("Complex(1, 2)");
+    assert!(matches!(result, Some(Object::Instance(_))));
+}
+
+// ── Refinement captured in method ───────────────────────────────────────────
+
+#[test]
+fn refinement_method_uses_refined_behavior() {
+    let result = run(r#"
+module StringExt
+  refine(String) do
+    def shout
+      upcase + "!"
+    end
+  end
+end
+
+using StringExt
+
+def test_shout
+  "hello".shout
+end
+
+test_shout
+"#);
+    assert_eq!(result, Some(Object::string("HELLO!")));
+}

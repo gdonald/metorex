@@ -50,3 +50,21 @@ fn test_multiple_assignment_parens_execution() {
     let output = run_example("data_structures/multiple_assignment_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_hash_primitive_keys_execution() {
+    let output = run_example("data_structures/hash_primitive_keys.rb");
+    assert_eq!(output, "7\n7\nn\nt\nf\ns\ni\nfl\nst\n");
+}
+
+#[test]
+fn test_hash_primitive_keys_no_parens_execution() {
+    let output = run_example("data_structures/hash_primitive_keys_no_parens.rb");
+    assert_eq!(output, "7\n7\nn\nt\nf\ns\ni\nfl\nst\n");
+}
+
+#[test]
+fn test_hash_non_primitive_keys_execution() {
+    let output = run_example("data_structures/hash_non_primitive_keys.rb");
+    assert_eq!(output, "first\nsecond\n");
+}

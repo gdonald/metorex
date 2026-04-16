@@ -398,3 +398,51 @@ h.send(:[], "x")
 "#);
     assert_eq!(result, Some(Object::Int(10)));
 }
+
+// ── hash delete ─────────────────────────────────────────────────────────────
+
+#[test]
+fn hash_delete_existing() {
+    let result = run(r#"
+h = {"a" => 1, "b" => 2}
+h.delete("a")
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn hash_delete_missing() {
+    assert_eq!(run(r#"{"a" => 1}.delete("z")"#), Some(Object::Nil));
+}
+
+#[test]
+fn hash_delete_wrong_args() {
+    let err = run_err(r#"{"a" => 1}.delete"#);
+    assert!(err.contains("argument"));
+}
+
+// ── hash with non-primitive key (reconstruct_key via KEY_OBJECTS) ───────────
+
+#[test]
+fn hash_non_primitive_key_reconstruct() {
+    let result = run(r#"
+a = [1, 2]
+h = {}
+h[a] = "val"
+h.keys.length
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+// ── hash fetch with default / block ─────────────────────────────────────────
+
+#[test]
+fn hash_fetch_with_default_cov() {
+    assert_eq!(run(r#"{"a" => 1}.fetch("z", 99)"#), Some(Object::Int(99)));
+}
+
+#[test]
+fn hash_fetch_missing_no_default_errors() {
+    let err = run_err(r#"{"a" => 1}.fetch("z")"#);
+    assert!(err.contains("key") || err.contains("KeyError") || err.contains("not found"));
+}

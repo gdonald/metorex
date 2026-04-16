@@ -52,3 +52,52 @@ b.call(5)
 "#);
     assert_eq!(result, Some(Object::Int(10)));
 }
+
+// ── Block with variadic *args parameter (via method yield) ──────────────────
+
+#[test]
+fn block_with_variadic_via_method() {
+    let result = run(r#"
+def test_var
+  yield 1, 2, 3, 4
+end
+test_var { |a, *rest| rest.length }
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn block_with_variadic_no_extras_via_method() {
+    let result = run(r#"
+def test_var
+  yield 1
+end
+test_var { |a, *rest| rest.length }
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn block_with_variadic_and_trailing_via_method() {
+    let result = run(r#"
+def test_var
+  yield 1, 2, 3, 4, 5
+end
+result = test_var { |a, *mid, z| mid.length }
+result
+"#);
+    assert!(result.is_some());
+}
+
+// ── Block with &block parameter ─────────────────────────────────────────────
+
+#[test]
+fn block_with_block_param_via_method() {
+    let result = run(r#"
+def test_blk
+  yield 5
+end
+test_blk { |x, &blk| x * 2 }
+"#);
+    assert_eq!(result, Some(Object::Int(10)));
+}

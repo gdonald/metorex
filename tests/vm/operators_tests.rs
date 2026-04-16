@@ -935,3 +935,248 @@ fn string_format_zero_pad_coverage() {
         Some(Object::String(std::rc::Rc::new("00042".to_string())))
     );
 }
+
+// ── Instance == with custom method ───────────────────────────────────────────
+
+#[test]
+fn instance_custom_eq_true() {
+    let result = run(r#"
+class Eq
+  def initialize(v)
+    @v = v
+  end
+  def ==(other)
+    @v == other.instance_variable_get(:@v)
+  end
+end
+Eq.new(1) == Eq.new(1)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn instance_custom_eq_false() {
+    let result = run(r#"
+class Eq
+  def initialize(v)
+    @v = v
+  end
+  def ==(other)
+    @v == other.instance_variable_get(:@v)
+  end
+end
+Eq.new(1) == Eq.new(2)
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn instance_identity_eq() {
+    let result = run(r#"
+class Foo
+end
+a = Foo.new
+a == a
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── Instance <=> via Comparable protocol ─────────────────────────────────────
+
+#[test]
+fn instance_comparable_less() {
+    let result = run(r#"
+class Cmp
+  include Comparable
+  def initialize(v)
+    @v = v
+  end
+  def <=>(other)
+    @v <=> other.instance_variable_get(:@v)
+  end
+end
+Cmp.new(1) < Cmp.new(2)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn instance_comparable_greater() {
+    let result = run(r#"
+class Cmp
+  include Comparable
+  def initialize(v)
+    @v = v
+  end
+  def <=>(other)
+    @v <=> other.instance_variable_get(:@v)
+  end
+end
+Cmp.new(2) > Cmp.new(1)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn instance_comparable_less_equal() {
+    let result = run(r#"
+class Cmp
+  include Comparable
+  def initialize(v)
+    @v = v
+  end
+  def <=>(other)
+    @v <=> other.instance_variable_get(:@v)
+  end
+end
+Cmp.new(1) <= Cmp.new(1)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn instance_comparable_greater_equal() {
+    let result = run(r#"
+class Cmp
+  include Comparable
+  def initialize(v)
+    @v = v
+  end
+  def <=>(other)
+    @v <=> other.instance_variable_get(:@v)
+  end
+end
+Cmp.new(1) >= Cmp.new(1)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn instance_comparable_eq_via_spaceship() {
+    let result = run(r#"
+class Cmp
+  include Comparable
+  def initialize(v)
+    @v = v
+  end
+  def <=>(other)
+    @v <=> other.instance_variable_get(:@v)
+  end
+end
+Cmp.new(5) == Cmp.new(5)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── String comparisons ───────────────────────────────────────────────────────
+
+#[test]
+fn string_less_than() {
+    assert_eq!(run("'abc' < 'abd'"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_greater_than() {
+    assert_eq!(run("'abd' > 'abc'"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_less_equal() {
+    assert_eq!(run("'abc' <= 'abc'"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_greater_equal() {
+    assert_eq!(run("'abc' >= 'abc'"), Some(Object::Bool(true)));
+}
+
+// ── Bitwise nil/Xor edge cases ──────────────────────────────────────────────
+
+#[test]
+fn bitwise_and_nil_left() {
+    assert_eq!(run("nil & true"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn bitwise_and_nil_right() {
+    assert_eq!(run("true & nil"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn bitwise_or_nil_left() {
+    assert_eq!(run("nil | true"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn bitwise_or_nil_left_false() {
+    assert_eq!(run("nil | false"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_nil_left_truthy() {
+    assert_eq!(run("nil ^ true"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn xor_nil_left_falsy() {
+    assert_eq!(run("nil ^ false"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_bool_truthy_other() {
+    assert_eq!(run("true ^ 0"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn xor_other_bool() {
+    assert_eq!(run("0 ^ true"), Some(Object::Bool(false)));
+}
+
+// ── Integer overflow ─────────────────────────────────────────────────────────
+
+#[test]
+fn int_add_overflow_to_float() {
+    let result = run("4611686018427387903 + 4611686018427387903");
+    assert!(matches!(
+        result,
+        Some(Object::Float(_)) | Some(Object::Int(_))
+    ));
+}
+
+#[test]
+fn int_multiply_overflow() {
+    let result = run("4611686018427387903 * 3");
+    assert!(result.is_some());
+}
+
+#[test]
+fn int_subtract_overflow() {
+    let result = run("0 - 4611686018427387903 - 4611686018427387903 - 2");
+    assert!(result.is_some());
+}
+
+// ── Case equality ────────────────────────────────────────────────────────────
+
+#[test]
+fn case_equality_class_instance() {
+    assert_eq!(run("String === 'hello'"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn case_equality_class_wrong_type() {
+    assert_eq!(run("Integer === 'hello'"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn case_equality_exception_type() {
+    let result = run(r#"
+e = nil
+begin
+  raise RuntimeError, "oops"
+rescue => ex
+  e = ex
+end
+RuntimeError === e
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}

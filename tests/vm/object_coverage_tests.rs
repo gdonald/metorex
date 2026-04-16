@@ -309,3 +309,322 @@ o.instance_eval(&b)
 "#);
     assert!(result.is_some());
 }
+
+// ── nil.to_r / nil.rationalize / nil.to_c ───────────────────────────────────
+
+#[test]
+fn nil_to_r() {
+    let result = run("nil.to_r");
+    assert!(result.is_some());
+}
+
+#[test]
+fn nil_rationalize() {
+    let result = run("nil.rationalize");
+    assert!(result.is_some());
+}
+
+#[test]
+fn nil_rationalize_too_many_args() {
+    let err = run_err("nil.rationalize(1, 2)");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn nil_to_c() {
+    let result = run("nil.to_c");
+    assert!(result.is_some());
+}
+
+// ── frozen? / freeze / to_sym ───────────────────────────────────────────────
+
+#[test]
+fn nil_frozen() {
+    assert_eq!(run("nil.frozen?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn int_frozen() {
+    assert_eq!(run("42.frozen?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_frozen() {
+    assert_eq!(run("'hi'.frozen?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn symbol_frozen() {
+    assert_eq!(run(":foo.frozen?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn float_frozen() {
+    assert_eq!(run("3.14.frozen?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn bool_frozen() {
+    assert_eq!(run("true.frozen?"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn freeze_returns_self() {
+    assert_eq!(run("42.freeze"), Some(Object::Int(42)));
+}
+
+#[test]
+fn symbol_to_sym() {
+    let result = run(":foo.to_sym");
+    assert!(matches!(result, Some(Object::Symbol(_))));
+}
+
+#[test]
+fn string_to_sym() {
+    let result = run("'bar'.to_sym");
+    assert!(matches!(result, Some(Object::Symbol(_))));
+}
+
+// ── object_id / __id__ ──────────────────────────────────────────────────────
+
+#[test]
+fn int_object_id() {
+    let result = run("42.object_id");
+    assert_eq!(result, Some(Object::Int(85))); // 2*42+1
+}
+
+#[test]
+fn true_object_id() {
+    assert_eq!(run("true.object_id"), Some(Object::Int(2)));
+}
+
+#[test]
+fn false_object_id() {
+    assert_eq!(run("false.object_id"), Some(Object::Int(0)));
+}
+
+#[test]
+fn nil_object_id() {
+    assert_eq!(run("nil.object_id"), Some(Object::Int(4)));
+}
+
+#[test]
+fn instance_object_id() {
+    let result = run("Object.new.object_id");
+    assert!(matches!(result, Some(Object::Int(_))));
+}
+
+#[test]
+fn array_object_id() {
+    let result = run("[1,2].object_id");
+    assert!(matches!(result, Some(Object::Int(_))));
+}
+
+#[test]
+fn dict_object_id() {
+    let result = run("{}.object_id");
+    assert!(matches!(result, Some(Object::Int(_))));
+}
+
+// ── clamp ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn clamp_two_args_in_range() {
+    assert_eq!(run("5.clamp(1, 10)"), Some(Object::Int(5)));
+}
+
+#[test]
+fn clamp_two_args_below_min() {
+    assert_eq!(run("0.clamp(1, 10)"), Some(Object::Int(1)));
+}
+
+#[test]
+fn clamp_two_args_above_max() {
+    assert_eq!(run("20.clamp(1, 10)"), Some(Object::Int(10)));
+}
+
+#[test]
+fn clamp_range_arg() {
+    assert_eq!(run("5.clamp(1..10)"), Some(Object::Int(5)));
+}
+
+#[test]
+fn clamp_exclusive_range_errors() {
+    let err = run_err("5.clamp(1...10)");
+    assert!(err.contains("exclusive"));
+}
+
+#[test]
+fn clamp_min_greater_than_max_errors() {
+    let err = run_err("5.clamp(10, 1)");
+    assert!(err.contains("min") || err.contains("smaller"));
+}
+
+#[test]
+fn clamp_wrong_arg_count_errors() {
+    let err = run_err("5.clamp(1, 2, 3)");
+    assert!(err.contains("argument"));
+}
+
+// ── between? ────────────────────────────────────────────────────────────────
+
+#[test]
+fn between_true() {
+    assert_eq!(run("5.between?(1, 10)"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn between_false_below() {
+    assert_eq!(run("0.between?(1, 10)"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn between_false_above() {
+    assert_eq!(run("20.between?(1, 10)"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn between_wrong_arg_count_errors() {
+    let err = run_err("5.between?(1)");
+    assert!(err.contains("argument"));
+}
+
+// ── singleton_class / singleton_method ──────────────────────────────────────
+
+#[test]
+fn singleton_class_returns_class() {
+    let result = run("42.singleton_class");
+    assert!(matches!(result, Some(Object::Class(_))));
+}
+
+#[test]
+fn singleton_method_errors() {
+    let err = run_err("42.singleton_method(:foo)");
+    assert!(err.contains("singleton") || err.contains("undefined"));
+}
+
+#[test]
+fn singleton_method_wrong_arg_count() {
+    let err = run_err("42.singleton_method");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn singleton_method_non_string_arg() {
+    let err = run_err("42.singleton_method(123)");
+    assert!(err.contains("String") || err.contains("conversion"));
+}
+
+// ── eql? / equal? ──────────────────────────────────────────────────────────
+
+#[test]
+fn eql_same_value() {
+    assert_eq!(run("42.eql?(42)"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn eql_different_value() {
+    assert_eq!(run("42.eql?(43)"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn eql_wrong_arg_count() {
+    let err = run_err("42.eql?");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn equal_same_object() {
+    assert_eq!(run("a = 42; a.equal?(a)"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn equal_different_objects() {
+    let result = run(r#"
+a = Object.new
+b = Object.new
+a.equal?(b)
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn equal_wrong_arg_count() {
+    let err = run_err("42.equal?");
+    assert!(err.contains("argument"));
+}
+
+#[test]
+fn equal_same_instance() {
+    let result = run(r#"
+a = Object.new
+a.equal?(a)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn equal_arrays_same_ref() {
+    let result = run(r#"
+a = [1, 2]
+a.equal?(a)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn equal_dicts_same_ref() {
+    let result = run(r#"
+a = {"x" => 1}
+a.equal?(a)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── dup on Instance / Hash / other ──────────────────────────────────────────
+
+#[test]
+fn instance_dup() {
+    let result = run(r#"
+class Pt
+  def initialize(x)
+    @x = x
+  end
+  def x
+    @x
+  end
+end
+a = Pt.new(5)
+b = a.dup
+b.x
+"#);
+    assert_eq!(result, Some(Object::Int(5)));
+}
+
+#[test]
+fn hash_dup() {
+    let result = run(r#"
+h = {"a" => 1}
+h2 = h.dup
+h2["b"] = 2
+h.keys.length
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+// ── dispatch_spaceship on built-in types ────────────────────────────────────
+
+#[test]
+fn dispatch_spaceship_int_via_clamp() {
+    assert_eq!(run("5.clamp(1, 10)"), Some(Object::Int(5)));
+}
+
+#[test]
+fn dispatch_spaceship_float_via_between() {
+    assert_eq!(run("3.14.between?(1.0, 5.0)"), Some(Object::Bool(true)));
+}
+
+#[test]
+fn dispatch_spaceship_string_via_between() {
+    assert_eq!(run("'c'.between?('a', 'z')"), Some(Object::Bool(true)));
+}
