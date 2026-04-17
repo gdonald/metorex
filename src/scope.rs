@@ -47,6 +47,11 @@ impl Scope {
         self.variables.insert(name, value);
     }
 
+    /// Remove a variable from the current scope only (does not walk parents).
+    pub fn undefine(&mut self, name: &str) {
+        self.variables.remove(name);
+    }
+
     /// Gets a variable value by traversing the scope chain
     /// Returns None if the variable is not found in any scope
     pub fn get(&self, name: &str) -> Option<Object> {

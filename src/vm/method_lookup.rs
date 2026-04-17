@@ -138,8 +138,16 @@ impl VirtualMachine {
         {
             let method_name_obj = Object::String(Rc::new(method_name.to_string()));
             let arity = method_missing_method.parameters.len();
+            let has_variadic = method_missing_method.variadic_param.is_some();
             let method_missing_args = if arity <= 1 {
                 vec![method_name_obj]
+            } else if has_variadic {
+                // `def method_missing(name, *args, &block)` — spread original
+                // args so the splat collects them as individual positionals.
+                let mut v = Vec::with_capacity(arguments.len() + 1);
+                v.push(method_name_obj);
+                v.extend(arguments);
+                v
             } else {
                 let args_array = Object::Array(Rc::new(RefCell::new(arguments)));
                 vec![method_name_obj, args_array]

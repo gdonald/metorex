@@ -168,7 +168,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.5.6. core/main/to_s_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.5.7. core/main/using_spec
 - [ ] 4.6. core/class
-  - [ ] 4.6.1. core/class/allocate_spec
+  - [x] 4.6.1. core/class/allocate_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.6.2. core/class/attached_object_spec
   - [ ] 4.6.3. core/class/dup_spec
   - [ ] 4.6.4. core/class/inherited_spec

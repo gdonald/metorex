@@ -43,6 +43,12 @@ pub struct VirtualMachine {
     /// refinement modules (from `using`) with the snapshot of refined classes
     /// at activation time. Pushed on file load / eval; popped on exit.
     pub(crate) refinement_scopes: Vec<Vec<RefinementEntry>>,
+    /// Stack of lexically enclosing class/module definitions. Used to route
+    /// nested `class`/`module` declarations to the enclosing scope (so
+    /// `module Foo; class Bar; end; end` defines `Foo::Bar`, not `::Bar`).
+    /// Pushed on entering a `class`/`module` body; popped on exit. Does NOT
+    /// track method call receivers — only lexical nesting.
+    pub(crate) def_scope_stack: Vec<Rc<crate::class::Class>>,
 }
 
 /// A single activated refinement: the refinement module and the set of target
@@ -83,6 +89,7 @@ impl VirtualMachine {
             load_wrap_depth: 0,
             user_def_nesting: 0,
             refinement_scopes: vec![Vec::new()],
+            def_scope_stack: Vec::new(),
         }
     }
 

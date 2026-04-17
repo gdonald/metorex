@@ -27,6 +27,40 @@ impl VirtualMachine {
                 message: format!("allocator undefined for {}", class_rc.name()),
             });
         }
+        // Class.allocate and subclasses: uninitialized class instance. `new` and
+        // `superclass` on it must raise TypeError (Ruby semantics).
+        if class_rc.get_class_var("__uninitialized__").is_some()
+            && matches!(method_name, "new" | "superclass")
+        {
+            let message = "uninitialized class".to_string();
+            let exc = Object::exception("TypeError", message.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message,
+            });
+        }
+        if method_name == "allocate" {
+            if class_rc.name() == "Class" {
+                let anon = Rc::new(Class::new("", None));
+                anon.set_class_var("__uninitialized__", Object::Bool(true));
+                return Ok(Some(Object::Class(anon)));
+            }
+            let inst = crate::object::Instance::new(Rc::clone(class_rc));
+            return Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
+                inst,
+            )))));
+        }
+        if method_name == "constants" {
+            let names: Vec<Object> = class_rc
+                .class_var_names()
+                .into_iter()
+                .filter(|n| !n.starts_with("__"))
+                .filter(|n| n.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
+                .map(|n| Object::Symbol(Rc::new(n)))
+                .collect();
+            return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
+        }
         if non_instantiable && method_name == "new" {
             let exc = Object::exception(
                 "NoMethodError",

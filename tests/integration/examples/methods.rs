@@ -62,3 +62,10 @@ fn test_yield_qmark_call_execution() {
     let output = run_example("methods/yield_qmark_call.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_splat_empty_call_execution() {
+    let expected = "pong\n";
+    let output = run_example("methods/splat_empty_call.rb");
+    assert_eq!(output, expected);
+}

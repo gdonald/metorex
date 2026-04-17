@@ -21,14 +21,19 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // Resolve superclass if specified. Check the environment first (for
-        // local class shadowing), then fall back to globals (for classes
-        // defined in previously-loaded files whose top-level scope has been
-        // torn down).
+        // If we're lexically nested inside a module/class, a bare `class Bar`
+        // defines a constant on the enclosing scope (Foo::Bar), not a global
+        // reopening.
+        let parent_scope = self.def_scope_stack.last().cloned();
+
+        // Resolve superclass if specified. Check enclosing scope's constants first
+        // (so `class Bar < Foo` inside `module M` can see `M::Foo`), then the
+        // environment, then globals.
         let superclass = if let Some(super_name) = superclass_name {
-            let resolved = self
-                .environment()
-                .get(super_name)
+            let resolved = parent_scope
+                .as_ref()
+                .and_then(|p| p.get_class_var(super_name))
+                .or_else(|| self.environment().get(super_name))
                 .or_else(|| self.globals().get(super_name));
             match resolved {
                 Some(Object::Class(class)) => Some(class),
@@ -51,7 +56,12 @@ impl VirtualMachine {
 
         // Reopen existing class if it exists (Ruby semantics), otherwise create new
         let class = if superclass.is_none() {
-            if let Some(Object::Class(existing)) = self.globals().get(name) {
+            if let Some(parent) = parent_scope.as_ref() {
+                match parent.get_class_var(name) {
+                    Some(Object::Class(existing)) => existing,
+                    _ => Rc::new(Class::new(name, superclass)),
+                }
+            } else if let Some(Object::Class(existing)) = self.globals().get(name) {
                 existing
             } else if let Some(Object::Class(existing)) = self.environment().get(name) {
                 existing
@@ -62,13 +72,19 @@ impl VirtualMachine {
             Rc::new(Class::new(name, superclass))
         };
 
-        self.apply_class_body(&class, body, position)?;
+        self.def_scope_stack.push(Rc::clone(&class));
+        let body_result = self.apply_class_body(&class, body, position);
+        self.def_scope_stack.pop();
+        body_result?;
 
-        // Register the class in the environment and globals
         let class_obj = Object::Class(class);
-        self.environment_mut()
-            .define(name.to_string(), class_obj.clone());
-        self.globals_mut().set(name.to_string(), class_obj);
+        if let Some(parent) = parent_scope {
+            parent.set_class_var(name, class_obj);
+        } else {
+            self.environment_mut()
+                .define(name.to_string(), class_obj.clone());
+            self.globals_mut().set(name.to_string(), class_obj);
+        }
 
         Ok(ControlFlow::Next)
     }
@@ -106,9 +122,13 @@ impl VirtualMachine {
                     .define(name.clone(), cell.borrow().clone());
             }
         }
+        self.def_scope_stack.push(Rc::clone(class));
         let result = self.apply_class_body(class, &block.body, position);
+        self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
+        } else {
+            self.environment_mut().undefine("self");
         }
         result
     }
@@ -626,24 +646,33 @@ impl VirtualMachine {
         body: &[Statement],
         _position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // Reopen existing module (or class, e.g. builtin `Module`/`Class`) if it exists.
-        let (module, existing_as_class) =
-            if let Some(Object::Module(existing)) = self.globals().get(name) {
-                (existing, false)
-            } else if let Some(Object::Module(existing)) = self.environment().get(name) {
-                (existing, false)
-            } else if let Some(Object::Class(existing)) = self.globals().get(name) {
-                (existing, true)
-            } else if let Some(Object::Class(existing)) = self.environment().get(name) {
-                (existing, true)
-            } else {
-                (Rc::new(Class::new(name, None)), false)
-            };
+        // If we're lexically nested inside a module/class, resolve the name
+        // against the parent's constants first — `module Foo; module Bar; end; end`
+        // defines `Foo::Bar`, distinct from any top-level `::Bar` of the same name.
+        let parent_scope = self.def_scope_stack.last().cloned();
+        let (module, existing_as_class) = if let Some(parent) = parent_scope.as_ref() {
+            match parent.get_class_var(name) {
+                Some(Object::Module(existing)) => (existing, false),
+                Some(Object::Class(existing)) => (existing, true),
+                _ => (Rc::new(Class::new(name, None)), false),
+            }
+        } else if let Some(Object::Module(existing)) = self.globals().get(name) {
+            (existing, false)
+        } else if let Some(Object::Module(existing)) = self.environment().get(name) {
+            (existing, false)
+        } else if let Some(Object::Class(existing)) = self.globals().get(name) {
+            (existing, true)
+        } else if let Some(Object::Class(existing)) = self.environment().get(name) {
+            (existing, true)
+        } else {
+            (Rc::new(Class::new(name, None)), false)
+        };
 
         // Set 'self' to the module for instance variable access in module body
         let prev_self = self.environment().get("self");
         self.environment_mut()
             .define("self".to_string(), Object::Module(Rc::clone(&module)));
+        self.def_scope_stack.push(Rc::clone(&module));
 
         for statement in body {
             match statement {
@@ -754,7 +783,8 @@ impl VirtualMachine {
                         }
                     }
                 }
-                // ClassDef inside module — execute and store as module constant
+                // ClassDef inside module — execute_class_def attaches the nested
+                // class to the enclosing scope directly via parent_scope detection.
                 Statement::ClassDef {
                     name: class_name,
                     superclass,
@@ -767,21 +797,14 @@ impl VirtualMachine {
                         class_body,
                         *class_pos,
                     )?;
-                    // After class definition, grab it from globals/env and store as module constant
-                    if let Some(class_obj) = self.globals().get(class_name) {
-                        module.set_class_var(class_name, class_obj);
-                    }
                 }
-                // Nested module inside module
+                // Nested module — execute_module_def attaches it to the enclosing scope.
                 Statement::ModuleDef {
                     name: mod_name,
                     body: mod_body,
                     position: mod_pos,
                 } => {
                     self.execute_module_def(mod_name, mod_body, *mod_pos)?;
-                    if let Some(mod_obj) = self.globals().get(mod_name) {
-                        module.set_class_var(mod_name, mod_obj);
-                    }
                 }
                 // Include inside module body
                 Statement::Include {
@@ -803,9 +826,13 @@ impl VirtualMachine {
             }
         }
 
+        self.def_scope_stack.pop();
+
         // Restore previous self
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
+        } else {
+            self.environment_mut().undefine("self");
         }
 
         let module_obj = if existing_as_class {
@@ -813,10 +840,15 @@ impl VirtualMachine {
         } else {
             Object::Module(module)
         };
-        self.environment_mut()
-            .define(name.to_string(), module_obj.clone());
-        // Also register in globals so the module persists across file scopes
-        self.globals_mut().set(name.to_string(), module_obj);
+        if let Some(parent) = parent_scope {
+            // Nested module: attach to parent as a constant; do NOT leak into globals,
+            // which would clobber same-named builtins (e.g. ::Module, ::Class).
+            parent.set_class_var(name, module_obj);
+        } else {
+            self.environment_mut()
+                .define(name.to_string(), module_obj.clone());
+            self.globals_mut().set(name.to_string(), module_obj);
+        }
 
         Ok(ControlFlow::Next)
     }

@@ -80,6 +80,11 @@ impl Environment {
         self.current_scope().borrow_mut().define(name, value);
     }
 
+    /// Remove a variable from the current scope (does not touch parent scopes).
+    pub fn undefine(&mut self, name: &str) {
+        self.current_scope().borrow_mut().undefine(name);
+    }
+
     /// Gets a variable value by traversing the scope chain from the current scope
     pub fn get(&self, name: &str) -> Option<Object> {
         self.current_scope().borrow().get(name)
