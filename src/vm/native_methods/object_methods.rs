@@ -426,6 +426,7 @@ impl VirtualMachine {
                 }
                 let target_class = match &arguments[0] {
                     Object::Class(c) => c,
+                    Object::Module(m) => m,
                     other => {
                         return Err(method_argument_type_error(
                             method_name,
@@ -435,6 +436,30 @@ impl VirtualMachine {
                         ));
                     }
                 };
+                // A Class object is itself an instance of Class (and its
+                // ancestors: Module, Object, BasicObject). Walk the global
+                // Class's chain so anonymous Class.new instances answer
+                // correctly without needing their own class pointer.
+                if matches!(receiver, Object::Class(_) | Object::Module(_)) {
+                    let target_name = target_class.name();
+                    let meta_name = match receiver {
+                        Object::Class(_) => "Class",
+                        Object::Module(_) => "Module",
+                        _ => unreachable!(),
+                    };
+                    if let Some(Object::Class(meta)) = self.globals().get(meta_name) {
+                        if self.builtins().is_subclass_of(&meta, target_class) {
+                            return Ok(Some(Object::Bool(true)));
+                        }
+                        let mut current = meta.superclass();
+                        while let Some(anc) = current {
+                            if anc.name() == target_name {
+                                return Ok(Some(Object::Bool(true)));
+                            }
+                            current = anc.superclass();
+                        }
+                    }
+                }
                 Ok(Some(Object::Bool(
                     self.builtins().is_instance_of(receiver, target_class),
                 )))

@@ -74,7 +74,10 @@ fn resolver_unless_with_else_branch() {
 fn resolver_break_and_continue() {
     let mut r = Resolver::new();
     let stmts = vec![
-        Statement::Break { position: pos() },
+        Statement::Break {
+            value: None,
+            position: pos(),
+        },
         Statement::Continue { position: pos() },
     ];
     let result = r.resolve(&stmts);

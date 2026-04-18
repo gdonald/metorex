@@ -184,7 +184,10 @@ fn compile_break_in_while() {
 
 #[test]
 fn compile_break_outside_loop_errors() {
-    let stmts = vec![Statement::Break { position: pos() }];
+    let stmts = vec![Statement::Break {
+        value: None,
+        position: pos(),
+    }];
     let result = compile_stmts(&stmts);
     assert!(result.is_err());
     let err = result.unwrap_err();

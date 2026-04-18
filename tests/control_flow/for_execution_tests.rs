@@ -189,6 +189,7 @@ fn test_for_loop_with_break() {
                         position: pos(3, 8),
                     },
                     then_branch: vec![Statement::Break {
+                        value: None,
                         position: pos(4, 5),
                     }],
                     elsif_branches: vec![],

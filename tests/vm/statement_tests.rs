@@ -701,16 +701,17 @@ foo
 // ── break/continue inside block called via .call (method_invocation.rs 184-188) ─
 
 #[test]
-fn break_inside_block_call_error() {
-    let err = run_err(
-        r#"
+fn break_inside_block_passed_to_method_returns_break_value() {
+    // Ruby: `break` in a block attached to `run_block { break }` unwinds to
+    // that method call, making the whole call evaluate to the break value
+    // (nil when `break` has no operand).
+    let result = run(r#"
 def run_block(&b)
   b.call
 end
 run_block { break }
-"#,
-    );
-    assert!(err.contains("break") || err.contains("loop") || err.contains("outside"));
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]

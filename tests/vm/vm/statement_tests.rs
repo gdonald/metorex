@@ -121,6 +121,7 @@ fn return_without_value_yields_nil() {
 fn break_outside_loop_produces_runtime_error() {
     let mut vm = VirtualMachine::new();
     let break_stmt = Statement::Break {
+        value: None,
         position: pos(1, 1),
     };
 

@@ -95,9 +95,16 @@ impl VirtualMachine {
                     position: *position,
                 })
             }
-            Statement::Break { position } => Ok(ControlFlow::Break {
-                position: *position,
-            }),
+            Statement::Break { value, position } => {
+                let resolved = match value {
+                    Some(expr) => self.evaluate_expression(expr)?,
+                    None => Object::Nil,
+                };
+                Ok(ControlFlow::Break {
+                    value: resolved,
+                    position: *position,
+                })
+            }
             Statement::Continue { position } => Ok(ControlFlow::Continue {
                 position: *position,
             }),
@@ -238,6 +245,14 @@ impl VirtualMachine {
     ) -> Result<(), MetorexError> {
         match target {
             Expression::Identifier { name, .. } => {
+                // Constant-shaped identifiers (`MyClass = ...`) auto-name
+                // anonymous classes/modules on first assignment, matching
+                // Ruby's `klass.name` behavior after binding to a constant.
+                if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                    && let Object::Class(v) | Object::Module(v) = &value
+                {
+                    v.set_assigned_name_if_anonymous(name);
+                }
                 if !self.environment_mut().set(name, value.clone()) {
                     self.environment_mut().define(name.clone(), value);
                 }

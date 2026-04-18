@@ -317,6 +317,7 @@ fn test_break_outside_loop_error_has_location() {
 
     // break statement outside a loop
     let stmt = Statement::Break {
+        value: None,
         position: pos_at(15, 5),
     };
 

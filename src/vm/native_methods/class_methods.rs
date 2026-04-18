@@ -135,7 +135,18 @@ impl VirtualMachine {
         }
         if method_name == "new" && class_rc.name() == "Class" {
             let superclass = match arguments.first() {
-                Some(Object::Class(c)) => Some(Rc::clone(c)),
+                Some(Object::Class(c)) => {
+                    // Singleton (meta) classes can't be used as a superclass —
+                    // MRI raises TypeError("can't make subclass of singleton
+                    // class") in this case.
+                    if c.get_class_var("__singleton__").is_some() {
+                        return Err(MetorexError::type_error(
+                            "can't make subclass of singleton class",
+                            position_to_location(position),
+                        ));
+                    }
+                    Some(Rc::clone(c))
+                }
                 Some(other) => {
                     return Err(MetorexError::type_error(
                         format!("superclass must be a Class (given {})", other.type_name()),
@@ -151,11 +162,17 @@ impl VirtualMachine {
                 }),
             };
             let anon = Rc::new(Class::new("", superclass.clone()));
-            if let Some(Object::Block(block)) = self.pending_block.take() {
-                self.apply_block_as_class_body(&anon, &block, position)?;
+            // Extract the pending block before triggering the `inherited`
+            // hook — the hook's own invoke_method would otherwise consume it.
+            let pending = self.pending_block.take();
+            // Ruby: `inherited` hook fires before the block runs, so a hook
+            // that records `self` sees the parent first, then the block's
+            // `self` push appends the subclass.
+            if let Some(sc) = &superclass {
+                self.trigger_inherited_hook(sc, Rc::clone(&anon), position)?;
             }
-            if let Some(sc) = superclass {
-                self.trigger_inherited_hook(&sc, Rc::clone(&anon), position)?;
+            if let Some(Object::Block(block)) = pending {
+                self.apply_block_as_class_body(&anon, &block, position)?;
             }
             return Ok(Some(Object::Class(anon)));
         }
@@ -623,6 +640,11 @@ impl VirtualMachine {
                         position_to_location(position),
                     ));
                 }
+                return Ok(Some(Object::Nil));
+            }
+            // Module methods we treat as no-ops (Metorex doesn't track these
+            // concepts, but class bodies that use them still need to load).
+            "deprecate_constant" | "ruby2_keywords" => {
                 return Ok(Some(Object::Nil));
             }
             _ => {}

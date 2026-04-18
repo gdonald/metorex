@@ -187,10 +187,13 @@ impl VirtualMachine {
     ) -> Result<(), MetorexError> {
         let prev_self = self.environment().get("self");
         self.environment_mut().define("self".to_string(), self_obj);
+        // Share the outer RefCells so an assignment like `x = self` inside the
+        // block mutates the caller's local, matching Ruby's closure semantics
+        // for blocks (including `Class.new do ... end`).
         for (name, cell) in block.captured_vars.iter() {
             if self.environment().get(name).is_none() {
                 self.environment_mut()
-                    .define(name.clone(), cell.borrow().clone());
+                    .define_shared(name.clone(), cell.clone());
             }
         }
         self.def_scope_stack.push(Rc::clone(class));
@@ -221,13 +224,12 @@ impl VirtualMachine {
                     singleton_class: None,
                     ..
                 } => {
-                    let param_names: Vec<String> = parameters
-                        .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
-                        .map(|p| p.name.clone())
-                        .collect();
-                    let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
-                    m.captured_refinements = self.snapshot_active_refinements();
+                    let m = build_method_from_params(
+                        method_name.clone(),
+                        parameters,
+                        method_body.clone(),
+                        self.snapshot_active_refinements(),
+                    );
                     class.define_method(method_name, Rc::new(m));
                 }
                 // `def self.name` inside a `Class.new do ... end` block: the parser
@@ -242,13 +244,12 @@ impl VirtualMachine {
                     singleton_class: Some(receiver),
                     ..
                 } if receiver == "self" => {
-                    let param_names: Vec<String> = parameters
-                        .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
-                        .map(|p| p.name.clone())
-                        .collect();
-                    let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
-                    m.captured_refinements = self.snapshot_active_refinements();
+                    let m = build_method_from_params(
+                        method_name.clone(),
+                        parameters,
+                        method_body.clone(),
+                        self.snapshot_active_refinements(),
+                    );
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
                 }
                 Statement::MethodDef {
@@ -302,10 +303,16 @@ impl VirtualMachine {
                 }
                 Statement::Assignment {
                     target: Expression::InstanceVariable { name: var_name, .. },
+                    value,
                     ..
                 } => {
-                    // Declaring an instance variable (e.g., @x = nil in class body)
+                    // Declare the ivar and bind the class-level value so
+                    // `@body = self` in a class body sets a real class-level
+                    // instance variable (read back by `class.get_class_var`
+                    // with the `@` prefix), not just a declared-but-unset name.
                     class.declare_instance_var(var_name);
+                    let initial_value = self.evaluate_expression(value)?;
+                    class.set_class_var(format!("@{}", var_name), initial_value);
                 }
                 Statement::Assignment {
                     target: Expression::ClassVariable { name: var_name, .. },
@@ -405,8 +412,14 @@ impl VirtualMachine {
                         },
                     value,
                     ..
-                } => {
-                    // Constant assignment in class body (e.g., PI = 3.14159)
+                } if const_name
+                    .chars()
+                    .next()
+                    .is_some_and(|c| c.is_ascii_uppercase()) =>
+                {
+                    // Constant assignment in class body (e.g., PI = 3.14159).
+                    // Lowercase identifiers fall through to the `_` arm and are
+                    // treated as normal local-variable assignments.
                     let const_value = self.evaluate_expression(value)?;
                     class.set_class_var(const_name, const_value);
                 }
@@ -639,7 +652,15 @@ impl VirtualMachine {
                             position,
                         )?;
                     }
-                    let _ = handled;
+                    // Fall through to general statement execution for arbitrary
+                    // expressions and lowercase-identifier assignments (locals,
+                    // method calls, @ivars on the class, etc.). Ruby evaluates
+                    // any expression inside a class body with `self` bound to
+                    // the class; we've already pushed that self in
+                    // `apply_block_as_class_body_with_self` / `execute_class_def`.
+                    if !handled {
+                        self.execute_statement(statement)?;
+                    }
                 }
             }
         }
@@ -1057,4 +1078,49 @@ impl VirtualMachine {
             position_to_location(position),
         ))
     }
+}
+
+/// Build a Method from a parameter list, handling positional, variadic,
+/// keyword, block, and default parameters. Shared by the FunctionDef arms in
+/// `apply_class_body` (i.e. `def` inside `Class.new do ... end`) so they pick
+/// up the same parameter modes as the MethodDef path.
+fn build_method_from_params(
+    name: String,
+    parameters: &[crate::ast::Parameter],
+    body: Vec<Statement>,
+    refinements: Vec<(Rc<Class>, Vec<String>)>,
+) -> Method {
+    let param_names: Vec<String> = parameters
+        .iter()
+        .filter(|p| !p.is_named_keyword && !p.is_block)
+        .map(|p| p.name.clone())
+        .collect();
+    let keyword_parameters: Vec<(String, Option<Expression>)> = parameters
+        .iter()
+        .filter(|p| p.is_named_keyword)
+        .map(|p| (p.name.clone(), p.default_value.clone()))
+        .collect();
+    let block_parameter = parameters
+        .iter()
+        .find(|p| p.is_block)
+        .map(|p| p.name.clone());
+    let default_parameters: Vec<(usize, Expression)> = parameters
+        .iter()
+        .filter(|p| !p.is_named_keyword && !p.is_block)
+        .enumerate()
+        .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
+        .collect();
+    let variadic_param = parameters
+        .iter()
+        .filter(|p| !p.is_named_keyword && !p.is_block)
+        .enumerate()
+        .find(|(_, p)| p.is_variadic)
+        .map(|(i, p)| (i, p.name.clone()));
+    let mut m = Method::new(name, param_names, body);
+    m.default_parameters = default_parameters;
+    m.keyword_parameters = keyword_parameters;
+    m.block_parameter = block_parameter;
+    m.variadic_param = variadic_param;
+    m.captured_refinements = refinements;
+    m
 }

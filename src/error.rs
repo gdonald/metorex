@@ -127,6 +127,16 @@ pub enum MetorexError {
         value: crate::object::Object,
         location: SourceLocation,
     },
+
+    /// A `break <value>` from inside a block passed to a method - unwinds
+    /// to the method call that received the block (Ruby's "break with value"
+    /// semantics). Caught at the method-invocation boundary so the method
+    /// call returns `value` instead of its normal result.
+    #[error("Block break")]
+    BlockBreak {
+        value: crate::object::Object,
+        location: SourceLocation,
+    },
 }
 
 // Custom From implementation for std::io::Error
@@ -225,6 +235,7 @@ impl MetorexError {
             | Self::UncaughtException { message, .. } => message,
             Self::IoError(msg) | Self::InternalError(msg) => msg,
             Self::NonLocalReturn { .. } => "non-local return",
+            Self::BlockBreak { .. } => "block break",
         }
     }
 

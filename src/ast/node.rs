@@ -612,8 +612,10 @@ pub enum Statement {
         position: Position,
     },
 
-    // Break statement (exit from loop)
+    // Break statement (exit from loop). `value` carries the optional
+    // expression that follows `break` (e.g. `break 42`) — None when bare.
     Break {
+        value: Option<Box<Expression>>,
         position: Position,
     },
 

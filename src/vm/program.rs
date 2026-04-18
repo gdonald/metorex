@@ -87,7 +87,7 @@ impl VirtualMachine {
                             position_to_location(position),
                         ));
                     }
-                    ControlFlow::Break { position } => {
+                    ControlFlow::Break { position, .. } => {
                         return Err(loop_control_error("break", position));
                     }
                     ControlFlow::Continue { position } => {
@@ -113,7 +113,7 @@ impl VirtualMachine {
                         position_to_location(position),
                     ));
                 }
-                ControlFlow::Break { position } => {
+                ControlFlow::Break { position, .. } => {
                     return Err(loop_control_error("break", position));
                 }
                 ControlFlow::Continue { position } => {

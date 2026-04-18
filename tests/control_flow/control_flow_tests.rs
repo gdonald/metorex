@@ -631,6 +631,7 @@ fn test_for_loop_with_break() {
                     position: pos(2, 11),
                 },
                 then_branch: vec![Statement::Break {
+                    value: None,
                     position: pos(3, 5),
                 }],
                 elsif_branches: vec![],
@@ -729,6 +730,7 @@ fn test_nested_control_flow() {
                 pattern: MatchPattern::Wildcard,
                 guard: None,
                 body: vec![Statement::Break {
+                    value: None,
                     position: pos(5, 17),
                 }],
                 position: pos(5, 7),

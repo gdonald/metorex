@@ -53,6 +53,32 @@ impl VirtualMachine {
         trailing_block: Option<&Expression>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        let has_block = trailing_block.is_some();
+        let result = self.evaluate_method_call_inner(
+            receiver_expr,
+            method_name,
+            argument_exprs,
+            trailing_block,
+            position,
+        );
+        // Ruby: `break <value>` inside the block passed to this call unwinds
+        // to *this* method call and makes the call return `value`. Only catch
+        // when a block was attached here, so nested invocations don't absorb
+        // breaks meant for an outer call.
+        match result {
+            Err(MetorexError::BlockBreak { value, .. }) if has_block => Ok(value),
+            other => other,
+        }
+    }
+
+    fn evaluate_method_call_inner(
+        &mut self,
+        receiver_expr: &Expression,
+        method_name: &str,
+        argument_exprs: &[Expression],
+        trailing_block: Option<&Expression>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         let receiver = self.evaluate_expression(receiver_expr)?;
         let arguments = self.evaluate_arguments(argument_exprs)?;
 

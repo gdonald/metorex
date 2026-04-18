@@ -149,8 +149,11 @@ impl VirtualMachine {
                                     message: format_exception(&exception),
                                 });
                             }
-                            ControlFlow::Break { position } => {
-                                return Err(loop_control_error("break", position));
+                            ControlFlow::Break { value, position } => {
+                                return Err(MetorexError::BlockBreak {
+                                    value,
+                                    location: position_to_location(position),
+                                });
                             }
                             ControlFlow::Continue { position } => {
                                 return Err(loop_control_error("continue", position));
@@ -215,8 +218,16 @@ impl VirtualMachine {
                             message: format_exception(&exception),
                         });
                     }
-                    ControlFlow::Break { position } => {
-                        return Err(loop_control_error("break", position));
+                    ControlFlow::Break { value, position } => {
+                        // Ruby: `break <value>` inside a block unwinds to the
+                        // method that received the block, returning `value`
+                        // from that method call. Uses BlockBreak so the signal
+                        // survives `execute_method_body` (which only swallows
+                        // NonLocalReturn) and is caught at the invoke boundary.
+                        return Err(MetorexError::BlockBreak {
+                            value,
+                            location: position_to_location(position),
+                        });
                     }
                     ControlFlow::Continue { position } => {
                         return Err(loop_control_error("continue", position));

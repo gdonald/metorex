@@ -4,6 +4,7 @@ use metorex::ast::{BinaryOp, Expression, Statement};
 #[test]
 fn test_break_statement() {
     let stmt = Statement::Break {
+        value: None,
         position: pos(1, 1),
     };
     assert_eq!(stmt.position(), pos(1, 1));
@@ -37,6 +38,7 @@ fn test_while_with_break() {
                 position: pos(2, 3),
             },
             Statement::Break {
+                value: None,
                 position: pos(3, 3),
             },
         ],
@@ -118,6 +120,7 @@ fn test_nested_loops_with_break_and_continue() {
             },
             body: vec![
                 Statement::Break {
+                    value: None,
                     position: pos(3, 5),
                 },
                 Statement::Continue {

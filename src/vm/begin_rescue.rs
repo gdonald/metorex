@@ -150,7 +150,7 @@ impl VirtualMachine {
                         message: format_exception(&exception),
                     });
                 }
-                ControlFlow::Break { position } => {
+                ControlFlow::Break { position, .. } => {
                     return Err(loop_control_error("break", position));
                 }
                 ControlFlow::Continue { position } => {

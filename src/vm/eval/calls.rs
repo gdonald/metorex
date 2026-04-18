@@ -31,13 +31,18 @@ impl VirtualMachine {
             let env_val = self.environment().get(name);
             let dispatch_to_self = match &env_val {
                 None => true,
-                // `define_method` lives in globals as a top-level convenience,
-                // but inside a class/module body or class_eval it should
-                // resolve to the receiver's define_method instead.
-                Some(Object::NativeFunction(fn_name)) if fn_name == "define_method" => matches!(
-                    self.environment().get("self"),
-                    Some(Object::Class(_)) | Some(Object::Module(_))
-                ),
+                // `define_method`, `private`, `public` live in globals as
+                // top-level conveniences, but inside a class/module body or
+                // class_eval they should resolve to the receiver's method so
+                // `private :foo` marks Tally#foo (not Object#foo) as private.
+                Some(Object::NativeFunction(fn_name))
+                    if matches!(fn_name.as_str(), "define_method" | "private" | "public") =>
+                {
+                    matches!(
+                        self.environment().get("self"),
+                        Some(Object::Class(_)) | Some(Object::Module(_))
+                    )
+                }
                 _ => false,
             };
             if dispatch_to_self {
@@ -68,11 +73,19 @@ impl VirtualMachine {
 
         let callable = self.evaluate_expression(callee);
         let evaluated_args = self.evaluate_arguments(arguments)?;
+        let has_block = trailing_block.is_some();
         if let Some(block_expr) = trailing_block {
             self.pending_block = Some(self.evaluate_expression(block_expr)?);
         }
         match callable {
-            Ok(func) => self.invoke_callable(func, evaluated_args, position),
+            Ok(func) => {
+                let result = self.invoke_callable(func, evaluated_args, position);
+                // `break <value>` in the attached block unwinds here.
+                match result {
+                    Err(MetorexError::BlockBreak { value, .. }) if has_block => Ok(value),
+                    other => other,
+                }
+            }
             Err(_) => {
                 if let Expression::Identifier { name, .. } = callee
                     && self.environment().get("self").is_some()

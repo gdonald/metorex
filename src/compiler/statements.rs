@@ -330,7 +330,7 @@ impl Compiler {
                 Ok(())
             }
 
-            Statement::Break { position } => {
+            Statement::Break { position, .. } => {
                 let line = Self::pos_line(position);
                 if self.loop_stack.is_empty() {
                     return Err(MetorexError::runtime_error(

@@ -170,10 +170,31 @@ impl Parser {
         })
     }
 
-    /// Parse a break statement
+    /// Parse a break statement, optionally with a value (e.g. `break 42`).
     pub(crate) fn parse_break_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self.expect(TokenKind::Break, "Expected 'break'")?.position;
-        let stmt = Statement::Break { position: pos };
+        // A value only applies when the very next token is an expression on
+        // the same line — stop if we hit a statement terminator or an `if`/
+        // `unless`/`while`/`until` modifier.
+        let value = if self.is_at_end()
+            || self.check(&[
+                TokenKind::Newline,
+                TokenKind::Semicolon,
+                TokenKind::End,
+                TokenKind::EOF,
+                TokenKind::If,
+                TokenKind::Unless,
+                TokenKind::While,
+                TokenKind::RBrace,
+            ]) {
+            None
+        } else {
+            Some(Box::new(self.parse_expression()?))
+        };
+        let stmt = Statement::Break {
+            value,
+            position: pos,
+        };
         self.wrap_with_modifier(stmt)
     }
 
