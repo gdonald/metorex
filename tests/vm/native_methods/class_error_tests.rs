@@ -823,3 +823,41 @@ WithPriv.private_methods(false).length
 "#);
     assert!(result.is_some());
 }
+
+// ── Class#initialize ────────────────────────────────────────────────────────
+
+#[test]
+fn class_has_private_initialize() {
+    let result = run("Class.private_methods.include?(:initialize)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn initialize_on_already_initialized_class_raises_type_error() {
+    let err = run_err("Integer.send(:initialize)");
+    assert!(err.contains("already initialized"));
+}
+
+#[test]
+fn initialize_on_object_class_raises_type_error() {
+    let err = run_err("Object.send(:initialize)");
+    assert!(err.contains("already initialized"));
+}
+
+#[test]
+fn initialize_on_basic_object_raises_type_error() {
+    let err = run_err("BasicObject.send(:initialize)");
+    assert!(err.contains("already initialized"));
+}
+
+#[test]
+fn initialize_with_class_as_argument_raises_type_error() {
+    let err = run_err("u = Class.allocate\nu.send(:initialize, Class)");
+    assert!(err.contains("already initialized"));
+}
+
+#[test]
+fn initialize_on_uninitialized_class_succeeds() {
+    let result = run("u = Class.allocate\nu.send(:initialize)");
+    assert_eq!(result, Some(Object::Nil));
+}

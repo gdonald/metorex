@@ -64,6 +64,10 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     let module_class = Rc::new(Class::new("Module", Some(Rc::clone(&object))));
     globals.set("Module", Object::Class(Rc::clone(&module_class)));
     let class_class = Rc::new(Class::new("Class", Some(Rc::clone(&module_class))));
+    // Class#initialize is private (Ruby semantics); the method itself is
+    // implemented natively in call_class_methods, so the name only needs to
+    // appear in Class's private_method_names for visibility checks.
+    class_class.set_method_private("initialize");
     globals.set("Class", Object::Class(class_class));
 
     // TOPLEVEL_BINDING — used by eval('code', TOPLEVEL_BINDING) at top level.

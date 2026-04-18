@@ -51,6 +51,34 @@ impl VirtualMachine {
                 inst,
             )))));
         }
+        // Class#initialize: private; already-initialized classes raise
+        // TypeError, and passing `Class` itself as the superclass argument also
+        // raises TypeError (MRI rejects `Class` as a superclass regardless of
+        // whether the receiver was freshly allocated).
+        if method_name == "initialize" {
+            if let Some(Object::Class(c)) = arguments.first()
+                && c.name() == "Class"
+            {
+                let msg = "already initialized class".to_string();
+                let exc = Object::exception("TypeError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            if class_rc.get_class_var("__uninitialized__").is_none() {
+                let msg = "already initialized class".to_string();
+                let exc = Object::exception("TypeError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            class_rc.remove_class_var("__uninitialized__");
+            return Ok(Some(Object::Nil));
+        }
         if method_name == "constants" {
             let names: Vec<Object> = class_rc
                 .class_var_names()

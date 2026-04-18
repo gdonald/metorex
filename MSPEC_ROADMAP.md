@@ -172,7 +172,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.6.2. core/class/attached_object_spec — 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.6.3. core/class/dup_spec — 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.6.4. core/class/inherited_spec — 1 file, 9 examples, 16 expectations, 0 failures, 0 errors
-  - [ ] 4.6.5. core/class/initialize_spec
+  - [x] 4.6.5. core/class/initialize_spec — 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.6.6. core/class/new_spec
   - [ ] 4.6.7. core/class/subclasses_spec
   - [ ] 4.6.8. core/class/superclass_spec
