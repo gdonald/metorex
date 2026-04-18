@@ -173,9 +173,14 @@ impl BuiltinClasses {
         classes.insert("File".to_string(), Rc::clone(&self.file_class));
         classes.insert("Dir".to_string(), Rc::clone(&self.dir_class));
         classes.insert("Range".to_string(), Rc::clone(&self.range_class));
-        // BasicObject: alias of Object — Ruby's true root class, used as a
-        // superclass when code wants a near-empty object.
-        classes.insert("BasicObject".to_string(), Rc::clone(&self.object_class));
+        // BasicObject: a distinct "root" class. Metorex doesn't fully model
+        // Ruby's Object-< BasicObject inheritance, but a separate Class gives
+        // us an identity hook so `BasicObject.dup` can raise TypeError without
+        // affecting Object.dup.
+        classes.insert(
+            "BasicObject".to_string(),
+            Rc::new(Class::new("BasicObject", None)),
+        );
         classes.insert("Symbol".to_string(), Rc::clone(&self.string_class));
         classes.insert("Numeric".to_string(), Rc::clone(&self.integer_class));
         classes.insert("Proc".to_string(), Rc::clone(&self.object_class));

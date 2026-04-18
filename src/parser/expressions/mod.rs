@@ -364,13 +364,7 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Parse block body
-        let mut body = Vec::new();
-        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
-
+        let body = self.parse_block_body_with_optional_rescue_ensure(start_pos)?;
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
 
         Ok(Expression::Lambda {
@@ -379,6 +373,75 @@ impl Parser {
             captured_vars: None, // Will be filled by semantic analysis
             position: start_pos,
         })
+    }
+
+    /// Parse the body of a block/do/def up to `end`, allowing an implicit
+    /// `begin...end` wrapper — i.e. `rescue`/`else`/`ensure` clauses right
+    /// inside the block (Ruby 2.5+ semantics). When any of those clauses are
+    /// present the body is wrapped in a `BeginRescue` expression statement.
+    /// Consumes body + trailing clauses; caller must still consume `end`.
+    pub(crate) fn parse_block_body_with_optional_rescue_ensure(
+        &mut self,
+        start_pos: crate::lexer::Position,
+    ) -> Result<Vec<Statement>, MetorexError> {
+        let mut body = Vec::new();
+        while !self.check(&[
+            TokenKind::End,
+            TokenKind::Rescue,
+            TokenKind::Else,
+            TokenKind::Ensure,
+        ]) && !self.is_at_end()
+        {
+            body.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+
+        let has_clauses = self.check(&[TokenKind::Rescue, TokenKind::Else, TokenKind::Ensure]);
+        if !has_clauses {
+            return Ok(body);
+        }
+
+        let mut rescue_clauses = Vec::new();
+        while self.match_token(&[TokenKind::Rescue]) {
+            rescue_clauses.push(self.parse_rescue_clause()?);
+            self.skip_whitespace();
+        }
+
+        let else_clause = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            let mut else_body = Vec::new();
+            while !self.check(&[TokenKind::Ensure, TokenKind::End]) && !self.is_at_end() {
+                else_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(else_body)
+        } else {
+            None
+        };
+
+        let ensure_block = if self.match_token(&[TokenKind::Ensure]) {
+            self.skip_whitespace();
+            let mut ensure_body = Vec::new();
+            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+                ensure_body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Some(ensure_body)
+        } else {
+            None
+        };
+
+        let begin_rescue = Expression::BeginRescue {
+            body,
+            rescue_clauses,
+            else_clause,
+            ensure_block,
+            position: start_pos,
+        };
+        Ok(vec![Statement::Expression {
+            expression: begin_rescue,
+            position: start_pos,
+        }])
     }
 
     /// Parse a block with brace syntax: { |x| ... }

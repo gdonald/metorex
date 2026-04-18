@@ -467,6 +467,30 @@ impl VirtualMachine {
                 self.globals_mut().set(name.clone(), value);
                 Ok(())
             }
+            // `Ns::Name = value` — assign to a constant on a module/class.
+            // If value is an anonymous class/module, also install the Ruby
+            // name (Ns::Name) on first assignment.
+            Expression::ScopeResolution {
+                namespace,
+                name,
+                position,
+            } => {
+                let ns = self.evaluate_expression(namespace)?;
+                match ns {
+                    Object::Class(c) | Object::Module(c) => {
+                        if let Object::Class(v) | Object::Module(v) = &value {
+                            let qualified = format!("{}::{}", c.ruby_name(), name);
+                            v.set_assigned_name_if_anonymous(&qualified);
+                        }
+                        c.set_class_var(name, value);
+                        Ok(())
+                    }
+                    _ => Err(MetorexError::runtime_error(
+                        "left of `::=` is not a class/module",
+                        position_to_location(*position),
+                    )),
+                }
+            }
             _ => Err(invalid_assignment_target_error(target)),
         }
     }

@@ -191,7 +191,61 @@ impl VirtualMachine {
                     .map(Some);
             }
             "name" => {
-                return Ok(Some(Object::String(Rc::new(class_rc.name().to_string()))));
+                let name = class_rc.ruby_name();
+                if name.is_empty() {
+                    return Ok(Some(Object::Nil));
+                }
+                return Ok(Some(Object::String(Rc::new(name))));
+            }
+            // Module#extend: mix the given module's instance methods into the
+            // receiver's singleton class, so `klass.some_module_method` works.
+            "extend" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "extend",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let module_rc = match &arguments[0] {
+                    Object::Module(m) => Rc::clone(m),
+                    Object::Class(c) => Rc::clone(c),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "extend", "Module", other, position,
+                        ));
+                    }
+                };
+                let target = Object::Class(Rc::clone(class_rc));
+                let singleton = self.singleton_class_of(&target);
+                singleton.add_mixin(module_rc);
+                return Ok(Some(target));
+            }
+            // Module#remove_const: remove a constant from this module's table.
+            "remove_const" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "remove_const",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let const_name = match &arguments[0] {
+                    Object::Symbol(s) => s.as_ref().clone(),
+                    Object::String(s) => s.as_ref().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "remove_const",
+                            "Symbol or String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let removed = class_rc.remove_class_var(&const_name);
+                return Ok(Some(removed.unwrap_or(Object::Nil)));
             }
             "private" | "public" => {
                 return self

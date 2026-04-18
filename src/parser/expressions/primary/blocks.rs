@@ -64,17 +64,7 @@ impl Parser {
         let parameters = self.parse_pipe_params()?;
 
         self.skip_whitespace();
-        let mut body = Vec::new();
-
-        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-            self.skip_whitespace();
-            if self.check(&[TokenKind::End]) {
-                break;
-            }
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
-
+        let body = self.parse_block_body_with_optional_rescue_ensure(token_position)?;
         self.expect(TokenKind::End, "Expected 'end' after block body")?;
 
         Ok(Expression::Lambda {

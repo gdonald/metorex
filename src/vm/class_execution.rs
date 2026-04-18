@@ -167,6 +167,27 @@ impl VirtualMachine {
                     m.captured_refinements = self.snapshot_active_refinements();
                     class.define_method(method_name, Rc::new(m));
                 }
+                // `def self.name` inside a `Class.new do ... end` block: the parser
+                // emits a FunctionDef (not MethodDef, because `in_class_body` is
+                // false inside a do-block). Route it through the same path as
+                // `def self.name` in a regular class body — i.e. store as a
+                // class-level method under the `__class__` prefix.
+                Statement::FunctionDef {
+                    name: method_name,
+                    parameters,
+                    body: method_body,
+                    singleton_class: Some(receiver),
+                    ..
+                } if receiver == "self" => {
+                    let param_names: Vec<String> = parameters
+                        .iter()
+                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .map(|p| p.name.clone())
+                        .collect();
+                    let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.captured_refinements = self.snapshot_active_refinements();
+                    class.define_method(format!("__class__{}", method_name), Rc::new(m));
+                }
                 Statement::MethodDef {
                     name: method_name,
                     parameters,
@@ -332,11 +353,12 @@ impl VirtualMachine {
                 } => {
                     // include ModuleName: add module to mixin chain so methods added
                     // to the module later are still visible (Ruby ancestor-chain semantics).
-                    match self.environment().get(module_name) {
+                    let resolved = self.resolve_constant_in_scope(module_name);
+                    match resolved {
                         Some(Object::Module(module)) => {
                             class.add_mixin(Rc::clone(&module));
                         }
-                        Some(Object::Class(_)) | Some(_) => {
+                        Some(_) => {
                             return Err(MetorexError::runtime_error(
                                 format!("'{}' is not a module", module_name),
                                 position_to_location(*position),
@@ -355,7 +377,7 @@ impl VirtualMachine {
                     position,
                 } => {
                     // extend ModuleName: add module methods as class-level methods
-                    match self.environment().get(module_name) {
+                    match self.resolve_constant_in_scope(module_name) {
                         Some(Object::Module(module)) => {
                             for method_name in module.method_names() {
                                 if let Some(method) = module.find_method(&method_name) {
@@ -885,6 +907,22 @@ impl VirtualMachine {
         }
 
         Ok(ControlFlow::Next)
+    }
+
+    /// Resolve a bare constant name using Ruby-like lexical scoping: walk
+    /// the enclosing class/module stack (innermost first), then check the
+    /// local environment, then globals. Used by `include`/`extend` inside
+    /// class bodies so nested modules can reference siblings without
+    /// fully-qualifying them.
+    pub(crate) fn resolve_constant_in_scope(&self, name: &str) -> Option<Object> {
+        for enclosing in self.def_scope_stack.iter().rev() {
+            if let Some(val) = enclosing.get_class_var(name) {
+                return Some(val);
+            }
+        }
+        self.environment()
+            .get(name)
+            .or_else(|| self.globals().get(name))
     }
 
     /// Execute include at statement level (outside class body).

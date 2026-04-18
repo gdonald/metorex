@@ -682,6 +682,23 @@ impl VirtualMachine {
                             std::cell::RefCell::new(dict),
                         ))))
                     }
+                    Object::Class(class_rc) => {
+                        if class_rc.name() == "BasicObject" {
+                            let msg = "can't copy the root class".to_string();
+                            let exc = Object::exception("TypeError", msg.clone());
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc,
+                                location: position_to_location(position),
+                                message: msg,
+                            });
+                        }
+                        let copy = crate::class::Class::duplicate(class_rc);
+                        Ok(Some(Object::Class(std::rc::Rc::new(copy))))
+                    }
+                    Object::Module(mod_rc) => {
+                        let copy = crate::class::Class::duplicate(mod_rc);
+                        Ok(Some(Object::Module(std::rc::Rc::new(copy))))
+                    }
                     // Immutable types return themselves
                     _ => Ok(Some(receiver.clone())),
                 }

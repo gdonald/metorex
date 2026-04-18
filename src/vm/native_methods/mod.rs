@@ -62,12 +62,20 @@ impl VirtualMachine {
             }
         }
 
-        // Module-specific methods (refine, module_eval, stdlib stubs)
-        if let Object::Module(module_rc) = receiver
-            && let Some(result) =
+        // Module-specific methods (refine, module_eval, stdlib stubs). Falls
+        // through to call_class_methods afterwards so Class/Module share the
+        // same table for things like `name`, `extend`, `remove_const`, etc.
+        if let Object::Module(module_rc) = receiver {
+            if let Some(result) =
                 self.call_module_methods(module_rc, receiver, method_name, arguments, position)?
-        {
-            return Ok(Some(result));
+            {
+                return Ok(Some(result));
+            }
+            if let Some(result) =
+                self.call_class_methods(module_rc, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
         }
 
         // Class-specific methods (File/Dir dispatch first, then general class methods)

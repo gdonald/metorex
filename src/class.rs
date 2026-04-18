@@ -10,6 +10,10 @@ use std::rc::Rc;
 #[derive(Debug)]
 pub struct Class {
     name: String,
+    /// Ruby-visible name, set the first time an anonymous class is assigned
+    /// to a constant. `name()` still returns the original (immutable) name —
+    /// use `ruby_name()` to pick up the assigned override.
+    assigned_name: RefCell<Option<String>>,
     superclass: Option<Rc<Class>>,
     methods: RefCell<HashMap<String, Rc<Method>>>,
     instance_variables: RefCell<HashSet<String>>,
@@ -29,6 +33,7 @@ impl Class {
     pub fn new(name: impl Into<String>, superclass: Option<Rc<Class>>) -> Self {
         Self {
             name: name.into(),
+            assigned_name: RefCell::new(None),
             superclass,
             methods: RefCell::new(HashMap::new()),
             instance_variables: RefCell::new(HashSet::new()),
@@ -79,6 +84,28 @@ impl Class {
     /// Return the class name.
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Ruby-visible name: returns the original name unless an `assigned_name`
+    /// has been set (via `set_assigned_name_if_anonymous`), in which case the
+    /// assigned name wins. `String` because we may have to synthesise it.
+    pub fn ruby_name(&self) -> String {
+        if let Some(assigned) = self.assigned_name.borrow().as_ref() {
+            return assigned.clone();
+        }
+        self.name.clone()
+    }
+
+    /// Install a Ruby-visible name on an anonymous class. No-op if the class
+    /// already has a name (either original or previously assigned).
+    pub fn set_assigned_name_if_anonymous(&self, name: &str) {
+        if !self.name.is_empty() {
+            return;
+        }
+        let mut slot = self.assigned_name.borrow_mut();
+        if slot.is_none() {
+            *slot = Some(name.to_string());
+        }
     }
 
     /// Return the superclass if present.
@@ -193,12 +220,71 @@ impl Class {
     pub fn class_var_names(&self) -> Vec<String> {
         self.class_variables.borrow().keys().cloned().collect()
     }
+
+    /// Remove a class variable/constant by name, returning the previous value
+    /// if there was one. Used by `Module#remove_const`.
+    pub fn remove_class_var(&self, name: &str) -> Option<crate::object::Object> {
+        self.class_variables.borrow_mut().remove(name)
+    }
+
+    /// Deep-ish copy for `Class#dup`/`Module#dup`. The result is anonymous
+    /// (Ruby's `#name` returns nil until assigned to a constant), carries its
+    /// own method/class-var tables, and — critically — gets a fresh singleton
+    /// class whose method table is copied from the source's singleton class
+    /// (so class-level methods survive the dup, per Ruby semantics).
+    pub fn duplicate(source: &Rc<Class>) -> Class {
+        let copy = Class {
+            name: String::new(),
+            assigned_name: RefCell::new(None),
+            superclass: source.superclass.clone(),
+            methods: RefCell::new(source.methods.borrow().clone()),
+            instance_variables: RefCell::new(source.instance_variables.borrow().clone()),
+            class_variables: RefCell::new(
+                source
+                    .class_variables
+                    .borrow()
+                    .iter()
+                    .filter(|(k, _)| {
+                        !k.starts_with("__singleton__") && !k.starts_with("__attached__")
+                    })
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            ),
+            mixins: RefCell::new(source.mixins.borrow().clone()),
+            private_method_names: RefCell::new(source.private_method_names.borrow().clone()),
+            singleton_class: RefCell::new(None),
+        };
+        if let Some(src_sc) = source.singleton_class.borrow().as_ref() {
+            let sc_copy = Rc::new(Class {
+                name: format!("#<Class:{}>", copy.name),
+                assigned_name: RefCell::new(None),
+                superclass: src_sc.superclass.clone(),
+                methods: RefCell::new(src_sc.methods.borrow().clone()),
+                instance_variables: RefCell::new(src_sc.instance_variables.borrow().clone()),
+                class_variables: RefCell::new(
+                    src_sc
+                        .class_variables
+                        .borrow()
+                        .iter()
+                        .filter(|(k, _)| *k != "__attached__")
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                ),
+                mixins: RefCell::new(src_sc.mixins.borrow().clone()),
+                private_method_names: RefCell::new(src_sc.private_method_names.borrow().clone()),
+                singleton_class: RefCell::new(None),
+            });
+            *copy.singleton_class.borrow_mut() = Some(sc_copy);
+        }
+        copy
+    }
 }
 
 impl Clone for Class {
     fn clone(&self) -> Self {
         Self {
             name: self.name.clone(),
+            assigned_name: RefCell::new(self.assigned_name.borrow().clone()),
             superclass: self.superclass.clone(),
             methods: RefCell::new(self.methods.borrow().clone()),
             instance_variables: RefCell::new(self.instance_variables.borrow().clone()),

@@ -30,7 +30,7 @@ fi
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/main/using_spec.rb"
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/allocate_spec.rb"
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/attached_object_spec.rb"
-# "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/dup_spec.rb"
+"$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/dup_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/inherited_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/initialize_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/new_spec.rb"
