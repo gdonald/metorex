@@ -49,6 +49,12 @@ pub struct VirtualMachine {
     /// Pushed on entering a `class`/`module` body; popped on exit. Does NOT
     /// track method call receivers — only lexical nesting.
     pub(crate) def_scope_stack: Vec<Rc<crate::class::Class>>,
+    /// Lazily-populated singleton classes for value-kind receivers that
+    /// have no per-object storage (Nil / true / false / Int / Float /
+    /// Symbol / String). Keyed by a stable string tag so every lookup for
+    /// the same receiver returns the same Class instance.
+    pub(crate) primitive_singleton_classes:
+        std::collections::HashMap<String, Rc<crate::class::Class>>,
 }
 
 /// A single activated refinement: the refinement module and the set of target
@@ -90,6 +96,7 @@ impl VirtualMachine {
             user_def_nesting: 0,
             refinement_scopes: vec![Vec::new()],
             def_scope_stack: Vec::new(),
+            primitive_singleton_classes: std::collections::HashMap::new(),
         }
     }
 

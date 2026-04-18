@@ -218,6 +218,20 @@ fn test_oop_comparable_parens_execution() {
 }
 
 #[test]
+fn test_oop_comparable_singleton_spaceship_execution() {
+    let expected = "true\n1\n";
+    let output = run_example("oop/comparable/singleton_spaceship.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_comparable_singleton_class_expr_execution() {
+    let expected = "true\n";
+    let output = run_example("oop/comparable/singleton_class_expr.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_oop_singleton_method_execution() {
     let output = run_example("oop/singleton_method/singleton_method.rb");
     assert_eq!(output, "hello from singleton\n");

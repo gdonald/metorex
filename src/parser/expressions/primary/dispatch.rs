@@ -65,6 +65,16 @@ impl Parser {
             TokenKind::Defined => self.parse_defined_expression(position),
             TokenKind::Yield => self.parse_yield_expression(position),
             TokenKind::Begin => self.parse_begin_expression(position),
+            TokenKind::Class => {
+                self.skip_whitespace();
+                if !self.check(&[TokenKind::Shovel]) {
+                    return Err(self.error_at_previous(
+                        "`class` as an expression is only valid in the `class << ...` form",
+                    ));
+                }
+                self.advance();
+                self.parse_singleton_class_after_shovel(position)
+            }
 
             // ── Control-flow expressions ────────────────────────────────────
             TokenKind::Case => self.parse_case_expression(position),

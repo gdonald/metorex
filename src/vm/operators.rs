@@ -66,14 +66,13 @@ impl VirtualMachine {
                 // For instances, dispatch to user-defined == method if present,
                 // or to <=> (Comparable protocol) if the class has <=> defined.
                 if let Object::Instance(inst_rc) = &left {
-                    let class = Rc::clone(&inst_rc.borrow().class);
                     // Identity shortcut: same object is always ==
                     if let Object::Instance(rhs) = &right
                         && Rc::ptr_eq(inst_rc, rhs)
                     {
                         return Ok(Object::Bool(true));
                     }
-                    if let Some(method) = class.find_method("==")
+                    if let Some((class, method)) = self.lookup_method(&left, "==")
                         && !method.is_undefined
                     {
                         let result = self.invoke_method(
@@ -86,17 +85,14 @@ impl VirtualMachine {
                         return Ok(Object::Bool(result.is_truthy()));
                     }
                     // Comparable protocol: if <=> is defined, use it for ==
-                    if class.find_method("<=>").is_some() {
-                        let cmp_obj = {
-                            let method = class.find_method("<=>").unwrap();
-                            self.invoke_method(
-                                Rc::clone(&class),
-                                method,
-                                left.clone(),
-                                vec![right.clone()],
-                                position,
-                            )?
-                        };
+                    if let Some((cmp_class, cmp_method)) = self.lookup_method(&left, "<=>") {
+                        let cmp_obj = self.invoke_method(
+                            cmp_class,
+                            cmp_method,
+                            left.clone(),
+                            vec![right.clone()],
+                            position,
+                        )?;
                         return match cmp_obj {
                             Object::Int(n) => Ok(Object::Bool(n == 0)),
                             Object::Float(f) => Ok(Object::Bool(f == 0.0)),

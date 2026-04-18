@@ -377,6 +377,7 @@ impl Compiler {
             | Expression::BlockArg { position, .. }
             | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }
+            | Expression::SingletonClass { position, .. }
             | Expression::Yield { position, .. } => {
                 let line = Self::pos_line(position);
                 Err(MetorexError::runtime_error(

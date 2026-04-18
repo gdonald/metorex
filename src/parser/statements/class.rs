@@ -1,8 +1,8 @@
 // Class definition parsing
 
-use crate::ast::Statement;
+use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
-use crate::lexer::TokenKind;
+use crate::lexer::{Position, TokenKind};
 use crate::parser::Parser;
 
 impl Parser {
@@ -11,32 +11,14 @@ impl Parser {
         let start_pos = self.expect(TokenKind::Class, "Expected 'class'")?.position;
         self.skip_whitespace();
 
-        // Handle `class << self` (singleton class)
+        // `class << <target>` — singleton class. Always parsed as an expression
+        // so it composes with both statement and rvalue contexts.
         if self.check(&[TokenKind::Shovel]) {
             self.advance(); // consume <<
             self.skip_whitespace();
-            // Expect `self` (or an expression, but we only support self for now)
-            match self.advance().kind {
-                TokenKind::Ident(ref n) if n == "self" => {}
-                _ => return Err(self.error_at_previous("Expected 'self' after 'class <<'")),
-            }
-            self.skip_whitespace();
-
-            // Parse the singleton class body — statements get merged into the enclosing class
-            let mut body = Vec::new();
-            while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-                self.skip_whitespace();
-                if self.check(&[TokenKind::End]) {
-                    break;
-                }
-                body.push(self.parse_statement()?);
-                self.skip_whitespace();
-            }
-            self.expect(TokenKind::End, "Expected 'end' after 'class << self' body")?;
-
-            // Return the body statements wrapped in a Block so the class executor can handle them
-            return Ok(Statement::Block {
-                statements: body,
+            let expr = self.parse_singleton_class_after_shovel(start_pos)?;
+            return Ok(Statement::Expression {
+                expression: expr,
                 position: start_pos,
             });
         }
@@ -83,6 +65,35 @@ impl Parser {
         Ok(Statement::ClassDef {
             name,
             superclass,
+            body,
+            position: start_pos,
+        })
+    }
+
+    /// Parse the tail of `class << <target>; body; end` after the `<<` has been
+    /// consumed. Used both from statement parsing and from primary-expression
+    /// parsing (so `(class << a; self; end)` works as an rvalue).
+    pub(crate) fn parse_singleton_class_after_shovel(
+        &mut self,
+        start_pos: Position,
+    ) -> Result<Expression, MetorexError> {
+        self.skip_whitespace();
+        let target = self.parse_expression()?;
+        self.skip_whitespace();
+
+        let mut body = Vec::new();
+        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::End]) {
+                break;
+            }
+            body.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+        self.expect(TokenKind::End, "Expected 'end' after 'class << ...' body")?;
+
+        Ok(Expression::SingletonClass {
+            target: Box::new(target),
             body,
             position: start_pos,
         })

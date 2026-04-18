@@ -16,6 +16,9 @@ pub struct Instance {
     pub instance_vars: HashMap<String, Object>,
     /// Singleton methods defined directly on this instance (def obj.method).
     pub singleton_methods: Rc<RefCell<HashMap<String, Rc<Method>>>>,
+    /// Lazily-allocated singleton class for this instance (Ruby semantics:
+    /// every object conceptually has one, but we only materialize on demand).
+    pub singleton_class: Rc<RefCell<Option<Rc<Class>>>>,
 }
 
 impl Instance {
@@ -25,6 +28,7 @@ impl Instance {
             class,
             instance_vars: HashMap::new(),
             singleton_methods: Rc::new(RefCell::new(HashMap::new())),
+            singleton_class: Rc::new(RefCell::new(None)),
         }
     }
 

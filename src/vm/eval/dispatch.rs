@@ -138,12 +138,16 @@ impl VirtualMachine {
                 }
                 let left_value = self.evaluate_expression(left)?;
                 let right_value = self.evaluate_expression(right)?;
-                // Check for user-defined operator methods on instances
-                if let (Some(op_name), Object::Instance(instance_rc)) =
+                // Check for user-defined operator methods on instances. Walk
+                // via lookup_method so per-instance singleton-class overrides
+                // (used by mspec mocks, among other things) win over the
+                // underlying class definition.
+                if let (Some(op_name), Object::Instance(_)) =
                     (binary_op_method_name(op), &left_value)
                 {
-                    let class = Rc::clone(&instance_rc.borrow().class);
-                    if let Some(method) = class.find_method(op_name) {
+                    if let Some((class, method)) = self.lookup_method(&left_value, op_name)
+                        && !method.is_undefined
+                    {
                         return self.invoke_method(
                             class,
                             method,
@@ -162,10 +166,10 @@ impl VirtualMachine {
                             | BinaryOp::LessEqual
                             | BinaryOp::Greater
                             | BinaryOp::GreaterEqual
-                    ) && let Some(spaceship) = class.find_method("<=>")
+                    ) && let Some((class, spaceship)) = self.lookup_method(&left_value, "<=>")
                     {
                         let cmp = self.invoke_method(
-                            Rc::clone(&class),
+                            class,
                             spaceship,
                             left_value.clone(),
                             vec![right_value.clone()],
@@ -337,6 +341,11 @@ impl VirtualMachine {
                 else_branch,
                 ..
             } => self.evaluate_unless_expression(condition, then_branch, else_branch),
+            Expression::SingletonClass {
+                target,
+                body,
+                position,
+            } => self.evaluate_singleton_class_expression(target, body, *position),
         }
     }
 }

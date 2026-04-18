@@ -72,9 +72,17 @@ impl VirtualMachine {
             Rc::new(Class::new(name, superclass))
         };
 
+        let prev_self = self.environment().get("self");
+        self.environment_mut()
+            .define("self".to_string(), Object::Class(Rc::clone(&class)));
         self.def_scope_stack.push(Rc::clone(&class));
         let body_result = self.apply_class_body(&class, body, position);
         self.def_scope_stack.pop();
+        if let Some(prev) = prev_self {
+            self.environment_mut().define("self".to_string(), prev);
+        } else {
+            self.environment_mut().undefine("self");
+        }
         body_result?;
 
         let class_obj = Object::Class(class);
@@ -371,6 +379,19 @@ impl VirtualMachine {
                             ));
                         }
                     }
+                }
+                // `class << <target>` inside a class body — open the target's
+                // singleton class and apply the inner body there.
+                Statement::Expression {
+                    expression:
+                        Expression::SingletonClass {
+                            target,
+                            body: inner_body,
+                            position: sc_pos,
+                        },
+                    ..
+                } => {
+                    self.evaluate_singleton_class_expression(target, inner_body, *sc_pos)?;
                 }
                 // class << self block — treat inner statements as class-level
                 Statement::Block { statements, .. } => {
@@ -733,6 +754,19 @@ impl VirtualMachine {
                 } if const_name.starts_with(|c: char| c.is_uppercase()) => {
                     let const_value = self.evaluate_expression(value)?;
                     module.set_class_var(const_name, const_value);
+                }
+                // `class << <target>` inside a module body — open the target's
+                // singleton class and apply the inner body there.
+                Statement::Expression {
+                    expression:
+                        Expression::SingletonClass {
+                            target,
+                            body: inner_body,
+                            position: sc_pos,
+                        },
+                    ..
+                } => {
+                    self.evaluate_singleton_class_expression(target, inner_body, *sc_pos)?;
                 }
                 // class << self block — process inner statements at module level
                 Statement::Block {

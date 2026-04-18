@@ -751,6 +751,15 @@ impl Resolver {
                 }
             }
 
+            Expression::SingletonClass { target, body, .. } => {
+                self.resolve_expression(target);
+                self.push_scope();
+                for stmt in body {
+                    self.resolve_statement(stmt);
+                }
+                self.pop_scope();
+            }
+
             // Literals don't need resolution
             Expression::IntLiteral { .. }
             | Expression::FloatLiteral { .. }

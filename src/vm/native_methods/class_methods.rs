@@ -61,6 +61,39 @@ impl VirtualMachine {
                 .collect();
             return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
         }
+        if method_name == "attached_object" {
+            let is_singleton = class_rc.get_class_var("__singleton__").is_some();
+            if !is_singleton {
+                let msg = format!("'{}' is not a singleton class", class_rc.name());
+                let exc = Object::exception("TypeError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            let attached = class_rc
+                .get_class_var("__attached__")
+                .unwrap_or(Object::Nil);
+            // Singleton classes of nil / true / false exist but their attached
+            // object can't be obtained directly — MRI raises TypeError here.
+            let tag = match &attached {
+                Object::Nil => Some("NilClass"),
+                Object::Bool(true) => Some("TrueClass"),
+                Object::Bool(false) => Some("FalseClass"),
+                _ => None,
+            };
+            if let Some(name) = tag {
+                let msg = format!("'{}' is not a singleton class", name);
+                let exc = Object::exception("TypeError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            return Ok(Some(attached));
+        }
         if non_instantiable && method_name == "new" {
             let exc = Object::exception(
                 "NoMethodError",

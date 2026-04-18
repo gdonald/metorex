@@ -386,9 +386,13 @@ impl Parser {
     /// Check if the next token can start an argument in a parentheses-less call
     /// Also checks if this looks like a dictionary context (value followed by colon)
     fn can_start_argument_for_call(&mut self, _callee: &Expression) -> bool {
-        // Don't skip whitespace yet - we need to check if there's a newline first
-        // Parentheses-less calls should be on the same line
-        if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
+        // Don't skip whitespace yet - we need to check if there's a statement
+        // terminator first. Newlines, comments, and semicolons all end a
+        // paren-less call and must NOT be eaten by skip_whitespace below.
+        if matches!(
+            self.peek().kind,
+            TokenKind::Newline | TokenKind::Comment(_) | TokenKind::Semicolon
+        ) {
             return false;
         }
 

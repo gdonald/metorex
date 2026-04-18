@@ -185,6 +185,14 @@ pub enum Expression {
         position: Position,
     },
 
+    // `class << <target>; body; end` — enter the singleton class of `target`.
+    // Evaluates to the value of the final body statement (or nil for an empty body).
+    SingletonClass {
+        target: Box<Expression>,
+        body: Vec<Statement>,
+        position: Position,
+    },
+
     // Super call - calls parent class method
     Super {
         arguments: Vec<Expression>,
@@ -718,6 +726,7 @@ impl Expression {
             | Expression::Lambda { position, .. }
             | Expression::Grouped { position, .. }
             | Expression::SelfExpr { position, .. }
+            | Expression::SingletonClass { position, .. }
             | Expression::Super { position, .. }
             | Expression::Splat { position, .. }
             | Expression::BlockArg { position, .. }

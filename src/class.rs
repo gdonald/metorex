@@ -18,6 +18,10 @@ pub struct Class {
     mixins: RefCell<Vec<Rc<Class>>>,
     /// Names of methods whose visibility has been set to private.
     private_method_names: RefCell<HashSet<String>>,
+    /// Lazily-allocated singleton class attached to *this class object* — the
+    /// thing `class << SomeClass; end` opens. Holds class-level (def self.x)
+    /// methods once we start tracking them as a real class.
+    singleton_class: RefCell<Option<Rc<Class>>>,
 }
 
 impl Class {
@@ -31,7 +35,18 @@ impl Class {
             class_variables: RefCell::new(HashMap::new()),
             mixins: RefCell::new(Vec::new()),
             private_method_names: RefCell::new(HashSet::new()),
+            singleton_class: RefCell::new(None),
         }
+    }
+
+    /// Accessor for the cached singleton-class slot (None until materialized).
+    pub fn singleton_class_slot(&self) -> std::cell::Ref<'_, Option<Rc<Class>>> {
+        self.singleton_class.borrow()
+    }
+
+    /// Install a singleton class on this class. Cached for subsequent access.
+    pub fn set_singleton_class(&self, class: Rc<Class>) {
+        *self.singleton_class.borrow_mut() = Some(class);
     }
 
     /// Mark a method name as private on this class.
@@ -190,6 +205,7 @@ impl Clone for Class {
             class_variables: RefCell::new(self.class_variables.borrow().clone()),
             mixins: RefCell::new(self.mixins.borrow().clone()),
             private_method_names: RefCell::new(self.private_method_names.borrow().clone()),
+            singleton_class: RefCell::new(self.singleton_class.borrow().clone()),
         }
     }
 }

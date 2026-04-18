@@ -68,6 +68,7 @@ fn test_hash_non_hashable() {
         class,
         instance_vars: HashMap::new(),
         singleton_methods: Rc::new(RefCell::new(HashMap::new())),
+        singleton_class: Rc::new(RefCell::new(None)),
     })));
     assert!(inst.hash().is_none());
 }

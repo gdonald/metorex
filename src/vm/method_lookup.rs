@@ -177,12 +177,23 @@ impl VirtualMachine {
                 if let Some(sing) = instance_ref.find_singleton_method(method_name) {
                     return Some((class, sing));
                 }
+                if let Some(sc) = instance_ref.singleton_class.borrow().clone()
+                    && let Some(method) = sc.find_method(method_name)
+                {
+                    return Some((sc, method));
+                }
                 drop(instance_ref);
                 class.find_method(method_name).map(|method| (class, method))
             }
             Object::Class(class_rc) => {
-                // For Class receivers, look for class methods (__class__ prefix) first,
-                // then fall back to regular methods
+                // `class << C` installs a singleton class whose method table
+                // holds the class's class-level methods — check it before
+                // falling back to the `__class__` convention / instance table.
+                if let Some(sc) = class_rc.singleton_class_slot().clone()
+                    && let Some(method) = sc.find_method(method_name)
+                {
+                    return Some((sc, method));
+                }
                 let class_method_name = format!("__class__{}", method_name);
                 class_rc
                     .find_method(&class_method_name)
@@ -190,6 +201,11 @@ impl VirtualMachine {
                     .map(|method| (Rc::clone(class_rc), method))
             }
             Object::Module(module_rc) => {
+                if let Some(sc) = module_rc.singleton_class_slot().clone()
+                    && let Some(method) = sc.find_method(method_name)
+                {
+                    return Some((sc, method));
+                }
                 let class_method_name = format!("__class__{}", method_name);
                 module_rc
                     .find_method(&class_method_name)

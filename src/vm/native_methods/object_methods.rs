@@ -98,16 +98,21 @@ impl VirtualMachine {
                     }
                 };
                 let rest_args: Vec<Object> = arguments[1..].to_vec();
-                let class = self.builtins().class_of(receiver);
-                if let Some(m) = class.find_method(&method) {
+                // Prefer full lookup (walks singleton class + mixins) so mocked
+                // or per-instance overrides take precedence over the class's
+                // own method table.
+                if let Some((resolved_class, m)) = self.lookup_method(receiver, &method)
+                    && !m.is_undefined
+                {
                     return Ok(Some(self.invoke_method(
-                        class,
+                        resolved_class,
                         m,
                         receiver.clone(),
                         rest_args,
                         position,
                     )?));
                 }
+                let class = self.builtins().class_of(receiver);
                 if let Some(result) = self.call_native_method(
                     class.as_ref(),
                     receiver,
@@ -268,8 +273,8 @@ impl VirtualMachine {
                 Ok(Some(Object::Bool(result)))
             }
             "singleton_class" => {
-                // Return the class of the receiver (stub — true singleton classes not supported)
-                Ok(Some(Object::Class(self.builtins().class_of(receiver))))
+                let sc = self.singleton_class_of(receiver);
+                Ok(Some(Object::Class(sc)))
             }
             "singleton_method" => {
                 if arguments.len() != 1 {

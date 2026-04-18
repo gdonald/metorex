@@ -15,6 +15,7 @@ mod calls;
 mod defined;
 mod dispatch;
 mod identifier;
+mod singleton_class_expr;
 mod super_expr;
 mod vars;
 mod yield_expr;
