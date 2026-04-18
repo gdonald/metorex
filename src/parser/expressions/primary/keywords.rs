@@ -16,6 +16,7 @@ impl Parser {
         &mut self,
         position: Position,
     ) -> Result<Expression, MetorexError> {
+        let mut forward_args = false;
         let arguments = if self.check(&[TokenKind::LParen]) {
             self.advance(); // consume (
             let mut args = Vec::new();
@@ -94,6 +95,8 @@ impl Parser {
         {
             // Bare `super` with no arguments and no parens. Also covers
             // `super`-followed-by-binary-op which applies to the result.
+            // Ruby semantics: forward the enclosing method's arguments.
+            forward_args = true;
             Vec::new()
         } else {
             // Paren-less arg list: `super a, b, c`.
@@ -107,6 +110,7 @@ impl Parser {
 
         Ok(Expression::Super {
             arguments,
+            forward_args,
             position,
         })
     }

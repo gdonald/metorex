@@ -485,6 +485,7 @@ fn test_class_definition_scope() {
     // end
     let stmt = Statement::ClassDef {
         name: "MyClass".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,

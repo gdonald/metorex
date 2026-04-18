@@ -26,6 +26,7 @@ fn test_basic_inheritance_method_lookup() {
     let program = vec![
         Statement::ClassDef {
             name: "Animal".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -44,6 +45,7 @@ fn test_basic_inheritance_method_lookup() {
         },
         Statement::ClassDef {
             name: "Dog".to_string(),
+            namespace: None,
             superclass: Some("Animal".to_string()),
             body: vec![],
             position: pos(6, 1),
@@ -111,6 +113,7 @@ fn test_method_overriding() {
     let program = vec![
         Statement::ClassDef {
             name: "Animal".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -129,6 +132,7 @@ fn test_method_overriding() {
         },
         Statement::ClassDef {
             name: "Dog".to_string(),
+            namespace: None,
             superclass: Some("Animal".to_string()),
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -213,6 +217,7 @@ fn test_inheritance_chain_method_lookup() {
     let program = vec![
         Statement::ClassDef {
             name: "GrandParent".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -231,6 +236,7 @@ fn test_inheritance_chain_method_lookup() {
         },
         Statement::ClassDef {
             name: "Parent".to_string(),
+            namespace: None,
             superclass: Some("GrandParent".to_string()),
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -249,6 +255,7 @@ fn test_inheritance_chain_method_lookup() {
         },
         Statement::ClassDef {
             name: "Child".to_string(),
+            namespace: None,
             superclass: Some("Parent".to_string()),
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -325,6 +332,7 @@ fn test_inherited_initialize_method() {
     let program = vec![
         Statement::ClassDef {
             name: "Animal".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![
                 Statement::MethodDef {
@@ -362,6 +370,7 @@ fn test_inherited_initialize_method() {
         },
         Statement::ClassDef {
             name: "Dog".to_string(),
+            namespace: None,
             superclass: Some("Animal".to_string()),
             body: vec![],
             position: pos(9, 1),
@@ -437,6 +446,7 @@ fn test_overriding_with_instance_variables() {
     let program = vec![
         Statement::ClassDef {
             name: "Animal".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![
                 Statement::MethodDef {
@@ -487,6 +497,7 @@ fn test_overriding_with_instance_variables() {
         },
         Statement::ClassDef {
             name: "Dog".to_string(),
+            namespace: None,
             superclass: Some("Animal".to_string()),
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -578,6 +589,7 @@ fn test_multiple_inheritance_levels() {
     let program = vec![
         Statement::ClassDef {
             name: "GrandParent".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -596,6 +608,7 @@ fn test_multiple_inheritance_levels() {
         },
         Statement::ClassDef {
             name: "Parent".to_string(),
+            namespace: None,
             superclass: Some("GrandParent".to_string()),
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -614,6 +627,7 @@ fn test_multiple_inheritance_levels() {
         },
         Statement::ClassDef {
             name: "Child".to_string(),
+            namespace: None,
             superclass: Some("Parent".to_string()),
             body: vec![Statement::MethodDef {
                 is_class_method: false,

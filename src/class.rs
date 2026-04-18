@@ -86,14 +86,26 @@ impl Class {
         &self.name
     }
 
-    /// Ruby-visible name: returns the original name unless an `assigned_name`
-    /// has been set (via `set_assigned_name_if_anonymous`), in which case the
-    /// assigned name wins. `String` because we may have to synthesise it.
+    /// Ruby-visible name: returns the original (or assigned) name, or the
+    /// empty string for truly-anonymous classes. The `name` native method
+    /// maps this to `nil` for anonymous classes.
     pub fn ruby_name(&self) -> String {
         if let Some(assigned) = self.assigned_name.borrow().as_ref() {
             return assigned.clone();
         }
         self.name.clone()
+    }
+
+    /// Inspect-style label used when an anonymous class needs a printable
+    /// identifier — e.g. when it acts as the namespace in `parent::C`, we
+    /// synthesise `#<Class:0x<ptr>>::C` for the subclass's name.
+    pub fn inspect_name(&self) -> String {
+        let rn = self.ruby_name();
+        if rn.is_empty() {
+            format!("#<Class:0x{:016x}>", self as *const Class as usize)
+        } else {
+            rn
+        }
     }
 
     /// Install a Ruby-visible name on an anonymous class. No-op if the class

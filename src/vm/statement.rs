@@ -131,10 +131,17 @@ impl VirtualMachine {
             } => self.execute_for(variable, iterable, body, *position),
             Statement::ClassDef {
                 name,
+                namespace,
                 superclass,
                 body,
                 position,
-            } => self.execute_class_def(name, superclass.as_deref(), body, *position),
+            } => self.execute_class_def(
+                name,
+                namespace.as_deref(),
+                superclass.as_deref(),
+                body,
+                *position,
+            ),
             Statement::MethodDef { .. } => {
                 // MethodDef should only appear inside ClassDef bodies, not at top level
                 Err(unimplemented_statement_error(statement))

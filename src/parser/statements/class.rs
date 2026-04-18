@@ -23,14 +23,49 @@ impl Parser {
             });
         }
 
-        let name = match self.advance().kind {
+        // `class NS::Name` — NS is a dynamic expression (local variable,
+        // constant, method call, etc.) whose class_vars we install Name on.
+        // `class Name` — simple form, installed in the current lexical scope.
+        let first_ident = match self.advance().kind {
             TokenKind::Ident(name) => name,
             _ => return Err(self.error_at_previous("Expected class name")),
         };
+        let mut namespace_expr: Option<Box<Expression>> = None;
+        let mut name = first_ident;
+        if self.check(&[TokenKind::ColonColon]) {
+            let first_pos = self.previous().position;
+            let mut ns_expr = Expression::Identifier {
+                name: name.clone(),
+                position: first_pos,
+            };
+            while self.match_token(&[TokenKind::ColonColon]) {
+                let segment = match self.advance().kind {
+                    TokenKind::Ident(part) => part,
+                    _ => {
+                        return Err(self
+                            .error_at_previous("Expected constant name after '::' in class path"));
+                    }
+                };
+                // If another `::` follows, this segment is another namespace
+                // level; otherwise it's the final class name.
+                if self.check(&[TokenKind::ColonColon]) {
+                    ns_expr = Expression::ScopeResolution {
+                        namespace: Box::new(ns_expr),
+                        name: segment,
+                        position: first_pos,
+                    };
+                } else {
+                    name = segment;
+                    namespace_expr = Some(Box::new(ns_expr));
+                    break;
+                }
+            }
+        }
 
         self.skip_whitespace();
 
-        // Check for superclass
+        // Check for superclass — allow an arbitrary primary expression (e.g.
+        // a local variable) so `class parent::C < parent` works.
         let superclass = if self.match_token(&[TokenKind::Less]) {
             self.skip_whitespace();
             match self.advance().kind {
@@ -64,6 +99,7 @@ impl Parser {
 
         Ok(Statement::ClassDef {
             name,
+            namespace: namespace_expr,
             superclass,
             body,
             position: start_pos,

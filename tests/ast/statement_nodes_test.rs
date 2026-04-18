@@ -67,6 +67,7 @@ fn test_method_def() {
 fn test_class_def_no_superclass() {
     let stmt = Statement::ClassDef {
         name: "Person".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -79,6 +80,7 @@ fn test_class_def_no_superclass() {
 fn test_class_def_with_superclass() {
     let stmt = Statement::ClassDef {
         name: "Employee".to_string(),
+        namespace: None,
         superclass: Some("Person".to_string()),
         body: vec![],
         position: pos(1, 1),

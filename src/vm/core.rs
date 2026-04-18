@@ -55,6 +55,10 @@ pub struct VirtualMachine {
     /// the same receiver returns the same Class instance.
     pub(crate) primitive_singleton_classes:
         std::collections::HashMap<String, Rc<crate::class::Class>>,
+    /// Stack of positional arguments captured for each active method
+    /// invocation. `super` (bare form) reads the top entry to forward args
+    /// to the parent method; pushed by invoke_method, popped on return.
+    pub(crate) method_arg_stack: Vec<Vec<crate::object::Object>>,
 }
 
 /// A single activated refinement: the refinement module and the set of target
@@ -97,6 +101,7 @@ impl VirtualMachine {
             refinement_scopes: vec![Vec::new()],
             def_scope_stack: Vec::new(),
             primitive_singleton_classes: std::collections::HashMap::new(),
+            method_arg_stack: Vec::new(),
         }
     }
 

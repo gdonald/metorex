@@ -122,9 +122,12 @@ impl VirtualMachine {
                     }
                 }),
             };
-            let anon = Rc::new(Class::new("", superclass));
+            let anon = Rc::new(Class::new("", superclass.clone()));
             if let Some(Object::Block(block)) = self.pending_block.take() {
                 self.apply_block_as_class_body(&anon, &block, position)?;
+            }
+            if let Some(sc) = superclass {
+                self.trigger_inherited_hook(&sc, Rc::clone(&anon), position)?;
             }
             return Ok(Some(Object::Class(anon)));
         }
@@ -222,6 +225,49 @@ impl VirtualMachine {
                 singleton.add_mixin(module_rc);
                 return Ok(Some(target));
             }
+            // `private_class_method :name` / `public_class_method :name` —
+            // flip the class-method visibility on the receiver's singleton
+            // class. Visibility is otherwise only honoured for private calls;
+            // the inherited hook (line inherited_spec.rb:43) ensures a
+            // marked-private method still fires via `super`/hook invocation.
+            "private_class_method" | "public_class_method" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                }
+                let target_class = Object::Class(Rc::clone(class_rc));
+                let singleton = self.singleton_class_of(&target_class);
+                for arg in arguments {
+                    let name = match arg {
+                        Object::String(s) => s.as_ref().clone(),
+                        Object::Symbol(s) => s.as_ref().clone(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String or Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    // Mirror the method onto the singleton class so
+                    // `lookup_method` finds it there (where visibility lives).
+                    // The `inherited` hook is inherited from Class's singleton
+                    // table via the `__class__` convention — copy it across
+                    // so we have something to toggle visibility on.
+                    if singleton.find_method(&name).is_none() {
+                        let key = format!("__class__{}", name);
+                        if let Some(method) = class_rc.find_method(&key) {
+                            singleton.define_method(&name, method);
+                        }
+                    }
+                    if method_name == "private_class_method" {
+                        singleton.set_method_private(&name);
+                    } else {
+                        singleton.set_method_public(&name);
+                    }
+                }
+                return Ok(Some(Object::Class(Rc::clone(class_rc))));
+            }
             // Module#remove_const: remove a constant from this module's table.
             "remove_const" => {
                 if arguments.len() != 1 {
@@ -310,6 +356,38 @@ impl VirtualMachine {
                     || self.environment().get(&const_name).is_some()
                     || self.globals().get(&const_name).is_some();
                 return Ok(Some(Object::Bool(found)));
+            }
+            "const_get" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "const_get",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let const_name = match &arguments[0] {
+                    Object::Symbol(s) => s.as_ref().clone(),
+                    Object::String(s) => s.as_ref().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "const_get",
+                            "Symbol or String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                if let Some(val) = class_rc.get_class_var(&const_name) {
+                    return Ok(Some(val));
+                }
+                let msg = format!("uninitialized constant {}", const_name);
+                let exc = Object::exception("NameError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
             }
             "class_eval" | "module_eval" => {
                 let block = self.pending_block.take();

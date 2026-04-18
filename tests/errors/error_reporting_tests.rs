@@ -203,6 +203,7 @@ fn test_nested_method_call_shows_stack_trace() {
     // end
     let class_def = Statement::ClassDef {
         name: "TestClass".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![
             Statement::MethodDef {
@@ -383,6 +384,7 @@ fn test_method_argument_count_error_has_location() {
     let statements = vec![
         Statement::ClassDef {
             name: "Calculator".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -595,6 +597,7 @@ fn test_error_in_deeply_nested_calls() {
     let statements = vec![
         Statement::ClassDef {
             name: "Deep".to_string(),
+            namespace: None,
             superclass: None,
             body: methods,
             position: pos(),

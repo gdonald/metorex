@@ -252,8 +252,9 @@ impl VirtualMachine {
             ),
             Expression::Super {
                 arguments,
+                forward_args,
                 position,
-            } => self.eval_super(arguments, *position),
+            } => self.eval_super(arguments, *forward_args, *position),
             Expression::Yield {
                 arguments,
                 position,

@@ -32,6 +32,37 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(string_value.chars().count() as i64)))
             }
+            "match?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "match?",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let (pattern, flags) = match &arguments[0] {
+                    Object::Regex(p, f) => (p.as_ref().clone(), f.as_ref().clone()),
+                    Object::String(s) => (s.as_ref().clone(), String::new()),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "match?",
+                            "Regexp or String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let re_pattern = if flags.contains('i') {
+                    format!("(?i){}", pattern)
+                } else {
+                    pattern
+                };
+                match regex::Regex::new(&re_pattern) {
+                    Ok(re) => Ok(Some(Object::Bool(re.is_match(string_value.as_ref())))),
+                    Err(_) => Ok(Some(Object::Bool(false))),
+                }
+            }
             "upcase" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

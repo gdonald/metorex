@@ -531,6 +531,7 @@ fn test_block_returned_from_method() {
     let program = vec![
         Statement::ClassDef {
             name: "BlockFactory".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,

@@ -144,11 +144,31 @@ pub enum TokenKind {
 pub struct Token {
     pub kind: TokenKind,
     pub position: Position,
+    /// True when at least one whitespace character was skipped between the
+    /// previous token and this one. Used to disambiguate `m[...]` (indexing)
+    /// from `m [...]` (paren-less array argument).
+    pub had_leading_space: bool,
 }
 
 impl Token {
     pub fn new(kind: TokenKind, position: Position) -> Self {
-        Self { kind, position }
+        Self {
+            kind,
+            position,
+            had_leading_space: false,
+        }
+    }
+
+    pub fn with_leading_space(
+        kind: TokenKind,
+        position: Position,
+        had_leading_space: bool,
+    ) -> Self {
+        Self {
+            kind,
+            position,
+            had_leading_space,
+        }
     }
 }
 

@@ -17,14 +17,27 @@ impl VirtualMachine {
     pub(crate) fn execute_class_def(
         &mut self,
         name: &str,
+        namespace_expr: Option<&Expression>,
         superclass_name: Option<&str>,
         body: &[Statement],
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        // If we're lexically nested inside a module/class, a bare `class Bar`
-        // defines a constant on the enclosing scope (Foo::Bar), not a global
-        // reopening.
-        let parent_scope = self.def_scope_stack.last().cloned();
+        // `class NS::Name` — evaluate NS and use it as the parent scope for
+        // the new class's constant binding.
+        let parent_scope = if let Some(expr) = namespace_expr {
+            match self.evaluate_expression(expr)? {
+                Object::Class(c) | Object::Module(c) => Some(c),
+                _ => {
+                    return Err(MetorexError::runtime_error(
+                        "left of `::` in class definition is not a class/module",
+                        position_to_location(position),
+                    ));
+                }
+            }
+        } else {
+            // Lexical nesting fallback.
+            self.def_scope_stack.last().cloned()
+        };
 
         // Resolve superclass if specified. Check enclosing scope's constants first
         // (so `class Bar < Foo` inside `module M` can see `M::Foo`), then the
@@ -54,22 +67,40 @@ impl VirtualMachine {
             None
         };
 
-        // Reopen existing class if it exists (Ruby semantics), otherwise create new
-        let class = if superclass.is_none() {
-            if let Some(parent) = parent_scope.as_ref() {
-                match parent.get_class_var(name) {
-                    Some(Object::Class(existing)) => existing,
-                    _ => Rc::new(Class::new(name, superclass)),
-                }
-            } else if let Some(Object::Class(existing)) = self.globals().get(name) {
-                existing
-            } else if let Some(Object::Class(existing)) = self.environment().get(name) {
-                existing
-            } else {
-                Rc::new(Class::new(name, superclass))
+        // Reopen existing class if it exists (Ruby semantics), otherwise create new.
+        // Track `is_new` so we know whether to fire the `inherited` hook.
+        let existing_class: Option<Rc<Class>> = if let Some(parent) = parent_scope.as_ref() {
+            match parent.get_class_var(name) {
+                Some(Object::Class(c)) => Some(c),
+                _ => None,
             }
+        } else if let Some(Object::Class(c)) = self.globals().get(name) {
+            Some(c)
+        } else if let Some(Object::Class(c)) = self.environment().get(name) {
+            Some(c)
         } else {
-            Rc::new(Class::new(name, superclass))
+            None
+        };
+        let is_new = existing_class.is_none();
+        let class = match existing_class {
+            Some(existing) => existing,
+            None => {
+                // Compose a Ruby-style qualified name. Named parents get a
+                // simple `Outer::Inner`; anonymous parents fall back to their
+                // inspect label so e.g. `parent::C` becomes `#<Class:0x..>::C`.
+                let full_name = match parent_scope.as_ref() {
+                    Some(p) => {
+                        let p_name = p.ruby_name();
+                        if p_name.is_empty() {
+                            format!("{}::{}", p.inspect_name(), name)
+                        } else {
+                            format!("{}::{}", p_name, name)
+                        }
+                    }
+                    None => name.to_string(),
+                };
+                Rc::new(Class::new(full_name, superclass))
+            }
         };
 
         let prev_self = self.environment().get("self");
@@ -85,7 +116,7 @@ impl VirtualMachine {
         }
         body_result?;
 
-        let class_obj = Object::Class(class);
+        let class_obj = Object::Class(Rc::clone(&class));
         if let Some(parent) = parent_scope {
             parent.set_class_var(name, class_obj);
         } else {
@@ -94,7 +125,39 @@ impl VirtualMachine {
             self.globals_mut().set(name.to_string(), class_obj);
         }
 
+        // Fire `Parent.inherited(Child)` only for fresh subclass definitions
+        // (Ruby: reopening doesn't retrigger the hook). The hook runs AFTER
+        // the body is processed and the subclass is bound to its name.
+        if is_new && let Some(sc) = class.superclass() {
+            self.trigger_inherited_hook(&sc, Rc::clone(&class), position)?;
+        }
+
         Ok(ControlFlow::Next)
+    }
+
+    /// Invoke `superclass.inherited(child)` if the hook is defined. Walks the
+    /// usual class-method resolution paths (singleton class first, then the
+    /// `__class__` fallback), and up the superclass chain so a hook inherited
+    /// via `super` is reachable.
+    pub(crate) fn trigger_inherited_hook(
+        &mut self,
+        superclass: &Rc<Class>,
+        child: Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let receiver = Object::Class(Rc::clone(superclass));
+        if let Some((owner, method)) = self.lookup_method(&receiver, "inherited")
+            && !method.is_undefined
+        {
+            self.invoke_method(
+                owner,
+                method,
+                receiver,
+                vec![Object::Class(child)],
+                position,
+            )?;
+        }
+        Ok(())
     }
 
     /// Evaluate a block with `self` bound to the given class/module, executing
@@ -843,12 +906,14 @@ impl VirtualMachine {
                 // class to the enclosing scope directly via parent_scope detection.
                 Statement::ClassDef {
                     name: class_name,
+                    namespace,
                     superclass,
                     body: class_body,
                     position: class_pos,
                 } => {
                     self.execute_class_def(
                         class_name,
+                        namespace.as_deref(),
                         superclass.as_deref(),
                         class_body,
                         *class_pos,

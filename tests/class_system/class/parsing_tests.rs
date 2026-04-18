@@ -14,6 +14,7 @@ fn pos(line: usize, column: usize) -> Position {
 fn test_empty_class() {
     let stmt = Statement::ClassDef {
         name: "Empty".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -28,6 +29,7 @@ fn test_empty_class() {
 fn test_class_with_simple_name() {
     let stmt = Statement::ClassDef {
         name: "Person".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -41,6 +43,7 @@ fn test_class_with_simple_name() {
 fn test_class_with_uppercase_name() {
     let stmt = Statement::ClassDef {
         name: "MyClass".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -55,6 +58,7 @@ fn test_class_with_uppercase_name() {
 fn test_class_with_superclass() {
     let stmt = Statement::ClassDef {
         name: "Dog".to_string(),
+        namespace: None,
         superclass: Some("Animal".to_string()),
         body: vec![],
         position: pos(1, 1),
@@ -69,6 +73,7 @@ fn test_class_inheritance_chain() {
     // Grandparent class
     let _grandparent = Statement::ClassDef {
         name: "LivingThing".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -77,6 +82,7 @@ fn test_class_inheritance_chain() {
     // Parent class inheriting from grandparent
     let _parent = Statement::ClassDef {
         name: "Animal".to_string(),
+        namespace: None,
         superclass: Some("LivingThing".to_string()),
         body: vec![],
         position: pos(5, 1),
@@ -85,6 +91,7 @@ fn test_class_inheritance_chain() {
     // Child class inheriting from parent
     let child = Statement::ClassDef {
         name: "Dog".to_string(),
+        namespace: None,
         superclass: Some("Animal".to_string()),
         body: vec![],
         position: pos(10, 1),
@@ -99,6 +106,7 @@ fn test_class_inheritance_chain() {
 fn test_class_with_single_method() {
     let stmt = Statement::ClassDef {
         name: "Greeter".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -124,6 +132,7 @@ fn test_class_with_single_method() {
 fn test_class_with_multiple_methods() {
     let stmt = Statement::ClassDef {
         name: "Calculator".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![
             Statement::MethodDef {
@@ -187,6 +196,7 @@ fn test_class_with_multiple_methods() {
 fn test_class_with_constructor() {
     let stmt = Statement::ClassDef {
         name: "Person".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -231,6 +241,7 @@ fn test_class_with_constructor() {
 fn test_class_with_constructor_and_methods() {
     let stmt = Statement::ClassDef {
         name: "Rectangle".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![
             Statement::MethodDef {
@@ -300,6 +311,7 @@ fn test_class_with_constructor_and_methods() {
 fn test_class_with_instance_variable_initialization() {
     let stmt = Statement::ClassDef {
         name: "Counter".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -328,6 +340,7 @@ fn test_class_with_instance_variable_initialization() {
 fn test_class_with_multiple_instance_variables() {
     let stmt = Statement::ClassDef {
         name: "Person".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -386,6 +399,7 @@ fn test_class_with_multiple_instance_variables() {
 fn test_class_with_class_variable() {
     let stmt = Statement::ClassDef {
         name: "SharedCounter".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -416,6 +430,7 @@ fn test_class_with_class_variable() {
 fn test_class_method_with_default_parameters() {
     let stmt = Statement::ClassDef {
         name: "Configurator".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -444,6 +459,7 @@ fn test_class_method_with_default_parameters() {
 fn test_class_method_with_variadic_parameters() {
     let stmt = Statement::ClassDef {
         name: "Logger".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -462,6 +478,7 @@ fn test_class_method_with_variadic_parameters() {
 fn test_class_method_with_keyword_parameters() {
     let stmt = Statement::ClassDef {
         name: "ConfigManager".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -482,6 +499,7 @@ fn test_class_method_with_keyword_parameters() {
 fn test_class_with_getter_and_setter() {
     let stmt = Statement::ClassDef {
         name: "Box".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![
             Statement::MethodDef {
@@ -544,6 +562,7 @@ fn test_class_with_getter_and_setter() {
 fn test_class_method_with_conditional() {
     let stmt = Statement::ClassDef {
         name: "Validator".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -591,6 +610,7 @@ fn test_class_method_with_conditional() {
 fn test_class_method_with_loop() {
     let stmt = Statement::ClassDef {
         name: "Summer".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -696,6 +716,7 @@ fn test_class_method_with_loop() {
 fn test_inherited_class_with_override() {
     let _parent = Statement::ClassDef {
         name: "Animal".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -715,6 +736,7 @@ fn test_inherited_class_with_override() {
 
     let child = Statement::ClassDef {
         name: "Dog".to_string(),
+        namespace: None,
         superclass: Some("Animal".to_string()),
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -739,6 +761,7 @@ fn test_inherited_class_with_override() {
 fn test_inherited_class_with_additional_methods() {
     let child = Statement::ClassDef {
         name: "Dog".to_string(),
+        namespace: None,
         superclass: Some("Animal".to_string()),
         body: vec![
             Statement::MethodDef {
@@ -780,6 +803,7 @@ fn test_inherited_class_with_additional_methods() {
 fn test_class_with_nested_function() {
     let stmt = Statement::ClassDef {
         name: "Outer".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -818,6 +842,7 @@ fn test_class_with_nested_function() {
 fn test_class_with_self_reference() {
     let stmt = Statement::ClassDef {
         name: "Chainable".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -854,6 +879,7 @@ fn test_class_with_self_reference() {
 fn test_class_with_exception_handling() {
     let stmt = Statement::ClassDef {
         name: "SafeCalculator".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -907,6 +933,7 @@ fn test_class_with_exception_handling() {
 fn test_multiple_empty_classes() {
     let class1 = Statement::ClassDef {
         name: "First".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -914,6 +941,7 @@ fn test_multiple_empty_classes() {
 
     let class2 = Statement::ClassDef {
         name: "Second".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(5, 1),
@@ -921,6 +949,7 @@ fn test_multiple_empty_classes() {
 
     let class3 = Statement::ClassDef {
         name: "Third".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(9, 1),
@@ -945,6 +974,7 @@ fn test_class_name_variations() {
     for name in names {
         let stmt = Statement::ClassDef {
             name: name.to_string(),
+            namespace: None,
             superclass: None,
             body: vec![],
             position: pos(1, 1),

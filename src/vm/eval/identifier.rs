@@ -72,17 +72,23 @@ impl VirtualMachine {
         };
 
         // Constant lookup: bare `NAME` inside a class/method resolves to the
-        // class variable of the enclosing class (or the receiver's class).
+        // class variable of the enclosing class (or the receiver's class),
+        // walking the superclass chain — Ruby makes constants inherited from
+        // superclasses visible at the child level too.
         if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
             let class_opt = match &receiver {
                 Object::Class(c) | Object::Module(c) => Some(Rc::clone(c)),
                 Object::Instance(inst) => Some(Rc::clone(&inst.borrow().class)),
                 _ => None,
             };
-            if let Some(class) = class_opt
-                && let Some(val) = class.get_class_var(name)
-            {
-                return Ok(val);
+            if let Some(class) = class_opt {
+                let mut current = Some(class);
+                while let Some(cls) = current {
+                    if let Some(val) = cls.get_class_var(name) {
+                        return Ok(val);
+                    }
+                    current = cls.superclass();
+                }
             }
             // Constants defined in `class Object` are globally accessible (Ruby semantics).
             if let Some(Object::Class(object_class)) = self.globals().get("Object")
@@ -122,6 +128,18 @@ impl VirtualMachine {
             && let Object::Class(_) = &receiver
         {
             return self.invoke_callable(receiver, vec![], position);
+        }
+
+        // Fall back to native-method dispatch on `self` so identifiers that
+        // map to native-only methods (e.g. `constants`, `const_get`) work
+        // bare, the same way `self.constants` does.
+        if !in_same_method {
+            let class_for_native = self.builtins().class_of(&receiver);
+            if let Ok(Some(result)) =
+                self.call_native_method(&class_for_native, &receiver, name, &[], position)
+            {
+                return Ok(result);
+            }
         }
 
         // Fallback: check global Object class (mspec injects describe/it/before/after)

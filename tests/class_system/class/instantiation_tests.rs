@@ -18,6 +18,7 @@ fn test_simple_class_definition() {
     // end
     let program = vec![Statement::ClassDef {
         name: "Point".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![],
         position: pos(1, 1),
@@ -42,6 +43,7 @@ fn test_class_with_initialize_method() {
     // end
     let program = vec![Statement::ClassDef {
         name: "Point".to_string(),
+        namespace: None,
         superclass: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
@@ -96,6 +98,7 @@ fn test_create_instance_without_initialize() {
     let program = vec![
         Statement::ClassDef {
             name: "Simple".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![],
             position: pos(1, 1),
@@ -139,6 +142,7 @@ fn test_create_instance_with_initialize() {
     let program = vec![
         Statement::ClassDef {
             name: "Point".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -226,6 +230,7 @@ fn test_instance_variable_access() {
     let program = vec![
         Statement::ClassDef {
             name: "Counter".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![
                 Statement::MethodDef {
@@ -324,6 +329,7 @@ fn test_class_variable_access() {
     let program = vec![
         Statement::ClassDef {
             name: "Counter".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![
                 Statement::Assignment {
@@ -450,6 +456,7 @@ fn test_class_with_inheritance() {
     let program = vec![
         Statement::ClassDef {
             name: "Base".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
@@ -472,6 +479,7 @@ fn test_class_with_inheritance() {
         },
         Statement::ClassDef {
             name: "Derived".to_string(),
+            namespace: None,
             superclass: Some("Base".to_string()),
             body: vec![],
             position: pos(6, 1),
@@ -520,6 +528,7 @@ fn test_error_when_superclass_not_found() {
     // end
     let program = vec![Statement::ClassDef {
         name: "Child".to_string(),
+        namespace: None,
         superclass: Some("NonExistent".to_string()),
         body: vec![],
         position: pos(1, 1),
@@ -552,6 +561,7 @@ fn test_error_when_superclass_not_a_class() {
         },
         Statement::ClassDef {
             name: "Child".to_string(),
+            namespace: None,
             superclass: Some("x".to_string()),
             body: vec![],
             position: pos(2, 1),
@@ -574,6 +584,7 @@ fn test_error_when_calling_class_with_wrong_argument_count() {
     let program = vec![
         Statement::ClassDef {
             name: "Simple".to_string(),
+            namespace: None,
             superclass: None,
             body: vec![],
             position: pos(1, 1),

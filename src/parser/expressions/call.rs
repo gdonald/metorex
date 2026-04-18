@@ -491,9 +491,18 @@ impl Parser {
 
     /// Check if the next token can start an argument in a paren-less method call
     fn can_start_argument_for_method_call(&mut self, method_name: &str) -> bool {
-        if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
+        if matches!(
+            self.peek().kind,
+            TokenKind::Newline | TokenKind::Comment(_) | TokenKind::Semicolon
+        ) {
             return false;
         }
+
+        // `foo [x]` (with space) → paren-less array argument.
+        // `foo[x]`  (no space)   → index into the result of `foo`.
+        // Decide now, before skip_whitespace muddies the state.
+        let bracket_with_space =
+            self.peek().kind == TokenKind::LBracket && self.peek().had_leading_space;
 
         self.skip_whitespace();
 
@@ -535,29 +544,30 @@ impl Parser {
         }
 
         // For method calls, be more conservative than bare function calls:
-        // no LBracket (would be array indexing), no bare integers/strings
-        // that might be the next statement
-        let can_be_arg = matches!(
-            self.peek().kind,
-            TokenKind::Ident(_)
-                | TokenKind::Int(_)
-                | TokenKind::Float(_)
-                | TokenKind::String(_)
-                | TokenKind::InterpolatedString(_)
-                | TokenKind::True
-                | TokenKind::False
-                | TokenKind::Nil
-                | TokenKind::InstanceVar(_)
-                | TokenKind::ClassVar(_)
-                | TokenKind::GlobalVar(_)
-                | TokenKind::Bang
-                | TokenKind::MagicFile
-                | TokenKind::MagicLine
-                | TokenKind::Ampersand
-                | TokenKind::Colon
-                | TokenKind::Include
-                | TokenKind::Extend
-        );
+        // a bare `[` is ambiguous — with leading space it means a paren-less
+        // array argument, without space it means indexing the result.
+        let can_be_arg = bracket_with_space
+            || matches!(
+                self.peek().kind,
+                TokenKind::Ident(_)
+                    | TokenKind::Int(_)
+                    | TokenKind::Float(_)
+                    | TokenKind::String(_)
+                    | TokenKind::InterpolatedString(_)
+                    | TokenKind::True
+                    | TokenKind::False
+                    | TokenKind::Nil
+                    | TokenKind::InstanceVar(_)
+                    | TokenKind::ClassVar(_)
+                    | TokenKind::GlobalVar(_)
+                    | TokenKind::Bang
+                    | TokenKind::MagicFile
+                    | TokenKind::MagicLine
+                    | TokenKind::Ampersand
+                    | TokenKind::Colon
+                    | TokenKind::Include
+                    | TokenKind::Extend
+            );
 
         if !can_be_arg {
             return false;

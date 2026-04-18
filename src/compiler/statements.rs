@@ -412,6 +412,7 @@ impl Compiler {
             // ── Class definition (12.6) ────────────────────────────────
             Statement::ClassDef {
                 name,
+                namespace: _,
                 superclass,
                 body,
                 position,

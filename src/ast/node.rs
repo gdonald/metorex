@@ -196,6 +196,10 @@ pub enum Expression {
     // Super call - calls parent class method
     Super {
         arguments: Vec<Expression>,
+        /// True iff this was written as bare `super` (no parens, no args) —
+        /// Ruby forwards the enclosing method's arguments in that case.
+        /// `super()` has this false (explicit zero args).
+        forward_args: bool,
         position: Position,
     },
 
@@ -529,6 +533,11 @@ pub enum Statement {
     // Class definition
     ClassDef {
         name: String,
+        /// Optional namespace for `class Foo::Bar < X` forms — a dynamic
+        /// expression evaluated to the enclosing module/class where the
+        /// constant should be installed. When `None`, the class is installed
+        /// on the current lexical scope (existing behavior).
+        namespace: Option<Box<Expression>>,
         superclass: Option<String>,
         body: Vec<Statement>,
         position: Position,

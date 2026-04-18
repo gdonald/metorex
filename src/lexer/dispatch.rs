@@ -5,9 +5,18 @@ use super::{Lexer, Token, TokenKind};
 impl<'a> Lexer<'a> {
     /// Internal: produce the next token without updating disambiguation state.
     pub(super) fn next_token_inner(&mut self) -> Token {
-        // Skip whitespace (but not newlines)
-        self.skip_whitespace();
+        // Skip whitespace (but not newlines). Remember whether any space
+        // was actually skipped so the parser can disambiguate `m[...]`
+        // (indexing) from `m [...]` (paren-less array argument).
+        let had_leading_space = self.skip_whitespace();
+        let mut token = self.next_token_body();
+        token.had_leading_space = had_leading_space;
+        token
+    }
 
+    /// The actual per-character dispatch, returning a token without worrying
+    /// about leading-space bookkeeping (handled by the caller).
+    fn next_token_body(&mut self) -> Token {
         let position = self.current_position();
 
         let Some(ch) = self.peek() else {

@@ -36,11 +36,15 @@ impl<'a> Lexer<'a> {
 
     /// Skip whitespace characters (spaces and tabs, but not newlines).
     /// Also handles line continuations: a `\` immediately followed by a
-    /// newline is consumed silently so the two source lines join.
-    pub(super) fn skip_whitespace(&mut self) {
+    /// newline is consumed silently so the two source lines join. Returns
+    /// `true` iff any whitespace was consumed — the parser uses this to
+    /// distinguish `m[...]` (indexing) from `m [...]` (paren-less arg).
+    pub(super) fn skip_whitespace(&mut self) -> bool {
+        let mut skipped = false;
         loop {
             match self.peek() {
                 Some(' ') | Some('\t') | Some('\r') => {
+                    skipped = true;
                     self.advance();
                 }
                 Some('\\') => {
@@ -54,6 +58,7 @@ impl<'a> Lexer<'a> {
                     let saved_offset = self.offset;
                     self.advance(); // consume backslash
                     if self.peek() == Some('\n') {
+                        skipped = true;
                         self.advance(); // consume newline
                     } else {
                         // Roll back: not a line continuation.
@@ -68,5 +73,6 @@ impl<'a> Lexer<'a> {
                 _ => break,
             }
         }
+        skipped
     }
 }
