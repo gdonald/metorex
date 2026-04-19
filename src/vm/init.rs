@@ -54,8 +54,13 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("STDERR", Object::String(Rc::new("STDERR".to_string())));
     globals.set("STDIN", Object::String(Rc::new("STDIN".to_string())));
 
+    // BasicObject — Ruby's true root class. Object inherits from it.
+    let basic_object = Rc::new(Class::new("BasicObject", None));
+    globals.set("BasicObject", Object::Class(Rc::clone(&basic_object)));
+
     // Object — root class that mspec reopens to inject describe/it/before/after
-    let object = Rc::new(Class::new("Object", None));
+    let object = Rc::new(Class::new("Object", Some(Rc::clone(&basic_object))));
+    basic_object.add_subclass(&object);
     // Ruby's Object has `ruby2_keywords` as a private method; main inherits from Object.
     object.set_method_private("ruby2_keywords");
     globals.set("Object", Object::Class(Rc::clone(&object)));

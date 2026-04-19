@@ -68,9 +68,15 @@ impl VirtualMachine {
                 if let Some(existing) = class_rc.singleton_class_slot().clone() {
                     return existing;
                 }
+                // Per Ruby: the singleton class of a Class K has K's parent's
+                // singleton class as its superclass (not K's parent itself).
+                // Build that chain on demand by recursing through `superclass`.
+                let parent_singleton = class_rc
+                    .superclass()
+                    .map(|sup| self.singleton_class_of(&Object::Class(sup)));
                 let sc = Rc::new(Class::new(
                     singleton_class_display_name(receiver),
-                    class_rc.superclass(),
+                    parent_singleton,
                 ));
                 sc.set_class_var("__singleton__", Object::Bool(true));
                 sc.set_class_var("__attached__", receiver.clone());

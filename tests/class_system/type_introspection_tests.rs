@@ -133,8 +133,17 @@ Dog.superclass.name
 }
 
 #[test]
-fn superclass_of_object_is_nil() {
-    let result = run("Object.superclass");
+fn superclass_of_object_is_basicobject() {
+    let result = run("Object.superclass.name");
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("BasicObject".to_string())))
+    );
+}
+
+#[test]
+fn superclass_of_basicobject_is_nil() {
+    let result = run("BasicObject.superclass");
     assert_eq!(result, Some(Object::Nil));
 }
 
