@@ -110,6 +110,62 @@ impl VirtualMachine {
             "Range" => self.call_range_method(receiver, method_name, arguments, position),
             "Set" => self.call_set_method(receiver, method_name, arguments, position),
             "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
+            "Thread" => self.call_thread_method(receiver, method_name, arguments, position),
+            _ => Ok(None),
+        }
+    }
+
+    /// Instance-level Thread methods. The "thread" runs synchronously when
+    /// `value`/`join` is called for the first time.
+    pub(crate) fn call_thread_method(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        let inst = match receiver {
+            Object::Instance(i) => Rc::clone(i),
+            _ => return Ok(None),
+        };
+        match method_name {
+            "value" | "join" => {
+                if !arguments.is_empty() && method_name == "value" {
+                    return Err(crate::vm::errors::method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let cached = inst.borrow().get_var("__thread_value").cloned();
+                if let Some(val) = cached {
+                    return Ok(Some(if method_name == "join" {
+                        receiver.clone()
+                    } else {
+                        val
+                    }));
+                }
+                let block_obj = inst
+                    .borrow()
+                    .get_var("__thread_block")
+                    .cloned()
+                    .unwrap_or(Object::Nil);
+                let value = if let Object::Block(b) = block_obj {
+                    self.execute_block_body(&b, vec![])?
+                } else {
+                    Object::Nil
+                };
+                inst.borrow_mut()
+                    .set_var("__thread_value".to_string(), value.clone());
+                Ok(Some(if method_name == "join" {
+                    receiver.clone()
+                } else {
+                    value
+                }))
+            }
+            "alive?" | "stop?" => Ok(Some(Object::Bool(false))),
+            "status" => Ok(Some(Object::Bool(false))),
             _ => Ok(None),
         }
     }

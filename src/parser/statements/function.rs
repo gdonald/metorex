@@ -261,13 +261,20 @@ impl Parser {
                 };
                 params.push(Parameter::block(name, param_pos));
             }
-            // Check for variadic parameter (*args)
+            // Check for variadic parameter (*args). A bare `*` with no name is
+            // an anonymous splat, which discards the remaining positional args.
             else if self.match_token(&[TokenKind::Star]) {
-                let name = match self.advance().kind {
-                    TokenKind::Ident(name) => name,
-                    _ => return Err(self.error_at_previous("Expected parameter name after '*'")),
-                };
-                params.push(Parameter::variadic(name, param_pos));
+                if self.check(&[TokenKind::Comma, TokenKind::RParen, TokenKind::Pipe]) {
+                    params.push(Parameter::variadic("__anon_splat".to_string(), param_pos));
+                } else {
+                    let name = match self.advance().kind {
+                        TokenKind::Ident(name) => name,
+                        _ => {
+                            return Err(self.error_at_previous("Expected parameter name after '*'"));
+                        }
+                    };
+                    params.push(Parameter::variadic(name, param_pos));
+                }
             } else {
                 let name = match self.advance().kind {
                     TokenKind::Ident(name) => name,

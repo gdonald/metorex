@@ -114,6 +114,38 @@ impl Parser {
         })
     }
 
+    /// Parse `until cond ... end`, compiled to a `while !cond` loop.
+    pub(crate) fn parse_until_statement(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self.expect(TokenKind::Until, "Expected 'until'")?.position;
+        self.skip_whitespace();
+
+        let condition = self.parse_condition()?;
+        self.skip_whitespace();
+        self.match_token(&[TokenKind::Do]);
+        self.skip_whitespace();
+
+        let mut body = Vec::new();
+        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::End]) {
+                break;
+            }
+            body.push(self.parse_statement()?);
+            self.skip_whitespace();
+        }
+        self.expect(TokenKind::End, "Expected 'end' after until loop")?;
+
+        Ok(Statement::While {
+            condition: crate::ast::Expression::UnaryOp {
+                op: crate::ast::UnaryOp::Not,
+                operand: Box::new(condition),
+                position: start_pos,
+            },
+            body,
+            position: start_pos,
+        })
+    }
+
     /// Parse a for loop
     pub(crate) fn parse_for_statement(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::For, "Expected 'for'")?.position;

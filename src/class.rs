@@ -4,7 +4,7 @@
 use crate::object::{Method, Object};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 
 /// Runtime class definition with method table and inheritance.
 #[derive(Debug)]
@@ -26,6 +26,8 @@ pub struct Class {
     /// thing `class << SomeClass; end` opens. Holds class-level (def self.x)
     /// methods once we start tracking them as a real class.
     singleton_class: RefCell<Option<Rc<Class>>>,
+    /// Direct subclasses (weak refs to avoid keeping garbage subclasses alive).
+    subclasses: RefCell<Vec<Weak<Class>>>,
 }
 
 impl Class {
@@ -41,7 +43,21 @@ impl Class {
             mixins: RefCell::new(Vec::new()),
             private_method_names: RefCell::new(HashSet::new()),
             singleton_class: RefCell::new(None),
+            subclasses: RefCell::new(Vec::new()),
         }
+    }
+
+    /// Register `child` as a direct subclass of `self`. Stored weakly so it
+    /// can be garbage-collected; `subclasses()` filters out dead refs.
+    pub fn add_subclass(&self, child: &Rc<Class>) {
+        self.subclasses.borrow_mut().push(Rc::downgrade(child));
+    }
+
+    /// Return the live direct subclasses of this class.
+    pub fn subclasses(&self) -> Vec<Rc<Class>> {
+        let mut subs = self.subclasses.borrow_mut();
+        subs.retain(|w| w.strong_count() > 0);
+        subs.iter().filter_map(|w| w.upgrade()).collect()
     }
 
     /// Accessor for the cached singleton-class slot (None until materialized).
@@ -265,6 +281,7 @@ impl Class {
             mixins: RefCell::new(source.mixins.borrow().clone()),
             private_method_names: RefCell::new(source.private_method_names.borrow().clone()),
             singleton_class: RefCell::new(None),
+            subclasses: RefCell::new(Vec::new()),
         };
         if let Some(src_sc) = source.singleton_class.borrow().as_ref() {
             let sc_copy = Rc::new(Class {
@@ -285,6 +302,7 @@ impl Class {
                 mixins: RefCell::new(src_sc.mixins.borrow().clone()),
                 private_method_names: RefCell::new(src_sc.private_method_names.borrow().clone()),
                 singleton_class: RefCell::new(None),
+                subclasses: RefCell::new(Vec::new()),
             });
             *copy.singleton_class.borrow_mut() = Some(sc_copy);
         }
@@ -304,6 +322,7 @@ impl Clone for Class {
             mixins: RefCell::new(self.mixins.borrow().clone()),
             private_method_names: RefCell::new(self.private_method_names.borrow().clone()),
             singleton_class: RefCell::new(self.singleton_class.borrow().clone()),
+            subclasses: RefCell::new(self.subclasses.borrow().clone()),
         }
     }
 }

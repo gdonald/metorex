@@ -559,6 +559,12 @@ pub enum Statement {
         position: Position,
     },
 
+    Alias {
+        new_name: String,
+        old_name: String,
+        position: Position,
+    },
+
     // Conditional statements
     If {
         condition: Expression,
@@ -804,6 +810,7 @@ impl Statement {
             | Statement::ModuleDef { position, .. }
             | Statement::Include { position, .. }
             | Statement::Extend { position, .. }
+            | Statement::Alias { position, .. }
             | Statement::MultipleAssignment { position, .. } => *position,
         }
     }

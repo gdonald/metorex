@@ -209,6 +209,11 @@ impl VirtualMachine {
                 module_name,
                 position,
             } => self.execute_extend(module_name, *position),
+            Statement::Alias {
+                new_name,
+                old_name,
+                position,
+            } => self.execute_alias(new_name, old_name, *position),
         }
     }
 
@@ -297,7 +302,7 @@ impl VirtualMachine {
                         instance.class.set_class_var(name.clone(), value);
                         Ok(())
                     }
-                    Some(Object::Class(class)) => {
+                    Some(Object::Class(class)) | Some(Object::Module(class)) => {
                         class.set_class_var(name.clone(), value);
                         Ok(())
                     }
@@ -383,6 +388,27 @@ impl VirtualMachine {
                         } else {
                             Err(MetorexError::runtime_error(
                                 "No []= method defined on instance",
+                                position_to_location(*position),
+                            ))
+                        }
+                    }
+                    Object::Class(cls) | Object::Module(cls) => {
+                        // Dispatch to class/module-level `def self.[]=` (stored
+                        // under the `__class__` prefix).
+                        let receiver = Object::Class(Rc::clone(&cls));
+                        let key = "__class__[]=".to_string();
+                        if let Some(method) = cls.find_method(&key) {
+                            self.invoke_method(
+                                Rc::clone(&cls),
+                                method,
+                                receiver,
+                                vec![idx, value],
+                                *position,
+                            )?;
+                            Ok(())
+                        } else {
+                            Err(MetorexError::runtime_error(
+                                "No []= method defined on class/module",
                                 position_to_location(*position),
                             ))
                         }

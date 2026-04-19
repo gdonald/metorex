@@ -90,6 +90,18 @@ impl VirtualMachine {
                     current = cls.superclass();
                 }
             }
+            // Walk the lexical def-scope stack (outer class/module bodies) so a
+            // nested class/module can reference sibling constants defined in an
+            // enclosing module without qualifying them, and so a module can
+            // reference itself by name before it has been bound in globals.
+            for enclosing in self.def_scope_stack.iter().rev() {
+                if let Some(val) = enclosing.get_class_var(name) {
+                    return Ok(val);
+                }
+                if enclosing.name() == name {
+                    return Ok(Object::Module(Rc::clone(enclosing)));
+                }
+            }
             // Constants defined in `class Object` are globally accessible (Ruby semantics).
             if let Some(Object::Class(object_class)) = self.globals().get("Object")
                 && let Some(val) = object_class.get_class_var(name)

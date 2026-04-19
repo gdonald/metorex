@@ -5,7 +5,6 @@ use crate::lexer::Position;
 use crate::object::Object;
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
-use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -95,11 +94,12 @@ impl VirtualMachine {
                             position,
                         ));
                     }
+                    // Without a block, Ruby returns an Enumerator. We
+                    // approximate by returning the integer range as an Array
+                    // so chained calls like `n.times.map { ... }` work.
                     None => {
-                        return Err(MetorexError::runtime_error(
-                            "times requires a block",
-                            position_to_location(position),
-                        ));
+                        let nums: Vec<Object> = (0..*n).map(Object::Int).collect();
+                        return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(nums)))));
                     }
                 };
                 for i in 0..*n {

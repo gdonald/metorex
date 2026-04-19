@@ -34,7 +34,7 @@ fi
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/inherited_spec.rb"
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/initialize_spec.rb"
 "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/new_spec.rb"
-# "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/subclasses_spec.rb"
+"$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/subclasses_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/class/superclass_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/module/alias_method_spec.rb"
 # "$MSPEC" -t "$METOREX" "$SPEC_DIR/core/module/ancestors_spec.rb"

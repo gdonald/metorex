@@ -330,6 +330,18 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         "public_class_method",
         Object::NativeFunction("public_class_method".to_string()),
     );
+    globals.set(
+        "private_constant",
+        Object::NativeFunction("private_constant".to_string()),
+    );
+    globals.set(
+        "public_constant",
+        Object::NativeFunction("public_constant".to_string()),
+    );
+    globals.set(
+        "deprecate_constant",
+        Object::NativeFunction("deprecate_constant".to_string()),
+    );
     globals.set("freeze", Object::NativeFunction("freeze".to_string()));
     // Lifecycle hooks — accept and discard the block, never run it.
     globals.set("at_exit", Object::NativeFunction("at_exit".to_string()));

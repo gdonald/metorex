@@ -497,6 +497,41 @@ impl VirtualMachine {
                 sorted.sort_by(compare_for_sort);
                 Ok(Some(Object::Array(Rc::new(RefCell::new(sorted)))))
             }
+            "sort_by" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            "sort_by requires a block",
+                            position_to_location(position),
+                        ));
+                    }
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                };
+                let mut keyed: Vec<(Object, Object)> = Vec::new();
+                for element in array_rc.borrow().iter() {
+                    let key = self.execute_block_body(&block, vec![element.clone()])?;
+                    keyed.push((key, element.clone()));
+                }
+                keyed.sort_by(|(a, _), (b, _)| compare_for_sort(a, b));
+                let sorted: Vec<Object> = keyed.into_iter().map(|(_, v)| v).collect();
+                Ok(Some(Object::Array(Rc::new(RefCell::new(sorted)))))
+            }
             "reverse" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

@@ -163,9 +163,14 @@ count
 }
 
 #[test]
-fn int_times_error_no_block() {
-    let err = run_err("5.times");
-    assert!(err.contains("block") || err.contains("Block"));
+fn int_times_no_block_returns_range_array() {
+    let result = run("5.times");
+    let arr = match result {
+        Some(Object::Array(a)) => a,
+        other => panic!("expected array, got {other:?}"),
+    };
+    let expected: Vec<Object> = (0..5).map(Object::Int).collect();
+    assert_eq!(*arr.borrow(), expected);
 }
 
 #[test]

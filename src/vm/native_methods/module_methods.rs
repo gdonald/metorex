@@ -186,16 +186,88 @@ impl VirtualMachine {
                     }
                 };
                 if !module_rc.alias_method(&new_name, &old_name) {
-                    return Err(MetorexError::runtime_error(
-                        format!(
-                            "undefined method '{}' for module '{}'",
-                            old_name,
-                            module_rc.name()
-                        ),
-                        position_to_location(position),
-                    ));
+                    // Fall back to looking up the method on Object — some
+                    // specs alias Kernel methods onto methods that are only
+                    // defined at the top level (and hence live on Object).
+                    let mut found = false;
+                    if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                        && let Some(method) = object_class.find_method(&old_name)
+                    {
+                        module_rc.define_method(&new_name, method);
+                        found = true;
+                    }
+                    if !found {
+                        return Err(MetorexError::runtime_error(
+                            format!(
+                                "undefined method '{}' for module '{}'",
+                                old_name,
+                                module_rc.name()
+                            ),
+                            position_to_location(position),
+                        ));
+                    }
                 }
                 return Ok(Some(Object::Nil));
+            }
+            // `autoload :CONST, "path"` registers a lazy loader. We treat it
+            // as a no-op so fixtures that call it during setup don't fail.
+            "autoload" | "autoload?" => {
+                return Ok(Some(Object::Nil));
+            }
+            // `mod.instance_method(:name)` returns an UnboundMethod; we return
+            // the bound `Method` object so `.bind(obj).call` on the returned
+            // value still dispatches correctly for fixture use-cases.
+            "instance_method" | "public_instance_method" => {
+                let name_str = match arguments.first() {
+                    Some(Object::String(s)) => (**s).clone(),
+                    Some(Object::Symbol(s)) => (**s).clone(),
+                    _ => return Ok(Some(Object::Nil)),
+                };
+                if let Some(method) = module_rc.find_method(&name_str) {
+                    return Ok(Some(Object::Method(method)));
+                }
+                return Err(MetorexError::runtime_error(
+                    format!("undefined method '{}' for {}", name_str, module_rc.name()),
+                    position_to_location(position),
+                ));
+            }
+            // Module#include / Module#prepend / Module#append_features:
+            // mix in the argument modules. `prepend` is handled as an include
+            // here; true prepend ordering (mixin resolves before self in the
+            // ancestor chain) is not yet modelled. We only intercept calls
+            // *with* arguments so a zero-arg user-defined accessor (e.g.
+            // `attr_reader :include` on MSpec) still wins.
+            "include" | "prepend" | "append_features" | "prepend_features"
+                if !arguments.is_empty() =>
+            {
+                for arg in arguments {
+                    match arg {
+                        Object::Module(m) => module_rc.add_mixin(Rc::clone(m)),
+                        Object::Class(c) => module_rc.add_mixin(Rc::clone(c)),
+                        other => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "Module",
+                                other,
+                                position,
+                            ));
+                        }
+                    }
+                }
+                return Ok(Some(Object::Module(Rc::clone(module_rc))));
+            }
+            // Module#extend_object: invoked by Module#extend; mix the module
+            // into the argument's singleton class. We model this by adding a
+            // mixin onto the argument if it is a module/class.
+            "extend_object" if !arguments.is_empty() => {
+                for arg in arguments {
+                    match arg {
+                        Object::Module(m) => m.add_mixin(Rc::clone(module_rc)),
+                        Object::Class(c) => c.add_mixin(Rc::clone(module_rc)),
+                        _ => {}
+                    }
+                }
+                return Ok(Some(Object::Module(Rc::clone(module_rc))));
             }
             "module_function" => {
                 if arguments.len() != 1 {

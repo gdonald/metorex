@@ -24,6 +24,9 @@ impl VirtualMachine {
             | "module_function"
             | "private_class_method"
             | "public_class_method"
+            | "private_constant"
+            | "public_constant"
+            | "deprecate_constant"
             | "freeze"
             | "noop_with_block" => {
                 // Visibility modifiers and Object#freeze — no-op stubs. Accept any args.

@@ -483,8 +483,8 @@ impl Resolver {
                 self.declare(name.clone(), Position::default());
             }
 
-            Statement::Include { .. } | Statement::Extend { .. } => {
-                // Module inclusion/extension, no variable resolution needed
+            Statement::Include { .. } | Statement::Extend { .. } | Statement::Alias { .. } => {
+                // Module inclusion/extension/alias, no variable resolution needed
             }
 
             Statement::MultipleAssignment {

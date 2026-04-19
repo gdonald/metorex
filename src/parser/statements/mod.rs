@@ -41,6 +41,7 @@ impl Parser {
             TokenKind::If => self.parse_if_statement(),
             TokenKind::Unless => self.parse_unless_statement(),
             TokenKind::While => self.parse_while_statement(),
+            TokenKind::Until => self.parse_until_statement(),
             TokenKind::For => self.parse_for_statement(),
             TokenKind::Case => self.parse_case_statement(),
             TokenKind::Begin => self.parse_begin_statement(),
@@ -57,6 +58,7 @@ impl Parser {
             TokenKind::Module => self.parse_module_def(),
             TokenKind::Include => self.parse_include(),
             TokenKind::Extend => self.parse_extend(),
+            TokenKind::Alias => self.parse_alias(),
             _ => {
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;
@@ -255,6 +257,28 @@ impl Parser {
                 condition,
                 then_branch: vec![stmt],
                 else_branch: None,
+                position,
+            })
+        } else if self.check(&[TokenKind::While]) {
+            let position = self.advance().position; // consume 'while'
+            self.skip_whitespace();
+            let condition = self.parse_condition_expression()?;
+            Ok(Statement::While {
+                condition,
+                body: vec![stmt],
+                position,
+            })
+        } else if self.check(&[TokenKind::Until]) {
+            let position = self.advance().position; // consume 'until'
+            self.skip_whitespace();
+            let condition = self.parse_condition_expression()?;
+            Ok(Statement::While {
+                condition: crate::ast::Expression::UnaryOp {
+                    op: crate::ast::UnaryOp::Not,
+                    operand: Box::new(condition),
+                    position,
+                },
+                body: vec![stmt],
                 position,
             })
         } else {

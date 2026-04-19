@@ -43,13 +43,22 @@ impl VirtualMachine {
                 }
             };
             if class_rc.find_method(&n).is_none() {
-                let msg = format!("undefined method '{}' for class '{}'", n, class_rc.name());
-                let exc = Object::exception("NameError", msg.clone());
-                return Err(MetorexError::UncaughtException {
-                    exception: exc,
-                    location: position_to_location(position),
-                    message: msg,
-                });
+                // Fall back to Object's method table — some specs toggle
+                // visibility on Kernel for methods defined at the top level
+                // (which live on Object in Ruby semantics).
+                let on_object = matches!(
+                    self.globals().get("Object"),
+                    Some(Object::Class(oc)) if oc.find_method(&n).is_some()
+                );
+                if !on_object {
+                    let msg = format!("undefined method '{}' for class '{}'", n, class_rc.name());
+                    let exc = Object::exception("NameError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
             }
             names.push(n);
         }

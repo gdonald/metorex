@@ -43,11 +43,15 @@ impl VirtualMachine {
         // (so `class Bar < Foo` inside `module M` can see `M::Foo`), then the
         // environment, then globals.
         let superclass = if let Some(super_name) = superclass_name {
-            let resolved = parent_scope
-                .as_ref()
-                .and_then(|p| p.get_class_var(super_name))
-                .or_else(|| self.environment().get(super_name))
-                .or_else(|| self.globals().get(super_name));
+            let resolved = if super_name.contains("::") {
+                self.resolve_constant_in_scope(super_name)
+            } else {
+                parent_scope
+                    .as_ref()
+                    .and_then(|p| p.get_class_var(super_name))
+                    .or_else(|| self.environment().get(super_name))
+                    .or_else(|| self.globals().get(super_name))
+            };
             match resolved {
                 Some(Object::Class(class)) => Some(class),
                 Some(_) => {
@@ -99,7 +103,11 @@ impl VirtualMachine {
                     }
                     None => name.to_string(),
                 };
-                Rc::new(Class::new(full_name, superclass))
+                let new_class = Rc::new(Class::new(full_name, superclass));
+                if let Some(sc) = new_class.superclass() {
+                    sc.add_subclass(&new_class);
+                }
+                new_class
             }
         };
 
@@ -477,6 +485,11 @@ impl VirtualMachine {
                             ));
                         }
                     }
+                }
+                Statement::Alias {
+                    new_name, old_name, ..
+                } => {
+                    class.alias_method(new_name, old_name);
                 }
                 // `class << <target>` inside a class body — open the target's
                 // singleton class and apply the inner body there.
@@ -961,6 +974,11 @@ impl VirtualMachine {
                         module.add_mixin(inc_module);
                     }
                 }
+                Statement::Alias {
+                    new_name, old_name, ..
+                } => {
+                    module.alias_method(new_name, old_name);
+                }
                 // Other statements in module body
                 _ => {
                     self.execute_statement(statement)?;
@@ -999,11 +1017,31 @@ impl VirtualMachine {
     /// the enclosing class/module stack (innermost first), then check the
     /// local environment, then globals. Used by `include`/`extend` inside
     /// class bodies so nested modules can reference siblings without
-    /// fully-qualifying them.
+    /// fully-qualifying them. Also handles qualified names (`A::B::C`).
     pub(crate) fn resolve_constant_in_scope(&self, name: &str) -> Option<Object> {
+        if name.contains("::") {
+            let mut parts = name.split("::");
+            let head = parts.next()?;
+            let mut current = self.resolve_constant_in_scope(head)?;
+            for part in parts {
+                let class_rc = match &current {
+                    Object::Class(c) | Object::Module(c) => Rc::clone(c),
+                    _ => return None,
+                };
+                current = class_rc.get_class_var(part)?;
+            }
+            return Some(current);
+        }
         for enclosing in self.def_scope_stack.iter().rev() {
             if let Some(val) = enclosing.get_class_var(name) {
                 return Some(val);
+            }
+            // A still-being-defined enclosing scope resolves to itself when
+            // referenced by its own simple name (e.g. `ModuleSpecs::Alias`
+            // inside `module ModuleSpecs; class Allonym; include ... end; end`
+            // before ModuleSpecs has been bound in globals).
+            if enclosing.name() == name {
+                return Some(Object::Module(Rc::clone(enclosing)));
             }
         }
         self.environment()
@@ -1077,6 +1115,29 @@ impl VirtualMachine {
             "extend can only be used inside a class definition",
             position_to_location(position),
         ))
+    }
+
+    /// Execute `alias new_name old_name` outside a class/module body. Ruby
+    /// treats this as an alias on Object so it is visible in all instances.
+    pub(crate) fn execute_alias(
+        &mut self,
+        new_name: &str,
+        old_name: &str,
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        if let Some(enclosing) = self.def_scope_stack.last() {
+            enclosing.alias_method(new_name, old_name);
+            return Ok(ControlFlow::Next);
+        }
+        if let Some(Object::Class(object_class)) = self.globals().get("Object")
+            && !object_class.alias_method(new_name, old_name)
+        {
+            return Err(MetorexError::runtime_error(
+                format!("undefined method '{}' for alias", old_name),
+                position_to_location(position),
+            ));
+        }
+        Ok(ControlFlow::Next)
     }
 }
 
