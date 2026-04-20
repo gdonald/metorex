@@ -223,7 +223,21 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<(), MetorexError> {
+        // Reset visibility to public at the start of every class body so
+        // reopening doesn't carry over a stale state from a prior body.
+        class.set_current_visibility("public");
         for statement in body {
+            // Bare `private` / `public` / `protected` statements (no args)
+            // toggle the default visibility for subsequent method defs.
+            if let Statement::Expression {
+                expression: Expression::Identifier { name, .. },
+                ..
+            } = statement
+                && matches!(name.as_str(), "private" | "public" | "protected")
+            {
+                class.set_current_visibility(name);
+                continue;
+            }
             match statement {
                 Statement::FunctionDef {
                     name: method_name,
@@ -239,6 +253,9 @@ impl VirtualMachine {
                         self.snapshot_active_refinements(),
                     );
                     class.define_method(method_name, Rc::new(m));
+                    if class.current_visibility() != "public" {
+                        class.set_method_private(method_name.clone());
+                    }
                 }
                 // `def self.name` inside a `Class.new do ... end` block: the parser
                 // emits a FunctionDef (not MethodDef, because `in_class_body` is
@@ -301,12 +318,16 @@ impl VirtualMachine {
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
+                    m.owner = Some(class.name().to_string());
                     let method = Rc::new(m);
                     if *is_class_method {
                         // def self.method_name — store as class method with __class__ prefix
                         class.define_method(format!("__class__{}", method_name), method);
                     } else {
                         class.define_method(method_name, method);
+                        if class.current_visibility() != "public" {
+                            class.set_method_private(method_name.clone());
+                        }
                     }
                 }
                 Statement::Assignment {
@@ -856,6 +877,7 @@ impl VirtualMachine {
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
+                    m.owner = Some(module.name().to_string());
                     let method = Rc::new(m);
                     if *is_class_method {
                         module.define_method(format!("__class__{}", method_name), method);
@@ -961,15 +983,16 @@ impl VirtualMachine {
                 } => {
                     self.execute_module_def(mod_name, mod_body, *mod_pos)?;
                 }
-                // Include inside module body
+                // Include inside module body: walk the lexical def-scope
+                // stack so nested modules can reference sibling constants
+                // (e.g. `module C; include P; end` where P is defined in the
+                // enclosing module).
                 Statement::Include {
                     module_name: inc_name,
                     ..
                 } => {
-                    if let Some(Object::Module(inc_module)) = self
-                        .environment()
-                        .get(inc_name)
-                        .or_else(|| self.globals().get(inc_name))
+                    if let Some(Object::Module(inc_module)) =
+                        self.resolve_constant_in_scope(inc_name)
                     {
                         module.add_mixin(inc_module);
                     }

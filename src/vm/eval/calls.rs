@@ -36,7 +36,10 @@ impl VirtualMachine {
                 // class_eval they should resolve to the receiver's method so
                 // `private :foo` marks Tally#foo (not Object#foo) as private.
                 Some(Object::NativeFunction(fn_name))
-                    if matches!(fn_name.as_str(), "define_method" | "private" | "public") =>
+                    if matches!(
+                        fn_name.as_str(),
+                        "define_method" | "private" | "public" | "protected" | "module_function"
+                    ) =>
                 {
                     matches!(
                         self.environment().get("self"),

@@ -208,8 +208,11 @@ fn test_equals_method() {
     let obj2 = Object::Method(method2);
     let obj3 = Object::Method(method3);
 
-    assert!(obj1.equals(&obj2)); // Same reference
-    assert!(!obj1.equals(&obj3)); // Different reference
+    assert!(obj1.equals(&obj2)); // Same reference (Rc::ptr_eq)
+    // Per Ruby Method#==, structurally identical methods compare equal even
+    // when allocated separately, so two methods with the same name/body/no
+    // receiver are equal.
+    assert!(obj1.equals(&obj3));
 }
 
 #[test]

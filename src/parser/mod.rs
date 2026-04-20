@@ -24,6 +24,10 @@ pub struct Parser {
     /// Depth of nested ternary expressions currently being parsed. Used to
     /// disambiguate `e.f?:sym` (symbol arg) from `cond ? e.f? : alt` (ternary).
     pub(crate) ternary_depth: usize,
+    /// Depth of paren-less argument lists currently being parsed. When >0,
+    /// identifier-valued arguments must NOT absorb a trailing `do...end` —
+    /// the block belongs to the outer method call, per Ruby precedence.
+    pub(crate) paren_less_arg_depth: usize,
 }
 
 impl Parser {
@@ -34,6 +38,7 @@ impl Parser {
             error_handler: ErrorHandler::new(),
             in_class_body: false,
             ternary_depth: 0,
+            paren_less_arg_depth: 0,
         }
     }
 

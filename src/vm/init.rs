@@ -61,6 +61,11 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     // Object — root class that mspec reopens to inject describe/it/before/after
     let object = Rc::new(Class::new("Object", Some(Rc::clone(&basic_object))));
     basic_object.add_subclass(&object);
+    // Mix Kernel in here so the chain Object → Kernel exists from the start;
+    // Kernel itself was registered by `register_builtin_modules` already.
+    if let Some(Object::Module(kernel)) = globals.get("Kernel") {
+        object.add_mixin(kernel);
+    }
     // Ruby's Object has `ruby2_keywords` as a private method; main inherits from Object.
     object.set_method_private("ruby2_keywords");
     globals.set("Object", Object::Class(Rc::clone(&object)));
@@ -195,7 +200,12 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     let enumerable = Rc::new(Class::new("Enumerable", None));
     globals.set("Enumerable", Object::Module(enumerable));
 
-    // Kernel — stub module
+    // Kernel — stub module mixed into Object so its instance methods are
+    // available to every object (matches Ruby's standard ancestor chain).
+    // The mixin link is established here against whatever Object class is
+    // currently in globals at this point. Note that Object is replaced again
+    // later in register_singletons, so `wire_kernel_into_object` is called
+    // from VirtualMachine::new() after that step to re-establish the link.
     let kernel = Rc::new(Class::new("Kernel", None));
     globals.set("Kernel", Object::Module(kernel));
 

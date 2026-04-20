@@ -401,6 +401,124 @@ impl VirtualMachine {
                 }
                 return Ok(Some(Object::String(Rc::new(name))));
             }
+            // Module#instance_method / Class#instance_method: returns the
+            // bound `Method` object so `parameters` and friends work on it.
+            "instance_method" | "public_instance_method" => {
+                let name_str = match arguments.first() {
+                    Some(Object::String(s)) => (**s).clone(),
+                    Some(Object::Symbol(s)) => (**s).clone(),
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            arguments.first().unwrap_or(&Object::Nil),
+                            position,
+                        ));
+                    }
+                };
+                if let Some(method) = class_rc.find_method(&name_str) {
+                    return Ok(Some(Object::Method(method)));
+                }
+                let msg = format!("undefined method '{}' for {}", name_str, class_rc.name());
+                let exc = Object::exception("NameError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            // Module#instance_methods / public_/private_/protected_ variants.
+            // The `false` argument restricts to methods defined directly on
+            // this class (excluding inherited and mixin methods).
+            "instance_methods"
+            | "public_instance_methods"
+            | "private_instance_methods"
+            | "protected_instance_methods" => {
+                let include_super = match arguments.first() {
+                    Some(Object::Bool(b)) => *b,
+                    _ => true,
+                };
+                let mut method_list: Vec<String> = class_rc.method_names();
+                if include_super {
+                    // Walk mixins on this class first, then the superclass
+                    // chain (recursively pulling in each ancestor's mixins).
+                    for mixin in class_rc.mixin_chain() {
+                        for n in mixin.method_names() {
+                            if !method_list.contains(&n) {
+                                method_list.push(n);
+                            }
+                        }
+                    }
+                    let mut current = class_rc.superclass();
+                    while let Some(sc) = current {
+                        for n in sc.method_names() {
+                            if !method_list.contains(&n) {
+                                method_list.push(n);
+                            }
+                        }
+                        for mixin in sc.mixin_chain() {
+                            for n in mixin.method_names() {
+                                if !method_list.contains(&n) {
+                                    method_list.push(n);
+                                }
+                            }
+                        }
+                        current = sc.superclass();
+                    }
+                }
+                // For the `Module` / `Class` receiver, advertise the native
+                // mutation methods we actually implement so mspec matchers
+                // (e.g. `have_public_instance_method(:alias_method, false)`)
+                // recognise them as public instance methods.
+                if matches!(class_rc.name(), "Module" | "Class") {
+                    for n in [
+                        "alias_method",
+                        "define_method",
+                        "include",
+                        "prepend",
+                        "extend_object",
+                        "instance_method",
+                        "instance_methods",
+                        "public_instance_methods",
+                        "private_instance_methods",
+                        "module_function",
+                        "name",
+                    ] {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push(n.to_string());
+                        }
+                    }
+                }
+                let mut priv_set: std::collections::HashSet<String> =
+                    class_rc.private_method_names().into_iter().collect();
+                if include_super {
+                    for mixin in class_rc.mixin_chain() {
+                        priv_set.extend(mixin.private_method_names());
+                    }
+                    let mut current = class_rc.superclass();
+                    while let Some(sc) = current {
+                        priv_set.extend(sc.private_method_names());
+                        for mixin in sc.mixin_chain() {
+                            priv_set.extend(mixin.private_method_names());
+                        }
+                        current = sc.superclass();
+                    }
+                }
+                let filtered: Vec<Object> = method_list
+                    .into_iter()
+                    .filter(|n| !n.starts_with("__"))
+                    .filter(|n| match method_name {
+                        "private_instance_methods" => priv_set.contains(n),
+                        "protected_instance_methods" => false, // not tracked yet
+                        "public_instance_methods" | "instance_methods" => !priv_set.contains(n),
+                        _ => true,
+                    })
+                    .map(|n| Object::Symbol(Rc::new(n)))
+                    .collect();
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                    filtered,
+                )))));
+            }
             // Module#extend: mix the given module's instance methods into the
             // receiver's singleton class, so `klass.some_module_method` works.
             "extend" => {
@@ -494,7 +612,7 @@ impl VirtualMachine {
                 let removed = class_rc.remove_class_var(&const_name);
                 return Ok(Some(removed.unwrap_or(Object::Nil)));
             }
-            "private" | "public" => {
+            "private" | "public" | "protected" => {
                 return self
                     .apply_class_visibility_modifier(class_rc, method_name, arguments, position)
                     .map(Some);
@@ -727,41 +845,50 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let new_name = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "alias_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                let old_name = match &arguments[1] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "alias_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
+                let new_name = self.coerce_method_name(&arguments[0], "alias_method", position)?;
+                let old_name = self.coerce_method_name(&arguments[1], "alias_method", position)?;
+                if class_rc.is_frozen() {
+                    let msg = format!("can't modify frozen Class: {}", class_rc.name());
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
                 if !class_rc.alias_method(&new_name, &old_name) {
-                    return Err(MetorexError::runtime_error(
-                        format!(
+                    let mut found = false;
+                    if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                        && let Some(method) = object_class.find_method(&old_name)
+                    {
+                        class_rc.define_method(&new_name, method);
+                        found = true;
+                    }
+                    if !found {
+                        let msg = format!(
                             "undefined method '{}' for class '{}'",
                             old_name,
                             class_rc.name()
-                        ),
-                        position_to_location(position),
-                    ));
+                        );
+                        let exc = Object::exception("NameError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
                 }
-                return Ok(Some(Object::Nil));
+                if matches!(
+                    new_name.as_str(),
+                    "initialize"
+                        | "initialize_copy"
+                        | "initialize_clone"
+                        | "initialize_dup"
+                        | "respond_to_missing?"
+                ) {
+                    class_rc.set_method_private(new_name.clone());
+                }
+                return Ok(Some(Object::Symbol(Rc::new(new_name))));
             }
             "module_function" => {
                 if arguments.len() != 1 {

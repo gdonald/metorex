@@ -131,18 +131,24 @@ impl VirtualMachine {
             }
             "frozen?" => {
                 // In Metorex, booleans, nil, integers, floats, and symbols are frozen
-                let frozen = matches!(
-                    receiver,
+                let frozen = match receiver {
                     Object::Bool(_)
-                        | Object::Nil
-                        | Object::Int(_)
-                        | Object::Float(_)
-                        | Object::Symbol(_)
-                        | Object::String(_)
-                );
+                    | Object::Nil
+                    | Object::Int(_)
+                    | Object::Float(_)
+                    | Object::Symbol(_)
+                    | Object::String(_) => true,
+                    Object::Class(c) | Object::Module(c) => c.is_frozen(),
+                    _ => false,
+                };
                 Ok(Some(Object::Bool(frozen)))
             }
-            "freeze" => Ok(Some(receiver.clone())),
+            "freeze" => {
+                if let Object::Class(c) | Object::Module(c) = receiver {
+                    c.freeze();
+                }
+                Ok(Some(receiver.clone()))
+            }
             "to_sym" => match receiver {
                 Object::Symbol(_) => Ok(Some(receiver.clone())),
                 Object::String(s) => Ok(Some(Object::Symbol(s.clone()))),
@@ -350,6 +356,42 @@ impl VirtualMachine {
                     _ => {}
                 }
                 Ok(Some(Object::Class(self.builtins().class_of(receiver))))
+            }
+            "method" => {
+                // `obj.method(:name)` returns a Method object bound to obj.
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let name_str = match &arguments[0] {
+                    Object::String(s) => (**s).clone(),
+                    Object::Symbol(s) => (**s).clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let cls = self.builtins().class_of(receiver);
+                if let Some(method) = cls.find_method(&name_str) {
+                    let mut bound = method.as_ref().clone();
+                    bound.receiver = Some(Box::new(receiver.clone()));
+                    return Ok(Some(Object::Method(std::rc::Rc::new(bound))));
+                }
+                let msg = format!("undefined method '{}' for class '{}'", name_str, cls.name());
+                let exc = Object::exception("NameError", msg.clone());
+                Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                })
             }
             "respond_to?" => {
                 // Accept String or Symbol method name; ignore optional second

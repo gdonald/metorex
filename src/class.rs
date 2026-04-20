@@ -22,12 +22,23 @@ pub struct Class {
     mixins: RefCell<Vec<Rc<Class>>>,
     /// Names of methods whose visibility has been set to private.
     private_method_names: RefCell<HashSet<String>>,
+    /// Methods explicitly marked public on this class via `public :name` —
+    /// distinct from "no entry" so we can override an inherited private
+    /// without adding the method itself to this class's method table.
+    public_overrides: RefCell<HashSet<String>>,
     /// Lazily-allocated singleton class attached to *this class object* — the
     /// thing `class << SomeClass; end` opens. Holds class-level (def self.x)
     /// methods once we start tracking them as a real class.
     singleton_class: RefCell<Option<Rc<Class>>>,
     /// Direct subclasses (weak refs to avoid keeping garbage subclasses alive).
     subclasses: RefCell<Vec<Weak<Class>>>,
+    /// Frozen flag — once true, mutating methods (alias_method, define_method,
+    /// include, etc.) raise FrozenError.
+    frozen: std::cell::Cell<bool>,
+    /// Current visibility state set by bare `private`/`public`/`protected`
+    /// inside the class body. Methods defined while this is `private` are
+    /// auto-marked as private. `protected` is treated like `private` for now.
+    current_visibility: RefCell<String>,
 }
 
 impl Class {
@@ -42,9 +53,34 @@ impl Class {
             class_variables: RefCell::new(HashMap::new()),
             mixins: RefCell::new(Vec::new()),
             private_method_names: RefCell::new(HashSet::new()),
+            public_overrides: RefCell::new(HashSet::new()),
             singleton_class: RefCell::new(None),
             subclasses: RefCell::new(Vec::new()),
+            frozen: std::cell::Cell::new(false),
+            current_visibility: RefCell::new("public".to_string()),
         }
+    }
+
+    /// Set the default visibility for subsequent method definitions in this
+    /// class body. Called by bare `private`/`public`/`protected` directives.
+    pub fn set_current_visibility(&self, v: impl Into<String>) {
+        *self.current_visibility.borrow_mut() = v.into();
+    }
+
+    /// Read the current visibility (used by `define_method` to auto-mark new
+    /// methods as private when the body has switched to that mode).
+    pub fn current_visibility(&self) -> String {
+        self.current_visibility.borrow().clone()
+    }
+
+    /// Mark this class/module as frozen.
+    pub fn freeze(&self) {
+        self.frozen.set(true);
+    }
+
+    /// Whether this class/module is frozen.
+    pub fn is_frozen(&self) -> bool {
+        self.frozen.get()
     }
 
     /// Register `child` as a direct subclass of `self`. Stored weakly so it
@@ -75,9 +111,18 @@ impl Class {
         self.private_method_names.borrow_mut().insert(name.into());
     }
 
-    /// Mark a method name as public on this class (removes private flag).
+    /// Mark a method name as public on this class (removes private flag and
+    /// records an explicit public override so an inherited private status is
+    /// shadowed).
     pub fn set_method_public(&self, name: &str) {
         self.private_method_names.borrow_mut().remove(name);
+        self.public_overrides.borrow_mut().insert(name.to_string());
+    }
+
+    /// Whether this class has an explicit public override for `name` (set via
+    /// `public :name`). Used to short-circuit ancestor private checks.
+    pub fn has_public_override(&self, name: &str) -> bool {
+        self.public_overrides.borrow().contains(name)
     }
 
     /// Check if a method is marked private on this class (own table only).
@@ -216,15 +261,45 @@ impl Class {
 
     /// Create an alias for an existing method.
     /// Returns true if the source method was found and aliased, false otherwise.
+    /// The alias inherits the original method's visibility — if `old_name` is
+    /// private anywhere in the lookup chain, `new_name` is marked private on
+    /// `self` too (matching MRI's behavior for `alias_method`).
     pub fn alias_method(&self, new_name: &str, old_name: &str) -> bool {
         if let Some(method) = self.find_method(old_name) {
             self.methods
                 .borrow_mut()
                 .insert(new_name.to_string(), method);
+            if self.is_method_private_in_chain(old_name) {
+                self.set_method_private(new_name.to_string());
+            }
             true
         } else {
             false
         }
+    }
+
+    /// Check whether a method is marked private anywhere on this class or its
+    /// ancestor chain (mixins + superclasses). An explicit `public :name`
+    /// override on a closer class shadows a more distant private marking.
+    fn is_method_private_in_chain(&self, name: &str) -> bool {
+        if self.has_public_override(name) {
+            return false;
+        }
+        if self.is_method_private(name) {
+            return true;
+        }
+        for mixin in self.mixins.borrow().iter() {
+            if mixin.has_public_override(name) {
+                return false;
+            }
+            if mixin.is_method_private(name) {
+                return true;
+            }
+        }
+        if let Some(sc) = &self.superclass {
+            return sc.is_method_private_in_chain(name);
+        }
+        false
     }
 
     /// Return a list of method names defined directly on this class.
@@ -280,8 +355,11 @@ impl Class {
             ),
             mixins: RefCell::new(source.mixins.borrow().clone()),
             private_method_names: RefCell::new(source.private_method_names.borrow().clone()),
+            public_overrides: RefCell::new(source.public_overrides.borrow().clone()),
             singleton_class: RefCell::new(None),
             subclasses: RefCell::new(Vec::new()),
+            frozen: std::cell::Cell::new(false),
+            current_visibility: RefCell::new("public".to_string()),
         };
         if let Some(src_sc) = source.singleton_class.borrow().as_ref() {
             let sc_copy = Rc::new(Class {
@@ -301,8 +379,11 @@ impl Class {
                 ),
                 mixins: RefCell::new(src_sc.mixins.borrow().clone()),
                 private_method_names: RefCell::new(src_sc.private_method_names.borrow().clone()),
+                public_overrides: RefCell::new(src_sc.public_overrides.borrow().clone()),
                 singleton_class: RefCell::new(None),
                 subclasses: RefCell::new(Vec::new()),
+                frozen: std::cell::Cell::new(false),
+                current_visibility: RefCell::new("public".to_string()),
             });
             *copy.singleton_class.borrow_mut() = Some(sc_copy);
         }
@@ -321,8 +402,11 @@ impl Clone for Class {
             class_variables: RefCell::new(self.class_variables.borrow().clone()),
             mixins: RefCell::new(self.mixins.borrow().clone()),
             private_method_names: RefCell::new(self.private_method_names.borrow().clone()),
+            public_overrides: RefCell::new(self.public_overrides.borrow().clone()),
             singleton_class: RefCell::new(self.singleton_class.borrow().clone()),
             subclasses: RefCell::new(self.subclasses.borrow().clone()),
+            frozen: std::cell::Cell::new(self.frozen.get()),
+            current_visibility: RefCell::new(self.current_visibility.borrow().clone()),
         }
     }
 }

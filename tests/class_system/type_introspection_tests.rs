@@ -154,7 +154,7 @@ fn superclass_of_basicobject_is_nil() {
 #[test]
 fn ancestors_of_integer() {
     let result = run("Integer.ancestors.length");
-    assert_eq!(result, Some(Object::Int(2))); // Integer, Object
+    assert_eq!(result, Some(Object::Int(2))); // Integer, Object (builtin Object has no superclass)
 }
 
 #[test]

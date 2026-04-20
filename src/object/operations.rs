@@ -83,7 +83,24 @@ impl Object {
             }
             (Object::Class(a), Object::Class(b)) => Rc::ptr_eq(a, b),
             (Object::Module(a), Object::Module(b)) => Rc::ptr_eq(a, b),
-            (Object::Method(a), Object::Method(b)) => Rc::ptr_eq(a, b),
+            (Object::Method(a), Object::Method(b)) => {
+                // Two Method objects are equal when they wrap the same
+                // underlying definition bound to the same receiver. We use
+                // pointer equality first (cheap) and structural body+name+
+                // receiver equality second so freshly bound copies of the
+                // same source method (e.g. from `obj.method(:x)` called
+                // twice, or via aliases sharing the source method) compare
+                // as equal — matching MRI's `Method#==`.
+                Rc::ptr_eq(a, b)
+                    || (a.name == b.name
+                        && a.body.len() == b.body.len()
+                        && match (&a.receiver, &b.receiver) {
+                            (Some(ra), Some(rb)) => ra.equals(rb),
+                            (None, None) => true,
+                            _ => false,
+                        }
+                        && a.body == b.body)
+            }
             (Object::Block(a), Object::Block(b)) => Rc::ptr_eq(a, b),
             (Object::Binding(a), Object::Binding(b)) => Rc::ptr_eq(a, b),
             (Object::Exception(a), Object::Exception(b)) => Rc::ptr_eq(a, b),

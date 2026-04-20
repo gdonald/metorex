@@ -430,7 +430,10 @@ end
 Foo.alias_method(123, "greet")
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    // MRI raises TypeError for non-string/symbol names that can't be coerced
+    // via to_str; metorex matches that. Older tests checked for "String or
+    // Symbol" in the error text; we now assert the TypeError class instead.
+    assert!(err.contains("TypeError") || err.contains("not a symbol nor a string"));
 }
 
 #[test]
@@ -442,7 +445,7 @@ end
 Foo.alias_method("hello", 123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(err.contains("TypeError") || err.contains("not a symbol nor a string"));
 }
 
 // ── module_function with symbol ─────────────────────────────────────────────
@@ -682,7 +685,7 @@ end
 Mod.alias_method(123, "greet")
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(err.contains("TypeError") || err.contains("not a symbol nor a string"));
 }
 
 #[test]
@@ -694,7 +697,7 @@ end
 Mod.alias_method("hello", 123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(err.contains("TypeError") || err.contains("not a symbol nor a string"));
 }
 
 #[test]

@@ -115,6 +115,60 @@ impl VirtualMachine {
         }
     }
 
+    /// Coerce an object into a method-name `String`. Strings and symbols are
+    /// taken at face value; for other receivers we invoke `to_str` (matching
+    /// Ruby's implicit type coercion). A receiver that lacks `to_str` raises
+    /// `TypeError`; a `to_str` that returns a non-String also raises
+    /// `TypeError`. Errors raised inside `to_str` (e.g. `NoMethodError`)
+    /// propagate unchanged so callers see the original error class.
+    pub(crate) fn coerce_method_name(
+        &mut self,
+        arg: &Object,
+        caller: &str,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match arg {
+            Object::String(s) => Ok((**s).clone()),
+            Object::Symbol(s) => Ok((**s).clone()),
+            _ => {
+                if let Some((cls, m)) = self.lookup_method(arg, "to_str")
+                    && !m.is_undefined
+                {
+                    let result = self.invoke_method(cls, m, arg.clone(), vec![], position)?;
+                    if let Object::String(s) = result {
+                        return Ok((*s).clone());
+                    }
+                    let msg = format!(
+                        "can't convert {} to String ({}#to_str gives {})",
+                        arg.type_name(),
+                        arg.type_name(),
+                        result.type_name(),
+                    );
+                    let exc = Object::exception("TypeError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: crate::vm::utils::position_to_location(position),
+                        message: msg,
+                    });
+                }
+                let msg = format!(
+                    "{} is not a symbol nor a string",
+                    match arg {
+                        Object::Instance(inst) => format!("#<{}>", inst.borrow().class.name()),
+                        _ => format!("{:?}", arg),
+                    }
+                );
+                let _ = caller;
+                let exc = Object::exception("TypeError", msg.clone());
+                Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: crate::vm::utils::position_to_location(position),
+                    message: msg,
+                })
+            }
+        }
+    }
+
     /// Instance-level Thread methods. The "thread" runs synchronously when
     /// `value`/`join` is called for the first time.
     pub(crate) fn call_thread_method(

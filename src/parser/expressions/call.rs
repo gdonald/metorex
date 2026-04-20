@@ -166,9 +166,17 @@ impl Parser {
                 && !matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_))
             {
                 // Check for trailing-block-only call: foo { block } or foo do block end
-                // (no arguments, but a trailing block on the same line)
+                // (no arguments, but a trailing block on the same line).
+                //
+                // `{ ... }` binds tightly to this identifier (standard Ruby
+                // precedence), but `do ... end` has LOW precedence — if we're
+                // currently parsing an argument to a paren-less outer call
+                // (e.g. `refine c do ... end`), the `do` block belongs to the
+                // outer call, not to this inner identifier.
                 self.skip_whitespace();
-                if self.check(&[TokenKind::LBrace]) || self.check(&[TokenKind::Do]) {
+                if self.check(&[TokenKind::LBrace])
+                    || (self.check(&[TokenKind::Do]) && self.paren_less_arg_depth == 0)
+                {
                     let position = expr.position();
                     let trailing_block = if self.check(&[TokenKind::Do]) {
                         Some(Box::new(self.parse_block()?))
@@ -603,6 +611,15 @@ impl Parser {
 
     /// Parse arguments without parentheses, returning the argument list
     fn parse_arguments_without_parens(&mut self) -> Result<Vec<Expression>, MetorexError> {
+        // Bump paren-less-arg depth so inner argument expressions don't
+        // greedily eat a trailing `do...end` block meant for the outer call.
+        self.paren_less_arg_depth += 1;
+        let result = self.parse_arguments_without_parens_inner();
+        self.paren_less_arg_depth -= 1;
+        result
+    }
+
+    fn parse_arguments_without_parens_inner(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut arguments = Vec::new();
         let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
         let position = self.peek().position;

@@ -93,7 +93,14 @@ impl VirtualMachine {
             ));
         }
 
-        let frame_name = format!("{}#{}", class.name(), method_name);
+        // Prefer the method's original owner class (if recorded) over the
+        // class we dispatched through. For aliased/mixed-in methods this
+        // lets `super` walk from the method's true defining class.
+        let owning_class_name = method
+            .owner
+            .clone()
+            .unwrap_or_else(|| class.name().to_string());
+        let frame_name = format!("{}#{}", owning_class_name, method_name);
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
 

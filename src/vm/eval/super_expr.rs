@@ -113,29 +113,85 @@ impl VirtualMachine {
         let instance_borrowed = instance.borrow();
         let instance_class = &instance_borrowed.class;
 
-        // Find the class that matches the current frame's class name
-        let mut current_class = Some(Rc::clone(instance_class));
-        let defining_class = loop {
-            match current_class {
-                Some(ref class) if class.name() == class_name => {
-                    break Some(Rc::clone(class));
+        // Find the class that matches the current frame's class name. We walk
+        // the full ancestor chain — own class, its mixins, its superclass (and
+        // that superclass's mixins, recursively) — so that methods mixed in
+        // via `include` are reachable as the defining class.
+        fn walk_ancestors(class: &Rc<Class>) -> Vec<Rc<Class>> {
+            let mut out = Vec::new();
+            out.push(Rc::clone(class));
+            for mixin in class.mixin_chain() {
+                // Include the mixin itself AND any modules it transitively
+                // includes, so e.g. Target→Child→Parent is visited when only
+                // `Target includes Child` and `Child includes Parent`.
+                for anc in walk_ancestors(&mixin) {
+                    if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
+                        out.push(anc);
+                    }
                 }
-                Some(ref class) => {
-                    current_class = class.superclass();
-                }
-                None => break None,
             }
-        };
+            if let Some(sc) = class.superclass() {
+                for anc in walk_ancestors(&sc) {
+                    if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
+                        out.push(anc);
+                    }
+                }
+            }
+            out
+        }
+        use crate::class::Class;
+        let chain = walk_ancestors(instance_class);
+        let defining_class = chain
+            .iter()
+            .find(|c| c.name() == class_name)
+            .cloned()
+            .ok_or_else(|| {
+                MetorexError::runtime_error(
+                    format!(
+                        "Could not find defining class '{}' in inheritance chain",
+                        class_name
+                    ),
+                    position_to_location(position),
+                )
+            })?;
 
-        let defining_class = defining_class.ok_or_else(|| {
-            MetorexError::runtime_error(
-                format!(
-                    "Could not find defining class '{}' in inheritance chain",
-                    class_name
-                ),
-                position_to_location(position),
-            )
-        })?;
+        // Locate the method in the ancestor chain AFTER the defining class.
+        // In Ruby, `super` looks up the next method in the chain — that may
+        // live on the defining class's superclass, OR on a mixin that the
+        // defining class brings in, OR on a class/module further up.
+        let next_in_chain: Option<(Rc<Class>, Rc<crate::object::Method>)> = {
+            let mut found = None;
+            // Position in the overall chain where defining_class sits.
+            let start_idx = chain.iter().position(|c| Rc::ptr_eq(c, &defining_class));
+            if let Some(idx) = start_idx {
+                for anc in chain.iter().skip(idx + 1) {
+                    if let Some(method) = anc.find_method(&method_name) {
+                        found = Some((Rc::clone(anc), method));
+                        break;
+                    }
+                }
+            }
+            found
+        };
+        if let Some((owner, method)) = next_in_chain {
+            let evaluated_args = if forward_args {
+                self.method_arg_stack.last().cloned().unwrap_or_default()
+            } else {
+                let mut evaluated_args = Vec::with_capacity(arguments.len());
+                for arg in arguments {
+                    evaluated_args.push(self.evaluate_expression(arg)?);
+                }
+                evaluated_args
+            };
+            drop(instance_borrowed);
+            return self.invoke_method(
+                owner,
+                method,
+                Object::Instance(Rc::clone(&instance)),
+                evaluated_args,
+                position,
+            );
+        }
 
         // Get the parent class of the defining class. If there's no superclass,
         // fall back to Object semantics for well-known methods.

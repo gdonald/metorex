@@ -106,9 +106,72 @@ impl VirtualMachine {
             return self.invoke_method(class, method, receiver, arguments, position);
         }
 
+        // For Class/Module receivers, check for extended methods (__ext__name
+        // class var) BEFORE the generic instance-method lookup. `module_function :foo`
+        // installs a module-level copy under `__ext__foo` while also keeping
+        // the instance method private; `Mod.foo` must find the extended copy
+        // and bypass visibility enforcement on the instance-private original.
+        let ext_class_rc_pre = match &receiver {
+            Object::Class(c) => Some(Rc::clone(c)),
+            Object::Module(m) => Some(Rc::clone(m)),
+            _ => None,
+        };
+        if let Some(class_rc) = ext_class_rc_pre {
+            let ext_key = format!("__ext__{}", method_name);
+            if let Some(Object::Method(ext_method)) = class_rc.get_class_var(&ext_key) {
+                return self.invoke_method(
+                    class_rc,
+                    ext_method,
+                    receiver.clone(),
+                    arguments,
+                    position,
+                );
+            }
+        }
+
         // Try user-defined method lookup first
         match self.lookup_method(&receiver, method_name) {
             Some((class, method)) if !method.is_undefined => {
+                // Visibility check: an *explicit-receiver* call (e.g.
+                // `obj.foo`, anything other than `self.foo` or a bare ident)
+                // can only invoke public methods. Private/protected methods
+                // raise NoMethodError when called externally. We treat
+                // `Expression::SelfExpr` as implicit self even though it's
+                // syntactically present, matching Ruby — `self.foo` is
+                // allowed regardless of visibility.
+                let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
+                let mut is_private = false;
+                if class.has_public_override(method_name) {
+                    is_private = false;
+                } else if class.is_method_private(method_name) {
+                    is_private = true;
+                } else {
+                    let mut current = class.superclass();
+                    while let Some(sc) = current {
+                        if sc.has_public_override(method_name) {
+                            is_private = false;
+                            break;
+                        }
+                        if sc.find_method(method_name).is_some() {
+                            is_private = sc.is_method_private(method_name);
+                            break;
+                        }
+                        current = sc.superclass();
+                    }
+                }
+                if is_explicit_receiver && is_private {
+                    let msg = format!(
+                        "private method '{}' called for an instance of {}",
+                        method_name,
+                        class.name()
+                    );
+                    let exc = Object::exception("NoMethodError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: crate::vm::utils::position_to_location(position),
+                        message: msg,
+                    });
+                }
                 return self.invoke_method(class, method, receiver, arguments, position);
             }
             _ => {}

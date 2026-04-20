@@ -161,30 +161,17 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let new_name = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "alias_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                let old_name = match &arguments[1] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "alias_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
+                let new_name = self.coerce_method_name(&arguments[0], "alias_method", position)?;
+                let old_name = self.coerce_method_name(&arguments[1], "alias_method", position)?;
+                if module_rc.is_frozen() {
+                    let msg = format!("can't modify frozen Module: {}", module_rc.name());
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
                 if !module_rc.alias_method(&new_name, &old_name) {
                     // Fall back to looking up the method on Object — some
                     // specs alias Kernel methods onto methods that are only
@@ -197,17 +184,32 @@ impl VirtualMachine {
                         found = true;
                     }
                     if !found {
-                        return Err(MetorexError::runtime_error(
-                            format!(
-                                "undefined method '{}' for module '{}'",
-                                old_name,
-                                module_rc.name()
-                            ),
-                            position_to_location(position),
-                        ));
+                        let msg = format!(
+                            "undefined method '{}' for module '{}'",
+                            old_name,
+                            module_rc.name()
+                        );
+                        let exc = Object::exception("NameError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
                     }
                 }
-                return Ok(Some(Object::Nil));
+                // Certain method names are always private when (re)defined,
+                // matching Ruby's enforcement on `initialize` and friends.
+                if matches!(
+                    new_name.as_str(),
+                    "initialize"
+                        | "initialize_copy"
+                        | "initialize_clone"
+                        | "initialize_dup"
+                        | "respond_to_missing?"
+                ) {
+                    module_rc.set_method_private(new_name.clone());
+                }
+                return Ok(Some(Object::Symbol(Rc::new(new_name))));
             }
             // `autoload :CONST, "path"` registers a lazy loader. We treat it
             // as a no-op so fixtures that call it during setup don't fail.
