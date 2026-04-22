@@ -125,6 +125,63 @@ fn define_method_non_function_body_error() {
     );
 }
 
+// ── define_method with Symbol name (exercises args[0] = Symbol path) ─────
+
+#[test]
+fn define_method_symbol_name_requires_function_arg() {
+    // Symbol path at line 45 of natives.rs — passing :name but no function.
+    let result = run("define_method(:foo)");
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("requires a function"));
+}
+
+// ── define_method happy path through natives dispatch ──────────────────
+
+#[test]
+fn define_method_with_compiled_function_succeeds_at_top_level() {
+    use metorex::bytecode::chunk::Chunk;
+    use metorex::bytecode::opcode::OpCode;
+    use metorex::object::CompiledFunction;
+    use std::rc::Rc;
+
+    // Hand-craft a chunk that:
+    //   push NativeFunction("define_method")
+    //   push Symbol("m")
+    //   push CompiledFunction (empty body returning nil)
+    //   Call(2)
+    //   Return
+    let mut chunk = Chunk::new();
+    let idx_native = chunk
+        .add_constant(Object::NativeFunction("define_method".to_string()))
+        .unwrap();
+    let idx_sym = chunk
+        .add_constant(Object::Symbol(Rc::new("m".to_string())))
+        .unwrap();
+    // An empty inner chunk for the function body.
+    let mut inner = Chunk::new();
+    let nil_idx = inner.add_constant(Object::Nil).unwrap();
+    inner.write_constant(nil_idx, 1);
+    inner.write_opcode(OpCode::Return, 1);
+    let func = Rc::new(CompiledFunction {
+        name: "m".to_string(),
+        arity: 0,
+        chunk: inner,
+    });
+    let idx_fn = chunk.add_constant(Object::CompiledFunction(func)).unwrap();
+
+    chunk.write_constant(idx_native, 1);
+    chunk.write_constant(idx_sym, 1);
+    chunk.write_constant(idx_fn, 1);
+    chunk.write_op_u8(OpCode::Call, 2, 1);
+    chunk.write_opcode(OpCode::Return, 1);
+
+    let mut vm = BytecodeVm::new();
+    let result = vm.execute(&chunk);
+    // The natives.rs define_method has no class on stack so it stores as
+    // a global function and returns Nil.
+    assert!(result.is_ok(), "define_method failed: {:?}", result);
+}
+
 // ── Unknown native function ─────────────────────────────────────────
 
 #[test]

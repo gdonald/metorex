@@ -869,3 +869,92 @@ check true
         Some(Object::String(Rc::new("was true".to_string())))
     );
 }
+
+// ── Index assignment on Class/Module via __class__[]= (statement.rs 395-413)
+
+#[test]
+fn index_assign_on_class_dispatches_to_class_bracket_setter() {
+    let result = run(r#"
+class IndexableCls
+  def self.[]=(k, v)
+    @store ||= {}
+    @store[k] = v
+    v
+  end
+  def self.store
+    @store
+  end
+end
+IndexableCls[:a] = 1
+IndexableCls[:b] = 2
+IndexableCls.store[:a] + IndexableCls.store[:b]
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn index_assign_on_class_without_setter_errors() {
+    let err = run_err(
+        r#"
+class NoSetter
+end
+NoSetter[:x] = 1
+"#,
+    );
+    assert!(err.contains("[]=") || err.contains("class") || err.contains("module"));
+}
+
+// ── Setter method on Class: Foo.bar = x (statement.rs 462-470) ─────────
+// Without an explicit def self.dyn=, the assignment stores as @dyn on the class.
+
+#[test]
+fn class_setter_missing_falls_back_to_class_var() {
+    let result = run(r#"
+class NoExplicitSetter
+  def self.get
+    @dyn
+  end
+end
+NoExplicitSetter.dyn = 99
+NoExplicitSetter.get
+"#);
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+// ── ScopeResolution assignment: Ns::Name = value (statement.rs 521-540) ──
+
+#[test]
+fn scope_resolution_assignment_sets_constant_on_module() {
+    let result = run(r#"
+module NsA
+end
+NsA::Greeting = "hello"
+NsA::Greeting
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+}
+
+#[test]
+fn scope_resolution_assignment_of_anon_class_sets_name() {
+    let result = run(r#"
+module NsB
+end
+NsB::Widget = Class.new
+NsB::Widget.name
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("NsB::Widget".to_string())))
+    );
+}
+
+#[test]
+fn scope_resolution_assignment_on_non_class_errors() {
+    let err = run_err(
+        r#"
+x = 5
+x::Foo = 1
+"#,
+    );
+    assert!(err.contains("::") || err.contains("class") || err.contains("module"));
+}

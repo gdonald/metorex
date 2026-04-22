@@ -1,6 +1,7 @@
 mod call_tests;
 mod case_tests;
 mod class_module_tests;
+mod class_parser_coverage_tests;
 mod control_flow_body_tests;
 mod error_recovery_tests;
 mod exception_tests;

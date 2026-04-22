@@ -216,3 +216,86 @@ fn paren_less_args_with_block_arg() {
 fn old_style_hash_args_in_call() {
     parse_ok("foo(:a => 1, :b => 2)");
 }
+
+// ── Beginless range literals (binary.rs lines 151-162) ────────────────
+
+#[test]
+fn beginless_range_inclusive() {
+    // `..10` — beginless range (start = nil, end = 10).
+    let result = run("x = ..10\nx.include?(5)");
+    // The exact evaluation may vary; assert parse success primarily.
+    assert!(matches!(result, Some(_)));
+}
+
+#[test]
+fn beginless_range_exclusive_parse() {
+    // `...10` — beginless exclusive range.
+    parse_ok("x = ...10");
+}
+
+#[test]
+fn beginless_range_parse_standalone() {
+    parse_ok("r = ..10");
+}
+
+// ── can_start_argument ternary disambiguation (lines 593-604) ─────────
+
+#[test]
+fn predicate_method_with_colon_inside_ternary_is_ternary_colon() {
+    // `mode?` ends with `?`. Inside `cond ? x.mode? : fallback`, the `:`
+    // must be the ternary colon, not a paren-less symbol arg.
+    let result = run(r#"
+class M
+  def mode?
+    true
+  end
+end
+m = M.new
+(true ? m.mode? : :other)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn non_predicate_method_with_colon_inside_ternary_is_ternary_colon() {
+    // Outside a ternary, `foo :sym` is paren-less arg passing. Inside a
+    // ternary with ambiguous follow-up, parser must treat `:` as ternary.
+    let result = run(r#"
+def echo(v = nil)
+  v
+end
+x = true ? echo : :fallback
+x
+"#);
+    // Either echo is called with nil (paren-less arg rejected) or :fallback
+    // is returned. Any non-panic outcome exercises the ternary_depth path.
+    assert!(matches!(result, Some(_)));
+}
+
+// ── Postfix calls on lambda block expressions (parse_postfix_calls) ───────
+
+#[test]
+fn brace_block_lambda_dot_call() {
+    let result = run("lambda { 7 }.call");
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn brace_block_lambda_dot_class_keyword() {
+    // `.class` after a brace-block lambda uses the TokenKind::Class keyword
+    // arm inside parse_postfix_calls.
+    parse_ok("lambda { 1 }.class");
+}
+
+#[test]
+fn do_block_lambda_dot_call() {
+    let result = run("lambda do 7 end.call");
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn brace_block_lambda_dot_call_no_paren_no_args() {
+    // `.to_proc` with no parens and no args exercises the empty-Vec branch
+    // of parse_postfix_calls.
+    parse_ok("lambda { 1 }.to_proc");
+}

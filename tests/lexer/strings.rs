@@ -611,3 +611,38 @@ fn lexer_percent_angle_string() {
             .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "hello"))
     );
 }
+
+// ── %Q string escape and nested delimiter paths (percent.rs 110-128) ────
+
+#[test]
+fn lexer_percent_q_unknown_escape_passes_through() {
+    // `\z` is not `\n`, `\t`, or `\\` → passes through as `\z` (lines 110-112).
+    let tokens = Lexer::new(r"%Q(hello\zworld)").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains(r"\z")))
+    );
+}
+
+#[test]
+fn lexer_percent_q_with_nested_parens_tracks_depth() {
+    // `%Q(abc (inner) def)` — open paren increments depth (lines 117-120),
+    // close paren decrements without breaking until depth == 0 (lines 127-128).
+    let tokens = Lexer::new("%Q(abc (inner) def)").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "abc (inner) def"))
+    );
+}
+
+#[test]
+fn lexer_percent_q_with_known_escapes() {
+    let tokens = Lexer::new(r"%Q(a\nb\tc\\d)").tokenize();
+    assert!(
+        tokens
+            .iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "a\nb\tc\\d"))
+    );
+}

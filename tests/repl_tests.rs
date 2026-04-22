@@ -792,3 +792,40 @@ fn format_object_compiled_function() {
     let formatted = ReplCore::format_object(&func);
     assert!(!formatted.is_empty());
 }
+
+// ── format_object on Regex (lines 313-318) ──────────────────────────────
+
+#[test]
+fn format_object_regex_without_flags() {
+    let r = Object::Regex(Rc::new("abc".to_string()), Rc::new("".to_string()));
+    assert_eq!(ReplCore::format_object(&r), "/abc/");
+}
+
+#[test]
+fn format_object_regex_with_flags() {
+    let r = Object::Regex(Rc::new("foo".to_string()), Rc::new("i".to_string()));
+    assert_eq!(ReplCore::format_object(&r), "/foo/i");
+}
+
+// ── process_line with dot-command reset (line 96 Reset→Continue) ────────
+
+#[test]
+fn process_line_dot_reset_returns_continue() {
+    use metorex::repl::{LineResult, ReplCore};
+    let mut core = ReplCore::new();
+    // .reset on an empty buffer is dispatched to handle_command → Reset →
+    // mapped to LineResult::Continue (line 96).
+    let result = core.process_line(".reset");
+    assert!(matches!(result, LineResult::Continue));
+}
+
+// ── evaluate_buffer with parse error (lines 217-222) ─────────────────────
+
+#[test]
+fn evaluate_buffer_with_parse_error_returns_error() {
+    use metorex::repl::{LineResult, ReplCore};
+    let mut core = ReplCore::new();
+    // Send syntactically-broken input that's complete enough to trigger eval.
+    let result = core.process_line("def x + end");
+    assert!(matches!(result, LineResult::Error(_)));
+}

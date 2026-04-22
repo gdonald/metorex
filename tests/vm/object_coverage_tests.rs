@@ -628,3 +628,184 @@ fn dispatch_spaceship_float_via_between() {
 fn dispatch_spaceship_string_via_between() {
     assert_eq!(run("'c'.between?('a', 'z')"), Some(Object::Bool(true)));
 }
+
+// ── between? with incomparable args returns false (line 277) ────────────
+
+#[test]
+fn between_with_incomparable_returns_false() {
+    // Comparing Int to Array has no <=> defined; dispatch_spaceship returns
+    // None for both bounds, so the match falls to the `_ => false` arm.
+    let result = run("5.between?([], [])");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+// ── singleton_method with Symbol name (line 296) ─────────────────────────
+
+#[test]
+fn singleton_method_with_symbol_errors_gracefully_on_missing() {
+    // Passing a Symbol exercises line 296 (Symbol match arm). The method
+    // doesn't exist, so it errors with "undefined singleton method".
+    let err = run_err(
+        r#"
+class SingletonHolder
+end
+obj = SingletonHolder.new
+obj.singleton_method(:nonexistent)
+"#,
+    );
+    assert!(err.contains("undefined") || err.contains("singleton"));
+}
+
+#[test]
+fn singleton_method_with_non_string_symbol_errors() {
+    let err = run_err(
+        r#"
+class SH2
+end
+SH2.new.singleton_method(42)
+"#,
+    );
+    assert!(err.contains("String") || err.contains("conversion"));
+}
+
+// ── dup on Array (line 740-743) ──────────────────────────────────────────
+
+#[test]
+fn dup_on_array_clones_elements() {
+    let result = run(r#"
+a = [1, 2, 3]
+b = a.dup
+b.push(4)
+a.length
+"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── dup on Hash (line 746-750) ──────────────────────────────────────────
+
+#[test]
+fn dup_on_hash_clones() {
+    let result = run(r#"
+h = { a: 1 }
+h2 = h.dup
+h2[:b] = 2
+h.length
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+// ── instance_exec with trailing block (lines 825, 827 are the positional
+//    fallback when no trailing block is present — hard to exercise without
+//    bypassing the parser's trailing-block handling, so we skip it.)
+
+#[test]
+fn instance_exec_with_trailing_block() {
+    let result = run(r#"
+class Box
+  def initialize
+    @val = 10
+  end
+end
+Box.new.instance_exec { @val * 2 }
+"#);
+    assert_eq!(result, Some(Object::Int(20)));
+}
+
+// ── dispatch_spaceship on non-built-in pair returns None (line 879) ─────
+
+#[test]
+fn clamp_with_incomparable_types_errors_or_returns_self() {
+    // Array vs Int has no <=> fallback — dispatch_spaceship returns None,
+    // clamp passes through self (matches aren't triggered).
+    let result = run("[1].clamp(0, 100)");
+    // The result should be the array unchanged (cmp is None for both bounds).
+    assert!(matches!(result, Some(Object::Array(_))));
+}
+
+// ── coerce_method_name paths are exercised through module/class-level
+// `alias_method` and `send`, but the current API surface at the Ruby level
+// doesn't route through that specific helper — those lines are reachable
+// only via internal Rust paths, so we skip direct tests.
+
+// ── Comparable-protocol ordering operators (operators.rs 370-385) ───────
+
+#[test]
+fn comparable_less_via_spaceship_on_instance() {
+    let result = run(r#"
+class Ord
+  def initialize(n)
+    @n = n
+  end
+  def <=>(other)
+    @n - other.instance_variable_get("@n")
+  end
+end
+Ord.new(1) < Ord.new(2)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn comparable_greater_via_spaceship_on_instance() {
+    let result = run(r#"
+class Ord2
+  def initialize(n); @n = n; end
+  def <=>(other); @n - other.instance_variable_get("@n"); end
+end
+Ord2.new(5) > Ord2.new(3)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn comparable_less_equal_via_spaceship_on_instance() {
+    let result = run(r#"
+class Ord3
+  def initialize(n); @n = n; end
+  def <=>(other); @n - other.instance_variable_get("@n"); end
+end
+Ord3.new(5) <= Ord3.new(5)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn comparable_greater_equal_via_spaceship_on_instance() {
+    let result = run(r#"
+class Ord4
+  def initialize(n); @n = n; end
+  def <=>(other); @n - other.instance_variable_get("@n"); end
+end
+Ord4.new(5) >= Ord4.new(3)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn comparable_less_with_spaceship_returning_nil_raises() {
+    // When <=> returns nil, < raises ArgumentError (lines 386-394).
+    let err = run_err(
+        r#"
+class Bad
+  def <=>(other)
+    nil
+  end
+end
+Bad.new < Bad.new
+"#,
+    );
+    assert!(err.contains("ArgumentError") || err.contains("comparison"));
+}
+
+#[test]
+fn comparable_less_with_float_spaceship_result() {
+    // <=> returning a Float (line 373) — the ordering still works.
+    let result = run(r#"
+class FltOrd
+  def initialize(f); @f = f; end
+  def <=>(other); @f - other.instance_variable_get("@f"); end
+end
+FltOrd.new(1.5) < FltOrd.new(2.5)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}

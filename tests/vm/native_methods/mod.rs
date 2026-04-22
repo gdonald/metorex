@@ -1,7 +1,9 @@
+mod alias_method_spec_additions_tests;
 mod array_error_tests;
 mod array_tests;
 mod ast_coverage_tests;
 mod block_error_tests;
+mod class_coverage_extra_tests;
 mod class_error_tests;
 mod exception_error_tests;
 mod float_error_tests;
@@ -10,6 +12,8 @@ mod hash_tests;
 mod int_error_tests;
 mod int_tests;
 mod method_error_tests;
+mod module_coverage_extra_tests;
+mod object_coverage_extra_tests;
 mod operator_error_tests;
 mod range_error_tests;
 mod range_tests;

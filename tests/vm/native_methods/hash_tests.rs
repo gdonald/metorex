@@ -446,3 +446,28 @@ fn hash_fetch_missing_no_default_errors() {
     let err = run_err(r#"{"a" => 1}.fetch("z")"#);
     assert!(err.contains("key") || err.contains("KeyError") || err.contains("not found"));
 }
+
+// ── hash_methods.rs uncovered paths ─────────────────────────────────────
+
+#[test]
+fn hash_default_returns_nil() {
+    let result = run(r#"
+h = { a: 1 }
+h.default
+"#);
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn hash_delete_removes_non_primitive_key_from_key_objects() {
+    // Non-primitive key is tracked in KEY_OBJECTS_KEY. Deleting also removes
+    // from the tracking dict (hash_methods.rs line 155).
+    let result = run(r#"
+a = [1, 2]
+h = {}
+h[a] = "v"
+h.delete(a)
+h.keys.length
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
+}

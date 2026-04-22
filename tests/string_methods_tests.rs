@@ -638,3 +638,60 @@ fn string_dup_independent_coverage() {
     let result = run("a = \"hello\"\nb = a.dup\nb");
     assert_eq!(result, Some(Object::string("hello")));
 }
+
+// ── match? (string_methods.rs lines 36-63) ──────────────────────────────
+
+#[test]
+fn string_match_with_regex_true() {
+    let result = run(r#""hello".match?(/ell/)"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_match_with_regex_false() {
+    let result = run(r#""hello".match?(/xyz/)"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_match_with_regex_case_insensitive_flag() {
+    let result = run(r#""Hello".match?(/HELLO/i)"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_match_with_string_pattern() {
+    let result = run(r#""hello".match?("ell")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn string_match_with_invalid_pattern_returns_false() {
+    // Regex compile error (line 63): invalid regex → returns false.
+    let result = run(r#""hello".match?("[invalid")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_match_with_non_regex_non_string_errors() {
+    let err = run_err(r#""hello".match?(42)"#);
+    assert!(err.contains("Regexp") || err.contains("String") || err.contains("match?"));
+}
+
+#[test]
+fn string_match_with_wrong_arg_count_errors() {
+    let err = run_err(r#""hello".match?()"#);
+    assert!(err.contains("argument") || err.contains("match?"));
+}
+
+// ── String#last (lines 135-139) ─────────────────────────────────────────
+
+#[test]
+fn string_last_on_nonempty() {
+    assert_eq!(run(r#""hello".last"#), Some(Object::string("o")));
+}
+
+#[test]
+fn string_last_on_empty_returns_nil() {
+    assert_eq!(run(r#""".last"#), Some(Object::Nil));
+}

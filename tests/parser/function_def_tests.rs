@@ -364,3 +364,82 @@ fn parse_def_self_dot_invalid_token_error() {
     let err = parse_err("def Foo.@x\n  1\nend");
     assert!(err.contains("method name") || err.contains("Expected") || err.contains("after"));
 }
+
+// Note: `def Foo./` and `def Foo.%` are not parseable because the lexer
+// treats `/` after `.` as starting a regex literal and `%` as a percent
+// literal. Those branches in function.rs (lines 27-28) are dead code.
+
+// ── def (expr).method singleton (lines 119-138) ───────────────────────────
+
+#[test]
+fn parse_def_on_true_literal_singleton() {
+    // `def (true).x; end` — singleton method on true, mapped to TrueClass.
+    parse_ok(
+        r#"
+def (true).my_truthy
+  :yes
+end
+"#,
+    );
+}
+
+#[test]
+fn parse_def_on_false_literal_singleton() {
+    parse_ok(
+        r#"
+def (false).my_falsy
+  :no
+end
+"#,
+    );
+}
+
+#[test]
+fn parse_def_on_nil_literal_singleton() {
+    parse_ok(
+        r#"
+def (nil).my_nil_method
+  :nil_result
+end
+"#,
+    );
+}
+
+#[test]
+fn parse_def_on_non_literal_expr_singleton() {
+    // Non-literal expression (local var) → _singleton_receiver is None.
+    parse_ok(
+        r#"
+x = Object.new
+def (x).custom
+  "per-instance"
+end
+"#,
+    );
+}
+
+#[test]
+fn parse_def_on_paren_non_ident_after_dot_errors() {
+    // `def (x).` followed by non-Ident token → error at line 125.
+    let err = parse_err(
+        r#"
+x = 42
+def (x).@foo
+  1
+end
+"#,
+    );
+    assert!(err.contains("method") || err.contains("Expected"));
+}
+
+// ── Singleton method body with immediate `end` (line 162 break) ──────────
+
+#[test]
+fn parse_def_with_empty_body_immediate_end() {
+    parse_ok(
+        r#"
+def noop
+end
+"#,
+    );
+}
