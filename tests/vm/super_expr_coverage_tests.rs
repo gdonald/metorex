@@ -258,3 +258,47 @@ fn super_outside_any_method_errors() {
     let err = run_err(r#"super"#);
     assert!(err.contains("super") || err.contains("method context") || err.contains("outside"));
 }
+
+// ── super from method where self is a primitive (lines 98-102) ──────────────
+
+#[test]
+fn super_from_monkey_patched_integer_method_with_primitive_self() {
+    // Reopen Integer with a method that calls super. self is Int(5), not
+    // Instance/Class — hits the `Some(_)` arm at line 98-102.
+    let err = run_err(
+        r#"
+class Integer
+  def super_probe
+    super
+  end
+end
+5.super_probe
+"#,
+    );
+    assert!(
+        err.contains("super can only be called from within an instance method")
+            || err.contains("super")
+            || err.contains("instance method"),
+        "unexpected error: {}",
+        err
+    );
+}
+
+#[test]
+fn super_from_monkey_patched_string_method_with_primitive_self() {
+    let err = run_err(
+        r#"
+class String
+  def super_probe
+    super
+  end
+end
+"abc".super_probe
+"#,
+    );
+    assert!(
+        err.contains("super") || err.contains("instance method"),
+        "unexpected error: {}",
+        err
+    );
+}

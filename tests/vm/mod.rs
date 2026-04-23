@@ -1,8 +1,10 @@
 mod ast_manipulation_tests;
+mod block_execution_coverage_tests;
 mod builtin_classes_tests;
 mod builtin_object_methods_tests;
 mod class;
 mod class_execution_coverage_tests;
+mod class_execution_more_coverage_tests;
 mod control_tests;
 mod core_tests;
 mod defined_tests;
@@ -11,6 +13,7 @@ mod expression_tests;
 mod identifier_coverage_tests;
 mod identifier_more_coverage_tests;
 mod method;
+mod native_functions_coverage_extra_tests;
 mod native_functions_coverage_tests;
 mod native_functions_tests;
 mod native_methods;

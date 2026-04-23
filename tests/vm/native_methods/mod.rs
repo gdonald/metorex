@@ -1,4 +1,5 @@
 mod alias_method_spec_additions_tests;
+mod array_coverage_extra_tests;
 mod array_error_tests;
 mod array_tests;
 mod ast_coverage_tests;
