@@ -13,6 +13,7 @@ mod int_error_tests;
 mod int_tests;
 mod method_error_tests;
 mod module_coverage_extra_tests;
+mod native_methods_mod_coverage_tests;
 mod object_coverage_extra_tests;
 mod operator_error_tests;
 mod range_error_tests;
