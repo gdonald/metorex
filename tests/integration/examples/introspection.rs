@@ -92,3 +92,17 @@ fn test_introspection_builtin_class_method_no_parens() {
         run_example("introspection/builtin_class_method/builtin_class_method_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_introspection_instance_variable_set_frozen() {
+    let expected = "true: FrozenError\nfalse: FrozenError\nnil: FrozenError\ninteger: FrozenError\nsymbol: FrozenError\ninstance: 99\nfrozen instance: FrozenError\nrescued via RuntimeError\n";
+    let output = run_example("introspection/instance_variable_set_frozen.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_instance_variable_set_frozen_no_parens() {
+    let expected = "true: FrozenError\nfalse: FrozenError\nnil: FrozenError\ninteger: FrozenError\nsymbol: FrozenError\ninstance: 99\nfrozen instance: FrozenError\nrescued via RuntimeError\n";
+    let output = run_example("introspection/instance_variable_set_frozen_no_parens.rb");
+    assert_eq!(output, expected);
+}

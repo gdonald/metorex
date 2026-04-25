@@ -243,6 +243,71 @@ M.instance_variable_get(:@v)
     assert_eq!(result, Some(Object::Int(11)));
 }
 
+#[test]
+fn instance_variable_set_on_true_raises_frozen_error() {
+    let err = run_err(r#"true.instance_variable_set(:@x, 1)"#);
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("TrueClass"));
+}
+
+#[test]
+fn instance_variable_set_on_false_raises_frozen_error() {
+    let err = run_err(r#"false.instance_variable_set(:@x, 1)"#);
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("FalseClass"));
+}
+
+#[test]
+fn instance_variable_set_on_nil_raises_frozen_error() {
+    let err = run_err(r#"nil.instance_variable_set(:@x, 1)"#);
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("NilClass"));
+}
+
+#[test]
+fn instance_variable_set_on_integer_raises_frozen_error() {
+    let err = run_err(r#"42.instance_variable_set(:@x, 1)"#);
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("Integer"));
+}
+
+#[test]
+fn instance_variable_set_on_symbol_raises_frozen_error() {
+    let err = run_err(r#":foo.instance_variable_set(:@x, 1)"#);
+    assert!(err.contains("can't modify frozen"));
+}
+
+#[test]
+fn instance_variable_set_on_immediate_raises_runtime_error_subclass() {
+    let result = run(r#"
+result = begin
+  true.instance_variable_set(:@x, 1)
+  "no error"
+rescue RuntimeError => e
+  "caught: #{e.class}"
+end
+result
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("caught: FrozenError".to_string())))
+    );
+}
+
+#[test]
+fn instance_variable_set_on_frozen_instance_raises_frozen_error() {
+    let err = run_err(
+        r#"
+class Foo; end
+f = Foo.new
+f.freeze
+f.instance_variable_set(:@x, 1)
+"#,
+    );
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("Foo"));
+}
+
 // ── dup / clone ───────────────────────────────────────────────────────────
 
 #[test]
@@ -328,12 +393,13 @@ fn object_respond_to_non_string_arg_error() {
     assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
 }
 
-// ── object_methods.rs: instance_variable_set on plain (non-instance) object (line 256) ─
+// ── object_methods.rs: instance_variable_set on immediates raises FrozenError ─
 
 #[test]
-fn instance_variable_set_on_plain_object_returns_nil() {
-    let result = run(r#"42.instance_variable_set(:@x, 99)"#);
-    assert_eq!(result, Some(Object::Nil));
+fn instance_variable_set_on_plain_object_raises_frozen_error() {
+    let err = run_err(r#"42.instance_variable_set(:@x, 99)"#);
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("Integer"));
 }
 
 // ── object_methods.rs: methods on instance with superclass (lines 308, 315) ─

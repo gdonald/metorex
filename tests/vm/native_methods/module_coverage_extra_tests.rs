@@ -356,3 +356,100 @@ ExtMod2.send(:extend_object, ExtTgt2)
         Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
     );
 }
+
+// ── Module.instance_method synthesizes stubs for module-private hooks (lines 240-256) ──
+
+#[test]
+fn module_instance_method_synthesizes_append_features_stub() {
+    let result = run(r#"Module.instance_method(:append_features)"#);
+    assert!(matches!(result, Some(Object::Method(_))));
+}
+
+#[test]
+fn module_instance_method_synthesizes_prepend_features_stub() {
+    let result = run(r#"Module.instance_method(:prepend_features)"#);
+    assert!(matches!(result, Some(Object::Method(_))));
+}
+
+#[test]
+fn module_instance_method_synthesizes_extend_object_stub() {
+    let result = run(r#"Module.instance_method(:extend_object)"#);
+    assert!(matches!(result, Some(Object::Method(_))));
+}
+
+#[test]
+fn module_instance_method_synthesizes_included_stub() {
+    let result = run(r#"Module.instance_method(:included)"#);
+    assert!(matches!(result, Some(Object::Method(_))));
+}
+
+#[test]
+fn module_instance_method_synthesizes_extended_stub() {
+    let result = run(r#"Module.instance_method(:extended)"#);
+    assert!(matches!(result, Some(Object::Method(_))));
+}
+
+#[test]
+fn module_instance_method_string_arg_returns_method() {
+    let result = run(r#"
+module IM4
+  def fn4
+    1
+  end
+end
+IM4.instance_method("fn4")
+"#);
+    assert!(matches!(result, Some(Object::Method(_))));
+}
+
+// ── append_features explicit invocation (lines 294-319) ─────────────────────
+
+#[test]
+fn module_append_features_explicit_adds_mixin() {
+    let result = run(r#"
+module AfMod
+  def af_helper
+    "from-af-mod"
+  end
+end
+class AfHost
+end
+AfMod.send(:append_features, AfHost)
+AfHost.new.af_helper
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("from-af-mod".to_string())))
+    );
+}
+
+#[test]
+fn module_append_features_with_non_module_errors() {
+    let err = run_err(
+        r#"
+module AfErr
+end
+AfErr.send(:append_features, 42)
+"#,
+    );
+    assert!(err.contains("Module") || err.contains("argument"));
+}
+
+#[test]
+fn module_prepend_features_explicit_adds_mixin() {
+    let result = run(r#"
+module PfMod
+  def pf_helper
+    "from-pf-mod"
+  end
+end
+class PfHost
+end
+PfMod.send(:prepend_features, PfHost)
+PfHost.new.pf_helper
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("from-pf-mod".to_string())))
+    );
+}

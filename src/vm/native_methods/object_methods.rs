@@ -612,6 +612,17 @@ impl VirtualMachine {
                 let value = arguments[1].clone();
                 match receiver {
                     Object::Instance(instance_rc) => {
+                        let is_frozen = instance_rc.borrow().frozen;
+                        if is_frozen {
+                            let class_name = instance_rc.borrow().class.name().to_string();
+                            let msg = format!("can't modify frozen {}", class_name);
+                            let exc = Object::exception("FrozenError", msg.clone());
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc,
+                                location: position_to_location(position),
+                                message: msg,
+                            });
+                        }
                         instance_rc.borrow_mut().set_var(var_name, value.clone());
                         Ok(Some(value))
                     }
@@ -623,7 +634,25 @@ impl VirtualMachine {
                         module_rc.set_class_var(format!("@{}", var_name), value.clone());
                         Ok(Some(value))
                     }
-                    _ => Ok(Some(Object::Nil)),
+                    // Immediates (true/false/nil/integers/symbols/floats) are
+                    // always frozen — assigning an ivar raises FrozenError to
+                    // match Ruby (FrozenError is a subclass of RuntimeError).
+                    other => {
+                        let class_name = match other {
+                            Object::Bool(true) => "TrueClass".to_string(),
+                            Object::Bool(false) => "FalseClass".to_string(),
+                            Object::Nil => "NilClass".to_string(),
+                            Object::Symbol(_) => "Symbol".to_string(),
+                            _ => self.builtins().class_of(other).name().to_string(),
+                        };
+                        let msg = format!("can't modify frozen {}: {}", class_name, other);
+                        let exc = Object::exception("FrozenError", msg.clone());
+                        Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        })
+                    }
                 }
             }
             "instance_of?" => {

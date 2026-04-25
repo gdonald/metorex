@@ -533,10 +533,12 @@ fn instance_variable_get_on_int_returns_nil() {
 }
 
 #[test]
-fn instance_variable_set_on_int_returns_nil() {
-    let result = run("5.instance_variable_set(:@foo, 1)");
-    // Fallthrough for non-container types returns Nil.
-    assert_eq!(result, Some(Object::Nil));
+fn instance_variable_set_on_int_raises_frozen_error() {
+    // Immediates (Integer/Bool/Nil/Symbol) are frozen — Ruby raises
+    // FrozenError (a RuntimeError subclass) on instance_variable_set.
+    let err = run_err("5.instance_variable_set(:@foo, 1)");
+    assert!(err.contains("can't modify frozen"));
+    assert!(err.contains("Integer"));
 }
 
 // ── =~ / !~ ──────────────────────────────────────────────────────────────────
@@ -616,6 +618,39 @@ end
 FF1.freeze.name
 "#);
     assert_eq!(result, Some(Object::string("FF1")));
+}
+
+#[test]
+fn instance_frozen_query_returns_false_by_default() {
+    let result = run(r#"
+class IFC1; end
+IFC1.new.frozen?
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn instance_frozen_query_returns_true_after_freeze() {
+    let result = run(r#"
+class IFC2; end
+i = IFC2.new
+i.freeze
+i.frozen?
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn obj_method_with_string_arg_returns_method() {
+    let result = run(r#"
+class MWS
+  def hi
+    "hello"
+  end
+end
+MWS.new.method("hi")
+"#);
+    assert!(matches!(result, Some(Object::Method(_))));
 }
 
 // ── class on bool/nil ────────────────────────────────────────────────────────
