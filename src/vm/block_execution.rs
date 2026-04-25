@@ -44,7 +44,7 @@ fn bind_block_params(vm: &mut VirtualMachine, params: &[String], arguments: Vec<
             vm.environment_mut().define(name, value);
         }
     } else {
-        for (param, argument) in params.iter().zip(arguments.into_iter()) {
+        for (param, argument) in params.iter().zip(arguments) {
             if param.starts_with('&') {
                 continue; // block param, handled separately
             }

@@ -196,17 +196,47 @@ impl VirtualMachine {
             return Ok(Some(Object::Nil));
         }
         // `Klass.include(Mod)` / `Klass.prepend(Mod)`: mix the module into
-        // the class. Same caveat as Module#include — `prepend` ordering is
-        // approximated as a regular include (sufficient for fixture setup).
-        if matches!(
-            method_name,
-            "include" | "prepend" | "append_features" | "prepend_features"
-        ) && !arguments.is_empty()
-        {
+        // the class through the `append_features` dispatch path so user
+        // overrides on the module's singleton class fire and the cyclic /
+        // frozen checks run. `prepend` ordering is still approximated as a
+        // regular include (sufficient for current fixture setup).
+        if matches!(method_name, "include" | "prepend") && !arguments.is_empty() {
             for arg in arguments {
                 match arg {
-                    Object::Module(m) => class_rc.add_mixin(Rc::clone(m)),
-                    Object::Class(c) => class_rc.add_mixin(Rc::clone(c)),
+                    Object::Module(m) | Object::Class(m) => {
+                        self.apply_module_include(class_rc, m, position)?;
+                    }
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Module",
+                            other,
+                            position,
+                        ));
+                    }
+                }
+            }
+            return Ok(Some(Object::Class(Rc::clone(class_rc))));
+        }
+        // `mod.append_features(target)` / `mod.prepend_features(target)`:
+        // default behavior — add `mod` as a mixin on `target`, with the
+        // standard cyclic/frozen checks. Defer to a user-defined override
+        // (singleton method on the receiver) when one is present.
+        if matches!(method_name, "append_features" | "prepend_features") && !arguments.is_empty() {
+            let class_method_key = format!("__class__{}", method_name);
+            if class_rc.find_method(&class_method_key).is_some() {
+                return Ok(None);
+            }
+            if let Some(sc) = class_rc.singleton_class_slot().clone()
+                && sc.find_method(method_name).is_some()
+            {
+                return Ok(None);
+            }
+            for arg in arguments {
+                match arg {
+                    Object::Module(t) | Object::Class(t) => {
+                        self.default_append_features(t, class_rc, position)?;
+                    }
                     other => {
                         return Err(method_argument_type_error(
                             method_name,
@@ -419,6 +449,27 @@ impl VirtualMachine {
                 if let Some(method) = class_rc.find_method(&name_str) {
                     return Ok(Some(Object::Method(method)));
                 }
+                // Synthesize a stub for well-known Module-private mixin
+                // hooks so `Module.instance_method(:append_features)` works
+                // for spec patterns that bind/call them.
+                if class_rc.name() == "Module"
+                    && matches!(
+                        name_str.as_str(),
+                        "append_features"
+                            | "prepend_features"
+                            | "extend_object"
+                            | "included"
+                            | "extended"
+                    )
+                {
+                    let stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["target".to_string()],
+                        vec![],
+                        "Module".to_string(),
+                    );
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
                 let msg = format!("undefined method '{}' for {}", name_str, class_rc.name());
                 let exc = Object::exception("NameError", msg.clone());
                 return Err(MetorexError::UncaughtException {
@@ -476,7 +527,6 @@ impl VirtualMachine {
                         "define_method",
                         "include",
                         "prepend",
-                        "extend_object",
                         "instance_method",
                         "instance_methods",
                         "public_instance_methods",
@@ -491,6 +541,25 @@ impl VirtualMachine {
                 }
                 let mut priv_set: std::collections::HashSet<String> =
                     class_rc.private_method_names().into_iter().collect();
+                // Module-private mixin hooks: append_features and friends
+                // are private instance methods on Module. Class is *also* a
+                // Module subclass — but `append_features` is undefined on
+                // Class (Ruby sets it to undef), so only surface them when
+                // the receiver is Module itself.
+                if class_rc.name() == "Module" {
+                    for n in [
+                        "append_features",
+                        "prepend_features",
+                        "extend_object",
+                        "extended",
+                        "included",
+                    ] {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push(n.to_string());
+                        }
+                        priv_set.insert(n.to_string());
+                    }
+                }
                 if include_super {
                     for mixin in class_rc.mixin_chain() {
                         priv_set.extend(mixin.private_method_names());

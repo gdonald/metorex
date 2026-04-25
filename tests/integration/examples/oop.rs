@@ -141,6 +141,13 @@ fn test_oop_modules_parens_execution() {
 }
 
 #[test]
+fn test_oop_module_append_features_hook() {
+    let expected = "true\nfrozen ok\ncyclic ok\nrebind ok\n";
+    let output = run_example("oop/module/append_features_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_oop_super_keyword_execution() {
     let expected = "Rex makes a sound\nRex barks\nAnimal: Rex, Breed: Labrador\n";
     let output = run_example("oop/super/keyword.rb");

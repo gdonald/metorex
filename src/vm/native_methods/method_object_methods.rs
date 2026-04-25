@@ -2,6 +2,7 @@ use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
 use crate::vm::VirtualMachine;
+use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -9,11 +10,43 @@ impl VirtualMachine {
         &mut self,
         receiver: &Object,
         method_name: &str,
-        _arguments: &[Object],
-        _position: Position,
+        arguments: &[Object],
+        position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         if let Object::Method(method_obj) = receiver {
             match method_name {
+                "bind" => {
+                    let target = arguments.first().cloned().unwrap_or(Object::Nil);
+                    let bound = method_obj.bind(target);
+                    return Ok(Some(Object::Method(Rc::new(bound))));
+                }
+                "call" | "[]" | "===" => {
+                    let bound = method_obj
+                        .receiver
+                        .as_ref()
+                        .map(|b| (**b).clone())
+                        .unwrap_or(Object::Nil);
+                    // Module-private mixin hooks (`append_features` and
+                    // friends) can't be invoked on a Class receiver; Ruby
+                    // raises TypeError when the bound target is a Class.
+                    if matches!(
+                        method_obj.name.as_str(),
+                        "append_features" | "prepend_features" | "extend_object"
+                    ) && matches!(&bound, Object::Class(_))
+                    {
+                        let msg = format!(
+                            "bind argument must be an instance of Module: {}",
+                            method_obj.name
+                        );
+                        let exc = Object::exception("TypeError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                    return Ok(Some(Object::Nil));
+                }
                 "name" => {
                     return Ok(Some(Object::String(Rc::new(method_obj.name.clone()))));
                 }

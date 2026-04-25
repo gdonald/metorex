@@ -204,21 +204,17 @@ fn collect_jump_targets(code: &[u8]) -> Vec<usize> {
         let size = 1 + op.operand_size();
 
         match op {
-            OpCode::Jump | OpCode::JumpIfFalse => {
-                if i + 2 < code.len() {
-                    let offset = ((code[i + 1] as usize) << 8) | code[i + 2] as usize;
-                    let target = i + size + offset;
-                    if target < code.len() {
-                        targets.push(target);
-                    }
+            OpCode::Jump | OpCode::JumpIfFalse if i + 2 < code.len() => {
+                let offset = ((code[i + 1] as usize) << 8) | code[i + 2] as usize;
+                let target = i + size + offset;
+                if target < code.len() {
+                    targets.push(target);
                 }
             }
-            OpCode::Loop => {
-                if i + 2 < code.len() {
-                    let offset = ((code[i + 1] as usize) << 8) | code[i + 2] as usize;
-                    if offset <= i + size {
-                        targets.push(i + size - offset);
-                    }
+            OpCode::Loop if i + 2 < code.len() => {
+                let offset = ((code[i + 1] as usize) << 8) | code[i + 2] as usize;
+                if offset <= i + size {
+                    targets.push(i + size - offset);
                 }
             }
             _ => {}

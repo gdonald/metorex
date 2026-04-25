@@ -234,24 +234,78 @@ impl VirtualMachine {
                 if let Some(method) = module_rc.find_method(&name_str) {
                     return Ok(Some(Object::Method(method)));
                 }
+                // Synthesize a stub for well-known Module-private mixin
+                // hooks so `Module.instance_method(:append_features)` works
+                // for spec patterns that bind/call them.
+                if module_rc.name() == "Module"
+                    && matches!(
+                        name_str.as_str(),
+                        "append_features"
+                            | "prepend_features"
+                            | "extend_object"
+                            | "included"
+                            | "extended"
+                    )
+                {
+                    let stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["target".to_string()],
+                        vec![],
+                        "Module".to_string(),
+                    );
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
                 return Err(MetorexError::runtime_error(
                     format!("undefined method '{}' for {}", name_str, module_rc.name()),
                     position_to_location(position),
                 ));
             }
-            // Module#include / Module#prepend / Module#append_features:
-            // mix in the argument modules. `prepend` is handled as an include
-            // here; true prepend ordering (mixin resolves before self in the
-            // ancestor chain) is not yet modelled. We only intercept calls
-            // *with* arguments so a zero-arg user-defined accessor (e.g.
-            // `attr_reader :include` on MSpec) still wins.
-            "include" | "prepend" | "append_features" | "prepend_features"
-                if !arguments.is_empty() =>
-            {
+            // Module#include / Module#prepend: dispatch through
+            // `append_features` so user overrides on the included module's
+            // singleton class fire and the cyclic/frozen checks run.
+            // `prepend` ordering is still approximated as a regular include
+            // (sufficient for current fixture setup). We only intercept
+            // calls *with* arguments so a zero-arg user-defined accessor
+            // (e.g. `attr_reader :include` on MSpec) still wins.
+            "include" | "prepend" if !arguments.is_empty() => {
                 for arg in arguments {
                     match arg {
-                        Object::Module(m) => module_rc.add_mixin(Rc::clone(m)),
-                        Object::Class(c) => module_rc.add_mixin(Rc::clone(c)),
+                        Object::Module(m) | Object::Class(m) => {
+                            self.apply_module_include(module_rc, m, position)?;
+                        }
+                        other => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "Module",
+                                other,
+                                position,
+                            ));
+                        }
+                    }
+                }
+                return Ok(Some(Object::Module(Rc::clone(module_rc))));
+            }
+            // `mod.append_features(target)` / `mod.prepend_features(target)`:
+            // the default behavior used by Module#include — add `mod` to
+            // `target`'s mixin chain after the standard frozen / cyclic
+            // checks. If the user has defined their own `append_features`
+            // (as a singleton method on `mod`), defer to it instead so the
+            // override actually runs.
+            "append_features" | "prepend_features" if !arguments.is_empty() => {
+                let class_method_key = format!("__class__{}", method_name);
+                if module_rc.find_method(&class_method_key).is_some() {
+                    return Ok(None);
+                }
+                if let Some(sc) = module_rc.singleton_class_slot().clone()
+                    && sc.find_method(method_name).is_some()
+                {
+                    return Ok(None);
+                }
+                for arg in arguments {
+                    match arg {
+                        Object::Module(t) | Object::Class(t) => {
+                            self.default_append_features(t, module_rc, position)?;
+                        }
                         other => {
                             return Err(method_argument_type_error(
                                 method_name,

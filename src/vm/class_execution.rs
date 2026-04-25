@@ -463,12 +463,13 @@ impl VirtualMachine {
                     module_name,
                     position,
                 } => {
-                    // include ModuleName: add module to mixin chain so methods added
-                    // to the module later are still visible (Ruby ancestor-chain semantics).
+                    // include ModuleName: dispatch through `append_features`
+                    // so user overrides on the module's singleton class fire,
+                    // and so cyclic/frozen checks run.
                     let resolved = self.resolve_constant_in_scope(module_name);
                     match resolved {
                         Some(Object::Module(module)) => {
-                            class.add_mixin(Rc::clone(&module));
+                            self.apply_module_include(class, &module, *position)?;
                         }
                         Some(_) => {
                             return Err(MetorexError::runtime_error(
@@ -996,12 +997,12 @@ impl VirtualMachine {
                 // enclosing module).
                 Statement::Include {
                     module_name: inc_name,
-                    ..
+                    position: inc_pos,
                 } => {
                     if let Some(Object::Module(inc_module)) =
                         self.resolve_constant_in_scope(inc_name)
                     {
-                        module.add_mixin(inc_module);
+                        self.apply_module_include(&module, &inc_module, *inc_pos)?;
                     }
                 }
                 Statement::Alias {
@@ -1147,6 +1148,75 @@ impl VirtualMachine {
         ))
     }
 
+    /// Mix `module_rc` into `target` with full Ruby semantics: dispatch to a
+    /// user-defined `append_features` on the module's singleton class if one
+    /// exists; otherwise enforce the default checks (FrozenError when target
+    /// is frozen, ArgumentError on a cyclic include) and add the mixin.
+    pub(crate) fn apply_module_include(
+        &mut self,
+        target: &Rc<Class>,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        // `def self.append_features(...)` on the module gets stored under
+        // the `__class__` prefix on the module itself (mirroring how the
+        // VM caches class-level methods); check that path first.
+        if let Some(method) = module_rc.find_method("__class__append_features") {
+            self.invoke_method(
+                Rc::clone(module_rc),
+                method,
+                Object::Module(Rc::clone(module_rc)),
+                vec![Object::Class(Rc::clone(target))],
+                position,
+            )?;
+            return Ok(());
+        }
+        if let Some(sc) = module_rc.singleton_class_slot().clone()
+            && let Some(method) = sc.find_method("append_features")
+        {
+            self.invoke_method(
+                sc,
+                method,
+                Object::Module(Rc::clone(module_rc)),
+                vec![Object::Class(Rc::clone(target))],
+                position,
+            )?;
+            return Ok(());
+        }
+        self.default_append_features(target, module_rc, position)
+    }
+
+    /// Default `Module#append_features(target)` behavior: validate the target
+    /// (frozen check, cyclic include check) then add `module_rc` to its
+    /// mixin chain.
+    pub(crate) fn default_append_features(
+        &mut self,
+        target: &Rc<Class>,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if target.is_frozen() {
+            let msg = format!("can't modify frozen Module: {}", target.name());
+            let exc = Object::exception("FrozenError", msg.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        if Rc::ptr_eq(target, module_rc) || module_includes(module_rc, target) {
+            let msg = "cyclic include detected".to_string();
+            let exc = Object::exception("ArgumentError", msg.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        target.add_mixin(Rc::clone(module_rc));
+        Ok(())
+    }
+
     /// Execute `alias new_name old_name` outside a class/module body. Ruby
     /// treats this as an alias on Object so it is visible in all instances.
     pub(crate) fn execute_alias(
@@ -1169,6 +1239,31 @@ impl VirtualMachine {
         }
         Ok(ControlFlow::Next)
     }
+}
+
+/// Whether `needle` appears anywhere in `module_rc`'s ancestor chain
+/// (mixins of mixins, plus superclass mixins). Used to detect a cyclic
+/// `include`/`append_features` request before the chain is mutated.
+fn module_includes(module_rc: &Rc<Class>, needle: &Rc<Class>) -> bool {
+    let mut stack: Vec<Rc<Class>> = vec![Rc::clone(module_rc)];
+    let mut seen: Vec<*const Class> = Vec::new();
+    while let Some(current) = stack.pop() {
+        let ptr = Rc::as_ptr(&current);
+        if seen.contains(&ptr) {
+            continue;
+        }
+        seen.push(ptr);
+        if Rc::ptr_eq(&current, needle) {
+            return true;
+        }
+        for mixin in current.mixin_chain() {
+            stack.push(mixin);
+        }
+        if let Some(sc) = current.superclass() {
+            stack.push(sc);
+        }
+    }
+    false
 }
 
 /// Build a Method from a parameter list, handling positional, variadic,
