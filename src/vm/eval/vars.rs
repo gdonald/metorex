@@ -35,10 +35,10 @@ impl VirtualMachine {
             Some(Object::Module(module_rc)) => Ok(module_rc
                 .get_class_var(&format!("@{}", name))
                 .unwrap_or(Object::Nil)),
-            Some(_) => Err(MetorexError::runtime_error(
-                format!("Cannot read instance variable @{} on non-instance", name),
-                position_to_location(position),
-            )),
+            // Immediates (Int/Float/Symbol/Bool/Nil/etc.) and other non-instance
+            // selves: ivar reads return nil — matching Ruby, where ivars on
+            // immediates default to nil even if no writer ever ran.
+            Some(_) => Ok(Object::Nil),
             None => Err(MetorexError::runtime_error(
                 format!(
                     "Instance variable @{} can only be used within a method",

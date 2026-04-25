@@ -162,7 +162,10 @@ fn case_in_statement_position() {
 #[test]
 fn attr_reader_statement_position() {
     let stmt = Statement::AttrReader {
-        attributes: vec!["name".to_string()],
+        attributes: vec![Expression::Symbol {
+            value: "name".to_string(),
+            position: pos(),
+        }],
         position: pos(),
     };
     let _ = stmt.position();
@@ -171,7 +174,10 @@ fn attr_reader_statement_position() {
 #[test]
 fn attr_writer_statement_position() {
     let stmt = Statement::AttrWriter {
-        attributes: vec!["name".to_string()],
+        attributes: vec![Expression::Symbol {
+            value: "name".to_string(),
+            position: pos(),
+        }],
         position: pos(),
     };
     let _ = stmt.position();
@@ -180,7 +186,10 @@ fn attr_writer_statement_position() {
 #[test]
 fn attr_accessor_statement_position() {
     let stmt = Statement::AttrAccessor {
-        attributes: vec!["name".to_string()],
+        attributes: vec![Expression::Symbol {
+            value: "name".to_string(),
+            position: pos(),
+        }],
         position: pos(),
     };
     let _ = stmt.position();

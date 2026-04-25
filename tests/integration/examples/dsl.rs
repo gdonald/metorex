@@ -27,3 +27,38 @@ fn test_dsl_config_execution() {
     let output = run_example("dsl/config.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_dsl_keyword_arg_options_execution() {
+    // Trailing `key: value` syntax fills the last positional `options = nil`
+    // parameter when the callee declares no explicit keyword params.
+    let expected = "options.class = Hash\noptions[:shared] = true\noptions[\"shared\"] = nil\noptions.class = Hash\noptions[:shared] = true\noptions[\"shared\"] = nil\noptions is nil\n";
+    let output = run_example("dsl/keyword_arg_options.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_dsl_eval_define_method_execution() {
+    let expected = "eval result: :boom\nObject has boom? true\ncalling: :bam\n";
+    let output = run_example("dsl/eval_define_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_dsl_method_call_with_symbol_arg_execution() {
+    // Paren-less method call where the sole arg is a symbol literal:
+    // `have_method :boom` must parse as `have_method(:boom)`, not as a
+    // `have_method:` keyword arg.
+    let expected = ":boom\n:boom\nmatcher for :boom\nmatcher for :boom\n";
+    let output = run_example("dsl/method_call_with_symbol_arg.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_dsl_object_method_call_chain_execution() {
+    // Same parse rule must hold inside a chained call: the arg to `.my_should`
+    // is the result of `have_method :boom`, never a keyword Hash.
+    let expected = "matcher class: String\nmatcher value: matcher for :boom\n";
+    let output = run_example("dsl/object_method_call_chain.rb");
+    assert_eq!(output, expected);
+}

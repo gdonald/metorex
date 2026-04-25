@@ -19,6 +19,9 @@ pub struct Instance {
     /// Lazily-allocated singleton class for this instance (Ruby semantics:
     /// every object conceptually has one, but we only materialize on demand).
     pub singleton_class: Rc<RefCell<Option<Rc<Class>>>>,
+    /// Whether `freeze` has been called. Subsequent ivar assignments / setter
+    /// invocations must raise FrozenError.
+    pub frozen: bool,
 }
 
 impl Instance {
@@ -29,6 +32,7 @@ impl Instance {
             instance_vars: HashMap::new(),
             singleton_methods: Rc::new(RefCell::new(HashMap::new())),
             singleton_class: Rc::new(RefCell::new(None)),
+            frozen: false,
         }
     }
 

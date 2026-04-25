@@ -653,19 +653,19 @@ pub enum Statement {
 
     // attr_reader - creates getter methods for instance variables
     AttrReader {
-        attributes: Vec<String>, // List of attribute names (without @)
+        attributes: Vec<Expression>, // Each expression evaluates to a Symbol or to_str-able value
         position: Position,
     },
 
     // attr_writer - creates setter methods for instance variables
     AttrWriter {
-        attributes: Vec<String>, // List of attribute names (without @)
+        attributes: Vec<Expression>, // Each expression evaluates to a Symbol or to_str-able value
         position: Position,
     },
 
     // attr_accessor - creates both getter and setter methods for instance variables
     AttrAccessor {
-        attributes: Vec<String>, // List of attribute names (without @)
+        attributes: Vec<Expression>, // Each expression evaluates to a Symbol or to_str-able value
         position: Position,
     },
 }

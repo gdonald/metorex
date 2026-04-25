@@ -125,7 +125,7 @@ Cfg.config_value
 // ── instance variable errors ─────────────────────────────────────────────────
 
 #[test]
-fn instance_var_on_non_instance_self_errors() {
+fn instance_var_assign_on_immediate_raises_frozen() {
     let err = run_err(
         r#"
 class Foo
@@ -136,22 +136,25 @@ end
 Foo.new.test
 "#,
     );
-    assert!(err.contains("non-instance") || err.contains("instance variable"));
+    assert!(
+        err.contains("FrozenError") || err.contains("frozen"),
+        "expected FrozenError, got: {err}"
+    );
 }
 
 #[test]
-fn instance_var_read_on_non_instance_self_errors() {
-    let err = run_err(
-        r#"
+fn instance_var_read_on_immediate_returns_nil() {
+    // Reading an unset ivar on an immediate self (e.g. `1.instance_eval { @x }`)
+    // returns nil — matching Ruby. No error should be raised.
+    let result = run(r#"
 class Foo
   def test
     1.instance_eval { @x }
   end
 end
 Foo.new.test
-"#,
-    );
-    assert!(err.contains("non-instance") || err.contains("Cannot read") || err.contains("@x"));
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]

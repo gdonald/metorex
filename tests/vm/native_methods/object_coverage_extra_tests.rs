@@ -736,7 +736,9 @@ fn public_send_works() {
 
 #[test]
 fn methods_with_args_errors() {
-    let err = run_err("5.send(:methods, 1)");
+    // `methods` accepts a single optional include_super Boolean; passing two
+    // positional args is the error now.
+    let err = run_err("5.send(:methods, true, 1)");
     assert!(err.contains("argument"));
 }
 

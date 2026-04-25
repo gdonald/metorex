@@ -524,8 +524,13 @@ impl VirtualMachine {
                 if matches!(class_rc.name(), "Module" | "Class") {
                     for n in [
                         "alias_method",
+                        "attr",
+                        "attr_accessor",
+                        "attr_reader",
+                        "attr_writer",
                         "define_method",
                         "include",
+                        "method_defined?",
                         "prepend",
                         "instance_method",
                         "instance_methods",
@@ -587,6 +592,164 @@ impl VirtualMachine {
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                     filtered,
                 )))));
+            }
+            // attr_reader/attr_writer/attr_accessor as runtime instance
+            // methods on Module/Class. Define the accessors on the receiver,
+            // apply the receiver's current visibility, and return the array
+            // of newly-defined method names as symbols (Ruby 3.0+).
+            "attr_reader" | "attr_writer" | "attr_accessor" | "attr" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                }
+                let mut names: Vec<String> = Vec::with_capacity(arguments.len());
+                for arg in arguments {
+                    let n = self.coerce_method_name(arg, method_name, position)?;
+                    names.push(n);
+                }
+                let visibility = class_rc.current_visibility();
+                let mut defined: Vec<Object> = Vec::new();
+                let want_reader = matches!(method_name, "attr_reader" | "attr_accessor" | "attr");
+                let want_writer = matches!(method_name, "attr_writer" | "attr_accessor");
+                let mut newly_defined_names: Vec<String> = Vec::new();
+                for attr_name in &names {
+                    if want_reader {
+                        let getter_body = vec![crate::ast::Statement::Return {
+                            value: Some(crate::ast::Expression::InstanceVariable {
+                                name: attr_name.clone(),
+                                position,
+                            }),
+                            position,
+                        }];
+                        let getter =
+                            crate::object::Method::new(attr_name.clone(), vec![], getter_body);
+                        class_rc.define_method(attr_name, Rc::new(getter));
+                        if visibility != "public" {
+                            class_rc.set_method_private(attr_name.clone());
+                        }
+                        class_rc.declare_instance_var(attr_name);
+                        defined.push(Object::Symbol(Rc::new(attr_name.clone())));
+                        newly_defined_names.push(attr_name.clone());
+                    }
+                    if want_writer {
+                        let setter_body = vec![crate::ast::Statement::Assignment {
+                            target: crate::ast::Expression::InstanceVariable {
+                                name: attr_name.clone(),
+                                position,
+                            },
+                            value: crate::ast::Expression::Identifier {
+                                name: "value".to_string(),
+                                position,
+                            },
+                            position,
+                        }];
+                        let setter_name = format!("{}=", attr_name);
+                        let setter = crate::object::Method::new(
+                            setter_name.clone(),
+                            vec!["value".to_string()],
+                            setter_body,
+                        );
+                        class_rc.define_method(&setter_name, Rc::new(setter));
+                        if visibility != "public" {
+                            class_rc.set_method_private(setter_name.clone());
+                        }
+                        class_rc.declare_instance_var(attr_name);
+                        defined.push(Object::Symbol(Rc::new(setter_name.clone())));
+                        newly_defined_names.push(setter_name);
+                    }
+                }
+                // Fire `method_added` (or `singleton_method_added` when the
+                // receiver is a singleton class) for each method we just
+                // installed, so user-defined hooks observe attr_* the same
+                // way they observe `def`.
+                let is_singleton = class_rc.get_class_var("__singleton__").is_some();
+                let hook_name = if is_singleton {
+                    "singleton_method_added"
+                } else {
+                    "method_added"
+                };
+                for added in &newly_defined_names {
+                    self.invoke_class_hook(class_rc, hook_name, added, position)?;
+                }
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                    defined,
+                )))));
+            }
+            // Module#method_defined?(name) — true when `name` resolves to a
+            // public or protected instance method on the receiver, including
+            // inherited methods. The optional second arg (default true) limits
+            // the search to the receiver itself when false.
+            "method_defined?"
+            | "public_method_defined?"
+            | "private_method_defined?"
+            | "protected_method_defined?" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let name = match &arguments[0] {
+                    Object::String(s) => (**s).clone(),
+                    Object::Symbol(s) => (**s).clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let include_super = match arguments.get(1) {
+                    Some(Object::Bool(b)) => *b,
+                    _ => true,
+                };
+                let mut found_class: Option<Rc<Class>> = None;
+                if class_rc.find_method(&name).is_some() {
+                    found_class = Some(Rc::clone(class_rc));
+                } else if include_super {
+                    'outer: for mixin in class_rc.mixin_chain() {
+                        if mixin.find_method(&name).is_some() {
+                            found_class = Some(mixin);
+                            break 'outer;
+                        }
+                    }
+                    if found_class.is_none() {
+                        let mut current = class_rc.superclass();
+                        while let Some(sc) = current {
+                            if sc.find_method(&name).is_some() {
+                                found_class = Some(sc);
+                                break;
+                            }
+                            for mixin in sc.mixin_chain() {
+                                if mixin.find_method(&name).is_some() {
+                                    found_class = Some(mixin);
+                                    break;
+                                }
+                            }
+                            if found_class.is_some() {
+                                break;
+                            }
+                            current = sc.superclass();
+                        }
+                    }
+                }
+                let answer = match found_class {
+                    None => false,
+                    Some(cls) => {
+                        let is_private = cls.is_method_private(&name);
+                        match method_name {
+                            "method_defined?" | "public_method_defined?" => !is_private,
+                            "private_method_defined?" => is_private,
+                            // protected isn't tracked separately — say false.
+                            "protected_method_defined?" => false,
+                            _ => unreachable!(),
+                        }
+                    }
+                };
+                return Ok(Some(Object::Bool(answer)));
             }
             // Module#extend: mix the given module's instance methods into the
             // receiver's singleton class, so `klass.some_module_method` works.
@@ -992,6 +1155,59 @@ impl VirtualMachine {
             _ => {}
         }
         Ok(None)
+    }
+
+    /// Invoke a `method_added` / `singleton_method_added` hook on `class_rc` if
+    /// the user defined one. The method receives the new method's name as a
+    /// symbol; errors raised by the hook propagate.
+    ///
+    /// For `singleton_method_added`, Ruby fires the hook on the *attached
+    /// object* (the object whose singleton class gained the method), not on
+    /// the singleton class itself — so when `class_rc` is a singleton class we
+    /// pivot to the attached object before lookup.
+    pub(crate) fn invoke_class_hook(
+        &mut self,
+        class_rc: &Rc<Class>,
+        hook: &str,
+        added_name: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let arg = Object::Symbol(Rc::new(added_name.to_string()));
+
+        if hook == "singleton_method_added"
+            && class_rc.get_class_var("__singleton__").is_some()
+            && let Some(attached) = class_rc.get_class_var("__attached__")
+        {
+            let attached_class = match &attached {
+                Object::Class(c) | Object::Module(c) => Some(Rc::clone(c)),
+                _ => None,
+            };
+            if let Some(target_class) = attached_class
+                && let Some(method) = target_class
+                    .singleton_class_slot()
+                    .clone()
+                    .and_then(|sc| sc.find_method(hook))
+            {
+                let sc = target_class.singleton_class_slot().clone().unwrap();
+                self.invoke_method(sc, method, attached.clone(), vec![arg], position)?;
+                return Ok(());
+            }
+            return Ok(());
+        }
+
+        let class_method_name = format!("__class__{}", hook);
+        let receiver = Object::Class(Rc::clone(class_rc));
+
+        if let Some(method) = class_rc.find_method(&class_method_name) {
+            self.invoke_method(Rc::clone(class_rc), method, receiver, vec![arg], position)?;
+            return Ok(());
+        }
+        if let Some(sc) = class_rc.singleton_class_slot().clone()
+            && let Some(method) = sc.find_method(hook)
+        {
+            self.invoke_method(sc, method, receiver, vec![arg], position)?;
+        }
+        Ok(())
     }
 }
 

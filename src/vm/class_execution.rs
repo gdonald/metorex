@@ -367,8 +367,9 @@ impl VirtualMachine {
                     class.declare_instance_var(var_name);
                 }
                 Statement::AttrReader { attributes, .. } => {
-                    // Generate getter methods for each attribute
-                    for attr_name in attributes {
+                    let names = self.resolve_attribute_names(attributes, position)?;
+                    let visibility = class.current_visibility();
+                    for attr_name in &names {
                         let getter_body = vec![Statement::Return {
                             value: Some(Expression::InstanceVariable {
                                 name: attr_name.clone(),
@@ -378,12 +379,16 @@ impl VirtualMachine {
                         }];
                         let method = Rc::new(Method::new(attr_name.clone(), vec![], getter_body));
                         class.define_method(attr_name, method);
+                        if visibility != "public" {
+                            class.set_method_private(attr_name.clone());
+                        }
                         class.declare_instance_var(attr_name);
                     }
                 }
                 Statement::AttrWriter { attributes, .. } => {
-                    // Generate setter methods for each attribute
-                    for attr_name in attributes {
+                    let names = self.resolve_attribute_names(attributes, position)?;
+                    let visibility = class.current_visibility();
+                    for attr_name in &names {
                         let setter_body = vec![Statement::Assignment {
                             target: Expression::InstanceVariable {
                                 name: attr_name.clone(),
@@ -395,18 +400,23 @@ impl VirtualMachine {
                             },
                             position,
                         }];
+                        let setter_name = format!("{}=", attr_name);
                         let method = Rc::new(Method::new(
-                            format!("{}=", attr_name),
+                            setter_name.clone(),
                             vec!["value".to_string()],
                             setter_body,
                         ));
-                        class.define_method(format!("{}=", attr_name), method);
+                        class.define_method(&setter_name, method);
+                        if visibility != "public" {
+                            class.set_method_private(setter_name);
+                        }
                         class.declare_instance_var(attr_name);
                     }
                 }
                 Statement::AttrAccessor { attributes, .. } => {
-                    // Generate both getter and setter methods for each attribute
-                    for attr_name in attributes {
+                    let names = self.resolve_attribute_names(attributes, position)?;
+                    let visibility = class.current_visibility();
+                    for attr_name in &names {
                         // Getter
                         let getter_body = vec![Statement::Return {
                             value: Some(Expression::InstanceVariable {
@@ -418,6 +428,9 @@ impl VirtualMachine {
                         let getter_method =
                             Rc::new(Method::new(attr_name.clone(), vec![], getter_body));
                         class.define_method(attr_name, getter_method);
+                        if visibility != "public" {
+                            class.set_method_private(attr_name.clone());
+                        }
 
                         // Setter
                         let setter_body = vec![Statement::Assignment {
@@ -431,12 +444,16 @@ impl VirtualMachine {
                             },
                             position,
                         }];
+                        let setter_name = format!("{}=", attr_name);
                         let setter_method = Rc::new(Method::new(
-                            format!("{}=", attr_name),
+                            setter_name.clone(),
                             vec!["value".to_string()],
                             setter_body,
                         ));
-                        class.define_method(format!("{}=", attr_name), setter_method);
+                        class.define_method(&setter_name, setter_method);
+                        if visibility != "public" {
+                            class.set_method_private(setter_name);
+                        }
 
                         class.declare_instance_var(attr_name);
                     }
@@ -537,7 +554,8 @@ impl VirtualMachine {
                 Statement::Block { statements, .. } => {
                     for inner_stmt in statements {
                         if let Statement::AttrAccessor { attributes, .. } = inner_stmt {
-                            for attr_name in attributes {
+                            let names = self.resolve_attribute_names(attributes, position)?;
+                            for attr_name in &names {
                                 // Getter
                                 let getter_body = vec![Statement::Expression {
                                     expression: Expression::InstanceVariable {
@@ -926,8 +944,9 @@ impl VirtualMachine {
                             Statement::AttrReader { attributes, .. }
                             | Statement::AttrWriter { attributes, .. }
                             | Statement::AttrAccessor { attributes, .. } => {
-                                // For modules, attr_* creates class-level methods
-                                for attr in attributes {
+                                let names =
+                                    self.resolve_attribute_names(attributes, Position::default())?;
+                                for attr in &names {
                                     let getter = Method::new(
                                         attr.clone(),
                                         vec![],
@@ -1238,6 +1257,22 @@ impl VirtualMachine {
             ));
         }
         Ok(ControlFlow::Next)
+    }
+
+    /// Evaluate attribute-name expressions for `attr_reader`/`attr_writer`/
+    /// `attr_accessor`. Symbols and strings resolve directly; other values
+    /// are coerced via `#to_str`. Mirrors Ruby's `Module#attr_*` semantics.
+    pub(crate) fn resolve_attribute_names(
+        &mut self,
+        attributes: &[Expression],
+        position: Position,
+    ) -> Result<Vec<String>, MetorexError> {
+        let mut names = Vec::with_capacity(attributes.len());
+        for attr_expr in attributes {
+            let value = self.evaluate_expression(attr_expr)?;
+            names.push(self.coerce_method_name(&value, "attr_accessor", position)?);
+        }
+        Ok(names)
     }
 }
 

@@ -139,13 +139,20 @@ impl VirtualMachine {
                     | Object::Symbol(_)
                     | Object::String(_) => true,
                     Object::Class(c) | Object::Module(c) => c.is_frozen(),
+                    Object::Instance(inst) => inst.borrow().frozen,
                     _ => false,
                 };
                 Ok(Some(Object::Bool(frozen)))
             }
             "freeze" => {
-                if let Object::Class(c) | Object::Module(c) = receiver {
-                    c.freeze();
+                match receiver {
+                    Object::Class(c) | Object::Module(c) => {
+                        c.freeze();
+                    }
+                    Object::Instance(inst) => {
+                        inst.borrow_mut().frozen = true;
+                    }
+                    _ => {}
                 }
                 Ok(Some(receiver.clone()))
             }
@@ -317,6 +324,13 @@ impl VirtualMachine {
                         arguments.len(),
                         position,
                     ));
+                }
+                if let Object::Symbol(s) = receiver {
+                    return Ok(Some(Object::string(if method_name == "to_s" {
+                        (**s).clone()
+                    } else {
+                        format!(":{}", s)
+                    })));
                 }
                 Ok(Some(Object::string(receiver.to_string())))
             }
@@ -636,25 +650,32 @@ impl VirtualMachine {
                 Ok(Some(Object::Bool(obj_class.name() == target_class.name())))
             }
             "methods" => {
-                if !arguments.is_empty() {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        1,
                         arguments.len(),
                         position,
                     ));
                 }
+                // Optional `include_super` arg (default true). When false, the
+                // walk over inherited methods is skipped — but the receiver's
+                // own methods are still collected. Mirrors Ruby's
+                // `obj.methods(false)`.
+                let include_super = !matches!(arguments.first(), Some(Object::Bool(false)));
                 let class = self.builtins().class_of(receiver);
                 let mut names = class.method_names();
-                // Walk the superclass chain to collect inherited methods
-                let mut current = class.superclass();
-                while let Some(parent) = current {
-                    for name in parent.method_names() {
-                        if !names.contains(&name) {
-                            names.push(name);
+                if include_super {
+                    // Walk the superclass chain to collect inherited methods
+                    let mut current = class.superclass();
+                    while let Some(parent) = current {
+                        for name in parent.method_names() {
+                            if !names.contains(&name) {
+                                names.push(name);
+                            }
                         }
+                        current = parent.superclass();
                     }
-                    current = parent.superclass();
                 }
                 // For instances, also include methods from the instance's class
                 if let Object::Instance(inst_rc) = receiver {
@@ -664,14 +685,40 @@ impl VirtualMachine {
                             names.push(name);
                         }
                     }
-                    let mut parent = inst.class.superclass();
-                    while let Some(p) = parent {
-                        for name in p.method_names() {
-                            if !names.contains(&name) {
-                                names.push(name);
+                    if include_super {
+                        let mut parent = inst.class.superclass();
+                        while let Some(p) = parent {
+                            for name in p.method_names() {
+                                if !names.contains(&name) {
+                                    names.push(name);
+                                }
                             }
+                            parent = p.superclass();
                         }
-                        parent = p.superclass();
+                    }
+                }
+                // For Class/Module receivers, also include the receiver's own
+                // instance methods. Ruby's `Object.methods` exposes instance
+                // methods of Object too (because Object's singleton class
+                // inherits from Class → Module → Object). This also lets
+                // `define_method` at TOPLEVEL_BINDING be observable via
+                // `Object.methods.include?(...)`.
+                if let Object::Class(c) | Object::Module(c) = receiver {
+                    for name in c.method_names() {
+                        if !names.contains(&name) {
+                            names.push(name);
+                        }
+                    }
+                    if include_super {
+                        let mut parent = c.superclass();
+                        while let Some(p) = parent {
+                            for name in p.method_names() {
+                                if !names.contains(&name) {
+                                    names.push(name);
+                                }
+                            }
+                            parent = p.superclass();
+                        }
                     }
                 }
                 names.sort();

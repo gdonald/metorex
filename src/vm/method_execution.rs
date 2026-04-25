@@ -182,7 +182,8 @@ impl VirtualMachine {
                 }
             }
 
-            let (positional, kwargs) = split_keyword_args(arguments);
+            let (positional, kwargs) =
+                split_keyword_args(arguments, !method.keyword_parameters.is_empty());
             bind_params(
                 self,
                 &method.parameters,
@@ -231,7 +232,8 @@ impl VirtualMachine {
 
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
-            let (positional, kwargs) = split_keyword_args(arguments);
+            let (positional, kwargs) =
+                split_keyword_args(arguments, !function.keyword_parameters.is_empty());
             bind_params(
                 self,
                 &function.parameters,

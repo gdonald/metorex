@@ -267,6 +267,17 @@ impl VirtualMachine {
                 // Instance variables can only be set within a method (where 'self' is defined)
                 match self.environment().get("self") {
                     Some(Object::Instance(instance_rc)) => {
+                        let is_frozen = instance_rc.borrow().frozen;
+                        if is_frozen {
+                            let class_name = instance_rc.borrow().class.name().to_string();
+                            let msg = format!("can't modify frozen {}", class_name);
+                            let exc = Object::exception("FrozenError", msg.clone());
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc,
+                                location: position_to_location(*position),
+                                message: msg,
+                            });
+                        }
                         let mut instance = instance_rc.borrow_mut();
                         instance.set_var(name.clone(), value);
                         Ok(())
@@ -280,10 +291,18 @@ impl VirtualMachine {
                         module.set_class_var(format!("@{}", name), value);
                         Ok(())
                     }
-                    Some(_) => Err(MetorexError::runtime_error(
-                        format!("Cannot set instance variable @{} on non-instance", name),
-                        position_to_location(*position),
-                    )),
+                    // Immediates (Bool/Int/Float/Symbol/Nil/etc.) and other
+                    // non-instance selves are always frozen; assigning an ivar
+                    // raises FrozenError to match Ruby.
+                    Some(other) => {
+                        let msg = format!("can't modify frozen {}: {}", other.type_name(), other);
+                        let exc = Object::exception("FrozenError", msg.clone());
+                        Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(*position),
+                            message: msg,
+                        })
+                    }
                     None => Err(MetorexError::runtime_error(
                         format!(
                             "Instance variable @{} can only be used within a method",
@@ -443,6 +462,24 @@ impl VirtualMachine {
                             }; // Borrow is dropped here
 
                             if let Some(method) = method_obj {
+                                // Visibility check: an explicit-receiver setter
+                                // call (`obj.foo = …`) can only invoke public
+                                // methods, mirroring `evaluate_method_call`.
+                                let is_explicit_receiver =
+                                    !matches!(receiver.as_ref(), Expression::SelfExpr { .. });
+                                if is_explicit_receiver && class.is_method_private(&setter_method) {
+                                    let msg = format!(
+                                        "private method '{}' called for an instance of {}",
+                                        setter_method,
+                                        class.name()
+                                    );
+                                    let exc = Object::exception("NoMethodError", msg.clone());
+                                    return Err(MetorexError::UncaughtException {
+                                        exception: exc,
+                                        location: position_to_location(*position),
+                                        message: msg,
+                                    });
+                                }
                                 self.invoke_method(
                                     class,
                                     method,
@@ -495,14 +532,51 @@ impl VirtualMachine {
                                 Ok(())
                             }
                         }
-                        _ => Err(MetorexError::runtime_error(
-                            format!(
-                                "Cannot call setter method '{}' on {}",
-                                setter_method,
-                                receiver_obj.type_name()
-                            ),
-                            position_to_location(*position),
-                        )),
+                        // For other receiver types (immediates: Bool/Int/Float/
+                        // Symbol/etc., or String), the user's reopened class
+                        // (`class TrueClass; …; end`) lives in globals, not in
+                        // `builtins.class_of`. Try the global class first so
+                        // user-defined accessors fire; fall back to the built-in
+                        // class otherwise.
+                        other => {
+                            let global_class_name = match &other {
+                                Object::Bool(true) => Some("TrueClass"),
+                                Object::Bool(false) => Some("FalseClass"),
+                                Object::Nil => Some("NilClass"),
+                                Object::Int(_) => Some("Integer"),
+                                Object::Float(_) => Some("Float"),
+                                Object::Symbol(_) => Some("Symbol"),
+                                _ => None,
+                            };
+                            let target_class: Option<Rc<crate::class::Class>> = global_class_name
+                                .and_then(|name| match self.globals().get(name) {
+                                    Some(Object::Class(c)) => Some(c),
+                                    _ => None,
+                                })
+                                .or_else(|| Some(self.builtins().class_of(&other)));
+
+                            if let Some(class) = target_class
+                                && let Some(method) = class.find_method(&setter_method)
+                            {
+                                self.invoke_method(
+                                    Rc::clone(&class),
+                                    method,
+                                    other,
+                                    vec![value],
+                                    *position,
+                                )?;
+                                Ok(())
+                            } else {
+                                Err(MetorexError::runtime_error(
+                                    format!(
+                                        "Cannot call setter method '{}' on {}",
+                                        setter_method,
+                                        other.type_name()
+                                    ),
+                                    position_to_location(*position),
+                                ))
+                            }
+                        }
                     }
                 } else {
                     Err(MetorexError::runtime_error(

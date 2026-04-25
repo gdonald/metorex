@@ -52,6 +52,15 @@ impl Parser {
             TokenKind::Break => Ok(symbol("break", symbol_position)),
             TokenKind::Continue => Ok(symbol("next", symbol_position)),
             TokenKind::Raise => Ok(symbol("raise", symbol_position)),
+            TokenKind::AttrReader => Ok(symbol("attr_reader", symbol_position)),
+            TokenKind::AttrWriter => Ok(symbol("attr_writer", symbol_position)),
+            TokenKind::AttrAccessor => Ok(symbol("attr_accessor", symbol_position)),
+            TokenKind::Extend => Ok(symbol("extend", symbol_position)),
+            TokenKind::Alias => Ok(symbol("alias", symbol_position)),
+            TokenKind::Unless => Ok(symbol("unless", symbol_position)),
+            TokenKind::Until => Ok(symbol("until", symbol_position)),
+            TokenKind::Then => Ok(symbol("then", symbol_position)),
+            TokenKind::Elsif => Ok(symbol("elsif", symbol_position)),
 
             // :[] and :[]= operator symbols
             TokenKind::LBracket => {

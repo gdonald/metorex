@@ -37,6 +37,13 @@ impl Parser {
             // is dispatched before reaching primary parsing.
             TokenKind::Include => Ok(literals::identifier("include".to_string(), position)),
             TokenKind::Extend => Ok(literals::identifier("extend".to_string(), position)),
+            // attr_reader/writer/accessor in expression context
+            // (e.g. `(attr_accessor :foo).should ==` from the specs).
+            TokenKind::AttrReader => Ok(literals::identifier("attr_reader".to_string(), position)),
+            TokenKind::AttrWriter => Ok(literals::identifier("attr_writer".to_string(), position)),
+            TokenKind::AttrAccessor => {
+                Ok(literals::identifier("attr_accessor".to_string(), position))
+            }
             TokenKind::InstanceVar(name) => Ok(literals::instance_variable(name, position)),
             TokenKind::ClassVar(name) => Ok(literals::class_variable(name, position)),
             TokenKind::GlobalVar(name) => Ok(literals::global_variable(name, position)),

@@ -108,8 +108,13 @@ fn parser_attr_accessor_multiple() {
 
 #[test]
 fn attr_reader_with_non_symbol_error() {
-    let err = parse_err("class Foo\n  attr_reader 42\nend");
-    assert!(err.contains("attribute") || err.contains("Expected") || err.contains("Unexpected"));
+    // Numeric arguments parse successfully (matching Ruby) and raise
+    // TypeError at runtime via the to_str coercion path.
+    let tokens = Lexer::new("class Foo\n  attr_reader 42\nend").tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse should succeed");
+    let mut vm = VirtualMachine::new();
+    let err = vm.execute_program(&stmts).unwrap_err().to_string();
+    assert!(err.contains("TypeError") || err.contains("symbol") || err.contains("String"));
 }
 
 // ── attr_* with keyword names (parser supports keywords-as-attr-names) ────
@@ -137,9 +142,55 @@ fn attr_accessor_with_multiple_keyword_names() {
 }
 
 #[test]
-fn attr_reader_missing_colon_errors() {
-    let err = parse_err("class Foo\n  attr_reader name\nend");
-    assert!(err.contains("Expected") || err.contains("symbol") || err.contains("attribute"));
+fn attr_reader_with_string_arg_works() {
+    // String arguments work (matching Ruby — `attr_reader "name"` defines a
+    // `name` getter). Previously the parser rejected this.
+    let result = run(
+        "class Foo\n  attr_reader \"name\"\n  def initialize\n    @name = 7\n  end\nend\nFoo.new.name",
+    );
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn attr_writer_with_string_arg_works() {
+    let result = run(
+        "class Foo\n  attr_writer \"name\"\nend\nf = Foo.new\nf.name = 99\nf.instance_variable_get(:@name)",
+    );
+    assert_eq!(result, Some(Object::Int(99)));
+}
+
+#[test]
+fn attr_accessor_mixed_symbol_and_string() {
+    let result =
+        run("class Foo\n  attr_accessor :a, \"b\"\nend\nf = Foo.new\nf.a = 3\nf.b = 4\nf.a + f.b");
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn attr_accessor_with_local_var_to_str_arg() {
+    // Bare identifier in attr_accessor list is evaluated and coerced via to_str.
+    let result = run(
+        "class Foo\n  name = \"value\"\n  attr_reader name\nend\nf = Foo.new\nf.instance_variable_set(:@value, 11)\nf.value",
+    );
+    assert_eq!(result, Some(Object::Int(11)));
+}
+
+#[test]
+fn chained_method_setter_assignment() {
+    // `o.a = o.b = nil` — chained assignment where the inner RHS is itself a
+    // method-setter assignment expression.
+    let result =
+        run("class Foo\n  attr_accessor :a, :b\nend\nf = Foo.new\nf.a = f.b = 7\nf.a + f.b");
+    assert_eq!(result, Some(Object::Int(14)));
+}
+
+#[test]
+fn attr_accessor_with_to_str_object_arg() {
+    // Custom object responding to to_str gets coerced to a string.
+    let result = run(
+        "class Conv\n  def to_str\n    \"foo\"\n  end\nend\nclass Holder\n  attr_accessor Conv.new\nend\nh = Holder.new\nh.foo = 5\nh.foo",
+    );
+    assert_eq!(result, Some(Object::Int(5)));
 }
 
 // ── Keyword method names on receiver ─────────────────────────────────────────

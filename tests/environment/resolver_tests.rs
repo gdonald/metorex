@@ -776,17 +776,27 @@ fn resolver_case_in_statement() {
 #[test]
 fn resolver_attr_reader_writer_accessor() {
     let mut r = Resolver::new();
+    use metorex::ast::node::Expression;
     let stmts = vec![
         Statement::AttrReader {
-            attributes: vec!["name".to_string()],
+            attributes: vec![Expression::Symbol {
+                value: "name".to_string(),
+                position: pos(),
+            }],
             position: pos(),
         },
         Statement::AttrWriter {
-            attributes: vec!["name".to_string()],
+            attributes: vec![Expression::Symbol {
+                value: "name".to_string(),
+                position: pos(),
+            }],
             position: pos(),
         },
         Statement::AttrAccessor {
-            attributes: vec!["age".to_string()],
+            attributes: vec![Expression::Symbol {
+                value: "age".to_string(),
+                position: pos(),
+            }],
             position: pos(),
         },
     ];

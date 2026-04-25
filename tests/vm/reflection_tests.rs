@@ -134,14 +134,16 @@ fn methods_on_builtin_returns_array() {
 
 #[test]
 fn methods_wrong_arg_count() {
+    // Ruby's `Object#methods` accepts an optional `include_super` Boolean;
+    // passing an extra second positional arg is the error case now.
     let err = run_err(
         r#"
 class Foo
 end
-Foo.new.methods("extra")
+Foo.new.methods(true, "extra")
 "#,
     );
-    assert!(err.contains("expected 0"));
+    assert!(err.contains("expected 1"));
 }
 
 // ── send ────────────────────────────────────────────────────────────────

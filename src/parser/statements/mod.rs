@@ -338,6 +338,7 @@ impl Parser {
                     | crate::ast::Expression::ClassVariable { .. }
                     | crate::ast::Expression::GlobalVariable { .. }
                     | crate::ast::Expression::Index { .. }
+                    | crate::ast::Expression::MethodCall { .. }
             )
         {
             let position = self.advance().position;

@@ -1,6 +1,6 @@
 // Attribute accessor parsing (attr_reader, attr_writer, attr_accessor)
 
-use crate::ast::Statement;
+use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -13,7 +13,7 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        let attributes = self.parse_symbol_list()?;
+        let attributes = self.parse_attribute_list()?;
 
         Ok(Statement::AttrReader {
             attributes,
@@ -28,7 +28,7 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        let attributes = self.parse_symbol_list()?;
+        let attributes = self.parse_attribute_list()?;
 
         Ok(Statement::AttrWriter {
             attributes,
@@ -43,7 +43,7 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        let attributes = self.parse_symbol_list()?;
+        let attributes = self.parse_attribute_list()?;
 
         Ok(Statement::AttrAccessor {
             attributes,
@@ -51,29 +51,14 @@ impl Parser {
         })
     }
 
-    /// Parse a comma-separated list of symbols (:name1, :name2, ...)
-    fn parse_symbol_list(&mut self) -> Result<Vec<String>, MetorexError> {
+    /// Parse a comma-separated list of attribute expressions. Each expression
+    /// is evaluated at runtime; symbols and strings resolve directly, other
+    /// values are coerced via #to_str.
+    fn parse_attribute_list(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut attributes = Vec::new();
 
-        // Parse first symbol
-        self.expect(TokenKind::Colon, "Expected ':' before attribute name")?;
-        self.skip_whitespace();
+        attributes.push(self.parse_attribute_expression()?);
 
-        match self.advance().kind {
-            TokenKind::Ident(name) => attributes.push(name),
-            TokenKind::Include => attributes.push("include".to_string()),
-            TokenKind::Extend => attributes.push("extend".to_string()),
-            TokenKind::Class => attributes.push("class".to_string()),
-            TokenKind::Module => attributes.push("module".to_string()),
-            TokenKind::Def => attributes.push("def".to_string()),
-            TokenKind::End => attributes.push("end".to_string()),
-            TokenKind::If => attributes.push("if".to_string()),
-            TokenKind::Else => attributes.push("else".to_string()),
-            TokenKind::Do => attributes.push("do".to_string()),
-            _ => return Err(self.error_at_previous("Expected attribute name after ':'")),
-        }
-
-        // Parse remaining symbols
         loop {
             self.skip_whitespace();
 
@@ -82,24 +67,46 @@ impl Parser {
             }
 
             self.skip_whitespace();
-            self.expect(TokenKind::Colon, "Expected ':' before attribute name")?;
-            self.skip_whitespace();
-
-            match self.advance().kind {
-                TokenKind::Ident(name) => attributes.push(name),
-                TokenKind::Include => attributes.push("include".to_string()),
-                TokenKind::Extend => attributes.push("extend".to_string()),
-                TokenKind::Class => attributes.push("class".to_string()),
-                TokenKind::Module => attributes.push("module".to_string()),
-                TokenKind::Def => attributes.push("def".to_string()),
-                TokenKind::End => attributes.push("end".to_string()),
-                TokenKind::If => attributes.push("if".to_string()),
-                TokenKind::Else => attributes.push("else".to_string()),
-                TokenKind::Do => attributes.push("do".to_string()),
-                _ => return Err(self.error_at_previous("Expected attribute name after ':'")),
-            }
+            attributes.push(self.parse_attribute_expression()?);
         }
 
         Ok(attributes)
     }
+
+    /// Parse a single attribute name expression. Recognizes `:keyword` for
+    /// reserved-word symbols (e.g. `:include`, `:class`); otherwise defers to
+    /// the standard expression parser so strings, identifiers, and arbitrary
+    /// expressions all work.
+    fn parse_attribute_expression(&mut self) -> Result<Expression, MetorexError> {
+        if matches!(self.peek().kind, TokenKind::Colon) {
+            let next = self.peek_ahead(1).kind.clone();
+            if let Some(name) = reserved_keyword_name(&next) {
+                let colon_pos = self.advance().position;
+                self.advance();
+                return Ok(Expression::Symbol {
+                    value: name,
+                    position: colon_pos,
+                });
+            }
+        }
+        self.parse_expression()
+    }
+}
+
+fn reserved_keyword_name(kind: &TokenKind) -> Option<String> {
+    Some(
+        match kind {
+            TokenKind::Include => "include",
+            TokenKind::Extend => "extend",
+            TokenKind::Class => "class",
+            TokenKind::Module => "module",
+            TokenKind::Def => "def",
+            TokenKind::End => "end",
+            TokenKind::If => "if",
+            TokenKind::Else => "else",
+            TokenKind::Do => "do",
+            _ => return None,
+        }
+        .to_string(),
+    )
 }

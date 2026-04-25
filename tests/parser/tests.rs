@@ -428,6 +428,71 @@ fn symbol_keyword_raise() {
     );
 }
 #[test]
+fn symbol_keyword_attr_reader() {
+    assert_eq!(
+        run_sym(":attr_reader"),
+        Some(Object::Symbol(std::rc::Rc::new("attr_reader".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_attr_writer() {
+    assert_eq!(
+        run_sym(":attr_writer"),
+        Some(Object::Symbol(std::rc::Rc::new("attr_writer".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_attr_accessor() {
+    assert_eq!(
+        run_sym(":attr_accessor"),
+        Some(Object::Symbol(std::rc::Rc::new(
+            "attr_accessor".to_string()
+        )))
+    );
+}
+#[test]
+fn symbol_keyword_extend() {
+    assert_eq!(
+        run_sym(":extend"),
+        Some(Object::Symbol(std::rc::Rc::new("extend".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_alias() {
+    assert_eq!(
+        run_sym(":alias"),
+        Some(Object::Symbol(std::rc::Rc::new("alias".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_unless() {
+    assert_eq!(
+        run_sym(":unless"),
+        Some(Object::Symbol(std::rc::Rc::new("unless".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_until() {
+    assert_eq!(
+        run_sym(":until"),
+        Some(Object::Symbol(std::rc::Rc::new("until".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_then() {
+    assert_eq!(
+        run_sym(":then"),
+        Some(Object::Symbol(std::rc::Rc::new("then".to_string())))
+    );
+}
+#[test]
+fn symbol_keyword_elsif() {
+    assert_eq!(
+        run_sym(":elsif"),
+        Some(Object::Symbol(std::rc::Rc::new("elsif".to_string())))
+    );
+}
+#[test]
 fn symbol_from_ivar() {
     assert_eq!(
         run_sym(":@name"),

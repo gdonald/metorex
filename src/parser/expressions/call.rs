@@ -626,9 +626,13 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Parse first argument — detect keyword arg pattern (Ident :)
+        // Parse first argument — detect keyword arg pattern (Ident:).
+        // The colon must be glued to the identifier (no space): `key: value` is
+        // a kwarg, but `have_method :boom` is a paren-less call whose argument
+        // is the symbol `:boom`.
         if matches!(self.peek().kind, TokenKind::Ident(_))
             && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            && !self.peek_ahead(1).had_leading_space
         {
             let name = match self.advance().kind {
                 TokenKind::Ident(n) => n,
@@ -669,9 +673,12 @@ impl Parser {
                 break;
             }
 
-            // Detect keyword argument
+            // Detect keyword argument — require the colon to be glued to the
+            // identifier (no leading space) so `foo bar :baz` parses as
+            // `foo(bar, :baz)`, not `foo(bar: :baz)`.
             if matches!(self.peek().kind, TokenKind::Ident(_))
                 && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+                && !self.peek_ahead(1).had_leading_space
             {
                 let name = match self.advance().kind {
                     TokenKind::Ident(n) => n,

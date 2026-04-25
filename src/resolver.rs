@@ -468,10 +468,14 @@ impl Resolver {
                 self.pop_scope();
             }
 
-            Statement::AttrReader { .. }
-            | Statement::AttrWriter { .. }
-            | Statement::AttrAccessor { .. } => {
-                // These are class-level declarations, no variable resolution needed
+            Statement::AttrReader { attributes, .. }
+            | Statement::AttrWriter { attributes, .. }
+            | Statement::AttrAccessor { attributes, .. } => {
+                // Attribute name expressions may reference local variables
+                // (e.g. `attr_accessor o` where `o` is bound in the class body).
+                for attr in attributes {
+                    self.resolve_expression(attr);
+                }
             }
 
             Statement::ModuleDef { name, body, .. } => {

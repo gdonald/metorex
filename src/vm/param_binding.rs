@@ -77,13 +77,32 @@ pub(crate) fn bind_params(
 
 /// Split a list of evaluated arguments into positional args and keyword args.
 /// If the last argument is a Dict with symbol-style keys, it's treated as keyword args.
+///
+/// `has_keyword_params` indicates whether the callee declared any keyword
+/// parameters. When false, the trailing kwargs dict (if any) is kept as a
+/// positional argument with its `__MX_KWARGS__` marker stripped — matching
+/// Ruby's behavior of folding trailing `key: value` syntax into a Hash that
+/// fills the last positional parameter.
 pub(crate) fn split_keyword_args(
     mut arguments: Vec<Object>,
+    has_keyword_params: bool,
 ) -> (Vec<Object>, HashMap<String, Object>) {
     // Only split if the trailing dict carries the parser-emitted kwargs marker.
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
         if dict.contains_key("__MX_KWARGS__") {
+            if !has_keyword_params {
+                // Promote the kwargs dict to a regular Hash positional arg.
+                let cleaned: HashMap<String, Object> = dict
+                    .iter()
+                    .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                drop(dict);
+                arguments.pop();
+                arguments.push(Object::Dict(Rc::new(RefCell::new(cleaned))));
+                return (arguments, HashMap::new());
+            }
             let kwargs: HashMap<String, Object> = dict
                 .iter()
                 .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")

@@ -139,6 +139,7 @@ fn test_equals_instance() {
         instance_vars: HashMap::new(),
         singleton_methods: Rc::new(RefCell::new(HashMap::new())),
         singleton_class: Rc::new(RefCell::new(None)),
+        frozen: false,
     }));
     let inst2 = Rc::clone(&inst1);
     let inst3 = Rc::new(RefCell::new(Instance {
@@ -146,6 +147,7 @@ fn test_equals_instance() {
         instance_vars: HashMap::new(),
         singleton_methods: Rc::new(RefCell::new(HashMap::new())),
         singleton_class: Rc::new(RefCell::new(None)),
+        frozen: false,
     }));
 
     let obj1 = Object::Instance(inst1);
