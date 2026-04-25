@@ -90,7 +90,14 @@ end
 Alone.new.foo
 "#,
     );
-    assert!(err.contains("super") || err.contains("superclass") || err.contains("parent"));
+    // `class Alone` implicitly inherits from Object, so the error now reports
+    // that Object (the parent) does not define `foo`, rather than no-superclass.
+    assert!(
+        err.contains("super")
+            || err.contains("superclass")
+            || err.contains("Superclass")
+            || err.contains("parent")
+    );
 }
 
 #[test]

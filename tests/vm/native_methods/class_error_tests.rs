@@ -97,12 +97,17 @@ B.ancestors.length
 
 #[test]
 fn class_superclass_nil_when_no_parent() {
+    // A user-defined class without an explicit `<` parent inherits from
+    // Object (Ruby semantics), so `superclass` returns Object, not nil.
     let result = run(r#"
 class Solo
 end
-Solo.superclass
+Solo.superclass.name
 "#);
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new("Object".to_string())))
+    );
 }
 
 fn run_err(code: &str) -> String {

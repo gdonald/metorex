@@ -68,12 +68,28 @@ impl VirtualMachine {
                 if let Some(existing) = class_rc.singleton_class_slot().clone() {
                     return existing;
                 }
+                let is_module = matches!(receiver, Object::Module(_));
                 // Per Ruby: the singleton class of a Class K has K's parent's
                 // singleton class as its superclass (not K's parent itself).
                 // Build that chain on demand by recursing through `superclass`.
-                let parent_singleton = class_rc
-                    .superclass()
-                    .map(|sup| self.singleton_class_of(&Object::Class(sup)));
+                // For BasicObject (no superclass), the singleton inherits from
+                // `Class` itself, which gives the chain Class → Module → Object
+                // → Kernel → BasicObject when walking a class's singleton
+                // ancestors. A standalone module's singleton inherits from
+                // `Module`, matching MRI. Other module-kind classes with no
+                // superclass stay ungrounded to avoid unbounded lookup loops.
+                let parent_singleton = match class_rc.superclass() {
+                    Some(sup) => Some(self.singleton_class_of(&Object::Class(sup))),
+                    None if class_rc.name() == "BasicObject" => match self.globals().get("Class") {
+                        Some(Object::Class(c)) => Some(c),
+                        _ => None,
+                    },
+                    None if is_module => match self.globals().get("Module") {
+                        Some(Object::Class(c)) => Some(c),
+                        _ => None,
+                    },
+                    None => None,
+                };
                 let sc = Rc::new(Class::new(
                     singleton_class_display_name(receiver),
                     parent_singleton,

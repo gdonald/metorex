@@ -168,7 +168,9 @@ class C < B
 end
 C.ancestors.length
 "#);
-    assert_eq!(result, Some(Object::Int(3))); // C, B, A
+    // C, B, A, Object, Kernel, BasicObject — Object chain joins at A because
+    // user classes without an explicit `<` parent inherit from Object.
+    assert_eq!(result, Some(Object::Int(6)));
 }
 
 // ============================================================================

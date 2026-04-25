@@ -98,6 +98,12 @@ impl VirtualMachine {
             "name" => {
                 return Ok(Some(Object::String(Rc::new(module_rc.name().to_string()))));
             }
+            "ancestors" => {
+                let mut chain: Vec<Object> = Vec::new();
+                let mut seen: Vec<*const crate::class::Class> = Vec::new();
+                super::class_methods::push_module_ancestors(module_rc, &mut chain, &mut seen);
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(chain)))));
+            }
             "remove_method" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(

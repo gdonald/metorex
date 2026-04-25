@@ -36,7 +36,22 @@ impl Parser {
 
         let token = self.peek().clone();
         match &token.kind {
-            TokenKind::Class => self.parse_class_def(),
+            TokenKind::Class => {
+                // `class << target; …; end` is an expression whose value is the
+                // singleton class, so it may be chained (`.ancestors`, `==`, …).
+                // Route it through the expression parser; `class Name` remains
+                // a statement-level definition.
+                if matches!(self.peek_ahead(1).kind, TokenKind::Shovel) {
+                    let expr = self.parse_expression_with_lambda()?;
+                    let stmt = Statement::Expression {
+                        expression: expr,
+                        position: token.position,
+                    };
+                    self.wrap_with_modifier(stmt)
+                } else {
+                    self.parse_class_def()
+                }
+            }
             TokenKind::Def => self.parse_function_def(),
             TokenKind::If => self.parse_if_statement(),
             TokenKind::Unless => self.parse_unless_statement(),

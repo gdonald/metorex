@@ -147,7 +147,12 @@ end
 Base.new.greet
 "#,
     );
-    assert!(err.contains("super") || err.contains("parent") || err.contains("superclass"));
+    assert!(
+        err.contains("super")
+            || err.contains("Superclass")
+            || err.contains("parent")
+            || err.contains("superclass")
+    );
 }
 
 // ── nil conversion methods ───────────────────────────────────────────────────

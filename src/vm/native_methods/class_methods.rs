@@ -643,18 +643,8 @@ impl VirtualMachine {
             }
             "ancestors" => {
                 let mut chain: Vec<Object> = Vec::new();
-                chain.push(Object::Class(Rc::clone(class_rc)));
-                for mixin in class_rc.mixin_chain() {
-                    chain.push(Object::Module(mixin));
-                }
-                let mut current = class_rc.superclass();
-                while let Some(parent) = current {
-                    chain.push(Object::Class(Rc::clone(&parent)));
-                    for mixin in parent.mixin_chain() {
-                        chain.push(Object::Module(mixin));
-                    }
-                    current = parent.superclass();
-                }
+                let mut seen: Vec<*const Class> = Vec::new();
+                push_class_ancestors(class_rc, &mut chain, &mut seen);
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(chain)))));
             }
             "const_defined?" => {
@@ -933,5 +923,54 @@ impl VirtualMachine {
             _ => {}
         }
         Ok(None)
+    }
+}
+
+/// Append the transitive ancestor chain of a module (including itself and all
+/// modules it mixes in, recursively) onto `chain`. Uses pointer identity in
+/// `seen` to skip modules that have already been added, matching Ruby's
+/// dedup-on-first-sighting semantics.
+pub(super) fn push_module_ancestors(
+    module: &Rc<Class>,
+    chain: &mut Vec<Object>,
+    seen: &mut Vec<*const Class>,
+) {
+    let ptr = Rc::as_ptr(module);
+    if seen.contains(&ptr) {
+        return;
+    }
+    seen.push(ptr);
+    chain.push(Object::Module(Rc::clone(module)));
+    for mixin in module.mixin_chain() {
+        push_module_ancestors(&mixin, chain, seen);
+    }
+}
+
+/// Append the full ancestor chain of a class (class itself, its mixins
+/// recursively, then each superclass with its own mixins) onto `chain`.
+pub(super) fn push_class_ancestors(
+    class: &Rc<Class>,
+    chain: &mut Vec<Object>,
+    seen: &mut Vec<*const Class>,
+) {
+    let ptr = Rc::as_ptr(class);
+    if !seen.contains(&ptr) {
+        seen.push(ptr);
+        chain.push(Object::Class(Rc::clone(class)));
+    }
+    for mixin in class.mixin_chain() {
+        push_module_ancestors(&mixin, chain, seen);
+    }
+    let mut current = class.superclass();
+    while let Some(parent) = current {
+        let pptr = Rc::as_ptr(&parent);
+        if !seen.contains(&pptr) {
+            seen.push(pptr);
+            chain.push(Object::Class(Rc::clone(&parent)));
+        }
+        for mixin in parent.mixin_chain() {
+            push_module_ancestors(&mixin, chain, seen);
+        }
+        current = parent.superclass();
     }
 }

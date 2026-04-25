@@ -278,3 +278,94 @@ fn test_oop_module_self_method_execution() {
     let output = run_example("oop/module/self_method.rb");
     assert_eq!(output, "from module\nalso from module\n");
 }
+
+#[test]
+fn test_oop_ancestors_basics() {
+    let expected = concat!(
+        "[BasicObject]\n",
+        "[Object, Kernel, BasicObject]\n",
+        "[Kernel]\n",
+        "[MSpecsAncestors]\n",
+        "[MSABasic, Object, Kernel, BasicObject]\n",
+        "[MSASuper, MSABasic, Object, Kernel, BasicObject]\n",
+        "[MSAParent, Object, Kernel, BasicObject]\n",
+        "[MSAChild, MSAParent, Object, Kernel, BasicObject]\n",
+    );
+    let output = run_example("oop/ancestors_basics.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_ancestors_module_include() {
+    let expected = concat!(
+        "[Basic]\n",
+        "[Sup, Basic]\n",
+        "---\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "---\n",
+        "[Sup, Basic]\n",
+    );
+    let output = run_example("oop/ancestors_module_include.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_ancestors_nested_include() {
+    let expected = concat!(
+        "[NIBasic]\n",
+        "[NISuper, NIBasic]\n",
+        "[NIParent, Object, Kernel, BasicObject]\n",
+        "[NIChild, NISuper, NIBasic, NIParent, Object, Kernel, BasicObject]\n",
+        "---\n",
+        "true\n",
+    );
+    let output = run_example("oop/ancestors_nested_include.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_ancestors_parent_class() {
+    let expected = concat!(
+        "[AParent, Object, Kernel, BasicObject]\n",
+        "[AParent, Object, Kernel, BasicObject]\n",
+        "true\n",
+        "---\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("oop/ancestors_parent_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_ancestors_singleton() {
+    let expected = concat!(
+        "[#<Class:ASChild>, ASInternal, #<Class:ASParent>, #<Class:Object>, ",
+        "#<Class:BasicObject>, Class, Module, Object, Kernel, BasicObject]\n",
+        "---\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("oop/ancestors_singleton.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_ancestors_standalone_module_singleton() {
+    let expected = concat!(
+        "[#<Class:ASMStandalone>, Module, Object, Kernel, BasicObject]\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("oop/ancestors_standalone_module_singleton.rb");
+    assert_eq!(output, expected);
+}

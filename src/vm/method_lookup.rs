@@ -275,30 +275,36 @@ impl VirtualMachine {
                 class.find_method(method_name).map(|method| (class, method))
             }
             Object::Class(class_rc) => {
-                // `class << C` installs a singleton class whose method table
-                // holds the class's class-level methods — check it before
-                // falling back to the `__class__` convention / instance table.
+                // `def self.name` stores on the class itself under the
+                // `__class__` prefix; check it before walking the singleton
+                // class's superclass chain so a method from the singleton's
+                // ancestors (e.g. Object#describe, when Object has been
+                // reopened) doesn't shadow the class's own class-level method.
+                let class_method_name = format!("__class__{}", method_name);
+                if let Some(method) = class_rc.find_method(&class_method_name) {
+                    return Some((Rc::clone(class_rc), method));
+                }
                 if let Some(sc) = class_rc.singleton_class_slot().clone()
                     && let Some(method) = sc.find_method(method_name)
                 {
                     return Some((sc, method));
                 }
-                let class_method_name = format!("__class__{}", method_name);
                 class_rc
-                    .find_method(&class_method_name)
-                    .or_else(|| class_rc.find_method(method_name))
+                    .find_method(method_name)
                     .map(|method| (Rc::clone(class_rc), method))
             }
             Object::Module(module_rc) => {
+                let class_method_name = format!("__class__{}", method_name);
+                if let Some(method) = module_rc.find_method(&class_method_name) {
+                    return Some((Rc::clone(module_rc), method));
+                }
                 if let Some(sc) = module_rc.singleton_class_slot().clone()
                     && let Some(method) = sc.find_method(method_name)
                 {
                     return Some((sc, method));
                 }
-                let class_method_name = format!("__class__{}", method_name);
                 module_rc
-                    .find_method(&class_method_name)
-                    .or_else(|| module_rc.find_method(method_name))
+                    .find_method(method_name)
                     .map(|method| (Rc::clone(module_rc), method))
             }
             _ => {

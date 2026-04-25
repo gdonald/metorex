@@ -68,7 +68,14 @@ impl VirtualMachine {
                 }
             }
         } else {
-            None
+            // Ruby default: classes without an explicit `<` parent inherit from
+            // Object, so `class Foo; end` has the full Object → Kernel →
+            // BasicObject ancestry. Built-in classes (BasicObject, Object itself)
+            // are constructed directly in `init.rs` and don't hit this branch.
+            match self.globals().get("Object") {
+                Some(Object::Class(object_class)) => Some(object_class),
+                _ => None,
+            }
         };
 
         // Reopen existing class if it exists (Ruby semantics), otherwise create new.

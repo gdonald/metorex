@@ -222,17 +222,39 @@ impl VirtualMachine {
             }
         };
 
-        // Look up the method in the parent class
-        let method = parent_class.find_method(&method_name).ok_or_else(|| {
-            MetorexError::runtime_error(
-                format!(
-                    "Superclass {} does not define method '{}'",
-                    parent_class.name(),
-                    method_name
-                ),
-                position_to_location(position),
-            )
-        })?;
+        // Look up the method in the parent class. If not found and the method
+        // is one of the well-known Object-level fallbacks (e.g. `<=>`), mirror
+        // the None-superclass branch above so e.g. `super` in a user class's
+        // `<=>` still degrades to `self.equal?(other) ? 0 : nil`.
+        let method = match parent_class.find_method(&method_name) {
+            Some(m) => m,
+            None if method_name == "<=>" => {
+                drop(instance_borrowed);
+                let mut evaluated_args = Vec::with_capacity(arguments.len());
+                for arg in arguments {
+                    evaluated_args.push(self.evaluate_expression(arg)?);
+                }
+                let self_val = self.environment().get("self").unwrap_or(Object::Nil);
+                if let Some(other) = evaluated_args.first() {
+                    let same = matches!(
+                        (&self_val, other),
+                        (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b)
+                    );
+                    return Ok(if same { Object::Int(0) } else { Object::Nil });
+                }
+                return Ok(Object::Nil);
+            }
+            None => {
+                return Err(MetorexError::runtime_error(
+                    format!(
+                        "Superclass {} does not define method '{}'",
+                        parent_class.name(),
+                        method_name
+                    ),
+                    position_to_location(position),
+                ));
+            }
+        };
 
         // Evaluate the arguments (or forward the enclosing method's args for
         // bare `super`).

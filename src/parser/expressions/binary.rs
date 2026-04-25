@@ -81,6 +81,7 @@ impl Parser {
                 TokenKind::BangEqual => BinaryOp::NotEqual,
                 _ => unreachable!(),
             };
+            self.skip_whitespace();
             let right = self.parse_comparison()?;
             expr = Expression::BinaryOp {
                 op,

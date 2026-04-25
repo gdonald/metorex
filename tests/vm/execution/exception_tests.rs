@@ -300,7 +300,10 @@ BaseNoParent.new.foo
 "#,
     );
     assert!(
-        err.contains("superclass") || err.contains("super") || err.contains("BaseNoParent"),
+        err.contains("superclass")
+            || err.contains("Superclass")
+            || err.contains("super")
+            || err.contains("BaseNoParent"),
         "Error was: {}",
         err
     );

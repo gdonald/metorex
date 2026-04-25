@@ -178,7 +178,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.6.8. core/class/superclass_spec — 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
 - [ ] 4.7. core/module
   - [x] 4.7.1. core/module/alias_method_spec — 1 file, 23 examples, 39 expectations, 0 failures, 0 errors
-  - [ ] 4.7.2. core/module/ancestors_spec
+  - [x] 4.7.2. core/module/ancestors_spec — 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.7.3. core/module/append_features_spec
   - [ ] 4.7.4. core/module/attr_accessor_spec
   - [ ] 4.7.5. core/module/attr_reader_spec

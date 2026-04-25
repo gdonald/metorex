@@ -225,7 +225,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
             }
-            "select" | "filter" => {
+            "select" | "filter" | "reject" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -246,18 +246,19 @@ impl VirtualMachine {
                     }
                     None => {
                         return Err(MetorexError::runtime_error(
-                            "select requires a block",
+                            format!("{} requires a block", method_name),
                             position_to_location(position),
                         ));
                     }
                 };
+                let reject = method_name == "reject";
                 let array = array_rc.borrow();
                 let mut results = Vec::new();
                 for element in array.iter() {
                     let args = vec![element.clone()];
                     let value = self.execute_block_body(&block, args)?;
                     let is_truthy = !matches!(value, Object::Bool(false) | Object::Nil);
-                    if is_truthy {
+                    if is_truthy != reject {
                         results.push(element.clone());
                     }
                 }
