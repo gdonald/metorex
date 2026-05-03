@@ -601,15 +601,33 @@ impl VirtualMachine {
                 if arguments.is_empty() {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 }
-                let mut names: Vec<String> = Vec::with_capacity(arguments.len());
-                for arg in arguments {
+                // `attr name, true|false` is the deprecated 2-arg boolean form:
+                // the second arg controls writer creation, and only the first
+                // arg is a name. Ruby warns under `$VERBOSE = true`.
+                let want_reader = matches!(method_name, "attr_reader" | "attr_accessor" | "attr");
+                let mut want_writer = matches!(method_name, "attr_writer" | "attr_accessor");
+                let names_slice: &[Object] = if method_name == "attr"
+                    && arguments.len() == 2
+                    && matches!(&arguments[1], Object::Bool(_))
+                {
+                    if matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true))) {
+                        self.emit_warning_to_stderr(
+                            "warning: optional boolean argument is obsoleted",
+                            position,
+                        );
+                    }
+                    want_writer = matches!(&arguments[1], Object::Bool(true));
+                    &arguments[..1]
+                } else {
+                    arguments
+                };
+                let mut names: Vec<String> = Vec::with_capacity(names_slice.len());
+                for arg in names_slice {
                     let n = self.coerce_method_name(arg, method_name, position)?;
                     names.push(n);
                 }
                 let visibility = class_rc.current_visibility();
                 let mut defined: Vec<Object> = Vec::new();
-                let want_reader = matches!(method_name, "attr_reader" | "attr_accessor" | "attr");
-                let want_writer = matches!(method_name, "attr_writer" | "attr_accessor");
                 let mut newly_defined_names: Vec<String> = Vec::new();
                 for attr_name in &names {
                     if want_reader {

@@ -145,6 +145,10 @@ impl Parser {
         // `def foo\n(@x = y)` would eat the grouped expression as a param list.
         let parameters = if self.match_token(&[TokenKind::LParen]) {
             self.parse_parameters()?
+        } else if self.can_start_no_paren_params() {
+            // `def name arg, *rest, &block` — Ruby's paren-less param list.
+            // Stops at newline/semicolon (statement terminator).
+            self.parse_parameters_no_parens()?
         } else {
             self.skip_whitespace();
             Vec::new()
@@ -239,6 +243,80 @@ impl Parser {
     }
 
     /// Parse function parameters
+    /// Whether the next token can begin a paren-less `def` parameter list.
+    /// Distinguishes `def foo bar` (paren-less param `bar`) from `def foo;`
+    /// or `def foo\n` (no params). Newline / Semicolon / End / RBrace etc.
+    /// are all parameter-list terminators.
+    fn can_start_no_paren_params(&self) -> bool {
+        matches!(
+            self.peek().kind,
+            TokenKind::Ident(_) | TokenKind::Star | TokenKind::Ampersand
+        )
+    }
+
+    /// Parse a paren-less parameter list: `arg1, *rest, &block`. Mirrors
+    /// `parse_parameters` but stops at the statement terminator (Newline /
+    /// Semicolon) instead of expecting a closing RParen.
+    fn parse_parameters_no_parens(&mut self) -> Result<Vec<Parameter>, MetorexError> {
+        let mut params = Vec::new();
+
+        loop {
+            let param_pos = self.peek().position;
+
+            if self.match_token(&[TokenKind::Ampersand]) {
+                let name = match self.advance().kind {
+                    TokenKind::Ident(name) => name,
+                    _ => return Err(self.error_at_previous("Expected parameter name after '&'")),
+                };
+                params.push(Parameter::block(name, param_pos));
+            } else if self.match_token(&[TokenKind::Star]) {
+                if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
+                    params.push(Parameter::variadic("__anon_splat".to_string(), param_pos));
+                } else {
+                    let name = match self.advance().kind {
+                        TokenKind::Ident(name) => name,
+                        _ => {
+                            return Err(self.error_at_previous("Expected parameter name after '*'"));
+                        }
+                    };
+                    params.push(Parameter::variadic(name, param_pos));
+                }
+            } else {
+                let name = match self.advance().kind {
+                    TokenKind::Ident(name) => name,
+                    _ => return Err(self.error_at_previous("Expected parameter name")),
+                };
+
+                if self.match_token(&[TokenKind::Colon]) {
+                    let default = if self.check(&[
+                        TokenKind::Comma,
+                        TokenKind::Newline,
+                        TokenKind::Semicolon,
+                    ]) {
+                        None
+                    } else {
+                        Some(self.parse_expression()?)
+                    };
+                    params.push(Parameter::named_keyword(name, default, param_pos));
+                } else if self.match_token(&[TokenKind::Equal]) {
+                    let default = self.parse_expression()?;
+                    params.push(Parameter::with_default(name, default, param_pos));
+                } else {
+                    params.push(Parameter::simple(name, param_pos));
+                }
+            }
+
+            // Comma separator — allow optional whitespace around it. A bare
+            // newline/semicolon ends the parameter list.
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+            self.skip_whitespace();
+        }
+
+        Ok(params)
+    }
+
     pub(crate) fn parse_parameters(&mut self) -> Result<Vec<Parameter>, MetorexError> {
         let mut params = Vec::new();
         self.skip_whitespace();

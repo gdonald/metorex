@@ -107,7 +107,10 @@ impl Parser {
                         position: ident_token.position,
                     }
                 } else {
-                    let key = self.parse_expression()?;
+                    self.dict_literal_depth += 1;
+                    let key_result = self.parse_expression();
+                    self.dict_literal_depth -= 1;
+                    let key = key_result?;
                     self.skip_whitespace();
                     // Support both `:` and `=>` for hash syntax
                     if self.check(&[TokenKind::FatArrow]) {

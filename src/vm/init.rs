@@ -106,6 +106,11 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("Rational", Object::Class(rational_class));
     let complex_class = Rc::new(Class::new("Complex", Some(Rc::clone(&numeric))));
     globals.set("Complex", Object::Class(complex_class));
+
+    // Regexp — stub class so `case x; when Regexp; ...; end` and
+    // `obj.kind_of?(Regexp)` resolve.
+    let regexp_class = Rc::new(Class::new("Regexp", Some(Rc::clone(&object))));
+    globals.set("Regexp", Object::Class(regexp_class));
 }
 
 /// Register standard Ruby exception class hierarchy as stubs.

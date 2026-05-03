@@ -489,8 +489,11 @@ impl Parser {
             return false;
         }
 
-        // Pattern 2: <arg> '}' - suggests dict with missing colon like {x 1}
-        if matches!(self.peek_ahead(1).kind, TokenKind::RBrace) {
+        // Pattern 2: <arg> '}' inside a dict literal — suggests `{x 1}` with
+        // missing `:` / `=>`. Only apply this disambiguation when actually
+        // parsing a dict key; in a brace block (`{ attr o }`) the `}` simply
+        // terminates the block and `attr o` is a paren-less call.
+        if self.dict_literal_depth > 0 && matches!(self.peek_ahead(1).kind, TokenKind::RBrace) {
             return false;
         }
 

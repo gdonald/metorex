@@ -28,6 +28,10 @@ pub struct Parser {
     /// identifier-valued arguments must NOT absorb a trailing `do...end` —
     /// the block belongs to the outer method call, per Ruby precedence.
     pub(crate) paren_less_arg_depth: usize,
+    /// Depth of dictionary-literal key/value parsing currently active. Used
+    /// to disambiguate `{x 1}` (dict-with-missing-colon, not a paren-less call)
+    /// from `Class.new { attr o }` (brace block where `attr o` is a method call).
+    pub(crate) dict_literal_depth: usize,
 }
 
 impl Parser {
@@ -39,6 +43,7 @@ impl Parser {
             in_class_body: false,
             ternary_depth: 0,
             paren_less_arg_depth: 0,
+            dict_literal_depth: 0,
         }
     }
 

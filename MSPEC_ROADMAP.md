@@ -182,7 +182,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.3. core/module/append_features_spec — 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.7.4. core/module/attr_accessor_spec — 1 file, 11 examples, 27 expectations, 0 failures, 0 errors
   - [x] 4.7.5. core/module/attr_reader_spec — 1 file, 9 examples, 20 expectations, 0 failures, 0 errors
-  - [ ] 4.7.6. core/module/attr_spec
+  - [x] 4.7.6. core/module/attr_spec — 1 file, 13 examples, 45 expectations, 0 failures, 0 errors
   - [ ] 4.7.7. core/module/attr_writer_spec
   - [ ] 4.7.8. core/module/autoload_relative_spec
   - [ ] 4.7.9. core/module/autoload_spec

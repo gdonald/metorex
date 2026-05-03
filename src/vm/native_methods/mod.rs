@@ -115,6 +115,29 @@ impl VirtualMachine {
         }
     }
 
+    /// Emit a warning line. If `$stderr` has been reassigned to an object that
+    /// responds to `write` / `<<` (e.g. mspec's `IOStub` for the `complain`
+    /// matcher), route the message there so tests can capture it. Otherwise
+    /// fall back to writing the line directly to the process's stderr.
+    pub(crate) fn emit_warning_to_stderr(&mut self, msg: &str, position: Position) {
+        let stderr_obj = self.globals().get("stderr");
+        let placeholder = matches!(
+            &stderr_obj,
+            Some(Object::String(s)) if s.as_str() == "$stderr"
+        );
+        if !placeholder && let Some(obj) = stderr_obj {
+            let line = format!("{}\n", msg);
+            for cand in ["write", "<<"] {
+                if let Some((cls, method)) = self.lookup_method(&obj, cand) {
+                    let arg = Object::String(Rc::new(line.clone()));
+                    let _ = self.invoke_method(cls, method, obj.clone(), vec![arg], position);
+                    return;
+                }
+            }
+        }
+        eprintln!("{}", msg);
+    }
+
     /// Coerce an object into a method-name `String`. Strings and symbols are
     /// taken at face value; for other receivers we invoke `to_str` (matching
     /// Ruby's implicit type coercion). A receiver that lacks `to_str` raises

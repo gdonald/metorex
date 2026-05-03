@@ -57,6 +57,20 @@ fn test_oop_attr_mixed_args_execution() {
 }
 
 #[test]
+fn test_oop_attr_keyword_form_execution() {
+    let expected = "42\nhello\n1\n2\n[:foo, :bar]\n[:baz]\n[:qux, :qux=]\n";
+    let output = run_example("oop/attr/keyword_form.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_attr_dynamic_arg_execution() {
+    let expected = "true\nhello\n";
+    let output = run_example("oop/attr/dynamic_arg.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_oop_attr_protected_visibility_execution() {
     let expected = "OK reader raised: private method 'foo' called for an instance of \nOK writer raised: private method 'foo=' called for an instance of \n";
     let output = run_example("oop/attr/protected_attr.rb");
