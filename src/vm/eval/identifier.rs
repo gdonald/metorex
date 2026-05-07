@@ -44,6 +44,36 @@ impl VirtualMachine {
         {
             return Ok(val);
         }
+        // Constant + def-scope chain has no class_var hit yet — try the
+        // lexical chain for an autoload registration before falling through
+        // to method dispatch. Walk the def-scope stack innermost-first;
+        // `try_autoload_constant` itself walks the ancestor chain on each
+        // module so the spec's `autoload :X, ...` on the parent module fires
+        // even when we're nested deeper. The loaded file may define the
+        // constant at top level (i.e. on globals/Object) rather than on the
+        // module that owned the autoload entry, so re-check globals after
+        // firing.
+        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            let scopes: Vec<_> = self.def_scope_stack.iter().rev().cloned().collect();
+            for enclosing in scopes {
+                if let Some(val) = self.try_autoload_constant(&enclosing, name)? {
+                    return Ok(val);
+                }
+                // The file may have defined the constant globally rather than
+                // on the autoload owner — fall back to globals before moving on.
+                if let Some(val) = self.globals().get(name) {
+                    return Ok(val);
+                }
+            }
+            if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                && let Some(val) = self.try_autoload_constant(&object_class, name)?
+            {
+                return Ok(val);
+            }
+            if let Some(val) = self.globals().get(name) {
+                return Ok(val);
+            }
+        }
 
         let receiver = if let Some(r) = self.environment().get("self") {
             r
@@ -85,6 +115,21 @@ impl VirtualMachine {
                 let mut current = Some(class);
                 while let Some(cls) = current {
                     if let Some(val) = cls.get_class_var(name) {
+                        return Ok(val);
+                    }
+                    // Constants defined in included/prepended modules are
+                    // visible at the including class — walk the mixin
+                    // chain at each ancestor level too.
+                    for mixin in cls.mixin_chain() {
+                        if let Some(val) = mixin.get_class_var(name) {
+                            return Ok(val);
+                        }
+                    }
+                    // Fire any autoload registered for this name on this
+                    // ancestor (or its mixins/superclasses) so a method
+                    // body referencing `MetaScope` triggers the load even
+                    // when def_scope_stack doesn't include this class.
+                    if let Some(val) = self.try_autoload_constant(&cls, name)? {
                         return Ok(val);
                     }
                     current = cls.superclass();

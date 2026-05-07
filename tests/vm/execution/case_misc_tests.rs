@@ -235,7 +235,9 @@ result
 }
 
 #[test]
-fn if_expression_with_case_in_body_returns_nil() {
+fn if_expression_with_case_in_body_returns_case_value() {
+    // Real Ruby: `case 1; when 1 then 5; end` evaluates to 5, the if
+    // expression returns its branch's value, the assignment captures it.
     let result = run(r#"
 x = if true
   case 1
@@ -244,7 +246,7 @@ x = if true
 end
 x
 "#);
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(result, Some(Object::Int(5)));
 }
 
 // ── parenthesized assignment / hash trailing comma ────────────────────────────

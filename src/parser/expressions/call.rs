@@ -353,6 +353,12 @@ impl Parser {
             if !self.match_token(&[TokenKind::Comma]) {
                 break;
             }
+
+            // Allow trailing comma before closing paren: foo(a, b,)
+            self.skip_whitespace();
+            if self.check(&[TokenKind::RParen]) {
+                break;
+            }
         }
 
         // If there were keyword args, append them as a Dict with a sentinel marker
@@ -451,6 +457,7 @@ impl Parser {
                 | TokenKind::Float(_)
                 | TokenKind::String(_)
                 | TokenKind::InterpolatedString(_)
+                | TokenKind::Regex(_, _)
                 | TokenKind::True
                 | TokenKind::False
                 | TokenKind::Nil
@@ -468,6 +475,15 @@ impl Parser {
         );
 
         if !can_be_arg {
+            return false;
+        }
+
+        // Disambiguate `y & x` (bitwise AND) from `y &x` (block-arg). Both
+        // have a space before the `&`; in the first form there's also a
+        // space after, while the block-arg form has the operand glued to
+        // the `&`. If the token after `&` has leading whitespace, the user
+        // meant the binary operator.
+        if self.peek().kind == TokenKind::Ampersand && self.peek_ahead(1).had_leading_space {
             return false;
         }
 
@@ -565,6 +581,7 @@ impl Parser {
                     | TokenKind::Float(_)
                     | TokenKind::String(_)
                     | TokenKind::InterpolatedString(_)
+                    | TokenKind::Regex(_, _)
                     | TokenKind::True
                     | TokenKind::False
                     | TokenKind::Nil
@@ -578,7 +595,17 @@ impl Parser {
                     | TokenKind::Colon
                     | TokenKind::Include
                     | TokenKind::Extend
+                    | TokenKind::Arrow
             );
+
+        // Same disambiguation for method-call paren-less args:
+        // `obj.foo & x` is `obj.foo() & x`, not `obj.foo(&x)`.
+        if can_be_arg
+            && self.peek().kind == TokenKind::Ampersand
+            && self.peek_ahead(1).had_leading_space
+        {
+            return false;
+        }
 
         if !can_be_arg {
             return false;

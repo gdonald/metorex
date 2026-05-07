@@ -199,6 +199,7 @@ fn attr_accessor_statement_position() {
 fn module_def_statement_position() {
     let stmt = Statement::ModuleDef {
         name: "MyMod".to_string(),
+        namespace: None,
         body: vec![],
         position: pos(),
     };

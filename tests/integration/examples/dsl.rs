@@ -58,7 +58,8 @@ fn test_dsl_method_call_with_symbol_arg_execution() {
 fn test_dsl_object_method_call_chain_execution() {
     // Same parse rule must hold inside a chained call: the arg to `.my_should`
     // is the result of `have_method :boom`, never a keyword Hash.
-    let expected = "matcher class: String\nmatcher value: matcher for :boom\n";
+    // matcher is a String, so .inspect quotes it (Ruby-correct).
+    let expected = "matcher class: String\nmatcher value: \"matcher for :boom\"\n";
     let output = run_example("dsl/object_method_call_chain.rb");
     assert_eq!(output, expected);
 }

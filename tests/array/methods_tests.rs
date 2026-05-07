@@ -595,3 +595,75 @@ fn array_include_error_wrong_count() {
     let err = run_err("[1].include?");
     assert!(err.contains("argument"));
 }
+
+// ── replace ─────────────────────────────────────────────────────────────────
+
+#[test]
+fn array_replace_swaps_contents() {
+    let result = run("a = [1, 2, 3]\na.replace([4, 5])\na");
+    assert_eq!(
+        result,
+        Some(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+            vec![Object::Int(4), Object::Int(5)]
+        ))))
+    );
+}
+
+#[test]
+fn array_replace_returns_self() {
+    let result = run("a = [1]\na.replace([9]).equal?(a)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn array_replace_non_array_arg_error() {
+    let err = run_err(r#"[1].replace("nope")"#);
+    assert!(err.contains("Array") || err.contains("argument"));
+}
+
+#[test]
+fn array_replace_wrong_arg_count() {
+    let err = run_err("[1].replace");
+    assert!(err.contains("argument"));
+}
+
+// ── inspect / to_s ───────────────────────────────────────────────────────────
+
+#[test]
+fn array_inspect_renders_ints() {
+    assert_eq!(run("[1, 2, 3].inspect"), Some(Object::string("[1, 2, 3]")));
+}
+
+#[test]
+fn array_inspect_renders_strings_with_quotes() {
+    assert_eq!(
+        run(r#"["a", "b"].inspect"#),
+        Some(Object::string(r#"["a", "b"]"#))
+    );
+}
+
+#[test]
+fn array_inspect_renders_symbols_with_colon() {
+    assert_eq!(
+        run("[:foo, :bar].inspect"),
+        Some(Object::string("[:foo, :bar]"))
+    );
+}
+
+#[test]
+fn array_inspect_renders_nil_as_nil_literal() {
+    assert_eq!(
+        run("[nil, nil].inspect"),
+        Some(Object::string("[nil, nil]"))
+    );
+}
+
+#[test]
+fn array_inspect_empty() {
+    assert_eq!(run("[].inspect"), Some(Object::string("[]")));
+}
+
+#[test]
+fn array_to_s_matches_inspect() {
+    assert_eq!(run("[1, 2].to_s"), Some(Object::string("[1, 2]")));
+}

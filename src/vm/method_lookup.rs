@@ -284,10 +284,18 @@ impl VirtualMachine {
                 if let Some(method) = class_rc.find_method(&class_method_name) {
                     return Some((Rc::clone(class_rc), method));
                 }
-                if let Some(sc) = class_rc.singleton_class_slot().clone()
-                    && let Some(method) = sc.find_method(method_name)
-                {
-                    return Some((sc, method));
+                // Walk the receiver's superclass chain, checking each
+                // ancestor's singleton class. Mirrors Ruby's metaclass
+                // chain so `class << Parent; attr_accessor :x; end` is
+                // visible on `Child.x` when `Child < Parent`.
+                let mut cursor = Some(Rc::clone(class_rc));
+                while let Some(current) = cursor {
+                    if let Some(sc) = current.singleton_class_slot().clone()
+                        && let Some(method) = sc.find_method(method_name)
+                    {
+                        return Some((sc, method));
+                    }
+                    cursor = current.superclass();
                 }
                 class_rc
                     .find_method(method_name)
@@ -298,14 +306,30 @@ impl VirtualMachine {
                 if let Some(method) = module_rc.find_method(&class_method_name) {
                     return Some((Rc::clone(module_rc), method));
                 }
-                if let Some(sc) = module_rc.singleton_class_slot().clone()
-                    && let Some(method) = sc.find_method(method_name)
-                {
-                    return Some((sc, method));
+                let mut cursor = Some(Rc::clone(module_rc));
+                while let Some(current) = cursor {
+                    if let Some(sc) = current.singleton_class_slot().clone()
+                        && let Some(method) = sc.find_method(method_name)
+                    {
+                        return Some((sc, method));
+                    }
+                    cursor = current.superclass();
                 }
-                module_rc
-                    .find_method(method_name)
-                    .map(|method| (Rc::clone(module_rc), method))
+                if let Some(method) = module_rc.find_method(method_name) {
+                    return Some((Rc::clone(module_rc), method));
+                }
+                // User-defined modules are instances of the global `Module`
+                // class. Methods mixed into Module via `class Module; include
+                // X; end` (mspec does this for matchers like `be_nil`) live
+                // on that global class, not on the user module itself, so
+                // fall back to `Module`'s method table when the receiver's
+                // own chain comes up empty.
+                if let Some(Object::Class(global_module)) = self.globals().get("Module")
+                    && let Some(method) = global_module.find_method(method_name)
+                {
+                    return Some((global_module, method));
+                }
+                None
             }
             _ => {
                 let class = self.builtins().class_of(receiver);

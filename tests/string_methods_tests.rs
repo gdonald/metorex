@@ -695,3 +695,91 @@ fn string_last_on_nonempty() {
 fn string_last_on_empty_returns_nil() {
     assert_eq!(run(r#""".last"#), Some(Object::Nil));
 }
+
+// ── String#chomp ─────────────────────────────────────────────────────────
+
+#[test]
+fn string_chomp_strips_trailing_newline() {
+    assert_eq!(run(r#""hello\n".chomp"#), Some(Object::string("hello")));
+}
+
+#[test]
+fn string_chomp_strips_crlf() {
+    assert_eq!(run(r#""hello\r\n".chomp"#), Some(Object::string("hello")));
+}
+
+#[test]
+fn string_chomp_strips_cr() {
+    assert_eq!(run(r#""hello\r".chomp"#), Some(Object::string("hello")));
+}
+
+#[test]
+fn string_chomp_no_trailing_returns_unchanged() {
+    assert_eq!(run(r#""hello".chomp"#), Some(Object::string("hello")));
+}
+
+#[test]
+fn string_chomp_with_explicit_separator() {
+    assert_eq!(
+        run(r#""helloworld".chomp("world")"#),
+        Some(Object::string("hello"))
+    );
+}
+
+#[test]
+fn string_chomp_with_unmatched_separator_returns_unchanged() {
+    assert_eq!(
+        run(r#""hello".chomp("xyz")"#),
+        Some(Object::string("hello"))
+    );
+}
+
+#[test]
+fn string_chomp_with_nil_returns_unchanged() {
+    assert_eq!(
+        run(r#""hello\n".chomp(nil)"#),
+        Some(Object::string("hello\n"))
+    );
+}
+
+#[test]
+fn string_chomp_too_many_args_errors() {
+    let err = run_err(r#""x".chomp("a", "b")"#);
+    assert!(err.contains("argument"));
+}
+
+// ── String#inspect ───────────────────────────────────────────────────────────
+
+#[test]
+fn string_inspect_simple() {
+    assert_eq!(run(r#""hello".inspect"#), Some(Object::string("\"hello\"")));
+}
+
+#[test]
+fn string_inspect_empty() {
+    assert_eq!(run(r#""".inspect"#), Some(Object::string("\"\"")));
+}
+
+#[test]
+fn string_inspect_escapes_quote() {
+    assert_eq!(
+        run(r#""he said \"hi\"".inspect"#),
+        Some(Object::string(r#""he said \"hi\"""#))
+    );
+}
+
+#[test]
+fn string_inspect_escapes_backslash() {
+    assert_eq!(run(r#""a\\b".inspect"#), Some(Object::string(r#""a\\b""#)));
+}
+
+#[test]
+fn string_inspect_escapes_newline() {
+    assert_eq!(run(r#""a\nb".inspect"#), Some(Object::string(r#""a\nb""#)));
+}
+
+#[test]
+fn string_inspect_too_many_args_errors() {
+    let err = run_err(r#""x".inspect("y")"#);
+    assert!(err.contains("argument"));
+}

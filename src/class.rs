@@ -39,6 +39,30 @@ pub struct Class {
     /// inside the class body. Methods defined while this is `private` are
     /// auto-marked as private. `protected` is treated like `private` for now.
     current_visibility: RefCell<String>,
+    /// `autoload :Const, "path"` registry. Maps constant name → unresolved
+    /// path string (the value Ruby's `autoload?` returns verbatim).
+    autoloads: RefCell<HashMap<String, String>>,
+    /// Constant names that *were* registered as autoloads, fired, and
+    /// completed loading without actually defining the constant. MRI keeps
+    /// these visible in `Module#constants` for a while afterward (so the
+    /// name persists as an "unrealized" constant) even though `autoload?`
+    /// and `const_defined?` both report nothing. Storing them separately
+    /// here keeps `#constants` in sync without resurrecting the autoload.
+    unrealized_autoloads: RefCell<HashSet<String>>,
+    /// Constant names marked private via `Module#private_constant`. When
+    /// any of these is referenced via qualified `Mod::Const` access from
+    /// outside the module's lexical scope, MRI raises NameError /private
+    /// constant/.
+    private_constants: RefCell<HashSet<String>>,
+    /// Source location (file, line) of each `autoload :Const, ...` call.
+    /// Returned by `Module#const_source_location` when an autoload is
+    /// pending or when another thread asks during a load.
+    autoload_locations: RefCell<HashMap<String, (String, i64)>>,
+    /// Source location (file, line) of each constant assignment that
+    /// produced a class_var on this class — `class Foo; X = 1; end`,
+    /// `class Foo; class Bar; end; end`, etc. Returned by
+    /// `Module#const_source_location` once the constant is bound.
+    const_locations: RefCell<HashMap<String, (String, i64)>>,
 }
 
 impl Class {
@@ -58,7 +82,117 @@ impl Class {
             subclasses: RefCell::new(Vec::new()),
             frozen: std::cell::Cell::new(false),
             current_visibility: RefCell::new("public".to_string()),
+            autoloads: RefCell::new(HashMap::new()),
+            unrealized_autoloads: RefCell::new(HashSet::new()),
+            private_constants: RefCell::new(HashSet::new()),
+            autoload_locations: RefCell::new(HashMap::new()),
+            const_locations: RefCell::new(HashMap::new()),
         }
+    }
+
+    /// Record where an autoload was registered (for
+    /// `Module#const_source_location`).
+    pub fn set_autoload_location(&self, name: impl Into<String>, file: String, line: i64) {
+        self.autoload_locations
+            .borrow_mut()
+            .insert(name.into(), (file, line));
+    }
+
+    /// Source location of an autoload registration, if any.
+    pub fn get_autoload_location(&self, name: &str) -> Option<(String, i64)> {
+        self.autoload_locations.borrow().get(name).cloned()
+    }
+
+    /// Record where a constant was actually defined (for
+    /// `Module#const_source_location`).
+    pub fn set_const_location(&self, name: impl Into<String>, file: String, line: i64) {
+        self.const_locations
+            .borrow_mut()
+            .insert(name.into(), (file, line));
+    }
+
+    /// Source location of a defined constant on this class, if any.
+    pub fn get_const_location(&self, name: &str) -> Option<(String, i64)> {
+        self.const_locations.borrow().get(name).cloned()
+    }
+
+    /// Forget the source location for a constant. Called by `remove_const` so
+    /// a follow-up `autoload` registration's location surfaces through
+    /// `Module#const_source_location` instead of the now-removed constant's.
+    pub fn remove_const_location(&self, name: &str) {
+        self.const_locations.borrow_mut().remove(name);
+    }
+
+    /// Mark `name` as a private constant — qualified access from outside
+    /// the class raises NameError /private constant/.
+    pub fn mark_private_constant(&self, name: impl Into<String>) {
+        self.private_constants.borrow_mut().insert(name.into());
+    }
+
+    /// Whether `name` is marked private on this class.
+    pub fn is_private_constant(&self, name: &str) -> bool {
+        self.private_constants.borrow().contains(name)
+    }
+
+    /// Remove the private flag from `name` (the inverse of
+    /// `mark_private_constant`). Used by `Module#public_constant`.
+    pub fn unmark_private_constant(&self, name: &str) {
+        self.private_constants.borrow_mut().remove(name);
+    }
+
+    /// Mark `name` as an autoload that fired, loaded its file, and didn't
+    /// produce the constant. MRI keeps the name in `#constants` afterward.
+    pub fn mark_unrealized_autoload(&self, name: impl Into<String>) {
+        self.unrealized_autoloads.borrow_mut().insert(name.into());
+    }
+
+    /// Names of unrealized autoloads on this class.
+    pub fn unrealized_autoload_names(&self) -> Vec<String> {
+        self.unrealized_autoloads.borrow().iter().cloned().collect()
+    }
+
+    /// Drop the unrealized-autoload bookkeeping for `name`.
+    pub fn clear_unrealized_autoload(&self, name: &str) {
+        self.unrealized_autoloads.borrow_mut().remove(name);
+    }
+
+    /// Register an autoload mapping. `path` is stored verbatim (Ruby's
+    /// `autoload?` returns whatever was passed in).
+    pub fn set_autoload(&self, name: impl Into<String>, path: impl Into<String>) {
+        self.autoloads.borrow_mut().insert(name.into(), path.into());
+    }
+
+    /// Return the autoload path registered on *this* class (no recursion).
+    pub fn get_autoload(&self, name: &str) -> Option<String> {
+        self.autoloads.borrow().get(name).cloned()
+    }
+
+    /// Look up an autoload across this class and its ancestor chain
+    /// (superclass + included mixins). Mirrors Ruby's `autoload?` recursion.
+    pub fn lookup_autoload(&self, name: &str) -> Option<String> {
+        if let Some(p) = self.get_autoload(name) {
+            return Some(p);
+        }
+        for mixin in self.mixins.borrow().iter() {
+            if let Some(p) = mixin.lookup_autoload(name) {
+                return Some(p);
+            }
+        }
+        if let Some(sc) = &self.superclass {
+            return sc.lookup_autoload(name);
+        }
+        None
+    }
+
+    /// Remove the autoload entry for `name`, returning the previous path.
+    pub fn remove_autoload(&self, name: &str) -> Option<String> {
+        self.autoloads.borrow_mut().remove(name)
+    }
+
+    /// All autoload-registered names on this class (no recursion). Listed by
+    /// `Module#constants` even before the autoload fires, per Ruby semantics.
+    pub fn autoload_names(&self) -> Vec<String> {
+        self.autoloads.borrow().keys().cloned().collect()
     }
 
     /// Set the default visibility for subsequent method definitions in this
@@ -309,9 +443,22 @@ impl Class {
         names
     }
 
-    /// Set a class variable on this class.
+    /// Set a class variable on this class. Setting an uppercase-named
+    /// constant clears any "unrealized autoload" bookkeeping for that
+    /// name. The autoload entry itself is NOT cleared here — when the
+    /// constant is being defined inside a const-access autoload
+    /// trigger, leaving the autoload entry alive lets concurrent
+    /// `autoload?` queries from other threads still see the path.
+    /// `try_autoload_constant` removes the entry after the load
+    /// completes; assignments outside of an autoload (e.g. plain
+    /// `class M; X = 1; end`) need to drop the autoload too, which is
+    /// handled by an explicit `remove_autoload` call where appropriate.
     pub fn set_class_var(&self, name: impl Into<String>, value: Object) {
-        self.class_variables.borrow_mut().insert(name.into(), value);
+        let key: String = name.into();
+        if key.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            self.unrealized_autoloads.borrow_mut().remove(&key);
+        }
+        self.class_variables.borrow_mut().insert(key, value);
     }
 
     /// Retrieve a class variable from this class.
@@ -360,6 +507,11 @@ impl Class {
             subclasses: RefCell::new(Vec::new()),
             frozen: std::cell::Cell::new(false),
             current_visibility: RefCell::new("public".to_string()),
+            autoloads: RefCell::new(source.autoloads.borrow().clone()),
+            unrealized_autoloads: RefCell::new(source.unrealized_autoloads.borrow().clone()),
+            private_constants: RefCell::new(source.private_constants.borrow().clone()),
+            autoload_locations: RefCell::new(source.autoload_locations.borrow().clone()),
+            const_locations: RefCell::new(source.const_locations.borrow().clone()),
         };
         if let Some(src_sc) = source.singleton_class.borrow().as_ref() {
             let sc_copy = Rc::new(Class {
@@ -384,6 +536,11 @@ impl Class {
                 subclasses: RefCell::new(Vec::new()),
                 frozen: std::cell::Cell::new(false),
                 current_visibility: RefCell::new("public".to_string()),
+                autoloads: RefCell::new(src_sc.autoloads.borrow().clone()),
+                unrealized_autoloads: RefCell::new(src_sc.unrealized_autoloads.borrow().clone()),
+                private_constants: RefCell::new(src_sc.private_constants.borrow().clone()),
+                autoload_locations: RefCell::new(src_sc.autoload_locations.borrow().clone()),
+                const_locations: RefCell::new(src_sc.const_locations.borrow().clone()),
             });
             *copy.singleton_class.borrow_mut() = Some(sc_copy);
         }
@@ -407,6 +564,11 @@ impl Clone for Class {
             subclasses: RefCell::new(self.subclasses.borrow().clone()),
             frozen: std::cell::Cell::new(self.frozen.get()),
             current_visibility: RefCell::new(self.current_visibility.borrow().clone()),
+            autoloads: RefCell::new(self.autoloads.borrow().clone()),
+            unrealized_autoloads: RefCell::new(self.unrealized_autoloads.borrow().clone()),
+            private_constants: RefCell::new(self.private_constants.borrow().clone()),
+            autoload_locations: RefCell::new(self.autoload_locations.borrow().clone()),
+            const_locations: RefCell::new(self.const_locations.borrow().clone()),
         }
     }
 }

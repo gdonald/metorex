@@ -117,8 +117,14 @@ impl VirtualMachine {
                 Ok(Object::Bool(left.equals(&right)))
             }
             CaseEqual => {
-                // Class === obj: check type membership (Ruby's case equality)
-                if let Object::Class(class_rc) = &left {
+                // Class/Module === obj: check type membership (Ruby's case
+                // equality). Modules also count as the "type test" form so
+                // `SomeMod === obj` works the same as `obj.is_a?(SomeMod)`.
+                let class_rc_opt = match &left {
+                    Object::Class(c) | Object::Module(c) => Some(c),
+                    _ => None,
+                };
+                if let Some(class_rc) = class_rc_opt {
                     if let Object::Exception(exc_ref) = &right {
                         // Check if exception type matches or is a subclass
                         let exc_type = exc_ref.borrow().exception_type.clone();
@@ -133,11 +139,23 @@ impl VirtualMachine {
                         }
                         return Ok(Object::Bool(false));
                     }
+                    // For non-class/module RHS, check the receiver's class
+                    // chain. Also include the singleton class of Instances so
+                    // `Module === obj.extend(Module)` returns true.
                     if !matches!(right, Object::Class(_) | Object::Module(_)) {
                         let right_class = self.builtins().class_of(&right);
-                        return Ok(Object::Bool(
-                            self.builtins().is_subclass_of(&right_class, class_rc),
-                        ));
+                        if self.builtins().is_subclass_of(&right_class, class_rc) {
+                            return Ok(Object::Bool(true));
+                        }
+                        if let Object::Instance(inst_rc) = &right {
+                            let sc_opt = inst_rc.borrow().singleton_class.borrow().clone();
+                            if let Some(sc) = sc_opt
+                                && self.builtins().is_subclass_of(&sc, class_rc)
+                            {
+                                return Ok(Object::Bool(true));
+                            }
+                        }
+                        return Ok(Object::Bool(false));
                     }
                 }
                 // Fallback: === behaves like ==

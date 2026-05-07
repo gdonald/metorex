@@ -91,7 +91,12 @@ impl VirtualMachine {
                 if captured.is_empty() && captured_vars.is_none() {
                     captured = self.environment().current_scope_var_refs();
                 }
-                let block = BlockStatement::new(parameters.clone(), body.clone(), captured);
+                let block = BlockStatement::with_def_scope(
+                    parameters.clone(),
+                    body.clone(),
+                    captured,
+                    self.def_scope_stack.clone(),
+                );
                 Ok(Object::Block(Rc::new(block)))
             }
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
@@ -221,6 +226,24 @@ impl VirtualMachine {
                             *position,
                         );
                     }
+                    // Thread instances support thread-local storage via
+                    // `t[:k]`. Targeted dispatch (gated on the class name)
+                    // so the call doesn't recurse through a generic
+                    // native-method fallback.
+                    if class.name() == "Thread" {
+                        let key_str = match &key {
+                            Object::Symbol(s) => Some((**s).clone()),
+                            Object::String(s) => Some((**s).clone()),
+                            _ => None,
+                        };
+                        if let Some(k) = key_str {
+                            let locals = instance_rc.borrow().get_var("__thread_locals").cloned();
+                            if let Some(Object::Dict(d)) = locals {
+                                return Ok(d.borrow().get(&k).cloned().unwrap_or(Object::Nil));
+                            }
+                        }
+                        return Ok(Object::Nil);
+                    }
                 }
                 self.evaluate_index_operation(collection, key, *position)
             }
@@ -316,11 +339,48 @@ impl VirtualMachine {
                 let ns_value = self.evaluate_expression(namespace)?;
                 match ns_value {
                     Object::Class(class_rc) | Object::Module(class_rc) => {
-                        class_rc.get_class_var(name).ok_or_else(|| {
-                            MetorexError::runtime_error(
-                                format!("Uninitialized constant {}::{}", class_rc.name(), name),
-                                position_to_location(*position),
-                            )
+                        let class_var = class_rc.get_class_var(name);
+                        let value = if class_var.is_some() {
+                            class_var
+                        } else {
+                            self.try_autoload_constant(&class_rc, name)?
+                        };
+                        if let Some(v) = value {
+                            // A constant marked private via
+                            // `Module#private_constant` only resolves from
+                            // inside the owning class's body. Anywhere else
+                            // — including methods defined elsewhere that
+                            // happen to be invoked — raises NameError.
+                            if class_rc.is_private_constant(name) {
+                                let inside = self
+                                    .def_scope_stack
+                                    .iter()
+                                    .any(|s| Rc::ptr_eq(s, &class_rc));
+                                if !inside {
+                                    let msg = format!(
+                                        "private constant {}::{} referenced",
+                                        class_rc.name(),
+                                        name
+                                    );
+                                    let exc = Object::exception("NameError", msg.clone());
+                                    return Err(MetorexError::UncaughtException {
+                                        exception: exc,
+                                        location: position_to_location(*position),
+                                        message: msg,
+                                    });
+                                }
+                            }
+                            return Ok(v);
+                        }
+                        // Uninitialized constants raise NameError in Ruby —
+                        // autoload's "loaded but didn't define" path lands
+                        // here too.
+                        let msg = format!("uninitialized constant {}::{}", class_rc.name(), name);
+                        let exc = Object::exception("NameError", msg.clone());
+                        Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(*position),
+                            message: msg,
                         })
                     }
                     _ => Err(MetorexError::runtime_error(

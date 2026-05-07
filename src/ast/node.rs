@@ -545,6 +545,9 @@ pub enum Statement {
 
     ModuleDef {
         name: String,
+        /// Optional namespace for `module Foo::Bar` forms — same shape as
+        /// `ClassDef::namespace`. None means install in current lexical scope.
+        namespace: Option<Box<Expression>>,
         body: Vec<Statement>,
         position: Position,
     },

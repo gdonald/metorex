@@ -44,13 +44,20 @@ impl VirtualMachine {
         // environment, then globals.
         let superclass = if let Some(super_name) = superclass_name {
             let resolved = if super_name.contains("::") {
-                self.resolve_constant_in_scope(super_name)
+                self.resolve_constant_with_autoload(super_name)?
             } else {
-                parent_scope
+                let direct = parent_scope
                     .as_ref()
                     .and_then(|p| p.get_class_var(super_name))
                     .or_else(|| self.environment().get(super_name))
-                    .or_else(|| self.globals().get(super_name))
+                    .or_else(|| self.globals().get(super_name));
+                if direct.is_some() {
+                    direct
+                } else if let Some(parent) = parent_scope.as_ref() {
+                    self.try_autoload_constant(parent, super_name)?
+                } else {
+                    None
+                }
             };
             match resolved {
                 Some(Object::Class(class)) => Some(class),
@@ -79,9 +86,17 @@ impl VirtualMachine {
         };
 
         // Reopen existing class if it exists (Ruby semantics), otherwise create new.
-        // Track `is_new` so we know whether to fire the `inherited` hook.
+        // Track `is_new` so we know whether to fire the `inherited` hook. If
+        // the name is registered as an autoload on the parent scope, fire it
+        // first so reopening as a class reuses the loaded definition.
         let existing_class: Option<Rc<Class>> = if let Some(parent) = parent_scope.as_ref() {
-            match parent.get_class_var(name) {
+            let direct = parent.get_class_var(name);
+            let resolved = if direct.is_some() {
+                direct
+            } else {
+                self.try_autoload_constant(parent, name)?
+            };
+            match resolved {
                 Some(Object::Class(c)) => Some(c),
                 _ => None,
             }
@@ -93,6 +108,37 @@ impl VirtualMachine {
             None
         };
         let is_new = existing_class.is_none();
+        // Reopening an existing class with an explicit superclass that
+        // doesn't lie on the existing ancestor chain is a TypeError. We
+        // use a lenient rule (allow if requested superclass is anywhere
+        // in the existing chain) instead of MRI's exact-match because the
+        // metorex test corpus reopens built-in subclasses with their
+        // grandparent — `class FloatDomainError < StandardError` where
+        // FloatDomainError actually descends from RangeError. Genuinely
+        // unrelated parents (the autoload spec's `Z < ZZ` after a load
+        // defined `Z < YY`) still trip the check.
+        if let (Some(existing), Some(expected)) = (&existing_class, &superclass)
+            && superclass_name.is_some()
+        {
+            let mut cursor = existing.superclass();
+            let mut compatible = false;
+            while let Some(ancestor) = cursor {
+                if Rc::ptr_eq(&ancestor, expected) {
+                    compatible = true;
+                    break;
+                }
+                cursor = ancestor.superclass();
+            }
+            if !compatible {
+                let msg = format!("superclass mismatch for class {}", existing.ruby_name());
+                let exc = Object::exception("TypeError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+        }
         let class = match existing_class {
             Some(existing) => existing,
             None => {
@@ -122,6 +168,30 @@ impl VirtualMachine {
         self.environment_mut()
             .define("self".to_string(), Object::Class(Rc::clone(&class)));
         self.def_scope_stack.push(Rc::clone(&class));
+        // Record the class definition's source location for
+        // `Module#const_source_location`. Done here (alongside the
+        // eager bind) so the location is available even mid-load.
+        let class_def_file = self
+            .get_current_file()
+            .map(|p| p.display().to_string())
+            .unwrap_or_default();
+        if let Some(parent) = parent_scope.as_ref() {
+            parent.set_const_location(name, class_def_file.clone(), position.line as i64);
+        }
+        // Eagerly bind the class to its parent / globals BEFORE the body
+        // runs. Without this, code in the body (e.g. autoload-triggered
+        // checks like `Outer.constants.include?(:Inner)` while the file
+        // defining `Outer::Inner` is mid-load) wouldn't see the class
+        // until the closing `end`. Repeated at the end is harmless and
+        // keeps the existing exit semantics.
+        let class_obj_pre = Object::Class(Rc::clone(&class));
+        if let Some(parent) = parent_scope.as_ref() {
+            parent.set_class_var(name, class_obj_pre);
+        } else {
+            self.environment_mut()
+                .define(name.to_string(), class_obj_pre.clone());
+            self.globals_mut().set(name.to_string(), class_obj_pre);
+        }
         let body_result = self.apply_class_body(&class, body, position);
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
@@ -483,7 +553,7 @@ impl VirtualMachine {
                     // include ModuleName: dispatch through `append_features`
                     // so user overrides on the module's singleton class fire,
                     // and so cyclic/frozen checks run.
-                    let resolved = self.resolve_constant_in_scope(module_name);
+                    let resolved = self.resolve_constant_with_autoload(module_name)?;
                     match resolved {
                         Some(Object::Module(module)) => {
                             self.apply_module_include(class, &module, *position)?;
@@ -830,18 +900,62 @@ impl VirtualMachine {
     pub(crate) fn execute_module_def(
         &mut self,
         name: &str,
+        namespace: Option<&crate::ast::Expression>,
         body: &[Statement],
-        _position: Position,
+        position: Position,
     ) -> Result<ControlFlow, MetorexError> {
+        // `module NS::Name` — evaluate NS, then install Name on it. The
+        // namespace expression must resolve to a Class or Module.
+        let explicit_ns: Option<Rc<Class>> = if let Some(expr) = namespace {
+            let value = self.evaluate_expression(expr)?;
+            match value {
+                Object::Class(c) | Object::Module(c) => Some(c),
+                other => {
+                    return Err(MetorexError::runtime_error(
+                        format!(
+                            "module namespace must be a Class or Module, got {}",
+                            other.type_name()
+                        ),
+                        position_to_location(position),
+                    ));
+                }
+            }
+        } else {
+            None
+        };
+
         // If we're lexically nested inside a module/class, resolve the name
         // against the parent's constants first — `module Foo; module Bar; end; end`
         // defines `Foo::Bar`, distinct from any top-level `::Bar` of the same name.
-        let parent_scope = self.def_scope_stack.last().cloned();
+        let parent_scope = explicit_ns
+            .clone()
+            .or_else(|| self.def_scope_stack.last().cloned());
+        // Build a qualified name for fresh modules so `Module#ruby_name`
+        // (and warning messages like the autoload "didn't define"
+        // emission) report the full `Outer::Inner` path instead of just
+        // the leaf.
+        let full_name = match parent_scope.as_ref() {
+            Some(p) => {
+                let p_name = p.ruby_name();
+                if p_name.is_empty() {
+                    name.to_string()
+                } else {
+                    format!("{}::{}", p_name, name)
+                }
+            }
+            None => name.to_string(),
+        };
         let (module, existing_as_class) = if let Some(parent) = parent_scope.as_ref() {
-            match parent.get_class_var(name) {
+            let direct = parent.get_class_var(name);
+            let resolved = if direct.is_some() {
+                direct
+            } else {
+                self.try_autoload_constant(parent, name)?
+            };
+            match resolved {
                 Some(Object::Module(existing)) => (existing, false),
                 Some(Object::Class(existing)) => (existing, true),
-                _ => (Rc::new(Class::new(name, None)), false),
+                _ => (Rc::new(Class::new(full_name.clone(), None)), false),
             }
         } else if let Some(Object::Module(existing)) = self.globals().get(name) {
             (existing, false)
@@ -852,7 +966,7 @@ impl VirtualMachine {
         } else if let Some(Object::Class(existing)) = self.environment().get(name) {
             (existing, true)
         } else {
-            (Rc::new(Class::new(name, None)), false)
+            (Rc::new(Class::new(full_name.clone(), None)), false)
         };
 
         // Set 'self' to the module for instance variable access in module body
@@ -860,6 +974,27 @@ impl VirtualMachine {
         self.environment_mut()
             .define("self".to_string(), Object::Module(Rc::clone(&module)));
         self.def_scope_stack.push(Rc::clone(&module));
+
+        // Eagerly publish the (possibly freshly-created) module to its
+        // parent / globals BEFORE running the body. Without this, code
+        // executed during the body — most notably an autoload-triggered file
+        // doing `module Outer; X = ...; end` — would create a brand-new
+        // anonymous Outer instead of reopening the one we're currently
+        // defining. The same store is repeated at the end after the body
+        // completes; doing it both places is harmless and keeps the existing
+        // exit semantics.
+        let module_obj_pre = if existing_as_class {
+            Object::Class(Rc::clone(&module))
+        } else {
+            Object::Module(Rc::clone(&module))
+        };
+        if let Some(parent) = parent_scope.as_ref() {
+            parent.set_class_var(name, module_obj_pre);
+        } else {
+            self.environment_mut()
+                .define(name.to_string(), module_obj_pre.clone());
+            self.globals_mut().set(name.to_string(), module_obj_pre);
+        }
 
         for statement in body {
             match statement {
@@ -1005,10 +1140,11 @@ impl VirtualMachine {
                 // Nested module — execute_module_def attaches it to the enclosing scope.
                 Statement::ModuleDef {
                     name: mod_name,
+                    namespace: mod_ns,
                     body: mod_body,
                     position: mod_pos,
                 } => {
-                    self.execute_module_def(mod_name, mod_body, *mod_pos)?;
+                    self.execute_module_def(mod_name, mod_ns.as_deref(), mod_body, *mod_pos)?;
                 }
                 // Include inside module body: walk the lexical def-scope
                 // stack so nested modules can reference sibling constants
@@ -1018,9 +1154,8 @@ impl VirtualMachine {
                     module_name: inc_name,
                     position: inc_pos,
                 } => {
-                    if let Some(Object::Module(inc_module)) =
-                        self.resolve_constant_in_scope(inc_name)
-                    {
+                    let resolved = self.resolve_constant_with_autoload(inc_name)?;
+                    if let Some(Object::Module(inc_module)) = resolved {
                         self.apply_module_include(&module, &inc_module, *inc_pos)?;
                     }
                 }
@@ -1099,9 +1234,48 @@ impl VirtualMachine {
             .or_else(|| self.globals().get(name))
     }
 
+    /// Like `resolve_constant_in_scope`, but triggers autoload on any
+    /// segment along a qualified `A::B::C` walk where the next part is only
+    /// registered as an autoload. Used by class/module statement positions
+    /// that should fire pending autoloads (e.g. `class X < A::B::Auto`).
+    pub(crate) fn resolve_constant_with_autoload(
+        &mut self,
+        name: &str,
+    ) -> Result<Option<Object>, MetorexError> {
+        if name.contains("::") {
+            let mut parts = name.split("::");
+            let head = match parts.next() {
+                Some(h) => h,
+                None => return Ok(None),
+            };
+            let mut current = match self.resolve_constant_with_autoload(head)? {
+                Some(v) => v,
+                None => return Ok(None),
+            };
+            for part in parts {
+                let class_rc = match &current {
+                    Object::Class(c) | Object::Module(c) => Rc::clone(c),
+                    _ => return Ok(None),
+                };
+                if let Some(v) = class_rc.get_class_var(part) {
+                    current = v;
+                } else if let Some(v) = self.try_autoload_constant(&class_rc, part)? {
+                    current = v;
+                } else {
+                    return Ok(None);
+                }
+            }
+            return Ok(Some(current));
+        }
+        Ok(self.resolve_constant_in_scope(name))
+    }
+
     /// Execute include at statement level (outside class body).
     /// Top-level `include Mod` adds the module to Object's mixin chain
-    /// (Ruby semantics for `include` at the main scope).
+    /// (Ruby semantics for `include` at the main scope). When called from
+    /// inside a block whose def-scope is non-empty (e.g. a lambda invoked
+    /// from inside a module body), the innermost class/module receives the
+    /// include instead — matching `module M; include X; end` behavior.
     /// Suppressed when running inside `load(path, true)` (wrapped load).
     pub(crate) fn execute_include(
         &mut self,
@@ -1112,7 +1286,8 @@ impl VirtualMachine {
             return Ok(ControlFlow::Next);
         }
         let module = self
-            .resolve_qualified_constant(module_name)
+            .resolve_constant_with_autoload(module_name)?
+            .or_else(|| self.resolve_qualified_constant(module_name))
             .or_else(|| self.environment().get(module_name))
             .or_else(|| self.globals().get(module_name));
         let module_rc = match module {
@@ -1130,7 +1305,12 @@ impl VirtualMachine {
                 ));
             }
         };
-        if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+        // Prefer the innermost lexical class/module if there is one; this
+        // makes `include X` inside a lambda invoked from a module body
+        // mix into that module rather than into Object.
+        if let Some(target) = self.def_scope_stack.last().cloned() {
+            self.apply_module_include(&target, &module_rc, position)?;
+        } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
             object_class.add_mixin(module_rc);
         }
         Ok(ControlFlow::Next)

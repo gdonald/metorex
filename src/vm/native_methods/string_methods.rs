@@ -5,6 +5,7 @@ use crate::lexer::Position;
 use crate::object::Object;
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
+use crate::vm::utils::position_to_location;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -31,6 +32,33 @@ impl VirtualMachine {
                     ));
                 }
                 Ok(Some(Object::Int(string_value.chars().count() as i64)))
+            }
+            "inspect" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // Render with double-quotes and minimal escaping. Mirrors
+                // Ruby's String#inspect output for the common cases.
+                let mut out = String::with_capacity(string_value.len() + 2);
+                out.push('"');
+                for c in string_value.chars() {
+                    match c {
+                        '"' => out.push_str("\\\""),
+                        '\\' => out.push_str("\\\\"),
+                        '\n' => out.push_str("\\n"),
+                        '\r' => out.push_str("\\r"),
+                        '\t' => out.push_str("\\t"),
+                        c if c.is_control() => out.push_str(&format!("\\x{:02X}", c as u32)),
+                        c => out.push(c),
+                    }
+                }
+                out.push('"');
+                Ok(Some(Object::string(out)))
             }
             "match?" => {
                 if arguments.len() != 1 {
@@ -73,6 +101,134 @@ impl VirtualMachine {
                     ));
                 }
                 Ok(Some(Object::string(string_value.to_uppercase())))
+            }
+            // String#succ / String#next — Ruby's "next string" successor.
+            // For digit-only strings (e.g. "0" → "1", "9" → "10") this
+            // matches MRI; for letter or mixed strings we approximate by
+            // bumping the trailing character (sufficient for spec helpers
+            // that uniquify with a leading digit). The bang form returns a
+            // fresh string here because metorex strings are immutable
+            // shared `Rc<String>`s; callers re-assign or use `+`-prefixed
+            // strings expecting a mutable buffer that we don't model.
+            // String#insert(index, str) — returns the receiver with `str`
+            // inserted at `index`. metorex strings are immutable shared
+            // `Rc<String>`s, so we return a new string rather than
+            // mutating; spec helpers that chain `name.insert(...)` then
+            // use `name` afterward typically reassign anyway.
+            "insert" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let idx = match &arguments[0] {
+                    Object::Int(n) => *n,
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Integer",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let to_insert = match &arguments[1] {
+                    Object::String(s) => s.as_ref().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let s = string_value.as_ref().as_str();
+                let len = s.chars().count() as i64;
+                let pos_idx = if idx < 0 { idx + len + 1 } else { idx };
+                if pos_idx < 0 || pos_idx > len {
+                    let msg = format!("index {} out of string", idx);
+                    let exc = Object::exception("IndexError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                let split_at: usize = s
+                    .char_indices()
+                    .nth(pos_idx as usize)
+                    .map(|(i, _)| i)
+                    .unwrap_or(s.len());
+                let mut result = String::with_capacity(s.len() + to_insert.len());
+                result.push_str(&s[..split_at]);
+                result.push_str(&to_insert);
+                result.push_str(&s[split_at..]);
+                Ok(Some(Object::string(result)))
+            }
+            // String#rindex(substr) — last occurrence index, or nil.
+            "rindex" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let needle = match &arguments[0] {
+                    Object::String(s) => s.as_ref().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let s = string_value.as_ref().as_str();
+                match s.rfind(needle.as_str()) {
+                    Some(byte_idx) => {
+                        let char_idx = s[..byte_idx].chars().count() as i64;
+                        Ok(Some(Object::Int(char_idx)))
+                    }
+                    None => Ok(Some(Object::Nil)),
+                }
+            }
+            "succ" | "next" | "succ!" | "next!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let s = string_value.as_ref().as_str();
+                let next = if s.chars().all(|c| c.is_ascii_digit()) {
+                    if s.is_empty() {
+                        String::new()
+                    } else {
+                        let n: u128 = s.parse().unwrap_or(0);
+                        format!("{}", n + 1)
+                    }
+                } else if let Some(last) = s.chars().last() {
+                    let mut prefix: String = s.chars().take(s.chars().count() - 1).collect();
+                    let bumped = (last as u32).wrapping_add(1);
+                    if let Some(c) = char::from_u32(bumped) {
+                        prefix.push(c);
+                    } else {
+                        prefix.push(last);
+                    }
+                    prefix
+                } else {
+                    String::new()
+                };
+                Ok(Some(Object::string(next)))
             }
             "downcase" => {
                 if !arguments.is_empty() {
@@ -277,6 +433,47 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::string(string_value.trim().to_string())))
             }
+            "chomp" => {
+                // chomp([sep]) — strips a trailing separator. With no arg,
+                // strips a final \n, \r\n, or \r. With a string arg, strips
+                // exactly that suffix. With nil, returns the string unchanged.
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let s: &str = string_value.as_ref();
+                let result: String = match arguments.first() {
+                    None => {
+                        if let Some(stripped) = s.strip_suffix("\r\n") {
+                            stripped.to_string()
+                        } else if let Some(stripped) = s.strip_suffix('\n') {
+                            stripped.to_string()
+                        } else if let Some(stripped) = s.strip_suffix('\r') {
+                            stripped.to_string()
+                        } else {
+                            s.to_string()
+                        }
+                    }
+                    Some(Object::Nil) => s.to_string(),
+                    Some(Object::String(sep)) => s
+                        .strip_suffix(sep.as_ref().as_str())
+                        .map(|x| x.to_string())
+                        .unwrap_or_else(|| s.to_string()),
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                Ok(Some(Object::string(result)))
+            }
             "split" => {
                 if arguments.len() > 1 {
                     return Err(method_argument_error(
@@ -297,10 +494,37 @@ impl VirtualMachine {
                             .split(sep.as_ref())
                             .map(|s| Object::string(s.to_string()))
                             .collect(),
+                        Object::Regex(pattern, flags) => {
+                            // Build the same regex used by Regex literal eval.
+                            let pat = pattern.as_str();
+                            let flag_str = flags.as_str();
+                            let mut builder = regex::RegexBuilder::new(pat);
+                            if flag_str.contains('i') {
+                                builder.case_insensitive(true);
+                            }
+                            if flag_str.contains('m') {
+                                builder.dot_matches_new_line(true);
+                            }
+                            if flag_str.contains('x') {
+                                builder.ignore_whitespace(true);
+                            }
+                            match builder.build() {
+                                Ok(re) => re
+                                    .split(string_value.as_str())
+                                    .map(|s| Object::string(s.to_string()))
+                                    .collect(),
+                                Err(e) => {
+                                    return Err(MetorexError::runtime_error(
+                                        format!("invalid regex for split: {}", e),
+                                        position_to_location(position),
+                                    ));
+                                }
+                            }
+                        }
                         _ => {
                             return Err(method_argument_type_error(
                                 method_name,
-                                "String",
+                                "String or Regexp",
                                 &arguments[0],
                                 position,
                             ));
@@ -523,7 +747,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::string(string_value.as_ref().clone())))
             }
-            "gsub" => {
+            "gsub" | "sub" => {
                 if arguments.len() != 2 {
                     return Err(method_argument_error(
                         method_name,
@@ -532,17 +756,6 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let pattern = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    _ => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            &arguments[0],
-                            position,
-                        ));
-                    }
-                };
                 let replacement = match &arguments[1] {
                     Object::String(s) => s.as_ref().clone(),
                     _ => {
@@ -554,46 +767,49 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                Ok(Some(Object::string(
-                    string_value.replace(&pattern, &replacement),
-                )))
-            }
-            "sub" => {
-                if arguments.len() != 2 {
-                    return Err(method_argument_error(
+                let limit = if method_name == "sub" { 1 } else { 0 };
+                match &arguments[0] {
+                    Object::String(s) => {
+                        let pattern = s.as_ref().clone();
+                        let result = if limit == 0 {
+                            string_value.replace(&pattern, &replacement)
+                        } else {
+                            string_value.replacen(&pattern, &replacement, limit)
+                        };
+                        Ok(Some(Object::string(result)))
+                    }
+                    // Regexp pattern: compile, honour the `i` flag, and apply
+                    // either a single substitution (`sub`) or a global one
+                    // (`gsub`). `\Z` / `\z` come from Ruby; the `regex` crate
+                    // accepts them. Replacement string back-refs (`\1`, etc.)
+                    // are preserved by `regex`'s default replace semantics.
+                    Object::Regex(pattern, flags) => {
+                        let re_pattern = if flags.contains('i') {
+                            format!("(?i){}", pattern)
+                        } else {
+                            pattern.as_ref().clone()
+                        };
+                        match regex::Regex::new(&re_pattern) {
+                            Ok(re) => {
+                                let result = if limit == 0 {
+                                    re.replace_all(string_value.as_ref(), replacement.as_str())
+                                        .into_owned()
+                                } else {
+                                    re.replacen(string_value.as_ref(), limit, replacement.as_str())
+                                        .into_owned()
+                                };
+                                Ok(Some(Object::string(result)))
+                            }
+                            Err(_) => Ok(Some(Object::string(string_value.as_ref().clone()))),
+                        }
+                    }
+                    other => Err(method_argument_type_error(
                         method_name,
-                        2,
-                        arguments.len(),
+                        "String or Regexp",
+                        other,
                         position,
-                    ));
+                    )),
                 }
-                let pattern = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    _ => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            &arguments[0],
-                            position,
-                        ));
-                    }
-                };
-                let replacement = match &arguments[1] {
-                    Object::String(s) => s.as_ref().clone(),
-                    _ => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            &arguments[1],
-                            position,
-                        ));
-                    }
-                };
-                Ok(Some(Object::string(string_value.replacen(
-                    &pattern,
-                    &replacement,
-                    1,
-                ))))
             }
             "empty?" => {
                 if !arguments.is_empty() {

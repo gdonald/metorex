@@ -201,6 +201,41 @@ fn stabby_lambda_as_primary_expression_in_array() {
     assert_eq!(result, Some(Object::Int(6)));
 }
 
+// ── Stabby lambda as paren-less method-call argument ────────────────────────
+
+#[test]
+fn method_call_with_stabby_lambda_arg_no_parens() {
+    let result = run("class Holder\n  def take(p) p.call end\nend\nHolder.new.take -> { 42 }");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn method_call_with_stabby_lambda_arg_multiline_body() {
+    let result =
+        run("class Holder\n  def take(p) p.call end\nend\nh = Holder.new\nh.take -> {\n  1 + 2\n}");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+// ── Trailing comma in argument lists ────────────────────────────────────────
+
+#[test]
+fn method_call_allows_trailing_comma() {
+    let result = run("def f(a, b) a + b end\nf(1, 2,)");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn method_call_allows_trailing_comma_with_kwargs() {
+    let result = run("def f(a, b:) a + b end\nf(1, b: 2,)");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn method_call_allows_trailing_comma_multiline() {
+    let result = run("def f(a, b, c) a + b + c end\nf(\n  1,\n  2,\n  3,\n)");
+    assert_eq!(result, Some(Object::Int(6)));
+}
+
 // ── Parenthesized assignment ─────────────────────────────────────────────────
 
 #[test]

@@ -223,12 +223,14 @@ fn test_equals_block() {
         parameters: vec![],
         body: vec![],
         captured_vars: HashMap::new(),
+        captured_def_scope: vec![],
     });
     let block2 = Rc::clone(&block1);
     let block3 = Rc::new(BlockStatement {
         parameters: vec![],
         body: vec![],
         captured_vars: HashMap::new(),
+        captured_def_scope: vec![],
     });
 
     let obj1 = Object::Block(block1);

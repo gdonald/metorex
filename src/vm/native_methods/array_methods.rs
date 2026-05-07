@@ -50,8 +50,55 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
             }
+            "inspect" | "to_s" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let arr = array_rc.borrow();
+                let parts: Vec<String> = arr
+                    .iter()
+                    .map(|el| match el {
+                        Object::String(s) => format!("\"{}\"", s.as_str()),
+                        Object::Symbol(s) => format!(":{}", s.as_str()),
+                        Object::Nil => "nil".to_string(),
+                        other => other.to_string(),
+                    })
+                    .collect();
+                Ok(Some(Object::string(format!("[{}]", parts.join(", ")))))
+            }
             "clear" => {
                 array_rc.borrow_mut().clear();
+                Ok(Some(receiver.clone()))
+            }
+            "replace" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let other = match &arguments[0] {
+                    Object::Array(a) => a.borrow().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Array",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let mut arr = array_rc.borrow_mut();
+                arr.clear();
+                arr.extend(other);
+                drop(arr);
                 Ok(Some(receiver.clone()))
             }
             "delete" => {
@@ -161,6 +208,7 @@ impl VirtualMachine {
                     }
                 };
                 let array = array_rc.borrow();
+                let mut break_value: Option<Object> = None;
                 for element in array.iter() {
                     let args = vec![element.clone()];
                     match self.execute_block_with_control_flow(&block, args)? {
@@ -169,7 +217,13 @@ impl VirtualMachine {
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
-                        super::super::ControlFlow::Break { .. } => break,
+                        // `break <value>` from inside the block is what
+                        // Ruby returns from `each` — capture the value
+                        // and stop iterating. (Bare `break` carries Nil.)
+                        super::super::ControlFlow::Break { value, .. } => {
+                            break_value = Some(value);
+                            break;
+                        }
                         super::super::ControlFlow::Return { value, position } => {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
@@ -188,7 +242,7 @@ impl VirtualMachine {
                         }
                     }
                 }
-                Ok(Some(receiver.clone()))
+                Ok(Some(break_value.unwrap_or_else(|| receiver.clone())))
             }
             "map" => {
                 if !arguments.is_empty() {

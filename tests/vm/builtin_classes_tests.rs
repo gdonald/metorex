@@ -114,6 +114,7 @@ fn class_of_block() {
         parameters: vec![],
         body: vec![],
         captured_vars: HashMap::new(),
+        captured_def_scope: vec![],
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Object");

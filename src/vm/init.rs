@@ -250,6 +250,37 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     ));
     globals.set("Thread", Object::Class(thread));
 
+    // Queue / SizedQueue — minimal FIFO stub. metorex runs Thread blocks
+    // synchronously, so blocking-pop semantics aren't meaningful;
+    // `pop` returns nil on an empty queue rather than blocking. Enough
+    // for spec helpers and autoload coordination patterns to make
+    // forward progress.
+    let queue = Rc::new(Class::new(
+        "Queue",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("Queue", Object::Class(queue));
+    let sized_queue = Rc::new(Class::new(
+        "SizedQueue",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("SizedQueue", Object::Class(sized_queue));
+
+    // Mutex / ConditionVariable — single-threaded stubs. We don't have real
+    // OS threads (Thread.new runs synchronously), so locks never contend and
+    // condvars never need to actually wake anyone. Just enough surface for
+    // fixtures (CyclicBarrier, ThreadSafeCounter, ...) to compile and run.
+    let mutex = Rc::new(Class::new(
+        "Mutex",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("Mutex", Object::Class(mutex));
+    let cv = Rc::new(Class::new(
+        "ConditionVariable",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("ConditionVariable", Object::Class(cv));
+
     // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)
     // because object_to_dict_key returns the raw String for Object::String.
     let mut env_map = std::collections::HashMap::new();

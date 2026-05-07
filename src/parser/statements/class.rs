@@ -163,10 +163,44 @@ impl Parser {
             self.advance();
         }
 
-        let name = match self.advance().kind {
+        let first_ident = match self.advance().kind {
             TokenKind::Ident(name) => name,
             _ => return Err(self.error_at_previous("Expected module name")),
         };
+
+        // `module NS::Name` — same approach as `class NS::Name`. The leading
+        // segments form a dynamic namespace expression; the trailing one is
+        // the module's own name.
+        let mut namespace_expr: Option<Box<Expression>> = None;
+        let mut name = first_ident;
+        if self.check(&[TokenKind::ColonColon]) {
+            let first_pos = self.previous().position;
+            let mut ns_expr = Expression::Identifier {
+                name: name.clone(),
+                position: first_pos,
+            };
+            while self.match_token(&[TokenKind::ColonColon]) {
+                let segment = match self.advance().kind {
+                    TokenKind::Ident(part) => part,
+                    _ => {
+                        return Err(self.error_at_previous(
+                            "Expected constant name after '::' in module path",
+                        ));
+                    }
+                };
+                if self.check(&[TokenKind::ColonColon]) {
+                    ns_expr = Expression::ScopeResolution {
+                        namespace: Box::new(ns_expr),
+                        name: segment,
+                        position: first_pos,
+                    };
+                } else {
+                    name = segment;
+                    namespace_expr = Some(Box::new(ns_expr));
+                    break;
+                }
+            }
+        }
 
         self.skip_whitespace();
 
@@ -188,6 +222,7 @@ impl Parser {
 
         Ok(Statement::ModuleDef {
             name,
+            namespace: namespace_expr,
             body,
             position: start_pos,
         })

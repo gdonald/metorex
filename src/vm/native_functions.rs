@@ -20,12 +20,36 @@ impl VirtualMachine {
                 self.pending_block.take();
                 self.apply_visibility_modifier(name, arguments, position)
             }
+            "private_constant" | "public_constant" => {
+                // Apply visibility marks to constants on the current `self`
+                // module/class. Inside a `module M; ...; end` body, `self`
+                // is the module being defined, so qualified accesses like
+                // `M::PrivConst` from outside raise NameError /private
+                // constant/. `public_constant` is the inverse.
+                self.pending_block.take();
+                let target = match self.environment().get("self") {
+                    Some(Object::Class(c)) | Some(Object::Module(c)) => c,
+                    _ => return Ok(Object::Nil),
+                };
+                let make_private = name == "private_constant";
+                for arg in &arguments {
+                    let const_name = match arg {
+                        Object::Symbol(s) => s.as_str().to_string(),
+                        Object::String(s) => s.as_str().to_string(),
+                        _ => continue,
+                    };
+                    if make_private {
+                        target.mark_private_constant(const_name);
+                    } else {
+                        target.unmark_private_constant(&const_name);
+                    }
+                }
+                Ok(Object::Nil)
+            }
             "protected"
             | "module_function"
             | "private_class_method"
             | "public_class_method"
-            | "private_constant"
-            | "public_constant"
             | "deprecate_constant"
             | "freeze"
             | "noop_with_block" => {

@@ -300,3 +300,19 @@ fn class_self_attr_reader_getter() {
 fn class_self_attr_writer_setter() {
     parse_attr("class Foo\n  class << self\n    attr_writer :name\n  end\nend");
 }
+
+// ── Singleton-class attr inherits across superclass chain ────────────────────
+
+#[test]
+fn class_self_attr_accessor_inherits_to_subclass() {
+    use metorex::lexer::Lexer;
+    use metorex::object::Object;
+    use metorex::parser::Parser;
+    use metorex::vm::VirtualMachine;
+    let code = "class Parent\n  class << self\n    attr_accessor :foo\n  end\nend\nclass Child < Parent; end\nChild.foo = 7\nChild.foo";
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    let result = vm.execute_program(&stmts).expect("execution failed");
+    assert_eq!(result, Some(Object::Int(7)));
+}

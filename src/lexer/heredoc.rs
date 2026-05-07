@@ -2,10 +2,13 @@
 //
 // Limitations: heredocs are read greedily right after `<<-` / `<<~` is seen,
 // which means any tokens between the heredoc opener and end-of-line are
-// consumed as part of the parser stream after the body is returned. The body
-// itself is returned as a `String` token. Interpolation is not yet handled.
+// consumed as part of the parser stream after the body is returned.
+//
+// Interpolation: bodies of heredocs whose terminator is bare or
+// double-quoted (`<<-EOS`, `<<-"EOS"`) interpolate `#{expr}`; bodies whose
+// terminator is single-quoted (`<<-'EOS'`) are literal.
 
-use super::{Lexer, TokenKind};
+use super::{InterpolationPart, Lexer, TokenKind};
 
 impl<'a> Lexer<'a> {
     /// Try to read a heredoc starting just after the `<<` has been consumed.
@@ -42,8 +45,8 @@ impl<'a> Lexer<'a> {
         self.advance(); // consume `-` or `~`
 
         // Optional quote around the terminator (`<<-"FOO"` / `<<-'FOO'`).
-        // We treat all variants the same — interpolation isn't supported in
-        // heredoc bodies yet, so quoting only affects parsing of the name.
+        // The quote choice controls interpolation: bare and double-quoted
+        // both interpolate `#{...}`; single-quoted is literal (Ruby).
         let quote = match self.peek() {
             Some('\'') | Some('"') => {
                 let q = self.peek().unwrap();
@@ -52,6 +55,7 @@ impl<'a> Lexer<'a> {
             }
             _ => None,
         };
+        let interpolate = quote != Some('\'');
 
         // Read the terminator identifier.
         let mut terminator = String::new();
@@ -174,6 +178,84 @@ impl<'a> Lexer<'a> {
             }
         }
 
+        // If interpolation is enabled and the body contains `#{`, split it
+        // into Text/Expression parts. Otherwise return the raw String.
+        if interpolate && body.contains("#{") {
+            return Some(split_interpolated(&body));
+        }
         Some(TokenKind::String(body))
+    }
+}
+
+/// Split a heredoc body into interpolation parts. Mirrors the `#{expr}`
+/// scanner used for double-quoted strings: balances braces inside the
+/// expression text, and respects `\#{` as an escape for a literal `#{`.
+fn split_interpolated(body: &str) -> TokenKind {
+    let mut parts: Vec<InterpolationPart> = Vec::new();
+    let mut current = String::new();
+    let mut chars = body.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            // Preserve heredoc escapes as-is, but consume `\#{` so it
+            // becomes a literal `#{` in the body.
+            match chars.peek() {
+                Some('#') => {
+                    chars.next();
+                    current.push('#');
+                }
+                Some(&next) => {
+                    current.push('\\');
+                    current.push(next);
+                    chars.next();
+                }
+                None => current.push('\\'),
+            }
+            continue;
+        }
+        if ch == '#' && chars.peek() == Some(&'{') {
+            chars.next(); // consume '{'
+            if !current.is_empty() {
+                parts.push(InterpolationPart::Text(std::mem::take(&mut current)));
+            }
+            let mut expr = String::new();
+            let mut depth = 1;
+            for ec in chars.by_ref() {
+                if ec == '{' {
+                    depth += 1;
+                    expr.push(ec);
+                } else if ec == '}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                    expr.push(ec);
+                } else {
+                    expr.push(ec);
+                }
+            }
+            parts.push(InterpolationPart::Expression(expr));
+        } else {
+            current.push(ch);
+        }
+    }
+    if !current.is_empty() {
+        parts.push(InterpolationPart::Text(current));
+    }
+    if parts.is_empty() {
+        TokenKind::String(String::new())
+    } else if parts
+        .iter()
+        .all(|p| matches!(p, InterpolationPart::Text(_)))
+    {
+        // No actual expression parts — collapse back to a plain String.
+        let mut joined = String::new();
+        for p in parts {
+            if let InterpolationPart::Text(t) = p {
+                joined.push_str(&t);
+            }
+        }
+        TokenKind::String(joined)
+    } else {
+        TokenKind::InterpolatedString(parts)
     }
 }

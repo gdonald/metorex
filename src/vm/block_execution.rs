@@ -6,7 +6,7 @@
 use super::errors::*;
 use super::utils::*;
 use super::{CallFrame, ControlFlow, VirtualMachine};
-use crate::ast::Statement;
+use crate::ast::{Statement, collect_assigned_locals};
 use crate::callable::Callable;
 use crate::error::{MetorexError, StackFrame};
 use crate::lexer::Position;
@@ -124,6 +124,17 @@ impl VirtualMachine {
 
                     bind_block_params(vm, block.parameters(), arguments);
 
+                    // Pre-bind syntactically assigned locals to nil (Ruby's
+                    // parser-level local hoisting) so an `ensure`/`rescue`
+                    // clause that reads a variable defined later in the body
+                    // returns nil instead of NameError when execution
+                    // short-circuits via raise.
+                    for name in collect_assigned_locals(block.body()) {
+                        if vm.environment().get(&name).is_none() {
+                            vm.environment_mut().define(name, Object::Nil);
+                        }
+                    }
+
                     let mut last_value = Object::Nil;
                     for statement in block.body() {
                         if let Statement::Expression { expression, .. } = statement {
@@ -180,6 +191,14 @@ impl VirtualMachine {
         arguments: Vec<Object>,
     ) -> Result<Object, MetorexError> {
         self.environment_mut().push_scope();
+        // Restore the lexical class/module nesting from the block's
+        // definition site so an uppercase `Foo = ...` inside the body
+        // assigns to the same enclosing module the surrounding code would
+        // have. Saved/restored in pure stack fashion in case the caller's
+        // current def_scope_stack is non-empty (e.g. block invoked from
+        // inside a class body).
+        let saved_def_scope =
+            std::mem::replace(&mut self.def_scope_stack, block.captured_def_scope.clone());
 
         let result = (|| -> Result<Object, MetorexError> {
             // Define captured variables using shared references
@@ -190,6 +209,17 @@ impl VirtualMachine {
 
             // Define parameters as regular variables (handles *args/&block prefixes)
             bind_block_params(self, block.parameters(), arguments);
+
+            // Pre-define every local syntactically assigned-to in this block
+            // body as `nil`, so a read that runs before its assignment line
+            // (e.g. inside an `ensure` clause that fires after an early raise)
+            // returns nil rather than raising NameError. Mirrors Ruby's
+            // parser-level local-variable hoisting.
+            for name in collect_assigned_locals(block.body()) {
+                if self.environment().get(&name).is_none() {
+                    self.environment_mut().define(name, Object::Nil);
+                }
+            }
 
             let mut last_value = Object::Nil;
 
@@ -239,6 +269,7 @@ impl VirtualMachine {
         })();
 
         self.environment_mut().pop_scope();
+        self.def_scope_stack = saved_def_scope;
         result
     }
 
@@ -260,6 +291,14 @@ impl VirtualMachine {
 
             // Define parameters as regular variables (handles *args/&block prefixes)
             bind_block_params(self, block.parameters(), arguments);
+
+            // Pre-bind syntactically assigned locals to nil — see
+            // execute_block_body for the rationale.
+            for name in collect_assigned_locals(block.body()) {
+                if self.environment().get(&name).is_none() {
+                    self.environment_mut().define(name, Object::Nil);
+                }
+            }
 
             for statement in block.body() {
                 match self.execute_statement(statement)? {

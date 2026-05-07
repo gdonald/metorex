@@ -823,15 +823,24 @@ K.new.foo
 // ── private_constant / public_constant / deprecate_constant — no-op stubs
 
 #[test]
-fn private_constant_is_a_noop() {
+fn private_constant_blocks_qualified_access_from_outside() {
+    // `private_constant` actually marks the constant private now;
+    // qualified access from outside the module raises NameError. Inside
+    // the module body itself the access still works.
     let result = run(r#"
 module M
   X = 1
   private_constant :X
+  $inside = X
 end
-M::X
+begin
+  M::X
+  :ok
+rescue NameError
+  :raised
+end
 "#);
-    assert_eq!(result, Some(Object::Int(1)));
+    assert_eq!(result, Some(Object::Symbol(Rc::new("raised".to_string()))));
 }
 
 #[test]

@@ -150,8 +150,17 @@ impl VirtualMachine {
                         message: format_exception(&exception),
                     });
                 }
-                ControlFlow::Break { position, .. } => {
-                    return Err(loop_control_error("break", position));
+                ControlFlow::Break { value, position } => {
+                    // Bubble `break` out as a BlockBreak signal so the
+                    // enclosing iterator (the block-form `each`, etc.) sees
+                    // it and unwinds. Without this, `break` inside a
+                    // rescue/ensure body would either become a hard error
+                    // or be silently swallowed by the begin-as-expression
+                    // wrapper.
+                    return Err(MetorexError::BlockBreak {
+                        value,
+                        location: position_to_location(position),
+                    });
                 }
                 ControlFlow::Continue { position } => {
                     return Err(loop_control_error("continue", position));

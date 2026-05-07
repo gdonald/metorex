@@ -168,12 +168,17 @@ test_ensure_return
 // We wrap in a method so the rescue value is returned.
 
 #[test]
-fn rescue_standard_error_catches_not_implemented_error() {
+fn rescue_standard_error_catches_user_defined_subclass() {
+    // Original spelling redefined NotImplementedError as a subclass of
+    // StandardError. In MRI NotImplementedError descends from ScriptError,
+    // and that reopen would TypeError on the strict superclass-mismatch
+    // check. Use a fresh name so the test still exercises "rescue
+    // StandardError catches a user-defined subclass."
     let result = run(r#"
-class NotImplementedError < StandardError; end
+class MyAppError < StandardError; end
 def t
   begin
-    raise NotImplementedError
+    raise MyAppError
   rescue StandardError => e
     "caught"
   end

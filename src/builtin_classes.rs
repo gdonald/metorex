@@ -125,10 +125,23 @@ impl BuiltinClasses {
         }
     }
 
-    /// Check if an object is an instance of a class (or its subclasses)
+    /// Check if an object is an instance of a class (or its subclasses).
+    /// Also walks the per-instance singleton class so a module attached via
+    /// `obj.extend(Mod)` shows up in `is_a?` / `kind_of?`.
     pub fn is_instance_of(&self, obj: &Object, class: &Class) -> bool {
         let obj_class = self.class_of(obj);
-        self.is_subclass_of(&obj_class, class)
+        if self.is_subclass_of(&obj_class, class) {
+            return true;
+        }
+        if let Object::Instance(inst_rc) = obj {
+            let sc_opt = inst_rc.borrow().singleton_class.borrow().clone();
+            if let Some(sc) = sc_opt
+                && self.is_subclass_of(&sc, class)
+            {
+                return true;
+            }
+        }
+        false
     }
 
     /// Check if class_a is a subclass of class_b
@@ -136,16 +149,49 @@ impl BuiltinClasses {
         Self::is_subclass_of_static(class_a, class_b)
     }
 
-    /// Static helper for is_subclass_of
+    /// Static helper for is_subclass_of. Walks `class_a`'s full ancestor
+    /// chain — superclasses *and* the mixin chains attached to each — so a
+    /// module that's only reachable via `include` still matches.
     fn is_subclass_of_static(class_a: &Class, class_b: &Class) -> bool {
-        if class_a.name() == class_b.name() {
+        let target_ptr = class_b as *const Class;
+        let target_name = class_b.name();
+
+        // Start with class_a itself, then walk superclasses.
+        if std::ptr::eq(class_a, class_b) || class_a.name() == target_name {
             return true;
         }
-
-        if let Some(superclass) = class_a.superclass() {
-            return Self::is_subclass_of_static(&superclass, class_b);
+        for mixin in class_a.mixin_chain() {
+            if Self::module_matches(&mixin, target_ptr, target_name) {
+                return true;
+            }
+        }
+        let mut current: Option<Rc<Class>> = class_a.superclass();
+        while let Some(parent) = current {
+            if Rc::as_ptr(&parent) == target_ptr || parent.name() == target_name {
+                return true;
+            }
+            for mixin in parent.mixin_chain() {
+                if Self::module_matches(&mixin, target_ptr, target_name) {
+                    return true;
+                }
+            }
+            current = parent.superclass();
         }
 
+        false
+    }
+
+    /// Recursively check whether `module` (or any module it includes) matches
+    /// the target class/module by pointer identity or by name.
+    fn module_matches(module: &Rc<Class>, target_ptr: *const Class, target_name: &str) -> bool {
+        if Rc::as_ptr(module) == target_ptr || module.name() == target_name {
+            return true;
+        }
+        for inner in module.mixin_chain() {
+            if Self::module_matches(&inner, target_ptr, target_name) {
+                return true;
+            }
+        }
         false
     }
 

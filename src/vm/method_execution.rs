@@ -7,7 +7,7 @@
 use super::errors::*;
 use super::utils::*;
 use super::{CallFrame, ControlFlow, VirtualMachine};
-use crate::ast::{Expression, Statement};
+use crate::ast::{Expression, Statement, collect_assigned_locals};
 use crate::callable::Callable;
 use crate::class::Class;
 use crate::error::{MetorexError, StackFrame};
@@ -273,6 +273,17 @@ impl VirtualMachine {
     /// value of the last expression. Shared between execute_method_body and
     /// execute_function_body to eliminate duplication.
     fn execute_body_statements(&mut self, body: &[Statement]) -> Result<Object, MetorexError> {
+        // Pre-define every local syntactically assigned-to in this body as
+        // `nil`, matching Ruby's parser-level local hoisting. Without this,
+        // an `ensure`/`rescue` clause that reads a variable defined later in
+        // the body raises NameError when the body short-circuited via raise
+        // before the assignment actually ran.
+        for name in collect_assigned_locals(body) {
+            if self.environment().get(&name).is_none() {
+                self.environment_mut().define(name, Object::Nil);
+            }
+        }
+
         let mut last_value = Object::Nil;
 
         for (i, statement) in body.iter().enumerate() {

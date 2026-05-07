@@ -139,6 +139,7 @@ fn resolver_module_def() {
     let mut r = Resolver::new();
     let stmt = Statement::ModuleDef {
         name: "MyMod".to_string(),
+        namespace: None,
         body: vec![],
         position: pos(),
     };
@@ -811,6 +812,7 @@ fn resolver_module_def_with_body() {
     let mut r = Resolver::new();
     let stmt = Statement::ModuleDef {
         name: "Greetable".to_string(),
+        namespace: None,
         body: vec![Statement::FunctionDef {
             name: "greet".to_string(),
             parameters: vec![],

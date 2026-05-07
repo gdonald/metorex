@@ -4,6 +4,7 @@ use crate::lexer::Position;
 use crate::object::{Method, Object};
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
+use crate::vm::native_methods::is_valid_constant_name;
 use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
@@ -80,11 +81,29 @@ impl VirtualMachine {
             return Ok(Some(Object::Nil));
         }
         if method_name == "constants" {
-            let names: Vec<Object> = class_rc
+            let mut names: Vec<String> = class_rc
                 .class_var_names()
                 .into_iter()
                 .filter(|n| !n.starts_with("__"))
                 .filter(|n| n.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
+                .collect();
+            // Autoload-registered names participate in the constants table from
+            // the moment `autoload` is called, even before the file is loaded.
+            for n in class_rc.autoload_names() {
+                if !names.contains(&n) {
+                    names.push(n);
+                }
+            }
+            // Names whose autoload fired but didn't actually define the
+            // constant: MRI keeps these in `#constants` for a while, even
+            // though `const_defined?` and `autoload?` both report nothing.
+            for n in class_rc.unrealized_autoload_names() {
+                if !names.contains(&n) {
+                    names.push(n);
+                }
+            }
+            let names: Vec<Object> = names
+                .into_iter()
                 .map(|n| Object::Symbol(Rc::new(n)))
                 .collect();
             return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
@@ -191,9 +210,102 @@ impl VirtualMachine {
             }
             return Ok(Some(Object::Module(anon)));
         }
-        // `autoload :CONST, "path"` — treat as a no-op so fixtures don't fail.
-        if method_name == "autoload" || method_name == "autoload?" {
+        // `autoload :CONST, "path"` — register the constant→path mapping.
+        // `autoload?(:CONST, [inherit=true])` returns the registered path.
+        if method_name == "autoload" {
+            let const_name = match arguments.first() {
+                Some(Object::Symbol(s)) => (**s).clone(),
+                Some(Object::String(s)) => (**s).clone(),
+                _ => return Ok(Some(Object::Nil)),
+            };
+            if !is_valid_constant_name(&const_name) {
+                let msg = format!("autoload must be constant name: {}", const_name);
+                let exc = Object::exception("NameError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            if class_rc.is_frozen() {
+                let msg = format!("can't modify frozen Class: {}", class_rc.name());
+                let exc = Object::exception("FrozenError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            let path = match arguments.get(1) {
+                Some(Object::String(s)) => (**s).clone(),
+                Some(Object::Symbol(s)) => (**s).clone(),
+                Some(other) => {
+                    let other_obj = other.clone();
+                    if let Some((cls, method)) = self.lookup_method(&other_obj, "to_path") {
+                        let result =
+                            self.invoke_method(cls, method, other_obj, Vec::new(), position)?;
+                        match result {
+                            Object::String(s) => (*s).clone(),
+                            _ => {
+                                let msg = "to_path must return a String".to_string();
+                                let exc = Object::exception("TypeError", msg.clone());
+                                return Err(MetorexError::UncaughtException {
+                                    exception: exc,
+                                    location: position_to_location(position),
+                                    message: msg,
+                                });
+                            }
+                        }
+                    } else {
+                        let msg = format!(
+                            "no implicit conversion of {} into String",
+                            other.type_name()
+                        );
+                        let exc = Object::exception("TypeError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                }
+                None => return Ok(Some(Object::Nil)),
+            };
+            if path.is_empty() {
+                let msg = "empty file name".to_string();
+                let exc = Object::exception("ArgumentError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            let caller_file = self
+                .get_current_file()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            class_rc.set_autoload_location(const_name.clone(), caller_file, position.line as i64);
+            class_rc.set_autoload(const_name, path);
             return Ok(Some(Object::Nil));
+        }
+        if method_name == "autoload?" {
+            let const_name = match arguments.first() {
+                Some(Object::Symbol(s)) => (**s).clone(),
+                Some(Object::String(s)) => (**s).clone(),
+                _ => return Ok(Some(Object::Nil)),
+            };
+            let inherit = !matches!(arguments.get(1), Some(Object::Bool(false)));
+            let class_for_autoload = Rc::clone(class_rc);
+            let local_only_blocked = !inherit && class_rc.get_autoload(&const_name).is_none();
+            let path = if local_only_blocked {
+                None
+            } else {
+                self.effective_autoload(&class_for_autoload, &const_name)
+            };
+            return Ok(Some(match path {
+                Some(p) => Object::String(Rc::new(p)),
+                None => Object::Nil,
+            }));
         }
         // `Klass.include(Mod)` / `Klass.prepend(Mod)`: mix the module into
         // the class through the `append_features` dispatch path so user
@@ -344,9 +456,35 @@ impl VirtualMachine {
                 .as_secs_f64();
             return Ok(Some(Object::Float(secs)));
         }
+        // Queue.new / SizedQueue.new — synchronous FIFO stub. The instance
+        // carries an Array under `__queue_items`; SizedQueue ignores its
+        // capacity argument (we never block).
+        // Mutex.new / ConditionVariable.new — single-threaded stubs (no shared
+        // state needed; the synchronize/wait/broadcast methods are no-ops).
+        if method_name == "new"
+            && (class_rc.name() == "Mutex" || class_rc.name() == "ConditionVariable")
+        {
+            use crate::object::Instance;
+            let instance = Instance::new(Rc::clone(class_rc));
+            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            return Ok(Some(Object::Instance(inst_rc)));
+        }
+        if method_name == "new" && (class_rc.name() == "Queue" || class_rc.name() == "SizedQueue") {
+            use crate::object::Instance;
+            let instance = Instance::new(Rc::clone(class_rc));
+            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            inst_rc.borrow_mut().set_var(
+                "__queue_items".to_string(),
+                Object::Array(Rc::new(std::cell::RefCell::new(Vec::new()))),
+            );
+            return Ok(Some(Object::Instance(inst_rc)));
+        }
         // Thread.new captures the block; we run it lazily on `value` so that
         // serialised "concurrent" specs (which set a shared flag between
         // construction and value-collection) still observe the flag change.
+        // Newly-constructed threads land on `pending_threads` so an empty
+        // `Queue#pop` (which would block in real Ruby) can drain them and
+        // make forward progress.
         if method_name == "new" && class_rc.name() == "Thread" {
             use crate::object::Instance;
             let block = self.pending_block.take().unwrap_or(Object::Nil);
@@ -355,14 +493,30 @@ impl VirtualMachine {
             inst_rc
                 .borrow_mut()
                 .set_var("__thread_block".to_string(), block);
-            return Ok(Some(Object::Instance(inst_rc)));
+            let obj = Object::Instance(inst_rc);
+            self.pending_threads.push(obj.clone());
+            return Ok(Some(obj));
         }
         // Thread.pass / Thread.current / Thread.report_on_exception= — minimal
         // stubs sufficient for fixture and spec helpers.
         if class_rc.name() == "Thread" {
             match method_name {
                 "pass" => return Ok(Some(Object::Nil)),
-                "current" | "main" => return Ok(Some(Object::Nil)),
+                // Thread.current returns the innermost Thread instance whose
+                // block is being executed, or Nil at the top level. Used by
+                // spec fixtures that thread-local-store via
+                // `Thread.current[:k] = v` and read it back via the thread
+                // instance after `.value`/`.join`. `Thread.main` is the same
+                // shape but conceptually the program's root thread; we don't
+                // distinguish, so it returns the same value.
+                "current" | "main" => {
+                    return Ok(Some(
+                        self.thread_current_stack
+                            .last()
+                            .cloned()
+                            .unwrap_or(Object::Nil),
+                    ));
+                }
                 "report_on_exception" | "report_on_exception=" => {
                     return Ok(Some(Object::Bool(true)));
                 }
@@ -382,6 +536,61 @@ impl VirtualMachine {
                 }
                 _ => {}
             }
+        }
+        // Array.new — `new(size)`, `new(size, default)`, `new(size) { |i| ... }`.
+        // Without arguments, returns an empty array. The block form invokes
+        // the block with each index 0..size-1 and uses the result.
+        if method_name == "new" && class_rc.name() == "Array" {
+            let size = match arguments.first() {
+                None => 0_i64,
+                Some(Object::Int(n)) => *n,
+                Some(other) => {
+                    return Err(method_argument_type_error(
+                        "Array.new",
+                        "Integer",
+                        other,
+                        position,
+                    ));
+                }
+            };
+            if size < 0 {
+                let msg = "negative array size".to_string();
+                let exc = Object::exception("ArgumentError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+            let block = self.pending_block.take();
+            let mut elements: Vec<Object> = Vec::with_capacity(size as usize);
+            if let Some(Object::Block(b)) = block {
+                // The block may take 0 args (`Array.new(10) { rand }`) or 1
+                // (`Array.new(10) { |i| ... }`). Match metorex's strict
+                // arity check by only passing the index when the block
+                // declares a positional parameter for it.
+                let pass_index = b
+                    .parameters
+                    .iter()
+                    .any(|p| !p.starts_with('&') && !p.starts_with('*'));
+                for i in 0..size {
+                    let args = if pass_index {
+                        vec![Object::Int(i)]
+                    } else {
+                        vec![]
+                    };
+                    let v = self.execute_block_callable(&b, args, position)?;
+                    elements.push(v);
+                }
+            } else {
+                let default = arguments.get(1).cloned().unwrap_or(Object::Nil);
+                for _ in 0..size {
+                    elements.push(default.clone());
+                }
+            }
+            return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                elements,
+            )))));
         }
         if method_name == "new" && class_rc.name() == "Set" {
             use crate::object::ObjectHash;
@@ -859,8 +1068,25 @@ impl VirtualMachine {
                         ));
                     }
                 };
+                // Drop the resolved constant (if any), any pending autoload
+                // registration, and any "loaded but unrealized" bookkeeping.
+                // Without removing all three, the name would still surface
+                // in `#constants` because the constants list aggregates
+                // class_vars + autoloads + unrealized autoloads.
                 let removed = class_rc.remove_class_var(&const_name);
-                return Ok(Some(removed.unwrap_or(Object::Nil)));
+                let removed_autoload = class_rc.remove_autoload(&const_name);
+                class_rc.clear_unrealized_autoload(&const_name);
+                // Drop the recorded source location so a subsequent
+                // `autoload` for the same name surfaces *its* location via
+                // `const_source_location` instead of the stale class-def
+                // location from before the removal.
+                class_rc.remove_const_location(&const_name);
+                let result = removed.unwrap_or_else(|| {
+                    removed_autoload
+                        .map(|p| Object::String(Rc::new(p)))
+                        .unwrap_or(Object::Nil)
+                });
+                return Ok(Some(result));
             }
             "private" | "public" | "protected" => {
                 return self
@@ -898,7 +1124,12 @@ impl VirtualMachine {
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(chain)))));
             }
             "const_defined?" => {
-                if arguments.len() != 1 {
+                // const_defined?(name [, inherit=true]) — when inherit is
+                // false, only check the receiver itself; otherwise also
+                // search ancestors and outer scope. The autoload registry
+                // counts as defined (Ruby treats a registered autoload as
+                // a constant entry).
+                if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         "const_defined?",
                         1,
@@ -911,10 +1142,86 @@ impl VirtualMachine {
                     Object::String(s) => s.as_ref().clone(),
                     _ => return Ok(Some(Object::Bool(false))),
                 };
-                let found = class_rc.get_class_var(&const_name).is_some()
-                    || self.environment().get(&const_name).is_some()
-                    || self.globals().get(&const_name).is_some();
+                let inherit = !matches!(arguments.get(1), Some(Object::Bool(false)));
+                // Thread-aware autoload check via `effective_autoload`:
+                // the loading thread sees the autoload as cleared, other
+                // threads still see it as registered. Mirrors `defined?`
+                // / `autoload?` behaviour during a load.
+                let local_autoload = if class_rc.get_autoload(&const_name).is_some() {
+                    let cls = Rc::clone(class_rc);
+                    self.effective_autoload(&cls, &const_name).is_some()
+                } else {
+                    false
+                };
+                let found_local = class_rc.get_class_var(&const_name).is_some() || local_autoload;
+                let found = if inherit {
+                    found_local
+                        || class_rc.lookup_autoload(&const_name).is_some()
+                        || self.environment().get(&const_name).is_some()
+                        || self.globals().get(&const_name).is_some()
+                } else {
+                    found_local
+                };
                 return Ok(Some(Object::Bool(found)));
+            }
+            "const_source_location" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "const_source_location",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let const_name = match &arguments[0] {
+                    Object::Symbol(s) => s.as_ref().clone(),
+                    Object::String(s) => s.as_ref().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "const_source_location",
+                            "Symbol or String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                // Thread-aware: if this autoload is currently loading on
+                // a different thread, return the autoload registration's
+                // location (the constant isn't really defined from this
+                // thread's view yet). Otherwise prefer the constant's
+                // own definition site, falling back to the autoload
+                // registration when only an autoload is registered.
+                let current = self
+                    .thread_current_stack
+                    .last()
+                    .cloned()
+                    .unwrap_or(Object::Nil);
+                let other_thread_loading = self.autoload_loading.iter().any(|(cls, n, loader)| {
+                    if !Rc::ptr_eq(cls, class_rc) || n != &const_name {
+                        return false;
+                    }
+                    let same = match (loader, &current) {
+                        (Object::Nil, Object::Nil) => true,
+                        (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
+                        _ => false,
+                    };
+                    !same
+                });
+                let chosen = if other_thread_loading {
+                    class_rc.get_autoload_location(&const_name)
+                } else {
+                    class_rc
+                        .get_const_location(&const_name)
+                        .or_else(|| class_rc.get_autoload_location(&const_name))
+                };
+                let loc_obj = match chosen {
+                    Some((file, line)) => Object::Array(Rc::new(std::cell::RefCell::new(vec![
+                        Object::String(Rc::new(file)),
+                        Object::Int(line),
+                    ]))),
+                    None => Object::Nil,
+                };
+                return Ok(Some(loc_obj));
             }
             "const_get" => {
                 if arguments.len() != 1 {
@@ -940,6 +1247,27 @@ impl VirtualMachine {
                 if let Some(val) = class_rc.get_class_var(&const_name) {
                     return Ok(Some(val));
                 }
+                // const_get triggers autoload like a `Mod::Const` reference
+                // would. Without firing it here, callers like
+                // `Mod.const_get(:Foo)` would NameError even when `:Foo`
+                // is a registered autoload.
+                if let Some(val) = self.try_autoload_constant(class_rc, &const_name)? {
+                    return Ok(Some(val));
+                }
+                // Top-level constants live on globals rather than on Object's
+                // class_vars in our model. Ruby semantics treat `Object` as
+                // the home of top-level constants, so `Object.const_get(:Foo)`
+                // should resolve a top-level `Foo`. Walk superclasses too so
+                // any class inheriting from Object inherits this view.
+                let mut current: Option<Rc<crate::class::Class>> = Some(Rc::clone(class_rc));
+                while let Some(cls) = current {
+                    if cls.name() == "Object"
+                        && let Some(val) = self.globals().get(&const_name)
+                    {
+                        return Ok(Some(val));
+                    }
+                    current = cls.superclass();
+                }
                 let msg = format!("uninitialized constant {}", const_name);
                 let exc = Object::exception("NameError", msg.clone());
                 return Err(MetorexError::UncaughtException {
@@ -947,6 +1275,43 @@ impl VirtualMachine {
                     location: position_to_location(position),
                     message: msg,
                 });
+            }
+            "const_set" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        "const_set",
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let const_name = match &arguments[0] {
+                    Object::Symbol(s) => s.as_ref().clone(),
+                    Object::String(s) => s.as_ref().clone(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "const_set",
+                            "Symbol or String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                if !is_valid_constant_name(&const_name) {
+                    let msg = format!("wrong constant name {}", const_name);
+                    let exc = Object::exception("NameError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                // Setting the constant cancels any pending autoload for it
+                // and clears any "loaded but unrealized" bookkeeping.
+                class_rc.remove_autoload(&const_name);
+                class_rc.clear_unrealized_autoload(&const_name);
+                class_rc.set_class_var(&const_name, arguments[1].clone());
+                return Ok(Some(arguments[1].clone()));
             }
             "class_eval" | "module_eval" => {
                 let block = self.pending_block.take();

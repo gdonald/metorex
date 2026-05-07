@@ -115,7 +115,8 @@ fn test_rescue_reraise_scope() {
 
 #[test]
 fn test_rescue_rerescue() {
-    let expected = "rescue caught: location=test_loc\n";
+    // location is a String "test_loc"; .inspect quotes it.
+    let expected = "rescue caught: location=\"test_loc\"\n";
     let output = run_example("rescue/rerescue_test.rb");
     assert_eq!(output, expected);
 }

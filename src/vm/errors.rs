@@ -33,12 +33,17 @@ pub(super) fn invalid_assignment_target_error(target: &Expression) -> MetorexErr
     )
 }
 
-/// Produce a runtime error for referencing an undefined variable.
+/// Produce an error for referencing an undefined variable. Modeled as a
+/// Ruby-level NameError so `rescue NameError` (and the mspec
+/// `raise_error(NameError)` matcher) catch it the way they would in MRI.
 pub(super) fn undefined_variable_error(name: &str, position: Position) -> MetorexError {
-    MetorexError::runtime_error(
-        format!("Undefined variable '{name}'"),
-        position_to_location(position),
-    )
+    let msg = format!("Undefined variable '{name}'");
+    let exc = crate::object::Object::exception("NameError", msg.clone());
+    MetorexError::UncaughtException {
+        exception: exc,
+        location: position_to_location(position),
+        message: msg,
+    }
 }
 
 /// Produce a runtime error when accessing `self` outside of a method context.

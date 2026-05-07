@@ -253,6 +253,20 @@ fn test_oop_comparable_parens_execution() {
 }
 
 #[test]
+fn test_oop_case_compare_extend_execution() {
+    let expected = "Basic === obj: true\nSuper === obj: true\nobj.is_a?(Basic): true\nobj.is_a?(Super): true\nBasic === Child.new: true\nSuper === Child.new: true\n";
+    let output = run_example("oop/case_compare_extend.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_case_compare_extend_parens_execution() {
+    let expected = "Basic === obj: true\nSuper === obj: true\nobj.is_a?(Basic): true\nobj.is_a?(Super): true\nBasic === Child.new: true\nSuper === Child.new: true\n";
+    let output = run_example("oop/case_compare_extend_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_oop_comparable_singleton_spaceship_execution() {
     let expected = "true\n1\n";
     let output = run_example("oop/comparable/singleton_spaceship.rb");

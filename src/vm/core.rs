@@ -29,6 +29,38 @@ pub struct VirtualMachine {
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
     pub(crate) loaded_files: HashSet<PathBuf>,
+    /// Depth counter that tracks whether we're inside a const-access
+    /// autoload trigger. While >0, `effective_autoload` skips moving the
+    /// cleared name to `unrealized_autoloads` — that bookkeeping only
+    /// applies to the direct-require path.
+    pub(crate) autoload_const_access_depth: u32,
+    /// Stack of currently-executing Thread instances. The top of the stack
+    /// is what `Thread.current` returns; pushed at the start of a
+    /// `Thread.new { }` block's deferred execution (`.value`/`.join`) and
+    /// popped on exit. When empty, `Thread.current` returns Nil.
+    pub(crate) thread_current_stack: Vec<Object>,
+    /// Threads created via `Thread.new` whose block hasn't been run yet
+    /// (no `.value`/`.join` call). When `Queue#pop` is invoked on an
+    /// empty queue, we drain this list and run their blocks — a
+    /// coroutine-style hack so a `Queue.pop` that "waits" for another
+    /// thread's `Queue.push` actually gets unblocked under our
+    /// synchronous Thread model. Threads remove themselves on first
+    /// `.value`/`.join` (whichever runs first).
+    pub(crate) pending_threads: Vec<Object>,
+    /// Stack of canonical paths whose body is *currently executing* via
+    /// `execute_file`. The path joins this stack on entry (after the
+    /// `$"` mark goes in) and leaves on exit. Distinct from `$"` because
+    /// `$"` is added eagerly before the body runs to short-circuit
+    /// recursive requires; this stack tells autoload "the constant
+    /// hasn't been defined yet because the file is mid-execution, don't
+    /// re-load."
+    pub(crate) loading_paths: Vec<String>,
+    /// Autoloads currently being loaded, with the thread that initiated
+    /// the load. Stored as `(class, name, loading_thread)` triples.
+    /// `effective_autoload` consults this list to differentiate the
+    /// "loading thread" view (sees the autoload as cleared) from the
+    /// "other thread" view (sees the autoload as still active).
+    pub(crate) autoload_loading: Vec<(Rc<crate::class::Class>, String, Object)>,
     /// Trailing block passed to the current call (e.g., `foo() do |x| ... end`).
     /// Set before invoke_method/invoke_callable; taken at method body entry.
     pub(crate) pending_block: Option<Object>,
@@ -95,6 +127,11 @@ impl VirtualMachine {
             builtins,
             current_file: None,
             loaded_files: HashSet::new(),
+            autoload_const_access_depth: 0,
+            thread_current_stack: Vec::new(),
+            pending_threads: Vec::new(),
+            loading_paths: Vec::new(),
+            autoload_loading: Vec::new(),
             pending_block: None,
             load_wrap_depth: 0,
             user_def_nesting: 0,

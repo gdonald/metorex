@@ -289,6 +289,34 @@ impl VirtualMachine {
                 let sc = self.singleton_class_of(receiver);
                 Ok(Some(Object::Class(sc)))
             }
+            // Object#extend(mod) — add `mod` as a mixin on the receiver's
+            // singleton class so the module's instance methods become callable
+            // on this specific object. (Class/Module already have their own
+            // dedicated `extend` in class_methods.rs that hits earlier.)
+            "extend" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(
+                        "extend",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                for arg in arguments {
+                    let module_rc = match arg {
+                        Object::Module(m) => std::rc::Rc::clone(m),
+                        Object::Class(c) => std::rc::Rc::clone(c),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "extend", "Module", other, position,
+                            ));
+                        }
+                    };
+                    let singleton = self.singleton_class_of(receiver);
+                    singleton.add_mixin(module_rc);
+                }
+                Ok(Some(receiver.clone()))
+            }
             "singleton_method" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -675,6 +703,15 @@ impl VirtualMachine {
                         ));
                     }
                 };
+                // Exceptions are stored as a single Object::Exception variant
+                // tagged with the specific exception type (e.g. "NameError").
+                // `instance_of?` should match against that type rather than
+                // the broad `Exception` class so `e.instance_of?(NameError)`
+                // works for a rescued NameError.
+                if let Object::Exception(exc) = receiver {
+                    let actual = exc.borrow().exception_type.clone();
+                    return Ok(Some(Object::Bool(actual == target_class.name())));
+                }
                 let obj_class = self.builtins().class_of(receiver);
                 Ok(Some(Object::Bool(obj_class.name() == target_class.name())))
             }

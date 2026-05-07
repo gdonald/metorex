@@ -2,6 +2,7 @@
 
 use crate::ast::Statement;
 use crate::callable::Callable;
+use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::vm::VirtualMachine;
@@ -20,6 +21,11 @@ pub struct BlockStatement {
     pub body: Vec<Statement>,
     /// Captured variables from outer scope (shared mutable references)
     pub captured_vars: HashMap<String, Rc<RefCell<Object>>>,
+    /// Lexical class/module nesting at the moment the block was defined.
+    /// Restored during invocation so a bare `Foo = 1` inside the body lands
+    /// on the same enclosing module that an unbroken straight-line statement
+    /// would have hit.
+    pub captured_def_scope: Vec<Rc<Class>>,
 }
 
 impl BlockStatement {
@@ -33,6 +39,24 @@ impl BlockStatement {
             parameters,
             body,
             captured_vars,
+            captured_def_scope: Vec::new(),
+        }
+    }
+
+    /// Create a new block closure with a captured lexical scope. Used by
+    /// the Lambda evaluator so the block remembers which class/module it
+    /// was lexically inside.
+    pub fn with_def_scope(
+        parameters: Vec<String>,
+        body: Vec<Statement>,
+        captured_vars: HashMap<String, Rc<RefCell<Object>>>,
+        captured_def_scope: Vec<Rc<Class>>,
+    ) -> Self {
+        Self {
+            parameters,
+            body,
+            captured_vars,
+            captured_def_scope,
         }
     }
 

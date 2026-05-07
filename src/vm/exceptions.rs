@@ -119,7 +119,7 @@ impl VirtualMachine {
         _position: Position,
     ) -> Result<ControlFlow, MetorexError> {
         // Execute the try block
-        let body_result = self.execute_statements_internal(body);
+        let body_result = self.execute_begin_branch(body);
 
         // Track whether an exception was handled
         let mut handled_exception = false;
@@ -196,7 +196,7 @@ impl VirtualMachine {
                     }
 
                     // Execute the rescue block
-                    final_result = self.execute_statements_internal(&rescue_clause.body);
+                    final_result = self.execute_begin_branch(&rescue_clause.body);
                     handled_exception = true;
                     break;
                 }
@@ -210,10 +210,15 @@ impl VirtualMachine {
                 // Clear the $! variable since exception was handled
                 self.environment_mut().define("$!".to_string(), Object::Nil);
             }
-        } else if final_result.is_ok() && matches!(final_result, Ok(ControlFlow::Next)) {
+        } else if final_result.is_ok()
+            && matches!(
+                final_result,
+                Ok(ControlFlow::Next) | Ok(ControlFlow::Value(_))
+            )
+        {
             // No exception occurred - execute else clause if present
             if let Some(else_stmts) = else_clause {
-                final_result = self.execute_statements_internal(else_stmts);
+                final_result = self.execute_begin_branch(else_stmts);
             }
         }
 
@@ -242,6 +247,31 @@ impl VirtualMachine {
         }
 
         final_result
+    }
+
+    /// Run a begin/rescue/else clause body, returning `ControlFlow::Value`
+    /// holding the value of the last expression statement when the body
+    /// completes normally — so e.g. `begin; raise; rescue => e; e; end`
+    /// evaluates to the rescued exception. Non-expression terminal
+    /// statements still return their natural ControlFlow.
+    fn execute_begin_branch(&mut self, body: &[Statement]) -> Result<ControlFlow, MetorexError> {
+        let mut last_value: Option<Object> = None;
+        for (idx, statement) in body.iter().enumerate() {
+            let is_last = idx == body.len() - 1;
+            if is_last && let Statement::Expression { expression, .. } = statement {
+                let value = self.evaluate_expression(expression)?;
+                return Ok(ControlFlow::Value(value));
+            }
+            match self.execute_statement(statement)? {
+                ControlFlow::Next => {}
+                ControlFlow::Value(v) => last_value = Some(v),
+                flow => return Ok(flow),
+            }
+        }
+        match last_value {
+            Some(v) => Ok(ControlFlow::Value(v)),
+            None => Ok(ControlFlow::Next),
+        }
     }
 
     /// Check if an exception matches the given exception type list.

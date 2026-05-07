@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
-use super::errors::index_out_of_bounds_error;
+use super::errors::{index_out_of_bounds_error, loop_control_error};
 use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
@@ -270,8 +270,30 @@ impl VirtualMachine {
                 }
                 match self.execute_statement(stmt)? {
                     ControlFlow::Next => {}
-                    ControlFlow::Return { value, .. } => {
-                        return Ok(value);
+                    ControlFlow::Value(v) => {
+                        last_value = v;
+                    }
+                    ControlFlow::Return { value, position } => {
+                        // Bubble out to enclosing method, not the if branch.
+                        return Err(MetorexError::NonLocalReturn {
+                            value,
+                            location: position_to_location(position),
+                        });
+                    }
+                    ControlFlow::Break { value, position } => {
+                        // `break` inside an if/elsif/else branch must
+                        // unwind to the enclosing iterator/block, not be
+                        // silently swallowed by the if-as-expression
+                        // wrapper. BlockBreak is the signal that
+                        // execute_block_callable / each-style natives
+                        // recognise.
+                        return Err(MetorexError::BlockBreak {
+                            value,
+                            location: position_to_location(position),
+                        });
+                    }
+                    ControlFlow::Continue { position } => {
+                        return Err(loop_control_error("continue", position));
                     }
                     ControlFlow::Exception {
                         exception,
@@ -282,10 +304,6 @@ impl VirtualMachine {
                             location: position_to_location(position),
                             message: format_exception(&exception),
                         });
-                    }
-                    _ => {
-                        // Break/Continue — fall through
-                        break;
                     }
                 }
             }

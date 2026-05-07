@@ -17,7 +17,23 @@ impl VirtualMachine {
                 Some(Object::Class(_)) | Some(Object::Module(_)) => Some("constant"),
                 Some(_) => Some("local-variable"),
                 None => {
-                    if self.globals().contains(name) {
+                    // Walk lexically enclosing class/module bodies for a
+                    // matching constant or autoload registration. Mirrors
+                    // identifier evaluation but reports without triggering
+                    // the autoload — `defined?` does not run it.
+                    let mut found_constant = false;
+                    let scopes: Vec<_> = self.def_scope_stack.iter().rev().cloned().collect();
+                    for enclosing in scopes {
+                        if enclosing.get_class_var(name).is_some()
+                            || self.effective_autoload(&enclosing, name).is_some()
+                        {
+                            found_constant = true;
+                            break;
+                        }
+                    }
+                    if found_constant {
+                        Some("constant")
+                    } else if self.globals().contains(name) {
                         Some("method")
                     } else {
                         None
@@ -51,11 +67,24 @@ impl VirtualMachine {
                     None
                 }
             }
-            Expression::ScopeResolution { .. } => {
-                if self.evaluate_expression(expression).is_ok() {
-                    Some("constant")
-                } else {
-                    None
+            Expression::ScopeResolution {
+                namespace, name, ..
+            } => {
+                // Check the namespace exists, then look up the constant
+                // *without* triggering autoload (Ruby's `defined?` does NOT
+                // run the autoload — it just reports whether the entry is
+                // registered, autoload included).
+                match self.evaluate_expression(namespace) {
+                    Ok(Object::Class(c)) | Ok(Object::Module(c)) => {
+                        if c.get_class_var(name).is_some()
+                            || self.effective_autoload(&c, name).is_some()
+                        {
+                            Some("constant")
+                        } else {
+                            None
+                        }
+                    }
+                    _ => None,
                 }
             }
             Expression::MethodCall { receiver, .. } => {

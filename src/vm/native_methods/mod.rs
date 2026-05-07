@@ -47,6 +47,17 @@ impl VirtualMachine {
             return Ok(Some(binding.receiver.clone().unwrap_or(Object::Nil)));
         }
 
+        // Binding#eval — minimal implementation: handles `eval("self")`
+        // (returns the binding's receiver). Anything else returns Nil; full
+        // re-parse-in-binding-scope is substantial and not needed here.
+        if let Object::Binding(binding) = receiver
+            && method_name == "eval"
+            && let Some(Object::String(s)) = arguments.first()
+            && s.as_str().trim() == "self"
+        {
+            return Ok(Some(binding.receiver.clone().unwrap_or(Object::Nil)));
+        }
+
         // Block/Lambda methods
         if let Object::Block(block) = receiver {
             match method_name {
@@ -111,6 +122,14 @@ impl VirtualMachine {
             "Set" => self.call_set_method(receiver, method_name, arguments, position),
             "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
             "Thread" => self.call_thread_method(receiver, method_name, arguments, position),
+            "Queue" | "SizedQueue" => {
+                self.call_queue_method(receiver, method_name, arguments, position)
+            }
+            "Mutex" => self.call_mutex_method(receiver, method_name, arguments, position),
+            "ConditionVariable" => {
+                self.call_condition_variable_method(receiver, method_name, arguments, position)
+            }
+            "File" => self.call_file_handle_method(receiver, method_name, arguments, position),
             _ => Ok(None),
         }
     }
@@ -223,16 +242,32 @@ impl VirtualMachine {
                         val
                     }));
                 }
+                // Drop this thread from the pending list — about to run.
+                self.pending_threads.retain(|t| {
+                    if let (Object::Instance(a), Object::Instance(b)) = (t, receiver) {
+                        !Rc::ptr_eq(a, b)
+                    } else {
+                        true
+                    }
+                });
                 let block_obj = inst
                     .borrow()
                     .get_var("__thread_block")
                     .cloned()
                     .unwrap_or(Object::Nil);
-                let value = if let Object::Block(b) = block_obj {
-                    self.execute_block_body(&b, vec![])?
+                // Push this thread onto the "current thread" stack so
+                // `Thread.current` returns the right instance for the
+                // duration of the block (and `Thread.current[:k] = v`
+                // writes thread-locals to this thread, not the caller).
+                self.thread_current_stack.push(receiver.clone());
+                let value_result: Result<Object, MetorexError> = if let Object::Block(b) = block_obj
+                {
+                    self.execute_block_body(&b, vec![])
                 } else {
-                    Object::Nil
+                    Ok(Object::Nil)
                 };
+                self.thread_current_stack.pop();
+                let value = value_result?;
                 inst.borrow_mut()
                     .set_var("__thread_value".to_string(), value.clone());
                 Ok(Some(if method_name == "join" {
@@ -241,9 +276,286 @@ impl VirtualMachine {
                     value
                 }))
             }
+            // Thread-local storage: `t[:k]` and `t[:k] = v`. Backed by an
+            // ivar Hash on the Thread instance.
+            "[]" => {
+                if arguments.len() != 1 {
+                    return Err(crate::vm::errors::method_argument_error(
+                        "[]",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key_str = match &arguments[0] {
+                    Object::Symbol(s) => (**s).clone(),
+                    Object::String(s) => (**s).clone(),
+                    _ => return Ok(Some(Object::Nil)),
+                };
+                let locals = inst.borrow().get_var("__thread_locals").cloned();
+                if let Some(Object::Dict(d)) = locals {
+                    return Ok(Some(
+                        d.borrow().get(&key_str).cloned().unwrap_or(Object::Nil),
+                    ));
+                }
+                Ok(Some(Object::Nil))
+            }
+            "[]=" => {
+                if arguments.len() != 2 {
+                    return Err(crate::vm::errors::method_argument_error(
+                        "[]=",
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key_str = match &arguments[0] {
+                    Object::Symbol(s) => (**s).clone(),
+                    Object::String(s) => (**s).clone(),
+                    _ => return Ok(Some(arguments[1].clone())),
+                };
+                let existing = inst.borrow().get_var("__thread_locals").cloned();
+                let dict = match existing {
+                    Some(Object::Dict(d)) => d,
+                    _ => {
+                        let d = Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
+                        inst.borrow_mut()
+                            .set_var("__thread_locals".to_string(), Object::Dict(Rc::clone(&d)));
+                        d
+                    }
+                };
+                dict.borrow_mut().insert(key_str, arguments[1].clone());
+                Ok(Some(arguments[1].clone()))
+            }
             "alive?" | "stop?" => Ok(Some(Object::Bool(false))),
             "status" => Ok(Some(Object::Bool(false))),
             _ => Ok(None),
         }
     }
+
+    /// Instance-level methods on file handles produced by `File.open`.
+    /// Implements just enough of IO/File: `puts`, `print`, `write`, `<<`,
+    /// `close`, `closed?`. Reads are not supported (handles are write-mode
+    /// only for spec-helper purposes).
+    pub(crate) fn call_file_handle_method(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        _position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        let inst = match receiver {
+            Object::Instance(i) => Rc::clone(i),
+            _ => return Ok(None),
+        };
+        // Only intercept if this instance was produced by `File.open`
+        // (carries `__file_path`); otherwise return None and let the
+        // generic class methods (which include reopens of `File`) handle
+        // the call.
+        let path = match inst.borrow().get_var("__file_path").cloned() {
+            Some(Object::String(s)) => s.as_ref().clone(),
+            _ => return Ok(None),
+        };
+        let append_text = |contents: String| -> Result<(), MetorexError> {
+            use std::io::Write as _;
+            let mut f = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+                .map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!("Failed to open '{}' for write: {}", path, e),
+                        crate::error::SourceLocation::new(0, 0, 0),
+                    )
+                })?;
+            f.write_all(contents.as_bytes()).map_err(|e| {
+                MetorexError::runtime_error(
+                    format!("Failed to write to '{}': {}", path, e),
+                    crate::error::SourceLocation::new(0, 0, 0),
+                )
+            })?;
+            Ok(())
+        };
+        match method_name {
+            "puts" => {
+                if arguments.is_empty() {
+                    append_text("\n".to_string())?;
+                } else {
+                    for arg in arguments {
+                        let s = match arg {
+                            Object::String(s) => s.as_ref().clone(),
+                            other => format!("{}", other),
+                        };
+                        let mut line = s;
+                        if !line.ends_with('\n') {
+                            line.push('\n');
+                        }
+                        append_text(line)?;
+                    }
+                }
+                Ok(Some(Object::Nil))
+            }
+            "print" | "write" | "<<" => {
+                for arg in arguments {
+                    let s = match arg {
+                        Object::String(s) => s.as_ref().clone(),
+                        other => format!("{}", other),
+                    };
+                    append_text(s)?;
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "close" => Ok(Some(Object::Nil)),
+            "closed?" => Ok(Some(Object::Bool(false))),
+            _ => Ok(None),
+        }
+    }
+
+    /// Instance-level Queue / SizedQueue methods. metorex runs blocks
+    /// synchronously, so blocking-pop semantics aren't useful; `pop` on an
+    /// empty queue returns nil rather than blocking. Enough for spec
+    /// helpers that wire queues for inter-thread coordination patterns.
+    pub(crate) fn call_queue_method(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        _position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        let inst = match receiver {
+            Object::Instance(i) => Rc::clone(i),
+            _ => return Ok(None),
+        };
+        let items_obj = inst.borrow().get_var("__queue_items").cloned();
+        let items_arr = match items_obj {
+            Some(Object::Array(a)) => a,
+            _ => return Ok(None),
+        };
+        match method_name {
+            "push" | "<<" | "enq" => {
+                if let Some(item) = arguments.first() {
+                    items_arr.borrow_mut().push(item.clone());
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "pop" | "deq" | "shift" => {
+                if items_arr.borrow().is_empty() {
+                    // In real Ruby, `Queue#pop` on an empty queue blocks
+                    // until another thread pushes. Our Thread.new is
+                    // lazy/synchronous, so block-waiting is meaningless;
+                    // instead we drain the pending Thread.new list and
+                    // run their blocks once. That's enough to unblock
+                    // common "thread A pushes, thread B pops" coordination
+                    // patterns in mspec fixtures (autoload's
+                    // check_before_during_thread_after, etc.).
+                    while let Some(thread_obj) = self.pending_threads.pop() {
+                        if let Object::Instance(inst) = &thread_obj {
+                            let already_run = inst.borrow().get_var("__thread_value").is_some();
+                            if !already_run {
+                                let block_obj = inst
+                                    .borrow()
+                                    .get_var("__thread_block")
+                                    .cloned()
+                                    .unwrap_or(Object::Nil);
+                                self.thread_current_stack.push(thread_obj.clone());
+                                let value_result = if let Object::Block(b) = block_obj {
+                                    self.execute_block_body(&b, vec![])
+                                } else {
+                                    Ok(Object::Nil)
+                                };
+                                self.thread_current_stack.pop();
+                                let value = value_result?;
+                                inst.borrow_mut()
+                                    .set_var("__thread_value".to_string(), value);
+                            }
+                        }
+                        if !items_arr.borrow().is_empty() {
+                            break;
+                        }
+                    }
+                }
+                let val = if items_arr.borrow().is_empty() {
+                    Object::Nil
+                } else {
+                    items_arr.borrow_mut().remove(0)
+                };
+                Ok(Some(val))
+            }
+            "size" | "length" | "count" => Ok(Some(Object::Int(items_arr.borrow().len() as i64))),
+            "empty?" => Ok(Some(Object::Bool(items_arr.borrow().is_empty()))),
+            "clear" => {
+                items_arr.borrow_mut().clear();
+                Ok(Some(receiver.clone()))
+            }
+            "close" | "closed?" => Ok(Some(Object::Bool(false))),
+            _ => Ok(None),
+        }
+    }
+
+    /// Mutex instance methods. Single-threaded stubs: `synchronize` just
+    /// invokes the block, `lock`/`unlock` are no-ops, and `locked?` always
+    /// reports false. Enough for `Mutex.new.synchronize { ... }` patterns
+    /// in spec fixtures (CyclicBarrier, ThreadSafeCounter).
+    pub(crate) fn call_mutex_method(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        _arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        match method_name {
+            "synchronize" => {
+                let block = self.pending_block.take();
+                if let Some(Object::Block(b)) = block {
+                    let result = self.execute_block_body(&b, vec![])?;
+                    Ok(Some(result))
+                } else {
+                    let exc = Object::exception(
+                        "ArgumentError",
+                        "Mutex#synchronize requires a block".to_string(),
+                    );
+                    Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: super::utils::position_to_location(position),
+                        message: "Mutex#synchronize requires a block".to_string(),
+                    })
+                }
+            }
+            "lock" | "unlock" => Ok(Some(receiver.clone())),
+            "locked?" => Ok(Some(Object::Bool(false))),
+            "try_lock" => Ok(Some(Object::Bool(true))),
+            "owned?" => Ok(Some(Object::Bool(false))),
+            _ => Ok(None),
+        }
+    }
+
+    /// ConditionVariable instance methods. Single-threaded stubs: `wait` is
+    /// a no-op (in real Ruby it would block until `broadcast` / `signal`,
+    /// but we have no other thread to do the waking, so blocking would
+    /// deadlock); `signal` / `broadcast` are no-ops too.
+    pub(crate) fn call_condition_variable_method(
+        &mut self,
+        _receiver: &Object,
+        method_name: &str,
+        _arguments: &[Object],
+        _position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        match method_name {
+            "wait" | "signal" | "broadcast" => Ok(Some(Object::Nil)),
+            _ => Ok(None),
+        }
+    }
+}
+
+/// Whether `name` is a syntactically valid Ruby constant name: must start
+/// with an ASCII uppercase letter and contain only word characters after.
+/// Used by `Module#autoload` and `Module#const_set` to reject lowercase /
+/// numeric / whitespace-leading names with a NameError.
+pub(crate) fn is_valid_constant_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_uppercase() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

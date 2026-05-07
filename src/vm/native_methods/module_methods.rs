@@ -4,6 +4,7 @@ use crate::lexer::Position;
 use crate::object::{Method, Object};
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
+use crate::vm::native_methods::is_valid_constant_name;
 use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
@@ -71,6 +72,30 @@ impl VirtualMachine {
             };
             self.execute_file(std::path::Path::new(&path))?;
             return Ok(Some(Object::Bool(true)));
+        }
+
+        // `Kernel.require(path)` — module-level dispatch that delegates to
+        // the same implementation as the top-level `require` function.
+        if module_rc.name() == "Kernel" && method_name == "require" {
+            if arguments.len() != 1 {
+                return Err(method_argument_error(
+                    "require",
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let path = match &arguments[0] {
+                Object::String(s) => s.as_str().to_string(),
+                other => {
+                    return Err(method_argument_type_error(
+                        "require", "String", other, position,
+                    ));
+                }
+            };
+            return self
+                .call_native_function("require", vec![Object::String(Rc::new(path))], position)
+                .map(Some);
         }
 
         if module_rc.name() == "Signal" && method_name == "trap" {
@@ -217,10 +242,116 @@ impl VirtualMachine {
                 }
                 return Ok(Some(Object::Symbol(Rc::new(new_name))));
             }
-            // `autoload :CONST, "path"` registers a lazy loader. We treat it
-            // as a no-op so fixtures that call it during setup don't fail.
-            "autoload" | "autoload?" => {
+            // `autoload :CONST, "path"` registers a lazy loader. The path is
+            // stored verbatim — `autoload?` returns it unchanged on hit.
+            "autoload" => {
+                let const_name = match arguments.first() {
+                    Some(Object::Symbol(s)) => (**s).clone(),
+                    Some(Object::String(s)) => (**s).clone(),
+                    _ => return Ok(Some(Object::Nil)),
+                };
+                if !is_valid_constant_name(&const_name) {
+                    let msg = format!("autoload must be constant name: {}", const_name);
+                    let exc = Object::exception("NameError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                // FrozenError fires before any other validation in MRI, so the
+                // constant slot stays untouched on a frozen module.
+                if module_rc.is_frozen() {
+                    let msg = format!("can't modify frozen Module: {}", module_rc.name());
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                // Coerce the filename: String/Symbol pass through; anything
+                // else must respond to #to_path and return a String, else
+                // TypeError. Empty strings raise ArgumentError.
+                let path = match arguments.get(1) {
+                    Some(Object::String(s)) => (**s).clone(),
+                    Some(Object::Symbol(s)) => (**s).clone(),
+                    Some(other) => {
+                        let other_obj = other.clone();
+                        if let Some((cls, method)) = self.lookup_method(&other_obj, "to_path") {
+                            let result =
+                                self.invoke_method(cls, method, other_obj, Vec::new(), position)?;
+                            match result {
+                                Object::String(s) => (*s).clone(),
+                                _ => {
+                                    let msg = "to_path must return a String".to_string();
+                                    let exc = Object::exception("TypeError", msg.clone());
+                                    return Err(MetorexError::UncaughtException {
+                                        exception: exc,
+                                        location: position_to_location(position),
+                                        message: msg,
+                                    });
+                                }
+                            }
+                        } else {
+                            let msg = format!(
+                                "no implicit conversion of {} into String",
+                                other.type_name()
+                            );
+                            let exc = Object::exception("TypeError", msg.clone());
+                            return Err(MetorexError::UncaughtException {
+                                exception: exc,
+                                location: position_to_location(position),
+                                message: msg,
+                            });
+                        }
+                    }
+                    None => return Ok(Some(Object::Nil)),
+                };
+                if path.is_empty() {
+                    let msg = "empty file name".to_string();
+                    let exc = Object::exception("ArgumentError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                let caller_file = self
+                    .get_current_file()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
+                module_rc.set_autoload_location(
+                    const_name.clone(),
+                    caller_file,
+                    position.line as i64,
+                );
+                module_rc.set_autoload(const_name, path);
                 return Ok(Some(Object::Nil));
+            }
+            "autoload?" => {
+                let const_name = match arguments.first() {
+                    Some(Object::Symbol(s)) => (**s).clone(),
+                    Some(Object::String(s)) => (**s).clone(),
+                    _ => return Ok(Some(Object::Nil)),
+                };
+                // `autoload?(name, inherit=true)` — second arg disables ancestor lookup.
+                let inherit = !matches!(arguments.get(1), Some(Object::Bool(false)));
+                // `effective_autoload` is thread-aware (loading thread
+                // sees nil, other threads see the path) and consults the
+                // ancestor chain via `lookup_autoload`. For
+                // `inherit=false` gate the call on a local-only check.
+                let module_for_autoload = Rc::clone(module_rc);
+                let local_only_blocked = !inherit && module_rc.get_autoload(&const_name).is_none();
+                let path = if local_only_blocked {
+                    None
+                } else {
+                    self.effective_autoload(&module_for_autoload, &const_name)
+                };
+                return Ok(Some(match path {
+                    Some(p) => Object::String(Rc::new(p)),
+                    None => Object::Nil,
+                }));
             }
             // `mod.instance_method(:name)` returns an UnboundMethod; we return
             // the bound `Method` object so `.bind(obj).call` on the returned

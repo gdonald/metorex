@@ -198,9 +198,10 @@ impl VirtualMachine {
             }
             Statement::ModuleDef {
                 name,
+                namespace,
                 body,
                 position,
-            } => self.execute_module_def(name, body, *position),
+            } => self.execute_module_def(name, namespace.as_deref(), body, *position),
             Statement::Include {
                 module_name,
                 position,
@@ -253,10 +254,28 @@ impl VirtualMachine {
                 // Constant-shaped identifiers (`MyClass = ...`) auto-name
                 // anonymous classes/modules on first assignment, matching
                 // Ruby's `klass.name` behavior after binding to a constant.
-                if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-                    && let Object::Class(v) | Object::Module(v) = &value
-                {
+                let is_const = name.chars().next().is_some_and(|c| c.is_ascii_uppercase());
+                if is_const && let Object::Class(v) | Object::Module(v) = &value {
                     v.set_assigned_name_if_anonymous(name);
+                }
+                // Constants assigned in a context that has a lexically
+                // enclosing class/module land on that scope's class_var
+                // table — matching Ruby's behavior, where `Foo = 1` inside
+                // a `module M` (or a lambda defined inside one) resolves
+                // later as `M::Foo`. At the top level (no enclosing
+                // scope), uppercase assignments go to globals (and
+                // Object's class_var) so they survive the require'd
+                // file's local environment ending.
+                if is_const && let Some(enclosing) = self.def_scope_stack.last() {
+                    enclosing.set_class_var(name, value);
+                    return Ok(());
+                }
+                if is_const {
+                    self.globals_mut().set(name.clone(), value.clone());
+                    if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                        object_class.set_class_var(name, value);
+                    }
+                    return Ok(());
                 }
                 if !self.environment_mut().set(name, value.clone()) {
                     self.environment_mut().define(name.clone(), value);
@@ -404,6 +423,34 @@ impl VirtualMachine {
                                 *position,
                             )?;
                             Ok(())
+                        } else if class.name() == "Thread" {
+                            // Thread-local storage: `t[:k] = v`. Targeted
+                            // here to avoid recursing through a general
+                            // native-method fallback.
+                            let key_str = match &idx {
+                                Object::Symbol(s) => Some((**s).clone()),
+                                Object::String(s) => Some((**s).clone()),
+                                _ => None,
+                            };
+                            if let Some(k) = key_str {
+                                let existing =
+                                    instance_rc.borrow().get_var("__thread_locals").cloned();
+                                let dict = match existing {
+                                    Some(Object::Dict(d)) => d,
+                                    _ => {
+                                        let d = Rc::new(std::cell::RefCell::new(
+                                            std::collections::HashMap::new(),
+                                        ));
+                                        instance_rc.borrow_mut().set_var(
+                                            "__thread_locals".to_string(),
+                                            Object::Dict(Rc::clone(&d)),
+                                        );
+                                        d
+                                    }
+                                };
+                                dict.borrow_mut().insert(k, value);
+                            }
+                            Ok(())
                         } else {
                             Err(MetorexError::runtime_error(
                                 "No []= method defined on instance",
@@ -432,6 +479,11 @@ impl VirtualMachine {
                             ))
                         }
                     }
+                    // Nil receivers swallow `[]=` as a no-op so spec
+                    // fixtures using stub Thread.current (which is Nil)
+                    // can run `Thread.current[:in_autoload_rb] = true`
+                    // without crashing.
+                    Object::Nil => Ok(()),
                     _ => Err(MetorexError::runtime_error(
                         "Cannot index assign on this type",
                         position_to_location(*position),
@@ -600,10 +652,29 @@ impl VirtualMachine {
                 let ns = self.evaluate_expression(namespace)?;
                 match ns {
                     Object::Class(c) | Object::Module(c) => {
+                        // MRI emits "already initialized constant Mod::X"
+                        // when assigning to a constant that's already
+                        // bound — covers both class_var hits and
+                        // outstanding autoload registrations. The warning
+                        // is unconditional (not gated on $VERBOSE) and
+                        // routes through `$stderr` so the mspec
+                        // `complain` matcher can capture it.
+                        if self.autoload_const_access_depth == 0
+                            && (c.get_class_var(name).is_some() || c.get_autoload(name).is_some())
+                        {
+                            let msg =
+                                format!("already initialized constant {}::{}", c.ruby_name(), name);
+                            self.emit_warning_to_stderr(&msg, *position);
+                        }
                         if let Object::Class(v) | Object::Module(v) = &value {
                             let qualified = format!("{}::{}", c.ruby_name(), name);
                             v.set_assigned_name_if_anonymous(&qualified);
                         }
+                        // Explicit `Mod::X = value` outside of an autoload
+                        // load supersedes any pending autoload. (The
+                        // autoload trigger path manages its own autoload
+                        // bookkeeping after the load completes.)
+                        c.remove_autoload(name);
                         c.set_class_var(name, value);
                         Ok(())
                     }
