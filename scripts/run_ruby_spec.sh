@@ -27,7 +27,10 @@ TOTAL_ERRORS=0
 TOTAL_TAGGED=0
 ANY_FAILED=0
 
-WORK_DIR=$(mktemp -d -t metorex_specs)
+# Use an explicit XXXXXX template so this works on both BSD mktemp (macOS,
+# where `-t` is a prefix) and GNU mktemp (Linux/CI, where `-t` requires a
+# template with X placeholders).
+WORK_DIR=$(mktemp -d -t metorex_specs.XXXXXX)
 cleanup_workdir() { rm -rf "$WORK_DIR"; }
 
 print_totals() {
