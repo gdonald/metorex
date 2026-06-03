@@ -75,6 +75,20 @@ Goodbye, Bob!
 }
 
 #[test]
+fn test_metaprogramming_class_eval_execution() {
+    let expected = "true\na widget\n42\n2\ntrue\nA WIDGET\n[\"custom.rb\", 102]\n:ok\n";
+    let output = run_example("metaprogramming/class_eval.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_eval_parens_execution() {
+    let expected = "true\na widget\n42\n2\ntrue\nA WIDGET\n[\"custom.rb\", 102]\n:ok\n";
+    let output = run_example("metaprogramming/class_eval_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_get_source_execution() {
     let expected = "speak\nfetch\ntrue\nspeak\npurr\npurr\n";
     let output = run_example("metaprogramming/get_source.rb");

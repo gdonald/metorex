@@ -252,7 +252,7 @@ impl VirtualMachine {
         class: &Rc<Class>,
         block: &crate::object::BlockStatement,
         position: Position,
-    ) -> Result<(), MetorexError> {
+    ) -> Result<Object, MetorexError> {
         self.apply_block_as_class_body_with_self(
             class,
             block,
@@ -269,9 +269,10 @@ impl VirtualMachine {
         block: &crate::object::BlockStatement,
         position: Position,
         self_obj: Object,
-    ) -> Result<(), MetorexError> {
+    ) -> Result<Object, MetorexError> {
         let prev_self = self.environment().get("self");
-        self.environment_mut().define("self".to_string(), self_obj);
+        self.environment_mut()
+            .define("self".to_string(), self_obj.clone());
         // Share the outer RefCells so an assignment like `x = self` inside the
         // block mutates the caller's local, matching Ruby's closure semantics
         // for blocks (including `Class.new do ... end`).
@@ -281,8 +282,25 @@ impl VirtualMachine {
                     .define_shared(name.clone(), cell.clone());
             }
         }
+        // Bind the block's first parameter to the class/module, matching Ruby:
+        // `Class.new { |c| ... }` and `mod.class_eval { |m| ... }` both yield
+        // the class/module as the sole block argument.
+        if let Some(first) = block
+            .parameters
+            .iter()
+            .find(|p| !p.starts_with('&') && !p.starts_with('*'))
+        {
+            let pname = first.trim_start_matches('|').to_string();
+            self.environment_mut().define(pname, self_obj);
+        }
         self.def_scope_stack.push(Rc::clone(class));
+        // A class/module body is not a method context, so `using` is permitted
+        // even when this block runs deep inside method calls (e.g. mspec's
+        // runner invoking `Class.new do using ...; end`).
+        let saved_nesting = self.user_def_nesting;
+        self.user_def_nesting = 0;
         let result = self.apply_class_body(class, &block.body, position);
+        self.user_def_nesting = saved_nesting;
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
@@ -292,17 +310,200 @@ impl VirtualMachine {
         result
     }
 
+    /// Shared implementation of `Module#class_eval` / `Module#module_eval` (and
+    /// the `Class` variants). Handles both the block form and the string form
+    /// (`class_eval(code, filename = "...", lineno = 1)`), returning the value
+    /// of the last evaluated statement. `self_obj` is the receiver as it should
+    /// appear inside the body (`Object::Class` or `Object::Module`).
+    pub(crate) fn class_eval_with_args(
+        &mut self,
+        class_rc: &Rc<Class>,
+        self_obj: Object,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        // Block form wins when a block is present.
+        if let Some(Object::Block(block)) = self.pending_block.take() {
+            if !arguments.is_empty() {
+                return Err(self.arg_count_error(
+                    format!(
+                        "wrong number of arguments (given {}, expected 0)",
+                        arguments.len()
+                    ),
+                    position,
+                ));
+            }
+            return self.apply_block_as_class_body_with_self(class_rc, &block, position, self_obj);
+        }
+
+        // String form expects 1..3 positional arguments.
+        if arguments.is_empty() {
+            return Err(self.arg_count_error(
+                "wrong number of arguments (given 0, expected 1..3)".to_string(),
+                position,
+            ));
+        }
+        if arguments.len() > 3 {
+            return Err(self.arg_count_error(
+                format!(
+                    "wrong number of arguments (given {}, expected 1..3)",
+                    arguments.len()
+                ),
+                position,
+            ));
+        }
+
+        let code = self.coerce_eval_string(&arguments[0], position)?;
+        let filename = match arguments.get(1) {
+            Some(obj) => self.coerce_eval_string(obj, position)?,
+            None => {
+                let caller = self
+                    .get_current_file()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "(eval)".to_string());
+                format!("(eval at {}:{})", caller, position.line)
+            }
+        };
+        let lineno = match arguments.get(2) {
+            Some(Object::Int(n)) => (*n).max(1) as usize,
+            _ => 1,
+        };
+
+        let tokens = crate::lexer::Lexer::with_start_line(&code, lineno).tokenize();
+        let statements = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|errors| {
+                MetorexError::runtime_error(
+                    format!(
+                        "{}: parse error: {}",
+                        filename,
+                        errors
+                            .iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                    position_to_location(position),
+                )
+            })?;
+
+        // Evaluate the parsed body with `self` bound to the receiver and the
+        // receiver pushed as the current definee, so `def` lands on it and
+        // constants resolve in its scope. `__FILE__` reflects `filename` for
+        // the duration. Refinements active at the call site stay active so
+        // `class_eval` can see `using` from the eval scope.
+        let prev_self = self.environment().get("self");
+        self.environment_mut()
+            .define("self".to_string(), self_obj.clone());
+        // Ruby resolves constants in a string eval using the caller's lexical
+        // scope, which for a named receiver includes the namespaces it is
+        // nested in. Push those enclosing modules (outermost first) so e.g.
+        // `ModuleSpecs::ClassEvalTest.module_eval("Lookup")` finds
+        // `ModuleSpecs::Lookup`.
+        let mut enclosing_pushed = 0usize;
+        let full_name = class_rc.name().to_string();
+        if let Some(idx) = full_name.rfind("::") {
+            let mut cumulative = String::new();
+            for segment in full_name[..idx].split("::") {
+                if cumulative.is_empty() {
+                    cumulative = segment.to_string();
+                } else {
+                    cumulative = format!("{}::{}", cumulative, segment);
+                }
+                if let Some(Object::Module(m) | Object::Class(m)) =
+                    self.resolve_constant_in_scope(&cumulative)
+                {
+                    self.def_scope_stack.push(m);
+                    enclosing_pushed += 1;
+                }
+            }
+        }
+        self.def_scope_stack.push(Rc::clone(class_rc));
+        let prev_file = self.current_file.clone();
+        self.current_file = Some(std::path::PathBuf::from(&filename));
+        let saved_nesting = self.user_def_nesting;
+        self.user_def_nesting = 0;
+        let result = self.apply_class_body(class_rc, &statements, position);
+        self.user_def_nesting = saved_nesting;
+        self.current_file = prev_file;
+        self.def_scope_stack.pop();
+        for _ in 0..enclosing_pushed {
+            self.def_scope_stack.pop();
+        }
+        if let Some(prev) = prev_self {
+            self.environment_mut().define("self".to_string(), prev);
+        } else {
+            self.environment_mut().undefine("self");
+        }
+        result
+    }
+
+    /// Coerce an eval argument (code string or filename) to a `String`,
+    /// invoking `#to_str` for non-strings. Mirrors MRI's error messages:
+    /// a missing `#to_str` raises "no implicit conversion of X into String",
+    /// and a `#to_str` returning a non-string raises "can't convert X into
+    /// String".
+    fn coerce_eval_string(
+        &mut self,
+        arg: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(s) = arg {
+            return Ok((**s).clone());
+        }
+        let class_name = match arg {
+            Object::Instance(i) => i.borrow().class.name().to_string(),
+            Object::Class(_) | Object::Module(_) => "Module".to_string(),
+            other => other.type_name().to_string(),
+        };
+        if let Some((cls, m)) = self.lookup_method(arg, "to_str")
+            && !m.is_undefined
+        {
+            let result = self.invoke_method(cls, m, arg.clone(), vec![], position)?;
+            if let Object::String(s) = result {
+                return Ok((*s).clone());
+            }
+            let msg = format!("can't convert {} into String", class_name);
+            let exc = Object::exception("TypeError", msg.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        let msg = format!("no implicit conversion of {} into String", class_name);
+        let exc = Object::exception("TypeError", msg.clone());
+        Err(MetorexError::UncaughtException {
+            exception: exc,
+            location: position_to_location(position),
+            message: msg,
+        })
+    }
+
+    /// Build an `ArgumentError` with the given message.
+    fn arg_count_error(&self, msg: String, position: Position) -> MetorexError {
+        let exc = Object::exception("ArgumentError", msg.clone());
+        MetorexError::UncaughtException {
+            exception: exc,
+            location: position_to_location(position),
+            message: msg,
+        }
+    }
+
     /// Apply a class-body statement list to the given class (also used for
-    /// `Class.new { ... }` / anonymous classes).
+    /// `Class.new { ... }` / anonymous classes). Returns the value of the last
+    /// evaluated statement, which `class_eval` / `module_eval` surface as their
+    /// result (ordinary class definitions discard it).
     pub(crate) fn apply_class_body(
         &mut self,
         class: &Rc<Class>,
         body: &[Statement],
         position: Position,
-    ) -> Result<(), MetorexError> {
+    ) -> Result<Object, MetorexError> {
         // Reset visibility to public at the start of every class body so
         // reopening doesn't carry over a stale state from a prior body.
         class.set_current_visibility("public");
+        let mut last_value = Object::Nil;
         for statement in body {
             // Bare `private` / `public` / `protected` statements (no args)
             // toggle the default visibility for subsequent method defs.
@@ -333,6 +534,7 @@ impl VirtualMachine {
                     if class.current_visibility() != "public" {
                         class.set_method_private(method_name.clone());
                     }
+                    last_value = Object::Symbol(Rc::new(method_name.clone()));
                 }
                 // `def self.name` inside a `Class.new do ... end` block: the parser
                 // emits a FunctionDef (not MethodDef, because `in_class_body` is
@@ -353,6 +555,7 @@ impl VirtualMachine {
                         self.snapshot_active_refinements(),
                     );
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
+                    last_value = Object::Symbol(Rc::new(method_name.clone()));
                 }
                 Statement::MethodDef {
                     name: method_name,
@@ -406,6 +609,7 @@ impl VirtualMachine {
                             class.set_method_private(method_name.clone());
                         }
                     }
+                    last_value = Object::Symbol(Rc::new(method_name.clone()));
                 }
                 Statement::Assignment {
                     target: Expression::InstanceVariable { name: var_name, .. },
@@ -544,7 +748,8 @@ impl VirtualMachine {
                     // Lowercase identifiers fall through to the `_` arm and are
                     // treated as normal local-variable assignments.
                     let const_value = self.evaluate_expression(value)?;
-                    class.set_class_var(const_name, const_value);
+                    class.set_class_var(const_name, const_value.clone());
+                    last_value = const_value;
                 }
                 Statement::Include {
                     module_name,
@@ -743,11 +948,31 @@ impl VirtualMachine {
                                 ));
                             }
                         };
+                        // Split the block's parameter list into regular,
+                        // variadic (`*args`), and block (`&blk`) parts so a
+                        // `define_method(:m) { |*args, &blk| ... }` (as the
+                        // mspec mock framework uses) gets correct arity instead
+                        // of treating `*args`/`&blk` as required positionals.
+                        let mut regular_params: Vec<String> = Vec::new();
+                        let mut variadic_param: Option<(usize, String)> = None;
+                        let mut block_parameter: Option<String> = None;
+                        for (i, param) in block.parameters.iter().enumerate() {
+                            if let Some(name) = param.strip_prefix('*') {
+                                variadic_param = Some((i, name.to_string()));
+                                regular_params.push(name.to_string());
+                            } else if let Some(name) = param.strip_prefix('&') {
+                                block_parameter = Some(name.to_string());
+                            } else {
+                                regular_params.push(param.clone());
+                            }
+                        }
                         let mut method = Method::new(
                             method_name_str.clone(),
-                            block.parameters.clone(),
+                            regular_params,
                             block.body.clone(),
                         );
+                        method.variadic_param = variadic_param;
+                        method.block_parameter = block_parameter;
                         // Capture closure: prefer existing captured_vars, otherwise snap current scope
                         method.captured_vars = Some(if block.captured_vars.is_empty() {
                             self.environment().current_scope_var_refs()
@@ -789,12 +1014,36 @@ impl VirtualMachine {
                     // the class; we've already pushed that self in
                     // `apply_block_as_class_body_with_self` / `execute_class_def`.
                     if !handled {
-                        self.execute_statement(statement)?;
+                        match statement {
+                            // A bare expression statement (e.g. `1 + 1`, `self`,
+                            // a constant reference) is the common tail of a
+                            // `class_eval`/`module_eval` string or block — capture
+                            // its value so it becomes the eval result.
+                            Statement::Expression {
+                                expression,
+                                position: expr_pos,
+                            } => {
+                                let v = self.evaluate_expression(expression)?;
+                                if matches!(expression, Expression::Identifier { .. })
+                                    && matches!(v, Object::Method(_))
+                                {
+                                    last_value = self.invoke_callable(v, vec![], *expr_pos)?;
+                                } else {
+                                    last_value = v;
+                                }
+                            }
+                            _ => match self.execute_statement(statement)? {
+                                ControlFlow::Value(v) | ControlFlow::Return { value: v, .. } => {
+                                    last_value = v;
+                                }
+                                _ => {}
+                            },
+                        }
                     }
                 }
             }
         }
-        Ok(())
+        Ok(last_value)
     }
 
     /// Execute function definition - create a Method object and register it in the environment as a function.

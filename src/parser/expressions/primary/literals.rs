@@ -31,8 +31,10 @@ impl Parser {
                     ast_parts.push(crate::ast::node::InterpolationPart::Text(text));
                 }
                 InterpolationPart::Expression(expr_str) => {
-                    // Parse the embedded expression as a fresh token stream.
-                    let expr_lexer = Lexer::new(&expr_str);
+                    // Parse the embedded expression as a fresh token stream,
+                    // numbered from the interpolated string's line so `__LINE__`
+                    // inside `#{...}` reflects the real source line.
+                    let expr_lexer = Lexer::with_start_line(&expr_str, position.line);
                     let expr_tokens = expr_lexer.tokenize();
                     let mut expr_parser = Parser::new(expr_tokens);
                     let expr = expr_parser.parse_expression()?;

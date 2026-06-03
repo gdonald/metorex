@@ -43,10 +43,17 @@ pub struct Lexer<'a> {
 impl<'a> Lexer<'a> {
     /// Create a new lexer for the given source code
     pub fn new(source: &'a str) -> Self {
+        Self::with_start_line(source, 1)
+    }
+
+    /// Create a lexer whose first line is numbered `start_line`. Used by
+    /// `eval`/`class_eval`/`module_eval` so `__LINE__` reflects the optional
+    /// `lineno` argument (e.g. `class_eval("...", "file", 102)`).
+    pub fn with_start_line(source: &'a str, start_line: usize) -> Self {
         Self {
             chars: source.chars().peekable(),
             prepend: Vec::new(),
-            line: 1,
+            line: start_line,
             column: 1,
             offset: 0,
             prev_significant: None,

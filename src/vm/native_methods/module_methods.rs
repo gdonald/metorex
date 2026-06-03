@@ -17,16 +17,14 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
-        if (method_name == "module_eval" || method_name == "class_eval")
-            && let Some(Object::Block(block)) = self.pending_block.take()
-        {
-            self.apply_block_as_class_body_with_self(
+        if method_name == "module_eval" || method_name == "class_eval" {
+            let result = self.class_eval_with_args(
                 module_rc,
-                &block,
-                position,
                 Object::Module(Rc::clone(module_rc)),
+                arguments,
+                position,
             )?;
-            return Ok(Some(Object::Module(Rc::clone(module_rc))));
+            return Ok(Some(result));
         }
 
         if method_name == "refine" {

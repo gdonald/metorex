@@ -1314,24 +1314,13 @@ impl VirtualMachine {
                 return Ok(Some(arguments[1].clone()));
             }
             "class_eval" | "module_eval" => {
-                let block = self.pending_block.take();
-                match block {
-                    Some(Object::Block(b)) => {
-                        let result = self.execute_block_with_receiver(
-                            &b,
-                            Object::Class(Rc::clone(class_rc)),
-                            vec![],
-                            position,
-                        )?;
-                        return Ok(Some(result));
-                    }
-                    _ => {
-                        return Err(MetorexError::runtime_error(
-                            "class_eval requires a block".to_string(),
-                            position_to_location(position),
-                        ));
-                    }
-                }
+                let result = self.class_eval_with_args(
+                    class_rc,
+                    Object::Class(Rc::clone(class_rc)),
+                    arguments,
+                    position,
+                )?;
+                return Ok(Some(result));
             }
             "define_method" => {
                 if arguments.is_empty() {
