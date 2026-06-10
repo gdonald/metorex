@@ -932,6 +932,50 @@ impl VirtualMachine {
                     _ => Ok(Some(Object::Bool(true))),
                 }
             }
+            // An instance of a `Module` subclass (`class Sub < Module; end;
+            // Sub.new`) is itself a module and answers the module-body methods.
+            // Metorex models it as an `Instance`, so back it with a cached
+            // anonymous class that hosts any methods the body defines.
+            "class_exec" | "module_exec" | "class_eval" | "module_eval"
+                if self.instance_acts_as_module(receiver) =>
+            {
+                let inst = match receiver {
+                    Object::Instance(i) => std::rc::Rc::clone(i),
+                    _ => unreachable!(),
+                };
+                let existing = match inst.borrow().get_var("__module_body_class__") {
+                    Some(Object::Class(c)) => Some(std::rc::Rc::clone(c)),
+                    _ => None,
+                };
+                let backing = match existing {
+                    Some(c) => c,
+                    None => {
+                        let c = std::rc::Rc::new(crate::class::Class::new("", None));
+                        inst.borrow_mut().set_var(
+                            "__module_body_class__".to_string(),
+                            Object::Class(std::rc::Rc::clone(&c)),
+                        );
+                        c
+                    }
+                };
+                if method_name == "class_exec" || method_name == "module_exec" {
+                    let block = match self.pending_block.take() {
+                        Some(Object::Block(b)) => b,
+                        _ => return Err(local_jump_error(method_name, position)),
+                    };
+                    let result = self.class_exec_block(
+                        &backing,
+                        receiver.clone(),
+                        &block,
+                        arguments.to_vec(),
+                        position,
+                    )?;
+                    return Ok(Some(result));
+                }
+                let result =
+                    self.class_eval_with_args(&backing, receiver.clone(), arguments, position)?;
+                Ok(Some(result))
+            }
             "instance_exec" | "instance_eval" => {
                 let block = self.pending_block.take().or_else(|| {
                     if !arguments.is_empty()
@@ -960,6 +1004,22 @@ impl VirtualMachine {
                 }
             }
             _ => Ok(None),
+        }
+    }
+
+    /// Whether `receiver` is an `Instance` whose class descends from `Module`
+    /// (e.g. `class Sub < Module; end; Sub.new`). Such instances are modules
+    /// and answer the module-body methods (`class_eval`/`class_exec`/...).
+    fn instance_acts_as_module(&self, receiver: &Object) -> bool {
+        let Object::Instance(inst) = receiver else {
+            return false;
+        };
+        let class = std::rc::Rc::clone(&inst.borrow().class);
+        match self.globals().get("Module") {
+            Some(Object::Class(module_class)) => {
+                self.builtins().is_subclass_of(&class, &module_class)
+            }
+            _ => false,
         }
     }
 

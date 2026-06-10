@@ -919,6 +919,62 @@ CeBad.class_eval(42)
     assert!(err.contains("no implicit conversion of Int into String"));
 }
 
+// ── class_exec / module_exec ────────────────────────────────────────────────
+
+#[test]
+fn class_exec_defines_method_in_receiver_scope() {
+    let result = run(r#"
+class CxDef
+end
+CxDef.class_exec { def foo; "foo"; end }
+CxDef.new.foo
+"#);
+    assert_eq!(result, Some(Object::string("foo")));
+}
+
+#[test]
+fn class_exec_passes_arguments_to_block() {
+    let result = run(r#"
+class CxArgs
+end
+CxArgs.class_exec(7) { |n| n }
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn class_exec_returns_last_value() {
+    let result = run(r#"
+module CxRet
+end
+CxRet.module_exec { 1 + 1 }
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn class_exec_without_block_raises_local_jump_error() {
+    let err = run_err(
+        r#"
+class CxNoBlock
+end
+CxNoBlock.class_exec
+"#,
+    );
+    assert!(err.contains("no block given"));
+}
+
+#[test]
+fn class_exec_on_module_subclass_instance() {
+    // `Sub < Module; Sub.new` is itself a module and answers class_exec.
+    let result = run(r#"
+class CxModSub < Module
+end
+CxModSub.new.class_exec { 1 + 1 }
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
 // ── private_methods on class ────────────────────────────────────────────────
 
 #[test]

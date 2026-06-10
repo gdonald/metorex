@@ -21,6 +21,18 @@ pub(super) fn loop_control_error(keyword: &str, position: Position) -> MetorexEr
     )
 }
 
+/// Produce a `LocalJumpError` for a method that requires a block but was called
+/// without one (e.g. `class_exec` / `module_exec`).
+pub(super) fn local_jump_error(method_name: &str, position: Position) -> MetorexError {
+    let msg = format!("no block given (yield) for {method_name}");
+    let exc = Object::exception("LocalJumpError", msg.clone());
+    MetorexError::UncaughtException {
+        exception: exc,
+        location: position_to_location(position),
+        message: msg,
+    }
+}
+
 // ============================================================================
 // Variable and Assignment Errors
 // ============================================================================

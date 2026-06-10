@@ -310,6 +310,51 @@ impl VirtualMachine {
         result
     }
 
+    /// Implementation of `Module#class_exec` / `Module#module_exec`: evaluate the
+    /// block with class-body semantics (so `def` lands on the receiver) and
+    /// `self` bound to the receiver, but bind the block's parameters to the
+    /// caller-supplied `args` rather than to the module. Returns the block's
+    /// last value.
+    pub(crate) fn class_exec_block(
+        &mut self,
+        class: &Rc<Class>,
+        self_obj: Object,
+        block: &crate::object::BlockStatement,
+        args: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let prev_self = self.environment().get("self");
+        self.environment_mut().define("self".to_string(), self_obj);
+        for (name, cell) in block.captured_vars.iter() {
+            if self.environment().get(name).is_none() {
+                self.environment_mut()
+                    .define_shared(name.clone(), cell.clone());
+            }
+        }
+        // Bind the block's positional parameters to the supplied arguments.
+        let positional: Vec<&String> = block
+            .parameters
+            .iter()
+            .filter(|p| !p.starts_with('&') && !p.starts_with('*'))
+            .collect();
+        for (i, param) in positional.iter().enumerate() {
+            let value = args.get(i).cloned().unwrap_or(Object::Nil);
+            self.environment_mut().define((*param).clone(), value);
+        }
+        self.def_scope_stack.push(Rc::clone(class));
+        let saved_nesting = self.user_def_nesting;
+        self.user_def_nesting = 0;
+        let result = self.apply_class_body(class, &block.body, position);
+        self.user_def_nesting = saved_nesting;
+        self.def_scope_stack.pop();
+        if let Some(prev) = prev_self {
+            self.environment_mut().define("self".to_string(), prev);
+        } else {
+            self.environment_mut().undefine("self");
+        }
+        result
+    }
+
     /// Shared implementation of `Module#class_eval` / `Module#module_eval` (and
     /// the `Class` variants). Handles both the block form and the string form
     /// (`class_eval(code, filename = "...", lineno = 1)`), returning the value

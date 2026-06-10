@@ -27,6 +27,21 @@ impl VirtualMachine {
             return Ok(Some(result));
         }
 
+        if method_name == "module_exec" || method_name == "class_exec" {
+            let block = match self.pending_block.take() {
+                Some(Object::Block(b)) => b,
+                _ => return Err(local_jump_error(method_name, position)),
+            };
+            let result = self.class_exec_block(
+                module_rc,
+                Object::Module(Rc::clone(module_rc)),
+                &block,
+                arguments.to_vec(),
+                position,
+            )?;
+            return Ok(Some(result));
+        }
+
         if method_name == "refine" {
             if arguments.len() != 1 {
                 return Err(method_argument_error(

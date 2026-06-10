@@ -188,7 +188,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.9. core/module/autoload_spec — 1 file, 79 examples, 192 expectations, 0 failures, 0 errors
   - [x] 4.7.10. core/module/case_compare_spec — 1 file, 3 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.7.11. core/module/class_eval_spec — 1 file, 20 examples, 33 expectations, 0 failures, 0 errors
-  - [ ] 4.7.12. core/module/class_exec_spec
+  - [x] 4.7.12. core/module/class_exec_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.7.13. core/module/class_variable_defined_spec
   - [ ] 4.7.14. core/module/class_variable_get_spec
   - [ ] 4.7.15. core/module/class_variable_set_spec

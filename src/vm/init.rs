@@ -160,6 +160,10 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
         Some(Rc::clone(&standard_error)),
     ));
     let frozen_error = Rc::new(Class::new("FrozenError", Some(Rc::clone(&runtime_error))));
+    let local_jump_error = Rc::new(Class::new(
+        "LocalJumpError",
+        Some(Rc::clone(&standard_error)),
+    ));
     let regexp_error = Rc::new(Class::new("RegexpError", Some(Rc::clone(&standard_error))));
     let math_domain_error = Rc::new(Class::new(
         "Math::DomainError",
@@ -191,6 +195,7 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     globals.set("Errno", Object::Module(errno_module));
     globals.set("EncodingError", Object::Class(encoding_error));
     globals.set("FrozenError", Object::Class(frozen_error));
+    globals.set("LocalJumpError", Object::Class(local_jump_error));
     globals.set("RegexpError", Object::Class(regexp_error));
     globals.set("Math::DomainError", Object::Class(math_domain_error));
 }

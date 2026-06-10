@@ -1322,6 +1322,20 @@ impl VirtualMachine {
                 )?;
                 return Ok(Some(result));
             }
+            "class_exec" | "module_exec" => {
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    _ => return Err(local_jump_error(method_name, position)),
+                };
+                let result = self.class_exec_block(
+                    class_rc,
+                    Object::Class(Rc::clone(class_rc)),
+                    &block,
+                    arguments.to_vec(),
+                    position,
+                )?;
+                return Ok(Some(result));
+            }
             "define_method" => {
                 if arguments.is_empty() {
                     return Err(method_argument_error("define_method", 1, 0, position));

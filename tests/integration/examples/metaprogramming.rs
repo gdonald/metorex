@@ -89,6 +89,20 @@ fn test_metaprogramming_class_eval_parens_execution() {
 }
 
 #[test]
+fn test_metaprogramming_class_exec_execution() {
+    let expected = "gadget\n42\n2\ntag\n42\n";
+    let output = run_example("metaprogramming/class_exec.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_exec_parens_execution() {
+    let expected = "gadget\n42\n2\ntag\n42\n";
+    let output = run_example("metaprogramming/class_exec_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_get_source_execution() {
     let expected = "speak\nfetch\ntrue\nspeak\npurr\npurr\n";
     let output = run_example("metaprogramming/get_source.rb");
