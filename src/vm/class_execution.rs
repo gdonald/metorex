@@ -676,7 +676,17 @@ impl VirtualMachine {
                 } => {
                     // Class variable initialization (e.g., @@count = 0 in class body)
                     let initial_value = self.evaluate_expression(value)?;
-                    class.set_class_var(var_name, initial_value);
+                    // Inside a singleton class body (`class << self`) a class
+                    // variable attaches to the lexical enclosing class, not the
+                    // singleton itself. Redirect to the attached class/module.
+                    if class.get_class_var("__singleton__").is_some()
+                        && let Some(Object::Class(attached) | Object::Module(attached)) =
+                            class.get_class_var("__attached__")
+                    {
+                        attached.set_class_var(var_name, initial_value);
+                    } else {
+                        class.set_class_var(var_name, initial_value);
+                    }
                 }
                 Statement::Expression {
                     expression: Expression::InstanceVariable { name: var_name, .. },

@@ -1533,6 +1533,33 @@ impl VirtualMachine {
                 }
                 return Ok(Some(Object::Nil));
             }
+            "class_variable_set" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        "class_variable_set",
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                class_rc.set_class_var(key, arguments[1].clone());
+                return Ok(Some(arguments[1].clone()));
+            }
+            "class_variable_defined?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "class_variable_defined?",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                return Ok(Some(Object::Bool(
+                    class_rc.lookup_class_var(&key).is_some(),
+                )));
+            }
             // Module methods we treat as no-ops (Metorex doesn't track these
             // concepts, but class bodies that use them still need to load).
             "deprecate_constant" | "ruby2_keywords" => {
@@ -1541,6 +1568,64 @@ impl VirtualMachine {
             _ => {}
         }
         Ok(None)
+    }
+
+    /// Coerce a class-variable name argument to its storage key (the name with
+    /// the leading `@@` removed). Strings and Symbols are used directly; any
+    /// other object is converted via `to_str`. Raises TypeError when that
+    /// conversion is missing or returns a non-String, and NameError when the
+    /// resulting name is not a valid class variable name.
+    pub(crate) fn coerce_class_variable_name(
+        &mut self,
+        arg: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let name = match arg {
+            Object::Symbol(s) => (**s).clone(),
+            Object::String(s) => (**s).clone(),
+            other => {
+                let other_obj = other.clone();
+                let converted =
+                    if let Some((cls, method)) = self.lookup_method(&other_obj, "to_str") {
+                        self.invoke_method(cls, method, other_obj, Vec::new(), position)?
+                    } else {
+                        let msg = format!(
+                            "no implicit conversion of {} into String",
+                            other.type_name()
+                        );
+                        let exc = Object::exception("TypeError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    };
+                match converted {
+                    Object::String(s) => (*s).clone(),
+                    other => {
+                        let msg = format!("can't convert {} to String", other.type_name());
+                        let exc = Object::exception("TypeError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                }
+            }
+        };
+        if let Some(rest) = name.strip_prefix("@@")
+            && is_valid_class_variable_ident(rest)
+        {
+            return Ok(rest.to_string());
+        }
+        let msg = format!("`{}' is not allowed as a class variable name", name);
+        let exc = Object::exception("NameError", msg.clone());
+        Err(MetorexError::UncaughtException {
+            exception: exc,
+            location: position_to_location(position),
+            message: msg,
+        })
     }
 
     /// Invoke a `method_added` / `singleton_method_added` hook on `class_rc` if
@@ -1644,4 +1729,16 @@ pub(super) fn push_class_ancestors(
         }
         current = parent.superclass();
     }
+}
+
+/// Validate the identifier portion of a class variable name (the part after
+/// `@@`): it must start with a letter or underscore and contain only
+/// alphanumerics and underscores.
+fn is_valid_class_variable_ident(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }

@@ -341,7 +341,18 @@ impl VirtualMachine {
                         Ok(())
                     }
                     Some(Object::Class(class)) | Some(Object::Module(class)) => {
-                        class.set_class_var(name.clone(), value);
+                        // A class variable assigned in a singleton class body
+                        // (`class << self`) attaches to the lexical enclosing
+                        // class, not the singleton itself. Redirect to the
+                        // attached object when it is a class or module.
+                        if class.get_class_var("__singleton__").is_some()
+                            && let Some(Object::Class(attached) | Object::Module(attached)) =
+                                class.get_class_var("__attached__")
+                        {
+                            attached.set_class_var(name.clone(), value);
+                        } else {
+                            class.set_class_var(name.clone(), value);
+                        }
                         Ok(())
                     }
                     Some(_) => Err(MetorexError::runtime_error(

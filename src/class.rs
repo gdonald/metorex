@@ -471,6 +471,24 @@ impl Class {
         self.class_variables.borrow().keys().cloned().collect()
     }
 
+    /// Resolve a class variable across the ancestor chain: this class first,
+    /// then its included modules, then its superclass (recursively). Mirrors
+    /// Ruby's class-variable lookup, which walks included modules but ignores
+    /// extended (singleton) ones.
+    pub fn lookup_class_var(&self, name: &str) -> Option<Object> {
+        if let Some(value) = self.class_variables.borrow().get(name) {
+            return Some(value.clone());
+        }
+        for mixin in self.mixins.borrow().iter() {
+            if let Some(value) = mixin.lookup_class_var(name) {
+                return Some(value);
+            }
+        }
+        self.superclass
+            .as_ref()
+            .and_then(|superclass| superclass.lookup_class_var(name))
+    }
+
     /// Remove a class variable/constant by name, returning the previous value
     /// if there was one. Used by `Module#remove_const`.
     pub fn remove_class_var(&self, name: &str) -> Option<crate::object::Object> {

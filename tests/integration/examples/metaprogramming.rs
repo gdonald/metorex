@@ -576,3 +576,17 @@ fn test_metaprogramming_refinement_execution() {
     let output = run_example("metaprogramming/refinement.rb");
     assert_eq!(output, "HELLO!\n");
 }
+
+#[test]
+fn test_metaprogramming_class_variable_defined_execution() {
+    let expected = "true\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nfalse\n";
+    let output = run_example("metaprogramming/class_variable_defined.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_variable_defined_parens_execution() {
+    let expected = "true\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nfalse\n";
+    let output = run_example("metaprogramming/class_variable_defined_parens.rb");
+    assert_eq!(output, expected);
+}
