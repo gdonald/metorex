@@ -37,7 +37,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Code-as-Object**: AST nodes are first-class objects manipulable at runtime
 - **Runtime Method Definition**: `define_method` for dynamic behavior
 - **Method Missing Hook**: `method_missing` intercepts calls to undefined methods with method name and arguments
-- **Runtime Class Modification**: `remove_method`, `undef_method`, `alias_method`, `module_function`, `class_variable_set`, `class_variable_defined?` for dynamic class/module manipulation
+- **Runtime Class Modification**: `remove_method`, `undef_method`, `alias_method`, `module_function`, `class_variable_set`, `class_variable_get`, `class_variable_defined?` for dynamic class/module manipulation
 - **Reflection and Introspection**: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
 - **AST Manipulation**: `eval` for runtime code execution, `parse` for AST inspection, runtime code generation via string evaluation
 - **Block Execution**: Blocks are objects with `.call()` method; trailing `do...end` and `{...}` blocks captured implicitly via `&block` parameter with `block_given?` support
@@ -199,7 +199,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `define_method` for dynamic method definition on classes
 - `method_missing` hook for intercepting undefined method calls
 - Runtime class modification: `remove_method`, `undef_method`, `alias_method`, `module_function`
-- Class variables: `class_variable_set`, `class_variable_defined?` (lookup walks included modules and superclasses)
+- Class variables: `class_variable_set`, `class_variable_get`, `class_variable_defined?` (lookup walks included modules and superclasses)
 - Reflection: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
 - `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection

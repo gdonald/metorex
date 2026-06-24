@@ -1546,6 +1546,33 @@ impl VirtualMachine {
                 class_rc.set_class_var(key, arguments[1].clone());
                 return Ok(Some(arguments[1].clone()));
             }
+            "class_variable_get" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "class_variable_get",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                match class_rc.lookup_class_var(&key) {
+                    Some(value) => return Ok(Some(value)),
+                    None => {
+                        let msg = format!(
+                            "uninitialized class variable @@{} in {}",
+                            key,
+                            class_rc.name()
+                        );
+                        let exc = Object::exception("NameError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                }
+            }
             "class_variable_defined?" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(

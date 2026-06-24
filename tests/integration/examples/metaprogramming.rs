@@ -590,3 +590,17 @@ fn test_metaprogramming_class_variable_defined_parens_execution() {
     let output = run_example("metaprogramming/class_variable_defined_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_class_variable_get_execution() {
+    let expected = "7\n7\n:yes\n7\nhere\nmissing raises NameError\n";
+    let output = run_example("metaprogramming/class_variable_get.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_variable_get_parens_execution() {
+    let expected = "7\n7\n:yes\n7\nhere\nmissing raises NameError\n";
+    let output = run_example("metaprogramming/class_variable_get_parens.rb");
+    assert_eq!(output, expected);
+}
