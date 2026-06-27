@@ -235,6 +235,15 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
+        // `include(Mod)` / `include(Mod.dup, Other)` — a parenthesized
+        // argument list. Parse the arguments and dispatch through a regular
+        // `include(...)` call so each evaluated module value is mixed in.
+        if self.check(&[TokenKind::LParen]) {
+            self.advance();
+            let arguments = self.parse_arguments()?;
+            return Ok(self.include_call_statement(arguments, start_pos));
+        }
+
         let mut module_name = match self.advance().kind {
             TokenKind::Ident(name) => name,
             _ => return Err(self.error_at_previous("Expected module name after 'include'")),
@@ -253,10 +262,49 @@ impl Parser {
             }
         }
 
+        // `include <constant>.method(...)` — the argument is a runtime
+        // expression (e.g. `include Mod.dup`), not a bare constant name.
+        // Continue parsing the postfix chain and dispatch through a regular
+        // `include(arg)` call so the evaluated module value is mixed in.
+        if self.check(&[TokenKind::Dot, TokenKind::LBracket]) {
+            let mut parts = module_name.split("::");
+            let mut base = Expression::Identifier {
+                name: parts.next().unwrap_or_default().to_string(),
+                position: start_pos,
+            };
+            for part in parts {
+                base = Expression::ScopeResolution {
+                    namespace: Box::new(base),
+                    name: part.to_string(),
+                    position: start_pos,
+                };
+            }
+            let argument = self.parse_postfix_calls(base)?;
+            return Ok(self.include_call_statement(vec![argument], start_pos));
+        }
+
         Ok(Statement::Include {
             module_name,
             position: start_pos,
         })
+    }
+
+    /// Build an `include(...)` method-call statement so a runtime expression
+    /// argument (e.g. `include Mod.dup` or `include(Mod)`) is evaluated and
+    /// mixed in, rather than resolved by bare constant name.
+    fn include_call_statement(&self, arguments: Vec<Expression>, position: Position) -> Statement {
+        Statement::Expression {
+            expression: Expression::Call {
+                callee: Box::new(Expression::Identifier {
+                    name: "include".to_string(),
+                    position,
+                }),
+                arguments,
+                trailing_block: None,
+                position,
+            },
+            position,
+        }
     }
 
     /// Parse an extend statement

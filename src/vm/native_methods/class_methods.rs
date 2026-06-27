@@ -5,7 +5,7 @@ use crate::object::{Method, Object};
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
 use crate::vm::native_methods::is_valid_constant_name;
-use crate::vm::utils::position_to_location;
+use crate::vm::utils::{is_truthy, position_to_location};
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -1542,6 +1542,15 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                if class_rc.is_frozen() {
+                    let msg = format!("can't modify frozen Class: {}", class_rc.name());
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
                 let key = self.coerce_class_variable_name(&arguments[0], position)?;
                 class_rc.set_class_var(key, arguments[1].clone());
                 return Ok(Some(arguments[1].clone()));
@@ -1586,6 +1595,31 @@ impl VirtualMachine {
                 return Ok(Some(Object::Bool(
                     class_rc.lookup_class_var(&key).is_some(),
                 )));
+            }
+            "class_variables" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        "class_variables",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // `class_variables(inherit = true)` — when inherit is false,
+                // only this class/module's own class variables are reported.
+                let inherit = arguments.first().map(is_truthy).unwrap_or(true);
+                let names = if inherit {
+                    class_rc.inherited_class_variable_names()
+                } else {
+                    class_rc.own_class_variable_names()
+                };
+                let symbols: Vec<Object> = names
+                    .into_iter()
+                    .map(|n| Object::Symbol(Rc::new(format!("@@{}", n))))
+                    .collect();
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                    symbols,
+                )))));
             }
             // Module methods we treat as no-ops (Metorex doesn't track these
             // concepts, but class bodies that use them still need to load).

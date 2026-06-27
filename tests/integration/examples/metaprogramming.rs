@@ -604,3 +604,35 @@ fn test_metaprogramming_class_variable_get_parens_execution() {
     let output = run_example("metaprogramming/class_variable_get_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_class_variable_set_execution() {
+    let expected =
+        ":on\n:on\n3\n3\nfrozen Class raises FrozenError\nfrozen Module raises FrozenError\n";
+    let output = run_example("metaprogramming/class_variable_set.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_variable_set_parens_execution() {
+    let expected =
+        ":on\n:on\n3\n3\nfrozen Class raises FrozenError\nfrozen Module raises FrozenError\n";
+    let output = run_example("metaprogramming/class_variable_set_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_variables_execution() {
+    let expected =
+        "[:@@base, :@@shared]\n[:@@derived, :@@base, :@@shared]\n[:@@derived]\n[:@@flag]\n";
+    let output = run_example("metaprogramming/class_variables.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_class_variables_parens_execution() {
+    let expected =
+        "[:@@base, :@@shared]\n[:@@derived, :@@base, :@@shared]\n[:@@derived]\n[:@@flag]\n";
+    let output = run_example("metaprogramming/class_variables_parens.rb");
+    assert_eq!(output, expected);
+}

@@ -2,6 +2,7 @@
 //! Handles method tables, inheritance, and instance variable declarations.
 
 use crate::object::{Method, Object};
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
@@ -17,7 +18,9 @@ pub struct Class {
     superclass: Option<Rc<Class>>,
     methods: RefCell<HashMap<String, Rc<Method>>>,
     instance_variables: RefCell<HashSet<String>>,
-    class_variables: RefCell<HashMap<String, crate::object::Object>>,
+    /// Class variables, constants, and class-level bookkeeping keyed by name.
+    /// Insertion-ordered so `Module#class_variables` reports definition order.
+    class_variables: RefCell<IndexMap<String, crate::object::Object>>,
     /// Included modules, in reverse inclusion order (last included = first searched).
     mixins: RefCell<Vec<Rc<Class>>>,
     /// Names of methods whose visibility has been set to private.
@@ -74,7 +77,7 @@ impl Class {
             superclass,
             methods: RefCell::new(HashMap::new()),
             instance_variables: RefCell::new(HashSet::new()),
-            class_variables: RefCell::new(HashMap::new()),
+            class_variables: RefCell::new(IndexMap::new()),
             mixins: RefCell::new(Vec::new()),
             private_method_names: RefCell::new(HashSet::new()),
             public_overrides: RefCell::new(HashSet::new()),
@@ -471,6 +474,49 @@ impl Class {
         self.class_variables.borrow().keys().cloned().collect()
     }
 
+    /// Names of true class variables (`@@name`) defined directly on this
+    /// class/module, in definition order. The shared storage also holds
+    /// constants (uppercase keys), class-level instance variables (`@name`),
+    /// and internal bookkeeping (`__name__`); those are excluded.
+    pub fn own_class_variable_names(&self) -> Vec<String> {
+        self.class_variables
+            .borrow()
+            .keys()
+            .filter(|key| {
+                let first = key.chars().next();
+                !key.starts_with('@')
+                    && !key.starts_with("__")
+                    && !first.is_some_and(|c| c.is_ascii_uppercase())
+            })
+            .cloned()
+            .collect()
+    }
+
+    /// Names of class variables visible from this class, walking included
+    /// modules then the superclass (mirroring `lookup_class_var`). Definition
+    /// order is preserved and names already seen on a more-derived ancestor
+    /// are not repeated.
+    pub fn inherited_class_variable_names(&self) -> Vec<String> {
+        let mut names = Vec::new();
+        let mut seen = HashSet::new();
+        self.collect_class_variable_names(&mut names, &mut seen);
+        names
+    }
+
+    fn collect_class_variable_names(&self, names: &mut Vec<String>, seen: &mut HashSet<String>) {
+        for name in self.own_class_variable_names() {
+            if seen.insert(name.clone()) {
+                names.push(name);
+            }
+        }
+        for mixin in self.mixins.borrow().iter() {
+            mixin.collect_class_variable_names(names, seen);
+        }
+        if let Some(superclass) = self.superclass.as_ref() {
+            superclass.collect_class_variable_names(names, seen);
+        }
+    }
+
     /// Resolve a class variable across the ancestor chain: this class first,
     /// then its included modules, then its superclass (recursively). Mirrors
     /// Ruby's class-variable lookup, which walks included modules but ignores
@@ -492,7 +538,7 @@ impl Class {
     /// Remove a class variable/constant by name, returning the previous value
     /// if there was one. Used by `Module#remove_const`.
     pub fn remove_class_var(&self, name: &str) -> Option<crate::object::Object> {
-        self.class_variables.borrow_mut().remove(name)
+        self.class_variables.borrow_mut().shift_remove(name)
     }
 
     /// Deep-ish copy for `Class#dup`/`Module#dup`. The result is anonymous
