@@ -169,6 +169,20 @@ fn test_oop_modules_parens_execution() {
 }
 
 #[test]
+fn test_oop_module_spaceship_execution() {
+    let expected = "-1\n-1\n-1\n0\n1\n1\nnil\nnil\n";
+    let output = run_example("oop/module_spaceship.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_spaceship_parens_execution() {
+    let expected = "-1\n-1\n-1\n0\n1\n1\nnil\nnil\n";
+    let output = run_example("oop/module_spaceship_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_oop_module_append_features_hook() {
     let expected = "true\nfrozen ok\ncyclic ok\nrebind ok\n";
     let output = run_example("oop/module/append_features_hook.rb");

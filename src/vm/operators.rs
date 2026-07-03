@@ -699,6 +699,23 @@ impl VirtualMachine {
                 Ok(Object::Int(a.partial_cmp(&b).map_or(0, |o| o as i64)))
             }
             (Object::String(a), Object::String(b)) => Ok(Object::Int(a.cmp(b) as i64)),
+            // Module#<=>: compares the ancestry relationship of two modules or
+            // classes. -1 when the left is a descendant/includer of the right,
+            // +1 when it's an ancestor/included-by, 0 when they're the same,
+            // and nil when they're unrelated.
+            (Object::Class(a) | Object::Module(a), Object::Class(b) | Object::Module(b)) => {
+                let left_below_right = self.builtins().is_subclass_of(a, b);
+                let right_below_left = self.builtins().is_subclass_of(b, a);
+                Ok(match (left_below_right, right_below_left) {
+                    (true, true) => Object::Int(0),
+                    (true, false) => Object::Int(-1),
+                    (false, true) => Object::Int(1),
+                    (false, false) => Object::Nil,
+                })
+            }
+            // Module#<=> against a non-module argument returns nil rather than
+            // raising.
+            (Object::Class(_) | Object::Module(_), _) => Ok(Object::Nil),
             _ => Err(binary_type_error(
                 BinaryOp::Spaceship,
                 &left,

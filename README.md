@@ -200,6 +200,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `method_missing` hook for intercepting undefined method calls
 - Runtime class modification: `remove_method`, `undef_method`, `alias_method`, `module_function`
 - Class variables: `class_variable_set`, `class_variable_get`, `class_variable_defined?`, `class_variables` (lookup walks included modules and superclasses; `class_variables(false)` lists only own names)
+- Module ancestry comparison with `<=>`: `-1` when the receiver is a descendant or includer of the argument, `+1` when it is an ancestor or included-by, `0` when they are the same module, and `nil` when unrelated or the argument is not a module
 - Reflection: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
 - `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection
