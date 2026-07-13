@@ -420,6 +420,10 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     );
     globals.set("caller", Object::NativeFunction("caller".to_string()));
     globals.set(
+        "caller_locations",
+        Object::NativeFunction("caller_locations".to_string()),
+    );
+    globals.set(
         "binding",
         Object::NativeFunction("binding_kernel".to_string()),
     );

@@ -168,8 +168,18 @@ impl<'a> Lexer<'a> {
 
         // Inject the captured rest-of-line (followed by a newline) so those
         // tokens are lexed next, before the scanner proceeds past the
-        // terminator line.
+        // terminator line. They belong to the opener's line, so rewind the
+        // line counter for the injection and consume the terminator line's
+        // newline now (the injected one replaces it as the statement
+        // terminator); `restore_line` puts the counter back at the line
+        // after the terminator once the injection drains.
         if !rest_of_line.is_empty() {
+            if self.peek() == Some('\n') {
+                self.advance();
+            }
+            self.restore_line = Some(self.line);
+            self.line = saved_line;
+            self.column = saved_column;
             let mut injection = rest_of_line;
             injection.push('\n');
             // `prepend` is LIFO (pop yields last), so push chars in reverse.

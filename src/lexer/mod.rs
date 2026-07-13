@@ -38,6 +38,11 @@ pub struct Lexer<'a> {
     pub(super) offset: usize,
     /// Last significant token kind (for regex vs division disambiguation)
     pub(super) prev_significant: Option<TokenKind>,
+    /// Line number to restore once `prepend` drains. Heredoc lexing rewinds
+    /// `line` to the opener's line while the rest of that line is re-lexed
+    /// from `prepend`; this puts the counter back at the line following the
+    /// heredoc terminator afterwards.
+    pub(super) restore_line: Option<usize>,
 }
 
 impl<'a> Lexer<'a> {
@@ -57,6 +62,7 @@ impl<'a> Lexer<'a> {
             column: 1,
             offset: 0,
             prev_significant: None,
+            restore_line: None,
         }
     }
 
@@ -69,6 +75,7 @@ impl<'a> Lexer<'a> {
         let saved_column = self.column;
         let saved_offset = self.offset;
         let saved_prev = self.prev_significant.clone();
+        let saved_restore_line = self.restore_line;
 
         // Get the next token
         let token = self.next_token();
@@ -80,6 +87,7 @@ impl<'a> Lexer<'a> {
         self.column = saved_column;
         self.offset = saved_offset;
         self.prev_significant = saved_prev;
+        self.restore_line = saved_restore_line;
 
         token
     }

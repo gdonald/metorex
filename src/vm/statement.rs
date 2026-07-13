@@ -661,6 +661,7 @@ impl VirtualMachine {
                 position,
             } => {
                 let ns = self.evaluate_expression(namespace)?;
+                let owner_for_hook = ns.clone();
                 match ns {
                     Object::Class(c) | Object::Module(c) => {
                         // MRI emits "already initialized constant Mod::X"
@@ -673,8 +674,16 @@ impl VirtualMachine {
                         if self.autoload_const_access_depth == 0
                             && (c.get_class_var(name).is_some() || c.get_autoload(name).is_some())
                         {
-                            let msg =
-                                format!("already initialized constant {}::{}", c.ruby_name(), name);
+                            let owner = c.ruby_name();
+                            let owner = if owner.is_empty() {
+                                c.inspect_name()
+                            } else {
+                                owner
+                            };
+                            let msg = format!(
+                                "warning: already initialized constant {}::{}",
+                                owner, name
+                            );
                             self.emit_warning_to_stderr(&msg, *position);
                         }
                         if let Object::Class(v) | Object::Module(v) = &value {
@@ -687,6 +696,7 @@ impl VirtualMachine {
                         // bookkeeping after the load completes.)
                         c.remove_autoload(name);
                         c.set_class_var(name, value);
+                        self.trigger_const_added_hook(owner_for_hook, name, *position)?;
                         Ok(())
                     }
                     _ => Err(MetorexError::runtime_error(

@@ -192,6 +192,12 @@ impl VirtualMachine {
                 .define(name.to_string(), class_obj_pre.clone());
             self.globals_mut().set(name.to_string(), class_obj_pre);
         }
+        // `const_added` fires when the constant first becomes defined —
+        // before the body runs and before `inherited` (which fires after
+        // the body). Reopening does not retrigger it.
+        if is_new && let Some(parent) = parent_scope.as_ref() {
+            self.trigger_const_added_hook(Object::Class(Rc::clone(parent)), name, position)?;
+        }
         let body_result = self.apply_class_body(&class, body, position);
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
@@ -239,6 +245,53 @@ impl VirtualMachine {
                 method,
                 receiver,
                 vec![Object::Class(child)],
+                position,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Invoke `owner.const_added(name)` if the hook is defined. `owner` is the
+    /// class/module the constant was bound on, passed as the receiver so the
+    /// hook body sees it as `self`. The default `Module#const_added` is a
+    /// native no-op, so nothing fires unless a user hook exists.
+    pub(crate) fn trigger_const_added_hook(
+        &mut self,
+        owner: Object,
+        const_name: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let owner_rc = match &owner {
+            Object::Class(c) | Object::Module(c) => Rc::clone(c),
+            _ => return Ok(()),
+        };
+        // Only class-level definitions count as the hook: `def
+        // self.const_added` (stored under the `__class__` prefix) or a
+        // method on the singleton-class chain. A plain `def const_added`
+        // is an instance method for includers, not a hook.
+        let mut found = owner_rc
+            .find_method("__class__const_added")
+            .map(|m| (Rc::clone(&owner_rc), m));
+        if found.is_none() {
+            let mut cursor = Some(Rc::clone(&owner_rc));
+            while let Some(current) = cursor {
+                if let Some(sc) = current.singleton_class_slot().clone()
+                    && let Some(m) = sc.find_method("const_added")
+                {
+                    found = Some((sc, m));
+                    break;
+                }
+                cursor = current.superclass();
+            }
+        }
+        if let Some((holder, method)) = found
+            && !method.is_undefined
+        {
+            self.invoke_method(
+                holder,
+                method,
+                owner,
+                vec![Object::Symbol(Rc::new(const_name.to_string()))],
                 position,
             )?;
         }
@@ -802,8 +855,27 @@ impl VirtualMachine {
                     // Constant assignment in class body (e.g., PI = 3.14159).
                     // Lowercase identifiers fall through to the `_` arm and are
                     // treated as normal local-variable assignments.
+                    let assign_pos = statement.position();
                     let const_value = self.evaluate_expression(value)?;
+                    if class.get_class_var(const_name).is_some() {
+                        let owner = class.ruby_name();
+                        let owner = if owner.is_empty() {
+                            class.inspect_name()
+                        } else {
+                            owner
+                        };
+                        let msg = format!(
+                            "warning: already initialized constant {}::{}",
+                            owner, const_name
+                        );
+                        self.emit_warning_to_stderr(&msg, assign_pos);
+                    }
                     class.set_class_var(const_name, const_value.clone());
+                    self.trigger_const_added_hook(
+                        Object::Class(Rc::clone(class)),
+                        const_name,
+                        assign_pos,
+                    )?;
                     last_value = const_value;
                 }
                 Statement::Include {
@@ -1249,7 +1321,7 @@ impl VirtualMachine {
             }
             None => name.to_string(),
         };
-        let (module, existing_as_class) = if let Some(parent) = parent_scope.as_ref() {
+        let (module, existing_as_class, is_new) = if let Some(parent) = parent_scope.as_ref() {
             let direct = parent.get_class_var(name);
             let resolved = if direct.is_some() {
                 direct
@@ -1257,20 +1329,20 @@ impl VirtualMachine {
                 self.try_autoload_constant(parent, name)?
             };
             match resolved {
-                Some(Object::Module(existing)) => (existing, false),
-                Some(Object::Class(existing)) => (existing, true),
-                _ => (Rc::new(Class::new(full_name.clone(), None)), false),
+                Some(Object::Module(existing)) => (existing, false, false),
+                Some(Object::Class(existing)) => (existing, true, false),
+                _ => (Rc::new(Class::new(full_name.clone(), None)), false, true),
             }
         } else if let Some(Object::Module(existing)) = self.globals().get(name) {
-            (existing, false)
+            (existing, false, false)
         } else if let Some(Object::Module(existing)) = self.environment().get(name) {
-            (existing, false)
+            (existing, false, false)
         } else if let Some(Object::Class(existing)) = self.globals().get(name) {
-            (existing, true)
+            (existing, true, false)
         } else if let Some(Object::Class(existing)) = self.environment().get(name) {
-            (existing, true)
+            (existing, true, false)
         } else {
-            (Rc::new(Class::new(full_name.clone(), None)), false)
+            (Rc::new(Class::new(full_name.clone(), None)), false, true)
         };
 
         // Set 'self' to the module for instance variable access in module body
@@ -1298,6 +1370,11 @@ impl VirtualMachine {
             self.environment_mut()
                 .define(name.to_string(), module_obj_pre.clone());
             self.globals_mut().set(name.to_string(), module_obj_pre);
+        }
+        // `const_added` fires when the constant first becomes defined —
+        // before the body runs. Reopening does not retrigger it.
+        if is_new && let Some(parent) = parent_scope.as_ref() {
+            self.trigger_const_added_hook(Object::Module(Rc::clone(parent)), name, position)?;
         }
 
         for statement in body {
@@ -1358,8 +1435,27 @@ impl VirtualMachine {
                     value,
                     ..
                 } if const_name.starts_with(|c: char| c.is_uppercase()) => {
+                    let assign_pos = statement.position();
                     let const_value = self.evaluate_expression(value)?;
+                    if module.get_class_var(const_name).is_some() {
+                        let owner = module.ruby_name();
+                        let owner = if owner.is_empty() {
+                            module.inspect_name()
+                        } else {
+                            owner
+                        };
+                        let msg = format!(
+                            "warning: already initialized constant {}::{}",
+                            owner, const_name
+                        );
+                        self.emit_warning_to_stderr(&msg, assign_pos);
+                    }
                     module.set_class_var(const_name, const_value);
+                    self.trigger_const_added_hook(
+                        Object::Module(Rc::clone(&module)),
+                        const_name,
+                        assign_pos,
+                    )?;
                 }
                 // `class << <target>` inside a module body — open the target's
                 // singleton class and apply the inner body there.

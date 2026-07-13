@@ -285,7 +285,12 @@ impl VirtualMachine {
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
             class_rc.set_autoload_location(const_name.clone(), caller_file, position.line as i64);
-            class_rc.set_autoload(const_name, path);
+            class_rc.set_autoload(const_name.clone(), path);
+            self.trigger_const_added_hook(
+                Object::Class(Rc::clone(class_rc)),
+                &const_name,
+                position,
+            )?;
             return Ok(Some(Object::Nil));
         }
         if method_name == "autoload?" {
@@ -767,6 +772,7 @@ impl VirtualMachine {
                         "extend_object",
                         "extended",
                         "included",
+                        "const_added",
                     ] {
                         if !method_list.iter().any(|m| m == n) {
                             method_list.push(n.to_string());
@@ -1276,6 +1282,34 @@ impl VirtualMachine {
                     message: msg,
                 });
             }
+            // Default `Module#const_added` — a no-op returning nil. User
+            // hooks (`def self.const_added`) are dispatched before native
+            // fallback, so this only fires for the base implementation.
+            "const_added" => {
+                // Native dispatch runs before the user method body in
+                // `invoke_method`, so step aside when a user hook exists.
+                if class_rc.find_method("__class__const_added").is_some() {
+                    return Ok(None);
+                }
+                let mut cursor = Some(Rc::clone(class_rc));
+                while let Some(current) = cursor {
+                    if let Some(sc) = current.singleton_class_slot().clone()
+                        && sc.find_method("const_added").is_some()
+                    {
+                        return Ok(None);
+                    }
+                    cursor = current.superclass();
+                }
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "const_added",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                return Ok(Some(Object::Nil));
+            }
             "const_set" => {
                 if arguments.len() != 2 {
                     return Err(method_argument_error(
@@ -1311,6 +1345,11 @@ impl VirtualMachine {
                 class_rc.remove_autoload(&const_name);
                 class_rc.clear_unrealized_autoload(&const_name);
                 class_rc.set_class_var(&const_name, arguments[1].clone());
+                self.trigger_const_added_hook(
+                    Object::Class(Rc::clone(class_rc)),
+                    &const_name,
+                    position,
+                )?;
                 return Ok(Some(arguments[1].clone()));
             }
             "class_eval" | "module_eval" => {

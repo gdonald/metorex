@@ -636,3 +636,24 @@ fn test_metaprogramming_class_variables_parens_execution() {
     let output = run_example("metaprogramming/class_variables_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_const_added_hook_execution() {
+    let expected = "[:TEST]\n[:TEST, :SECOND]\n[:TEST, :SECOND, :Autoload]\n[:TEST, :SECOND, :Autoload, :Child]\n[:TEST, :SECOND, :Autoload, :Child, :DIRECT]\n";
+    let output = run_example("metaprogramming/const_added_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_added_hook_parens_execution() {
+    let expected = "[:TEST]\n[:TEST, :SECOND]\n[:TEST, :SECOND, :Autoload]\n[:TEST, :SECOND, :Autoload, :Child]\n[:TEST, :SECOND, :Autoload, :Child, :DIRECT]\n";
+    let output = run_example("metaprogramming/const_added_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_caller_locations_lineno_execution() {
+    let expected = "true\ntrue\n";
+    let output = run_example("metaprogramming/caller_locations_lineno.rb");
+    assert_eq!(output, expected);
+}

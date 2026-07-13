@@ -10,7 +10,9 @@ impl<'a> Lexer<'a> {
 
     /// Advance to the next character and return it
     pub(super) fn advance(&mut self) -> Option<char> {
+        let mut drained_prepend = false;
         let ch = if let Some(c) = self.prepend.pop() {
+            drained_prepend = self.prepend.is_empty();
             c
         } else {
             self.chars.next()?
@@ -21,6 +23,12 @@ impl<'a> Lexer<'a> {
             self.column = 1;
         } else {
             self.column += 1;
+        }
+        // Injected heredoc rest-of-line fully consumed — put the line
+        // counter back where the real source stream continues.
+        if drained_prepend && let Some(line) = self.restore_line.take() {
+            self.line = line;
+            self.column = 1;
         }
         Some(ch)
     }

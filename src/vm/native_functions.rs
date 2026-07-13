@@ -146,6 +146,85 @@ impl VirtualMachine {
             "caller" => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
                 Vec::new(),
             )))),
+            // `caller_locations(start = 1, length = nil)` — walk the VM call
+            // stack. Each frame stores the source position it was called
+            // from, so level 1 (the caller of the current method) reads the
+            // top frame's recorded location. Returns Location objects
+            // responding to `lineno` and `path`.
+            "caller_locations" => {
+                use crate::ast::{Expression, Statement};
+                use crate::object::{Instance, Method};
+                use std::cell::RefCell;
+                use std::rc::Rc;
+                let start = match arguments.first() {
+                    Some(Object::Int(n)) => (*n).max(1) as usize,
+                    _ => 1,
+                };
+                let length = match arguments.get(1) {
+                    Some(Object::Int(n)) => Some((*n).max(0) as usize),
+                    _ => None,
+                };
+                let loc_class = match self.globals().get("__Backtrace_Location_class") {
+                    Some(Object::Class(c)) => c,
+                    _ => {
+                        let cls = Rc::new(crate::class::Class::new(
+                            "Thread::Backtrace::Location",
+                            None,
+                        ));
+                        for attr in ["lineno", "path"] {
+                            let body = vec![Statement::Return {
+                                value: Some(Expression::InstanceVariable {
+                                    name: attr.to_string(),
+                                    position: crate::lexer::Position::default(),
+                                }),
+                                position: crate::lexer::Position::default(),
+                            }];
+                            cls.define_method(
+                                attr,
+                                Rc::new(Method::new(attr.to_string(), vec![], body)),
+                            );
+                        }
+                        self.globals_mut()
+                            .set("__Backtrace_Location_class", Object::Class(Rc::clone(&cls)));
+                        cls
+                    }
+                };
+                let stack = self.call_stack();
+                let mut locations: Vec<Object> = Vec::new();
+                let mut level = start;
+                loop {
+                    if let Some(len) = length
+                        && locations.len() >= len
+                    {
+                        break;
+                    }
+                    if level > stack.len() {
+                        break;
+                    }
+                    let frame = &stack[stack.len() - level];
+                    // Frame locations are "line:column" or "file:line:column".
+                    let (path, line) = match frame.location() {
+                        Some(loc) => {
+                            let parts: Vec<&str> = loc.rsplitn(3, ':').collect();
+                            let line = parts
+                                .get(1)
+                                .and_then(|s| s.parse::<i64>().ok())
+                                .unwrap_or(0);
+                            let path = parts.get(2).map(|s| s.to_string()).unwrap_or_default();
+                            (path, line)
+                        }
+                        None => (String::new(), 0),
+                    };
+                    let mut inst = Instance::new(Rc::clone(&loc_class));
+                    inst.set_var("lineno".to_string(), Object::Int(line));
+                    inst.set_var("path".to_string(), Object::String(Rc::new(path)));
+                    locations.push(Object::Instance(Rc::new(RefCell::new(inst))));
+                    level += 1;
+                }
+                Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    locations,
+                ))))
+            }
             "binding_kernel" => Ok(Object::Nil),
             "top_level_to_s" => Ok(Object::string("main".to_string())),
             "define_method" => {

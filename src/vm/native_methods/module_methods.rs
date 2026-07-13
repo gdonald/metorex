@@ -339,7 +339,12 @@ impl VirtualMachine {
                     caller_file,
                     position.line as i64,
                 );
-                module_rc.set_autoload(const_name, path);
+                module_rc.set_autoload(const_name.clone(), path);
+                self.trigger_const_added_hook(
+                    Object::Module(Rc::clone(module_rc)),
+                    &const_name,
+                    position,
+                )?;
                 return Ok(Some(Object::Nil));
             }
             "autoload?" => {
