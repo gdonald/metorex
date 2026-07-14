@@ -595,7 +595,11 @@ end
 K5.const_get(42)
 "#,
     );
-    assert!(err.contains("Symbol") || err.contains("String") || err.contains("argument"));
+    assert!(
+        err.contains("is not a symbol nor a string"),
+        "unexpected error: {}",
+        err
+    );
 }
 
 // ── `alias_method` error path (lines 867-879) ────────────────────────────────

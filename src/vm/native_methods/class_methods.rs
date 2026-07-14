@@ -1132,9 +1132,11 @@ impl VirtualMachine {
             "const_defined?" => {
                 // const_defined?(name [, inherit=true]) — when inherit is
                 // false, only check the receiver itself; otherwise also
-                // search ancestors and outer scope. The autoload registry
-                // counts as defined (Ruby treats a registered autoload as
-                // a constant entry).
+                // search mixins and the superclass chain. The autoload
+                // registry counts as defined (Ruby treats a registered
+                // autoload as a constant entry). Scoped names
+                // (`A::B`, `::Top`) resolve segment by segment; invalid
+                // segments raise NameError. Never calls const_missing.
                 if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         "const_defined?",
@@ -1143,32 +1145,49 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let const_name = match &arguments[0] {
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    Object::String(s) => s.as_ref().clone(),
-                    _ => return Ok(Some(Object::Bool(false))),
+                let const_path =
+                    self.coerce_method_name(&arguments[0], "const_defined?", position)?;
+                let inherit = match arguments.get(1) {
+                    None => true,
+                    Some(v) => crate::vm::utils::is_truthy(v),
                 };
-                let inherit = !matches!(arguments.get(1), Some(Object::Bool(false)));
-                // Thread-aware autoload check via `effective_autoload`:
-                // the loading thread sees the autoload as cleared, other
-                // threads still see it as registered. Mirrors `defined?`
-                // / `autoload?` behaviour during a load.
-                let local_autoload = if class_rc.get_autoload(&const_name).is_some() {
-                    let cls = Rc::clone(class_rc);
-                    self.effective_autoload(&cls, &const_name).is_some()
-                } else {
-                    false
-                };
-                let found_local = class_rc.get_class_var(&const_name).is_some() || local_autoload;
-                let found = if inherit {
-                    found_local
-                        || class_rc.lookup_autoload(&const_name).is_some()
-                        || self.environment().get(&const_name).is_some()
-                        || self.globals().get(&const_name).is_some()
-                } else {
-                    found_local
-                };
-                return Ok(Some(Object::Bool(found)));
+                let mut rest: &str = &const_path;
+                let mut current = Rc::clone(class_rc);
+                if let Some(stripped) = rest.strip_prefix("::") {
+                    rest = stripped;
+                    current = match self.globals().get("Object") {
+                        Some(Object::Class(c)) => c,
+                        _ => return Ok(Some(Object::Bool(false))),
+                    };
+                }
+                let segments: Vec<&str> = rest.split("::").collect();
+                for seg in &segments {
+                    if !is_valid_constant_name(seg) {
+                        let msg = format!("wrong constant name {}", const_path);
+                        let exc = Object::exception("NameError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                }
+                for (i, seg) in segments.iter().enumerate() {
+                    let entry = self.const_entry_on(&current, seg, inherit, i == 0);
+                    if i + 1 == segments.len() {
+                        return Ok(Some(Object::Bool(entry.is_some())));
+                    }
+                    // Intermediate segments must resolve to a class/module
+                    // value; a registered-but-unloaded autoload can't be
+                    // traversed without triggering the load.
+                    match entry {
+                        Some((_, Some(Object::Class(c)))) | Some((_, Some(Object::Module(c)))) => {
+                            current = c;
+                        }
+                        _ => return Ok(Some(Object::Bool(false))),
+                    }
+                }
+                return Ok(Some(Object::Bool(false)));
             }
             "const_source_location" => {
                 if arguments.len() != 1 {
@@ -1230,7 +1249,15 @@ impl VirtualMachine {
                 return Ok(Some(loc_obj));
             }
             "const_get" => {
-                if arguments.len() != 1 {
+                // const_get(name [, inherit=true]) — search order mirrors
+                // const_defined?: the receiver, then (when inherit) mixins
+                // and the superclass chain, with Object exposing top-level
+                // constants and modules falling back to Object for a
+                // directly-named constant. Scoped names (`A::B`, `::Top`)
+                // resolve segment by segment; a Symbol must be a simple
+                // name. Registered autoloads fire; unresolvable names
+                // dispatch const_missing (default: NameError with `name`).
+                if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         "const_get",
                         1,
@@ -1238,49 +1265,82 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let const_name = match &arguments[0] {
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    Object::String(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "const_get",
-                            "Symbol or String",
-                            other,
-                            position,
-                        ));
+                let was_symbol = matches!(&arguments[0], Object::Symbol(_));
+                let const_path = self.coerce_method_name(&arguments[0], "const_get", position)?;
+                let inherit = match arguments.get(1) {
+                    None => true,
+                    Some(v) => crate::vm::utils::is_truthy(v),
+                };
+                let wrong_name = |path: &str| {
+                    let msg = format!("wrong constant name {}", path);
+                    let exc = Object::exception("NameError", msg.clone());
+                    MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
                     }
                 };
-                if let Some(val) = class_rc.get_class_var(&const_name) {
-                    return Ok(Some(val));
+                if was_symbol && const_path.contains("::") {
+                    return Err(wrong_name(&const_path));
                 }
-                // const_get triggers autoload like a `Mod::Const` reference
-                // would. Without firing it here, callers like
-                // `Mod.const_get(:Foo)` would NameError even when `:Foo`
-                // is a registered autoload.
-                if let Some(val) = self.try_autoload_constant(class_rc, &const_name)? {
-                    return Ok(Some(val));
+                let mut rest: &str = &const_path;
+                let mut current = Rc::clone(class_rc);
+                if let Some(stripped) = rest.strip_prefix("::") {
+                    rest = stripped;
+                    current = match self.globals().get("Object") {
+                        Some(Object::Class(c)) => c,
+                        _ => return Err(wrong_name(&const_path)),
+                    };
                 }
-                // Top-level constants live on globals rather than on Object's
-                // class_vars in our model. Ruby semantics treat `Object` as
-                // the home of top-level constants, so `Object.const_get(:Foo)`
-                // should resolve a top-level `Foo`. Walk superclasses too so
-                // any class inheriting from Object inherits this view.
-                let mut current: Option<Rc<crate::class::Class>> = Some(Rc::clone(class_rc));
-                while let Some(cls) = current {
-                    if cls.name() == "Object"
-                        && let Some(val) = self.globals().get(&const_name)
-                    {
-                        return Ok(Some(val));
+                let segments: Vec<&str> = rest.split("::").collect();
+                for seg in &segments {
+                    if !is_valid_constant_name(seg) {
+                        return Err(wrong_name(&const_path));
                     }
-                    current = cls.superclass();
                 }
-                let msg = format!("uninitialized constant {}", const_name);
-                let exc = Object::exception("NameError", msg.clone());
-                return Err(MetorexError::UncaughtException {
-                    exception: exc,
-                    location: position_to_location(position),
-                    message: msg,
-                });
+                let mut value = Object::Nil;
+                for (i, seg) in segments.iter().enumerate() {
+                    let entry = self.const_entry_on(&current, seg, inherit, i == 0);
+                    let resolved = match entry {
+                        Some((_, Some(v))) => Some(v),
+                        // Registered autoload — fire the load on the owner.
+                        Some((owner, None)) => self.try_autoload_constant(&owner, seg)?,
+                        // No entry — a registered autoload whose file was
+                        // already loaded without defining the constant can
+                        // still be satisfied by a re-load (several autoloads
+                        // may point at one path); `try_autoload_constant`
+                        // owns that logic.
+                        None => self.try_autoload_constant(&current, seg)?,
+                    };
+                    let resolved = match resolved {
+                        Some(v) => v,
+                        None => {
+                            let missing = self.dispatch_const_missing(&current, seg, position)?;
+                            if i + 1 == segments.len() {
+                                return Ok(Some(missing));
+                            }
+                            missing
+                        }
+                    };
+                    if i + 1 == segments.len() {
+                        value = resolved;
+                    } else {
+                        match resolved {
+                            Object::Class(c) | Object::Module(c) => current = c,
+                            other => {
+                                let msg =
+                                    format!("{} does not refer to class/module", other.type_name());
+                                let exc = Object::exception("TypeError", msg.clone());
+                                return Err(MetorexError::UncaughtException {
+                                    exception: exc,
+                                    location: position_to_location(position),
+                                    message: msg,
+                                });
+                            }
+                        }
+                    }
+                }
+                return Ok(Some(value));
             }
             // Default `Module#const_added` — a no-op returning nil. User
             // hooks (`def self.const_added`) are dispatched before native
@@ -1721,6 +1781,134 @@ impl VirtualMachine {
         }
         let msg = format!("`{}' is not allowed as a class variable name", name);
         let exc = Object::exception("NameError", msg.clone());
+        Err(MetorexError::UncaughtException {
+            exception: exc,
+            location: position_to_location(position),
+            message: msg,
+        })
+    }
+
+    /// Search `class_rc` for constant `name` the way `const_defined?` does:
+    /// its own constant table and autoload registry, plus — when `inherit` —
+    /// its mixins (transitively) and superclass chain with their mixins.
+    /// `Object` additionally sees top-level constants (globals), and a
+    /// module receiver falls back to `Object` as a last resort (Ruby scopes
+    /// module constant lookup through Object). `object_fallback` controls
+    /// that top-level visibility — it is on for a directly-named constant
+    /// and off for the trailing segments of a scoped name (`A::B` must not
+    /// find `B` at the top level). Returns `Some((owner, Some(value)))` for
+    /// a bound constant, `Some((owner, None))` for a registered-but-unloaded
+    /// autoload, `None` when absent. Never triggers autoload loads or
+    /// const_missing.
+    pub(crate) fn const_entry_on(
+        &mut self,
+        class_rc: &Rc<Class>,
+        name: &str,
+        inherit: bool,
+        object_fallback: bool,
+    ) -> Option<(Rc<Class>, Option<Object>)> {
+        let mut queue: Vec<Rc<Class>> = vec![Rc::clone(class_rc)];
+        let mut seen: Vec<*const Class> = Vec::new();
+        let mut idx = 0;
+        while idx < queue.len() {
+            let current = Rc::clone(&queue[idx]);
+            idx += 1;
+            let ptr = Rc::as_ptr(&current);
+            if seen.contains(&ptr) {
+                continue;
+            }
+            seen.push(ptr);
+            if let Some(v) = current.get_class_var(name) {
+                return Some((current, Some(v)));
+            }
+            // A bound top-level constant beats a still-registered autoload
+            // (an autoloaded file may have defined the constant in globals
+            // without clearing Object's registration).
+            if object_fallback
+                && current.name() == "Object"
+                && let Some(v) = self.globals().get(name)
+            {
+                return Some((current, Some(v)));
+            }
+            // Thread-aware, read-only autoload check: the loading thread
+            // sees its own in-progress autoload as cleared, other threads
+            // still see it as registered.
+            {
+                let cls = Rc::clone(&current);
+                if self.autoload_pending(&cls, name) {
+                    return Some((current, None));
+                }
+            }
+            if inherit {
+                for mixin in current.mixin_chain() {
+                    queue.push(mixin);
+                }
+                if let Some(sc) = current.superclass() {
+                    queue.push(sc);
+                }
+            }
+        }
+        // Module receivers (no superclass chain) see Object's constants.
+        if inherit
+            && object_fallback
+            && class_rc.superclass().is_none()
+            && class_rc.name() != "Object"
+            && class_rc.name() != "BasicObject"
+            && let Some(Object::Class(object_class)) = self.globals().get("Object")
+            && !seen.contains(&Rc::as_ptr(&object_class))
+        {
+            return self.const_entry_on(&object_class, name, inherit, object_fallback);
+        }
+        None
+    }
+
+    /// Dispatch `const_missing(name)` on `module_rc` — the user-defined hook
+    /// (a `def self.const_missing` anywhere on the superclass chain, or a
+    /// singleton-class method, e.g. an mspec mock) when present, otherwise
+    /// the default behavior: raise NameError with the `name` attribute set.
+    pub(crate) fn dispatch_const_missing(
+        &mut self,
+        module_rc: &Rc<Class>,
+        name: &str,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let mut found: Option<(Rc<Class>, Rc<crate::object::Method>)> = None;
+        let mut cursor = Some(Rc::clone(module_rc));
+        while let Some(current) = cursor {
+            if let Some(m) = current.find_method("__class__const_missing") {
+                found = Some((current, m));
+                break;
+            }
+            if let Some(sc) = current.singleton_class_slot().clone()
+                && let Some(m) = sc.find_method("const_missing")
+            {
+                found = Some((sc, m));
+                break;
+            }
+            cursor = current.superclass();
+        }
+        if let Some((holder, method)) = found
+            && !method.is_undefined
+        {
+            return self.invoke_method(
+                holder,
+                method,
+                Object::Class(Rc::clone(module_rc)),
+                vec![Object::Symbol(Rc::new(name.to_string()))],
+                position,
+            );
+        }
+        let owner = module_rc.ruby_name();
+        let qualified = if owner.is_empty() || owner == "Object" {
+            name.to_string()
+        } else {
+            format!("{}::{}", owner, name)
+        };
+        let msg = format!("uninitialized constant {}", qualified);
+        let exc = Object::exception("NameError", msg.clone());
+        if let Object::Exception(e) = &exc {
+            e.borrow_mut().name = Some(name.to_string());
+        }
         Err(MetorexError::UncaughtException {
             exception: exc,
             location: position_to_location(position),

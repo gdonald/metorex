@@ -16,6 +16,15 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        // Kernel#autoload / #autoload? — a top-level (or any non-module)
+        // receiver registers the autoload on Object, Ruby's home for
+        // top-level constants.
+        if matches!(method_name, "autoload" | "autoload?")
+            && let Some(Object::Class(object_class)) = self.globals().get("Object")
+        {
+            return self.call_class_methods(&object_class, method_name, arguments, position);
+        }
+
         // Nil-specific conversions: in Ruby `nil.to_i == 0`, `nil.to_s == ""`,
         // `nil.to_a == []`, `nil.to_f == 0.0`. The dispatch above checks the
         // class of the receiver first, so we have to intercept here for Nil

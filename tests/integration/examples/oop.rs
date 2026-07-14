@@ -432,3 +432,10 @@ fn test_oop_ancestors_standalone_module_singleton() {
     let output = run_example("oop/ancestors_standalone_module_singleton.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_toplevel_class_reopen_execution() {
+    let expected = ":reopened_toplevel\n:toplevel_module\nfalse\nfalse\nWrapper::Parent\n";
+    let output = run_example("oop/toplevel_class_reopen.rb");
+    assert_eq!(output, expected);
+}

@@ -33,6 +33,15 @@ impl VirtualMachine {
                 let message = exception.borrow().message.clone();
                 Ok(Some(Object::String(Rc::new(message))))
             }
+            "name" => {
+                // NameError#name / NoMethodError#name — the offending
+                // constant or method name as a Symbol, nil when unset.
+                let name = exception.borrow().name.clone();
+                Ok(Some(match name {
+                    Some(n) => Object::Symbol(Rc::new(n)),
+                    None => Object::Nil,
+                }))
+            }
             "type" | "exception_type" => {
                 // Return the exception type as a String
                 let exception_type = exception.borrow().exception_type.clone();

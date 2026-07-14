@@ -91,6 +91,9 @@ impl VirtualMachine {
                     Err(_) => Ok(Some(Object::Bool(false))),
                 }
             }
+            // String#encode — metorex strings are always UTF-8 and carry no
+            // encoding metadata, so re-encoding is the identity.
+            "encode" => Ok(Some(Object::String(Rc::new(string_value.to_string())))),
             "upcase" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

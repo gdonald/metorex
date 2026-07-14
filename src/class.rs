@@ -409,10 +409,23 @@ impl Class {
             if self.is_method_private_in_chain(old_name) {
                 self.set_method_private(new_name.to_string());
             }
-            true
-        } else {
-            false
+            return true;
         }
+        // Singleton class of a class/module: `def self.x` methods live on
+        // the attached class under the `__class__` prefix, not on the
+        // singleton class itself. Alias from there so e.g. mspec's mock
+        // installer can save a class method aside.
+        if self.get_class_var("__singleton__").is_some()
+            && let Some(Object::Class(attached) | Object::Module(attached)) =
+                self.get_class_var("__attached__")
+            && let Some(method) = attached.find_method(&format!("__class__{}", old_name))
+        {
+            self.methods
+                .borrow_mut()
+                .insert(new_name.to_string(), method);
+            return true;
+        }
+        false
     }
 
     /// Check whether a method is marked private anywhere on this class or its

@@ -23,6 +23,16 @@ impl Parser {
             });
         }
 
+        // `class ::Name` opens the top-level constant `Name` regardless of
+        // lexical nesting. Encoded as a `::` prefix on the name; the VM
+        // strips it and skips the lexical-scope fallback.
+        let top_level = if self.check(&[TokenKind::ColonColon]) {
+            self.advance();
+            true
+        } else {
+            false
+        };
+
         // `class NS::Name` — NS is a dynamic expression (local variable,
         // constant, method call, etc.) whose class_vars we install Name on.
         // `class Name` — simple form, installed in the current lexical scope.
@@ -112,6 +122,10 @@ impl Parser {
 
         self.expect(TokenKind::End, "Expected 'end' after class body")?;
 
+        if top_level && namespace_expr.is_none() {
+            name = format!("::{}", name);
+        }
+
         Ok(Statement::ClassDef {
             name,
             namespace: namespace_expr,
@@ -157,11 +171,15 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        // `module ::Name` opens the top-level constant `Name`; the leading
-        // `::` is cosmetic for our resolver, which looks modules up globally.
-        if self.check(&[TokenKind::ColonColon]) {
+        // `module ::Name` opens the top-level constant `Name` regardless of
+        // lexical nesting. Encoded as a `::` prefix on the name; the VM
+        // strips it and skips the lexical-scope fallback.
+        let top_level = if self.check(&[TokenKind::ColonColon]) {
             self.advance();
-        }
+            true
+        } else {
+            false
+        };
 
         let first_ident = match self.advance().kind {
             TokenKind::Ident(name) => name,
@@ -219,6 +237,10 @@ impl Parser {
 
         self.in_class_body = was_in_class;
         self.expect(TokenKind::End, "Expected 'end' after module body")?;
+
+        if top_level && namespace_expr.is_none() {
+            name = format!("::{}", name);
+        }
 
         Ok(Statement::ModuleDef {
             name,

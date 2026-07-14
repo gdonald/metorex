@@ -103,6 +103,39 @@ impl VirtualMachine {
         Some(path)
     }
 
+    /// Read-only variant of `effective_autoload` for constant-presence
+    /// checks (`const_defined?` / `const_get` lookup): whether `class_rc`
+    /// itself has a pending autoload registration for `name`. Unlike
+    /// `effective_autoload` it never clears the registration, checks only
+    /// the receiver (callers walk ancestors themselves), and treats a
+    /// same-thread in-progress load or an already-loaded file as not
+    /// pending.
+    pub(crate) fn autoload_pending(
+        &mut self,
+        class_rc: &Rc<crate::class::Class>,
+        name: &str,
+    ) -> bool {
+        let Some(path) = class_rc.get_autoload(name) else {
+            return false;
+        };
+        let current = self
+            .thread_current_stack
+            .last()
+            .cloned()
+            .unwrap_or(Object::Nil);
+        for (cls, n, loader) in &self.autoload_loading {
+            if Rc::ptr_eq(cls, class_rc) && n == name {
+                let same_thread = match (loader, &current) {
+                    (Object::Nil, Object::Nil) => true,
+                    (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
+                    _ => false,
+                };
+                return !same_thread;
+            }
+        }
+        !self.path_in_loaded_features(&path)
+    }
+
     /// Whether `path` (after canonicalization) is currently listed in
     /// `$LOADED_FEATURES`. Used by `effective_autoload` and by the
     /// `autoload?` natives.

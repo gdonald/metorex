@@ -35,6 +35,8 @@ pub struct Exception {
     pub cause: Option<Box<Object>>,
     /// Exit status (used by SystemExit)
     pub status: Option<i64>,
+    /// Offending name (used by NameError / NoMethodError)
+    pub name: Option<String>,
 }
 
 impl Exception {
@@ -47,6 +49,7 @@ impl Exception {
             location: None,
             cause: None,
             status: None,
+            name: None,
         }
     }
 
@@ -59,6 +62,7 @@ impl Exception {
             location: None,
             cause: None,
             status: None,
+            name: None,
         }
     }
 
@@ -75,6 +79,7 @@ impl Exception {
             location: Some(location),
             cause: None,
             status: None,
+            name: None,
         }
     }
 
@@ -87,6 +92,7 @@ impl Exception {
             location: None,
             cause: Some(Box::new(cause)),
             status: None,
+            name: None,
         }
     }
 
@@ -105,6 +111,7 @@ impl Exception {
             location,
             cause: cause.map(Box::new),
             status: None,
+            name: None,
         }
     }
 

@@ -22,6 +22,13 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
+        // `class ::Name` — the parser encodes the leading `::` as a name
+        // prefix; it anchors the constant at the top level, bypassing the
+        // lexical-scope fallback.
+        let (name, top_level) = match name.strip_prefix("::") {
+            Some(stripped) => (stripped, true),
+            None => (name, false),
+        };
         // `class NS::Name` — evaluate NS and use it as the parent scope for
         // the new class's constant binding.
         let parent_scope = if let Some(expr) = namespace_expr {
@@ -34,6 +41,8 @@ impl VirtualMachine {
                     ));
                 }
             }
+        } else if top_level {
+            None
         } else {
             // Lexical nesting fallback.
             self.def_scope_stack.last().cloned()
@@ -46,11 +55,14 @@ impl VirtualMachine {
             let resolved = if super_name.contains("::") {
                 self.resolve_constant_with_autoload(super_name)?
             } else {
+                // Check the explicit parent scope first, then the lexical
+                // def-scope chain (so `class ChildA < ParentA` inside
+                // `class ContainerA` sees the enclosing module's ParentA),
+                // then environment and globals.
                 let direct = parent_scope
                     .as_ref()
                     .and_then(|p| p.get_class_var(super_name))
-                    .or_else(|| self.environment().get(super_name))
-                    .or_else(|| self.globals().get(super_name));
+                    .or_else(|| self.resolve_constant_in_scope(super_name));
                 if direct.is_some() {
                     direct
                 } else if let Some(parent) = parent_scope.as_ref() {
@@ -1300,12 +1312,23 @@ impl VirtualMachine {
             None
         };
 
+        // `module ::Name` — the parser encodes the leading `::` as a name
+        // prefix; it anchors the constant at the top level, bypassing the
+        // lexical-scope fallback.
+        let (name, top_level) = match name.strip_prefix("::") {
+            Some(stripped) => (stripped, true),
+            None => (name, false),
+        };
         // If we're lexically nested inside a module/class, resolve the name
         // against the parent's constants first — `module Foo; module Bar; end; end`
         // defines `Foo::Bar`, distinct from any top-level `::Bar` of the same name.
-        let parent_scope = explicit_ns
-            .clone()
-            .or_else(|| self.def_scope_stack.last().cloned());
+        let parent_scope = if top_level {
+            None
+        } else {
+            explicit_ns
+                .clone()
+                .or_else(|| self.def_scope_stack.last().cloned())
+        };
         // Build a qualified name for fresh modules so `Module#ruby_name`
         // (and warning messages like the autoload "didn't define"
         // emission) report the full `Outer::Inner` path instead of just

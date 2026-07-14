@@ -657,3 +657,31 @@ fn test_metaprogramming_caller_locations_lineno_execution() {
     let output = run_example("metaprogramming/caller_locations_lineno.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_const_defined_execution() {
+    let expected = "true\ntrue\ntrue\nfalse\nfalse\ntrue\ntrue\nfalse\ntrue\nfalse\nfalse\nNameError\nNameError\n";
+    let output = run_example("metaprogramming/const_defined.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_defined_parens_execution() {
+    let expected = "true\ntrue\ntrue\nfalse\nfalse\ntrue\ntrue\nfalse\ntrue\nfalse\nfalse\nNameError\nNameError\n";
+    let output = run_example("metaprogramming/const_defined_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_get_execution() {
+    let expected = ":from_parent\n:from_module\n:top\n:from_parent\n:top\n[:missing, :ANYTHING]\n:FROM_PARENT\nNameError\n";
+    let output = run_example("metaprogramming/const_get.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_get_parens_execution() {
+    let expected = ":from_parent\n:from_module\n:top\n:from_parent\n:top\n[:missing, :ANYTHING]\n:FROM_PARENT\nNameError\n";
+    let output = run_example("metaprogramming/const_get_parens.rb");
+    assert_eq!(output, expected);
+}

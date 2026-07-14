@@ -548,14 +548,15 @@ impl VirtualMachine {
 }
 
 /// Whether `name` is a syntactically valid Ruby constant name: must start
-/// with an ASCII uppercase letter and contain only word characters after.
-/// Used by `Module#autoload` and `Module#const_set` to reject lowercase /
-/// numeric / whitespace-leading names with a NameError.
+/// with an uppercase letter and contain only word characters after.
+/// Multibyte letters are allowed (Ruby permits `CS_CONSTλ`). Used by
+/// `Module#autoload`, `Module#const_set`, and `Module#const_defined?` to
+/// reject lowercase / numeric / punctuated names with a NameError.
 pub(crate) fn is_valid_constant_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
-        Some(c) if c.is_ascii_uppercase() => {}
+        Some(c) if c.is_uppercase() => {}
         _ => return false,
     }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    chars.all(|c| c.is_alphanumeric() || c == '_')
 }

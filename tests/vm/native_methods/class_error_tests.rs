@@ -144,9 +144,13 @@ Object.const_defined?("Bar")
 }
 
 #[test]
-fn const_defined_with_non_symbol_returns_false() {
-    let result = run(r#"Object.const_defined?(42)"#);
-    assert_eq!(result, Some(Object::Bool(false)));
+fn const_defined_with_non_symbol_raises_type_error() {
+    let err = run_err(r#"Object.const_defined?(42)"#);
+    assert!(
+        err.contains("is not a symbol nor a string"),
+        "unexpected error: {}",
+        err
+    );
 }
 
 #[test]

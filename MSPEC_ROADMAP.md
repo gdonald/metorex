@@ -194,9 +194,9 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.15. core/module/class_variable_set_spec — 1 file, 7 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.7.16. core/module/class_variables_spec — 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.7.17. core/module/comparison_spec — 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
-  - [ ] 4.7.18. core/module/const_added_spec
-  - [ ] 4.7.19. core/module/const_defined_spec
-  - [ ] 4.7.20. core/module/const_get_spec
+  - [x] 4.7.18. core/module/const_added_spec — 1 file, 14 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.7.19. core/module/const_defined_spec — 1 file, 31 examples, 51 expectations, 0 failures, 0 errors
+  - [x] 4.7.20. core/module/const_get_spec — 1 file, 45 examples, 70 expectations, 0 failures, 0 errors
   - [ ] 4.7.21. core/module/const_missing_spec
   - [ ] 4.7.22. core/module/const_set_spec
   - [ ] 4.7.23. core/module/const_source_location_spec
