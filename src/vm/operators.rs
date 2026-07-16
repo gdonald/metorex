@@ -244,6 +244,18 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         match (left, right) {
+            // Array difference: elements of the left array not present in
+            // the right one, preserving left order.
+            (Object::Array(a), Object::Array(b)) if matches!(op, BinaryOp::Subtract) => {
+                let b_items = b.borrow();
+                let remaining: Vec<Object> = a
+                    .borrow()
+                    .iter()
+                    .filter(|item| !b_items.iter().any(|other| item.equals(other)))
+                    .cloned()
+                    .collect();
+                Ok(Object::Array(Rc::new(std::cell::RefCell::new(remaining))))
+            }
             (Object::Int(a), Object::Int(b)) => match op {
                 BinaryOp::Subtract => match a.checked_sub(b) {
                     Some(v) => Ok(Object::Int(v)),

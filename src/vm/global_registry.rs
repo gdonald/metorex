@@ -24,6 +24,11 @@ impl GlobalRegistry {
     }
 
     /// Fetch a named global object if present.
+    /// Remove a named global object, returning it when present.
+    pub fn remove(&mut self, name: &str) -> Option<Object> {
+        self.objects.remove(name)
+    }
+
     pub fn get(&self, name: &str) -> Option<Object> {
         self.objects.get(name).cloned()
     }

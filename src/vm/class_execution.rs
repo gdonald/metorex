@@ -102,7 +102,16 @@ impl VirtualMachine {
         // the name is registered as an autoload on the parent scope, fire it
         // first so reopening as a class reuses the loaded definition.
         let existing_class: Option<Rc<Class>> = if let Some(parent) = parent_scope.as_ref() {
-            let direct = parent.get_class_var(name);
+            // Object's constants are top-level constants: reopening inside
+            // `class ::Object` must find the class registered in globals,
+            // not create a fresh one.
+            let direct = parent.get_class_var(name).or_else(|| {
+                if parent.name() == "Object" {
+                    self.globals().get(name)
+                } else {
+                    None
+                }
+            });
             let resolved = if direct.is_some() {
                 direct
             } else {
@@ -189,6 +198,10 @@ impl VirtualMachine {
             .unwrap_or_default();
         if let Some(parent) = parent_scope.as_ref() {
             parent.set_const_location(name, class_def_file.clone(), position.line as i64);
+        } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+            // Top-level classes record on Object, the home of top-level
+            // constants.
+            object_class.set_const_location(name, class_def_file.clone(), position.line as i64);
         }
         // Eagerly bind the class to its parent / globals BEFORE the body
         // runs. Without this, code in the body (e.g. autoload-triggered
@@ -210,7 +223,13 @@ impl VirtualMachine {
         if is_new && let Some(parent) = parent_scope.as_ref() {
             self.trigger_const_added_hook(Object::Class(Rc::clone(parent)), name, position)?;
         }
+        // Keyword class bodies get a fresh local scope — `class` is a scope
+        // gate in Ruby, so enclosing locals are not visible inside the body.
+        self.environment_mut().push_isolated_scope();
+        self.environment_mut()
+            .define("self".to_string(), Object::Class(Rc::clone(&class)));
         let body_result = self.apply_class_body(&class, body, position);
+        self.environment_mut().pop_scope();
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
@@ -883,6 +902,11 @@ impl VirtualMachine {
                         self.emit_warning_to_stderr(&msg, assign_pos);
                     }
                     class.set_class_var(const_name, const_value.clone());
+                    let assign_file = self
+                        .get_current_file()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default();
+                    class.set_const_location(const_name, assign_file, assign_pos.line as i64);
                     self.trigger_const_added_hook(
                         Object::Class(Rc::clone(class)),
                         const_name,
@@ -1112,6 +1136,15 @@ impl VirtualMachine {
                         );
                         method.variadic_param = variadic_param;
                         method.block_parameter = block_parameter;
+                        // Optional block params (`|a, b = 1|`) become the
+                        // method's default parameters.
+                        for (orig_idx, expr) in block.parameter_defaults.iter() {
+                            let reg_idx = block.parameters[..*orig_idx]
+                                .iter()
+                                .filter(|p| !p.starts_with('&'))
+                                .count();
+                            method.default_parameters.push((reg_idx, expr.clone()));
+                        }
                         // Capture closure: prefer existing captured_vars, otherwise snap current scope
                         method.captured_vars = Some(if block.captured_vars.is_empty() {
                             self.environment().current_scope_var_refs()
@@ -1345,7 +1378,16 @@ impl VirtualMachine {
             None => name.to_string(),
         };
         let (module, existing_as_class, is_new) = if let Some(parent) = parent_scope.as_ref() {
-            let direct = parent.get_class_var(name);
+            // Object's constants are top-level constants: reopening inside
+            // `class ::Object` must find the module registered in globals,
+            // not create a fresh one.
+            let direct = parent.get_class_var(name).or_else(|| {
+                if parent.name() == "Object" {
+                    self.globals().get(name)
+                } else {
+                    None
+                }
+            });
             let resolved = if direct.is_some() {
                 direct
             } else {
@@ -1394,12 +1436,73 @@ impl VirtualMachine {
                 .define(name.to_string(), module_obj_pre.clone());
             self.globals_mut().set(name.to_string(), module_obj_pre);
         }
+        // Record the definition's source location for
+        // `Module#const_source_location`. Top-level modules record on
+        // Object, the home of top-level constants.
+        if is_new {
+            let module_def_file = self
+                .get_current_file()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default();
+            if let Some(parent) = parent_scope.as_ref() {
+                parent.set_const_location(name, module_def_file, position.line as i64);
+            } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                object_class.set_const_location(name, module_def_file, position.line as i64);
+            }
+        }
         // `const_added` fires when the constant first becomes defined —
         // before the body runs. Reopening does not retrigger it.
         if is_new && let Some(parent) = parent_scope.as_ref() {
             self.trigger_const_added_hook(Object::Module(Rc::clone(parent)), name, position)?;
         }
 
+        // Keyword module bodies get a fresh local scope — `module` is a
+        // scope gate in Ruby, so enclosing locals are not visible inside.
+        self.environment_mut().push_isolated_scope();
+        self.environment_mut()
+            .define("self".to_string(), Object::Module(Rc::clone(&module)));
+
+        // Run the body through a helper so scope cleanup below happens even
+        // when a statement raises.
+        let body_result = self.execute_module_body(&module, body);
+
+        self.environment_mut().pop_scope();
+        self.def_scope_stack.pop();
+
+        // Restore previous self
+        if let Some(prev) = prev_self {
+            self.environment_mut().define("self".to_string(), prev);
+        } else {
+            self.environment_mut().undefine("self");
+        }
+        body_result?;
+
+        let module_obj = if existing_as_class {
+            Object::Class(module)
+        } else {
+            Object::Module(module)
+        };
+        if let Some(parent) = parent_scope {
+            // Nested module: attach to parent as a constant; do NOT leak into globals,
+            // which would clobber same-named builtins (e.g. ::Module, ::Class).
+            parent.set_class_var(name, module_obj);
+        } else {
+            self.environment_mut()
+                .define(name.to_string(), module_obj.clone());
+            self.globals_mut().set(name.to_string(), module_obj);
+        }
+
+        Ok(ControlFlow::Next)
+    }
+
+    /// Execute a `module` keyword body's statements against `module`. Split
+    /// out of `execute_module_def` so its caller can unwind scope state
+    /// regardless of errors.
+    fn execute_module_body(
+        &mut self,
+        module: &Rc<Class>,
+        body: &[Statement],
+    ) -> Result<(), MetorexError> {
         for statement in body {
             match statement {
                 Statement::MethodDef {
@@ -1474,8 +1577,13 @@ impl VirtualMachine {
                         self.emit_warning_to_stderr(&msg, assign_pos);
                     }
                     module.set_class_var(const_name, const_value);
+                    let assign_file = self
+                        .get_current_file()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default();
+                    module.set_const_location(const_name, assign_file, assign_pos.line as i64);
                     self.trigger_const_added_hook(
-                        Object::Module(Rc::clone(&module)),
+                        Object::Module(Rc::clone(module)),
                         const_name,
                         assign_pos,
                     )?;
@@ -1579,7 +1687,7 @@ impl VirtualMachine {
                 } => {
                     let resolved = self.resolve_constant_with_autoload(inc_name)?;
                     if let Some(Object::Module(inc_module)) = resolved {
-                        self.apply_module_include(&module, &inc_module, *inc_pos)?;
+                        self.apply_module_include(module, &inc_module, *inc_pos)?;
                     }
                 }
                 Statement::Alias {
@@ -1593,32 +1701,7 @@ impl VirtualMachine {
                 }
             }
         }
-
-        self.def_scope_stack.pop();
-
-        // Restore previous self
-        if let Some(prev) = prev_self {
-            self.environment_mut().define("self".to_string(), prev);
-        } else {
-            self.environment_mut().undefine("self");
-        }
-
-        let module_obj = if existing_as_class {
-            Object::Class(module)
-        } else {
-            Object::Module(module)
-        };
-        if let Some(parent) = parent_scope {
-            // Nested module: attach to parent as a constant; do NOT leak into globals,
-            // which would clobber same-named builtins (e.g. ::Module, ::Class).
-            parent.set_class_var(name, module_obj);
-        } else {
-            self.environment_mut()
-                .define(name.to_string(), module_obj.clone());
-            self.globals_mut().set(name.to_string(), module_obj);
-        }
-
-        Ok(ControlFlow::Next)
+        Ok(())
     }
 
     /// Resolve a bare constant name using Ruby-like lexical scoping: walk

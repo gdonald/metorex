@@ -5,6 +5,7 @@ use metorex::ast::{BinaryOp, Expression, Statement};
 fn test_lambda_without_captured_vars() {
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::Identifier {
                 name: "x".to_string(),
@@ -23,6 +24,7 @@ fn test_lambda_with_captured_vars() {
     // Lambda that captures 'y' from outer scope: x -> x + y
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Add,
@@ -49,6 +51,7 @@ fn test_lambda_with_multiple_captured_vars() {
     // Lambda that captures 'a', 'b', 'c' from outer scope
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Add,
@@ -83,6 +86,7 @@ fn test_lambda_implicit_return() {
     // Lambda with implicit return (last expression): x -> x * 2
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Multiply,
@@ -109,6 +113,7 @@ fn test_lambda_with_multiple_statements() {
     // Lambda with multiple statements, last one is implicit return
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![
             Statement::Assignment {
                 target: Expression::Identifier {
@@ -148,6 +153,7 @@ fn test_lambda_no_parameters() {
     // Lambda with no parameters: -> 42
     let expr = Expression::Lambda {
         parameters: vec![],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::IntLiteral {
                 value: 42,
@@ -166,6 +172,7 @@ fn test_lambda_with_instance_var_capture() {
     // Lambda that captures instance variable @count
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Add,
@@ -192,6 +199,7 @@ fn test_nested_lambdas() {
     // Outer lambda that returns an inner lambda
     let inner_lambda = Expression::Lambda {
         parameters: vec!["y".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Add,
@@ -213,6 +221,7 @@ fn test_nested_lambdas() {
 
     let outer_lambda = Expression::Lambda {
         parameters: vec!["x".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: inner_lambda,
             position: pos(2, 1),

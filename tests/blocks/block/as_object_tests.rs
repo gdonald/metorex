@@ -24,6 +24,7 @@ fn test_block_assigned_to_variable() {
             },
             value: Expression::Lambda {
                 parameters: vec!["x".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::BinaryOp {
                         op: BinaryOp::Multiply,
@@ -142,6 +143,7 @@ fn test_block_passed_as_argument_with_function() {
             },
             value: Expression::Lambda {
                 parameters: vec!["x".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::BinaryOp {
                         op: BinaryOp::Add,
@@ -217,6 +219,7 @@ fn test_block_returned_from_function_standalone() {
             body: vec![Statement::Expression {
                 expression: Expression::Lambda {
                     parameters: vec!["x".to_string()],
+                    parameter_defaults: Vec::new(),
                     body: vec![Statement::Expression {
                         expression: Expression::BinaryOp {
                             op: BinaryOp::Add,
@@ -300,6 +303,7 @@ fn test_block_with_multiple_parameters() {
             },
             value: Expression::Lambda {
                 parameters: vec!["x".to_string(), "y".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::BinaryOp {
                         op: BinaryOp::Multiply,
@@ -365,6 +369,7 @@ fn test_block_with_no_parameters() {
             },
             value: Expression::Lambda {
                 parameters: vec![],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::IntLiteral {
                         value: 42,
@@ -419,6 +424,7 @@ fn test_block_stored_in_array() {
                 elements: vec![
                     Expression::Lambda {
                         parameters: vec!["x".to_string()],
+                        parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
                             expression: Expression::BinaryOp {
                                 op: BinaryOp::Add,
@@ -439,6 +445,7 @@ fn test_block_stored_in_array() {
                     },
                     Expression::Lambda {
                         parameters: vec!["x".to_string()],
+                        parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
                             expression: Expression::BinaryOp {
                                 op: BinaryOp::Multiply,
@@ -459,6 +466,7 @@ fn test_block_stored_in_array() {
                     },
                     Expression::Lambda {
                         parameters: vec!["x".to_string()],
+                        parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
                             expression: Expression::BinaryOp {
                                 op: BinaryOp::Subtract,
@@ -540,6 +548,7 @@ fn test_block_returned_from_method() {
                 body: vec![Statement::Return {
                     value: Some(Expression::Lambda {
                         parameters: vec!["x".to_string()],
+                        parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
                             expression: Expression::BinaryOp {
                                 op: BinaryOp::Multiply,
@@ -657,9 +666,11 @@ fn test_nested_block_closures() {
             },
             value: Expression::Lambda {
                 parameters: vec!["x".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::Lambda {
                         parameters: vec!["y".to_string()],
+                        parameter_defaults: Vec::new(),
                         body: vec![Statement::Expression {
                             expression: Expression::BinaryOp {
                                 op: BinaryOp::Add,
@@ -782,6 +793,7 @@ fn test_array_map_with_block() {
                 arguments: vec![],
                 trailing_block: Some(Box::new(Expression::Lambda {
                     parameters: vec!["x".to_string()],
+                    parameter_defaults: Vec::new(),
                     body: vec![Statement::Expression {
                         expression: Expression::BinaryOp {
                             op: BinaryOp::Multiply,
@@ -847,6 +859,7 @@ fn test_range_map_with_block() {
             arguments: vec![],
             trailing_block: Some(Box::new(Expression::Lambda {
                 parameters: vec!["i".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::BinaryOp {
                         op: BinaryOp::Multiply,

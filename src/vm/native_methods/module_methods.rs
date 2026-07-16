@@ -134,7 +134,13 @@ impl VirtualMachine {
 
         match method_name {
             "name" => {
-                return Ok(Some(Object::String(Rc::new(module_rc.name().to_string()))));
+                // Assigned names (an anonymous module bound to a constant)
+                // count; a still-anonymous module's name is nil.
+                let name = module_rc.ruby_name();
+                if name.is_empty() {
+                    return Ok(Some(Object::Nil));
+                }
+                return Ok(Some(Object::String(Rc::new(name))));
             }
             "ancestors" => {
                 let mut chain: Vec<Object> = Vec::new();

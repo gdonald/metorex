@@ -169,6 +169,9 @@ pub enum Expression {
     // Lambda/block expressions
     Lambda {
         parameters: Vec<String>,
+        /// Default values for optional parameters, keyed by index into
+        /// `parameters` (e.g. `{ |a, b = 1| }` records `(1, <1>)`).
+        parameter_defaults: Vec<(usize, Expression)>,
         body: Vec<Statement>,
         captured_vars: Option<Vec<String>>, // Variables captured from outer scope
         position: Position,

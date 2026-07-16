@@ -379,6 +379,7 @@ fn format_object_block() {
     use metorex::object::BlockStatement;
     let block = Object::Block(Rc::new(BlockStatement {
         parameters: vec![],
+        parameter_defaults: Vec::new(),
         body: vec![],
         captured_vars: std::collections::HashMap::new(),
         captured_def_scope: vec![],

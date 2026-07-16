@@ -66,6 +66,7 @@ impl VirtualMachine {
             // ── Closures, grouping ──────────────────────────────────────────
             Expression::Lambda {
                 parameters,
+                parameter_defaults,
                 body,
                 captured_vars,
                 ..
@@ -93,6 +94,7 @@ impl VirtualMachine {
                 }
                 let block = BlockStatement::with_def_scope(
                     parameters.clone(),
+                    parameter_defaults.clone(),
                     body.clone(),
                     captured,
                     self.def_scope_stack.clone(),
@@ -339,11 +341,15 @@ impl VirtualMachine {
                 let ns_value = self.evaluate_expression(namespace)?;
                 match ns_value {
                     Object::Class(class_rc) | Object::Module(class_rc) => {
-                        let class_var = class_rc.get_class_var(name);
-                        let value = if class_var.is_some() {
-                            class_var
-                        } else {
-                            self.try_autoload_constant(&class_rc, name)?
+                        // Own constants first, then (like Ruby's qualified
+                        // lookup) the ancestor chain — but not top-level
+                        // constants, which a qualified reference must not
+                        // reach. Registered autoloads fire on their owner.
+                        let entry = self.const_entry_on(&class_rc, name, true, false);
+                        let value = match entry {
+                            Some((_, Some(v))) => Some(v),
+                            Some((owner, None)) => self.try_autoload_constant(&owner, name)?,
+                            None => self.try_autoload_constant(&class_rc, name)?,
                         };
                         if let Some(v) = value {
                             // A constant marked private via
@@ -372,16 +378,11 @@ impl VirtualMachine {
                             }
                             return Ok(v);
                         }
-                        // Uninitialized constants raise NameError in Ruby —
-                        // autoload's "loaded but didn't define" path lands
+                        // Uninitialized constants dispatch const_missing —
+                        // the default implementation raises NameError.
+                        // Autoload's "loaded but didn't define" path lands
                         // here too.
-                        let msg = format!("uninitialized constant {}::{}", class_rc.name(), name);
-                        let exc = Object::exception("NameError", msg.clone());
-                        Err(MetorexError::UncaughtException {
-                            exception: exc,
-                            location: position_to_location(*position),
-                            message: msg,
-                        })
+                        self.dispatch_const_missing(&class_rc, name, *position)
                     }
                     _ => Err(MetorexError::runtime_error(
                         "'::' scope resolution requires a class or module as namespace".to_string(),

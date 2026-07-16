@@ -336,6 +336,7 @@ fn test_dictionary_empty() {
 fn test_lambda_expression() {
     let expr = Expression::Lambda {
         parameters: vec!["x".to_string(), "y".to_string()],
+        parameter_defaults: Vec::new(),
         body: vec![Statement::Expression {
             expression: Expression::BinaryOp {
                 op: BinaryOp::Add,

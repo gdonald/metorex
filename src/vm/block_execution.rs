@@ -13,8 +13,15 @@ use crate::lexer::Position;
 use crate::object::{BlockStatement, Object};
 
 /// Bind block parameters to arguments, handling `*args` (variadic) and
-/// `&block` (block) prefixes in parameter names.
-fn bind_block_params(vm: &mut VirtualMachine, params: &[String], arguments: Vec<Object>) {
+/// `&block` (block) prefixes in parameter names. `defaults` carries
+/// default-value expressions keyed by index into `params`; they evaluate
+/// in the block's fresh scope when the corresponding argument is missing.
+fn bind_block_params(
+    vm: &mut VirtualMachine,
+    params: &[String],
+    defaults: &[(usize, crate::ast::Expression)],
+    arguments: Vec<Object>,
+) {
     // Find variadic param index (if any)
     let variadic_idx = params.iter().position(|p| p.starts_with('*'));
     let block_idx = params.iter().position(|p| p.starts_with('&'));
@@ -44,11 +51,22 @@ fn bind_block_params(vm: &mut VirtualMachine, params: &[String], arguments: Vec<
             vm.environment_mut().define(name, value);
         }
     } else {
-        for (param, argument) in params.iter().zip(arguments) {
-            if param.starts_with('&') {
-                continue; // block param, handled separately
-            }
-            vm.environment_mut().define(param.clone(), argument);
+        let positional: Vec<(usize, &String)> = params
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| !p.starts_with('&'))
+            .collect();
+        for (pos, (orig_idx, param)) in positional.iter().enumerate() {
+            let value = match arguments.get(pos) {
+                Some(v) => v.clone(),
+                None => match defaults.iter().find(|(di, _)| di == orig_idx) {
+                    Some((_, default_expr)) => {
+                        vm.evaluate_expression(default_expr).unwrap_or(Object::Nil)
+                    }
+                    None => Object::Nil,
+                },
+            };
+            vm.environment_mut().define((*param).clone(), value);
         }
     }
 
@@ -72,8 +90,12 @@ impl VirtualMachine {
         let has_variadic = block.parameters().iter().any(|p| p.starts_with('*'));
         let has_block_param = block.parameters().iter().any(|p| p.starts_with('&'));
 
+        // Optional params (`|a, b = 1|`) widen the accepted count: `found`
+        // may run from `expected - defaults` up to `expected`.
+        let required = expected.saturating_sub(block.parameter_defaults.len());
+
         // Variadic params accept any number of args; skip strict arity check
-        if !has_variadic && !has_block_param && expected != found {
+        if !has_variadic && !has_block_param && (found < required || found > expected) {
             return Err(callable_argument_error(
                 block.name(),
                 expected,
@@ -122,7 +144,7 @@ impl VirtualMachine {
                     // Override `self` with the instance_exec receiver
                     vm.environment_mut().define("self".to_string(), receiver);
 
-                    bind_block_params(vm, block.parameters(), arguments);
+                    bind_block_params(vm, block.parameters(), &block.parameter_defaults, arguments);
 
                     // Pre-bind syntactically assigned locals to nil (Ruby's
                     // parser-level local hoisting) so an `ensure`/`rescue`
@@ -208,7 +230,12 @@ impl VirtualMachine {
             }
 
             // Define parameters as regular variables (handles *args/&block prefixes)
-            bind_block_params(self, block.parameters(), arguments);
+            bind_block_params(
+                self,
+                block.parameters(),
+                &block.parameter_defaults,
+                arguments,
+            );
 
             // Pre-define every local syntactically assigned-to in this block
             // body as `nil`, so a read that runs before its assignment line
@@ -290,7 +317,12 @@ impl VirtualMachine {
             }
 
             // Define parameters as regular variables (handles *args/&block prefixes)
-            bind_block_params(self, block.parameters(), arguments);
+            bind_block_params(
+                self,
+                block.parameters(),
+                &block.parameter_defaults,
+                arguments,
+            );
 
             // Pre-bind syntactically assigned locals to nil — see
             // execute_block_body for the rationale.

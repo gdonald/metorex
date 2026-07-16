@@ -90,20 +90,25 @@ pub(super) fn undefined_method_error(
     }
 }
 
-/// Produce a runtime error when a method receives the wrong number of arguments.
+/// Produce an `ArgumentError` when a method receives the wrong number of
+/// arguments (Ruby raises ArgumentError, not RuntimeError, for arity
+/// mismatches).
 pub(super) fn method_argument_error(
     method: &str,
     expected: usize,
     found: usize,
     position: Position,
 ) -> MetorexError {
-    MetorexError::runtime_error(
-        format!(
-            "Method '{}' expected {} argument(s) but received {}",
-            method, expected, found
-        ),
-        position_to_location(position),
-    )
+    let msg = format!(
+        "Method '{}' expected {} argument(s) but received {}",
+        method, expected, found
+    );
+    let exc = Object::exception("ArgumentError", msg.clone());
+    MetorexError::UncaughtException {
+        exception: exc,
+        location: position_to_location(position),
+        message: msg,
+    }
 }
 
 /// Produce a type error for invalid method argument type.
@@ -132,20 +137,24 @@ pub(super) fn not_callable_error(value: &Object, position: Position) -> MetorexE
     )
 }
 
-/// Produce a runtime error when a callable receives the wrong number of arguments.
+/// Produce an `ArgumentError` when a callable (block/lambda) receives the
+/// wrong number of arguments.
 pub(super) fn callable_argument_error(
     callable_name: &str,
     expected: usize,
     found: usize,
     position: Position,
 ) -> MetorexError {
-    MetorexError::runtime_error(
-        format!(
-            "Callable '{}' expected {} argument(s) but received {}",
-            callable_name, expected, found
-        ),
-        position_to_location(position),
-    )
+    let msg = format!(
+        "Callable '{}' expected {} argument(s) but received {}",
+        callable_name, expected, found
+    );
+    let exc = Object::exception("ArgumentError", msg.clone());
+    MetorexError::UncaughtException {
+        exception: exc,
+        location: position_to_location(position),
+        message: msg,
+    }
 }
 
 // ============================================================================

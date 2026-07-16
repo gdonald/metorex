@@ -11,6 +11,10 @@ use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
+/// Parsed block parameter list: names (with `*` / `&` prefixes preserved)
+/// paired with default-value expressions keyed by parameter index.
+type BlockParams = (Vec<String>, Vec<(usize, Expression)>);
+
 impl Parser {
     /// Parse an expression using operator precedence climbing
     pub(crate) fn parse_expression(&mut self) -> Result<Expression, MetorexError> {
@@ -41,6 +45,7 @@ impl Parser {
                 {
                     let lambda = Expression::Lambda {
                         parameters,
+                        parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()),
                         position,
@@ -58,6 +63,7 @@ impl Parser {
                 {
                     let lambda = Expression::Lambda {
                         parameters,
+                        parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()),
                         position,
@@ -91,6 +97,7 @@ impl Parser {
                     if let Expression::Lambda { body, position, .. } = block {
                         return Ok(Expression::Lambda {
                             parameters: params,
+                            parameter_defaults: Vec::new(),
                             body,
                             captured_vars: Some(Vec::new()),
                             position,
@@ -101,6 +108,7 @@ impl Parser {
                     if let Expression::Lambda { body, position, .. } = block {
                         return Ok(Expression::Lambda {
                             parameters: params,
+                            parameter_defaults: Vec::new(),
                             body,
                             captured_vars: Some(Vec::new()),
                             position,
@@ -110,6 +118,7 @@ impl Parser {
                 let expr = self.parse_assignment()?;
                 return Ok(Expression::Lambda {
                     parameters: params,
+                    parameter_defaults: Vec::new(),
                     body: vec![crate::ast::Statement::Expression {
                         expression: expr,
                         position: arrow_pos,
@@ -149,6 +158,7 @@ impl Parser {
                     if let Expression::Lambda { body, position, .. } = block {
                         return Ok(Expression::Lambda {
                             parameters: params,
+                            parameter_defaults: Vec::new(),
                             body,
                             captured_vars: Some(Vec::new()),
                             position,
@@ -168,6 +178,7 @@ impl Parser {
 
             return Ok(Expression::Lambda {
                 parameters: Vec::new(),
+                parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
                 position: arrow_pos,
@@ -227,6 +238,7 @@ impl Parser {
 
                     return Ok(Expression::Lambda {
                         parameters: params,
+                        parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
                         position: start_pos,
@@ -279,6 +291,7 @@ impl Parser {
 
             return Ok(Expression::Lambda {
                 parameters,
+                parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
                 position: expr.position(),
@@ -345,6 +358,62 @@ impl Parser {
         Ok(expr)
     }
 
+    /// Parse a block's `|params|` list (or `||`), returning the names (with
+    /// `*` / `&` modifiers preserved as prefixes) and default-value
+    /// expressions keyed by parameter index. Defaults parse below the `|`
+    /// operator level so the closing pipe terminates them. Accepts a
+    /// trailing comma (`|a,|`).
+    pub(crate) fn parse_block_pipe_params(&mut self) -> Result<BlockParams, MetorexError> {
+        let mut params = Vec::new();
+        let mut defaults = Vec::new();
+        if self.match_token(&[TokenKind::LogicalOr]) {
+            // Empty parameter list: ||
+            return Ok((params, defaults));
+        }
+        if !self.match_token(&[TokenKind::Pipe]) {
+            return Ok((params, defaults));
+        }
+        self.skip_whitespace();
+        if !self.check(&[TokenKind::Pipe]) {
+            loop {
+                self.skip_whitespace();
+                let prefix = if self.match_token(&[TokenKind::Star]) {
+                    "*"
+                } else if self.match_token(&[TokenKind::Ampersand]) {
+                    "&"
+                } else {
+                    ""
+                };
+                self.skip_whitespace();
+                let param_token = self.advance();
+                match param_token.kind {
+                    TokenKind::Ident(name) => {
+                        params.push(format!("{}{}", prefix, name));
+                    }
+                    _ => return Err(self.error_at_previous("Expected parameter name")),
+                }
+                self.skip_whitespace();
+                if self.match_token(&[TokenKind::Equal]) {
+                    self.skip_whitespace();
+                    let default = self.parse_range()?;
+                    defaults.push((params.len() - 1, default));
+                    self.skip_whitespace();
+                }
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+                self.skip_whitespace();
+                // `|a,|` — trailing comma before the closing pipe.
+                if self.check(&[TokenKind::Pipe]) {
+                    break;
+                }
+            }
+        }
+        self.skip_whitespace();
+        self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
+        Ok((params, defaults))
+    }
+
     /// Parse a block: `do |param1, param2| ... end`
     pub(crate) fn parse_block(&mut self) -> Result<Expression, MetorexError> {
         let start_pos = self.peek().position;
@@ -353,54 +422,7 @@ impl Parser {
         self.expect(TokenKind::Do, "Expected 'do' to start block")?;
         self.skip_whitespace();
 
-        // Parse block parameters (e.g., |x, y| or || for empty params)
-        let parameters = if self.match_token(&[TokenKind::LogicalOr]) {
-            // Empty parameter list: ||
-            Vec::new()
-        } else if self.match_token(&[TokenKind::Pipe]) {
-            let mut params = Vec::new();
-            self.skip_whitespace();
-
-            if !self.check(&[TokenKind::Pipe]) {
-                loop {
-                    self.skip_whitespace();
-                    // Preserve `*` (splat) and `&` (block) modifiers in the name
-                    // so block execution can recognize them.
-                    let prefix = if self.match_token(&[TokenKind::Star]) {
-                        "*"
-                    } else if self.match_token(&[TokenKind::Ampersand]) {
-                        "&"
-                    } else {
-                        ""
-                    };
-                    self.skip_whitespace();
-                    let param_token = self.advance();
-                    match param_token.kind {
-                        TokenKind::Ident(name) => {
-                            params.push(format!("{}{}", prefix, name));
-                        }
-                        _ => return Err(self.error_at_previous("Expected parameter name")),
-                    }
-                    self.skip_whitespace();
-                    // Allow `name = default_value` — parse and discard the default.
-                    if self.match_token(&[TokenKind::Equal]) {
-                        self.skip_whitespace();
-                        let _ = self.parse_expression()?;
-                        self.skip_whitespace();
-                    }
-
-                    if !self.match_token(&[TokenKind::Comma]) {
-                        break;
-                    }
-                }
-            }
-
-            self.skip_whitespace();
-            self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
-            params
-        } else {
-            Vec::new()
-        };
+        let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
 
         self.skip_whitespace();
 
@@ -409,6 +431,7 @@ impl Parser {
 
         Ok(Expression::Lambda {
             parameters,
+            parameter_defaults,
             body,
             captured_vars: None, // Will be filled by semantic analysis
             position: start_pos,
@@ -492,54 +515,7 @@ impl Parser {
         self.expect(TokenKind::LBrace, "Expected '{' to start block")?;
         self.skip_whitespace();
 
-        // Parse block parameters (e.g., |x, y| or || for empty params)
-        let parameters = if self.match_token(&[TokenKind::LogicalOr]) {
-            // Empty parameter list: ||
-            Vec::new()
-        } else if self.match_token(&[TokenKind::Pipe]) {
-            let mut params = Vec::new();
-            self.skip_whitespace();
-
-            if !self.check(&[TokenKind::Pipe]) {
-                loop {
-                    self.skip_whitespace();
-                    // Preserve `*` (splat) and `&` (block) modifiers in the name
-                    // so block execution can recognize them.
-                    let prefix = if self.match_token(&[TokenKind::Star]) {
-                        "*"
-                    } else if self.match_token(&[TokenKind::Ampersand]) {
-                        "&"
-                    } else {
-                        ""
-                    };
-                    self.skip_whitespace();
-                    let param_token = self.advance();
-                    match param_token.kind {
-                        TokenKind::Ident(name) => {
-                            params.push(format!("{}{}", prefix, name));
-                        }
-                        _ => return Err(self.error_at_previous("Expected parameter name")),
-                    }
-                    self.skip_whitespace();
-                    // Allow `name = default_value` — parse and discard the default.
-                    if self.match_token(&[TokenKind::Equal]) {
-                        self.skip_whitespace();
-                        let _ = self.parse_expression()?;
-                        self.skip_whitespace();
-                    }
-
-                    if !self.match_token(&[TokenKind::Comma]) {
-                        break;
-                    }
-                }
-            }
-
-            self.skip_whitespace();
-            self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
-            params
-        } else {
-            Vec::new()
-        };
+        let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
 
         self.skip_whitespace();
 
@@ -556,6 +532,7 @@ impl Parser {
 
         Ok(Expression::Lambda {
             parameters,
+            parameter_defaults,
             body,
             captured_vars: None, // Will be filled by semantic analysis
             position: start_pos,

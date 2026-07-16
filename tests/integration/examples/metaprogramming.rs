@@ -685,3 +685,75 @@ fn test_metaprogramming_const_get_parens_execution() {
     let output = run_example("metaprogramming/const_get_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_const_missing_execution() {
+    let expected = "handled Anything\nhandled Direct\nuninitialized constant Bare::Nope\n:Nope\nuninitialized constant Bare::AlsoMissing\n";
+    let output = run_example("metaprogramming/const_missing.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_missing_parens_execution() {
+    let expected = "handled Anything\nhandled Direct\nuninitialized constant Bare::Nope\n:Nope\nuninitialized constant Bare::AlsoMissing\n";
+    let output = run_example("metaprogramming/const_missing_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_set_execution() {
+    let expected =
+        "nil\nNamedRoot\nNamedRoot::B\nNamedRoot::B::C\ntrue\n41\nNameError\nFrozenError\n";
+    let output = run_example("metaprogramming/const_set.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_set_parens_execution() {
+    let expected =
+        "nil\nNamedRoot\nNamedRoot::B\nNamedRoot::B::C\ntrue\n41\nNameError\nFrozenError\n";
+    let output = run_example("metaprogramming/const_set_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_source_location_execution() {
+    let expected = "true\ntrue\ntrue\n[\"virtual.rb\", 100]\n[]\nnil\ntrue\nnil\n";
+    let output = run_example("metaprogramming/const_source_location.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_source_location_parens_execution() {
+    let expected = "true\ntrue\ntrue\n[\"virtual.rb\", 100]\n[]\nnil\ntrue\nnil\n";
+    let output = run_example("metaprogramming/const_source_location_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_module_constants_execution() {
+    let expected = "[:DEEP_CONST, :OWN_CONST, :SHALLOW_CONST]\n[:OWN_CONST]\n[:OWN_CONST]\n[:DEEP_CONST, :SHALLOW_CONST]\nW\ntrue\ntrue\ntrue\n";
+    let output = run_example("metaprogramming/module_constants.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_module_constants_parens_execution() {
+    let expected = "[:DEEP_CONST, :OWN_CONST, :SHALLOW_CONST]\n[:OWN_CONST]\n[:OWN_CONST]\n[:DEEP_CONST, :SHALLOW_CONST]\nW\ntrue\ntrue\ntrue\n";
+    let output = run_example("metaprogramming/module_constants_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_block_param_defaults_execution() {
+    let expected = "[5, 1]\n[5, 6]\n[1, 1]\n[1, 2]\nArgumentError\nArgumentError\n9\n";
+    let output = run_example("metaprogramming/block_param_defaults.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_block_param_defaults_parens_execution() {
+    let expected = "[5, 1]\n[5, 6]\n[1, 1]\n[1, 2]\nArgumentError\nArgumentError\n9\n";
+    let output = run_example("metaprogramming/block_param_defaults_parens.rb");
+    assert_eq!(output, expected);
+}

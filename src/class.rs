@@ -318,6 +318,31 @@ impl Class {
         }
     }
 
+    /// Assign a Ruby-visible name to a previously-anonymous module and
+    /// cascade into anonymous modules bound to its constants, mirroring
+    /// Ruby's naming of nested anonymous modules once the root gains a
+    /// permanent name. Placeholder names (`::B`, `#<Class:0x…>::B`) are
+    /// replaced; definition names and previously-assigned permanent names
+    /// win.
+    pub fn assign_name_recursive(&self, new_name: &str) {
+        if !self.name.is_empty() {
+            return;
+        }
+        let current = self.ruby_name();
+        if !current.is_empty() && !current.starts_with("::") && !current.contains("#<") {
+            return;
+        }
+        *self.assigned_name.borrow_mut() = Some(new_name.to_string());
+        for (key, val) in self.class_variables.borrow().iter() {
+            if !key.chars().next().is_some_and(|c| c.is_uppercase()) {
+                continue;
+            }
+            if let crate::object::Object::Class(c) | crate::object::Object::Module(c) = val {
+                c.assign_name_recursive(&format!("{}::{}", new_name, key));
+            }
+        }
+    }
+
     /// Return the superclass if present.
     pub fn superclass(&self) -> Option<Rc<Class>> {
         self.superclass.as_ref().map(Rc::clone)

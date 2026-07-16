@@ -392,6 +392,7 @@ fn test_lambda_parameter_scope() {
         },
         value: Expression::Lambda {
             parameters: vec!["x".to_string()],
+            parameter_defaults: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::Identifier {
                     name: "x".to_string(),

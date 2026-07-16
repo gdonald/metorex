@@ -221,6 +221,7 @@ fn test_equals_method() {
 fn test_equals_block() {
     let block1 = Rc::new(BlockStatement {
         parameters: vec![],
+        parameter_defaults: Vec::new(),
         body: vec![],
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
@@ -228,6 +229,7 @@ fn test_equals_block() {
     let block2 = Rc::clone(&block1);
     let block3 = Rc::new(BlockStatement {
         parameters: vec![],
+        parameter_defaults: Vec::new(),
         body: vec![],
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],

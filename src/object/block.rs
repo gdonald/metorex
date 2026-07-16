@@ -17,6 +17,9 @@ use super::Object;
 pub struct BlockStatement {
     /// Parameter names
     pub parameters: Vec<String>,
+    /// Default values for optional parameters, keyed by index into
+    /// `parameters` (e.g. `{ |a, b = 1| }` records `(1, <1>)`).
+    pub parameter_defaults: Vec<(usize, crate::ast::Expression)>,
     /// Block body (AST statements)
     pub body: Vec<Statement>,
     /// Captured variables from outer scope (shared mutable references)
@@ -37,6 +40,7 @@ impl BlockStatement {
     ) -> Self {
         Self {
             parameters,
+            parameter_defaults: Vec::new(),
             body,
             captured_vars,
             captured_def_scope: Vec::new(),
@@ -48,12 +52,14 @@ impl BlockStatement {
     /// was lexically inside.
     pub fn with_def_scope(
         parameters: Vec<String>,
+        parameter_defaults: Vec<(usize, crate::ast::Expression)>,
         body: Vec<Statement>,
         captured_vars: HashMap<String, Rc<RefCell<Object>>>,
         captured_def_scope: Vec<Rc<Class>>,
     ) -> Self {
         Self {
             parameters,
+            parameter_defaults,
             body,
             captured_vars,
             captured_def_scope,

@@ -483,6 +483,7 @@ fn resolver_lambda_expression() {
         "f",
         Expression::Lambda {
             parameters: vec!["x".to_string(), "y".to_string()],
+            parameter_defaults: Vec::new(),
             body: vec![assign(
                 "r",
                 Expression::BinaryOp {

@@ -20,6 +20,7 @@ fn block_returns_last_expression() {
             },
             value: Expression::Lambda {
                 parameters: vec!["x".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::BinaryOp {
                         op: BinaryOp::Add,
@@ -89,6 +90,7 @@ fn block_captures_outer_variable() {
             },
             value: Expression::Lambda {
                 parameters: vec!["y".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::BinaryOp {
                         op: BinaryOp::Add,
@@ -147,6 +149,7 @@ fn block_argument_mismatch_raises_error() {
             },
             value: Expression::Lambda {
                 parameters: vec!["x".to_string()],
+                parameter_defaults: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::Identifier {
                         name: "x".to_string(),
@@ -174,14 +177,14 @@ fn block_argument_mismatch_raises_error() {
     ];
 
     match vm.execute_program(&program) {
-        Err(MetorexError::RuntimeError { message, .. }) => {
+        Err(MetorexError::UncaughtException { message, .. }) => {
             assert!(
                 message.contains("expected 1 argument"),
-                "unexpected runtime message: {}",
+                "unexpected argument-error message: {}",
                 message
             );
         }
-        other => panic!("expected runtime error, got {:?}", other),
+        other => panic!("expected ArgumentError, got {:?}", other),
     }
 }
 
@@ -197,6 +200,7 @@ fn block_return_statement_exits_early() {
             },
             value: Expression::Lambda {
                 parameters: vec![],
+                parameter_defaults: Vec::new(),
                 body: vec![
                     Statement::Return {
                         value: Some(Expression::IntLiteral {

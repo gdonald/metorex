@@ -262,6 +262,15 @@ impl VirtualMachine {
                 let body: Vec<crate::ast::Statement> = block.body.clone();
                 let mut method = Method::new(method_name.clone(), params, body);
                 method.captured_vars = Some(block.captured_vars().clone());
+                // Optional block params (`|a, b = 1|`) become the method's
+                // default parameters.
+                for (orig_idx, expr) in block.parameter_defaults.iter() {
+                    let reg_idx = block.parameters[..*orig_idx]
+                        .iter()
+                        .filter(|p| !p.starts_with('&'))
+                        .count();
+                    method.default_parameters.push((reg_idx, expr.clone()));
+                }
                 let method_rc = Rc::new(method);
                 // Install on current self if it's a Class/Module (e.g. inside class_eval),
                 // otherwise on global Object (top-level `define_method` semantics).
@@ -699,7 +708,18 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let tokens = crate::lexer::Lexer::new(&code).tokenize();
+                // Optional filename (arg 3) and lineno (arg 4) shape the
+                // positions recorded for code inside the eval'd string
+                // (`__LINE__`, const_source_location, backtraces).
+                let filename = match arguments.get(2) {
+                    Some(Object::String(s)) => Some(s.as_str().to_string()),
+                    _ => None,
+                };
+                let lineno = match arguments.get(3) {
+                    Some(Object::Int(n)) => (*n).max(1) as usize,
+                    _ => 1,
+                };
+                let tokens = crate::lexer::Lexer::with_start_line(&code, lineno).tokenize();
                 let statements = crate::parser::Parser::new(tokens)
                     .parse()
                     .map_err(|errors| {
@@ -720,7 +740,12 @@ impl VirtualMachine {
                 let saved_nesting = self.user_def_nesting;
                 self.user_def_nesting = 0;
                 self.push_refinement_scope();
+                let prev_file = self.current_file.clone();
+                if let Some(f) = &filename {
+                    self.current_file = Some(std::path::PathBuf::from(f));
+                }
                 let result = self.execute_program(&statements);
+                self.current_file = prev_file;
                 self.pop_refinement_scope();
                 self.user_def_nesting = saved_nesting;
                 Ok(result?.unwrap_or(Object::Nil))

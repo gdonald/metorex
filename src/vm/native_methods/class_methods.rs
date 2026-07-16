@@ -81,25 +81,89 @@ impl VirtualMachine {
             return Ok(Some(Object::Nil));
         }
         if method_name == "constants" {
-            let mut names: Vec<String> = class_rc
-                .class_var_names()
-                .into_iter()
-                .filter(|n| !n.starts_with("__"))
-                .filter(|n| n.chars().next().is_some_and(|c| c.is_ascii_uppercase()))
-                .collect();
-            // Autoload-registered names participate in the constants table from
-            // the moment `autoload` is called, even before the file is loaded.
-            for n in class_rc.autoload_names() {
-                if !names.contains(&n) {
-                    names.push(n);
+            // Collect one class/module's visible constants: its constant
+            // table (public, uppercase-leading), plus registered autoloads
+            // and names whose autoload fired without defining the constant
+            // (MRI keeps those in `#constants` even though `const_defined?`
+            // and `autoload?` both report nothing).
+            let collect_from = |cls: &Rc<Class>, names: &mut Vec<String>| {
+                for n in cls.class_var_names() {
+                    if n.starts_with("__")
+                        || !n.chars().next().is_some_and(|c| c.is_uppercase())
+                        || cls.is_private_constant(&n)
+                    {
+                        continue;
+                    }
+                    if !names.contains(&n) {
+                        names.push(n);
+                    }
                 }
+                for n in cls
+                    .autoload_names()
+                    .into_iter()
+                    .chain(cls.unrealized_autoload_names())
+                {
+                    if !names.contains(&n) {
+                        names.push(n);
+                    }
+                }
+            };
+            // `Module.constants` with no argument is special-cased by Ruby
+            // to the constants reachable at the call site — for our model,
+            // the top-level constants (globals plus Object's table).
+            if class_rc.name() == "Module" && arguments.is_empty() {
+                let mut names: Vec<String> = self
+                    .globals()
+                    .iter()
+                    .map(|(n, _)| n.clone())
+                    .filter(|n| {
+                        !n.starts_with("__")
+                            && !n.contains("::")
+                            && n.chars().next().is_some_and(|c| c.is_uppercase())
+                    })
+                    .collect();
+                if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                    collect_from(&object_class, &mut names);
+                }
+                let names: Vec<Object> = names
+                    .into_iter()
+                    .map(|n| Object::Symbol(Rc::new(n)))
+                    .collect();
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
             }
-            // Names whose autoload fired but didn't actually define the
-            // constant: MRI keeps these in `#constants` for a while, even
-            // though `const_defined?` and `autoload?` both report nothing.
-            for n in class_rc.unrealized_autoload_names() {
-                if !names.contains(&n) {
-                    names.push(n);
+            // constants(inherit = true): with inherit, include constants
+            // from mixins (transitively) and the superclass chain — but not
+            // Object's, which are top-level constants.
+            let inherit = match arguments.first() {
+                None => true,
+                Some(v) => crate::vm::utils::is_truthy(v),
+            };
+            let mut names: Vec<String> = Vec::new();
+            collect_from(class_rc, &mut names);
+            if inherit {
+                let mut queue: Vec<Rc<Class>> = class_rc.mixin_chain();
+                let mut cursor = class_rc.superclass();
+                while let Some(sc) = cursor {
+                    if matches!(sc.name(), "Object" | "BasicObject") {
+                        break;
+                    }
+                    queue.push(Rc::clone(&sc));
+                    cursor = sc.superclass();
+                }
+                let mut seen: Vec<*const Class> = vec![Rc::as_ptr(class_rc)];
+                let mut idx = 0;
+                while idx < queue.len() {
+                    let current = Rc::clone(&queue[idx]);
+                    idx += 1;
+                    let ptr = Rc::as_ptr(&current);
+                    if seen.contains(&ptr) {
+                        continue;
+                    }
+                    seen.push(ptr);
+                    collect_from(&current, &mut names);
+                    for mixin in current.mixin_chain() {
+                        queue.push(mixin);
+                    }
                 }
             }
             let names: Vec<Object> = names
@@ -1079,7 +1143,15 @@ impl VirtualMachine {
                 // Without removing all three, the name would still surface
                 // in `#constants` because the constants list aggregates
                 // class_vars + autoloads + unrealized autoloads.
-                let removed = class_rc.remove_class_var(&const_name);
+                let mut removed = class_rc.remove_class_var(&const_name);
+                // Object's constants are top-level constants — drop the
+                // globals binding too so bare references stop resolving.
+                if class_rc.name() == "Object" {
+                    let from_globals = self.globals_mut().remove(&const_name);
+                    if removed.is_none() {
+                        removed = from_globals;
+                    }
+                }
                 let removed_autoload = class_rc.remove_autoload(&const_name);
                 class_rc.clear_unrealized_autoload(&const_name);
                 // Drop the recorded source location so a subsequent
@@ -1190,7 +1262,12 @@ impl VirtualMachine {
                 return Ok(Some(Object::Bool(false)));
             }
             "const_source_location" => {
-                if arguments.len() != 1 {
+                // const_source_location(name [, inherit=true]) — same search
+                // as const_get, but returns the recorded [file, line] of the
+                // constant's definition, [] for constants without a Ruby
+                // source (builtins), and nil when not found (never calls
+                // const_missing).
+                if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         "const_source_location",
                         1,
@@ -1198,55 +1275,108 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let const_name = match &arguments[0] {
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    Object::String(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "const_source_location",
-                            "Symbol or String",
-                            other,
-                            position,
-                        ));
+                let was_symbol = matches!(&arguments[0], Object::Symbol(_));
+                let const_path =
+                    self.coerce_method_name(&arguments[0], "const_source_location", position)?;
+                let inherit = match arguments.get(1) {
+                    None => true,
+                    Some(v) => crate::vm::utils::is_truthy(v),
+                };
+                let wrong_name = |path: &str| {
+                    let msg = format!("wrong constant name {}", path);
+                    let exc = Object::exception("NameError", msg.clone());
+                    MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
                     }
                 };
-                // Thread-aware: if this autoload is currently loading on
-                // a different thread, return the autoload registration's
-                // location (the constant isn't really defined from this
-                // thread's view yet). Otherwise prefer the constant's
-                // own definition site, falling back to the autoload
-                // registration when only an autoload is registered.
-                let current = self
-                    .thread_current_stack
-                    .last()
-                    .cloned()
-                    .unwrap_or(Object::Nil);
-                let other_thread_loading = self.autoload_loading.iter().any(|(cls, n, loader)| {
-                    if !Rc::ptr_eq(cls, class_rc) || n != &const_name {
-                        return false;
-                    }
-                    let same = match (loader, &current) {
-                        (Object::Nil, Object::Nil) => true,
-                        (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
-                        _ => false,
+                // A Symbol must be a simple name — scope separators raise.
+                if was_symbol && const_path.contains("::") {
+                    return Err(wrong_name(&const_path));
+                }
+                let mut rest: &str = &const_path;
+                let mut current = Rc::clone(class_rc);
+                if let Some(stripped) = rest.strip_prefix("::") {
+                    rest = stripped;
+                    current = match self.globals().get("Object") {
+                        Some(Object::Class(c)) => c,
+                        _ => return Err(wrong_name(&const_path)),
                     };
-                    !same
-                });
-                let chosen = if other_thread_loading {
-                    class_rc.get_autoload_location(&const_name)
-                } else {
-                    class_rc
-                        .get_const_location(&const_name)
-                        .or_else(|| class_rc.get_autoload_location(&const_name))
+                }
+                let segments: Vec<&str> = rest.split("::").collect();
+                for seg in &segments {
+                    if !is_valid_constant_name(seg) {
+                        return Err(wrong_name(&const_path));
+                    }
+                }
+                let loc_array = |loc: Option<(String, i64)>| {
+                    let items = match loc {
+                        Some((file, line)) => {
+                            vec![Object::String(Rc::new(file)), Object::Int(line)]
+                        }
+                        None => Vec::new(),
+                    };
+                    Object::Array(Rc::new(std::cell::RefCell::new(items)))
                 };
-                let loc_obj = match chosen {
-                    Some((file, line)) => Object::Array(Rc::new(std::cell::RefCell::new(vec![
-                        Object::String(Rc::new(file)),
-                        Object::Int(line),
-                    ]))),
-                    None => Object::Nil,
-                };
-                return Ok(Some(loc_obj));
+                for (i, seg) in segments.iter().enumerate() {
+                    if i + 1 == segments.len() {
+                        // Thread-aware: if this autoload is currently loading
+                        // on a different thread, report the autoload
+                        // registration's location — the constant isn't
+                        // really defined from that thread's view yet.
+                        let thread = self
+                            .thread_current_stack
+                            .last()
+                            .cloned()
+                            .unwrap_or(Object::Nil);
+                        let other_thread_loading =
+                            self.autoload_loading.iter().any(|(cls, n, loader)| {
+                                if !Rc::ptr_eq(cls, &current) || n != *seg {
+                                    return false;
+                                }
+                                let same = match (loader, &thread) {
+                                    (Object::Nil, Object::Nil) => true,
+                                    (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
+                                    _ => false,
+                                };
+                                !same
+                            });
+                        if other_thread_loading {
+                            return Ok(Some(loc_array(current.get_autoload_location(seg))));
+                        }
+                        let entry = self.const_entry_on(&current, seg, inherit, i == 0);
+                        return Ok(Some(match entry {
+                            Some((owner, Some(_))) => loc_array(
+                                owner
+                                    .get_const_location(seg)
+                                    .or_else(|| owner.get_autoload_location(seg)),
+                            ),
+                            Some((owner, None)) => loc_array(owner.get_autoload_location(seg)),
+                            // A still-registered autoload that the lookup
+                            // treats as cleared (e.g. this thread is the one
+                            // loading it) keeps reporting its registration
+                            // location until the constant is defined.
+                            None if current.get_autoload(seg).is_some() => {
+                                loc_array(current.get_autoload_location(seg))
+                            }
+                            None => Object::Nil,
+                        }));
+                    }
+                    // Intermediate segments resolve like const_get, firing
+                    // registered autoloads along the way.
+                    let entry = self.const_entry_on(&current, seg, inherit, i == 0);
+                    let resolved = match entry {
+                        Some((_, Some(v))) => Some(v),
+                        Some((owner, None)) => self.try_autoload_constant(&owner, seg)?,
+                        None => self.try_autoload_constant(&current, seg)?,
+                    };
+                    match resolved {
+                        Some(Object::Class(c)) | Some(Object::Module(c)) => current = c,
+                        _ => return Ok(Some(Object::Nil)),
+                    }
+                }
+                return Ok(Some(Object::Nil));
             }
             "const_get" => {
                 // const_get(name [, inherit=true]) — search order mirrors
@@ -1370,11 +1500,26 @@ impl VirtualMachine {
                 }
                 return Ok(Some(Object::Nil));
             }
-            "const_set" => {
-                if arguments.len() != 2 {
+            // Default `Module#const_missing` — raise NameError with the
+            // qualified constant path and the `name` attribute set. User
+            // hooks step aside the same way const_added's do.
+            "const_missing" => {
+                if class_rc.find_method("__class__const_missing").is_some() {
+                    return Ok(None);
+                }
+                let mut cursor = Some(Rc::clone(class_rc));
+                while let Some(current) = cursor {
+                    if let Some(sc) = current.singleton_class_slot().clone()
+                        && sc.find_method("const_missing").is_some()
+                    {
+                        return Ok(None);
+                    }
+                    cursor = current.superclass();
+                }
+                if arguments.len() != 1 {
                     return Err(method_argument_error(
-                        "const_set",
-                        2,
+                        "const_missing",
+                        1,
                         arguments.len(),
                         position,
                     ));
@@ -1384,13 +1529,42 @@ impl VirtualMachine {
                     Object::String(s) => s.as_ref().clone(),
                     other => {
                         return Err(method_argument_type_error(
-                            "const_set",
+                            "const_missing",
                             "Symbol or String",
                             other,
                             position,
                         ));
                     }
                 };
+                return self
+                    .dispatch_const_missing(class_rc, &const_name, position)
+                    .map(Some);
+            }
+            "const_set" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        "const_set",
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // FrozenError fires before name validation or coercion.
+                if class_rc.is_frozen() {
+                    let kind = if class_rc.superclass().is_some() {
+                        "Class"
+                    } else {
+                        "Module"
+                    };
+                    let msg = format!("can't modify frozen {}: {}", kind, class_rc.inspect_name());
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                let const_name = self.coerce_method_name(&arguments[0], "const_set", position)?;
                 if !is_valid_constant_name(&const_name) {
                     let msg = format!("wrong constant name {}", const_name);
                     let exc = Object::exception("NameError", msg.clone());
@@ -1400,11 +1574,42 @@ impl VirtualMachine {
                         message: msg,
                     });
                 }
+                // Overwriting a bound value warns; replacing a pending
+                // autoload registration does not.
+                if class_rc.get_class_var(&const_name).is_some() {
+                    let msg = format!(
+                        "warning: already initialized constant {}::{}",
+                        class_rc.inspect_name(),
+                        const_name
+                    );
+                    self.emit_warning_to_stderr(&msg, position);
+                }
                 // Setting the constant cancels any pending autoload for it
                 // and clears any "loaded but unrealized" bookkeeping.
                 class_rc.remove_autoload(&const_name);
                 class_rc.clear_unrealized_autoload(&const_name);
                 class_rc.set_class_var(&const_name, arguments[1].clone());
+                let assign_file = self
+                    .get_current_file()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
+                class_rc.set_const_location(&const_name, assign_file, position.line as i64);
+                // Object's constants are top-level constants — publish to
+                // globals so bare references resolve.
+                if class_rc.name() == "Object" {
+                    self.globals_mut()
+                        .set(const_name.clone(), arguments[1].clone());
+                }
+                // An anonymous module/class value takes the constant path as
+                // its name, cascading into anonymous modules nested under it.
+                if let Object::Class(v) | Object::Module(v) = &arguments[1] {
+                    let qualified = if class_rc.name() == "Object" {
+                        const_name.clone()
+                    } else {
+                        format!("{}::{}", class_rc.inspect_name(), const_name)
+                    };
+                    v.assign_name_recursive(&qualified);
+                }
                 self.trigger_const_added_hook(
                     Object::Class(Rc::clone(class_rc)),
                     &const_name,
@@ -1481,6 +1686,15 @@ impl VirtualMachine {
                     Method::new(method_name_str.clone(), regular_params, block.body.clone());
                 method.variadic_param = variadic_param;
                 method.block_parameter = block_parameter;
+                // Optional block params (`|a, b = 1|`) become the method's
+                // default parameters, keyed by positional index.
+                for (orig_idx, expr) in block.parameter_defaults.iter() {
+                    let reg_idx = block.parameters[..*orig_idx]
+                        .iter()
+                        .filter(|p| !p.starts_with('&'))
+                        .count();
+                    method.default_parameters.push((reg_idx, expr.clone()));
+                }
                 method.captured_vars = Some(if block.captured_vars.is_empty() {
                     self.environment().current_scope_var_refs()
                 } else {

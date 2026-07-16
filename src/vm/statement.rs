@@ -250,7 +250,7 @@ impl VirtualMachine {
         value: Object,
     ) -> Result<(), MetorexError> {
         match target {
-            Expression::Identifier { name, .. } => {
+            Expression::Identifier { name, position } => {
                 // Constant-shaped identifiers (`MyClass = ...`) auto-name
                 // anonymous classes/modules on first assignment, matching
                 // Ruby's `klass.name` behavior after binding to a constant.
@@ -265,15 +265,22 @@ impl VirtualMachine {
                 // later as `M::Foo`. At the top level (no enclosing
                 // scope), uppercase assignments go to globals (and
                 // Object's class_var) so they survive the require'd
-                // file's local environment ending.
-                if is_const && let Some(enclosing) = self.def_scope_stack.last() {
+                // file's local environment ending. Both record the
+                // assignment site for `Module#const_source_location`.
+                let assign_file = self
+                    .get_current_file()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_default();
+                if is_const && let Some(enclosing) = self.def_scope_stack.last().cloned() {
                     enclosing.set_class_var(name, value);
+                    enclosing.set_const_location(name, assign_file, position.line as i64);
                     return Ok(());
                 }
                 if is_const {
                     self.globals_mut().set(name.clone(), value.clone());
                     if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                         object_class.set_class_var(name, value);
+                        object_class.set_const_location(name, assign_file, position.line as i64);
                     }
                     return Ok(());
                 }
@@ -689,13 +696,29 @@ impl VirtualMachine {
                         if let Object::Class(v) | Object::Module(v) = &value {
                             let qualified = format!("{}::{}", c.ruby_name(), name);
                             v.set_assigned_name_if_anonymous(&qualified);
+                            // A named namespace also names anonymous modules
+                            // nested under the assigned value.
+                            let rn = c.ruby_name();
+                            if !rn.is_empty() && !rn.contains("#<") {
+                                v.assign_name_recursive(&qualified);
+                            }
                         }
                         // Explicit `Mod::X = value` outside of an autoload
                         // load supersedes any pending autoload. (The
                         // autoload trigger path manages its own autoload
                         // bookkeeping after the load completes.)
                         c.remove_autoload(name);
+                        // Object's constants are top-level constants —
+                        // publish so bare references resolve.
+                        if c.name() == "Object" {
+                            self.globals_mut().set(name.clone(), value.clone());
+                        }
                         c.set_class_var(name, value);
+                        let assign_file = self
+                            .get_current_file()
+                            .map(|p| p.display().to_string())
+                            .unwrap_or_default();
+                        c.set_const_location(name, assign_file, position.line as i64);
                         self.trigger_const_added_hook(owner_for_hook, name, *position)?;
                         Ok(())
                     }

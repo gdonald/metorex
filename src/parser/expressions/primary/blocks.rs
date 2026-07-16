@@ -21,7 +21,7 @@ impl Parser {
         }
         self.skip_whitespace();
 
-        let parameters = self.parse_pipe_params()?;
+        let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
 
         self.skip_whitespace();
         let mut body = Vec::new();
@@ -48,6 +48,7 @@ impl Parser {
 
         Ok(Expression::Lambda {
             parameters,
+            parameter_defaults,
             body,
             captured_vars: Some(Vec::new()),
             position: token_position,
@@ -61,7 +62,7 @@ impl Parser {
     ) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
 
-        let parameters = self.parse_pipe_params()?;
+        let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
 
         self.skip_whitespace();
         let body = self.parse_block_body_with_optional_rescue_ensure(token_position)?;
@@ -69,6 +70,7 @@ impl Parser {
 
         Ok(Expression::Lambda {
             parameters,
+            parameter_defaults,
             body,
             captured_vars: Some(Vec::new()),
             position: token_position,
@@ -121,6 +123,7 @@ impl Parser {
                 if let Expression::Lambda { body, position, .. } = block {
                     return Ok(Expression::Lambda {
                         parameters: params,
+                        parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()),
                         position,
@@ -134,6 +137,7 @@ impl Parser {
         let expr = self.parse_assignment()?;
         Ok(Expression::Lambda {
             parameters: Vec::new(),
+            parameter_defaults: Vec::new(),
             body: vec![Statement::Expression {
                 expression: expr,
                 position: token_position,
@@ -141,57 +145,6 @@ impl Parser {
             captured_vars: Some(Vec::new()),
             position: token_position,
         })
-    }
-
-    /// Parse `|param1, param2, ...|` parameter list, or `||` for an empty
-    /// list. Returns an empty `Vec` if no leading `|` is present (no params).
-    ///
-    /// Accepts (and currently silently strips):
-    ///   - splat:        `*args`
-    ///   - block param:  `&blk`
-    ///   - default value: `name = expr`
-    fn parse_pipe_params(&mut self) -> Result<Vec<String>, MetorexError> {
-        if self.match_token(&[TokenKind::LogicalOr]) {
-            // Empty parameter list: ||
-            return Ok(Vec::new());
-        }
-        if !self.match_token(&[TokenKind::Pipe]) {
-            return Ok(Vec::new());
-        }
-
-        let mut params = Vec::new();
-        self.skip_whitespace();
-
-        if !self.check(&[TokenKind::Pipe]) {
-            loop {
-                self.skip_whitespace();
-                // Allow `*name` (splat) and `&name` (block) modifiers; we
-                // strip the modifier and just record the bound name.
-                let _ = self.match_token(&[TokenKind::Star, TokenKind::Ampersand]);
-                self.skip_whitespace();
-                if let TokenKind::Ident(name) = self.peek().kind.clone() {
-                    params.push(name);
-                    self.advance();
-                } else {
-                    return Err(self.error_at_current("Expected parameter name"));
-                }
-
-                self.skip_whitespace();
-                // Allow `name = default_value` — parse and discard the default.
-                if self.match_token(&[TokenKind::Equal]) {
-                    self.skip_whitespace();
-                    let _ = self.parse_expression()?;
-                    self.skip_whitespace();
-                }
-                if !self.match_token(&[TokenKind::Comma]) {
-                    break;
-                }
-            }
-        }
-
-        self.skip_whitespace();
-        self.expect(TokenKind::Pipe, "Expected '|' after lambda parameters")?;
-        Ok(params)
     }
 
     fn lambda_with_brace_block(&mut self) -> Result<Expression, MetorexError> {
@@ -205,6 +158,7 @@ impl Parser {
         {
             Ok(Expression::Lambda {
                 parameters,
+                parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
                 position,
@@ -225,6 +179,7 @@ impl Parser {
         {
             Ok(Expression::Lambda {
                 parameters,
+                parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
                 position,
@@ -262,6 +217,7 @@ impl Parser {
             if let Expression::Lambda { body, position, .. } = block {
                 return Ok(Expression::Lambda {
                     parameters: params,
+                    parameter_defaults: Vec::new(),
                     body,
                     captured_vars: Some(Vec::new()),
                     position,
@@ -273,6 +229,7 @@ impl Parser {
         let expr = self.parse_expression()?;
         Ok(Expression::Lambda {
             parameters: params,
+            parameter_defaults: Vec::new(),
             body: vec![Statement::Expression {
                 expression: expr,
                 position: token_position,

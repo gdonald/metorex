@@ -32,7 +32,12 @@ impl VirtualMachine {
                 InterpolationPart::Text(text) => buffer.push_str(text),
                 InterpolationPart::Expression(expr) => {
                     let value = self.evaluate_expression(expr)?;
-                    buffer.push_str(&value.to_string());
+                    // Interpolation uses #to_s semantics: a Symbol renders
+                    // as its bare name, not the `:name` inspect form.
+                    match &value {
+                        Object::Symbol(s) => buffer.push_str(s),
+                        _ => buffer.push_str(&value.to_string()),
+                    }
                 }
             }
         }
@@ -141,6 +146,12 @@ impl VirtualMachine {
                 } else {
                     Ok(Object::Nil)
                 }
+            }
+
+            // Symbol#[] mirrors String#[] on the symbol's name.
+            Object::Symbol(s) => {
+                let as_string = Object::String(Rc::new((*s).clone()));
+                self.evaluate_index_operation(as_string, key, position)
             }
 
             Object::String(s) => match key {
