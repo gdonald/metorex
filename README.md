@@ -196,7 +196,9 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Keyword arguments (`def method(name:, age: 10)` and `method(name: "Bob")`)
 - Operator method names (`def +(other)`, `def ==(other)`, `def [](key)`, `def []=(key, value)`)
 - Module and mixin support (`module`, `include`, `extend`)
-- `define_method` for dynamic method definition on classes
+- `define_method` for dynamic method definition on classes, taking a block, a Proc, a `Method`, or an `UnboundMethod`. It returns the method name as a Symbol, inherits the current `private`/`public` visibility when called from inside the target module, always makes `initialize` private, fires the `method_added` hook, and raises `FrozenError` on a frozen module
+- Bodies installed by `define_method` follow lambda control flow: `return`, `break`, and `next` finish the method with a value, and `redo` re-runs it
+- Proc and Method objects: `Kernel#proc`, `Proc.new`, `Symbol#to_proc`, `Method#to_proc` (which stays bound to its original receiver), `Method#unbind`, and `Method#owner` (returns the defining module)
 - `method_missing` hook for intercepting undefined method calls
 - Runtime class modification: `remove_method`, `undef_method`, `alias_method`, `module_function`
 - Class variables: `class_variable_set`, `class_variable_get`, `class_variable_defined?`, `class_variables` (lookup walks included modules and superclasses; `class_variables(false)` lists only own names)

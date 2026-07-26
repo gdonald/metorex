@@ -403,7 +403,7 @@ impl Resolver {
                 }
             }
 
-            Statement::Break { .. } | Statement::Continue { .. } => {
+            Statement::Break { .. } | Statement::Continue { .. } | Statement::Redo { .. } => {
                 // Nothing to resolve
             }
 

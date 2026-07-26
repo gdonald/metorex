@@ -6,6 +6,7 @@
 mod array_methods;
 pub(crate) mod ast_methods;
 mod class_methods;
+mod define_method;
 mod exception_methods;
 mod file_methods;
 mod float_methods;
@@ -112,7 +113,9 @@ impl VirtualMachine {
 
         // Dispatch to the appropriate class-specific method implementation
         match class.name() {
-            "Object" => self.call_object_method(receiver, method_name, arguments, position),
+            "Object" | "Proc" | "Method" => {
+                self.call_object_method(receiver, method_name, arguments, position)
+            }
             "String" => self.call_string_method(receiver, method_name, arguments, position),
             "Integer" => self.call_int_method(receiver, method_name, arguments, position),
             "Array" => self.call_array_method(receiver, method_name, arguments, position),
@@ -180,12 +183,9 @@ impl VirtualMachine {
                     if let Object::String(s) = result {
                         return Ok((*s).clone());
                     }
-                    let msg = format!(
-                        "can't convert {} to String ({}#to_str gives {})",
-                        arg.type_name(),
-                        arg.type_name(),
-                        result.type_name(),
-                    );
+                    let source_class = self.builtins().class_of(arg).name().to_string();
+                    let msg = format!("can't convert {} into String", source_class);
+                    let _ = result;
                     let exc = Object::exception("TypeError", msg.clone());
                     return Err(MetorexError::UncaughtException {
                         exception: exc,
@@ -197,7 +197,7 @@ impl VirtualMachine {
                     "{} is not a symbol nor a string",
                     match arg {
                         Object::Instance(inst) => format!("#<{}>", inst.borrow().class.name()),
-                        _ => format!("{:?}", arg),
+                        _ => arg.to_string(),
                     }
                 );
                 let _ = caller;

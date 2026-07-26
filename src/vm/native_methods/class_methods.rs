@@ -693,6 +693,19 @@ impl VirtualMachine {
             return Ok(Some(Object::Set(Rc::new(std::cell::RefCell::new(set)))));
         }
         match method_name {
+            // `Proc.new { ... }` yields the block itself — there is no
+            // separate instance to build.
+            "new" if Rc::ptr_eq(class_rc, &self.builtins().proc_class) => {
+                if let Some(block) = self.pending_block.take() {
+                    return Ok(Some(block));
+                }
+                let msg = "tried to create Proc object without a block";
+                return Err(MetorexError::UncaughtException {
+                    exception: Object::exception("ArgumentError", msg.to_string()),
+                    location: position_to_location(position),
+                    message: msg.to_string(),
+                });
+            }
             "new" => {
                 return self
                     .invoke_callable(
@@ -724,8 +737,14 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                if let Some(method) = class_rc.find_method(&name_str) {
-                    return Ok(Some(Object::Method(method)));
+                if let Some((owner, method)) = class_rc.find_method_with_owner(&name_str) {
+                    if method.owner_class.is_some() {
+                        return Ok(Some(Object::Method(method)));
+                    }
+                    let mut unbound = (*method).clone();
+                    unbound.owner = Some(owner.name().to_string());
+                    unbound.owner_class = Some(owner);
+                    return Ok(Some(Object::Method(Rc::new(unbound))));
                 }
                 // Synthesize a stub for well-known Module-private mixin
                 // hooks so `Module.instance_method(:append_features)` works
@@ -746,6 +765,20 @@ impl VirtualMachine {
                         vec![],
                         "Module".to_string(),
                     );
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
+                // Kernel methods are implemented natively rather than living
+                // in Object's method table. A body-less stub reaches the same
+                // native implementation when invoked, so `Object` can hand out
+                // an UnboundMethod for them.
+                if class_rc.name() == "Object" && is_native_kernel_method(&name_str) {
+                    let mut stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                        "Kernel".to_string(),
+                    );
+                    stub.variadic_param = Some((0, "args".to_string()));
                     return Ok(Some(Object::Method(Rc::new(stub))));
                 }
                 let msg = format!("undefined method '{}' for {}", name_str, class_rc.name());
@@ -1641,67 +1674,9 @@ impl VirtualMachine {
                 return Ok(Some(result));
             }
             "define_method" => {
-                if arguments.is_empty() {
-                    return Err(method_argument_error("define_method", 1, 0, position));
-                }
-                let method_name_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "define_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                let block = self
-                    .pending_block
-                    .take()
-                    .or_else(|| arguments.get(1).cloned());
-                let block = match block {
-                    Some(Object::Block(b)) => b,
-                    _ => {
-                        return Err(MetorexError::runtime_error(
-                            "define_method requires a block",
-                            position_to_location(position),
-                        ));
-                    }
-                };
-                let mut regular_params: Vec<String> = Vec::new();
-                let mut variadic_param: Option<(usize, String)> = None;
-                let mut block_parameter: Option<String> = None;
-                for (i, param) in block.parameters.iter().enumerate() {
-                    if let Some(name) = param.strip_prefix('*') {
-                        variadic_param = Some((i, name.to_string()));
-                        regular_params.push(name.to_string());
-                    } else if let Some(name) = param.strip_prefix('&') {
-                        block_parameter = Some(name.to_string());
-                    } else {
-                        regular_params.push(param.clone());
-                    }
-                }
-                let mut method =
-                    Method::new(method_name_str.clone(), regular_params, block.body.clone());
-                method.variadic_param = variadic_param;
-                method.block_parameter = block_parameter;
-                // Optional block params (`|a, b = 1|`) become the method's
-                // default parameters, keyed by positional index.
-                for (orig_idx, expr) in block.parameter_defaults.iter() {
-                    let reg_idx = block.parameters[..*orig_idx]
-                        .iter()
-                        .filter(|p| !p.starts_with('&'))
-                        .count();
-                    method.default_parameters.push((reg_idx, expr.clone()));
-                }
-                method.captured_vars = Some(if block.captured_vars.is_empty() {
-                    self.environment().current_scope_var_refs()
-                } else {
-                    block.captured_vars.clone()
-                });
-                class_rc.define_method(&method_name_str, Rc::new(method));
-                return Ok(Some(Object::Nil));
+                return self
+                    .module_define_method(class_rc, arguments, position)
+                    .map(Some);
             }
             "remove_method" => {
                 if arguments.len() != 1 {
@@ -2243,4 +2218,39 @@ fn is_valid_class_variable_ident(name: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+/// Kernel methods that `call_object_method` implements natively, so a
+/// body-less stub can stand in for them in `Object.instance_method`.
+fn is_native_kernel_method(name: &str) -> bool {
+    matches!(
+        name,
+        "class"
+            | "clone"
+            | "dup"
+            | "eql?"
+            | "equal?"
+            | "freeze"
+            | "frozen?"
+            | "hash"
+            | "inspect"
+            | "instance_of?"
+            | "instance_variable_get"
+            | "instance_variable_set"
+            | "instance_variables"
+            | "is_a?"
+            | "itself"
+            | "kind_of?"
+            | "method"
+            | "methods"
+            | "nil?"
+            | "object_id"
+            | "public_send"
+            | "respond_to?"
+            | "send"
+            | "tap"
+            | "to_s"
+            | "__id__"
+            | "__send__"
+    )
 }

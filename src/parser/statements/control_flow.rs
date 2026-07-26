@@ -230,13 +230,37 @@ impl Parser {
         self.wrap_with_modifier(stmt)
     }
 
-    /// Parse a continue statement
+    /// Parse a continue statement, optionally with a value (e.g. `next 42`).
     pub(crate) fn parse_continue_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self
             .expect(TokenKind::Continue, "Expected 'continue'")?
             .position;
-        let stmt = Statement::Continue { position: pos };
+        let value = if self.is_at_end()
+            || self.check(&[
+                TokenKind::Newline,
+                TokenKind::Semicolon,
+                TokenKind::End,
+                TokenKind::EOF,
+                TokenKind::If,
+                TokenKind::Unless,
+                TokenKind::While,
+                TokenKind::RBrace,
+            ]) {
+            None
+        } else {
+            Some(Box::new(self.parse_expression()?))
+        };
+        let stmt = Statement::Continue {
+            value,
+            position: pos,
+        };
         self.wrap_with_modifier(stmt)
+    }
+
+    /// Parse a redo statement, which re-runs the enclosing body from the top.
+    pub(crate) fn parse_redo_statement(&mut self) -> Result<Statement, MetorexError> {
+        let pos = self.expect(TokenKind::Redo, "Expected 'redo'")?.position;
+        self.wrap_with_modifier(Statement::Redo { position: pos })
     }
 
     /// Parse an unless statement

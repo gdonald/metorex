@@ -105,7 +105,17 @@ impl VirtualMachine {
                     position: *position,
                 })
             }
-            Statement::Continue { position } => Ok(ControlFlow::Continue {
+            Statement::Continue { value, position } => {
+                let resolved = match value {
+                    Some(expr) => self.evaluate_expression(expr)?,
+                    None => Object::Nil,
+                };
+                Ok(ControlFlow::Continue {
+                    value: resolved,
+                    position: *position,
+                })
+            }
+            Statement::Redo { position } => Ok(ControlFlow::Redo {
                 position: *position,
             }),
             Statement::Block {

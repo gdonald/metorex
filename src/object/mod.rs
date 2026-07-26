@@ -16,7 +16,7 @@ mod types;
 
 // Re-export core types and traits
 pub use binding::Binding;
-pub use block::BlockStatement;
+pub use block::{BlockStatement, TRAILING_COMMA_PARAM};
 pub use compiled_function::CompiledFunction;
 pub use exception::{Exception, SourceLocation};
 pub use hash::ObjectHash;

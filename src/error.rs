@@ -137,6 +137,20 @@ pub enum MetorexError {
         value: crate::object::Object,
         location: SourceLocation,
     },
+
+    /// A `next <value>` raised from a nested expression context (e.g. inside
+    /// an `if` used as an expression). Unwinds to the enclosing block or
+    /// lambda-bodied method, which returns `value`.
+    #[error("Block next")]
+    BlockNext {
+        value: crate::object::Object,
+        location: SourceLocation,
+    },
+
+    /// A `redo` raised from a nested expression context. Unwinds to the
+    /// enclosing body, which then re-runs from the top.
+    #[error("Block redo")]
+    BlockRedo { location: SourceLocation },
 }
 
 // Custom From implementation for std::io::Error
@@ -236,6 +250,8 @@ impl MetorexError {
             Self::IoError(msg) | Self::InternalError(msg) => msg,
             Self::NonLocalReturn { .. } => "non-local return",
             Self::BlockBreak { .. } => "block break",
+            Self::BlockNext { .. } => "block next",
+            Self::BlockRedo { .. } => "block redo",
         }
     }
 

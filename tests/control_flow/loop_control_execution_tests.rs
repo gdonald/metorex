@@ -174,6 +174,7 @@ fn test_continue_in_while_loop() {
                         position: pos(5, 12),
                     },
                     then_branch: vec![Statement::Continue {
+                        value: None,
                         position: pos(6, 5),
                     }],
                     elsif_branches: vec![],

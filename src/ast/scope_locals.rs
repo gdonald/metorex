@@ -156,7 +156,8 @@ fn walk_statement(stmt: &Statement, names: &mut Vec<String>) {
         | Statement::MethodDef { .. }
         | Statement::ClassDef { .. }
         | Statement::ModuleDef { .. } => {}
-        Statement::Continue { .. }
+        Statement::Redo { .. }
+        | Statement::Continue { .. }
         | Statement::Include { .. }
         | Statement::Extend { .. }
         | Statement::Alias { .. } => {}

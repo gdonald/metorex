@@ -63,6 +63,7 @@ impl Parser {
             TokenKind::Raise => self.parse_raise_statement(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
+            TokenKind::Redo => self.parse_redo_statement(),
             TokenKind::Return => {
                 let stmt = self.parse_return_statement()?;
                 self.wrap_with_modifier(stmt)

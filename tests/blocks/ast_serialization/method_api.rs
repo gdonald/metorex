@@ -19,7 +19,7 @@ C.new.get_source(:my_func).name
 }
 
 #[test]
-fn method_owner_returns_string() {
+fn method_owner_returns_defining_class() {
     let result = eval(
         r#"
 class MyClass
@@ -27,7 +27,7 @@ class MyClass
     nil
   end
 end
-MyClass.new.get_source(:greet).owner.length > 0
+MyClass.new.get_source(:greet).owner == MyClass
 "#,
     );
     assert_eq!(result, Some(Object::Bool(true)));

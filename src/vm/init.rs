@@ -363,6 +363,7 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         Object::NativeFunction("assert_raises".to_string()),
     );
     globals.set("method", Object::NativeFunction("method".to_string()));
+    globals.set("proc", Object::NativeFunction("proc".to_string()));
     globals.set("require", Object::NativeFunction("require".to_string()));
     globals.set(
         "require_relative",

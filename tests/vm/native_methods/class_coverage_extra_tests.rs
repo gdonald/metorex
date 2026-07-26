@@ -744,7 +744,7 @@ end
 DefErr2.send(:define_method, 42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(err.contains("is not a symbol nor a string"));
 }
 
 #[test]

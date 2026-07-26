@@ -165,6 +165,24 @@ impl VirtualMachine {
         // Take the pending block now so nested calls don't see it.
         let block = self.pending_block.take();
 
+        // A method produced by `Method#to_proc` keeps running against the
+        // object it was extracted from, whatever receiver it is invoked on.
+        let self_value = match &method.bound_self {
+            Some(bound) => (**bound).clone(),
+            None => self_value,
+        };
+
+        // Restore the lexical nesting the Proc was written in, so a nested
+        // `def` in the body lands where Ruby's default definee points.
+        let saved_def_scope = if method.captured_def_scope.is_empty() {
+            None
+        } else {
+            Some(std::mem::replace(
+                &mut self.def_scope_stack,
+                method.captured_def_scope.clone(),
+            ))
+        };
+
         let result = (|| -> Result<Object, MetorexError> {
             self.environment_mut()
                 .define("self".to_string(), self_value.clone());
@@ -209,9 +227,12 @@ impl VirtualMachine {
                     .define(block_param.clone(), Object::Nil);
             }
 
-            self.execute_body_statements(method.body())
+            self.execute_body_statements(method.body(), method.lambda_body)
         })();
 
+        if let Some(previous) = saved_def_scope {
+            self.def_scope_stack = previous;
+        }
         self.environment_mut().pop_scope();
         match result {
             Err(MetorexError::NonLocalReturn { value, .. }) => Ok(value),
@@ -259,7 +280,7 @@ impl VirtualMachine {
                     .define(block_param.clone(), Object::Nil);
             }
 
-            self.execute_body_statements(function.body())
+            self.execute_body_statements(function.body(), false)
         })();
 
         self.environment_mut().pop_scope();
@@ -272,7 +293,32 @@ impl VirtualMachine {
     /// Execute a list of statements as a method/function body, capturing the
     /// value of the last expression. Shared between execute_method_body and
     /// execute_function_body to eliminate duplication.
-    fn execute_body_statements(&mut self, body: &[Statement]) -> Result<Object, MetorexError> {
+    fn execute_body_statements(
+        &mut self,
+        body: &[Statement],
+        lambda_semantics: bool,
+    ) -> Result<Object, MetorexError> {
+        if !lambda_semantics {
+            return self.run_body_statements(body, false);
+        }
+        // A lambda-style body follows Proc-from-lambda control flow: `break`
+        // and `next` finish the body with a value, and `redo` restarts it.
+        loop {
+            match self.run_body_statements(body, true) {
+                Err(MetorexError::BlockRedo { .. }) => continue,
+                Err(MetorexError::BlockNext { value, .. })
+                | Err(MetorexError::BlockBreak { value, .. }) => return Ok(value),
+                other => return other,
+            }
+        }
+    }
+
+    /// Run a method body once, without the lambda-style restart loop.
+    fn run_body_statements(
+        &mut self,
+        body: &[Statement],
+        lambda_semantics: bool,
+    ) -> Result<Object, MetorexError> {
         // Pre-define every local syntactically assigned-to in this body as
         // `nil`, matching Ruby's parser-level local hoisting. Without this,
         // an `ensure`/`rescue` clause that reads a variable defined later in
@@ -366,10 +412,24 @@ impl VirtualMachine {
                         message: format_exception(&exception),
                     });
                 }
-                ControlFlow::Break { position, .. } => {
+                ControlFlow::Break { value, position } => {
+                    if lambda_semantics {
+                        return Ok(value);
+                    }
                     return Err(loop_control_error("break", position));
                 }
-                ControlFlow::Continue { position } => {
+                ControlFlow::Redo { position } => {
+                    if lambda_semantics {
+                        return Err(MetorexError::BlockRedo {
+                            location: position_to_location(position),
+                        });
+                    }
+                    return Err(loop_control_error("redo", position));
+                }
+                ControlFlow::Continue { value, position } => {
+                    if lambda_semantics {
+                        return Ok(value);
+                    }
                     return Err(loop_control_error("continue", position));
                 }
             }

@@ -336,6 +336,7 @@ fn test_continue_outside_loop_error_has_location() {
 
     // continue statement outside a loop
     let stmt = Statement::Continue {
+        value: None,
         position: pos_at(20, 3),
     };
 

@@ -107,12 +107,7 @@ class C
 end
 "#,
     );
-    assert!(
-        err.contains("define_method")
-            || err.contains("String")
-            || err.contains("Symbol")
-            || err.contains("argument")
-    );
+    assert!(err.contains("is not a symbol nor a string"));
 }
 
 // ── define_method with no args (lines 275-278) ───────────────────────────────

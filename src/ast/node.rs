@@ -631,8 +631,15 @@ pub enum Statement {
         position: Position,
     },
 
-    // Continue statement (skip to next iteration)
+    // Continue statement (skip to next iteration). `value` carries the
+    // optional expression that follows `next` (e.g. `next 42`).
     Continue {
+        value: Option<Box<Expression>>,
+        position: Position,
+    },
+
+    // Redo statement (re-run the enclosing block/method body from the top)
+    Redo {
         position: Position,
     },
 
@@ -807,6 +814,7 @@ impl Statement {
             | Statement::Return { position, .. }
             | Statement::Break { position, .. }
             | Statement::Continue { position, .. }
+            | Statement::Redo { position }
             | Statement::Block { position, .. }
             | Statement::Begin { position, .. }
             | Statement::Raise { position, .. }
@@ -844,6 +852,7 @@ impl Statement {
                 | Statement::Return { .. }
                 | Statement::Break { .. }
                 | Statement::Continue { .. }
+                | Statement::Redo { .. }
                 | Statement::Begin { .. }
                 | Statement::Raise { .. }
         )

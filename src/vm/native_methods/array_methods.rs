@@ -214,6 +214,7 @@ impl VirtualMachine {
                     match self.execute_block_with_control_flow(&block, args)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
+                        | super::super::ControlFlow::Redo { .. }
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }

@@ -669,6 +669,7 @@ fn test_match_in_loop() {
                 pattern: MatchPattern::IntLiteral(0),
                 guard: None,
                 body: vec![Statement::Continue {
+                    value: None,
                     position: pos(3, 14),
                 }],
                 position: pos(3, 5),
@@ -722,6 +723,7 @@ fn test_nested_control_flow() {
                 pattern: MatchPattern::IntLiteral(0),
                 guard: None,
                 body: vec![Statement::Continue {
+                    value: None,
                     position: pos(4, 17),
                 }],
                 position: pos(4, 7),

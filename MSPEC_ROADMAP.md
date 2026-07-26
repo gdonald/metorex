@@ -201,7 +201,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.22. core/module/const_set_spec — 1 file, 15 examples, 36 expectations, 0 failures, 0 errors
   - [x] 4.7.23. core/module/const_source_location_spec — 1 file, 42 examples, 65 expectations, 0 failures, 0 errors
   - [x] 4.7.24. core/module/constants_spec — 1 file, 11 examples, 30 expectations, 0 failures, 0 errors
-  - [ ] 4.7.25. core/module/define_method_spec
+  - [x] 4.7.25. core/module/define_method_spec — 1 file, 88 examples, 102 expectations, 0 failures, 0 errors
   - [ ] 4.7.26. core/module/define_singleton_method_spec
   - [ ] 4.7.27. core/module/deprecate_constant_spec
   - [ ] 4.7.28. core/module/eql_spec

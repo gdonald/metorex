@@ -75,7 +75,7 @@ impl VirtualMachine {
             match self.execute_statements_internal(body)? {
                 ControlFlow::Next | ControlFlow::Value(_) => continue,
                 ControlFlow::Break { .. } => break,
-                ControlFlow::Continue { .. } => continue,
+                ControlFlow::Redo { .. } | ControlFlow::Continue { .. } => continue,
                 ControlFlow::Return { value, position } => {
                     return Ok(ControlFlow::Return { value, position });
                 }
@@ -162,7 +162,7 @@ impl VirtualMachine {
             match result? {
                 ControlFlow::Next | ControlFlow::Value(_) => continue,
                 ControlFlow::Break { .. } => break,
-                ControlFlow::Continue { .. } => continue,
+                ControlFlow::Redo { .. } | ControlFlow::Continue { .. } => continue,
                 ControlFlow::Return { value, position } => {
                     return Ok(ControlFlow::Return { value, position });
                 }

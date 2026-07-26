@@ -50,7 +50,23 @@ impl VirtualMachine {
                 "name" => {
                     return Ok(Some(Object::String(Rc::new(method_obj.name.clone()))));
                 }
+                "unbind" => {
+                    let mut unbound = (**method_obj).clone();
+                    unbound.receiver = None;
+                    return Ok(Some(Object::Method(Rc::new(unbound))));
+                }
+                // `Method#to_proc` stays attached to the receiver it was
+                // extracted from, so the Proc keeps calling against that
+                // object even after `define_method` installs it elsewhere.
+                "to_proc" => {
+                    let mut as_proc = (**method_obj).clone();
+                    as_proc.bound_self = method_obj.receiver.clone();
+                    return Ok(Some(Object::Method(Rc::new(as_proc))));
+                }
                 "owner" => {
+                    if let Some(owner) = &method_obj.owner_class {
+                        return Ok(Some(Object::Class(Rc::clone(owner))));
+                    }
                     let owner_name = method_obj.owner.as_deref().unwrap_or("main");
                     return Ok(Some(Object::String(Rc::new(owner_name.to_string()))));
                 }

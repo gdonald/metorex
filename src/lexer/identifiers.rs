@@ -119,6 +119,7 @@ impl<'a> Lexer<'a> {
             "raise" => TokenKind::Raise,
             "break" => TokenKind::Break,
             "continue" | "next" => TokenKind::Continue,
+            "redo" => TokenKind::Redo,
             "return" => TokenKind::Return,
             "lambda" => TokenKind::Lambda,
             "super" => TokenKind::Super,

@@ -403,8 +403,10 @@ impl Parser {
                     break;
                 }
                 self.skip_whitespace();
-                // `|a,|` — trailing comma before the closing pipe.
+                // `|a,|` — trailing comma before the closing pipe. Record it:
+                // it is what makes a lone array argument destructure.
                 if self.check(&[TokenKind::Pipe]) {
+                    params.push(crate::object::TRAILING_COMMA_PARAM.to_string());
                     break;
                 }
             }

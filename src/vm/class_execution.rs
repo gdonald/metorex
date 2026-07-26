@@ -645,6 +645,16 @@ impl VirtualMachine {
                 class.set_current_visibility(name);
                 continue;
             }
+            // A bare `freeze` in a class body freezes the class itself.
+            if let Statement::Expression {
+                expression: Expression::Identifier { name, .. },
+                ..
+            } = statement
+                && name == "freeze"
+            {
+                class.freeze();
+                continue;
+            }
             match statement {
                 Statement::FunctionDef {
                     name: method_name,
@@ -653,12 +663,14 @@ impl VirtualMachine {
                     singleton_class: None,
                     ..
                 } => {
-                    let m = build_method_from_params(
+                    let mut m = build_method_from_params(
                         method_name.clone(),
                         parameters,
                         method_body.clone(),
                         self.snapshot_active_refinements(),
                     );
+                    m.owner = Some(class.name().to_string());
+                    m.owner_class = Some(Rc::clone(class));
                     class.define_method(method_name, Rc::new(m));
                     if class.current_visibility() != "public" {
                         class.set_method_private(method_name.clone());
@@ -728,6 +740,7 @@ impl VirtualMachine {
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
                     m.owner = Some(class.name().to_string());
+                    m.owner_class = Some(Rc::clone(class));
                     let method = Rc::new(m);
                     if *is_class_method {
                         // def self.method_name — store as class method with __class__ prefix
@@ -1084,74 +1097,12 @@ impl VirtualMachine {
                         && callee_name == "define_method"
                     {
                         handled = true;
-                        let method_name_str = if let Some(name_expr) = call_args.first() {
-                            match self.evaluate_expression(name_expr)? {
-                                Object::String(s) => (*s).clone(),
-                                Object::Symbol(s) => (*s).clone(),
-                                _ => {
-                                    return Err(MetorexError::runtime_error(
-                                        "define_method: first argument must be a String or Symbol",
-                                        position_to_location(position),
-                                    ));
-                                }
-                            }
-                        } else {
-                            return Err(MetorexError::runtime_error(
-                                "define_method requires at least one argument",
-                                position_to_location(position),
-                            ));
-                        };
-                        let block_obj = self.evaluate_expression(block_expr)?;
-                        let block = match block_obj {
-                            Object::Block(b) => b,
-                            _ => {
-                                return Err(MetorexError::runtime_error(
-                                    "define_method requires a block",
-                                    position_to_location(position),
-                                ));
-                            }
-                        };
-                        // Split the block's parameter list into regular,
-                        // variadic (`*args`), and block (`&blk`) parts so a
-                        // `define_method(:m) { |*args, &blk| ... }` (as the
-                        // mspec mock framework uses) gets correct arity instead
-                        // of treating `*args`/`&blk` as required positionals.
-                        let mut regular_params: Vec<String> = Vec::new();
-                        let mut variadic_param: Option<(usize, String)> = None;
-                        let mut block_parameter: Option<String> = None;
-                        for (i, param) in block.parameters.iter().enumerate() {
-                            if let Some(name) = param.strip_prefix('*') {
-                                variadic_param = Some((i, name.to_string()));
-                                regular_params.push(name.to_string());
-                            } else if let Some(name) = param.strip_prefix('&') {
-                                block_parameter = Some(name.to_string());
-                            } else {
-                                regular_params.push(param.clone());
-                            }
+                        let mut define_args: Vec<Object> = Vec::new();
+                        for arg_expr in call_args {
+                            define_args.push(self.evaluate_expression(arg_expr)?);
                         }
-                        let mut method = Method::new(
-                            method_name_str.clone(),
-                            regular_params,
-                            block.body.clone(),
-                        );
-                        method.variadic_param = variadic_param;
-                        method.block_parameter = block_parameter;
-                        // Optional block params (`|a, b = 1|`) become the
-                        // method's default parameters.
-                        for (orig_idx, expr) in block.parameter_defaults.iter() {
-                            let reg_idx = block.parameters[..*orig_idx]
-                                .iter()
-                                .filter(|p| !p.starts_with('&'))
-                                .count();
-                            method.default_parameters.push((reg_idx, expr.clone()));
-                        }
-                        // Capture closure: prefer existing captured_vars, otherwise snap current scope
-                        method.captured_vars = Some(if block.captured_vars.is_empty() {
-                            self.environment().current_scope_var_refs()
-                        } else {
-                            block.captured_vars.clone()
-                        });
-                        class.define_method(&method_name_str, Rc::new(method));
+                        self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                        last_value = self.module_define_method(class, &define_args, position)?;
                     }
                     // `refine(target) { body }` inside a module body — dispatch
                     // to the module's refine method, preserving the block.
@@ -1308,9 +1259,12 @@ impl VirtualMachine {
         self.environment_mut()
             .define(name.to_string(), Object::Method(Rc::clone(&function)));
 
-        // Also register as a method on the global Object class (Ruby semantics:
-        // top-level `def` defines a method on Object, globally accessible).
-        if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+        // Ruby installs the method on the current default definee: the
+        // innermost lexical class/module if there is one, otherwise Object
+        // (top-level `def`, globally accessible).
+        if let Some(definee) = self.def_scope_stack.last().cloned() {
+            definee.define_method(name, Rc::clone(&function));
+        } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
             object_class.define_method(name, Rc::clone(&function));
         }
 
@@ -1546,6 +1500,7 @@ impl VirtualMachine {
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
                     m.owner = Some(module.name().to_string());
+                    m.owner_class = Some(Rc::clone(module));
                     let method = Rc::new(m);
                     if *is_class_method {
                         module.define_method(format!("__class__{}", method_name), method);

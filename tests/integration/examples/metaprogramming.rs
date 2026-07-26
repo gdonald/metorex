@@ -757,3 +757,41 @@ fn test_metaprogramming_block_param_defaults_parens_execution() {
     let output = run_example("metaprogramming/block_param_defaults_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_define_method_from_callable_execution() {
+    let expected = concat!(
+        "[1, 2]\n",
+        ":bar\n",
+        ":module_method\n",
+        "3\n",
+        ":named\n",
+        "[:public_one]\n",
+        "[:initialize, :private_one]\n",
+        "wrong argument type String (expected Proc/Method/UnboundMethod)\n",
+        "FrozenError\n"
+    );
+    let output = run_example("metaprogramming/define_method_from_callable.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_define_method_from_callable_no_parens_execution() {
+    let expected = "[1, 2]\n:bar\n:module_method\n3\n:named\n";
+    let output = run_example("metaprogramming/define_method_from_callable_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_define_method_lambda_control_flow_execution() {
+    let expected = "42\n42\n42\n[:first, :second]\n1\n[1, 2]\n";
+    let output = run_example("metaprogramming/define_method_lambda_control_flow.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_define_method_lambda_control_flow_no_parens_execution() {
+    let expected = "42\n42\n[:first, :second]\n";
+    let output = run_example("metaprogramming/define_method_lambda_control_flow_no_parens.rb");
+    assert_eq!(output, expected);
+}

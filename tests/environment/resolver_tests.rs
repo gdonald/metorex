@@ -78,7 +78,10 @@ fn resolver_break_and_continue() {
             value: None,
             position: pos(),
         },
-        Statement::Continue { position: pos() },
+        Statement::Continue {
+            value: None,
+            position: pos(),
+        },
     ];
     let result = r.resolve(&stmts);
     // Break and continue don't declare variables — no errors from resolver

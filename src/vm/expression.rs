@@ -16,7 +16,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
-use super::errors::{index_out_of_bounds_error, loop_control_error};
+use super::errors::index_out_of_bounds_error;
 use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
@@ -303,8 +303,19 @@ impl VirtualMachine {
                             location: position_to_location(position),
                         });
                     }
-                    ControlFlow::Continue { position } => {
-                        return Err(loop_control_error("continue", position));
+                    ControlFlow::Redo { position } => {
+                        // Like `break` above, `redo` and `next` inside an
+                        // if-as-expression must unwind to the enclosing body
+                        // rather than be swallowed here.
+                        return Err(MetorexError::BlockRedo {
+                            location: position_to_location(position),
+                        });
+                    }
+                    ControlFlow::Continue { value, position } => {
+                        return Err(MetorexError::BlockNext {
+                            value,
+                            location: position_to_location(position),
+                        });
                     }
                     ControlFlow::Exception {
                         exception,

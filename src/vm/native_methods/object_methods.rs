@@ -25,6 +25,27 @@ impl VirtualMachine {
             return self.call_class_methods(&object_class, method_name, arguments, position);
         }
 
+        // Operators reached by name rather than by syntax — `1.send(:+, 2)`,
+        // or a method body built from `:+.to_proc`. Route them back through
+        // the binary-operator evaluator.
+        if arguments.len() == 1
+            && let Some(op) = binary_op_for_method_name(method_name)
+        {
+            return self
+                .evaluate_binary_operation(&op, receiver.clone(), arguments[0].clone(), position)
+                .map(Some);
+        }
+
+        // Symbol#to_proc — `:foo.to_proc` is a two-parameter callable that
+        // sends `foo` to its first argument.
+        if method_name == "to_proc"
+            && let Object::Symbol(name) = receiver
+        {
+            return Ok(Some(Object::Block(std::rc::Rc::new(symbol_to_proc_block(
+                name, position,
+            )))));
+        }
+
         // Nil-specific conversions: in Ruby `nil.to_i == 0`, `nil.to_s == ""`,
         // `nil.to_a == []`, `nil.to_f == 0.0`. The dispatch above checks the
         // class of the receiver first, so we have to intercept here for Nil
@@ -430,12 +451,18 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let cls = self.builtins().class_of(receiver);
-                if let Some(method) = cls.find_method(&name_str) {
+                // Full lookup so singleton methods (`class << obj`,
+                // `def self.foo`) and mixins resolve, not just the class's
+                // own method table.
+                if let Some((resolved_class, method)) = self.lookup_method(receiver, &name_str) {
                     let mut bound = method.as_ref().clone();
                     bound.receiver = Some(Box::new(receiver.clone()));
+                    if bound.owner_class.is_none() {
+                        bound.owner_class = Some(resolved_class);
+                    }
                     return Ok(Some(Object::Method(std::rc::Rc::new(bound))));
                 }
+                let cls = self.builtins().class_of(receiver);
                 let msg = format!("undefined method '{}' for class '{}'", name_str, cls.name());
                 let exc = Object::exception("NameError", msg.clone());
                 Err(MetorexError::UncaughtException {
@@ -1062,4 +1089,64 @@ impl VirtualMachine {
             }
         }
     }
+}
+
+/// Build the block `Symbol#to_proc` returns: `{ |receiver, *args| receiver.send(name, *args) }`.
+fn symbol_to_proc_block(name: &str, position: Position) -> crate::object::BlockStatement {
+    use crate::ast::{Expression, Statement};
+
+    let call = Expression::MethodCall {
+        receiver: Box::new(Expression::Identifier {
+            name: "__symbol_proc_receiver".to_string(),
+            position,
+        }),
+        method: name.to_string(),
+        arguments: vec![Expression::Splat {
+            expression: Box::new(Expression::Identifier {
+                name: "__symbol_proc_args".to_string(),
+                position,
+            }),
+            position,
+        }],
+        trailing_block: None,
+        position,
+    };
+
+    crate::object::BlockStatement::new(
+        vec![
+            "__symbol_proc_receiver".to_string(),
+            "*__symbol_proc_args".to_string(),
+        ],
+        vec![Statement::Expression {
+            expression: call,
+            position,
+        }],
+        std::collections::HashMap::new(),
+    )
+}
+
+/// Map an operator method name back to its `BinaryOp`, for calls that arrive
+/// by name (`send(:+, 2)`) instead of through operator syntax.
+fn binary_op_for_method_name(name: &str) -> Option<crate::ast::BinaryOp> {
+    use crate::ast::BinaryOp;
+    Some(match name {
+        "+" => BinaryOp::Add,
+        "-" => BinaryOp::Subtract,
+        "*" => BinaryOp::Multiply,
+        "/" => BinaryOp::Divide,
+        "%" => BinaryOp::Modulo,
+        "**" => BinaryOp::Power,
+        "==" => BinaryOp::Equal,
+        "===" => BinaryOp::CaseEqual,
+        "!=" => BinaryOp::NotEqual,
+        "<" => BinaryOp::Less,
+        ">" => BinaryOp::Greater,
+        "<=" => BinaryOp::LessEqual,
+        ">=" => BinaryOp::GreaterEqual,
+        "<=>" => BinaryOp::Spaceship,
+        "&" => BinaryOp::BitwiseAnd,
+        "|" => BinaryOp::BitwiseOr,
+        "^" => BinaryOp::Xor,
+        _ => return None,
+    })
 }

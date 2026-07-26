@@ -287,7 +287,7 @@ fn test_all_classes() {
     let builtins = BuiltinClasses::new();
     let all = builtins.all_classes();
 
-    assert_eq!(all.len(), 22);
+    assert_eq!(all.len(), 24);
     assert!(all.contains_key("Dir"));
     assert!(all.contains_key("BasicObject"));
     assert!(all.contains_key("Object"));
@@ -418,7 +418,7 @@ fn test_class_of_method_object() {
     let method = Method::new("foo".to_string(), vec![], vec![]);
     let obj = Object::Method(Rc::new(method));
     let class = builtins.class_of(&obj);
-    assert_eq!(class.name(), "Object");
+    assert_eq!(class.name(), "Method");
 }
 
 // ── class_of for Result (builtin_classes.rs line 110) ─────────────────────────

@@ -38,6 +38,10 @@ pub struct BuiltinClasses {
     pub file_class: Rc<Class>,
     /// Dir class for directory operations
     pub dir_class: Rc<Class>,
+    /// Proc class (blocks, procs, and lambdas)
+    pub proc_class: Rc<Class>,
+    /// Method class (bound and unbound method objects)
+    pub method_class: Rc<Class>,
 }
 
 impl BuiltinClasses {
@@ -60,6 +64,8 @@ impl BuiltinClasses {
         // Create utility classes
         let file_class = Rc::new(Class::new("File", Some(Rc::clone(&object_class))));
         let dir_class = Rc::new(Class::new("Dir", Some(Rc::clone(&object_class))));
+        let proc_class = Rc::new(Class::new("Proc", Some(Rc::clone(&object_class))));
+        let method_class = Rc::new(Class::new("Method", Some(Rc::clone(&object_class))));
 
         // Create exception hierarchy
         let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
@@ -96,6 +102,8 @@ impl BuiltinClasses {
             value_error_class,
             file_class,
             dir_class,
+            proc_class,
+            method_class,
         }
     }
 
@@ -113,8 +121,8 @@ impl BuiltinClasses {
             Object::Set(_) => Rc::clone(&self.set_class),
             Object::Instance(inst) => Rc::clone(&inst.borrow().class),
             Object::Class(_) | Object::Module(_) => Rc::clone(&self.object_class),
-            Object::Method(_) => Rc::clone(&self.object_class),
-            Object::Block(_) => Rc::clone(&self.object_class),
+            Object::Method(_) => Rc::clone(&self.method_class),
+            Object::Block(_) => Rc::clone(&self.proc_class),
             Object::Binding(_) => Rc::clone(&self.object_class),
             Object::Exception(_) => Rc::clone(&self.exception_class),
             Object::Result(_) => Rc::clone(&self.object_class),
@@ -229,7 +237,9 @@ impl BuiltinClasses {
         );
         classes.insert("Symbol".to_string(), Rc::clone(&self.string_class));
         classes.insert("Numeric".to_string(), Rc::clone(&self.integer_class));
-        classes.insert("Proc".to_string(), Rc::clone(&self.object_class));
+        classes.insert("Proc".to_string(), Rc::clone(&self.proc_class));
+        classes.insert("Method".to_string(), Rc::clone(&self.method_class));
+        classes.insert("UnboundMethod".to_string(), Rc::clone(&self.method_class));
         classes.insert("NilClass".to_string(), Rc::clone(&self.object_class));
         classes.insert("TrueClass".to_string(), Rc::clone(&self.object_class));
         classes.insert("FalseClass".to_string(), Rc::clone(&self.object_class));

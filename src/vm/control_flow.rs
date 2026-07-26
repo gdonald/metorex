@@ -19,8 +19,11 @@ pub(crate) enum ControlFlow {
     /// A break statement was encountered, optionally with a value (Ruby's
     /// `break <expr>` returns the value from the enclosing loop/method call).
     Break { value: Object, position: Position },
-    /// A continue statement was encountered.
-    Continue { position: Position },
+    /// A continue statement was encountered, optionally with a value
+    /// (`next <expr>` inside a lambda-bodied method returns that value).
+    Continue { value: Object, position: Position },
+    /// A redo statement was encountered — restart the enclosing body.
+    Redo { position: Position },
     /// An exception was raised and is propagating.
     Exception {
         exception: Object,

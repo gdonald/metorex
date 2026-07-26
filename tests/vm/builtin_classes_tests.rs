@@ -103,7 +103,7 @@ fn class_of_method() {
     use metorex::object::Method;
     let method = Object::Method(Rc::new(Method::new("foo".to_string(), vec![], vec![])));
     let class = builtins.class_of(&method);
-    assert_eq!(class.name(), "Object");
+    assert_eq!(class.name(), "Method");
 }
 
 #[test]
@@ -118,7 +118,7 @@ fn class_of_block() {
         captured_def_scope: vec![],
     }));
     let class = builtins.class_of(&block);
-    assert_eq!(class.name(), "Object");
+    assert_eq!(class.name(), "Proc");
 }
 
 #[test]

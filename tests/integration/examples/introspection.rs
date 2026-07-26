@@ -32,9 +32,9 @@ fn test_introspection_closure_namespace_execution() {
     let expected = r#"simple_func
 simple_func
 nil
-Object
-Object
-<Binding with 149 vars>
+Proc
+Proc
+<Binding with 151 vars>
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");

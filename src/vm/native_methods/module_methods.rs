@@ -386,8 +386,14 @@ impl VirtualMachine {
                     Some(Object::Symbol(s)) => (**s).clone(),
                     _ => return Ok(Some(Object::Nil)),
                 };
-                if let Some(method) = module_rc.find_method(&name_str) {
-                    return Ok(Some(Object::Method(method)));
+                if let Some((owner, method)) = module_rc.find_method_with_owner(&name_str) {
+                    if method.owner_class.is_some() {
+                        return Ok(Some(Object::Method(method)));
+                    }
+                    let mut unbound = (*method).clone();
+                    unbound.owner = Some(owner.name().to_string());
+                    unbound.owner_class = Some(owner);
+                    return Ok(Some(Object::Method(Rc::new(unbound))));
                 }
                 // Synthesize a stub for well-known Module-private mixin
                 // hooks so `Module.instance_method(:append_features)` works

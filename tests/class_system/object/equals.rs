@@ -183,10 +183,14 @@ fn test_equals_method() {
         variadic_param: None,
         body: vec![],
         receiver: None,
+        bound_self: None,
         owner: None,
+        owner_class: None,
         source_location: None,
         captured_vars: None,
         is_undefined: false,
+        lambda_body: false,
+        captured_def_scope: Vec::new(),
         captured_refinements: Vec::new(),
     });
     let method2 = Rc::clone(&method1);
@@ -199,10 +203,14 @@ fn test_equals_method() {
         variadic_param: None,
         body: vec![],
         receiver: None,
+        bound_self: None,
         owner: None,
+        owner_class: None,
         source_location: None,
         captured_vars: None,
         is_undefined: false,
+        lambda_body: false,
+        captured_def_scope: Vec::new(),
         captured_refinements: Vec::new(),
     });
 

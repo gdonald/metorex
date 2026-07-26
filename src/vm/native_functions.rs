@@ -51,11 +51,34 @@ impl VirtualMachine {
             | "private_class_method"
             | "public_class_method"
             | "deprecate_constant"
-            | "freeze"
             | "noop_with_block" => {
                 // Visibility modifiers and Object#freeze — no-op stubs. Accept any args.
                 self.pending_block.take();
                 Ok(Object::Nil)
+            }
+            // A receiverless `freeze` freezes `self` — inside a class or
+            // module body that is the class object itself.
+            "freeze" => {
+                self.pending_block.take();
+                let current_self = self.environment().get("self").unwrap_or(Object::Nil);
+                match &current_self {
+                    Object::Class(class) | Object::Module(class) => class.freeze(),
+                    Object::Instance(instance) => instance.borrow_mut().frozen = true,
+                    _ => {}
+                }
+                Ok(current_self)
+            }
+            // Kernel#proc — the block itself is the Proc.
+            "proc" => {
+                if let Some(block) = self.pending_block.take() {
+                    return Ok(block);
+                }
+                let msg = "tried to create Proc object without a block";
+                Err(MetorexError::UncaughtException {
+                    exception: Object::exception("ArgumentError", msg.to_string()),
+                    location: crate::vm::utils::position_to_location(position),
+                    message: msg.to_string(),
+                })
             }
             "at_exit" => {
                 // Discard the block; we never invoke at_exit handlers.

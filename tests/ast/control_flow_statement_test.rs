@@ -15,6 +15,7 @@ fn test_break_statement() {
 #[test]
 fn test_continue_statement() {
     let stmt = Statement::Continue {
+        value: None,
         position: pos(1, 1),
     };
     assert_eq!(stmt.position(), pos(1, 1));
@@ -86,6 +87,7 @@ fn test_while_with_continue() {
                     position: pos(2, 14),
                 },
                 then_branch: vec![Statement::Continue {
+                    value: None,
                     position: pos(3, 5),
                 }],
                 elsif_branches: vec![],
@@ -124,6 +126,7 @@ fn test_nested_loops_with_break_and_continue() {
                     position: pos(3, 5),
                 },
                 Statement::Continue {
+                    value: None,
                     position: pos(4, 5),
                 },
             ],

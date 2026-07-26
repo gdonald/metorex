@@ -12,6 +12,11 @@ use std::rc::Rc;
 
 use super::Object;
 
+/// Placeholder parameter recorded for a block written `{ |a,| }`. The
+/// trailing comma is what tells Ruby to destructure a single array argument,
+/// so it has to survive parsing; it never binds a name.
+pub const TRAILING_COMMA_PARAM: &str = ",";
+
 /// Block/lambda/closure with captured variables
 #[derive(Debug, Clone, PartialEq)]
 pub struct BlockStatement {
@@ -69,6 +74,21 @@ impl BlockStatement {
     /// Get the captured variables
     pub fn captured_vars(&self) -> &HashMap<String, Rc<RefCell<Object>>> {
         &self.captured_vars
+    }
+
+    /// True when the parameter list ended in a comma, which makes a single
+    /// array argument destructure across the declared parameters.
+    pub fn destructures_single_array(&self) -> bool {
+        self.parameters.iter().any(|p| p == TRAILING_COMMA_PARAM)
+    }
+
+    /// Parameters that actually bind a name, excluding the trailing-comma marker.
+    pub fn binding_parameters(&self) -> Vec<String> {
+        self.parameters
+            .iter()
+            .filter(|p| *p != TRAILING_COMMA_PARAM)
+            .cloned()
+            .collect()
     }
 
     /// Invoke the block within the provided virtual machine context.

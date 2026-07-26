@@ -183,7 +183,7 @@ end
 Foo.define_method(42) { "hello" }
 "#,
     );
-    assert!(err.contains("Symbol") || err.contains("String") || err.contains("define_method"));
+    assert!(err.contains("is not a symbol nor a string"));
 }
 
 #[test]

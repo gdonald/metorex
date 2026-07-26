@@ -210,7 +210,10 @@ fn compile_continue_in_while() {
 
 #[test]
 fn compile_continue_outside_loop_errors() {
-    let stmts = vec![Statement::Continue { position: pos() }];
+    let stmts = vec![Statement::Continue {
+        value: None,
+        position: pos(),
+    }];
     let result = compile_stmts(&stmts);
     assert!(result.is_err());
     let err = result.unwrap_err();

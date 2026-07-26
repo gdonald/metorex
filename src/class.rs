@@ -415,6 +415,46 @@ impl Class {
             .and_then(|superclass| superclass.find_method(name))
     }
 
+    /// Look up a method the same way `find_method` does, returning the module
+    /// that actually defines it alongside the method itself.
+    pub fn find_method_with_owner(self: &Rc<Class>, name: &str) -> Option<(Rc<Class>, Rc<Method>)> {
+        if let Some(method) = self.methods.borrow().get(name) {
+            return Some((Rc::clone(self), Rc::clone(method)));
+        }
+
+        for mixin in self.mixins.borrow().iter() {
+            if let Some(method) = mixin.methods.borrow().get(name) {
+                return Some((Rc::clone(mixin), Rc::clone(method)));
+            }
+        }
+
+        self.superclass
+            .as_ref()
+            .and_then(|superclass| superclass.find_method_with_owner(name))
+    }
+
+    /// True when this class object is a singleton class (created by
+    /// `class << obj` or `obj.singleton_class`).
+    pub fn is_singleton_class(&self) -> bool {
+        self.get_class_var("__singleton__").is_some()
+    }
+
+    /// True when `other` appears in this module's ancestry (itself, its
+    /// mixins, or any superclass and that superclass's mixins).
+    pub fn has_ancestor(self: &Rc<Class>, other: &Rc<Class>) -> bool {
+        if Rc::ptr_eq(self, other) {
+            return true;
+        }
+        for mixin in self.mixins.borrow().iter() {
+            if mixin.has_ancestor(other) {
+                return true;
+            }
+        }
+        self.superclass
+            .as_ref()
+            .is_some_and(|superclass| superclass.has_ancestor(other))
+    }
+
     /// Remove a method defined directly on this class.
     /// Returns true if the method was found and removed, false otherwise.
     pub fn remove_method(&self, name: &str) -> bool {

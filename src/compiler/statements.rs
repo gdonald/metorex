@@ -346,7 +346,7 @@ impl Compiler {
                 Ok(())
             }
 
-            Statement::Continue { position } => {
+            Statement::Continue { position, .. } => {
                 let line = Self::pos_line(position);
                 if self.loop_stack.is_empty() {
                     return Err(MetorexError::runtime_error(

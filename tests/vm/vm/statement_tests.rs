@@ -137,6 +137,7 @@ fn break_outside_loop_produces_runtime_error() {
 fn continue_outside_loop_produces_runtime_error() {
     let mut vm = VirtualMachine::new();
     let continue_stmt = Statement::Continue {
+        value: None,
         position: pos(1, 1),
     };
 

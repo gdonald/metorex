@@ -85,17 +85,33 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let expected = block.arity();
+        // `{ |a,| }` destructures a lone array argument across its parameters,
+        // discarding any elements it has no parameter for.
+        let mut destructured = false;
+        let arguments = match (block.destructures_single_array(), arguments.first()) {
+            (true, Some(Object::Array(elements))) if arguments.len() == 1 => {
+                destructured = true;
+                elements.borrow().clone()
+            }
+            _ => arguments,
+        };
+
+        let parameters = block.binding_parameters();
+        let expected = parameters.len();
         let found = arguments.len();
-        let has_variadic = block.parameters().iter().any(|p| p.starts_with('*'));
-        let has_block_param = block.parameters().iter().any(|p| p.starts_with('&'));
+        let has_variadic = parameters.iter().any(|p| p.starts_with('*'));
+        let has_block_param = parameters.iter().any(|p| p.starts_with('&'));
 
         // Optional params (`|a, b = 1|`) widen the accepted count: `found`
         // may run from `expected - defaults` up to `expected`.
         let required = expected.saturating_sub(block.parameter_defaults.len());
 
         // Variadic params accept any number of args; skip strict arity check
-        if !has_variadic && !has_block_param && (found < required || found > expected) {
+        if !has_variadic
+            && !has_block_param
+            && !destructured
+            && (found < required || found > expected)
+        {
             return Err(callable_argument_error(
                 block.name(),
                 expected,
@@ -188,7 +204,10 @@ impl VirtualMachine {
                                     location: position_to_location(position),
                                 });
                             }
-                            ControlFlow::Continue { position } => {
+                            ControlFlow::Redo { position } => {
+                                return Err(loop_control_error("redo", position));
+                            }
+                            ControlFlow::Continue { position, .. } => {
                                 return Err(loop_control_error("continue", position));
                             }
                         }
@@ -232,7 +251,7 @@ impl VirtualMachine {
             // Define parameters as regular variables (handles *args/&block prefixes)
             bind_block_params(
                 self,
-                block.parameters(),
+                &block.binding_parameters(),
                 &block.parameter_defaults,
                 arguments,
             );
@@ -286,7 +305,10 @@ impl VirtualMachine {
                             location: position_to_location(position),
                         });
                     }
-                    ControlFlow::Continue { position } => {
+                    ControlFlow::Redo { position } => {
+                        return Err(loop_control_error("redo", position));
+                    }
+                    ControlFlow::Continue { position, .. } => {
                         return Err(loop_control_error("continue", position));
                     }
                 }
@@ -319,7 +341,7 @@ impl VirtualMachine {
             // Define parameters as regular variables (handles *args/&block prefixes)
             bind_block_params(
                 self,
-                block.parameters(),
+                &block.binding_parameters(),
                 &block.parameter_defaults,
                 arguments,
             );
@@ -337,6 +359,7 @@ impl VirtualMachine {
                     ControlFlow::Next | ControlFlow::Value(_) => {}
                     flow @ (ControlFlow::Return { .. }
                     | ControlFlow::Break { .. }
+                    | ControlFlow::Redo { .. }
                     | ControlFlow::Continue { .. }
                     | ControlFlow::Exception { .. }) => {
                         return Ok(flow);

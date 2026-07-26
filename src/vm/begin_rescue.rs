@@ -162,7 +162,10 @@ impl VirtualMachine {
                         location: position_to_location(position),
                     });
                 }
-                ControlFlow::Continue { position } => {
+                ControlFlow::Redo { position } => {
+                    return Err(loop_control_error("redo", position));
+                }
+                ControlFlow::Continue { position, .. } => {
                     return Err(loop_control_error("continue", position));
                 }
             }

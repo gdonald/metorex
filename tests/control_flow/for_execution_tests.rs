@@ -284,6 +284,7 @@ fn test_for_loop_with_continue() {
                         position: pos(3, 13),
                     },
                     then_branch: vec![Statement::Continue {
+                        value: None,
                         position: pos(4, 5),
                     }],
                     elsif_branches: vec![],
