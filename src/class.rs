@@ -57,6 +57,9 @@ pub struct Class {
     /// outside the module's lexical scope, MRI raises NameError /private
     /// constant/.
     private_constants: RefCell<HashSet<String>>,
+    /// Constant names marked deprecated via `Module#deprecate_constant`.
+    /// Reading one emits a "constant Mod::Const is deprecated" warning.
+    deprecated_constants: RefCell<HashSet<String>>,
     /// Source location (file, line) of each `autoload :Const, ...` call.
     /// Returned by `Module#const_source_location` when an autoload is
     /// pending or when another thread asks during a load.
@@ -88,6 +91,7 @@ impl Class {
             autoloads: RefCell::new(HashMap::new()),
             unrealized_autoloads: RefCell::new(HashSet::new()),
             private_constants: RefCell::new(HashSet::new()),
+            deprecated_constants: RefCell::new(HashSet::new()),
             autoload_locations: RefCell::new(HashMap::new()),
             const_locations: RefCell::new(HashMap::new()),
         }
@@ -141,6 +145,17 @@ impl Class {
     /// `mark_private_constant`). Used by `Module#public_constant`.
     pub fn unmark_private_constant(&self, name: &str) {
         self.private_constants.borrow_mut().remove(name);
+    }
+
+    /// Mark `name` as deprecated — reading it warns but still returns the
+    /// value.
+    pub fn mark_deprecated_constant(&self, name: impl Into<String>) {
+        self.deprecated_constants.borrow_mut().insert(name.into());
+    }
+
+    /// Whether `name` is marked deprecated on this class.
+    pub fn is_deprecated_constant(&self, name: &str) -> bool {
+        self.deprecated_constants.borrow().contains(name)
     }
 
     /// Mark `name` as an autoload that fired, loaded its file, and didn't
@@ -652,6 +667,7 @@ impl Class {
             autoloads: RefCell::new(source.autoloads.borrow().clone()),
             unrealized_autoloads: RefCell::new(source.unrealized_autoloads.borrow().clone()),
             private_constants: RefCell::new(source.private_constants.borrow().clone()),
+            deprecated_constants: RefCell::new(source.deprecated_constants.borrow().clone()),
             autoload_locations: RefCell::new(source.autoload_locations.borrow().clone()),
             const_locations: RefCell::new(source.const_locations.borrow().clone()),
         };
@@ -681,6 +697,7 @@ impl Class {
                 autoloads: RefCell::new(src_sc.autoloads.borrow().clone()),
                 unrealized_autoloads: RefCell::new(src_sc.unrealized_autoloads.borrow().clone()),
                 private_constants: RefCell::new(src_sc.private_constants.borrow().clone()),
+                deprecated_constants: RefCell::new(src_sc.deprecated_constants.borrow().clone()),
                 autoload_locations: RefCell::new(src_sc.autoload_locations.borrow().clone()),
                 const_locations: RefCell::new(src_sc.const_locations.borrow().clone()),
             });
@@ -709,6 +726,7 @@ impl Clone for Class {
             autoloads: RefCell::new(self.autoloads.borrow().clone()),
             unrealized_autoloads: RefCell::new(self.unrealized_autoloads.borrow().clone()),
             private_constants: RefCell::new(self.private_constants.borrow().clone()),
+            deprecated_constants: RefCell::new(self.deprecated_constants.borrow().clone()),
             autoload_locations: RefCell::new(self.autoload_locations.borrow().clone()),
             const_locations: RefCell::new(self.const_locations.borrow().clone()),
         }

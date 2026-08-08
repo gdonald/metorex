@@ -500,6 +500,11 @@ impl VirtualMachine {
                                 *position,
                             )?;
                             Ok(())
+                        } else if self
+                            .call_warning_methods(&cls, "[]=", &[idx, value])
+                            .is_some()
+                        {
+                            Ok(())
                         } else {
                             Err(MetorexError::runtime_error(
                                 "No []= method defined on class/module",

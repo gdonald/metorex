@@ -16,6 +16,9 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        if let Some(result) = self.call_warning_methods(class_rc, method_name, arguments) {
+            return Ok(Some(result));
+        }
         let non_instantiable = matches!(class_rc.name(), "TrueClass" | "FalseClass" | "NilClass");
         if non_instantiable && method_name == "allocate" {
             let exc = Object::exception(
@@ -1176,6 +1179,7 @@ impl VirtualMachine {
                 // Without removing all three, the name would still surface
                 // in `#constants` because the constants list aggregates
                 // class_vars + autoloads + unrealized autoloads.
+                self.warn_deprecated_constant(class_rc, &const_name, position);
                 let mut removed = class_rc.remove_class_var(&const_name);
                 // Object's constants are top-level constants — drop the
                 // globals binding too so bare references stop resolving.
@@ -1486,6 +1490,7 @@ impl VirtualMachine {
                         }
                     };
                     if i + 1 == segments.len() {
+                        self.warn_deprecated_constant(&current, seg, position);
                         value = resolved;
                     } else {
                         match resolved {

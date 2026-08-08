@@ -197,10 +197,13 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Operator method names (`def +(other)`, `def ==(other)`, `def [](key)`, `def []=(key, value)`)
 - Module and mixin support (`module`, `include`, `extend`)
 - `define_method` for dynamic method definition on classes, taking a block, a Proc, a `Method`, or an `UnboundMethod`. It returns the method name as a Symbol, inherits the current `private`/`public` visibility when called from inside the target module, always makes `initialize` private, fires the `method_added` hook, and raises `FrozenError` on a frozen module
+- `define_singleton_method` for defining a method on a single object's singleton class, accepting the same block, Proc, `Method`, or `UnboundMethod` bodies as `define_method`
 - Bodies installed by `define_method` follow lambda control flow: `return`, `break`, and `next` finish the method with a value, and `redo` re-runs it
 - Proc and Method objects: `Kernel#proc`, `Proc.new`, `Symbol#to_proc`, `Method#to_proc` (which stays bound to its original receiver), `Method#unbind`, and `Method#owner` (returns the defining module)
 - `method_missing` hook for intercepting undefined method calls
 - Runtime class modification: `remove_method`, `undef_method`, `alias_method`, `module_function`
+- Constant visibility on a module receiver: `private_constant`, `public_constant`, and `deprecate_constant` (which returns the receiver and raises `NameError` for an undefined name). Reading a deprecated constant through `::`, `const_get`, or `remove_const` warns once the `Warning[:deprecated]` category is switched on
+- `Warning[:category]` and `Warning[:category] = bool` for reading and setting the warning category switches. Like MRI, `:deprecated` starts off
 - Class variables: `class_variable_set`, `class_variable_get`, `class_variable_defined?`, `class_variables` (lookup walks included modules and superclasses; `class_variables(false)` lists only own names)
 - Module ancestry comparison with `<=>`: `-1` when the receiver is a descendant or includer of the argument, `+1` when it is an ancestor or included-by, `0` when they are the same module, and `nil` when unrelated or the argument is not a module
 - Reflection: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`

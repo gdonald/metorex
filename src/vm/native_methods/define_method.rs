@@ -85,6 +85,18 @@ impl VirtualMachine {
         Ok(Object::Symbol(Rc::new(method_name)))
     }
 
+    /// Implements `Object#define_singleton_method`: the method is installed on
+    /// the receiver's singleton class, so only that object responds to it.
+    pub(crate) fn object_define_singleton_method(
+        &mut self,
+        receiver: &Object,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let singleton = self.singleton_class_of(receiver);
+        self.module_define_method(&singleton, arguments, position)
+    }
+
     /// Convert a block/Proc into a method body, carrying over its parameter
     /// shape and the variables it closed over.
     fn method_from_block(&mut self, method_name: &str, block: &Rc<BlockStatement>) -> Method {

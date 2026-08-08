@@ -202,10 +202,10 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.23. core/module/const_source_location_spec — 1 file, 42 examples, 65 expectations, 0 failures, 0 errors
   - [x] 4.7.24. core/module/constants_spec — 1 file, 11 examples, 30 expectations, 0 failures, 0 errors
   - [x] 4.7.25. core/module/define_method_spec — 1 file, 88 examples, 102 expectations, 0 failures, 0 errors
-  - [ ] 4.7.26. core/module/define_singleton_method_spec
-  - [ ] 4.7.27. core/module/deprecate_constant_spec
-  - [ ] 4.7.28. core/module/eql_spec
-  - [ ] 4.7.29. core/module/equal_spec
+  - [x] 4.7.26. core/module/define_singleton_method_spec — 1 file, 1 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.7.27. core/module/deprecate_constant_spec — 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.7.28. core/module/eql_spec — 1 file, 1 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.7.29. core/module/equal_spec — 1 file, 1 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.7.30. core/module/equal_value_spec
   - [ ] 4.7.31. core/module/extend_object_spec
   - [ ] 4.7.32. core/module/extended_spec

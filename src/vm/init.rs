@@ -244,6 +244,13 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     let object_space = Rc::new(Class::new("ObjectSpace", None));
     globals.set("ObjectSpace", Object::Module(object_space));
 
+    // Warning — `Warning[:category]` reads and `Warning[:category] = bool`
+    // writes the per-category warning switches. Categories are stored as
+    // class variables on the module and start off, matching MRI's default
+    // for `:deprecated`.
+    let warning = Rc::new(Class::new("Warning", None));
+    globals.set("Warning", Object::Module(warning));
+
     // Time / IO — placeholder stubs (used in mspec)
     let time = Rc::new(Class::new(
         "Time",

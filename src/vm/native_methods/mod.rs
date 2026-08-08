@@ -6,6 +6,7 @@
 mod array_methods;
 pub(crate) mod ast_methods;
 mod class_methods;
+mod constant_visibility;
 mod define_method;
 mod exception_methods;
 mod file_methods;
@@ -57,6 +58,22 @@ impl VirtualMachine {
             && s.as_str().trim() == "self"
         {
             return Ok(Some(binding.receiver.clone().unwrap_or(Object::Nil)));
+        }
+
+        // `define_singleton_method` works on any receiver, so it is handled
+        // before the per-type tables.
+        if method_name == "define_singleton_method" {
+            return self
+                .object_define_singleton_method(receiver, arguments, position)
+                .map(Some);
+        }
+
+        // Constant visibility and deprecation apply to any class or module
+        // receiver, so they are handled before the per-type tables.
+        if let Some(result) =
+            self.call_constant_visibility_methods(receiver, method_name, arguments, position)?
+        {
+            return Ok(Some(result));
         }
 
         // Block/Lambda methods

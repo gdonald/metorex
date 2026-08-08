@@ -783,6 +783,45 @@ fn test_metaprogramming_define_method_from_callable_no_parens_execution() {
 }
 
 #[test]
+fn test_metaprogramming_define_singleton_method_execution() {
+    let expected = "42\n20\nbuilt\nhi\nfalse\n";
+    let output = run_example("metaprogramming/define_singleton_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_define_singleton_method_no_parens_execution() {
+    let expected = "42\nhey\n";
+    let output = run_example("metaprogramming/define_singleton_method_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_deprecate_constant_execution() {
+    let expected = concat!(
+        "true\n",
+        "false\n",
+        ":old\n",
+        ":kept\n",
+        ":old\n",
+        "true\n",
+        ":old\n",
+        "NameError\n",
+        "private\n",
+        ":hidden\n"
+    );
+    let output = run_example("metaprogramming/deprecate_constant.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_deprecate_constant_no_parens_execution() {
+    let expected = "2\n1\nprivate\n";
+    let output = run_example("metaprogramming/deprecate_constant_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_metaprogramming_define_method_lambda_control_flow_execution() {
     let expected = "42\n42\n42\n[:first, :second]\n1\n[1, 2]\n";
     let output = run_example("metaprogramming/define_method_lambda_control_flow.rb");

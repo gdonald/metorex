@@ -376,6 +376,7 @@ impl VirtualMachine {
                                     });
                                 }
                             }
+                            self.warn_deprecated_constant(&class_rc, name, *position);
                             return Ok(v);
                         }
                         // Uninitialized constants dispatch const_missing —
