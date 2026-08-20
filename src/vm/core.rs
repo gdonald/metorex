@@ -94,6 +94,10 @@ pub struct VirtualMachine {
     /// The lexical nesting captured by each method currently on the call
     /// stack, so `Module.nesting` inside a body reports the definition site.
     pub(crate) method_nesting_stack: Vec<Vec<Rc<crate::class::Class>>>,
+    /// Depth of autoload-driven re-runs of an already-required file. A
+    /// constant assignment during one is repeating work Ruby would not have
+    /// repeated, so its "already initialized" warning is an artifact.
+    pub(crate) autoload_reload_depth: usize,
 }
 
 /// A single activated refinement: the refinement module and the set of target
@@ -143,22 +147,52 @@ impl VirtualMachine {
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
             method_nesting_stack: Vec::new(),
+            autoload_reload_depth: 0,
         }
     }
 
     /// Activate a refinement module in the innermost scope.
     pub(crate) fn activate_refinement(&mut self, module: Rc<crate::class::Class>) {
-        // Snapshot the set of keyed targets refined at activation time.
-        let mut classes = std::collections::HashSet::new();
-        for key in module.class_var_names() {
-            if key.starts_with("__refine__") {
-                classes.insert(key.clone());
+        // Snapshot the keyed targets refined at activation time, including
+        // those the module picks up from the modules it includes.
+        let mut entries = Vec::new();
+        let mut sources = vec![Rc::clone(&module)];
+        sources.extend(module.transitive_mixins());
+        for source in sources {
+            let classes: std::collections::HashSet<String> = source
+                .class_var_names()
+                .into_iter()
+                .filter(|key| key.starts_with(crate::vm::REFINEMENT_KEY_PREFIX))
+                .collect();
+            if !classes.is_empty() {
+                entries.push(RefinementEntry {
+                    module: source,
+                    classes,
+                });
             }
         }
-        let entry = RefinementEntry { module, classes };
         if let Some(top) = self.refinement_scopes.last_mut() {
-            top.push(entry);
+            top.extend(entries);
         }
+    }
+
+    /// The refinement modules active in the innermost scope, which is what
+    /// `Module.used_refinements` reports.
+    pub(crate) fn active_refinements(&self) -> Vec<Object> {
+        let mut refinements = Vec::new();
+        let Some(scope) = self.refinement_scopes.last() else {
+            return refinements;
+        };
+        for entry in scope {
+            for key in &entry.classes {
+                if let Some(Object::Class(holder) | Object::Module(holder)) =
+                    entry.module.get_class_var(key)
+                {
+                    refinements.push(Object::Module(holder));
+                }
+            }
+        }
+        refinements
     }
 
     /// Look up a refined method for the given target class (keyed by pointer
@@ -173,7 +207,8 @@ impl VirtualMachine {
                 if !entry.classes.contains(target_key) {
                     continue;
                 }
-                if let Some(Object::Class(holder)) = entry.module.get_class_var(target_key)
+                if let Some(Object::Class(holder) | Object::Module(holder)) =
+                    entry.module.get_class_var(target_key)
                     && let Some(m) = holder.find_method(method_name)
                 {
                     return Some(m);

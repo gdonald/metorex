@@ -247,20 +247,20 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.68. core/module/public_instance_method_spec — 1 file, 10 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.7.69. core/module/public_instance_methods_spec — 1 file, 7 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.7.70. core/module/public_method_defined_spec — 1 file, 10 examples, 20 expectations, 0 failures, 0 errors
-  - [ ] 4.7.71. core/module/public_spec
+  - [x] 4.7.71. core/module/public_spec — 1 file, 19 examples, 28 expectations, 0 failures, 0 errors
   - [ ] 4.7.72. core/module/refine_spec
-  - [ ] 4.7.73. core/module/refinements_spec
-  - [ ] 4.7.74. core/module/remove_class_variable_spec
-  - [ ] 4.7.75. core/module/remove_const_spec
-  - [ ] 4.7.76. core/module/remove_method_spec
+  - [x] 4.7.73. core/module/refinements_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.7.74. core/module/remove_class_variable_spec — 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.7.75. core/module/remove_const_spec — 1 file, 12 examples, 26 expectations, 0 failures, 0 errors
+  - [x] 4.7.76. core/module/remove_method_spec — 1 file, 14 examples, 17 expectations, 0 failures, 0 errors
   - [ ] 4.7.77. core/module/ruby2_keywords_spec
-  - [ ] 4.7.78. core/module/set_temporary_name_spec
-  - [ ] 4.7.79. core/module/singleton_class_spec
-  - [ ] 4.7.80. core/module/to_s_spec
-  - [ ] 4.7.81. core/module/undef_method_spec
-  - [ ] 4.7.82. core/module/undefined_instance_methods_spec
-  - [ ] 4.7.83. core/module/used_refinements_spec
-  - [ ] 4.7.84. core/module/using_spec
+  - [x] 4.7.78. core/module/set_temporary_name_spec — 1 file, 14 examples, 35 expectations, 0 failures, 0 errors
+  - [x] 4.7.79. core/module/singleton_class_spec — 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.7.80. core/module/to_s_spec — 1 file, 10 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 4.7.81. core/module/undef_method_spec — 1 file, 19 examples, 31 expectations, 0 failures, 0 errors
+  - [x] 4.7.82. core/module/undefined_instance_methods_spec — 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.7.83. core/module/used_refinements_spec — 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.7.84. core/module/using_spec — 1 file, 20 examples, 20 expectations, 0 failures, 0 errors
 - [ ] 4.8. core/kernel
   - [ ] 4.8.1. core/kernel/Array_spec
   - [ ] 4.8.2. core/kernel/Complex_spec

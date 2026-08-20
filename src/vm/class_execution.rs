@@ -382,10 +382,13 @@ impl VirtualMachine {
         self.def_scope_stack.push(Rc::clone(class));
         // A class/module body is not a method context, so `using` is permitted
         // even when this block runs deep inside method calls (e.g. mspec's
-        // runner invoking `Class.new do using ...; end`).
+        // runner invoking `Class.new do using ...; end`). The refinements it
+        // activates are lexical to the body, so they get their own scope.
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
+        self.push_refinement_scope();
         let result = self.apply_class_body(class, &block.body, position);
+        self.pop_refinement_scope();
         self.user_def_nesting = saved_nesting;
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
@@ -1912,7 +1915,9 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Rc<Class>>, MetorexError> {
         if let Object::Module(module_rc) | Object::Class(module_rc) = argument
-            && module_rc.name().starts_with("<refinement:")
+            && module_rc
+                .get_class_var(crate::vm::REFINEMENT_LABEL_KEY)
+                .is_some()
         {
             let msg = "Cannot include refinement".to_string();
             return Err(MetorexError::UncaughtException {

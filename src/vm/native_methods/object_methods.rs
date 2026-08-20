@@ -1100,7 +1100,7 @@ impl VirtualMachine {
     }
 
     /// Dispatch <=> on receiver with other, returning Some(i64) or None.
-    fn dispatch_spaceship(
+    pub(crate) fn dispatch_spaceship(
         &mut self,
         receiver: &Object,
         other: &Object,

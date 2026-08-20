@@ -81,8 +81,11 @@ impl Object {
                     Rc::ptr_eq(a, b)
                 }
             }
-            (Object::Class(a), Object::Class(b)) => Rc::ptr_eq(a, b),
-            (Object::Module(a), Object::Module(b)) => Rc::ptr_eq(a, b),
+            // Classes and modules share one representation, so the same
+            // object compares equal whichever variant is holding it.
+            (Object::Class(a) | Object::Module(a), Object::Class(b) | Object::Module(b)) => {
+                Rc::ptr_eq(a, b)
+            }
             (Object::Method(a), Object::Method(b)) => {
                 // Two Method objects are equal when they wrap the same
                 // underlying definition bound to the same receiver. We use

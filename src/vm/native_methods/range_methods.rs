@@ -147,14 +147,21 @@ impl VirtualMachine {
                         Ok(Some(Object::Bool(in_range)))
                     }
                     _ => {
-                        // Fallback: compare using Display representation
-                        let s = format!("{}", start);
-                        let e = format!("{}", end);
-                        let v = format!("{}", arguments[0]);
-                        let in_range = if *exclusive {
-                            v >= s && v < e
-                        } else {
-                            v >= s && v <= e
+                        // Anything else is compared with `<=>`, so a range of
+                        // Comparable objects answers by their own ordering.
+                        let value = arguments[0].clone();
+                        let from_start = self.dispatch_spaceship(&value, start, position)?;
+                        let to_end = self.dispatch_spaceship(&value, end, position)?;
+                        let in_range = match (from_start, to_end) {
+                            (Some(after_start), Some(before_end)) => {
+                                after_start >= 0
+                                    && if *exclusive {
+                                        before_end < 0
+                                    } else {
+                                        before_end <= 0
+                                    }
+                            }
+                            _ => false,
                         };
                         Ok(Some(Object::Bool(in_range)))
                     }

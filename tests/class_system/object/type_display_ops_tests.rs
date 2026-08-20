@@ -205,7 +205,11 @@ fn display_dict_elements() {
 fn display_instance() {
     let class = Rc::new(Class::new("Dog", None));
     let inst = Object::instance(class);
-    assert_eq!(format!("{}", inst), "<Dog instance>");
+    let display = format!("{}", inst);
+    assert!(
+        display.starts_with("#<Dog:0x") && display.ends_with('>'),
+        "unexpected display: {display}"
+    );
 }
 
 #[test]

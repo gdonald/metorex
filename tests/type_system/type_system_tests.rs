@@ -464,7 +464,10 @@ fn test_to_string_class_and_instance() {
 
     let instance = Object::Instance(Rc::new(RefCell::new(Instance::new(class))));
     let s = instance.to_string();
-    assert_eq!(s, "<MyClass instance>");
+    assert!(
+        s.starts_with("#<MyClass:0x") && s.ends_with('>'),
+        "unexpected display: {s}"
+    );
 }
 
 // ============================================================================

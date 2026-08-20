@@ -115,19 +115,18 @@ impl VirtualMachine {
         // was defined, as a fresh scope. Reset the live user_def_nesting to 0
         // while these refinements are active (method body re-enters top-level
         // lexical scope semantically for nested defs).
-        let has_captured = !method.captured_refinements.is_empty();
-        if has_captured {
-            self.refinement_scopes.push(
-                method
-                    .captured_refinements
-                    .iter()
-                    .map(|(m, cs)| crate::vm::core::RefinementEntry {
-                        module: Rc::clone(m),
-                        classes: cs.iter().cloned().collect(),
-                    })
-                    .collect(),
-            );
-        }
+        // A method body sees the refinements that were active where it was
+        // defined, and only those: the caller's activations are not lexically
+        // in scope for it.
+        let captured_scope: Vec<crate::vm::core::RefinementEntry> = method
+            .captured_refinements
+            .iter()
+            .map(|(m, cs)| crate::vm::core::RefinementEntry {
+                module: Rc::clone(m),
+                classes: cs.iter().cloned().collect(),
+            })
+            .collect();
+        let caller_scopes = std::mem::replace(&mut self.refinement_scopes, vec![captured_scope]);
         // Snapshot the positional args so `super` (bare form, inside the
         // body) can forward them to the parent method.
         self.method_arg_stack.push(arguments_for_body.clone());
@@ -147,9 +146,7 @@ impl VirtualMachine {
         );
         self.method_nesting_stack.pop();
         self.method_arg_stack.pop();
-        if has_captured {
-            self.refinement_scopes.pop();
-        }
+        self.refinement_scopes = caller_scopes;
         self.user_def_nesting = self.user_def_nesting.saturating_sub(1);
 
         match execution_result {

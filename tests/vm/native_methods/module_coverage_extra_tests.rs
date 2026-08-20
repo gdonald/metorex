@@ -117,19 +117,17 @@ module UM
 end
 UM.send(:undef_method, :gone)
 "#);
-    assert_eq!(result, Some(Object::Nil));
+    assert!(matches!(result, Some(Object::Module(_))));
 }
 
 #[test]
-fn module_undef_method_wrong_arg_count_errors() {
-    let err = run_err(
-        r#"
+fn module_undef_method_without_arguments_returns_self() {
+    let result = run(r#"
 module UM2
 end
 UM2.send(:undef_method)
-"#,
-    );
-    assert!(err.contains("argument"));
+"#);
+    assert!(matches!(result, Some(Object::Module(_))));
 }
 
 #[test]
@@ -141,7 +139,10 @@ end
 UM3.send(:undef_method, 42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── alias_method on module (lines 155-213) ───────────────────────────────────

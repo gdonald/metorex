@@ -108,8 +108,14 @@ impl VirtualMachine {
                         &method_obj.body,
                     )));
                 }
+                // Ruby reports a variadic method as -(required + 1).
                 "arity" => {
-                    return Ok(Some(Object::Int(method_obj.parameters.len() as i64)));
+                    let parameters = method_obj.parameters.len();
+                    let arity = match &method_obj.variadic_param {
+                        Some(_) => -((parameters as i64) - 1) - 1,
+                        None => parameters as i64,
+                    };
+                    return Ok(Some(Object::Int(arity)));
                 }
                 _ => {}
             }

@@ -97,16 +97,16 @@ impl Parser {
         // comma-separated identifier list; if a `{` or `do` follows, those
         // are the lambda's parameters. Otherwise backtrack to the bare
         // `-> expr` form below.
-        if matches!(self.peek().kind, TokenKind::Ident(_)) {
+        if matches!(self.peek().kind, TokenKind::Ident(_) | TokenKind::Star) {
             let saved_position = self.stream().current_position();
             let mut params = Vec::new();
             loop {
-                if let TokenKind::Ident(name) = self.peek().kind.clone() {
-                    params.push(name);
-                    self.advance();
-                } else {
-                    params.clear();
-                    break;
+                match self.parse_lambda_parameter() {
+                    Some(param) => params.push(param),
+                    None => {
+                        params.clear();
+                        break;
+                    }
                 }
                 self.skip_whitespace();
                 if !self.match_token(&[TokenKind::Comma]) {
@@ -189,6 +189,25 @@ impl Parser {
         }
     }
 
+    /// One lambda parameter: a name, or a splat with an optional name. The
+    /// splat is encoded with a `*` prefix, the same way block parameters
+    /// record one.
+    pub(crate) fn parse_lambda_parameter(&mut self) -> Option<String> {
+        let splat = self.match_token(&[TokenKind::Star]);
+        if splat {
+            self.skip_whitespace();
+        }
+        match self.peek().kind.clone() {
+            TokenKind::Ident(name) => {
+                self.advance();
+                Some(if splat { format!("*{}", name) } else { name })
+            }
+            // `-> * { }` takes any arguments and names none of them.
+            _ if splat => Some("*".to_string()),
+            _ => None,
+        }
+    }
+
     fn stabby_lambda_with_params(
         &mut self,
         token_position: Position,
@@ -199,10 +218,7 @@ impl Parser {
         if !self.check(&[TokenKind::RParen]) {
             loop {
                 self.skip_whitespace();
-                if let TokenKind::Ident(name) = self.peek().kind.clone() {
-                    params.push(name);
-                    self.advance();
-                }
+                params.extend(self.parse_lambda_parameter());
                 self.skip_whitespace();
                 if !self.match_token(&[TokenKind::Comma]) {
                     break;

@@ -263,7 +263,11 @@ impl VirtualMachine {
     /// methods, which belong to the objects it describes rather than to it.
     pub(crate) fn responds_to(&self, receiver: &Object, name: &str) -> bool {
         let (Object::Class(class_rc) | Object::Module(class_rc)) = receiver else {
-            return self.lookup_method(receiver, name).is_some();
+            // A tombstone left by `undef_method` is not something the object
+            // responds to.
+            return self
+                .lookup_method(receiver, name)
+                .is_some_and(|(_, method)| !method.is_undefined);
         };
         if module_level_method(class_rc, name).is_some() {
             return true;
@@ -285,6 +289,24 @@ impl VirtualMachine {
 
     /// Whether `name` resolves to a private or protected method on
     /// `receiver`, so an explicit-receiver call would be refused.
+    /// Whether `name` already carries `visibility` through `class_rc`'s
+    /// ancestors, so declaring it again records nothing.
+    pub(crate) fn inherits_visibility(
+        &self,
+        class_rc: &Rc<Class>,
+        name: &str,
+        visibility: &str,
+    ) -> bool {
+        match visibility {
+            "private" => self.inherits_private(class_rc, name),
+            "protected" => self.inherits_protected(class_rc, name),
+            _ => {
+                class_rc.find_method(name).is_some()
+                    && self.inherited_visibility(class_rc, name).is_none()
+            }
+        }
+    }
+
     /// Whether `name` is already private through `class_rc`'s ancestors.
     pub(crate) fn inherits_private(&self, class_rc: &Rc<Class>, name: &str) -> bool {
         matches!(self.inherited_visibility(class_rc, name), Some(true))

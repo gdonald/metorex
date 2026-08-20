@@ -8,6 +8,13 @@ use crate::vm::native_methods::is_valid_constant_name;
 use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
+/// Prefix for the class-variable keys under which a module records the
+/// refinements created in its body by `refine`.
+pub(crate) const REFINEMENT_KEY_PREFIX: &str = "__refine__";
+
+/// Class-variable key holding a refinement's display label, `Target@Module`.
+pub(crate) const REFINEMENT_LABEL_KEY: &str = "__refinement_label__";
+
 impl VirtualMachine {
     pub(crate) fn call_module_methods(
         &mut self,
@@ -42,6 +49,25 @@ impl VirtualMachine {
             return Ok(Some(result));
         }
 
+        // Module#refinements: the refinement modules created by `refine` in
+        // this module's own body, in definition order.
+        if method_name == "refinements" && arguments.is_empty() {
+            let refinements: Vec<Object> = module_rc
+                .class_var_names()
+                .into_iter()
+                .filter(|key| key.starts_with(REFINEMENT_KEY_PREFIX))
+                .filter_map(|key| match module_rc.get_class_var(&key) {
+                    Some(Object::Class(holder) | Object::Module(holder)) => {
+                        Some(Object::Module(holder))
+                    }
+                    _ => None,
+                })
+                .collect();
+            return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                refinements,
+            )))));
+        }
+
         if method_name == "refine" {
             if arguments.len() != 1 {
                 return Err(method_argument_error(
@@ -59,15 +85,34 @@ impl VirtualMachine {
                     ));
                 }
             };
-            let refinement_key = format!("__refine__{}@{:p}", target.name(), Rc::as_ptr(&target));
+            let refinement_key = format!(
+                "{}{}@{:p}",
+                REFINEMENT_KEY_PREFIX,
+                target.name(),
+                Rc::as_ptr(&target)
+            );
             let holder = match module_rc.get_class_var(&refinement_key) {
-                Some(Object::Class(existing)) => existing,
-                _ => Rc::new(Class::new_module(format!("<refinement:{}>", target.name()))),
+                Some(Object::Class(existing) | Object::Module(existing)) => existing,
+                _ => {
+                    // The refinement is anonymous, so binding it to a
+                    // constant names it. Its display comes from the label
+                    // instead, which never changes.
+                    let holder = Rc::new(Class::new_module(""));
+                    holder.set_class_var(
+                        REFINEMENT_LABEL_KEY,
+                        Object::String(Rc::new(format!(
+                            "{}@{}",
+                            target.ruby_name(),
+                            module_rc.inspect_name()
+                        ))),
+                    );
+                    holder
+                }
             };
             if let Some(Object::Block(block)) = self.pending_block.take() {
                 self.apply_block_as_class_body(&holder, &block, position)?;
             }
-            module_rc.set_class_var(&refinement_key, Object::Class(Rc::clone(&holder)));
+            module_rc.set_class_var(&refinement_key, Object::Module(Rc::clone(&holder)));
             return Ok(Some(Object::Module(holder)));
         }
 

@@ -201,13 +201,34 @@ impl<'a> Lexer<'a> {
 /// scanner used for double-quoted strings: balances braces inside the
 /// expression text, and respects `\#{` as an escape for a literal `#{`.
 fn split_interpolated(body: &str) -> TokenKind {
+    let parts = split_interpolation_parts(body);
+    if parts.is_empty() {
+        TokenKind::String(String::new())
+    } else if parts
+        .iter()
+        .all(|p| matches!(p, InterpolationPart::Text(_)))
+    {
+        // No actual expression parts — collapse back to a plain String.
+        let mut joined = String::new();
+        for p in parts {
+            if let InterpolationPart::Text(t) = p {
+                joined.push_str(&t);
+            }
+        }
+        TokenKind::String(joined)
+    } else {
+        TokenKind::InterpolatedString(parts)
+    }
+}
+
+/// Split a body containing `#{expr}` interpolations into its parts. Balances
+/// braces inside each expression, and treats `\#{` as a literal `#{`.
+pub(crate) fn split_interpolation_parts(body: &str) -> Vec<InterpolationPart> {
     let mut parts: Vec<InterpolationPart> = Vec::new();
     let mut current = String::new();
     let mut chars = body.chars().peekable();
     while let Some(ch) = chars.next() {
         if ch == '\\' {
-            // Preserve heredoc escapes as-is, but consume `\#{` so it
-            // becomes a literal `#{` in the body.
             match chars.peek() {
                 Some('#') => {
                     chars.next();
@@ -223,7 +244,7 @@ fn split_interpolated(body: &str) -> TokenKind {
             continue;
         }
         if ch == '#' && chars.peek() == Some(&'{') {
-            chars.next(); // consume '{'
+            chars.next();
             if !current.is_empty() {
                 parts.push(InterpolationPart::Text(std::mem::take(&mut current)));
             }
@@ -251,21 +272,5 @@ fn split_interpolated(body: &str) -> TokenKind {
     if !current.is_empty() {
         parts.push(InterpolationPart::Text(current));
     }
-    if parts.is_empty() {
-        TokenKind::String(String::new())
-    } else if parts
-        .iter()
-        .all(|p| matches!(p, InterpolationPart::Text(_)))
-    {
-        // No actual expression parts — collapse back to a plain String.
-        let mut joined = String::new();
-        for p in parts {
-            if let InterpolationPart::Text(t) = p {
-                joined.push_str(&t);
-            }
-        }
-        TokenKind::String(joined)
-    } else {
-        TokenKind::InterpolatedString(parts)
-    }
+    parts
 }

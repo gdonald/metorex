@@ -761,3 +761,171 @@ fn test_oop_public_instance_method_parens_execution() {
     let output = run_example("oop/public_instance_method_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_public_visibility_execution() {
+    let expected = ":after\n[:redefined_later]\n[]\n[:redefined_later]\n[]\n";
+    let output = run_example("oop/public_visibility.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_public_visibility_parens_execution() {
+    let expected = ":after\n[:redefined_later]\n[]\n[:redefined_later]\n[]\n";
+    let output = run_example("oop/public_visibility_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_refinements_execution() {
+    let expected = "2\ntrue\n[]\n[]\n:any\n[4, 5]\n:parens\n";
+    let output = run_example("oop/module_refinements.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_refinements_parens_execution() {
+    let expected = "2\ntrue\n[]\n[]\n:any\n[4, 5]\n:parens\n";
+    let output = run_example("oop/module_refinements_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_remove_class_variable_execution() {
+    let expected = ":shared\nfalse\n:own\n@@shared: NameError\n@shared: NameError\nshared: NameError\n@@absent: NameError\nfalse\n:no_block\n";
+    let output = run_example("oop/remove_class_variable.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_remove_class_variable_parens_execution() {
+    let expected = ":shared\nfalse\n:own\n@@shared: NameError\n@shared: NameError\nshared: NameError\n@@absent: NameError\nfalse\n:no_block\n";
+    let output = run_example("oop/remove_class_variable_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_remove_const_execution() {
+    let expected = ":doomed\n:also\n[:KEPT]\nname: NameError\n__CONSTX__: NameError\n@Name: NameError\nName=: NameError\nMissing: NameError\ninherited: NameError\nnil\ntrue\ntrue\n";
+    let output = run_example("oop/remove_const.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_remove_const_parens_execution() {
+    let expected = ":doomed\n:also\n[:KEPT]\nname: NameError\n__CONSTX__: NameError\n@Name: NameError\nName=: NameError\nMissing: NameError\ninherited: NameError\nnil\ntrue\ntrue\n";
+    let output = run_example("oop/remove_const_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_remove_method_execution() {
+    let expected = "Child\n[]\n:parent\ninherited: NameError\nmissing: NameError\nChild\nfrozen: FrozenError\ntrue\n-1\ntrue\n";
+    let output = run_example("oop/remove_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_remove_method_parens_execution() {
+    let expected = "Child\n[]\n:parent\ninherited: NameError\nmissing: NameError\nChild\nfrozen: FrozenError\ntrue\n-1\ntrue\n";
+    let output = run_example("oop/remove_method_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_set_temporary_name_execution() {
+    let expected = "nil\ntrue\n\"fake_name\"\nfake_name\n\"Template[\x27foo.rb\x27]\"\nnil\ntrue\n\"host::Inner\"\nnil\n\"\": empty class/module name\n\"Object\": the temporary name must not be a constant path to avoid confusion\n\"A::B\": the temporary name must not be a constant path to avoid confusion\n\"::A\": the temporary name must not be a constant path to avoid confusion\ncan\'t change permanent name\n";
+    let output = run_example("oop/set_temporary_name.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_set_temporary_name_parens_execution() {
+    let expected = "nil\ntrue\n\"fake_name\"\nfake_name\n\"Template[\x27foo.rb\x27]\"\nnil\ntrue\n\"host::Inner\"\nnil\n\"\": empty class/module name\n\"Object\": the temporary name must not be a constant path to avoid confusion\n\"A::B\": the temporary name must not be a constant path to avoid confusion\n\"::A\": the temporary name must not be a constant path to avoid confusion\ncan\'t change permanent name\n";
+    let output = run_example("oop/set_temporary_name_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_singleton_class_predicate_execution() {
+    let expected = "false\ntrue\ntrue\nfalse\nfalse\nfalse\nfalse\ntrue\n";
+    let output = run_example("oop/singleton_class_predicate.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_singleton_class_predicate_parens_execution() {
+    let expected = "false\ntrue\ntrue\nfalse\nfalse\nfalse\nfalse\ntrue\n";
+    let output = run_example("oop/singleton_class_predicate_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_to_s_execution() {
+    let expected = "Named\nString\ntrue\ntrue\n#<Class:Named>\n#<Class:String>\ntrue\ntrue\n\"Refiner::Upcase\"\n#<refinement:String@Refiner>\n";
+    let output = run_example("oop/module_to_s.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_to_s_parens_execution() {
+    let expected = "Named\nString\ntrue\ntrue\n#<Class:Named>\n#<Class:String>\ntrue\ntrue\n\"Refiner::Upcase\"\n#<refinement:String@Refiner>\n";
+    let output = run_example("oop/module_to_s_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_undef_method_execution() {
+    let expected = "Child\nfalse\n:parent\nundefined method \'never_defined\' for class \'Child\'\nundefined method \'not_exist\' for class \'String\'\nChild\nfrozen: FrozenError\n/Hello World/\ntrue\n\"a\\\\.b\\\\*c\"\n";
+    let output = run_example("oop/undef_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_undef_method_parens_execution() {
+    let expected = "Child\nfalse\n:parent\nundefined method \'never_defined\' for class \'Child\'\nundefined method \'not_exist\' for class \'String\'\nChild\nfrozen: FrozenError\n/Hello World/\ntrue\n\"a\\\\.b\\\\*c\"\n";
+    let output = run_example("oop/undef_method_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_undefined_instance_methods_execution() {
+    let expected = "[:retired]\n[:from_module, :kept, :own]\n[]\nfalse\nnil\n";
+    let output = run_example("oop/undefined_instance_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_undefined_instance_methods_parens_execution() {
+    let expected = "[:retired]\n[:from_module, :kept, :own]\n[]\nfalse\nnil\n";
+    let output = run_example("oop/undefined_instance_methods_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_used_refinements_execution() {
+    let expected = "[]\n2\ntrue\n[]\n[]\n";
+    let output = run_example("oop/used_refinements.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_used_refinements_parens_execution() {
+    let expected = "[]\n2\ntrue\n[]\n[]\n";
+    let output = run_example("oop/used_refinements_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_using_execution() {
+    let expected = "true\n\"plain\"\n\"refined\"\n\"refined\"\n\"plain\"\n";
+    let output = run_example("oop/module_using.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_using_parens_execution() {
+    let expected = "true\n\"plain\"\n\"refined\"\n\"refined\"\n\"plain\"\n";
+    let output = run_example("oop/module_using_parens.rb");
+    assert_eq!(output, expected);
+}

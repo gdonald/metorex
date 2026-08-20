@@ -95,7 +95,11 @@ fn test_instance_object() {
     let class = Rc::new(Class::new("MyClass", None));
     let obj = Object::instance(class);
     assert_eq!(obj.type_name(), "Instance");
-    assert_eq!(format!("{}", obj), "<MyClass instance>");
+    let display = format!("{}", obj);
+    assert!(
+        display.starts_with("#<MyClass:0x") && display.ends_with('>'),
+        "unexpected display: {display}"
+    );
 }
 
 #[test]

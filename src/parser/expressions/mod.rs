@@ -80,10 +80,7 @@ impl Parser {
                 if !self.check(&[TokenKind::RParen]) {
                     loop {
                         self.skip_whitespace();
-                        if let TokenKind::Ident(name) = self.peek().kind.clone() {
-                            params.push(name);
-                            self.advance();
-                        }
+                        params.extend(self.parse_lambda_parameter());
                         self.skip_whitespace();
                         if !self.match_token(&[TokenKind::Comma]) {
                             break;
@@ -132,16 +129,16 @@ impl Parser {
             // a comma-separated identifier list; if a `{` or `do` follows,
             // those are the lambda's parameters. Otherwise backtrack to the
             // bare `-> expr` form below.
-            if matches!(self.peek().kind, TokenKind::Ident(_)) {
+            if matches!(self.peek().kind, TokenKind::Ident(_) | TokenKind::Star) {
                 let saved_position = self.stream().current_position();
                 let mut params = Vec::new();
                 loop {
-                    if let TokenKind::Ident(name) = self.peek().kind.clone() {
-                        params.push(name);
-                        self.advance();
-                    } else {
-                        params.clear();
-                        break;
+                    match self.parse_lambda_parameter() {
+                        Some(param) => params.push(param),
+                        None => {
+                            params.clear();
+                            break;
+                        }
                     }
                     self.skip_whitespace();
                     if !self.match_token(&[TokenKind::Comma]) {

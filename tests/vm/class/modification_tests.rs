@@ -282,27 +282,23 @@ Foo.alias_method("one")
 }
 
 #[test]
-fn remove_method_wrong_arg_count() {
-    let err = run_err(
-        r#"
+fn remove_method_without_arguments_returns_self() {
+    let result = run(r#"
 class Foo
 end
 Foo.remove_method()
-"#,
-    );
-    assert!(err.contains("expected 1"));
+"#);
+    assert!(matches!(result, Some(Object::Class(_))));
 }
 
 #[test]
-fn undef_method_wrong_arg_count() {
-    let err = run_err(
-        r#"
+fn undef_method_without_arguments_returns_self() {
+    let result = run(r#"
 class Foo
 end
 Foo.undef_method()
-"#,
-    );
-    assert!(err.contains("expected 1"));
+"#);
+    assert!(matches!(result, Some(Object::Class(_))));
 }
 
 #[test]
@@ -346,7 +342,10 @@ end
 Foo.remove_method(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(
+        err.contains("123 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── undef_method with symbol ────────────────────────────────────────────────
@@ -380,7 +379,10 @@ end
 Foo.undef_method(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(
+        err.contains("123 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── alias_method with symbol ────────────────────────────────────────────────
@@ -540,19 +542,20 @@ end
 Mod.remove_method(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(
+        err.contains("123 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
-fn module_remove_method_wrong_args() {
-    let err = run_err(
-        r#"
+fn module_remove_method_without_arguments_returns_self() {
+    let result = run(r#"
 module Mod
 end
 Mod.remove_method()
-"#,
-    );
-    assert!(err.contains("expected 1"));
+"#);
+    assert!(matches!(result, Some(Object::Module(_))));
 }
 
 #[test]
@@ -610,19 +613,20 @@ end
 Mod.undef_method(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(
+        err.contains("123 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
-fn module_undef_method_wrong_args() {
-    let err = run_err(
-        r#"
+fn module_undef_method_without_arguments_returns_self() {
+    let result = run(r#"
 module Mod
 end
 Mod.undef_method()
-"#,
-    );
-    assert!(err.contains("expected 1"));
+"#);
+    assert!(matches!(result, Some(Object::Module(_))));
 }
 
 #[test]

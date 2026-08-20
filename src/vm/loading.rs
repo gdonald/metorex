@@ -198,6 +198,7 @@ impl VirtualMachine {
         //    body re-runs and defines this one too. Defeat
         //    `execute_file`'s dedup by clearing the path from `$"` and
         //    from the internal `loaded_files` set.
+        let mut reloading = false;
         if self.path_in_loaded_features(&path) {
             if let Some(val) = class_rc.get_class_var(name) {
                 class_rc.remove_autoload(name);
@@ -231,6 +232,7 @@ impl VirtualMachine {
                 arr.borrow_mut()
                     .retain(|o| !matches!(o, Object::String(s) if **s == path));
             }
+            reloading = true;
         }
         // Don't remove the registration up-front. MRI keeps the constant
         // visible in `Module#constants` for the duration of the load; if
@@ -247,6 +249,9 @@ impl VirtualMachine {
         // outer scope.
         let saved_def_scope = std::mem::take(&mut self.def_scope_stack);
         self.autoload_const_access_depth += 1;
+        if reloading {
+            self.autoload_reload_depth += 1;
+        }
         let loader_thread = self
             .thread_current_stack
             .last()
@@ -287,6 +292,9 @@ impl VirtualMachine {
             self.require_library(&path)
         };
         self.autoload_const_access_depth -= 1;
+        if reloading {
+            self.autoload_reload_depth -= 1;
+        }
         self.autoload_loading
             .retain(|(cls, n, _)| !(Rc::ptr_eq(cls, class_rc) && n == name));
         self.def_scope_stack = saved_def_scope;

@@ -180,7 +180,13 @@ impl VirtualMachine {
                     });
                 }
                 self.activate_refinement(module);
-                Ok(Object::Nil)
+                // Ruby answers with the enclosing class or module, or `main`
+                // at the top level.
+                Ok(match self.current_definee() {
+                    Some(definee) if definee.is_module() => Object::Module(definee),
+                    Some(definee) => Object::Class(definee),
+                    None => self.environment().get("self").unwrap_or(Object::Nil),
+                })
             }
             "warn" => {
                 for arg in &arguments {

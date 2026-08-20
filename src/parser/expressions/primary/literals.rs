@@ -75,6 +75,40 @@ pub(super) fn regex_literal(pattern: String, flags: String, position: Position) 
     }
 }
 
+impl Parser {
+    /// Build the expression for a regex literal. A pattern carrying `#{}`
+    /// interpolations becomes `Regexp.new(<interpolated source>, flags)`, so
+    /// the pattern is assembled where the literal is evaluated.
+    pub(super) fn regex_expression(
+        &self,
+        pattern: String,
+        flags: String,
+        position: Position,
+    ) -> Result<Expression, MetorexError> {
+        if !pattern.contains("#{") {
+            return Ok(regex_literal(pattern, flags, position));
+        }
+        let parts = crate::lexer::split_interpolation_parts(&pattern);
+        let source = self.primary_interpolated_string(parts, position)?;
+        Ok(Expression::MethodCall {
+            receiver: Box::new(Expression::Identifier {
+                name: "Regexp".to_string(),
+                position,
+            }),
+            method: "new".to_string(),
+            arguments: vec![
+                source,
+                Expression::StringLiteral {
+                    value: flags,
+                    position,
+                },
+            ],
+            trailing_block: None,
+            position,
+        })
+    }
+}
+
 /// Identifier / variable token to its corresponding expression.
 pub(super) fn identifier(name: String, position: Position) -> Expression {
     Expression::Identifier { name, position }

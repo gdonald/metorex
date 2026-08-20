@@ -100,6 +100,21 @@ impl VirtualMachine {
             return Ok(Object::Dict(Rc::new(RefCell::new(map))));
         }
 
+        // Regexp.new(source, flags) — the runtime form of a regex literal,
+        // which is how an interpolated literal is assembled.
+        if class.name() == "Regexp" && !arguments.is_empty() {
+            let source = match &arguments[0] {
+                Object::String(s) => (**s).clone(),
+                Object::Regex(pattern, _) => (**pattern).clone(),
+                other => format!("{}", other),
+            };
+            let flags = match arguments.get(1) {
+                Some(Object::String(f)) => (**f).clone(),
+                _ => String::new(),
+            };
+            return Ok(Object::Regex(Rc::new(source), Rc::new(flags)));
+        }
+
         // Kernel conversion functions: Integer(), String(), Array()
         if arguments.len() == 1 {
             match class.name() {
@@ -182,7 +197,13 @@ impl VirtualMachine {
         ))));
         let instance_obj = Object::Instance(Rc::clone(&instance));
 
-        // Look for an 'initialize' method and call it if present
+        // Look for an 'initialize' method and call it if present. A class
+        // without one still consumes the block `new` was given, the way
+        // Ruby's default `initialize` does, so it cannot leak to the next
+        // call.
+        if class.find_method("initialize").is_none() {
+            self.pending_block.take();
+        }
         if let Some(init_method) = class.find_method("initialize") {
             self.invoke_method(
                 class,

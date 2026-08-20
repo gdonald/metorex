@@ -26,6 +26,7 @@ mod operators;
 pub(super) mod param_binding;
 mod pattern_matching;
 mod program;
+pub(crate) use native_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 pub(crate) mod statement;
 pub(crate) mod utils;
 

@@ -502,13 +502,18 @@ Holder.send(:remove_const, :VAL)
 }
 
 #[test]
-fn remove_const_missing_returns_nil() {
-    let result = run(r#"
+fn remove_const_missing_errors() {
+    let err = run_err(
+        r#"
 class Holder2
 end
 Holder2.send(:remove_const, :NOTDEFINED)
-"#);
-    assert_eq!(result, Some(Object::Nil));
+"#,
+    );
+    assert!(
+        err.contains("constant Holder2::NOTDEFINED not defined"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -833,15 +838,13 @@ R2.send(:remove_method, :nope)
 }
 
 #[test]
-fn remove_method_wrong_arg_count_errors() {
-    let err = run_err(
-        r#"
+fn remove_method_without_arguments_returns_self() {
+    let result = run(r#"
 class R3
 end
 R3.send(:remove_method)
-"#,
-    );
-    assert!(err.contains("argument"));
+"#);
+    assert!(matches!(result, Some(Object::Class(_))));
 }
 
 #[test]
@@ -853,7 +856,10 @@ end
 R4.send(:remove_method, 42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -873,15 +879,13 @@ U1.new.gone
 }
 
 #[test]
-fn undef_method_wrong_arg_count_errors() {
-    let err = run_err(
-        r#"
+fn undef_method_without_arguments_returns_self() {
+    let result = run(r#"
 class U2
 end
 U2.send(:undef_method)
-"#,
-    );
-    assert!(err.contains("argument"));
+"#);
+    assert!(matches!(result, Some(Object::Class(_))));
 }
 
 #[test]
@@ -893,7 +897,10 @@ end
 U3.send(:undef_method, 42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── `alias_method` error paths ───────────────────────────────────────────────

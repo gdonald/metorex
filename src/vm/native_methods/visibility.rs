@@ -29,6 +29,7 @@ impl VirtualMachine {
             arguments.to_vec()
         };
         let mut names: Vec<String> = Vec::with_capacity(flat.len());
+        let mut to_mark: Vec<String> = Vec::with_capacity(flat.len());
         for arg in &flat {
             let n = match arg {
                 Object::Symbol(s) => s.as_str().to_string(),
@@ -50,27 +51,27 @@ impl VirtualMachine {
             // fires `method_added`. Kernel is reached through the Object
             // fallback, since a method defined at the top level lives on
             // Object rather than anywhere in Kernel's ancestry.
-            // Marking a method that the receiver only inherits, and that
-            // already has the visibility being asked for, changes nothing:
-            // Ruby does not copy the method down in that case.
-            let already_set = match modifier {
-                "private" => {
-                    class_rc.find_method(&n).is_some() && self.inherits_private(class_rc, &n)
-                }
-                "protected" => {
-                    class_rc.find_method(&n).is_some() && self.inherits_protected(class_rc, &n)
-                }
-                _ => false,
-            };
-            if !already_set && class_rc.find_own_method(&n).is_none() {
-                let inherited =
-                    class_rc
-                        .find_method(&n)
-                        .or_else(|| match self.globals().get("Object") {
-                            Some(Object::Class(object_class)) => object_class.find_method(&n),
-                            _ => None,
-                        });
-                let Some(method) = inherited else {
+            // Ruby records the new visibility on the receiver without
+            // copying the method down, so a later redefinition in the
+            // ancestor is what the receiver goes on calling. Naming a method
+            // that already has the visibility being asked for records
+            // nothing at all.
+            // An entry of the receiver's own, whether a definition or an
+            // earlier visibility declaration, is what a new declaration
+            // updates. Without one, declaring the visibility a method
+            // already carries records nothing.
+            let has_own_entry =
+                class_rc.find_own_method(&n).is_some() || class_rc.has_visibility_marking(&n);
+            let already_set = !has_own_entry && self.inherits_visibility(class_rc, &n, modifier);
+            if !already_set {
+                to_mark.push(n.clone());
+            }
+            if class_rc.find_method(&n).is_none() {
+                let on_object = matches!(
+                    self.globals().get("Object"),
+                    Some(Object::Class(object_class)) if object_class.find_method(&n).is_some()
+                );
+                if !on_object {
                     let msg = format!("undefined method '{}' for class '{}'", n, class_rc.name());
                     let exc = Object::exception("NameError", msg.clone());
                     return Err(MetorexError::UncaughtException {
@@ -78,17 +79,22 @@ impl VirtualMachine {
                         location: position_to_location(position),
                         message: msg,
                     });
-                };
-                class_rc.define_method(&n, method);
-                self.invoke_class_hook(class_rc, "method_added", &n, position)?;
+                }
             }
             names.push(n);
         }
-        for n in &names {
+        for n in &to_mark {
+            // Recording a visibility for a method the receiver only inherits
+            // gives it an entry of its own, and that entry fires the hook.
+            let is_new_entry =
+                class_rc.find_own_method(n).is_none() && !class_rc.has_visibility_marking(n);
             match modifier {
                 "private" => class_rc.set_method_private(n.clone()),
                 "protected" => class_rc.set_method_protected(n.clone()),
                 _ => class_rc.set_method_public(n),
+            }
+            if is_new_entry {
+                self.invoke_class_hook(class_rc, "method_added", n, position)?;
             }
         }
         match flat.len() {

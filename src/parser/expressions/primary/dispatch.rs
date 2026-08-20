@@ -19,9 +19,7 @@ impl Parser {
             TokenKind::Int(value) => Ok(literals::int_literal(value, position)),
             TokenKind::Float(value) => Ok(literals::float_literal(value, position)),
             TokenKind::String(value) => Ok(literals::string_literal(value, position)),
-            TokenKind::Regex(pattern, flags) => {
-                Ok(literals::regex_literal(pattern, flags, position))
-            }
+            TokenKind::Regex(pattern, flags) => self.regex_expression(pattern, flags, position),
             TokenKind::PercentW(value) => Ok(self.primary_percent_w(value, position)),
             TokenKind::InterpolatedString(parts) => {
                 self.primary_interpolated_string(parts, position)

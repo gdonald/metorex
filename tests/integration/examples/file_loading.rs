@@ -154,3 +154,17 @@ fn test_require_runtime_error_in_required_file() {
         stderr
     );
 }
+
+#[test]
+fn test_require_autoload_reload_warning_execution() {
+    let expected = "false\nfalse\n:loaded\ncopy raises NameError\n";
+    let output = run_example("require/autoload_reload_warning.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_autoload_reload_warning_parens_execution() {
+    let expected = "false\nfalse\n:loaded\ncopy raises NameError\n";
+    let output = run_example("require/autoload_reload_warning_parens.rb");
+    assert_eq!(output, expected);
+}

@@ -36,9 +36,10 @@ fn singleton_class_display_name(receiver: &Object) -> String {
         Object::Nil => "#<Class:NilClass>".to_string(),
         Object::Bool(true) => "#<Class:TrueClass>".to_string(),
         Object::Bool(false) => "#<Class:FalseClass>".to_string(),
-        Object::Class(c) => format!("#<Class:{}>", c.name()),
-        Object::Module(m) => format!("#<Class:{}>", m.name()),
-        Object::Instance(inst) => format!("#<Class:#<{}>>", inst.borrow().class.name()),
+        Object::Class(c) => format!("#<Class:{}>", c.inspect_name()),
+        Object::Module(m) => format!("#<Class:{}>", m.inspect_name()),
+        // The attached object's own display, so the two agree.
+        Object::Instance(_) => format!("#<Class:{}>", receiver),
         _ => "#<Class:Object>".to_string(),
     }
 }

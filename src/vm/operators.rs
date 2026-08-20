@@ -412,6 +412,27 @@ impl VirtualMachine {
             return Ok(Object::Bool(result));
         }
 
+        // A user-defined comparison operator wins over the Comparable
+        // protocol, the way `==` already dispatches to its own definition.
+        if matches!(left, Object::Instance(_))
+            && let Some(operator) = comparison_operator_name(op)
+            && let Some((class, method)) = self.lookup_method(&left, operator)
+            && !method.is_undefined
+        {
+            return self.invoke_method(class, method, left, vec![right], position);
+        }
+
+        // An object with neither the operator nor `<=>` still gets the call
+        // offered to `method_missing`, as any other missing method would.
+        if matches!(left, Object::Instance(_))
+            && let Some(operator) = comparison_operator_name(op)
+            && self.lookup_method(&left, "<=>").is_none()
+            && let Some((class, method)) = self.lookup_method(&left, "method_missing")
+        {
+            let name = Object::Symbol(Rc::new(operator.to_string()));
+            return self.invoke_method(class, method, left, vec![name, right], position);
+        }
+
         // For instances, try dispatching to <=> method (Comparable protocol)
         if let Some((class, method)) = self.lookup_method(&left, "<=>") {
             let left_type = left.type_name().to_string();
@@ -805,5 +826,16 @@ impl VirtualMachine {
                 position,
             )),
         }
+    }
+}
+
+/// The Ruby method name for an ordering operator.
+fn comparison_operator_name(op: &BinaryOp) -> Option<&'static str> {
+    match op {
+        BinaryOp::Less => Some("<"),
+        BinaryOp::Greater => Some(">"),
+        BinaryOp::LessEqual => Some("<="),
+        BinaryOp::GreaterEqual => Some(">="),
+        _ => None,
     }
 }

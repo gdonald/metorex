@@ -7,6 +7,7 @@ mod array_methods;
 pub(crate) mod ast_methods;
 mod class_methods;
 pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
+pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod constant_visibility;
 mod define_method;
 mod exception_methods;
@@ -175,6 +176,12 @@ impl VirtualMachine {
     /// matcher), route the message there so tests can capture it. Otherwise
     /// fall back to writing the line directly to the process's stderr.
     pub(crate) fn emit_warning_to_stderr(&mut self, msg: &str, position: Position) {
+        // Re-running an already-required file to satisfy an autoload repeats
+        // assignments Ruby would have run once, so the warnings they produce
+        // describe the re-run rather than the program.
+        if self.autoload_reload_depth > 0 {
+            return;
+        }
         let stderr_obj = self.globals().get("stderr");
         let placeholder = matches!(
             &stderr_obj,

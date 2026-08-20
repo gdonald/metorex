@@ -89,3 +89,17 @@ fn test_operators_coverage_no_parens_execution() {
         "9223372036854775806\n13835058055282164000\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\n"
     );
 }
+
+#[test]
+fn test_builtins_range_include_comparable_execution() {
+    let expected = "true\nfalse\nfalse\ntrue\nfalse\ntrue\ntrue\ntrue\n";
+    let output = run_example("builtins/range_include_comparable.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_range_include_comparable_parens_execution() {
+    let expected = "true\nfalse\nfalse\ntrue\nfalse\ntrue\ntrue\ntrue\n";
+    let output = run_example("builtins/range_include_comparable_parens.rb");
+    assert_eq!(output, expected);
+}

@@ -1,6 +1,7 @@
 // Display trait implementation for Object
 
 use std::fmt;
+use std::rc::Rc;
 
 use super::Object;
 
@@ -36,12 +37,16 @@ impl fmt::Display for Object {
                 }
                 write!(f, "}}")
             }
+            // Ruby's default `to_s` for an object: its class and address.
             Object::Instance(inst) => {
-                let instance = inst.borrow();
-                write!(f, "<{} instance>", instance.class.name())
+                let class_name = inst.borrow().class.inspect_name();
+                write!(f, "#<{}:0x{:016x}>", class_name, Rc::as_ptr(inst) as usize)
             }
-            Object::Class(class) => write!(f, "{}", class.name()),
-            Object::Module(module) => write!(f, "{}", module.name()),
+            // A class or module displays under the name Ruby reports for it,
+            // which includes one set by `set_temporary_name` or derived from
+            // an anonymous namespace.
+            Object::Class(class) => write!(f, "{}", class.inspect_name()),
+            Object::Module(module) => write!(f, "{}", module.inspect_name()),
             Object::Method(method) => write!(f, "<method {}>", method.name),
             Object::Block(_) => write!(f, "<block>"),
             Object::Exception(exc) => {

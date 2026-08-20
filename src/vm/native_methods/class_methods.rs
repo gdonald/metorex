@@ -491,6 +491,23 @@ impl VirtualMachine {
         }
         // `Module.nesting` returns the modules/classes currently being defined
         // (innermost first). We approximate with the def_scope_stack snapshot.
+        // Regexp.escape / Regexp.quote: the string with every regex
+        // metacharacter escaped, so it matches itself literally.
+        if class_rc.name() == "Regexp"
+            && matches!(method_name, "escape" | "quote")
+            && arguments.len() == 1
+        {
+            let source = self.coerce_name_argument(&arguments[0], position)?;
+            return Ok(Some(Object::String(Rc::new(regex::escape(&source)))));
+        }
+        // Module.used_refinements: the refinements `using` has brought into
+        // the current scope.
+        if method_name == "used_refinements" && class_rc.name() == "Module" {
+            let refinements = self.active_refinements();
+            return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                refinements,
+            )))));
+        }
         if method_name == "nesting" && class_rc.name() == "Module" {
             // Inside a method body the answer is the nesting captured where
             // the method was defined; elsewhere it is the scopes open here.
@@ -856,6 +873,31 @@ impl VirtualMachine {
                     &name_str, class_rc, position,
                 ));
             }
+            // Module#undefined_instance_methods: the names this class itself
+            // has undefined with `undef_method`, not those its ancestors did.
+            "undefined_instance_methods" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let undefined: Vec<Object> = class_rc
+                    .method_names()
+                    .into_iter()
+                    .filter(|name| {
+                        class_rc
+                            .find_own_method(name)
+                            .is_some_and(|method| method.is_undefined)
+                    })
+                    .map(|name| Object::Symbol(Rc::new(name)))
+                    .collect();
+                return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                    undefined,
+                )))));
+            }
             // Module#instance_methods / public_/private_/protected_ variants.
             // The `false` argument restricts to methods defined directly on
             // this class (excluding inherited and mixin methods).
@@ -868,6 +910,22 @@ impl VirtualMachine {
                     _ => true,
                 };
                 let mut method_list: Vec<String> = class_rc.method_names();
+                // A `private`/`public` naming an inherited method marks the
+                // visibility here without defining anything, and Ruby counts
+                // that name among this class's own methods.
+                let object_class = match self.globals().get("Object") {
+                    Some(Object::Class(object_class)) => Some(object_class),
+                    _ => None,
+                };
+                for name in class_rc.visibility_marked_names() {
+                    let resolves = class_rc.find_method(&name).is_some()
+                        || object_class
+                            .as_ref()
+                            .is_some_and(|oc| oc.find_method(&name).is_some());
+                    if !method_list.contains(&name) && resolves {
+                        method_list.push(name);
+                    }
+                }
                 if include_super {
                     // The ancestor walk already covers mixins of mixins and
                     // each superclass's mixins.
@@ -917,9 +975,10 @@ impl VirtualMachine {
                 // Class (Ruby sets it to undef), so only surface them when
                 // the receiver is Module itself.
                 if class_rc.name() == "Module" {
-                    for n in MODULE_PRIVATE_HOOKS.iter().chain(
-                        [MODULE_FUNCTION_VISIBILITY, "private", "public", "protected"].iter(),
-                    ) {
+                    for n in MODULE_PRIVATE_HOOKS
+                        .iter()
+                        .chain(MODULE_PRIVATE_DECLARATIONS.iter())
+                    {
                         if !method_list.iter().any(|m| m == n) {
                             method_list.push((*n).to_string());
                         }
@@ -1197,6 +1256,53 @@ impl VirtualMachine {
                 }
                 return Ok(Some(Object::Class(Rc::clone(class_rc))));
             }
+            // Module#set_temporary_name: a display name for an anonymous
+            // module, cleared by passing nil. A permanent name cannot be
+            // replaced, and the name may not look like a constant path.
+            "set_temporary_name" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if class_rc.has_permanent_name() {
+                    let msg = "can't change permanent name".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("RuntimeError", msg.clone()),
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                let receiver = if class_rc.is_module() {
+                    Object::Module(Rc::clone(class_rc))
+                } else {
+                    Object::Class(Rc::clone(class_rc))
+                };
+                if matches!(arguments[0], Object::Nil) {
+                    class_rc.set_temporary_name(None);
+                    return Ok(Some(receiver));
+                }
+                let name = self.coerce_name_argument(&arguments[0], position)?;
+                let complaint = if name.is_empty() {
+                    Some("empty class/module name")
+                } else if looks_like_constant_path(&name) {
+                    Some("the temporary name must not be a constant path to avoid confusion")
+                } else {
+                    None
+                };
+                if let Some(msg) = complaint {
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", msg.to_string()),
+                        location: position_to_location(position),
+                        message: msg.to_string(),
+                    });
+                }
+                class_rc.set_temporary_name(Some(name));
+                return Ok(Some(receiver));
+            }
             // Module#remove_const: remove a constant from this module's table.
             "remove_const" => {
                 if arguments.len() != 1 {
@@ -1207,18 +1313,35 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let const_name = match &arguments[0] {
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    Object::String(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "remove_const",
-                            "Symbol or String",
-                            other,
-                            position,
-                        ));
-                    }
-                };
+                let const_name = self.coerce_name_argument(&arguments[0], position)?;
+                if !is_valid_constant_name(&const_name) {
+                    let msg = format!("wrong constant name {}", const_name);
+                    let exc = Object::exception("NameError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                // Only a constant of the receiver itself can be removed, and
+                // a pending autoload counts as one.
+                if class_rc.get_class_var(&const_name).is_none()
+                    && class_rc.get_autoload(&const_name).is_none()
+                    && !class_rc.unrealized_autoload_names().contains(&const_name)
+                    && !(class_rc.name() == "Object" && self.globals().contains(&const_name))
+                {
+                    let msg = format!(
+                        "constant {}::{} not defined",
+                        class_rc.ruby_name(),
+                        const_name
+                    );
+                    let exc = Object::exception("NameError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
                 // Drop the resolved constant (if any), any pending autoload
                 // registration, and any "loaded but unrealized" bookkeeping.
                 // Without removing all three, the name would still surface
@@ -1241,12 +1364,10 @@ impl VirtualMachine {
                 // `const_source_location` instead of the stale class-def
                 // location from before the removal.
                 class_rc.remove_const_location(&const_name);
-                let result = removed.unwrap_or_else(|| {
-                    removed_autoload
-                        .map(|p| Object::String(Rc::new(p)))
-                        .unwrap_or(Object::Nil)
-                });
-                return Ok(Some(result));
+                // Removing a constant that was only registered for autoload
+                // answers with nil: it never held a value.
+                let _ = removed_autoload;
+                return Ok(Some(removed.unwrap_or(Object::Nil)));
             }
             "private" | "public" | "protected" => {
                 return self
@@ -1256,9 +1377,9 @@ impl VirtualMachine {
             "private_methods" => {
                 let include_super = !matches!(arguments.first(), Some(Object::Bool(false)));
                 let mut names: Vec<String> = class_rc.private_method_names();
-                // Classes and modules inherit Module's private mixin hooks.
-                // `extend_object` and the `*_features` pair are undefined on
-                // Class, so they are added by the module dispatch path only.
+                // Classes and modules inherit Module's private instance
+                // methods. `extend_object` and the `*_features` pair are
+                // undefined on Class, so the module dispatch path adds those.
                 names.extend(
                     [
                         "extended",
@@ -1269,6 +1390,7 @@ impl VirtualMachine {
                     ]
                     .map(String::from),
                 );
+                names.extend(MODULE_PRIVATE_DECLARATIONS.iter().map(|n| (*n).to_string()));
                 if include_super {
                     let mut current = class_rc.superclass();
                     while let Some(parent) = current {
@@ -1283,6 +1405,19 @@ impl VirtualMachine {
                     .map(|n| Object::Symbol(Rc::new(n)))
                     .collect();
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(syms)))));
+            }
+            // Module#singleton_class?: whether this is the class of exactly
+            // one object, as `class << obj` opens.
+            "singleton_class?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                return Ok(Some(Object::Bool(class_rc.is_singleton_class())));
             }
             "superclass" => {
                 return match class_rc.superclass() {
@@ -1759,60 +1894,95 @@ impl VirtualMachine {
                     .map(Some);
             }
             "remove_method" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        "remove_method",
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
+                // Ruby accepts any number of names, including none, and
+                // answers with the receiver.
+                let mut names = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    names.push(self.coerce_method_name(argument, method_name, position)?);
                 }
-                let name_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "remove_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
+                if class_rc.is_frozen() && !names.is_empty() {
+                    let msg = format!(
+                        "can't modify frozen {}: {}",
+                        class_rc.kind_name(),
+                        class_rc.ruby_name()
+                    );
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                for name in names {
+                    if !class_rc.remove_method(&name) {
+                        let msg =
+                            format!("method '{}' not defined in {}", name, class_rc.ruby_name());
+                        let exc = Object::exception("NameError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
                     }
-                };
-                if !class_rc.remove_method(&name_str) {
-                    return Err(MetorexError::runtime_error(
-                        format!("method '{}' not defined in {}", name_str, class_rc.name()),
-                        position_to_location(position),
-                    ));
+                    self.invoke_class_hook(class_rc, "method_removed", &name, position)?;
                 }
-                self.invoke_class_hook(class_rc, "method_removed", &name_str, position)?;
-                return Ok(Some(Object::Nil));
+                return Ok(Some(if class_rc.is_module() {
+                    Object::Module(Rc::clone(class_rc))
+                } else {
+                    Object::Class(Rc::clone(class_rc))
+                }));
             }
             "undef_method" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        "undef_method",
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
+                // Like `remove_method`, this takes any number of names and
+                // answers with the receiver. The method must exist somewhere
+                // in the ancestry, though it need not be the receiver's own.
+                let mut names = Vec::with_capacity(arguments.len());
+                for argument in arguments {
+                    names.push(self.coerce_method_name(argument, method_name, position)?);
                 }
-                let name_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "undef_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
+                if class_rc.is_frozen() && !names.is_empty() {
+                    let msg = format!(
+                        "can't modify frozen {}: {}",
+                        class_rc.kind_name(),
+                        class_rc.ruby_name()
+                    );
+                    let exc = Object::exception("FrozenError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                for name in names {
+                    if class_rc
+                        .find_method(&name)
+                        .is_none_or(|method| method.is_undefined)
+                    {
+                        let msg = format!(
+                            "undefined method '{}' for {} '{}'",
+                            name,
+                            class_rc.kind_name().to_lowercase(),
+                            undef_target_name(class_rc)
+                        );
+                        let exc = Object::exception("NameError", msg.clone());
+                        if let Object::Exception(cell) = &exc {
+                            cell.borrow_mut().name = Some(name.clone());
+                        }
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
                     }
-                };
-                let sentinel = Method::undefined(name_str.clone());
-                class_rc.define_method(&name_str, Rc::new(sentinel));
-                self.invoke_class_hook(class_rc, "method_undefined", &name_str, position)?;
-                return Ok(Some(Object::Nil));
+                    let sentinel = Method::undefined(name.clone());
+                    class_rc.define_method(&name, Rc::new(sentinel));
+                    self.invoke_class_hook(class_rc, "method_undefined", &name, position)?;
+                }
+                return Ok(Some(if class_rc.is_module() {
+                    Object::Module(Rc::clone(class_rc))
+                } else {
+                    Object::Class(Rc::clone(class_rc))
+                }));
             }
             "alias_method" => {
                 if arguments.len() != 2 {
@@ -1955,6 +2125,35 @@ impl VirtualMachine {
                     }
                 }
             }
+            // Module#remove_class_variable: only a variable defined directly
+            // on the receiver can be removed, and its value comes back.
+            "remove_class_variable" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                match class_rc.remove_class_var(&key) {
+                    Some(value) => return Ok(Some(value)),
+                    None => {
+                        let msg = format!(
+                            "class variable @@{} not defined for {}",
+                            key,
+                            class_rc.ruby_name()
+                        );
+                        let exc = Object::exception("NameError", msg.clone());
+                        return Err(MetorexError::UncaughtException {
+                            exception: exc,
+                            location: position_to_location(position),
+                            message: msg,
+                        });
+                    }
+                }
+            }
             "class_variable_defined?" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -2004,19 +2203,17 @@ impl VirtualMachine {
         Ok(None)
     }
 
-    /// Coerce a class-variable name argument to its storage key (the name with
-    /// the leading `@@` removed). Strings and Symbols are used directly; any
-    /// other object is converted via `to_str`. Raises TypeError when that
-    /// conversion is missing or returns a non-String, and NameError when the
-    /// resulting name is not a valid class variable name.
-    pub(crate) fn coerce_class_variable_name(
+    /// Coerce a name argument to a String: Strings and Symbols are used
+    /// directly, anything else goes through `to_str`. Raises TypeError when
+    /// that conversion is missing or returns a non-String.
+    pub(crate) fn coerce_name_argument(
         &mut self,
         arg: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
-        let name = match arg {
-            Object::Symbol(s) => (**s).clone(),
-            Object::String(s) => (**s).clone(),
+        match arg {
+            Object::Symbol(s) => Ok((**s).clone()),
+            Object::String(s) => Ok((**s).clone()),
             other => {
                 let other_obj = other.clone();
                 let converted =
@@ -2035,19 +2232,32 @@ impl VirtualMachine {
                         });
                     };
                 match converted {
-                    Object::String(s) => (*s).clone(),
+                    Object::String(s) => Ok((*s).clone()),
                     other => {
                         let msg = format!("can't convert {} to String", other.type_name());
                         let exc = Object::exception("TypeError", msg.clone());
-                        return Err(MetorexError::UncaughtException {
+                        Err(MetorexError::UncaughtException {
                             exception: exc,
                             location: position_to_location(position),
                             message: msg,
-                        });
+                        })
                     }
                 }
             }
-        };
+        }
+    }
+
+    /// Coerce a class-variable name argument to its storage key (the name with
+    /// the leading `@@` removed). Strings and Symbols are used directly; any
+    /// other object is converted via `to_str`. Raises TypeError when that
+    /// conversion is missing or returns a non-String, and NameError when the
+    /// resulting name is not a valid class variable name.
+    pub(crate) fn coerce_class_variable_name(
+        &mut self,
+        arg: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let name = self.coerce_name_argument(arg, position)?;
         if let Some(rest) = name.strip_prefix("@@")
             && is_valid_class_variable_ident(rest)
         {
@@ -2337,6 +2547,17 @@ pub(super) const MODULE_PRIVATE_HOOKS: &[&str] = &[
     "method_undefined",
 ];
 
+/// Module's private instance methods beyond the hooks: the declarations a
+/// class or module body calls without a receiver. `alias_method` and
+/// `define_method` are deliberately absent, being public in Ruby.
+pub(super) const MODULE_PRIVATE_DECLARATIONS: &[&str] = &[
+    MODULE_FUNCTION_VISIBILITY,
+    "private",
+    "public",
+    "protected",
+    "remove_const",
+];
+
 /// The native Module and Class instance methods metorex implements, with the
 /// parameters each takes and whether the last one is variadic.
 /// `Module#instance_methods` advertises the names, and `Object#method` builds
@@ -2352,6 +2573,8 @@ pub(super) const NATIVE_MODULE_METHODS: &[(&str, &[&str], bool)] = &[
     ("method_defined?", &["name", "inherit"], true),
     ("prepend", &["modules"], true),
     ("instance_method", &["name"], false),
+    ("remove_method", &["names"], true),
+    ("undef_method", &["names"], true),
     ("public_instance_method", &["name"], false),
     ("protected_instance_methods", &["include_super"], true),
     ("instance_methods", &["include_super"], true),
@@ -2399,6 +2622,27 @@ pub(super) fn native_module_method_stub(name: &str) -> Option<Method> {
         stub.variadic_param = Some((last, parameters[last].to_string()));
     }
     Some(stub)
+}
+
+/// How `undef_method` names its receiver. The metaclass of a class or module
+/// is reported as that class, while any other singleton class is reported by
+/// its own display.
+fn undef_target_name(class_rc: &Rc<Class>) -> String {
+    if class_rc.is_singleton_class()
+        && let Some(Object::Class(attached) | Object::Module(attached)) =
+            class_rc.get_class_var("__attached__")
+    {
+        return attached.inspect_name();
+    }
+    class_rc.inspect_name()
+}
+
+/// Whether `name` reads as a constant path, which `set_temporary_name`
+/// rejects: a `::`-separated chain whose every segment is a constant name,
+/// with an optional leading `::`.
+fn looks_like_constant_path(name: &str) -> bool {
+    let path = name.strip_prefix("::").unwrap_or(name);
+    !path.is_empty() && path.split("::").all(is_valid_constant_name)
 }
 
 /// Whether the receiver answers `name` through a method of its own: an

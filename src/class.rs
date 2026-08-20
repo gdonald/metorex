@@ -15,6 +15,9 @@ pub struct Class {
     /// to a constant. `name()` still returns the original (immutable) name —
     /// use `ruby_name()` to pick up the assigned override.
     assigned_name: RefCell<Option<String>>,
+    /// Name set by `Module#set_temporary_name`. It takes precedence over the
+    /// assigned name until the module gains a permanent one.
+    temporary_name: RefCell<Option<String>>,
     superclass: Option<Rc<Class>>,
     methods: RefCell<HashMap<String, Rc<Method>>>,
     instance_variables: RefCell<HashSet<String>>,
@@ -86,6 +89,7 @@ impl Class {
         Self {
             name: name.into(),
             assigned_name: RefCell::new(None),
+            temporary_name: RefCell::new(None),
             superclass,
             methods: RefCell::new(HashMap::new()),
             instance_variables: RefCell::new(HashSet::new()),
@@ -321,6 +325,30 @@ impl Class {
         names
     }
 
+    /// Whether this class records a visibility of its own for `name`, set by
+    /// `private`/`protected`/`public` naming a method it may only inherit.
+    pub fn has_visibility_marking(&self, name: &str) -> bool {
+        self.private_method_names.borrow().contains(name)
+            || self.protected_method_names.borrow().contains(name)
+            || self.public_overrides.borrow().contains(name)
+    }
+
+    /// The names this class marks a visibility for without defining, which
+    /// Ruby reports among its own instance methods.
+    pub fn visibility_marked_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .private_method_names
+            .borrow()
+            .iter()
+            .chain(self.protected_method_names.borrow().iter())
+            .chain(self.public_overrides.borrow().iter())
+            .cloned()
+            .collect();
+        names.sort();
+        names.dedup();
+        names
+    }
+
     /// Drop any visibility marking for `name`, which is what redefining a
     /// method does when the enclosing body's default visibility is public.
     pub fn clear_method_visibility(&self, name: &str) {
@@ -375,6 +403,9 @@ impl Class {
     /// empty string for truly-anonymous classes. The `name` native method
     /// maps this to `nil` for anonymous classes.
     pub fn ruby_name(&self) -> String {
+        if let Some(temporary) = self.temporary_name.borrow().as_ref() {
+            return temporary.clone();
+        }
         if let Some(assigned) = self.assigned_name.borrow().as_ref() {
             return assigned.clone();
         }
@@ -385,6 +416,12 @@ impl Class {
     /// identifier — e.g. when it acts as the namespace in `parent::C`, we
     /// synthesise `#<Class:0x<ptr>>::C` for the subclass's name.
     pub fn inspect_name(&self) -> String {
+        // A refinement always displays by its label, whatever it is named.
+        if let Some(crate::object::Object::String(label)) =
+            self.get_class_var(crate::vm::REFINEMENT_LABEL_KEY)
+        {
+            return format!("#<refinement:{}>", label);
+        }
         let rn = self.ruby_name();
         if rn.is_empty() {
             format!(
@@ -394,6 +431,49 @@ impl Class {
             )
         } else {
             rn
+        }
+    }
+
+    /// Set or clear the name from `Module#set_temporary_name`, cascading into
+    /// the anonymous modules nested under it so they follow the new name.
+    /// Clearing also drops the derived `#<Module:0x…>::N` form, leaving the
+    /// module with no name at all.
+    pub fn set_temporary_name(&self, name: Option<String>) {
+        *self.temporary_name.borrow_mut() = name.clone();
+        if name.is_none() {
+            let derived = matches!(
+                self.assigned_name.borrow().as_ref(),
+                Some(assigned) if assigned.contains("#<") || assigned.starts_with("::")
+            );
+            if derived {
+                *self.assigned_name.borrow_mut() = None;
+            }
+        }
+        for (key, value) in self.class_variables.borrow().iter() {
+            if !key.chars().next().is_some_and(|c| c.is_uppercase()) {
+                continue;
+            }
+            let (crate::object::Object::Class(nested) | crate::object::Object::Module(nested)) =
+                value
+            else {
+                continue;
+            };
+            if nested.has_permanent_name() {
+                continue;
+            }
+            nested.set_temporary_name(name.as_ref().map(|n| format!("{}::{}", n, key)));
+        }
+    }
+
+    /// Whether this object has a permanent name: one from its definition, or
+    /// one assigned by binding it to a constant under a named namespace.
+    pub fn has_permanent_name(&self) -> bool {
+        if !self.name.is_empty() {
+            return true;
+        }
+        match self.assigned_name.borrow().as_ref() {
+            Some(assigned) => !assigned.contains("#<") && !assigned.starts_with("::"),
+            None => false,
         }
     }
 
@@ -419,10 +499,16 @@ impl Class {
         if !self.name.is_empty() {
             return;
         }
-        let current = self.ruby_name();
+        // A temporary name gives way to a permanent one.
+        let current = match self.temporary_name.borrow().as_ref() {
+            Some(_) => String::new(),
+            None => self.ruby_name(),
+        };
         if !current.is_empty() && !current.starts_with("::") && !current.contains("#<") {
             return;
         }
+        // A permanent name supersedes any temporary one.
+        *self.temporary_name.borrow_mut() = None;
         *self.assigned_name.borrow_mut() = Some(new_name.to_string());
         for (key, val) in self.class_variables.borrow().iter() {
             if !key.chars().next().is_some_and(|c| c.is_uppercase()) {
@@ -771,6 +857,7 @@ impl Class {
         let copy = Class {
             name: String::new(),
             assigned_name: RefCell::new(None),
+            temporary_name: RefCell::new(None),
             superclass: source.superclass.clone(),
             methods: RefCell::new(source.methods.borrow().clone()),
             instance_variables: RefCell::new(source.instance_variables.borrow().clone()),
@@ -805,6 +892,7 @@ impl Class {
             let sc_copy = Rc::new(Class {
                 name: format!("#<Class:{}>", copy.name),
                 assigned_name: RefCell::new(None),
+                temporary_name: RefCell::new(None),
                 superclass: src_sc.superclass.clone(),
                 methods: RefCell::new(src_sc.methods.borrow().clone()),
                 instance_variables: RefCell::new(src_sc.instance_variables.borrow().clone()),
@@ -846,6 +934,7 @@ impl Clone for Class {
         Self {
             name: self.name.clone(),
             assigned_name: RefCell::new(self.assigned_name.borrow().clone()),
+            temporary_name: RefCell::new(self.temporary_name.borrow().clone()),
             superclass: self.superclass.clone(),
             methods: RefCell::new(self.methods.borrow().clone()),
             instance_variables: RefCell::new(self.instance_variables.borrow().clone()),
