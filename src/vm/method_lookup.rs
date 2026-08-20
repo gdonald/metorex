@@ -106,26 +106,27 @@ impl VirtualMachine {
             return self.invoke_method(class, method, receiver, arguments, position);
         }
 
-        // For Class/Module receivers, check for extended methods (__ext__name
-        // class var) BEFORE the generic instance-method lookup. `module_function :foo`
-        // installs a module-level copy under `__ext__foo` while also keeping
-        // the instance method private; `Mod.foo` must find the extended copy
-        // and bypass visibility enforcement on the instance-private original.
-        let ext_class_rc_pre = match &receiver {
-            Object::Class(c) => Some(Rc::clone(c)),
-            Object::Module(m) => Some(Rc::clone(m)),
-            _ => None,
-        };
-        if let Some(class_rc) = ext_class_rc_pre {
-            let ext_key = format!("__ext__{}", method_name);
-            if let Some(Object::Method(ext_method)) = class_rc.get_class_var(&ext_key) {
-                return self.invoke_method(
-                    class_rc,
-                    ext_method,
-                    receiver.clone(),
-                    arguments,
-                    position,
-                );
+        // For Class/Module receivers, a module-level copy of a method wins
+        // over the instance method of the same name: `module_function :foo`
+        // and `extend` both leave the instance method private, and `Mod.foo`
+        // must reach the copy rather than trip visibility enforcement.
+        if let Object::Class(class_rc) | Object::Module(class_rc) = &receiver {
+            let class_rc = Rc::clone(class_rc);
+            if let Some(method) = module_level_method(&class_rc, method_name) {
+                let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
+                if is_explicit_receiver && self.method_is_restricted(&receiver, method_name) {
+                    let msg = format!(
+                        "private method '{}' called for {}",
+                        method_name,
+                        class_rc.ruby_name()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("NoMethodError", msg.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message: msg,
+                    });
+                }
+                return self.invoke_method(class_rc, method, receiver.clone(), arguments, position);
             }
         }
 
@@ -140,12 +141,12 @@ impl VirtualMachine {
                 // syntactically present, matching Ruby — `self.foo` is
                 // allowed regardless of visibility.
                 let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
-                let mut is_private = false;
+                let mut is_private = self.method_is_restricted(&receiver, method_name);
                 if class.has_public_override(method_name) {
                     is_private = false;
-                } else if class.is_method_private(method_name) {
+                } else if class.is_method_restricted(method_name) {
                     is_private = true;
-                } else {
+                } else if !is_private {
                     let mut current = class.superclass();
                     while let Some(sc) = current {
                         if sc.has_public_override(method_name) {
@@ -153,7 +154,7 @@ impl VirtualMachine {
                             break;
                         }
                         if sc.find_method(method_name).is_some() {
-                            is_private = sc.is_method_private(method_name);
+                            is_private = sc.is_method_restricted(method_name);
                             break;
                         }
                         current = sc.superclass();
@@ -175,25 +176,6 @@ impl VirtualMachine {
                 return self.invoke_method(class, method, receiver, arguments, position);
             }
             _ => {}
-        }
-
-        // For Class/Module receivers, check for extended methods (__ext__name class var)
-        let ext_class_rc = match &receiver {
-            Object::Class(c) => Some(Rc::clone(c)),
-            Object::Module(m) => Some(Rc::clone(m)),
-            _ => None,
-        };
-        if let Some(class_rc) = ext_class_rc {
-            let ext_key = format!("__ext__{}", method_name);
-            if let Some(Object::Method(ext_method)) = class_rc.get_class_var(&ext_key) {
-                return self.invoke_method(
-                    class_rc,
-                    ext_method,
-                    receiver.clone(),
-                    arguments,
-                    position,
-                );
-            }
         }
 
         // Try native method as fallback
@@ -254,6 +236,156 @@ impl VirtualMachine {
     }
 
     /// Look up a method on the receiver and return its class and method definition.
+    /// Whether the current `self` is a class or module object, i.e. execution
+    /// is inside a class or module body rather than at the top level.
+    pub(crate) fn self_is_class_or_module(&self) -> bool {
+        matches!(
+            self.environment().get("self"),
+            Some(Object::Class(_) | Object::Module(_))
+        ) || self.def_scope_stack.last().is_some()
+    }
+
+    /// The class or module a receiverless declaration applies to: the current
+    /// `self` when it is one, otherwise the innermost lexical class or module
+    /// body, which is where an `eval`'d declaration lands.
+    pub(crate) fn current_definee(&self) -> Option<Rc<Class>> {
+        if let Some(definee) = self.def_scope_stack.last() {
+            return Some(Rc::clone(definee));
+        }
+        match self.environment().get("self") {
+            Some(Object::Class(class) | Object::Module(class)) => Some(class),
+            _ => None,
+        }
+    }
+
+    /// Whether `receiver` answers to `name`. A class or module object answers
+    /// to its module-level and singleton methods, never to its own instance
+    /// methods, which belong to the objects it describes rather than to it.
+    pub(crate) fn responds_to(&self, receiver: &Object, name: &str) -> bool {
+        let (Object::Class(class_rc) | Object::Module(class_rc)) = receiver else {
+            return self.lookup_method(receiver, name).is_some();
+        };
+        if module_level_method(class_rc, name).is_some() {
+            return true;
+        }
+        let mut cursor = Some(Rc::clone(class_rc));
+        while let Some(current) = cursor {
+            if let Some(sc) = current.singleton_class_slot().clone()
+                && sc.find_method(name).is_some()
+            {
+                return true;
+            }
+            cursor = current.superclass();
+        }
+        self.builtins()
+            .class_of(receiver)
+            .find_method(name)
+            .is_some()
+    }
+
+    /// Whether `name` resolves to a private or protected method on
+    /// `receiver`, so an explicit-receiver call would be refused.
+    /// Whether `name` is already private through `class_rc`'s ancestors.
+    pub(crate) fn inherits_private(&self, class_rc: &Rc<Class>, name: &str) -> bool {
+        matches!(self.inherited_visibility(class_rc, name), Some(true))
+    }
+
+    /// Whether `name` is already protected through `class_rc`'s ancestors.
+    pub(crate) fn inherits_protected(&self, class_rc: &Rc<Class>, name: &str) -> bool {
+        matches!(self.inherited_visibility(class_rc, name), Some(false))
+    }
+
+    /// The visibility `name` carries from the nearest ancestor that marks or
+    /// defines it: `Some(true)` for private, `Some(false)` for protected,
+    /// `None` for public or undefined.
+    fn inherited_visibility(&self, class_rc: &Rc<Class>, name: &str) -> Option<bool> {
+        for ancestor in class_rc
+            .mixin_chain()
+            .into_iter()
+            .chain(std::iter::successors(class_rc.superclass(), |current| {
+                current.superclass()
+            }))
+        {
+            if ancestor.has_public_override(name) {
+                return None;
+            }
+            if ancestor.is_method_private(name) {
+                return Some(true);
+            }
+            if ancestor.is_method_protected(name) {
+                return Some(false);
+            }
+            if ancestor.find_own_method(name).is_some() {
+                return None;
+            }
+        }
+        None
+    }
+
+    pub(crate) fn method_is_restricted(&self, receiver: &Object, name: &str) -> bool {
+        let owner = self.visibility_owner(receiver, name);
+        // A singleton class is where class-method visibility is recorded, so
+        // its answer settles the question.
+        if let Some(owner) = &owner
+            && owner.is_singleton_class()
+        {
+            return !owner.has_public_override(name) && owner.is_method_restricted(name);
+        }
+        // Otherwise a module-level copy is public even when the instance
+        // method it was copied from is private, as `module_function` leaves it.
+        if let Object::Class(class_rc) | Object::Module(class_rc) = receiver
+            && module_level_method(class_rc, name).is_some()
+        {
+            return false;
+        }
+        match owner {
+            Some(owner) => !owner.has_public_override(name) && owner.is_method_restricted(name),
+            None => false,
+        }
+    }
+
+    /// The class or module that actually defines `name` for `receiver`, which
+    /// is where its visibility is recorded. `lookup_method` reports the class
+    /// it dispatched through, and for a mixed-in method that is the including
+    /// class rather than the module carrying the private marking.
+    fn visibility_owner(&self, receiver: &Object, name: &str) -> Option<Rc<Class>> {
+        // A class method's visibility is recorded on the singleton class,
+        // even though the method itself may live in the class's own table
+        // under the `__class__` convention.
+        if let Object::Class(class_rc) | Object::Module(class_rc) = receiver {
+            let mut defining_singleton = None;
+            let mut cursor = Some(Rc::clone(class_rc));
+            while let Some(current) = cursor {
+                if let Some(sc) = current.singleton_class_slot().clone()
+                    && let Some((owner, _)) = sc.find_method_with_owner(name)
+                {
+                    // The nearest singleton with its own marking for this
+                    // name settles it; a subclass's `private_class_method`
+                    // marks the name without redefining the method.
+                    if sc.has_public_override(name) || sc.is_method_restricted(name) {
+                        return Some(sc);
+                    }
+                    defining_singleton.get_or_insert(owner);
+                }
+                cursor = current.superclass();
+            }
+            if defining_singleton.is_some() {
+                return defining_singleton;
+            }
+        }
+        let Object::Instance(instance_rc) = receiver else {
+            return self.lookup_method(receiver, name).map(|(class, _)| class);
+        };
+        let instance_ref = instance_rc.borrow();
+        let singleton = instance_ref.singleton_class.borrow().clone();
+        let class = Rc::clone(&instance_ref.class);
+        drop(instance_ref);
+        singleton
+            .and_then(|sc| sc.find_method_with_owner(name))
+            .or_else(|| class.find_method_with_owner(name))
+            .map(|(owner, _)| owner)
+    }
+
     pub(crate) fn lookup_method(
         &self,
         receiver: &Object,
@@ -275,13 +407,12 @@ impl VirtualMachine {
                 class.find_method(method_name).map(|method| (class, method))
             }
             Object::Class(class_rc) => {
-                // `def self.name` stores on the class itself under the
-                // `__class__` prefix; check it before walking the singleton
-                // class's superclass chain so a method from the singleton's
-                // ancestors (e.g. Object#describe, when Object has been
-                // reopened) doesn't shadow the class's own class-level method.
-                let class_method_name = format!("__class__{}", method_name);
-                if let Some(method) = class_rc.find_method(&class_method_name) {
+                // A module-level method (`def self.name`, or one copied in by
+                // `extend`) is checked before walking the singleton class's
+                // superclass chain, so a method from the singleton's ancestors
+                // (e.g. Object#describe, when Object has been reopened) does
+                // not shadow the class's own class-level method.
+                if let Some(method) = module_level_method(class_rc, method_name) {
                     return Some((Rc::clone(class_rc), method));
                 }
                 // Walk the receiver's superclass chain, checking each
@@ -302,8 +433,7 @@ impl VirtualMachine {
                     .map(|method| (Rc::clone(class_rc), method))
             }
             Object::Module(module_rc) => {
-                let class_method_name = format!("__class__{}", method_name);
-                if let Some(method) = module_rc.find_method(&class_method_name) {
+                if let Some(method) = module_level_method(module_rc, method_name) {
                     return Some((Rc::clone(module_rc), method));
                 }
                 let mut cursor = Some(Rc::clone(module_rc));
@@ -336,5 +466,18 @@ impl VirtualMachine {
                 class.find_method(method_name).map(|method| (class, method))
             }
         }
+    }
+}
+
+/// A module-level method on a class or module object: one stored under the
+/// `__class__` convention by `def self.name` or `module_function`, or copied
+/// in by `extend` under the `__ext__` convention.
+fn module_level_method(class_rc: &Rc<Class>, method_name: &str) -> Option<Rc<Method>> {
+    if let Some(method) = class_rc.find_method(&format!("__class__{}", method_name)) {
+        return Some(method);
+    }
+    match class_rc.get_class_var(&format!("__ext__{}", method_name)) {
+        Some(Object::Method(method)) => Some(method),
+        _ => None,
     }
 }

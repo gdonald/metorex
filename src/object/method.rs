@@ -56,6 +56,10 @@ pub struct Method {
     /// Refinement modules active (lexically) when this method was defined,
     /// each paired with the snapshot of refined-class names at that moment.
     pub captured_refinements: Vec<(Rc<crate::class::Class>, Vec<String>)>,
+    /// The lexically enclosing modules at the point of definition, innermost
+    /// first. `Module.nesting` inside the method reports these rather than
+    /// the scopes open at the call site.
+    pub captured_nesting: Vec<Rc<crate::class::Class>>,
 }
 
 impl Method {
@@ -79,6 +83,7 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            captured_nesting: Vec::new(),
         }
     }
 
@@ -107,6 +112,7 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            captured_nesting: Vec::new(),
         }
     }
 
@@ -135,6 +141,7 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            captured_nesting: Vec::new(),
         }
     }
 
@@ -164,6 +171,7 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            captured_nesting: Vec::new(),
         }
     }
 
@@ -187,6 +195,7 @@ impl Method {
             lambda_body: false,
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
+            captured_nesting: Vec::new(),
         }
     }
 
@@ -210,6 +219,7 @@ impl Method {
             lambda_body: self.lambda_body,
             captured_def_scope: self.captured_def_scope.clone(),
             captured_refinements: self.captured_refinements.clone(),
+            captured_nesting: self.captured_nesting.clone(),
         }
     }
 

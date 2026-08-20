@@ -1,7 +1,7 @@
 use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
-use crate::object::{Method, Object};
+use crate::object::Object;
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
 use crate::vm::native_methods::is_valid_constant_name;
@@ -62,7 +62,7 @@ impl VirtualMachine {
             let refinement_key = format!("__refine__{}@{:p}", target.name(), Rc::as_ptr(&target));
             let holder = match module_rc.get_class_var(&refinement_key) {
                 Some(Object::Class(existing)) => existing,
-                _ => Rc::new(Class::new(format!("<refinement:{}>", target.name()), None)),
+                _ => Rc::new(Class::new_module(format!("<refinement:{}>", target.name()))),
             };
             if let Some(Object::Block(block)) = self.pending_block.take() {
                 self.apply_block_as_class_body(&holder, &block, position)?;
@@ -148,119 +148,8 @@ impl VirtualMachine {
                 super::class_methods::push_module_ancestors(module_rc, &mut chain, &mut seen);
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(chain)))));
             }
-            "remove_method" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        "remove_method",
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let name_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "remove_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                if !module_rc.remove_method(&name_str) {
-                    return Err(MetorexError::runtime_error(
-                        format!("method '{}' not defined in {}", name_str, module_rc.name()),
-                        position_to_location(position),
-                    ));
-                }
-                return Ok(Some(Object::Nil));
-            }
-            "undef_method" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        "undef_method",
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let name_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "undef_method",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                let sentinel = Method::undefined(name_str.clone());
-                module_rc.define_method(&name_str, Rc::new(sentinel));
-                return Ok(Some(Object::Nil));
-            }
-            "alias_method" => {
-                if arguments.len() != 2 {
-                    return Err(method_argument_error(
-                        "alias_method",
-                        2,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let new_name = self.coerce_method_name(&arguments[0], "alias_method", position)?;
-                let old_name = self.coerce_method_name(&arguments[1], "alias_method", position)?;
-                if module_rc.is_frozen() {
-                    let msg = format!("can't modify frozen Module: {}", module_rc.name());
-                    let exc = Object::exception("FrozenError", msg.clone());
-                    return Err(MetorexError::UncaughtException {
-                        exception: exc,
-                        location: position_to_location(position),
-                        message: msg,
-                    });
-                }
-                if !module_rc.alias_method(&new_name, &old_name) {
-                    // Fall back to looking up the method on Object — some
-                    // specs alias Kernel methods onto methods that are only
-                    // defined at the top level (and hence live on Object).
-                    let mut found = false;
-                    if let Some(Object::Class(object_class)) = self.globals().get("Object")
-                        && let Some(method) = object_class.find_method(&old_name)
-                    {
-                        module_rc.define_method(&new_name, method);
-                        found = true;
-                    }
-                    if !found {
-                        let msg = format!(
-                            "undefined method '{}' for module '{}'",
-                            old_name,
-                            module_rc.name()
-                        );
-                        let exc = Object::exception("NameError", msg.clone());
-                        return Err(MetorexError::UncaughtException {
-                            exception: exc,
-                            location: position_to_location(position),
-                            message: msg,
-                        });
-                    }
-                }
-                // Certain method names are always private when (re)defined,
-                // matching Ruby's enforcement on `initialize` and friends.
-                if matches!(
-                    new_name.as_str(),
-                    "initialize"
-                        | "initialize_copy"
-                        | "initialize_clone"
-                        | "initialize_dup"
-                        | "respond_to_missing?"
-                ) {
-                    module_rc.set_method_private(new_name.clone());
-                }
-                return Ok(Some(Object::Symbol(Rc::new(new_name))));
-            }
+            // `remove_method`, `undef_method`, and `alias_method` are shared
+            // with classes: dispatch falls through to `call_class_methods`.
             // `autoload :CONST, "path"` registers a lazy loader. The path is
             // stored verbatim — `autoload?` returns it unchanged on hit.
             "autoload" => {
@@ -377,50 +266,8 @@ impl VirtualMachine {
                     None => Object::Nil,
                 }));
             }
-            // `mod.instance_method(:name)` returns an UnboundMethod; we return
-            // the bound `Method` object so `.bind(obj).call` on the returned
-            // value still dispatches correctly for fixture use-cases.
-            "instance_method" | "public_instance_method" => {
-                let name_str = match arguments.first() {
-                    Some(Object::String(s)) => (**s).clone(),
-                    Some(Object::Symbol(s)) => (**s).clone(),
-                    _ => return Ok(Some(Object::Nil)),
-                };
-                if let Some((owner, method)) = module_rc.find_method_with_owner(&name_str) {
-                    if method.owner_class.is_some() {
-                        return Ok(Some(Object::Method(method)));
-                    }
-                    let mut unbound = (*method).clone();
-                    unbound.owner = Some(owner.name().to_string());
-                    unbound.owner_class = Some(owner);
-                    return Ok(Some(Object::Method(Rc::new(unbound))));
-                }
-                // Synthesize a stub for well-known Module-private mixin
-                // hooks so `Module.instance_method(:append_features)` works
-                // for spec patterns that bind/call them.
-                if module_rc.name() == "Module"
-                    && matches!(
-                        name_str.as_str(),
-                        "append_features"
-                            | "prepend_features"
-                            | "extend_object"
-                            | "included"
-                            | "extended"
-                    )
-                {
-                    let stub = Method::with_owner(
-                        name_str.clone(),
-                        vec!["target".to_string()],
-                        vec![],
-                        "Module".to_string(),
-                    );
-                    return Ok(Some(Object::Method(Rc::new(stub))));
-                }
-                return Err(MetorexError::runtime_error(
-                    format!("undefined method '{}' for {}", name_str, module_rc.name()),
-                    position_to_location(position),
-                ));
-            }
+            // `instance_method` / `public_instance_method` are shared with
+            // the class dispatch path.
             // Module#include / Module#prepend: dispatch through
             // `append_features` so user overrides on the included module's
             // singleton class fire and the cyclic/frozen checks run.
@@ -429,18 +276,16 @@ impl VirtualMachine {
             // calls *with* arguments so a zero-arg user-defined accessor
             // (e.g. `attr_reader :include` on MSpec) still wins.
             "include" | "prepend" if !arguments.is_empty() => {
-                for arg in arguments {
-                    match arg {
-                        Object::Module(m) | Object::Class(m) => {
-                            self.apply_module_include(module_rc, m, position)?;
-                        }
-                        other => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Module",
-                                other,
-                                position,
-                            ));
+                // Ruby applies the arguments in reverse, so the first module
+                // listed ends up nearest the receiver in the ancestor chain.
+                for arg in arguments.iter().rev() {
+                    if let Some(mixin) =
+                        self.resolve_include_argument(arg, method_name, position)?
+                    {
+                        if method_name == "prepend" {
+                            self.apply_module_prepend(module_rc, &mixin, position)?;
+                        } else {
+                            self.apply_module_include(module_rc, &mixin, position)?;
                         }
                     }
                 }
@@ -482,51 +327,38 @@ impl VirtualMachine {
             // Module#extend_object: invoked by Module#extend; mix the module
             // into the argument's singleton class. We model this by adding a
             // mixin onto the argument if it is a module/class.
-            "extend_object" if !arguments.is_empty() => {
-                for arg in arguments {
-                    match arg {
-                        Object::Module(m) => m.add_mixin(Rc::clone(module_rc)),
-                        Object::Class(c) => c.add_mixin(Rc::clone(module_rc)),
-                        _ => {}
+            // A module also answers with the mixin hooks that Class leaves
+            // undefined; the shared names come from the class dispatch path.
+            "private_methods" => {
+                let Some(Object::Array(names)) =
+                    self.call_class_methods(module_rc, method_name, arguments, position)?
+                else {
+                    return Ok(None);
+                };
+                {
+                    let mut list = names.borrow_mut();
+                    for hook in ["append_features", "prepend_features", "extend_object"] {
+                        list.push(Object::Symbol(Rc::new(hook.to_string())));
                     }
+                    list.sort_by_key(|entry| entry.to_string());
+                }
+                return Ok(Some(Object::Array(names)));
+            }
+            "extend_object" if !arguments.is_empty() => {
+                if module_rc.find_method("__class__extend_object").is_some() {
+                    return Ok(None);
+                }
+                if let Some(sc) = module_rc.singleton_class_slot().clone()
+                    && sc.find_method("extend_object").is_some()
+                {
+                    return Ok(None);
+                }
+                for arg in arguments {
+                    self.default_extend_object(arg, module_rc, position)?;
                 }
                 return Ok(Some(Object::Module(Rc::clone(module_rc))));
             }
-            "module_function" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        "module_function",
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let name_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "module_function",
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                if let Some(method) = module_rc.find_method(&name_str) {
-                    module_rc.set_class_var(format!("__ext__{}", name_str), Object::Method(method));
-                } else {
-                    return Err(MetorexError::runtime_error(
-                        format!(
-                            "undefined method '{}' for module '{}'",
-                            name_str,
-                            module_rc.name()
-                        ),
-                        position_to_location(position),
-                    ));
-                }
-                return Ok(Some(Object::Nil));
-            }
+            // `module_function` is shared with the class dispatch path.
             _ => {}
         }
 

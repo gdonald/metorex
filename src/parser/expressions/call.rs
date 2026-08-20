@@ -65,6 +65,11 @@ impl Parser {
                     TokenKind::Module => "module".to_string(),
                     TokenKind::Include => "include".to_string(),
                     TokenKind::Extend => "extend".to_string(),
+                    TokenKind::Alias => "alias".to_string(),
+                    TokenKind::Until => "until".to_string(),
+                    TokenKind::AttrReader => "attr_reader".to_string(),
+                    TokenKind::AttrWriter => "attr_writer".to_string(),
+                    TokenKind::AttrAccessor => "attr_accessor".to_string(),
                     TokenKind::Yield => "yield".to_string(),
                     TokenKind::Defined => "defined?".to_string(),
                     TokenKind::Nil => "nil".to_string(),
@@ -412,15 +417,9 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Colon starts a symbol when followed by Ident, InstanceVar, ClassVar, or String
         if self.peek().kind == TokenKind::Colon
-            && !matches!(
-                self.peek_ahead(1).kind,
-                TokenKind::Ident(_)
-                    | TokenKind::InstanceVar(_)
-                    | TokenKind::ClassVar(_)
-                    | TokenKind::String(_)
-                    | TokenKind::InterpolatedString(_)
+            && !crate::parser::expressions::primary::symbols::starts_symbol_literal(
+                &self.peek_ahead(1).kind,
             )
         {
             return false;
@@ -533,15 +532,9 @@ impl Parser {
 
         self.skip_whitespace();
 
-        // Colon starts a symbol when followed by Ident, InstanceVar, ClassVar, or String
         if self.peek().kind == TokenKind::Colon
-            && !matches!(
-                self.peek_ahead(1).kind,
-                TokenKind::Ident(_)
-                    | TokenKind::InstanceVar(_)
-                    | TokenKind::ClassVar(_)
-                    | TokenKind::String(_)
-                    | TokenKind::InterpolatedString(_)
+            && !crate::parser::expressions::primary::symbols::starts_symbol_literal(
+                &self.peek_ahead(1).kind,
             )
         {
             return false;
@@ -640,7 +633,9 @@ impl Parser {
     }
 
     /// Parse arguments without parentheses, returning the argument list
-    fn parse_arguments_without_parens(&mut self) -> Result<Vec<Expression>, MetorexError> {
+    pub(crate) fn parse_arguments_without_parens(
+        &mut self,
+    ) -> Result<Vec<Expression>, MetorexError> {
         // Bump paren-less-arg depth so inner argument expressions don't
         // greedily eat a trailing `do...end` block meant for the outer call.
         self.paren_less_arg_depth += 1;

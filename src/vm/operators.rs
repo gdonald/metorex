@@ -117,6 +117,21 @@ impl VirtualMachine {
                 Ok(Object::Bool(left.equals(&right)))
             }
             CaseEqual => {
+                // Regexp === str: whether the pattern matches anywhere.
+                if let Object::Regex(pattern, flags) = &left {
+                    let Object::String(subject) = &right else {
+                        return Ok(Object::Bool(false));
+                    };
+                    let source = if flags.contains('i') {
+                        format!("(?i){}", pattern)
+                    } else {
+                        pattern.as_ref().clone()
+                    };
+                    return Ok(Object::Bool(match regex::Regex::new(&source) {
+                        Ok(compiled) => compiled.is_match(subject),
+                        Err(_) => false,
+                    }));
+                }
                 // Class/Module === obj: check type membership (Ruby's case
                 // equality). Modules also count as the "type test" form so
                 // `SomeMod === obj` works the same as `obj.is_a?(SomeMod)`.
@@ -362,6 +377,10 @@ impl VirtualMachine {
         right: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        if matches!(left, Object::Class(_) | Object::Module(_)) {
+            return self.evaluate_module_comparison(op, left, right, position);
+        }
+
         // Numeric comparisons
         let numeric_result = match (&left, &right) {
             (Object::Int(a), Object::Int(b)) => Some((*a as f64, *b as f64)),
@@ -445,6 +464,57 @@ impl VirtualMachine {
             location: position_to_location(position),
             message: msg,
         })
+    }
+
+    /// Evaluate `Module#<`, `#<=`, `#>`, and `#>=`. These report ancestry:
+    /// true when the relationship holds, false when the opposite relationship
+    /// holds, and nil when the two are unrelated. A non class/module argument
+    /// raises TypeError.
+    fn evaluate_module_comparison(
+        &mut self,
+        op: &BinaryOp,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (Object::Class(left_rc) | Object::Module(left_rc)) = &left else {
+            unreachable!("caller checks the receiver is a class or module")
+        };
+        let (Object::Class(right_rc) | Object::Module(right_rc)) = &right else {
+            let msg = "compared with non class/module".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", msg.clone()),
+                location: position_to_location(position),
+                message: msg,
+            });
+        };
+
+        let left_is_descendant = self.builtins().is_subclass_of(left_rc, right_rc);
+        let right_is_descendant = self.builtins().is_subclass_of(right_rc, left_rc);
+        let same = left_is_descendant && right_is_descendant;
+
+        let descendant_side = match op {
+            BinaryOp::Less | BinaryOp::LessEqual => left_is_descendant,
+            BinaryOp::Greater | BinaryOp::GreaterEqual => right_is_descendant,
+            _ => unreachable!("only ordering operators reach module comparison"),
+        };
+        let ancestor_side = match op {
+            BinaryOp::Less | BinaryOp::LessEqual => right_is_descendant,
+            BinaryOp::Greater | BinaryOp::GreaterEqual => left_is_descendant,
+            _ => unreachable!("only ordering operators reach module comparison"),
+        };
+
+        if same {
+            let inclusive = matches!(op, BinaryOp::LessEqual | BinaryOp::GreaterEqual);
+            return Ok(Object::Bool(inclusive));
+        }
+        if descendant_side {
+            return Ok(Object::Bool(true));
+        }
+        if ancestor_side {
+            return Ok(Object::Bool(false));
+        }
+        Ok(Object::Nil)
     }
 
     /// Evaluate Ruby-style String `%` formatting (`"hello %s" % "world"`).

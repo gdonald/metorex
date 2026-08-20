@@ -255,6 +255,17 @@ impl Parser {
         let start_pos = self
             .expect(TokenKind::Include, "Expected 'include'")?
             .position;
+
+        // A bare `include` with no argument is an ArgumentError at runtime,
+        // not a syntax error, so hand it to the `include(...)` call path with
+        // an empty argument list. Checked before whitespace is skipped, since
+        // skipping would consume the newline that ends the statement.
+        if matches!(
+            self.peek().kind,
+            TokenKind::Newline | TokenKind::Semicolon | TokenKind::Comment(_) | TokenKind::EOF
+        ) {
+            return Ok(self.include_call_statement(Vec::new(), start_pos));
+        }
         self.skip_whitespace();
 
         // `include(Mod)` / `include(Mod.dup, Other)` — a parenthesized
@@ -289,26 +300,42 @@ impl Parser {
         // Continue parsing the postfix chain and dispatch through a regular
         // `include(arg)` call so the evaluated module value is mixed in.
         if self.check(&[TokenKind::Dot, TokenKind::LBracket]) {
-            let mut parts = module_name.split("::");
-            let mut base = Expression::Identifier {
-                name: parts.next().unwrap_or_default().to_string(),
-                position: start_pos,
-            };
-            for part in parts {
-                base = Expression::ScopeResolution {
-                    namespace: Box::new(base),
-                    name: part.to_string(),
-                    position: start_pos,
-                };
-            }
+            let base = self.constant_expression(&module_name, start_pos);
             let argument = self.parse_postfix_calls(base)?;
             return Ok(self.include_call_statement(vec![argument], start_pos));
+        }
+
+        // `include A, B, C` — dispatch through the same `include(...)` call
+        // path the parenthesized form uses.
+        if self.check(&[TokenKind::Comma]) {
+            self.advance();
+            let mut arguments = vec![self.constant_expression(&module_name, start_pos)];
+            arguments.extend(self.parse_arguments_without_parens()?);
+            return Ok(self.include_call_statement(arguments, start_pos));
         }
 
         Ok(Statement::Include {
             module_name,
             position: start_pos,
         })
+    }
+
+    /// Build the expression for a possibly qualified constant name such as
+    /// `Foo::Bar::Baz`.
+    fn constant_expression(&self, qualified_name: &str, position: Position) -> Expression {
+        let mut parts = qualified_name.split("::");
+        let mut base = Expression::Identifier {
+            name: parts.next().unwrap_or_default().to_string(),
+            position,
+        };
+        for part in parts {
+            base = Expression::ScopeResolution {
+                namespace: Box::new(base),
+                name: part.to_string(),
+                position,
+            };
+        }
+        base
     }
 
     /// Build an `include(...)` method-call statement so a runtime expression

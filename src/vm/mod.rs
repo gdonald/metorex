@@ -26,7 +26,7 @@ mod operators;
 pub(super) mod param_binding;
 mod pattern_matching;
 mod program;
-mod statement;
+pub(crate) mod statement;
 pub(crate) mod utils;
 
 pub use call_frame::CallFrame;

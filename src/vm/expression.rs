@@ -207,7 +207,20 @@ impl VirtualMachine {
             },
 
             Object::Class(_) | Object::Module(_) | Object::Instance(_) => {
-                // Dispatch to the class's `[]` method (for Dir[], custom [] methods, etc.)
+                // A user-defined `[]` wins: on a class or module that is
+                // `def self.[]`, stored under the `__class__` prefix.
+                if let Some((owner, method)) = self.lookup_method(&collection, "[]")
+                    && !method.is_undefined
+                {
+                    return self.invoke_method(
+                        owner,
+                        method,
+                        collection.clone(),
+                        vec![key],
+                        position,
+                    );
+                }
+                // Otherwise the native `[]` (Dir[], Hash[], and friends).
                 let class = self.builtins().class_of(&collection);
                 match self.call_native_method(
                     &class,

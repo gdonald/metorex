@@ -10,7 +10,7 @@ use crate::vm::core::VirtualMachine;
 impl VirtualMachine {
     /// Evaluate `defined?(expr)`. Returns a description string for defined
     /// expressions, or `nil` for undefined ones.
-    pub(super) fn eval_defined(&mut self, expression: &Expression) -> Result<Object, MetorexError> {
+    pub(crate) fn eval_defined(&mut self, expression: &Expression) -> Result<Object, MetorexError> {
         let result = match expression {
             Expression::Identifier { name, .. } => match self.environment().get(name) {
                 Some(Object::Method(_)) => Some("method"),

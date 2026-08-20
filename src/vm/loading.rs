@@ -482,8 +482,13 @@ impl VirtualMachine {
         // "file is mid-load" apart from "file already loaded".
         self.loading_paths.push(canonical_str.clone());
 
+        // A loaded file's statements run at top level, whatever method the
+        // load was called from, so `Module.nesting` inside it follows the
+        // file's own class and module bodies rather than the caller's frame.
+        let caller_nesting = std::mem::take(&mut self.method_nesting_stack);
         // Execute the parsed statements (always restore current_file, even on error).
         let result = self.execute_program(&statements);
+        self.method_nesting_stack = caller_nesting;
         self.loading_paths.pop();
         self.current_file = previous_file;
         let value = result.map_err(|e| {

@@ -91,6 +91,9 @@ pub struct VirtualMachine {
     /// invocation. `super` (bare form) reads the top entry to forward args
     /// to the parent method; pushed by invoke_method, popped on return.
     pub(crate) method_arg_stack: Vec<Vec<crate::object::Object>>,
+    /// The lexical nesting captured by each method currently on the call
+    /// stack, so `Module.nesting` inside a body reports the definition site.
+    pub(crate) method_nesting_stack: Vec<Vec<Rc<crate::class::Class>>>,
 }
 
 /// A single activated refinement: the refinement module and the set of target
@@ -139,6 +142,7 @@ impl VirtualMachine {
             def_scope_stack: Vec::new(),
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
+            method_nesting_stack: Vec::new(),
         }
     }
 
@@ -181,6 +185,12 @@ impl VirtualMachine {
 
     /// Snapshot all currently active refinement entries (for lexical capture
     /// into a method definition).
+    /// The lexically enclosing modules at this point, innermost first. Used
+    /// to give each method the `Module.nesting` in force where it was defined.
+    pub(crate) fn snapshot_lexical_nesting(&self) -> Vec<Rc<crate::class::Class>> {
+        self.def_scope_stack.iter().rev().map(Rc::clone).collect()
+    }
+
     pub(crate) fn snapshot_active_refinements(
         &self,
     ) -> Vec<(Rc<crate::class::Class>, Vec<String>)> {

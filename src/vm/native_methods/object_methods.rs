@@ -342,8 +342,7 @@ impl VirtualMachine {
                             ));
                         }
                     };
-                    let singleton = self.singleton_class_of(receiver);
-                    singleton.add_mixin(module_rc);
+                    self.apply_module_extend(receiver, &module_rc, position)?;
                 }
                 Ok(Some(receiver.clone()))
             }
@@ -462,6 +461,16 @@ impl VirtualMachine {
                     }
                     return Ok(Some(Object::Method(std::rc::Rc::new(bound))));
                 }
+                // Module and Class instance methods are implemented natively
+                // rather than living in a method table, so hand out a stub
+                // carrying the right parameter list.
+                if matches!(receiver, Object::Class(_) | Object::Module(_))
+                    && let Some(mut stub) =
+                        super::class_methods::native_module_method_stub(&name_str)
+                {
+                    stub.receiver = Some(Box::new(receiver.clone()));
+                    return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
+                }
                 let cls = self.builtins().class_of(receiver);
                 let msg = format!("undefined method '{}' for class '{}'", name_str, cls.name());
                 let exc = Object::exception("NameError", msg.clone());
@@ -472,8 +481,8 @@ impl VirtualMachine {
                 })
             }
             "respond_to?" => {
-                // Accept String or Symbol method name; ignore optional second
-                // `include_private` argument (Ruby's signature).
+                // Accept String or Symbol method name, plus the optional
+                // `include_private` flag.
                 if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         method_name,
@@ -494,8 +503,10 @@ impl VirtualMachine {
                         ));
                     }
                 };
+                let include_private = matches!(arguments.get(1), Some(value) if value.is_truthy());
                 Ok(Some(Object::Bool(
-                    self.lookup_method(receiver, &method_query).is_some(),
+                    self.responds_to(receiver, &method_query)
+                        && (include_private || !self.method_is_restricted(receiver, &method_query)),
                 )))
             }
             "nil?" => {
@@ -751,6 +762,19 @@ impl VirtualMachine {
                 let obj_class = self.builtins().class_of(receiver);
                 Ok(Some(Object::Bool(obj_class.name() == target_class.name())))
             }
+            // `public_methods` is `methods` minus the restricted ones.
+            "public_methods" => {
+                let Some(Object::Array(names)) =
+                    self.call_object_method(receiver, "methods", arguments, position)?
+                else {
+                    return Ok(None);
+                };
+                names.borrow_mut().retain(|name| match name {
+                    Object::Symbol(n) => !self.method_is_restricted(receiver, n),
+                    _ => true,
+                });
+                Ok(Some(Object::Array(names)))
+            }
             "methods" => {
                 if arguments.len() > 1 {
                     return Err(method_argument_error(
@@ -765,6 +789,11 @@ impl VirtualMachine {
                 // own methods are still collected. Mirrors Ruby's
                 // `obj.methods(false)`.
                 let include_super = !matches!(arguments.first(), Some(Object::Bool(false)));
+                // `obj.methods(false)` is the singleton methods alone: those
+                // defined with `def obj.name` and any on the singleton class.
+                if !include_super {
+                    return Ok(Some(self.singleton_method_names(receiver)));
+                }
                 let class = self.builtins().class_of(receiver);
                 let mut names = class.method_names();
                 if include_super {
@@ -807,6 +836,13 @@ impl VirtualMachine {
                 // `Object.methods.include?(...)`.
                 if let Object::Class(c) | Object::Module(c) = receiver {
                     for name in c.method_names() {
+                        // `def self.name` lands in the method table under the
+                        // `__class__` convention; report it under the name
+                        // Ruby shows.
+                        let name = match name.strip_prefix("__class__") {
+                            Some(bare) => bare.to_string(),
+                            None => name,
+                        };
                         if !names.contains(&name) {
                             names.push(name);
                         }
@@ -822,6 +858,10 @@ impl VirtualMachine {
                             parent = p.superclass();
                         }
                     }
+                }
+                // A tombstone left by `undef_method` is not a method any more.
+                if let Object::Class(c) | Object::Module(c) = receiver {
+                    names.retain(|n| c.find_method(n).is_none_or(|method| !method.is_undefined));
                 }
                 names.sort();
                 names.dedup();
@@ -1088,6 +1128,39 @@ impl VirtualMachine {
                 _ => Ok(None),
             }
         }
+    }
+
+    /// The receiver's singleton method names as an array of symbols. A class
+    /// or module keeps `def self.name` in its own table under the
+    /// `__class__` convention; other objects keep them on a singleton class.
+    fn singleton_method_names(&mut self, receiver: &Object) -> Object {
+        let mut names: Vec<String> = Vec::new();
+        if let Object::Class(c) | Object::Module(c) = receiver {
+            for name in c.method_names() {
+                if let Some(bare) = name.strip_prefix("__class__") {
+                    names.push(bare.to_string());
+                }
+            }
+        }
+        let singleton = match receiver {
+            Object::Class(c) | Object::Module(c) => c.singleton_class_slot().clone(),
+            Object::Instance(inst) => inst.borrow().singleton_class.borrow().clone(),
+            _ => None,
+        };
+        if let Some(sc) = singleton {
+            for name in sc.method_names() {
+                if !name.starts_with("__") && !names.contains(&name) {
+                    names.push(name);
+                }
+            }
+        }
+        names.sort();
+        names.dedup();
+        let symbols: Vec<Object> = names
+            .into_iter()
+            .map(|n| Object::Symbol(std::rc::Rc::new(n)))
+            .collect();
+        Object::Array(std::rc::Rc::new(std::cell::RefCell::new(symbols)))
     }
 }
 

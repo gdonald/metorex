@@ -375,21 +375,18 @@ fn array_max_with_mixed_types_fallback() {
 // ── array_methods.rs: any?/all?/none? with positional args error (lines 765-769) ─
 
 #[test]
-fn array_any_with_args_error() {
-    let err = run_err("[1, 2, 3].any?(1)");
-    assert!(err.contains("argument"));
+fn array_any_with_pattern_argument() {
+    assert_eq!(run("[1, 2, 3].any?(1)"), Some(Object::Bool(true)));
 }
 
 #[test]
-fn array_all_with_args_error() {
-    let err = run_err("[1, 2, 3].all?(1)");
-    assert!(err.contains("argument"));
+fn array_all_with_pattern_argument() {
+    assert_eq!(run("[1, 2, 3].all?(Integer)"), Some(Object::Bool(true)));
 }
 
 #[test]
-fn array_none_with_args_error() {
-    let err = run_err("[1, 2, 3].none?(1)");
-    assert!(err.contains("argument"));
+fn array_none_with_pattern_argument() {
+    assert_eq!(run("[1, 2, 3].none?(String)"), Some(Object::Bool(true)));
 }
 
 // ── array_methods.rs: pack with 0 arguments error (lines 801-805) ────────────

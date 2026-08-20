@@ -4,6 +4,7 @@
 mod error;
 mod expressions;
 mod statements;
+pub(crate) use statements::function::SOLE_INSTANCE_RECEIVER;
 mod token_stream;
 
 use crate::ast::Statement;

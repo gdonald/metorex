@@ -810,12 +810,12 @@ Foo.instance_methods(false).include?(:sec)
 // ── Module `extend_object` (with arg) ──────────────────────────────────
 
 #[test]
-fn module_extend_object_mixes_module_into_target() {
+fn module_extend_object_mixes_module_into_target_singleton() {
     let result = run(r#"
 module M; def foo; :m; end; end
 class K; end
 M.extend_object(K)
-K.new.foo
+K.foo
 "#);
     assert_eq!(result, Some(Object::Symbol(Rc::new("m".to_string()))));
 }

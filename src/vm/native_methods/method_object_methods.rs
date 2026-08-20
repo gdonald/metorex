@@ -45,7 +45,18 @@ impl VirtualMachine {
                             message: msg,
                         });
                     }
-                    return Ok(Some(Object::Nil));
+                    let owner = match &method_obj.owner_class {
+                        Some(owner) => Rc::clone(owner),
+                        None => self.builtins().class_of(&bound),
+                    };
+                    let result = self.invoke_method(
+                        owner,
+                        Rc::clone(method_obj),
+                        bound,
+                        arguments.to_vec(),
+                        position,
+                    )?;
+                    return Ok(Some(result));
                 }
                 "name" => {
                     return Ok(Some(Object::String(Rc::new(method_obj.name.clone()))));
@@ -65,7 +76,12 @@ impl VirtualMachine {
                 }
                 "owner" => {
                     if let Some(owner) = &method_obj.owner_class {
-                        return Ok(Some(Object::Class(Rc::clone(owner))));
+                        let owner = Rc::clone(owner);
+                        return Ok(Some(if owner.is_module() {
+                            Object::Module(owner)
+                        } else {
+                            Object::Class(owner)
+                        }));
                     }
                     let owner_name = method_obj.owner.as_deref().unwrap_or("main");
                     return Ok(Some(Object::String(Rc::new(owner_name.to_string()))));

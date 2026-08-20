@@ -5,6 +5,54 @@ use crate::error::MetorexError;
 use crate::lexer::{InterpolationPart, Lexer, Position, TokenKind};
 use crate::parser::Parser;
 
+/// Whether `kind` can follow a `:` to form a symbol literal. Keeps the
+/// paren-less argument checks in step with what `parse_symbol_literal`
+/// actually accepts, so `foo :alias, :meth` parses like `foo :a, :b`.
+pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Ident(_)
+            | TokenKind::InstanceVar(_)
+            | TokenKind::ClassVar(_)
+            | TokenKind::String(_)
+            | TokenKind::InterpolatedString(_)
+            | TokenKind::Def
+            | TokenKind::Class
+            | TokenKind::If
+            | TokenKind::Else
+            | TokenKind::End
+            | TokenKind::Do
+            | TokenKind::Nil
+            | TokenKind::True
+            | TokenKind::False
+            | TokenKind::Return
+            | TokenKind::Begin
+            | TokenKind::Rescue
+            | TokenKind::Ensure
+            | TokenKind::While
+            | TokenKind::For
+            | TokenKind::Case
+            | TokenKind::When
+            | TokenKind::Module
+            | TokenKind::Include
+            | TokenKind::Yield
+            | TokenKind::Super
+            | TokenKind::Lambda
+            | TokenKind::Break
+            | TokenKind::Continue
+            | TokenKind::Raise
+            | TokenKind::AttrReader
+            | TokenKind::AttrWriter
+            | TokenKind::AttrAccessor
+            | TokenKind::Extend
+            | TokenKind::Alias
+            | TokenKind::Unless
+            | TokenKind::Until
+            | TokenKind::Then
+            | TokenKind::Elsif
+    )
+}
+
 impl Parser {
     /// Parse a symbol literal after a leading `:` token has been consumed.
     pub(super) fn parse_symbol_literal(

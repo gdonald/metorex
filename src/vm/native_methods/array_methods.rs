@@ -60,16 +60,7 @@ impl VirtualMachine {
                     ));
                 }
                 let arr = array_rc.borrow();
-                let parts: Vec<String> = arr
-                    .iter()
-                    .map(|el| match el {
-                        Object::String(s) => format!("\"{}\"", s.as_str()),
-                        Object::Symbol(s) => format!(":{}", s.as_str()),
-                        Object::Nil => "nil".to_string(),
-                        other => other.to_string(),
-                    })
-                    .collect();
-                Ok(Some(Object::string(format!("[{}]", parts.join(", ")))))
+                Ok(Some(Object::string(inspect_elements(&arr))))
             }
             "clear" => {
                 array_rc.borrow_mut().clear();
@@ -318,6 +309,42 @@ impl VirtualMachine {
                     }
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
+            }
+            // The first element the block accepts, or nil.
+            "find" | "detect" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Block",
+                            &other,
+                            position,
+                        ));
+                    }
+                    None => {
+                        return Err(MetorexError::runtime_error(
+                            format!("{} requires a block", method_name),
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                let elements = array_rc.borrow().clone();
+                for element in elements {
+                    let value = self.execute_block_body(&block, vec![element.clone()])?;
+                    if !matches!(value, Object::Bool(false) | Object::Nil) {
+                        return Ok(Some(element));
+                    }
+                }
+                Ok(Some(Object::Nil))
             }
             "partition" => {
                 if !arguments.is_empty() {
@@ -894,23 +921,33 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(unique)))))
             }
-            "any?" | "all?" | "none?" => {
-                if !arguments.is_empty() {
+            "any?" | "all?" | "none?" | "one?" => {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        1,
                         arguments.len(),
                         position,
                     ));
                 }
+                // With a pattern argument each element is tested with
+                // `pattern === element` and any block is ignored.
+                let pattern = arguments.first().cloned();
                 let block = self.pending_block.take();
                 let array = array_rc.borrow();
                 let truthy = |v: &Object| !matches!(v, Object::Bool(false) | Object::Nil);
                 let mut any_true = false;
                 let mut all_true = true;
+                let mut true_count = 0usize;
                 for element in array.iter() {
-                    let result = match &block {
-                        Some(Object::Block(b)) => {
+                    let result = match (&pattern, &block) {
+                        (Some(pattern), _) => self.evaluate_binary_operation(
+                            &crate::ast::BinaryOp::CaseEqual,
+                            pattern.clone(),
+                            element.clone(),
+                            position,
+                        )?,
+                        (None, Some(Object::Block(b))) => {
                             let args = vec![element.clone()];
                             self.execute_block_body(b, args)?
                         }
@@ -918,6 +955,7 @@ impl VirtualMachine {
                     };
                     if truthy(&result) {
                         any_true = true;
+                        true_count += 1;
                     } else {
                         all_true = false;
                     }
@@ -926,6 +964,7 @@ impl VirtualMachine {
                     "any?" => any_true,
                     "all?" => array.is_empty() || all_true,
                     "none?" => !any_true,
+                    "one?" => true_count == 1,
                     _ => unreachable!(),
                 };
                 Ok(Some(Object::Bool(value)))
@@ -1013,5 +1052,22 @@ impl VirtualMachine {
             }
             _ => Ok(None),
         }
+    }
+}
+
+/// Render array elements the way `Array#inspect` does, recursing so a nested
+/// array's own strings and symbols keep their quoting.
+fn inspect_elements(elements: &[Object]) -> String {
+    let parts: Vec<String> = elements.iter().map(inspect_element).collect();
+    format!("[{}]", parts.join(", "))
+}
+
+fn inspect_element(element: &Object) -> String {
+    match element {
+        Object::String(s) => format!("{:?}", s.as_str()),
+        Object::Symbol(s) => format!(":{}", s.as_str()),
+        Object::Nil => "nil".to_string(),
+        Object::Array(nested) => inspect_elements(&nested.borrow()),
+        other => other.to_string(),
     }
 }

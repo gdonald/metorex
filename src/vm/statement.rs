@@ -7,6 +7,7 @@ use super::errors::*;
 use super::utils::*;
 
 use crate::ast::{Expression, Statement};
+use crate::class::Class;
 use crate::error::MetorexError;
 use crate::object::Object;
 use std::rc::Rc;
@@ -40,7 +41,13 @@ impl VirtualMachine {
                 value,
                 position: _,
             } => {
-                let evaluated = self.evaluate_expression(value)?;
+                let evaluated = match self.conditional_assignment_to_new_constant(target, value) {
+                    // `CONST ||= value` where CONST is not defined yet: Ruby
+                    // reads the undefined constant as nil rather than raising,
+                    // so only the right-hand side is evaluated.
+                    Some(right) => self.evaluate_expression(right)?,
+                    None => self.evaluate_expression(value)?,
+                };
                 self.assign_value(target, evaluated)?;
                 Ok(ControlFlow::Next)
             }
@@ -251,6 +258,49 @@ impl VirtualMachine {
             }
         }
         Ok(ControlFlow::Next)
+    }
+
+    /// Evaluate the value of a constant assignment inside a class or module
+    /// body, honoring the `CONST ||= value` form for a constant that has no
+    /// value yet.
+    pub(crate) fn evaluate_constant_assignment(
+        &mut self,
+        statement: &Statement,
+        value: &Expression,
+    ) -> Result<Object, MetorexError> {
+        let Statement::Assignment { target, .. } = statement else {
+            return self.evaluate_expression(value);
+        };
+        match self.conditional_assignment_to_new_constant(target, value) {
+            Some(right) => self.evaluate_expression(right),
+            None => self.evaluate_expression(value),
+        }
+    }
+
+    /// For `CONST ||= value` where `CONST` is not defined, the right-hand
+    /// side of the desugared `CONST = CONST || value`. `None` for every other
+    /// assignment, including one to a constant that already has a value.
+    fn conditional_assignment_to_new_constant<'a>(
+        &mut self,
+        target: &Expression,
+        value: &'a Expression,
+    ) -> Option<&'a Expression> {
+        let Expression::BinaryOp {
+            op: crate::ast::BinaryOp::Or,
+            left,
+            right,
+            ..
+        } = value
+        else {
+            return None;
+        };
+        if !constant_target_matches(target, left) {
+            return None;
+        }
+        match self.eval_defined(target) {
+            Ok(Object::Nil) => Some(right),
+            _ => None,
+        }
     }
 
     /// Assign a value to the given target expression.
@@ -552,7 +602,9 @@ impl VirtualMachine {
                                 // methods, mirroring `evaluate_method_call`.
                                 let is_explicit_receiver =
                                     !matches!(receiver.as_ref(), Expression::SelfExpr { .. });
-                                if is_explicit_receiver && class.is_method_private(&setter_method) {
+                                if is_explicit_receiver
+                                    && class.is_method_restricted(&setter_method)
+                                {
                                     let msg = format!(
                                         "private method '{}' called for an instance of {}",
                                         setter_method,
@@ -708,16 +760,7 @@ impl VirtualMachine {
                             );
                             self.emit_warning_to_stderr(&msg, *position);
                         }
-                        if let Object::Class(v) | Object::Module(v) = &value {
-                            let qualified = format!("{}::{}", c.ruby_name(), name);
-                            v.set_assigned_name_if_anonymous(&qualified);
-                            // A named namespace also names anonymous modules
-                            // nested under the assigned value.
-                            let rn = c.ruby_name();
-                            if !rn.is_empty() && !rn.contains("#<") {
-                                v.assign_name_recursive(&qualified);
-                            }
-                        }
+                        name_constant_value(&c, name, &value);
                         // Explicit `Mod::X = value` outside of an autoload
                         // load supersedes any pending autoload. (The
                         // autoload trigger path manages its own autoload
@@ -745,5 +788,41 @@ impl VirtualMachine {
             }
             _ => Err(invalid_assignment_target_error(target)),
         }
+    }
+}
+
+/// Whether `target` is a constant-shaped assignment target that `left` reads,
+/// which is the shape `CONST ||= value` desugars to.
+fn constant_target_matches(target: &Expression, left: &Expression) -> bool {
+    match (target, left) {
+        (
+            Expression::Identifier { name, .. },
+            Expression::Identifier {
+                name: left_name, ..
+            },
+        ) => name == left_name && name.starts_with(|c: char| c.is_ascii_uppercase()),
+        (
+            Expression::ScopeResolution { name, .. },
+            Expression::ScopeResolution {
+                name: left_name, ..
+            },
+        ) => name == left_name,
+        _ => false,
+    }
+}
+
+/// Name an anonymous class or module on binding it to a constant. A named
+/// namespace makes the name permanent and cascades into the anonymous modules
+/// nested under it; an anonymous one only supplies a temporary name.
+pub(crate) fn name_constant_value(namespace: &Rc<Class>, const_name: &str, value: &Object) {
+    let (Object::Class(bound) | Object::Module(bound)) = value else {
+        return;
+    };
+    let qualified = format!("{}::{}", namespace.inspect_name(), const_name);
+    let namespace_name = namespace.ruby_name();
+    if namespace_name.is_empty() || namespace_name.contains("#<") {
+        bound.set_assigned_name_if_anonymous(&qualified);
+    } else {
+        bound.assign_name_recursive(&qualified);
     }
 }

@@ -206,47 +206,47 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.27. core/module/deprecate_constant_spec — 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.7.28. core/module/eql_spec — 1 file, 1 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.7.29. core/module/equal_spec — 1 file, 1 examples, 9 expectations, 0 failures, 0 errors
-  - [ ] 4.7.30. core/module/equal_value_spec
-  - [ ] 4.7.31. core/module/extend_object_spec
-  - [ ] 4.7.32. core/module/extended_spec
-  - [ ] 4.7.33. core/module/freeze_spec
-  - [ ] 4.7.34. core/module/gt_spec
-  - [ ] 4.7.35. core/module/gte_spec
-  - [ ] 4.7.36. core/module/include_spec
-  - [ ] 4.7.37. core/module/included_modules_spec
-  - [ ] 4.7.38. core/module/included_spec
-  - [ ] 4.7.39. core/module/initialize_copy_spec
-  - [ ] 4.7.40. core/module/initialize_spec
-  - [ ] 4.7.41. core/module/instance_method_spec
-  - [ ] 4.7.42. core/module/instance_methods_spec
-  - [ ] 4.7.43. core/module/lt_spec
-  - [ ] 4.7.44. core/module/lte_spec
-  - [ ] 4.7.45. core/module/method_added_spec
-  - [ ] 4.7.46. core/module/method_defined_spec
-  - [ ] 4.7.47. core/module/method_removed_spec
-  - [ ] 4.7.48. core/module/method_undefined_spec
-  - [ ] 4.7.49. core/module/module_eval_spec
-  - [ ] 4.7.50. core/module/module_exec_spec
-  - [ ] 4.7.51. core/module/module_function_spec
+  - [x] 4.7.30. core/module/equal_value_spec — 1 file, 1 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.7.31. core/module/extend_object_spec — 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.7.32. core/module/extended_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.7.33. core/module/freeze_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 4.7.34. core/module/gt_spec — 1 file, 5 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.7.35. core/module/gte_spec — 1 file, 4 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.7.36. core/module/include_spec — 1 file, 36 examples, 86 expectations, 0 failures, 0 errors
+  - [x] 4.7.37. core/module/included_modules_spec — 1 file, 1 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.7.38. core/module/included_spec — 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.7.39. core/module/initialize_copy_spec — 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.7.40. core/module/initialize_spec — 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.7.41. core/module/instance_method_spec — 1 file, 16 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 4.7.42. core/module/instance_methods_spec — 1 file, 8 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.7.43. core/module/lt_spec — 1 file, 5 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.7.44. core/module/lte_spec — 1 file, 4 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.7.45. core/module/method_added_spec — 1 file, 9 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.7.46. core/module/method_defined_spec — 1 file, 6 examples, 43 expectations, 0 failures, 0 errors
+  - [x] 4.7.47. core/module/method_removed_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.7.48. core/module/method_undefined_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.7.49. core/module/module_eval_spec — 1 file, 20 examples, 33 expectations, 0 failures, 0 errors
+  - [x] 4.7.50. core/module/module_exec_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.7.51. core/module/module_function_spec — 1 file, 26 examples, 46 expectations, 0 failures, 0 errors
   - [ ] 4.7.52. core/module/name_spec
-  - [ ] 4.7.53. core/module/nesting_spec
-  - [ ] 4.7.54. core/module/new_spec
-  - [ ] 4.7.55. core/module/prepend_features_spec
+  - [x] 4.7.53. core/module/nesting_spec — 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.7.54. core/module/new_spec — 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.7.55. core/module/prepend_features_spec — 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.7.56. core/module/prepend_spec
-  - [ ] 4.7.57. core/module/prepended_spec
-  - [ ] 4.7.58. core/module/private_class_method_spec
-  - [ ] 4.7.59. core/module/private_constant_spec
-  - [ ] 4.7.60. core/module/private_instance_methods_spec
-  - [ ] 4.7.61. core/module/private_method_defined_spec
+  - [x] 4.7.57. core/module/prepended_spec — 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.7.58. core/module/private_class_method_spec — 1 file, 8 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.7.59. core/module/private_constant_spec — 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.7.60. core/module/private_instance_methods_spec — 1 file, 7 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.7.61. core/module/private_method_defined_spec — 1 file, 12 examples, 46 expectations, 0 failures, 0 errors
   - [ ] 4.7.62. core/module/private_spec
-  - [ ] 4.7.63. core/module/protected_instance_methods_spec
-  - [ ] 4.7.64. core/module/protected_method_defined_spec
-  - [ ] 4.7.65. core/module/protected_spec
-  - [ ] 4.7.66. core/module/public_class_method_spec
-  - [ ] 4.7.67. core/module/public_constant_spec
-  - [ ] 4.7.68. core/module/public_instance_method_spec
-  - [ ] 4.7.69. core/module/public_instance_methods_spec
-  - [ ] 4.7.70. core/module/public_method_defined_spec
+  - [x] 4.7.63. core/module/protected_instance_methods_spec — 1 file, 7 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.7.64. core/module/protected_method_defined_spec — 1 file, 12 examples, 47 expectations, 0 failures, 0 errors
+  - [x] 4.7.65. core/module/protected_spec — 1 file, 19 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 4.7.66. core/module/public_class_method_spec — 1 file, 8 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.7.67. core/module/public_constant_spec — 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.7.68. core/module/public_instance_method_spec — 1 file, 10 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.7.69. core/module/public_instance_methods_spec — 1 file, 7 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.7.70. core/module/public_method_defined_spec — 1 file, 10 examples, 20 expectations, 0 failures, 0 errors
   - [ ] 4.7.71. core/module/public_spec
   - [ ] 4.7.72. core/module/refine_spec
   - [ ] 4.7.73. core/module/refinements_spec

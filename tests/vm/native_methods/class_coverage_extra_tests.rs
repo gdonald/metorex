@@ -108,13 +108,12 @@ Class.new(sc)
     assert!(err.contains("singleton"));
 }
 
-// ── `include` with Class argument (line 209) ─────────────────────────────────
+// ── `include` with Class argument ────────────────────────────────────────────
 
 #[test]
-fn include_with_class_argument_via_send() {
-    // Use `.send(:include, ...)` to exercise the method-call path (line 209)
-    // which accepts both Module *and* Class arguments.
-    let result = run(r#"
+fn include_with_class_argument_via_send_raises_type_error() {
+    let err = run_err(
+        r#"
 class Mixin
   def shared
     "shared"
@@ -123,9 +122,9 @@ end
 class Host2
 end
 Host2.send(:include, Mixin)
-Host2.new.shared
-"#);
-    assert_eq!(result, Some(Object::string("shared")));
+"#,
+    );
+    assert!(err.contains("Module"), "unexpected error: {err}");
 }
 
 #[test]
@@ -259,7 +258,10 @@ end
 A.instance_method(42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -273,7 +275,10 @@ end
 B.public_instance_method(42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -462,7 +467,10 @@ end
 Bare2.send(:private_class_method, 42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -1110,7 +1118,10 @@ class M6; end
 M6.method_defined?(42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]

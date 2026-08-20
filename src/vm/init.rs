@@ -224,6 +224,17 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     let kernel = Rc::new(Class::new("Kernel", None));
     globals.set("Kernel", Object::Module(kernel));
 
+    // Encoding — metorex strings are UTF-8, so the named encodings exist as
+    // distinct objects but every string reports UTF-8.
+    let encoding = Rc::new(Class::new("Encoding", None));
+    for name in ["UTF_8", "US_ASCII", "BINARY", "ASCII_8BIT"] {
+        let display = name.replace('_', "-");
+        let constant = Rc::new(Class::new(display, Some(Rc::clone(&encoding))));
+        encoding.set_class_var(name, Object::Class(Rc::clone(&constant)));
+        globals.set(format!("Encoding::{}", name), Object::Class(constant));
+    }
+    globals.set("Encoding", Object::Class(encoding));
+
     // Signal — stub module (trap is a no-op)
     let signal = Rc::new(Class::new("Signal", None));
     globals.set("Signal", Object::Module(signal));

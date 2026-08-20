@@ -288,3 +288,17 @@ fn test_stdlib_hash_shorthand_parens_execution() {
     let output = run_example("stdlib/hash/shorthand_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_stdlib_file_and_string_reads_execution() {
+    let expected = "[\"alpha\", \"beta\"]\n2\n11\n\"beta\"\nnil\n";
+    let output = run_example("stdlib/file_and_string_reads.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_file_and_string_reads_parens_execution() {
+    let expected = "[\"alpha\", \"beta\"]\n2\n11\n\"beta\"\nnil\n";
+    let output = run_example("stdlib/file_and_string_reads_parens.rb");
+    assert_eq!(output, expected);
+}

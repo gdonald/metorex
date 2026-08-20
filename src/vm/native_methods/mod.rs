@@ -6,6 +6,7 @@
 mod array_methods;
 pub(crate) mod ast_methods;
 mod class_methods;
+pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
 mod constant_visibility;
 mod define_method;
 mod exception_methods;
@@ -116,6 +117,21 @@ impl VirtualMachine {
             }
             if let Some(result) =
                 self.call_class_methods(class_rc, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+        }
+
+        // An instance of a Module subclass is a module: give it the Module
+        // method table, backed by its singleton class so constants and
+        // methods defined on it are stored and read back per object.
+        if let Object::Instance(instance) = receiver
+            && instance.borrow().class.find_method(method_name).is_none()
+            && self.is_module_subclass_instance(receiver)
+        {
+            let backing = self.singleton_class_of(receiver);
+            if let Some(result) =
+                self.call_class_methods(&backing, method_name, arguments, position)?
             {
                 return Ok(Some(result));
             }
@@ -421,6 +437,38 @@ impl VirtualMachine {
                     append_text(s)?;
                 }
                 Ok(Some(receiver.clone()))
+            }
+            // Each line of the file, with its terminator, yielded to the
+            // block or returned as an array.
+            "each_line" | "readlines" => {
+                let contents = std::fs::read_to_string(&path).map_err(|error| {
+                    MetorexError::runtime_error(
+                        format!("Failed to read '{}': {}", path, error),
+                        crate::error::SourceLocation::new(0, 0, 0),
+                    )
+                })?;
+                let lines: Vec<Object> = contents
+                    .split_inclusive('\n')
+                    .map(|line| Object::String(Rc::new(line.to_string())))
+                    .collect();
+                match self.pending_block.take() {
+                    Some(Object::Block(block)) => {
+                        for line in lines {
+                            self.execute_block_body(&block, vec![line])?;
+                        }
+                        Ok(Some(receiver.clone()))
+                    }
+                    _ => Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(lines))))),
+                }
+            }
+            "read" => {
+                let contents = std::fs::read_to_string(&path).map_err(|error| {
+                    MetorexError::runtime_error(
+                        format!("Failed to read '{}': {}", path, error),
+                        crate::error::SourceLocation::new(0, 0, 0),
+                    )
+                })?;
+                Ok(Some(Object::String(Rc::new(contents))))
             }
             "close" => Ok(Some(Object::Nil)),
             "closed?" => Ok(Some(Object::Bool(false))),

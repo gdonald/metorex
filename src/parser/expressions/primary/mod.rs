@@ -15,4 +15,4 @@ mod dispatch;
 mod groups;
 mod keywords;
 mod literals;
-mod symbols;
+pub(crate) mod symbols;

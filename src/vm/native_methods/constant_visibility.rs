@@ -28,7 +28,9 @@ impl VirtualMachine {
         match method_name {
             "private_constant" | "public_constant" => {
                 let make_private = method_name == "private_constant";
-                for name in constant_names(self, method_name, arguments, position)? {
+                let names = constant_names(self, method_name, arguments, position)?;
+                require_own_constants(class_rc, &names, position)?;
+                for name in names {
                     if make_private {
                         class_rc.mark_private_constant(name);
                     } else {
@@ -39,22 +41,7 @@ impl VirtualMachine {
             }
             "deprecate_constant" => {
                 let names = constant_names(self, method_name, arguments, position)?;
-                for name in &names {
-                    if class_rc.get_class_var(name).is_none()
-                        && class_rc.get_autoload(name).is_none()
-                    {
-                        let message = format!(
-                            "constant {}::{} not defined",
-                            constant_owner(class_rc),
-                            name
-                        );
-                        return Err(MetorexError::UncaughtException {
-                            exception: Object::exception("NameError", message.clone()),
-                            location: position_to_location(position),
-                            message,
-                        });
-                    }
-                }
+                require_own_constants(class_rc, &names, position)?;
                 for name in names {
                     class_rc.mark_deprecated_constant(name);
                 }
@@ -165,4 +152,29 @@ fn constant_names(
         .iter()
         .map(|arg| vm.coerce_method_name(arg, method_name, position))
         .collect()
+}
+
+/// Every name must be a constant of `class_rc` itself. Ruby's constant
+/// visibility methods do not reach inherited constants, and name one that is
+/// missing with a NameError.
+fn require_own_constants(
+    class_rc: &Rc<Class>,
+    names: &[String],
+    position: Position,
+) -> Result<(), MetorexError> {
+    for name in names {
+        if class_rc.get_class_var(name).is_none() && class_rc.get_autoload(name).is_none() {
+            let message = format!(
+                "constant {}::{} not defined",
+                constant_owner(class_rc),
+                name
+            );
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("NameError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
+        }
+    }
+    Ok(())
 }

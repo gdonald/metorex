@@ -6,6 +6,7 @@ use super::VirtualMachine;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
+use std::rc::Rc;
 
 impl VirtualMachine {
     /// Call a native function by name.
@@ -16,8 +17,14 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         match name {
-            "private" | "public" => {
+            // A receiverless `private` / `public` / `protected` applies to the
+            // enclosing class or module; at the top level it applies to Object.
+            "private" | "public" | "protected" => {
                 self.pending_block.take();
+                if let Some(class) = self.current_definee() {
+                    return self
+                        .apply_class_visibility_modifier(&class, name, &arguments, position);
+                }
                 self.apply_visibility_modifier(name, arguments, position)
             }
             "private_constant" | "public_constant" => {
@@ -46,12 +53,55 @@ impl VirtualMachine {
                 }
                 Ok(Object::Nil)
             }
-            "protected"
-            | "module_function"
-            | "private_class_method"
-            | "public_class_method"
-            | "deprecate_constant"
-            | "noop_with_block" => {
+            // A receiverless `module_function` toggles the module-function
+            // state on the enclosing module.
+            "module_function" => {
+                self.pending_block.take();
+                let current_self = self
+                    .current_definee()
+                    .map(Object::Module)
+                    .unwrap_or(Object::Nil);
+                if let Object::Class(class) | Object::Module(class) = &current_self {
+                    if arguments.is_empty() {
+                        class.set_current_visibility(
+                            crate::vm::native_methods::MODULE_FUNCTION_VISIBILITY,
+                        );
+                        return Ok(Object::Nil);
+                    }
+                    let class = Rc::clone(class);
+                    let mut names = Vec::with_capacity(arguments.len());
+                    for argument in &arguments {
+                        let name =
+                            self.coerce_method_name(argument, "module_function", position)?;
+                        self.copy_to_module_function(&class, &name, position)?;
+                        names.push(Object::Symbol(Rc::new(name)));
+                    }
+                    return Ok(match names.len() {
+                        1 => names.remove(0),
+                        _ => Object::Array(Rc::new(std::cell::RefCell::new(names))),
+                    });
+                }
+                Ok(Object::Nil)
+            }
+            // A receiverless `private_class_method` / `public_class_method`
+            // inside a class or module body applies to that class.
+            "private_class_method" | "public_class_method" => {
+                self.pending_block.take();
+                let current_self = self
+                    .current_definee()
+                    .map(Object::Module)
+                    .unwrap_or(Object::Nil);
+                if let Object::Class(class) | Object::Module(class) = &current_self {
+                    let class = Rc::clone(class);
+                    if let Some(result) =
+                        self.call_class_methods(&class, name, &arguments, position)?
+                    {
+                        return Ok(result);
+                    }
+                }
+                Ok(Object::Nil)
+            }
+            "deprecate_constant" | "noop_with_block" => {
                 // Visibility modifiers and Object#freeze — no-op stubs. Accept any args.
                 self.pending_block.take();
                 Ok(Object::Nil)
@@ -767,7 +817,19 @@ impl VirtualMachine {
                 if let Some(f) = &filename {
                     self.current_file = Some(std::path::PathBuf::from(f));
                 }
+                // The eval'd string runs in the caller's body, so it sees the
+                // visibility state in force there. A toggle it sets belongs to
+                // the eval and is restored afterwards.
+                let enclosing = match self.environment().get("self") {
+                    Some(Object::Class(class) | Object::Module(class)) => {
+                        Some((Rc::clone(&class), class.current_visibility()))
+                    }
+                    _ => None,
+                };
                 let result = self.execute_program(&statements);
+                if let Some((class, visibility)) = enclosing {
+                    class.set_current_visibility(visibility);
+                }
                 self.current_file = prev_file;
                 self.pop_refinement_scope();
                 self.user_def_nesting = saved_nesting;

@@ -272,18 +272,18 @@ end
     assert!(err.contains("module") || err.contains("Expected"));
 }
 
-// ── `include` with no name errors (line 205) ─────────────────────────────────
+// ── bare `include` reports the missing argument at runtime ───────────────────
 
 #[test]
 fn include_no_name_errors() {
-    let err = parse_err(
+    let err = run_err(
         r#"
 class Host
   include
 end
 "#,
     );
-    assert!(err.contains("module") || err.contains("Expected"));
+    assert!(err.contains("include"), "unexpected error: {err}");
 }
 
 // ── Undefined module for extend (via runtime) ────────────────────────────────

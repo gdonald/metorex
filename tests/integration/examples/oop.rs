@@ -439,3 +439,325 @@ fn test_oop_toplevel_class_reopen_execution() {
     let output = run_example("oop/toplevel_class_reopen.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_extend_object_hook_execution() {
+    let expected = "hello test\n:hello\n[:private_hook, :public_hook]\nfalse\nFrozenError\nfalse\n";
+    let output = run_example("oop/extend_object_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_extend_object_hook_parens_execution() {
+    let expected = "hello test\n:hello\n[:private_hook, :public_hook]\nfalse\nFrozenError\nfalse\n";
+    let output = run_example("oop/extend_object_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_extended_hook_execution() {
+    let expected = "[:extend_object, :extended, [:plain_extended, Object]]\ntrue\ntrue\ntrue\n";
+    let output = run_example("oop/extended_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_extended_hook_parens_execution() {
+    let expected = "[:extend_object, :extended, [:plain_extended, Object]]\ntrue\ntrue\ntrue\n";
+    let output = run_example("oop/extended_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_comparison_operators_execution() {
+    let expected = "false\ntrue\nfalse\nnil\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\nnil\ncompared with non class/module\n";
+    let output = run_example("oop/module_comparison_operators.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_comparison_operators_parens_execution() {
+    let expected = "false\ntrue\nfalse\nnil\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\nnil\ncompared with non class/module\n";
+    let output = run_example("oop/module_comparison_operators_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_include_multiple_modules_execution() {
+    let expected = ":first\n:second\n:third\n[Host, First, Second, Wrapper::Third]\ntrue\nfalse\nTypeError\nArgumentError\n";
+    let output = run_example("oop/include_multiple_modules.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_include_multiple_modules_parens_execution() {
+    let expected = ":first\n:second\n:third\n[Host, First, Second, Wrapper::Third]\ntrue\nfalse\nTypeError\nArgumentError\n";
+    let output = run_example("oop/include_multiple_modules_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_include_nested_modules_execution() {
+    let expected = "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name]\n[Seedling, Sapling, Leaf]\n";
+    let output = run_example("oop/include_nested_modules.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_include_nested_modules_parens_execution() {
+    let expected = "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name]\n[Seedling, Sapling, Leaf]\n";
+    let output = run_example("oop/include_nested_modules_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_included_modules_execution() {
+    let expected = "[]\n[Base]\n[Middle, Base, Kernel]\n[Kernel]\n";
+    let output = run_example("oop/included_modules.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_included_modules_parens_execution() {
+    let expected = "[]\n[Base]\n[Middle, Base, Kernel]\n[Kernel]\n";
+    let output = run_example("oop/included_modules_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_included_hook_execution() {
+    let expected = "[[:included, \"Host\"], :chained]\n:helped\ntrue\n";
+    let output = run_example("oop/included_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_included_hook_parens_execution() {
+    let expected = "[[:included, \"Host\"], :chained]\n:helped\ntrue\n";
+    let output = run_example("oop/included_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_dup_singleton_execution() {
+    let expected = "[:hello]\n[:hello]\n:hi\n[]\n[:blank]\n[:build]\n:built\n";
+    let output = run_example("oop/module_dup_singleton.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_dup_singleton_parens_execution() {
+    let expected = "[:hello]\n[:hello]\n:hi\n[]\n[:blank]\n[:build]\n:built\n";
+    let output = run_example("oop/module_dup_singleton_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_subclass_instance_execution() {
+    let expected = ":named\nNamespace\ntrue\n[]\n[:LIMIT]\n10\n\"A\"\n";
+    let output = run_example("oop/module_subclass_instance.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_subclass_instance_parens_execution() {
+    let expected = ":named\nNamespace\ntrue\n[]\n[:LIMIT]\n10\n\"A\"\n";
+    let output = run_example("oop/module_subclass_instance_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_unbound_method_execution() {
+    let expected = ":from_module\n:from_base\n:from_base\n1\n:missing\n42 is not a symbol nor a string\n:label\n";
+    let output = run_example("oop/unbound_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_unbound_method_parens_execution() {
+    let expected = ":from_module\n:from_base\n:from_base\n1\n:missing\n42 is not a symbol nor a string\n:label\n";
+    let output = run_example("oop/unbound_method_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_instance_methods_visibility_execution() {
+    let expected = "[:protected_parent, :public_parent]\n[:public_parent]\n[:protected_parent]\n[:private_parent]\n[:public_child]\ntrue\nfalse\nNoMethodError\n";
+    let output = run_example("oop/instance_methods_visibility.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_instance_methods_visibility_parens_execution() {
+    let expected = "[:protected_parent, :public_parent]\n[:public_parent]\n[:protected_parent]\n[:private_parent]\n[:public_child]\ntrue\nfalse\nNoMethodError\n";
+    let output = run_example("oop/instance_methods_visibility_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_method_added_hook_execution() {
+    let expected = "[[:singleton, :singleton_method_added], [:added, :first], [:added, :aliased], [:added, :aliased_again], [:added, :inherited_method], [:added, :retired]]\nfalse\n[:aliased, :aliased_again, :first, :inherited_method]\nnil\ntrue\n";
+    let output = run_example("oop/method_added_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_method_added_hook_parens_execution() {
+    let expected = "[[:singleton, :singleton_method_added], [:added, :first], [:added, :aliased], [:added, :aliased_again], [:added, :inherited_method], [:added, :retired]]\nfalse\n[:aliased, :aliased_again, :first, :inherited_method]\nnil\ntrue\n";
+    let output = run_example("oop/method_added_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_method_defined_visibility_execution() {
+    let expected = "public_mixin true true false false\nprotected_mixin true false true false\nprivate_mixin false false false true\npublic_holder true true false false\nprivate_holder false false false true\n[:private_mixin]\n[:protected_mixin]\ntrue\nfalse\n42 is not a symbol nor a string\n";
+    let output = run_example("oop/method_defined_visibility.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_method_defined_visibility_parens_execution() {
+    let expected = "public_mixin true true false false\nprotected_mixin true false true false\nprivate_mixin false false false true\npublic_holder true true false false\nprivate_holder false false false true\n[:private_mixin]\n[:protected_mixin]\ntrue\nfalse\n42 is not a symbol nor a string\n";
+    let output = run_example("oop/method_defined_visibility_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_method_removed_hook_execution() {
+    let expected = "[[:removed, :doomed], [:undefined, :shadowed]]\n[]\nnil\ntrue\ncan\'t modify frozen Module: \n";
+    let output = run_example("oop/method_removed_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_method_removed_hook_parens_execution() {
+    let expected = "[[:removed, :doomed], [:undefined, :shadowed]]\n[]\nnil\ntrue\ncan\'t modify frozen Module: \n";
+    let output = run_example("oop/method_removed_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_function_execution() {
+    let expected = ":named\n:toggled\nfalse\nfalse\n[:named_form, :toggled]\ntrue\n:named\nNoMethodError\n[\"layered\", \"base\"]\ntrue\n";
+    let output = run_example("oop/module_function.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_function_parens_execution() {
+    let expected = ":named\n:toggled\nfalse\nfalse\n[:named_form, :toggled]\ntrue\n:named\nNoMethodError\n[\"layered\", \"base\"]\ntrue\n";
+    let output = run_example("oop/module_function_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_name_execution() {
+    let expected = "nil\n\"Outer::Inner\"\nnil\nnil\ntrue\ntrue\n\"Outer::Inner::Bound\"\n\"Outer::Inner::Bound::Nested\"\n\"Outer::Conditional\"\n\"Outer::AlsoConditional\"\ntrue\ntrue\nUTF-8\n";
+    let output = run_example("oop/module_name.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_name_parens_execution() {
+    let expected = "nil\n\"Outer::Inner\"\nnil\nnil\ntrue\ntrue\n\"Outer::Inner::Bound\"\n\"Outer::Inner::Bound::Nested\"\n\"Outer::Conditional\"\n\"Outer::AlsoConditional\"\ntrue\ntrue\nUTF-8\n";
+    let output = run_example("oop/module_name_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_nesting_execution() {
+    let expected = "[]\n[Outer]\n[Outer::Inner, Outer]\n[Outer::Inner::Nested, Outer::Inner, Outer]\ntrue\n[Outer::Inner, Outer]\n";
+    let output = run_example("oop/module_nesting.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_nesting_parens_execution() {
+    let expected = "[]\n[Outer]\n[Outer::Inner, Outer]\n[Outer::Inner::Nested, Outer::Inner, Outer]\ntrue\n[Outer::Inner, Outer]\n";
+    let output = run_example("oop/module_nesting_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_prepend_features_hook_execution() {
+    let expected = "[[:prepend_features, \"Prepender\"], [:prepended, \"Prepender\"], [:append_features, \"Includer\"], [:included, \"Includer\"]]\n:greeted\n:greeted\ntrue\n";
+    let output = run_example("oop/prepend_features_hook.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_prepend_features_hook_parens_execution() {
+    let expected = "[[:prepend_features, \"Prepender\"], [:prepended, \"Prepender\"], [:append_features, \"Includer\"], [:included, \"Includer\"]]\n:greeted\n:greeted\ntrue\n";
+    let output = run_example("oop/prepend_features_hook_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_keyword_method_names_execution() {
+    let expected = ":original\n:original\n:original\n[:alias, :meth]\n";
+    let output = run_example("oop/keyword_method_names.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_keyword_method_names_parens_execution() {
+    let expected = ":original\n:original\n:original\n[:alias, :meth]\n";
+    let output = run_example("oop/keyword_method_names_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_private_class_method_execution() {
+    let expected = "inherited_secret hidden\nfirst hidden\nsecond hidden\n:first\nonly hidden\nNameError for a missing method\nNameError for an instance method\n";
+    let output = run_example("oop/private_class_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_private_class_method_parens_execution() {
+    let expected = "inherited_secret hidden\nfirst hidden\nsecond hidden\n:first\nonly hidden\nNameError for a missing method\nNameError for an instance method\n";
+    let output = run_example("oop/private_class_method_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_private_constant_execution() {
+    let expected = ":visible\n:hidden\nHIDDEN is private\nALSO_HIDDEN is private\nNameError for an inherited constant\nNameError for a missing constant\n:hidden\n";
+    let output = run_example("oop/private_constant.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_private_constant_parens_execution() {
+    let expected = ":visible\n:hidden\nHIDDEN is private\nALSO_HIDDEN is private\nNameError for an inherited constant\nNameError for a missing constant\n:hidden\n";
+    let output = run_example("oop/private_constant_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_visibility_modifiers_execution() {
+    let expected = "[:hidden]\n[:guarded]\n[:open]\n:first\n[:first, :second]\n[:first, :second]\nnil\n[:in_eval]\n[:after_closure]\n[]\ntrue\n";
+    let output = run_example("oop/visibility_modifiers.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_visibility_modifiers_parens_execution() {
+    let expected = "[:hidden]\n[:guarded]\n[:open]\n:first\n[:first, :second]\n[:first, :second]\nnil\n[:in_eval]\n[:after_closure]\n[]\ntrue\n";
+    let output = run_example("oop/visibility_modifiers_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_public_instance_method_execution() {
+    let expected = "Base\ntrue\ntrue\ntrue\nguarded: :guarded\nhidden: :hidden\nmissing: :missing\nnil is not a symbol nor a string\n1\n";
+    let output = run_example("oop/public_instance_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_public_instance_method_parens_execution() {
+    let expected = "Base\ntrue\ntrue\ntrue\nguarded: :guarded\nhidden: :hidden\nmissing: :missing\nnil is not a symbol nor a string\n1\n";
+    let output = run_example("oop/public_instance_method_parens.rb");
+    assert_eq!(output, expected);
+}

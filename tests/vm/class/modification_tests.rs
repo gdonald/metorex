@@ -250,7 +250,7 @@ Helper.module_function("nonexistent")
 }
 
 #[test]
-fn module_function_method_still_includable() {
+fn module_function_method_is_included_as_private() {
     let result = run(r#"
 module Helper
   def double(x)
@@ -262,7 +262,7 @@ Helper.module_function("double")
 class Foo
   include Helper
 end
-Foo.new.double(7)
+Foo.new.send(:double, 7)
 "#);
     assert_eq!(result, Some(Object::Int(14)));
 }
@@ -306,15 +306,13 @@ Foo.undef_method()
 }
 
 #[test]
-fn module_function_wrong_arg_count() {
-    let err = run_err(
-        r#"
+fn module_function_no_arguments_is_the_toggle() {
+    let result = run(r#"
 module Foo
 end
 Foo.module_function()
-"#,
-    );
-    assert!(err.contains("expected 1"));
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 #[test]
 fn remove_method_with_symbol_arg() {
@@ -473,7 +471,10 @@ end
 Foo.module_function(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(
+        err.contains("123 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── Module receiver: remove_method, undef_method, alias_method ──────────────
@@ -747,19 +748,20 @@ end
 Mod.module_function(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(
+        err.contains("123 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
-fn module_module_function_wrong_args() {
-    let err = run_err(
-        r#"
+fn module_module_function_no_arguments_is_the_toggle() {
+    let result = run(r#"
 module Mod
 end
 Mod.module_function()
-"#,
-    );
-    assert!(err.contains("expected 1"));
+"#);
+    assert_eq!(result, Some(Object::Nil));
 }
 
 // ── Module.name ─────────────────────────────────────────────────────────────
@@ -811,17 +813,21 @@ File.write("/nonexistent/path/file.txt", "content")
 // ── module_function on Class receiver ───────────────────────────────────────
 
 #[test]
-fn class_module_function() {
-    let result = run(r#"
+fn class_module_function_raises_type_error() {
+    let err = run_err(
+        r#"
 class Foo
   def double(x)
     x * 2
   end
 end
 Foo.module_function("double")
-Foo.double(5)
-"#);
-    assert_eq!(result, Some(Object::Int(10)));
+"#,
+    );
+    assert!(
+        err.contains("module_function must be called for modules"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -833,5 +839,8 @@ end
 Foo.module_function("nonexistent")
 "#,
     );
-    assert!(err.contains("undefined method"));
+    assert!(
+        err.contains("module_function must be called for modules"),
+        "unexpected error: {err}"
+    );
 }

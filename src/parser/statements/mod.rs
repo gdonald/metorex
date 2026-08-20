@@ -5,7 +5,7 @@ mod attributes;
 mod class;
 mod control_flow;
 mod exception;
-mod function;
+pub(crate) mod function;
 
 use crate::ast::{BinaryOp, Expression, Statement};
 use crate::error::MetorexError;

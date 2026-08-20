@@ -131,6 +131,10 @@ impl VirtualMachine {
         // Snapshot the positional args so `super` (bare form, inside the
         // body) can forward them to the parent method.
         self.method_arg_stack.push(arguments_for_body.clone());
+        // `Module.nesting` inside the body reports where the method was
+        // defined, not the scopes open at the call site.
+        self.method_nesting_stack
+            .push(method.captured_nesting.clone());
         let execution_result = self.with_call_frame(
             CallFrame::new(frame_name.clone(), frame_location_string),
             move |vm| {
@@ -141,6 +145,7 @@ impl VirtualMachine {
                 )
             },
         );
+        self.method_nesting_stack.pop();
         self.method_arg_stack.pop();
         if has_captured {
             self.refinement_scopes.pop();

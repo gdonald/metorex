@@ -47,7 +47,13 @@ impl VirtualMachine {
         // method was mixed in (e.g. `class << F; include M; end`), the defining
         // class may not be self's class itself; walking from self's immediate
         // superclass handles that case.
-        if let Some(Object::Class(self_class)) = self.environment().get("self") {
+        if let Some(self_object @ (Object::Class(_) | Object::Module(_))) =
+            self.environment().get("self")
+        {
+            let (Object::Class(self_class) | Object::Module(self_class)) = &self_object else {
+                unreachable!("the match above admits only classes and modules")
+            };
+            let self_class = Rc::clone(self_class);
             let evaluated_args = if forward_args {
                 self.method_arg_stack.last().cloned().unwrap_or_default()
             } else {
@@ -57,6 +63,20 @@ impl VirtualMachine {
                 }
                 evaluated_args
             };
+            // A module extended with another module reaches that module's
+            // copy through `super`: the extended copy sits just above the
+            // receiver's own module-level method in the singleton chain.
+            if let Some(Object::Method(extended)) =
+                self_class.get_class_var(&format!("__ext__{}", method_name))
+            {
+                return self.invoke_method(
+                    Rc::clone(&self_class),
+                    extended,
+                    self_object,
+                    evaluated_args,
+                    position,
+                );
+            }
             let class_method_key = format!("__class__{}", method_name);
             let mut current = self_class.superclass();
             while let Some(cls) = current {
@@ -69,17 +89,42 @@ impl VirtualMachine {
                     return self.invoke_method(
                         Rc::clone(&cls),
                         method,
-                        Object::Class(self_class),
+                        self_object,
                         evaluated_args,
                         position,
                     );
                 }
                 current = cls.superclass();
             }
-            // No superclass class method. Ruby-level `Class#inherited` is a
-            // silent no-op on Object, so we mirror that for the `inherited`
-            // hook only; any other unresolved class-method super is an error.
-            if method_name == "inherited" {
+            // The mixin hooks have real default implementations rather than
+            // no-op ones: `super` from an override performs the default.
+            match method_name.as_str() {
+                "append_features" | "prepend_features" => {
+                    if let Some(Object::Class(target) | Object::Module(target)) =
+                        evaluated_args.first()
+                    {
+                        let target = Rc::clone(target);
+                        self.default_append_features(&target, &self_class, position)?;
+                        return Ok(Object::Module(self_class));
+                    }
+                }
+                "extend_object" => {
+                    if let Some(target) = evaluated_args.first() {
+                        let target = target.clone();
+                        self.default_extend_object(&target, &self_class, position)?;
+                        return Ok(Object::Module(self_class));
+                    }
+                }
+                _ => {}
+            }
+            // No superclass class method. The Module and Class hooks have
+            // silent no-op default implementations, so `super` from an
+            // override of one of them returns nil. Any other unresolved
+            // class-method super is an error.
+            if matches!(
+                method_name.as_str(),
+                "inherited" | "included" | "extended" | "prepended" | "const_added"
+            ) {
                 return Ok(Object::Nil);
             }
             return Err(MetorexError::runtime_error(

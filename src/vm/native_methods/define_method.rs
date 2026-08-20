@@ -81,6 +81,9 @@ impl VirtualMachine {
             "method_added"
         };
         self.invoke_class_hook(class_rc, hook, &method_name, position)?;
+        if class_rc.current_visibility() == crate::vm::native_methods::MODULE_FUNCTION_VISIBILITY {
+            self.copy_to_module_function(class_rc, &method_name, position)?;
+        }
 
         Ok(Object::Symbol(Rc::new(method_name)))
     }
@@ -201,7 +204,13 @@ impl VirtualMachine {
                 if Rc::ptr_eq(current, class_rc)
         );
 
-        if always_private || (defined_in_target && class_rc.current_visibility() == "private") {
+        let current = class_rc.current_visibility();
+        let inherits_private = defined_in_target
+            && matches!(
+                current.as_str(),
+                "private" | crate::vm::native_methods::MODULE_FUNCTION_VISIBILITY
+            );
+        if always_private || inherits_private {
             class_rc.set_method_private(method_name.to_string());
         } else {
             class_rc.set_method_public(method_name);

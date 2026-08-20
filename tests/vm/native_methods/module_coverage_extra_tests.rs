@@ -271,23 +271,26 @@ IM2.instance_method(:missing_xyz)
 }
 
 #[test]
-fn module_instance_method_non_string_returns_nil() {
-    let result = run(r#"
+fn module_instance_method_non_string_errors() {
+    let err = run_err(
+        r#"
 module IM3
 end
 IM3.instance_method(42)
-"#);
-    assert_eq!(result, Some(Object::Nil));
+"#,
+    );
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
-// ── include / prepend with Class arg (lines 242-259) ─────────────────────────
+// ── include / prepend with Class arg ─────────────────────────────────────────
 
 #[test]
-fn module_include_with_class_executes() {
-    // Exercises the `Object::Class(c) => module_rc.add_mixin(...)` arm at
-    // line 248. The transitive propagation to HostUser is out of scope —
-    // we just verify the call succeeds.
-    let result = run(r#"
+fn module_include_with_class_raises_type_error() {
+    let err = run_err(
+        r#"
 class Cls
   def shared
     "class-via-include"
@@ -296,12 +299,9 @@ end
 module Host
 end
 Host.send(:include, Cls)
-:ok
-"#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
+"#,
     );
+    assert!(err.contains("Module"), "unexpected error: {err}");
 }
 
 #[test]

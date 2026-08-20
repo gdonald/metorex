@@ -260,7 +260,7 @@ fn protected_visibility_stub_is_noop() {
 }
 
 #[test]
-fn module_function_stub_is_noop() {
+fn module_function_outside_a_module_returns_nil() {
     assert_eq!(run("module_function()"), Some(Object::Nil));
 }
 

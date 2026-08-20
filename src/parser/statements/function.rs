@@ -5,6 +5,11 @@ use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
+/// Marks a `def (nil).name` style singleton receiver whose sole instance
+/// makes its singleton class the class itself, so the method belongs in the
+/// class's instance method table. Shared with the VM's function-def path.
+pub(crate) const SOLE_INSTANCE_RECEIVER: &str = "sole-instance:";
+
 impl Parser {
     /// Parse a function definition
     pub(crate) fn parse_function_def(&mut self) -> Result<Statement, MetorexError> {
@@ -124,15 +129,21 @@ impl Parser {
                     TokenKind::Ident(method_name) => method_name,
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
-                // Map literal receivers to their class names
+                // true, false, and nil each have exactly one instance, so
+                // their singleton class is the class itself and `def
+                // (nil).foo` defines an instance method on NilClass. The
+                // marker prefix tells the VM to define it that way rather
+                // than as a method on the class object.
                 _singleton_receiver = match &receiver_expr {
                     crate::ast::Expression::BoolLiteral { value: true, .. } => {
-                        Some("TrueClass".to_string())
+                        Some(format!("{}TrueClass", SOLE_INSTANCE_RECEIVER))
                     }
                     crate::ast::Expression::BoolLiteral { value: false, .. } => {
-                        Some("FalseClass".to_string())
+                        Some(format!("{}FalseClass", SOLE_INSTANCE_RECEIVER))
                     }
-                    crate::ast::Expression::NilLiteral { .. } => Some("NilClass".to_string()),
+                    crate::ast::Expression::NilLiteral { .. } => {
+                        Some(format!("{}NilClass", SOLE_INSTANCE_RECEIVER))
+                    }
                     _ => None,
                 };
                 method_name

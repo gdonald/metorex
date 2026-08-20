@@ -80,15 +80,15 @@ t.join.class.name
 // user-defined method body executes.
 
 #[test]
-fn thread_class_level_extended_method_falls_through_to_user_body() {
+fn module_level_extended_method_falls_through_to_user_body() {
     let result = run(r#"
-class Thread
+module Timing
   def value
     777
   end
   module_function :value
 end
-Thread.value
+Timing.value
 "#);
     assert_eq!(result, Some(Object::Int(777)));
 }

@@ -23,15 +23,16 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         if let Some(val) = self.environment().get(name) {
-            // Bare `to_s` at top-level must return "main" (Ruby's top-level self).
+            // A few natives are always a call rather than a reference when
+            // named bare: top-level `to_s` (Ruby's "main"), `using` (whose
+            // 0-arg form raises ArgumentError), and the visibility modifiers,
+            // whose 0-arg form is a toggle on the enclosing class or module.
             if let Object::NativeFunction(fn_name) = &val
-                && fn_name == "top_level_to_s"
-            {
-                return self.call_native_function(fn_name, vec![], position);
-            }
-            // Bare `using` always invokes (0-arg form raises ArgumentError).
-            if let Object::NativeFunction(fn_name) = &val
-                && fn_name == "using"
+                && (matches!(fn_name.as_str(), "top_level_to_s" | "using")
+                    || (matches!(
+                        fn_name.as_str(),
+                        "module_function" | "private" | "public" | "protected"
+                    ) && self.self_is_class_or_module()))
             {
                 return self.call_native_function(fn_name, vec![], position);
             }
@@ -120,7 +121,7 @@ impl VirtualMachine {
                     // Constants defined in included/prepended modules are
                     // visible at the including class — walk the mixin
                     // chain at each ancestor level too.
-                    for mixin in cls.mixin_chain() {
+                    for mixin in cls.transitive_mixins() {
                         if let Some(val) = mixin.get_class_var(name) {
                             return Ok(val);
                         }

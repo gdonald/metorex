@@ -313,6 +313,20 @@ impl VirtualMachine {
                     .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(chars)))))
             }
+            // Metorex strings are UTF-8 throughout.
+            "encoding" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(
+                    self.globals().get("Encoding::UTF_8").unwrap_or(Object::Nil),
+                ))
+            }
             "bytes" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -436,10 +450,12 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::string(string_value.trim().to_string())))
             }
-            "chomp" => {
-                // chomp([sep]) — strips a trailing separator. With no arg,
-                // strips a final \n, \r\n, or \r. With a string arg, strips
-                // exactly that suffix. With nil, returns the string unchanged.
+            // chomp([sep]) — strips a trailing separator. With no arg,
+            // strips a final \n, \r\n, or \r. With a string arg, strips
+            // exactly that suffix. With nil, returns the string unchanged.
+            // metorex strings are immutable shared `Rc<String>`s, so the bang
+            // form returns the stripped copy rather than mutating in place.
+            "chomp" | "chomp!" => {
                 if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,

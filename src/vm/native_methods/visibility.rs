@@ -13,7 +13,10 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // With no arguments the modifier is a toggle: the methods defined
+        // after it in this body take the given visibility.
         if arguments.is_empty() {
+            class_rc.set_current_visibility(modifier);
             return Ok(Object::Nil);
         }
         let flat: Vec<Object> = if arguments.len() == 1 {
@@ -42,15 +45,32 @@ impl VirtualMachine {
                     });
                 }
             };
-            if class_rc.find_method(&n).is_none() {
-                // Fall back to Object's method table — some specs toggle
-                // visibility on Kernel for methods defined at the top level
-                // (which live on Object in Ruby semantics).
-                let on_object = matches!(
-                    self.globals().get("Object"),
-                    Some(Object::Class(oc)) if oc.find_method(&n).is_some()
-                );
-                if !on_object {
+            // A visibility declaration for a method the receiver only
+            // inherits gives the receiver its own entry, and that new entry
+            // fires `method_added`. Kernel is reached through the Object
+            // fallback, since a method defined at the top level lives on
+            // Object rather than anywhere in Kernel's ancestry.
+            // Marking a method that the receiver only inherits, and that
+            // already has the visibility being asked for, changes nothing:
+            // Ruby does not copy the method down in that case.
+            let already_set = match modifier {
+                "private" => {
+                    class_rc.find_method(&n).is_some() && self.inherits_private(class_rc, &n)
+                }
+                "protected" => {
+                    class_rc.find_method(&n).is_some() && self.inherits_protected(class_rc, &n)
+                }
+                _ => false,
+            };
+            if !already_set && class_rc.find_own_method(&n).is_none() {
+                let inherited =
+                    class_rc
+                        .find_method(&n)
+                        .or_else(|| match self.globals().get("Object") {
+                            Some(Object::Class(object_class)) => object_class.find_method(&n),
+                            _ => None,
+                        });
+                let Some(method) = inherited else {
                     let msg = format!("undefined method '{}' for class '{}'", n, class_rc.name());
                     let exc = Object::exception("NameError", msg.clone());
                     return Err(MetorexError::UncaughtException {
@@ -58,15 +78,17 @@ impl VirtualMachine {
                         location: position_to_location(position),
                         message: msg,
                     });
-                }
+                };
+                class_rc.define_method(&n, method);
+                self.invoke_class_hook(class_rc, "method_added", &n, position)?;
             }
             names.push(n);
         }
         for n in &names {
-            if modifier == "private" {
-                class_rc.set_method_private(n.clone());
-            } else {
-                class_rc.set_method_public(n);
+            match modifier {
+                "private" => class_rc.set_method_private(n.clone()),
+                "protected" => class_rc.set_method_protected(n.clone()),
+                _ => class_rc.set_method_public(n),
             }
         }
         match flat.len() {

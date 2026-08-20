@@ -213,7 +213,7 @@ Util.helper
 }
 
 #[test]
-fn module_function_no_args_errors() {
+fn module_function_on_a_class_errors() {
     let err = run_err(
         r#"
 class Mod
@@ -221,7 +221,10 @@ end
 Mod.send(:module_function)
 "#,
     );
-    assert!(err.contains("argument") || err.contains("undefined"));
+    assert!(
+        err.contains("module_function must be called for modules"),
+        "unexpected error: {err}"
+    );
 }
 
 #[test]
@@ -246,7 +249,10 @@ end
 Util3.send(:module_function, 42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol"));
+    assert!(
+        err.contains("42 is not a symbol nor a string"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── Signal.trap stub ─────────────────────────────────────────────────────
@@ -515,19 +521,21 @@ m.length
 // ── module_function on a Class with Symbol arg (mod.rs line 614) ──────────────
 
 #[test]
-fn class_module_function_with_symbol_arg() {
-    // Call module_function on a Class receiver with a Symbol argument.
-    // This exercises the Object::Symbol branch at mod.rs:614.
-    let result = run(r#"
+fn class_module_function_with_symbol_arg_errors() {
+    let err = run_err(
+        r#"
 class Helpers
   def add(a, b)
     a + b
   end
 end
 Helpers.send(:module_function, :add)
-"#);
-    // Returns nil on success
-    assert_eq!(result, Some(Object::Nil));
+"#,
+    );
+    assert!(
+        err.contains("module_function must be called for modules"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── module_function on a Class with wrong type (mod.rs lines 615-620) ─────────
@@ -544,7 +552,10 @@ end
 Helpers2.send(:module_function, 99)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(
+        err.contains("module_function must be called for modules"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── File.expand_path with CurDir component (mod.rs line 451) ─────────────────

@@ -3,6 +3,7 @@
 
 use super::ControlFlow;
 use super::core::VirtualMachine;
+use super::errors::method_argument_type_error;
 use super::utils::*;
 
 use crate::ast::{Expression, Statement};
@@ -10,6 +11,7 @@ use crate::class::Class;
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::{Method, Object};
+use crate::vm::native_methods::MODULE_FUNCTION_VISIBILITY;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -451,6 +453,22 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // A `private` or `module_function` toggle inside the eval belongs to
+        // the eval, so the surrounding body's state is restored on the way
+        // out. (The block form starts fresh; `apply_class_body` resets it.)
+        let outer_visibility = class_rc.current_visibility();
+        let result = self.class_eval_body(class_rc, self_obj, arguments, position);
+        class_rc.set_current_visibility(outer_visibility);
+        result
+    }
+
+    fn class_eval_body(
+        &mut self,
+        class_rc: &Rc<Class>,
+        self_obj: Object,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         // Block form wins when a block is present.
         if let Some(Object::Block(block)) = self.pending_block.take() {
             if !arguments.is_empty() {
@@ -640,7 +658,10 @@ impl VirtualMachine {
                 expression: Expression::Identifier { name, .. },
                 ..
             } = statement
-                && matches!(name.as_str(), "private" | "public" | "protected")
+                && matches!(
+                    name.as_str(),
+                    "private" | "public" | "protected" | MODULE_FUNCTION_VISIBILITY
+                )
             {
                 class.set_current_visibility(name);
                 continue;
@@ -661,19 +682,22 @@ impl VirtualMachine {
                     parameters,
                     body: method_body,
                     singleton_class: None,
-                    ..
+                    position: def_position,
                 } => {
                     let mut m = build_method_from_params(
                         method_name.clone(),
                         parameters,
                         method_body.clone(),
                         self.snapshot_active_refinements(),
+                        self.snapshot_lexical_nesting(),
                     );
                     m.owner = Some(class.name().to_string());
                     m.owner_class = Some(Rc::clone(class));
                     class.define_method(method_name, Rc::new(m));
-                    if class.current_visibility() != "public" {
-                        class.set_method_private(method_name.clone());
+                    apply_current_visibility(class, method_name);
+                    self.invoke_class_hook(class, "method_added", method_name, *def_position)?;
+                    if module_function_is_active(class) {
+                        self.copy_to_module_function(class, method_name, *def_position)?;
                     }
                     last_value = Object::Symbol(Rc::new(method_name.clone()));
                 }
@@ -694,6 +718,7 @@ impl VirtualMachine {
                         parameters,
                         method_body.clone(),
                         self.snapshot_active_refinements(),
+                        self.snapshot_lexical_nesting(),
                     );
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
                     last_value = Object::Symbol(Rc::new(method_name.clone()));
@@ -739,16 +764,25 @@ impl VirtualMachine {
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
+                    m.captured_nesting = self.snapshot_lexical_nesting();
                     m.owner = Some(class.name().to_string());
                     m.owner_class = Some(Rc::clone(class));
                     let method = Rc::new(m);
                     if *is_class_method {
                         // def self.method_name — store as class method with __class__ prefix
                         class.define_method(format!("__class__{}", method_name), method);
+                        self.invoke_class_hook(
+                            class,
+                            "singleton_method_added",
+                            method_name,
+                            position,
+                        )?;
                     } else {
                         class.define_method(method_name, method);
-                        if class.current_visibility() != "public" {
-                            class.set_method_private(method_name.clone());
+                        apply_current_visibility(class, method_name);
+                        self.invoke_class_hook(class, "method_added", method_name, position)?;
+                        if module_function_is_active(class) {
+                            self.copy_to_module_function(class, method_name, position)?;
                         }
                     }
                     last_value = Object::Symbol(Rc::new(method_name.clone()));
@@ -794,7 +828,6 @@ impl VirtualMachine {
                 }
                 Statement::AttrReader { attributes, .. } => {
                     let names = self.resolve_attribute_names(attributes, position)?;
-                    let visibility = class.current_visibility();
                     for attr_name in &names {
                         let getter_body = vec![Statement::Return {
                             value: Some(Expression::InstanceVariable {
@@ -805,15 +838,12 @@ impl VirtualMachine {
                         }];
                         let method = Rc::new(Method::new(attr_name.clone(), vec![], getter_body));
                         class.define_method(attr_name, method);
-                        if visibility != "public" {
-                            class.set_method_private(attr_name.clone());
-                        }
+                        apply_current_visibility(class, attr_name);
                         class.declare_instance_var(attr_name);
                     }
                 }
                 Statement::AttrWriter { attributes, .. } => {
                     let names = self.resolve_attribute_names(attributes, position)?;
-                    let visibility = class.current_visibility();
                     for attr_name in &names {
                         let setter_body = vec![Statement::Assignment {
                             target: Expression::InstanceVariable {
@@ -833,15 +863,12 @@ impl VirtualMachine {
                             setter_body,
                         ));
                         class.define_method(&setter_name, method);
-                        if visibility != "public" {
-                            class.set_method_private(setter_name);
-                        }
+                        apply_current_visibility(class, &setter_name);
                         class.declare_instance_var(attr_name);
                     }
                 }
                 Statement::AttrAccessor { attributes, .. } => {
                     let names = self.resolve_attribute_names(attributes, position)?;
-                    let visibility = class.current_visibility();
                     for attr_name in &names {
                         // Getter
                         let getter_body = vec![Statement::Return {
@@ -854,9 +881,7 @@ impl VirtualMachine {
                         let getter_method =
                             Rc::new(Method::new(attr_name.clone(), vec![], getter_body));
                         class.define_method(attr_name, getter_method);
-                        if visibility != "public" {
-                            class.set_method_private(attr_name.clone());
-                        }
+                        apply_current_visibility(class, attr_name);
 
                         // Setter
                         let setter_body = vec![Statement::Assignment {
@@ -877,9 +902,7 @@ impl VirtualMachine {
                             setter_body,
                         ));
                         class.define_method(&setter_name, setter_method);
-                        if visibility != "public" {
-                            class.set_method_private(setter_name);
-                        }
+                        apply_current_visibility(class, &setter_name);
 
                         class.declare_instance_var(attr_name);
                     }
@@ -900,7 +923,7 @@ impl VirtualMachine {
                     // Lowercase identifiers fall through to the `_` arm and are
                     // treated as normal local-variable assignments.
                     let assign_pos = statement.position();
-                    let const_value = self.evaluate_expression(value)?;
+                    let const_value = self.evaluate_constant_assignment(statement, value)?;
                     if class.get_class_var(const_name).is_some() {
                         let owner = class.ruby_name();
                         let owner = if owner.is_empty() {
@@ -984,9 +1007,12 @@ impl VirtualMachine {
                     }
                 }
                 Statement::Alias {
-                    new_name, old_name, ..
+                    new_name,
+                    old_name,
+                    position: alias_pos,
                 } => {
                     class.alias_method(new_name, old_name);
+                    self.invoke_class_hook(class, "method_added", new_name, *alias_pos)?;
                 }
                 // `class << <target>` inside a class body — open the target's
                 // singleton class and apply the inner body there.
@@ -1078,6 +1104,7 @@ impl VirtualMachine {
                         };
                         if !new_name.is_empty() && !old_name.is_empty() {
                             class.alias_method(&new_name, &old_name);
+                            self.invoke_class_hook(class, "method_added", &new_name, position)?;
                         }
                     }
                     // Handle define_method(:name) { |args| body } calls in class body
@@ -1230,21 +1257,31 @@ impl VirtualMachine {
         function.block_parameter = block_parameter;
         function.variadic_param = variadic_param;
         function.captured_refinements = self.snapshot_active_refinements();
+        function.captured_nesting = self.snapshot_lexical_nesting();
         let function = Rc::new(function);
 
         // Singleton method: define on the specific class (e.g., TrueClass)
         // or on a specific instance (`def x.foo` where `x` is an Object).
         if let Some(receiver_name) = singleton_class {
+            let sole_instance_receiver =
+                receiver_name.strip_prefix(crate::parser::SOLE_INSTANCE_RECEIVER);
+            let receiver_name = sole_instance_receiver.unwrap_or(receiver_name);
             let resolved = self
                 .environment()
                 .get(receiver_name)
                 .or_else(|| self.globals().get(receiver_name));
-            match resolved {
-                Some(Object::Class(target_class)) => {
+            if sole_instance_receiver.is_some() {
+                if let Some(Object::Class(target_class)) = resolved {
                     target_class.define_method(name, Rc::clone(&function));
                 }
-                Some(Object::Module(target_mod)) => {
-                    target_mod.define_method(name, Rc::clone(&function));
+                return Ok(ControlFlow::Next);
+            }
+            match resolved {
+                // `def Klass.name` / `def mod.name` defines a singleton
+                // method, stored under the same `__class__` convention as
+                // `def self.name` inside the body.
+                Some(Object::Class(target_class)) | Some(Object::Module(target_class)) => {
+                    target_class.define_method(format!("__class__{}", name), Rc::clone(&function));
                 }
                 Some(Object::Instance(inst)) => {
                     inst.borrow()
@@ -1264,6 +1301,11 @@ impl VirtualMachine {
         // (top-level `def`, globally accessible).
         if let Some(definee) = self.def_scope_stack.last().cloned() {
             definee.define_method(name, Rc::clone(&function));
+            apply_current_visibility(&definee, name);
+            self.invoke_class_hook(&definee, "method_added", name, position)?;
+            if module_function_is_active(&definee) {
+                self.copy_to_module_function(&definee, name, position)?;
+            }
         } else if let Some(Object::Class(object_class)) = self.globals().get("Object") {
             object_class.define_method(name, Rc::clone(&function));
         }
@@ -1320,16 +1362,26 @@ impl VirtualMachine {
         // (and warning messages like the autoload "didn't define"
         // emission) report the full `Outer::Inner` path instead of just
         // the leaf.
+        // A module nested in an anonymous one carries a temporary name built
+        // from the parent's inspect form. It stays anonymous underneath, so
+        // naming the parent later renames it too.
+        let parent_is_anonymous = parent_scope
+            .as_ref()
+            .is_some_and(|p| p.ruby_name().is_empty());
         let full_name = match parent_scope.as_ref() {
-            Some(p) => {
-                let p_name = p.ruby_name();
-                if p_name.is_empty() {
-                    name.to_string()
-                } else {
-                    format!("{}::{}", p_name, name)
-                }
-            }
+            Some(p) => format!("{}::{}", p.inspect_name(), name),
             None => name.to_string(),
+        };
+        let new_module = || {
+            let module = Class::new_module(if parent_is_anonymous {
+                String::new()
+            } else {
+                full_name.clone()
+            });
+            if parent_is_anonymous {
+                module.set_assigned_name_if_anonymous(&full_name);
+            }
+            Rc::new(module)
         };
         let (module, existing_as_class, is_new) = if let Some(parent) = parent_scope.as_ref() {
             // Object's constants are top-level constants: reopening inside
@@ -1350,7 +1402,7 @@ impl VirtualMachine {
             match resolved {
                 Some(Object::Module(existing)) => (existing, false, false),
                 Some(Object::Class(existing)) => (existing, true, false),
-                _ => (Rc::new(Class::new(full_name.clone(), None)), false, true),
+                _ => (new_module(), false, true),
             }
         } else if let Some(Object::Module(existing)) = self.globals().get(name) {
             (existing, false, false)
@@ -1361,7 +1413,7 @@ impl VirtualMachine {
         } else if let Some(Object::Class(existing)) = self.environment().get(name) {
             (existing, true, false)
         } else {
-            (Rc::new(Class::new(full_name.clone(), None)), false, true)
+            (new_module(), false, true)
         };
 
         // Set 'self' to the module for instance variable access in module body
@@ -1457,7 +1509,23 @@ impl VirtualMachine {
         module: &Rc<Class>,
         body: &[Statement],
     ) -> Result<(), MetorexError> {
+        module.set_current_visibility("public");
         for statement in body {
+            // Bare `private` / `public` / `protected` toggle the default
+            // visibility for the method definitions that follow, the same way
+            // they do in a class body.
+            if let Statement::Expression {
+                expression: Expression::Identifier { name, .. },
+                ..
+            } = statement
+                && matches!(
+                    name.as_str(),
+                    "private" | "public" | "protected" | MODULE_FUNCTION_VISIBILITY
+                )
+            {
+                module.set_current_visibility(name);
+                continue;
+            }
             match statement {
                 Statement::MethodDef {
                     name: method_name,
@@ -1499,13 +1567,34 @@ impl VirtualMachine {
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
+                    m.captured_nesting = self.snapshot_lexical_nesting();
                     m.owner = Some(module.name().to_string());
                     m.owner_class = Some(Rc::clone(module));
                     let method = Rc::new(m);
                     if *is_class_method {
                         module.define_method(format!("__class__{}", method_name), method);
+                        self.invoke_class_hook(
+                            module,
+                            "singleton_method_added",
+                            method_name,
+                            statement.position(),
+                        )?;
                     } else {
                         module.define_method(method_name, method);
+                        apply_current_visibility(module, method_name);
+                        self.invoke_class_hook(
+                            module,
+                            "method_added",
+                            method_name,
+                            statement.position(),
+                        )?;
+                        if module_function_is_active(module) {
+                            self.copy_to_module_function(
+                                module,
+                                method_name,
+                                statement.position(),
+                            )?;
+                        }
                     }
                 }
                 Statement::Assignment {
@@ -1517,7 +1606,7 @@ impl VirtualMachine {
                     ..
                 } if const_name.starts_with(|c: char| c.is_uppercase()) => {
                     let assign_pos = statement.position();
-                    let const_value = self.evaluate_expression(value)?;
+                    let const_value = self.evaluate_constant_assignment(statement, value)?;
                     if module.get_class_var(const_name).is_some() {
                         let owner = module.ruby_name();
                         let owner = if owner.is_empty() {
@@ -1531,6 +1620,7 @@ impl VirtualMachine {
                         );
                         self.emit_warning_to_stderr(&msg, assign_pos);
                     }
+                    crate::vm::statement::name_constant_value(module, const_name, &const_value);
                     module.set_class_var(const_name, const_value);
                     let assign_file = self
                         .get_current_file()
@@ -1646,9 +1736,12 @@ impl VirtualMachine {
                     }
                 }
                 Statement::Alias {
-                    new_name, old_name, ..
+                    new_name,
+                    old_name,
+                    position: alias_pos,
                 } => {
                     module.alias_method(new_name, old_name);
+                    self.invoke_class_hook(module, "method_added", new_name, *alias_pos)?;
                 }
                 // Other statements in module body
                 _ => {
@@ -1808,6 +1901,47 @@ impl VirtualMachine {
         ))
     }
 
+    /// Validate an argument to `include`/`prepend`. Ruby accepts a module
+    /// (never a class) and rejects a refinement. An instance of a Module
+    /// subclass is accepted; metorex has no mixin chain behind such an
+    /// object, so `None` means "accepted, nothing to mix in".
+    pub(crate) fn resolve_include_argument(
+        &mut self,
+        argument: &Object,
+        method_name: &str,
+        position: Position,
+    ) -> Result<Option<Rc<Class>>, MetorexError> {
+        if let Object::Module(module_rc) | Object::Class(module_rc) = argument
+            && module_rc.name().starts_with("<refinement:")
+        {
+            let msg = "Cannot include refinement".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", msg.clone()),
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        match argument {
+            Object::Module(module_rc) => Ok(Some(Rc::clone(module_rc))),
+            Object::Instance(_) if self.is_module_subclass_instance(argument) => Ok(None),
+            other => Err(method_argument_type_error(
+                method_name,
+                "Module",
+                other,
+                position,
+            )),
+        }
+    }
+
+    /// Whether `value` is an instance of a class that descends from Module.
+    pub(crate) fn is_module_subclass_instance(&mut self, value: &Object) -> bool {
+        let Some(Object::Class(module_class)) = self.globals().get("Module") else {
+            return false;
+        };
+        let value_class = self.builtins().class_of(value);
+        self.builtins().is_subclass_of(&value_class, &module_class)
+    }
+
     /// Mix `module_rc` into `target` with full Ruby semantics: dispatch to a
     /// user-defined `append_features` on the module's singleton class if one
     /// exists; otherwise enforce the default checks (FrozenError when target
@@ -1818,32 +1952,70 @@ impl VirtualMachine {
         module_rc: &Rc<Class>,
         position: Position,
     ) -> Result<(), MetorexError> {
-        // `def self.append_features(...)` on the module gets stored under
-        // the `__class__` prefix on the module itself (mirroring how the
-        // VM caches class-level methods); check that path first.
-        if let Some(method) = module_rc.find_method("__class__append_features") {
+        self.apply_module_mixin(target, module_rc, "append_features", "included", position)
+    }
+
+    /// Prepend `module_rc` to `target`. Metorex models the ancestry the same
+    /// way it models an include; what differs is the pair of hooks that fire.
+    pub(crate) fn apply_module_prepend(
+        &mut self,
+        target: &Rc<Class>,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        self.apply_module_mixin(target, module_rc, "prepend_features", "prepended", position)
+    }
+
+    /// Mix `module_rc` into `target`: dispatch to a user-defined features
+    /// hook if the module has one, otherwise enforce the default checks
+    /// (FrozenError when the target is frozen, ArgumentError on a cyclic
+    /// mixin) and add the mixin, then fire the notification hook.
+    fn apply_module_mixin(
+        &mut self,
+        target: &Rc<Class>,
+        module_rc: &Rc<Class>,
+        features_hook: &str,
+        notify_hook: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        // Ruby calls the features hook, then the notification hook, whether
+        // or not the module overrode the first one.
+        let target_argument = Object::Class(Rc::clone(target));
+        if !self.invoke_module_hook(module_rc, features_hook, &target_argument, position)? {
+            self.default_append_features(target, module_rc, position)?;
+        }
+        self.invoke_module_hook(module_rc, notify_hook, &target_argument, position)?;
+        Ok(())
+    }
+
+    /// Call `module_rc`'s own definition of `hook` with `argument`, reporting
+    /// whether one was found. `def self.hook` lands in the module's table
+    /// under the `__class__` prefix; `class << mod` puts it on the singleton.
+    fn invoke_module_hook(
+        &mut self,
+        module_rc: &Rc<Class>,
+        hook: &str,
+        argument: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let receiver = Object::Module(Rc::clone(module_rc));
+        if let Some(method) = module_rc.find_method(&format!("__class__{}", hook)) {
             self.invoke_method(
                 Rc::clone(module_rc),
                 method,
-                Object::Module(Rc::clone(module_rc)),
-                vec![Object::Class(Rc::clone(target))],
+                receiver,
+                vec![argument.clone()],
                 position,
             )?;
-            return Ok(());
+            return Ok(true);
         }
         if let Some(sc) = module_rc.singleton_class_slot().clone()
-            && let Some(method) = sc.find_method("append_features")
+            && let Some(method) = sc.find_method(hook)
         {
-            self.invoke_method(
-                sc,
-                method,
-                Object::Module(Rc::clone(module_rc)),
-                vec![Object::Class(Rc::clone(target))],
-                position,
-            )?;
-            return Ok(());
+            self.invoke_method(sc, method, receiver, vec![argument.clone()], position)?;
+            return Ok(true);
         }
-        self.default_append_features(target, module_rc, position)
+        Ok(false)
     }
 
     /// Default `Module#append_features(target)` behavior: validate the target
@@ -1873,8 +2045,118 @@ impl VirtualMachine {
                 message: msg,
             });
         }
+        // Ruby ignores an include of a module the target already inherits,
+        // leaving it at its original place in the ancestor chain.
+        if module_includes(target, module_rc) {
+            return Ok(());
+        }
         target.add_mixin(Rc::clone(module_rc));
         Ok(())
+    }
+
+    /// Extend `receiver`'s singleton class with `module_rc`, dispatching to a
+    /// user-defined `extend_object` on the module's singleton class when one
+    /// exists; otherwise apply the default behavior.
+    pub(crate) fn apply_module_extend(
+        &mut self,
+        receiver: &Object,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if let Some(method) = module_rc.find_method("__class__extend_object") {
+            self.invoke_method(
+                Rc::clone(module_rc),
+                method,
+                Object::Module(Rc::clone(module_rc)),
+                vec![receiver.clone()],
+                position,
+            )?;
+        } else if let Some(sc) = module_rc.singleton_class_slot().clone()
+            && let Some(method) = sc.find_method("extend_object")
+        {
+            self.invoke_method(
+                sc,
+                method,
+                Object::Module(Rc::clone(module_rc)),
+                vec![receiver.clone()],
+                position,
+            )?;
+        } else {
+            self.default_extend_object(receiver, module_rc, position)?;
+        }
+        self.invoke_extended_hook(receiver, module_rc, position)
+    }
+
+    /// Fire `mod.extended(obj)` after the object has been extended, matching
+    /// Ruby's ordering of `extend_object` first, then the `extended` hook.
+    fn invoke_extended_hook(
+        &mut self,
+        receiver: &Object,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if let Some(method) = module_rc.find_method("__class__extended") {
+            self.invoke_method(
+                Rc::clone(module_rc),
+                method,
+                Object::Module(Rc::clone(module_rc)),
+                vec![receiver.clone()],
+                position,
+            )?;
+            return Ok(());
+        }
+        if let Some(sc) = module_rc.singleton_class_slot().clone()
+            && let Some(method) = sc.find_method("extended")
+        {
+            self.invoke_method(
+                sc,
+                method,
+                Object::Module(Rc::clone(module_rc)),
+                vec![receiver.clone()],
+                position,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Default `Module#extend_object(obj)` behavior: raise FrozenError when
+    /// the object is frozen, otherwise add the module to the object's
+    /// singleton class mixin chain.
+    pub(crate) fn default_extend_object(
+        &mut self,
+        receiver: &Object,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if self.object_is_frozen(receiver) {
+            let class_name = self.builtins().class_of(receiver).name().to_string();
+            let msg = format!("can't modify frozen {}", class_name);
+            let exc = Object::exception("FrozenError", msg.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        let singleton = self.singleton_class_of(receiver);
+        singleton.add_mixin(Rc::clone(module_rc));
+        Ok(())
+    }
+
+    /// Whether `receiver` is frozen. Immediates are always frozen; instances
+    /// and classes/modules carry their own flag.
+    pub(crate) fn object_is_frozen(&self, receiver: &Object) -> bool {
+        match receiver {
+            Object::Bool(_)
+            | Object::Nil
+            | Object::Int(_)
+            | Object::Float(_)
+            | Object::Symbol(_)
+            | Object::String(_) => true,
+            Object::Class(c) | Object::Module(c) => c.is_frozen(),
+            Object::Instance(inst) => inst.borrow().frozen,
+            _ => false,
+        }
     }
 
     /// Execute `alias new_name old_name` outside a class/module body. Ruby
@@ -1885,8 +2167,9 @@ impl VirtualMachine {
         old_name: &str,
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        if let Some(enclosing) = self.def_scope_stack.last() {
+        if let Some(enclosing) = self.def_scope_stack.last().cloned() {
             enclosing.alias_method(new_name, old_name);
+            self.invoke_class_hook(&enclosing, "method_added", new_name, position)?;
             return Ok(ControlFlow::Next);
         }
         if let Some(Object::Class(object_class)) = self.globals().get("Object")
@@ -1915,6 +2198,24 @@ impl VirtualMachine {
         }
         Ok(names)
     }
+}
+
+/// Mark a freshly defined method with the visibility currently in force in
+/// the class body, as set by a bare `private` or `protected`.
+fn apply_current_visibility(class: &Rc<Class>, method_name: &str) {
+    match class.current_visibility().as_str() {
+        "private" => class.set_method_private(method_name.to_string()),
+        "protected" => class.set_method_protected(method_name.to_string()),
+        // Redefining a method under the default visibility makes it public
+        // again, whatever it was before.
+        _ => class.clear_method_visibility(method_name),
+    }
+}
+
+/// Whether a bare `module_function` is in force in this body, so a method
+/// defined here is also copied to the module object.
+fn module_function_is_active(class: &Rc<Class>) -> bool {
+    class.current_visibility() == MODULE_FUNCTION_VISIBILITY
 }
 
 /// Whether `needle` appears anywhere in `module_rc`'s ancestor chain
@@ -1951,6 +2252,7 @@ fn build_method_from_params(
     parameters: &[crate::ast::Parameter],
     body: Vec<Statement>,
     refinements: Vec<(Rc<Class>, Vec<String>)>,
+    nesting: Vec<Rc<Class>>,
 ) -> Method {
     let param_names: Vec<String> = parameters
         .iter()
@@ -1984,5 +2286,6 @@ fn build_method_from_params(
     m.block_parameter = block_parameter;
     m.variadic_param = variadic_param;
     m.captured_refinements = refinements;
+    m.captured_nesting = nesting;
     m
 }
