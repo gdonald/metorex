@@ -71,7 +71,20 @@ impl VirtualMachine {
                     self.globals().get("Object"),
                     Some(Object::Class(object_class)) if object_class.find_method(&n).is_some()
                 );
-                if !on_object {
+                // Kernel methods such as `puts` and `abort` are registered as
+                // global native functions rather than entries in Object's
+                // method table, so a visibility declaration naming one still
+                // has a method to talk about.
+                let on_kernel = matches!(self.globals().get(&n), Some(Object::NativeFunction(_)));
+                // A singleton class of a class carries the class-level
+                // methods, which are native rather than table entries. `new`
+                // is the one specs redeclare, to make a class uninstantiable.
+                let on_metaclass = n == "new"
+                    && matches!(
+                        class_rc.get_class_var("__attached__"),
+                        Some(Object::Class(_))
+                    );
+                if !on_object && !on_kernel && !on_metaclass {
                     let msg = format!("undefined method '{}' for class '{}'", n, class_rc.name());
                     let exc = Object::exception("NameError", msg.clone());
                     return Err(MetorexError::UncaughtException {

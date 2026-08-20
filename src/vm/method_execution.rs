@@ -100,7 +100,13 @@ impl VirtualMachine {
             .owner
             .clone()
             .unwrap_or_else(|| class.name().to_string());
-        let frame_name = format!("{}#{}", owning_class_name, method_name);
+        // `super` follows the definition, so the frame is named for the
+        // method as defined even when it was reached through an alias.
+        let defined_name = method
+            .original_name
+            .clone()
+            .unwrap_or_else(|| method_name.clone());
+        let frame_name = format!("{}#{}", owning_class_name, defined_name);
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
 
@@ -135,7 +141,12 @@ impl VirtualMachine {
         self.method_nesting_stack
             .push(method.captured_nesting.clone());
         let execution_result = self.with_call_frame(
-            CallFrame::new(frame_name.clone(), frame_location_string),
+            CallFrame::method(
+                frame_name.clone(),
+                frame_location_string,
+                method_name.clone(),
+                defined_name.clone(),
+            ),
             move |vm| {
                 vm.execute_method_body(
                     method_for_body.as_ref(),
@@ -202,8 +213,10 @@ impl VirtualMachine {
                 }
             }
 
-            let (positional, kwargs) =
-                split_keyword_args(arguments, !method.keyword_parameters.is_empty());
+            let (positional, kwargs) = split_keyword_args(
+                arguments,
+                !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some(),
+            );
             bind_params(
                 self,
                 &method.parameters,
@@ -211,7 +224,11 @@ impl VirtualMachine {
                 &method.default_parameters,
                 &method.variadic_param,
             )?;
-            self.bind_keyword_params(&method.keyword_parameters, kwargs)?;
+            self.bind_keyword_params(
+                &method.keyword_parameters,
+                method.keyword_rest_parameter.as_deref(),
+                kwargs,
+            )?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
             // and the named &block parameter if the method declared one.
@@ -255,8 +272,11 @@ impl VirtualMachine {
 
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
-            let (positional, kwargs) =
-                split_keyword_args(arguments, !function.keyword_parameters.is_empty());
+            let (positional, kwargs) = split_keyword_args(
+                arguments,
+                !function.keyword_parameters.is_empty()
+                    || function.keyword_rest_parameter.is_some(),
+            );
             bind_params(
                 self,
                 &function.parameters,
@@ -264,7 +284,11 @@ impl VirtualMachine {
                 &function.default_parameters,
                 &function.variadic_param,
             )?;
-            self.bind_keyword_params(&function.keyword_parameters, kwargs)?;
+            self.bind_keyword_params(
+                &function.keyword_parameters,
+                function.keyword_rest_parameter.as_deref(),
+                kwargs,
+            )?;
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
             // and the named &block parameter if the function declared one.
@@ -444,6 +468,7 @@ impl VirtualMachine {
     pub(crate) fn bind_keyword_params(
         &mut self,
         keyword_parameters: &[(String, Option<Expression>)],
+        keyword_rest_parameter: Option<&str>,
         kwargs: HashMap<String, Object>,
     ) -> Result<(), MetorexError> {
         for (name, default_expr) in keyword_parameters {
@@ -459,6 +484,23 @@ impl VirtualMachine {
             };
             self.environment_mut().define(name.clone(), value);
         }
+
+        if let Some(rest_name) = keyword_rest_parameter {
+            let declared: std::collections::HashSet<&str> = keyword_parameters
+                .iter()
+                .map(|(name, _)| name.as_str())
+                .collect();
+            let rest: HashMap<String, Object> = kwargs
+                .iter()
+                .filter(|(name, _)| !declared.contains(name.as_str()))
+                .map(|(name, value)| (format!(":{}", name), value.clone()))
+                .collect();
+            self.environment_mut().define(
+                rest_name.to_string(),
+                Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(rest))),
+            );
+        }
+
         Ok(())
     }
 }

@@ -265,9 +265,12 @@ impl VirtualMachine {
         let (Object::Class(class_rc) | Object::Module(class_rc)) = receiver else {
             // A tombstone left by `undef_method` is not something the object
             // responds to.
-            return self
-                .lookup_method(receiver, name)
-                .is_some_and(|(_, method)| !method.is_undefined);
+            // Kernel methods live in the native dispatch tables rather than
+            // in any class's method map, so they are checked separately.
+            return match self.lookup_method(receiver, name) {
+                Some((_, method)) => !method.is_undefined,
+                None => crate::vm::native_methods::is_native_kernel_method(name),
+            };
         };
         if module_level_method(class_rc, name).is_some() {
             return true;

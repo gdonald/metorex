@@ -494,8 +494,15 @@ impl VirtualMachine {
         // load was called from, so `Module.nesting` inside it follows the
         // file's own class and module bodies rather than the caller's frame.
         let caller_nesting = std::mem::take(&mut self.method_nesting_stack);
+        // The same goes for `__callee__` and `__method__`: a loaded file runs
+        // at top level, so neither reports the method that ran the load.
+        self.call_stack_push(crate::vm::CallFrame::boundary(format!(
+            "<file:{}>",
+            canonical_path.display()
+        )));
         // Execute the parsed statements (always restore current_file, even on error).
         let result = self.execute_program(&statements);
+        self.call_stack_pop();
         self.method_nesting_stack = caller_nesting;
         self.loading_paths.pop();
         self.current_file = previous_file;

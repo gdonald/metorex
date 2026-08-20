@@ -188,6 +188,27 @@ impl VirtualMachine {
                     position,
                 )?))
             }
+            // `dig(key, *rest)` — fetch `key`, then keep digging into the
+            // result. A missing key answers nil without visiting `rest`.
+            "dig" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                }
+                let Some(key_str) = crate::vm::utils::object_to_dict_key(&arguments[0]) else {
+                    return Ok(Some(Object::Nil));
+                };
+                let found = dict_rc.borrow().get(&key_str).cloned();
+                let Some(mut value) = found else {
+                    return Ok(Some(Object::Nil));
+                };
+                for key in &arguments[1..] {
+                    if matches!(value, Object::Nil) {
+                        return Ok(Some(Object::Nil));
+                    }
+                    value = self.dig_into(&value, key, position)?;
+                }
+                Ok(Some(value))
+            }
             "get" | "fetch" => {
                 if arguments.is_empty() || arguments.len() > 2 {
                     return Err(MetorexError::runtime_error(

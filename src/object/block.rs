@@ -34,6 +34,10 @@ pub struct BlockStatement {
     /// on the same enclosing module that an unbroken straight-line statement
     /// would have hit.
     pub captured_def_scope: Vec<Rc<Class>>,
+    /// The method that lexically encloses this block, as the (callee, defined)
+    /// pair `__callee__` and `__method__` report. None for a block created
+    /// outside any method.
+    pub defining_method: Option<(String, String)>,
 }
 
 impl BlockStatement {
@@ -49,6 +53,7 @@ impl BlockStatement {
             body,
             captured_vars,
             captured_def_scope: Vec::new(),
+            defining_method: None,
         }
     }
 
@@ -61,6 +66,7 @@ impl BlockStatement {
         body: Vec<Statement>,
         captured_vars: HashMap<String, Rc<RefCell<Object>>>,
         captured_def_scope: Vec<Rc<Class>>,
+        defining_method: Option<(String, String)>,
     ) -> Self {
         Self {
             parameters,
@@ -68,6 +74,7 @@ impl BlockStatement {
             body,
             captured_vars,
             captured_def_scope,
+            defining_method,
         }
     }
 

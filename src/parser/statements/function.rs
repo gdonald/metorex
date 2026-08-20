@@ -261,7 +261,7 @@ impl Parser {
     fn can_start_no_paren_params(&self) -> bool {
         matches!(
             self.peek().kind,
-            TokenKind::Ident(_) | TokenKind::Star | TokenKind::Ampersand
+            TokenKind::Ident(_) | TokenKind::Star | TokenKind::StarStar | TokenKind::Ampersand
         )
     }
 
@@ -280,6 +280,20 @@ impl Parser {
                     _ => return Err(self.error_at_previous("Expected parameter name after '&'")),
                 };
                 params.push(Parameter::block(name, param_pos));
+            } else if self.match_token(&[TokenKind::StarStar]) {
+                if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
+                    params.push(Parameter::keyword("__anon_kwrest".to_string(), param_pos));
+                } else {
+                    let name = match self.advance().kind {
+                        TokenKind::Ident(name) => name,
+                        _ => {
+                            return Err(
+                                self.error_at_previous("Expected parameter name after '**'")
+                            );
+                        }
+                    };
+                    params.push(Parameter::keyword(name, param_pos));
+                }
             } else if self.match_token(&[TokenKind::Star]) {
                 if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
                     params.push(Parameter::variadic("__anon_splat".to_string(), param_pos));
@@ -349,6 +363,23 @@ impl Parser {
                     _ => return Err(self.error_at_previous("Expected parameter name after '&'")),
                 };
                 params.push(Parameter::block(name, param_pos));
+            }
+            // Check for variadic parameter (*args). A bare `*` with no name is
+            // an anonymous splat, which discards the remaining positional args.
+            else if self.match_token(&[TokenKind::StarStar]) {
+                if self.check(&[TokenKind::Comma, TokenKind::RParen, TokenKind::Pipe]) {
+                    params.push(Parameter::keyword("__anon_kwrest".to_string(), param_pos));
+                } else {
+                    let name = match self.advance().kind {
+                        TokenKind::Ident(name) => name,
+                        _ => {
+                            return Err(
+                                self.error_at_previous("Expected parameter name after '**'")
+                            );
+                        }
+                    };
+                    params.push(Parameter::keyword(name, param_pos));
+                }
             }
             // Check for variadic parameter (*args). A bare `*` with no name is
             // an anonymous splat, which discards the remaining positional args.

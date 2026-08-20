@@ -98,6 +98,7 @@ impl VirtualMachine {
                     body.clone(),
                     captured,
                     self.def_scope_stack.clone(),
+                    self.enclosing_method_names(),
                 );
                 Ok(Object::Block(Rc::new(block)))
             }
@@ -163,6 +164,39 @@ impl VirtualMachine {
                             *position,
                         );
                     }
+                    // A generated struct class answers `==` from Struct's
+                    // native table, which the method map above does not hold.
+                    let instance_class = match &left_value {
+                        Object::Instance(instance) => {
+                            Some(std::rc::Rc::clone(&instance.borrow().class))
+                        }
+                        _ => None,
+                    };
+                    if let Some(class) = &instance_class
+                        && let Some(members) = crate::vm::native_methods::struct_members(class)
+                        && let Some(result) = self.call_struct_instance_method(
+                            class,
+                            &members,
+                            &left_value,
+                            op_name,
+                            std::slice::from_ref(&right_value),
+                            *position,
+                        )?
+                    {
+                        return Ok(result);
+                    }
+                    // Rational arithmetic likewise lives in a native table.
+                    if let Some(class) = &instance_class
+                        && class.name() == "Rational"
+                        && let Some(result) = self.call_rational_method(
+                            &left_value,
+                            op_name,
+                            std::slice::from_ref(&right_value),
+                            *position,
+                        )?
+                    {
+                        return Ok(result);
+                    }
                     // Comparable-style fallback: if the class defines `<=>`,
                     // derive `<`, `<=`, `>`, `>=` from its result. (Ruby gets
                     // these from the Comparable mixin; metorex synthesises
@@ -192,6 +226,22 @@ impl VirtualMachine {
                             };
                             return Ok(Object::Bool(result));
                         }
+                    }
+                }
+                // `1 / 2r` — an Integer or Float on the left of a Rational is
+                // promoted so the Rational's own arithmetic runs.
+                if let (Some(op_name), Object::Int(_) | Object::Float(_)) =
+                    (binary_op_method_name(op), &left_value)
+                    && crate::vm::native_methods::rational_parts(&right_value).is_some()
+                {
+                    let promoted = self.promote_to_rational(&left_value, *position)?;
+                    if let Some(result) = self.call_rational_method(
+                        &promoted,
+                        op_name,
+                        std::slice::from_ref(&right_value),
+                        *position,
+                    )? {
+                        return Ok(result);
                     }
                 }
                 self.evaluate_binary_operation(op, left_value, right_value, *position)

@@ -383,6 +383,7 @@ fn format_object_block() {
         body: vec![],
         captured_vars: std::collections::HashMap::new(),
         captured_def_scope: vec![],
+        defining_method: None,
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }

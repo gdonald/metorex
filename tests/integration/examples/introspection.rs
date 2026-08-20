@@ -34,7 +34,7 @@ simple_func
 nil
 Proc
 Proc
-<Binding with 157 vars>
+<Binding with 163 vars>
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");

@@ -358,18 +358,21 @@ fn integer_conversion_from_invalid_string_errors() {
 }
 
 #[test]
-fn integer_conversion_from_true_returns_one() {
-    assert_eq!(run("Integer(true)"), Some(Object::Int(1)));
+fn integer_conversion_from_true_raises() {
+    let err = run_err("Integer(true)");
+    assert!(err.contains("TrueClass"), "{}", err);
 }
 
 #[test]
-fn integer_conversion_from_false_returns_zero() {
-    assert_eq!(run("Integer(false)"), Some(Object::Int(0)));
+fn integer_conversion_from_false_raises() {
+    let err = run_err("Integer(false)");
+    assert!(err.contains("FalseClass"), "{}", err);
 }
 
 #[test]
-fn integer_conversion_from_nil_returns_zero() {
-    assert_eq!(run("Integer(nil)"), Some(Object::Int(0)));
+fn integer_conversion_from_nil_raises() {
+    let err = run_err("Integer(nil)");
+    assert!(err.contains("nil"), "{}", err);
 }
 
 #[test]
@@ -385,8 +388,8 @@ fn string_conversion_from_int() {
 
 #[test]
 fn string_conversion_from_nil() {
-    // String() formats nil via Display, which yields the literal "nil".
-    assert_eq!(run("String(nil)"), Some(Object::string("nil")));
+    // String() goes through to_s, and nil.to_s is the empty string.
+    assert_eq!(run("String(nil)"), Some(Object::string("")));
 }
 
 #[test]

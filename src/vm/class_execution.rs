@@ -653,6 +653,24 @@ impl VirtualMachine {
         // Reset visibility to public at the start of every class body so
         // reopening doesn't carry over a stale state from a prior body.
         class.set_current_visibility("public");
+        // A class body is not a method activation, so `__callee__` and
+        // `__method__` inside one answer nil rather than reporting whichever
+        // method happens to be running further down the stack.
+        self.call_stack_push(crate::vm::CallFrame::boundary(format!(
+            "<class:{}>",
+            class.name()
+        )));
+        let body_result = self.apply_class_body_statements(class, body, position);
+        self.call_stack_pop();
+        body_result
+    }
+
+    fn apply_class_body_statements(
+        &mut self,
+        class: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         let mut last_value = Object::Nil;
         for statement in body {
             // Bare `private` / `public` / `protected` statements (no args)
@@ -736,7 +754,7 @@ impl VirtualMachine {
                     // Create a Method object
                     let param_names: Vec<String> = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                         .map(|p| p.name.clone())
                         .collect();
                     let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> =
@@ -751,19 +769,23 @@ impl VirtualMachine {
                         .map(|p| p.name.clone());
                     let default_params: Vec<(usize, crate::ast::Expression)> = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                         .enumerate()
                         .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
                         .collect();
                     let variadic_param = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                         .enumerate()
                         .find(|(_, p)| p.is_variadic)
                         .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
+                    m.keyword_rest_parameter = parameters
+                        .iter()
+                        .find(|p| p.is_keyword)
+                        .map(|p| p.name.clone());
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
@@ -1211,7 +1233,7 @@ impl VirtualMachine {
         // Extract positional parameter names (exclude named keyword and block params)
         let param_names: Vec<String> = parameters
             .iter()
-            .filter(|p| !p.is_named_keyword && !p.is_block)
+            .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
             .map(|p| p.name.clone())
             .collect();
 
@@ -1231,7 +1253,7 @@ impl VirtualMachine {
         // Extract positional default values
         let default_parameters: Vec<(usize, crate::ast::Expression)> = parameters
             .iter()
-            .filter(|p| !p.is_named_keyword && !p.is_block)
+            .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
             .enumerate()
             .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
             .collect();
@@ -1243,7 +1265,7 @@ impl VirtualMachine {
         // Extract variadic parameter info
         let variadic_param = parameters
             .iter()
-            .filter(|p| !p.is_named_keyword && !p.is_block)
+            .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
             .enumerate()
             .find(|(_, p)| p.is_variadic)
             .map(|(i, p)| (i, p.name.clone()));
@@ -1257,6 +1279,10 @@ impl VirtualMachine {
         );
         function.default_parameters = default_parameters;
         function.keyword_parameters = keyword_parameters;
+        function.keyword_rest_parameter = parameters
+            .iter()
+            .find(|p| p.is_keyword)
+            .map(|p| p.name.clone());
         function.block_parameter = block_parameter;
         function.variadic_param = variadic_param;
         function.captured_refinements = self.snapshot_active_refinements();
@@ -1539,7 +1565,7 @@ impl VirtualMachine {
                 } => {
                     let param_names: Vec<String> = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                         .map(|p| p.name.clone())
                         .collect();
                     let keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> =
@@ -1554,19 +1580,23 @@ impl VirtualMachine {
                         .map(|p| p.name.clone());
                     let default_params: Vec<(usize, crate::ast::Expression)> = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                         .enumerate()
                         .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
                         .collect();
                     let variadic_param = parameters
                         .iter()
-                        .filter(|p| !p.is_named_keyword && !p.is_block)
+                        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                         .enumerate()
                         .find(|(_, p)| p.is_variadic)
                         .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
+                    m.keyword_rest_parameter = parameters
+                        .iter()
+                        .find(|p| p.is_keyword)
+                        .map(|p| p.name.clone());
                     m.block_parameter = block_parameter;
                     m.variadic_param = variadic_param;
                     m.captured_refinements = self.snapshot_active_refinements();
@@ -1683,7 +1713,7 @@ impl VirtualMachine {
                             } => {
                                 let param_names: Vec<String> = parameters
                                     .iter()
-                                    .filter(|p| !p.is_named_keyword && !p.is_block)
+                                    .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
                                     .map(|p| p.name.clone())
                                     .collect();
                                 let m = Method::new(
@@ -2261,7 +2291,7 @@ fn build_method_from_params(
 ) -> Method {
     let param_names: Vec<String> = parameters
         .iter()
-        .filter(|p| !p.is_named_keyword && !p.is_block)
+        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
         .map(|p| p.name.clone())
         .collect();
     let keyword_parameters: Vec<(String, Option<Expression>)> = parameters
@@ -2275,19 +2305,23 @@ fn build_method_from_params(
         .map(|p| p.name.clone());
     let default_parameters: Vec<(usize, Expression)> = parameters
         .iter()
-        .filter(|p| !p.is_named_keyword && !p.is_block)
+        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
         .enumerate()
         .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
         .collect();
     let variadic_param = parameters
         .iter()
-        .filter(|p| !p.is_named_keyword && !p.is_block)
+        .filter(|p| !p.is_named_keyword && !p.is_keyword && !p.is_block)
         .enumerate()
         .find(|(_, p)| p.is_variadic)
         .map(|(i, p)| (i, p.name.clone()));
     let mut m = Method::new(name, param_names, body);
     m.default_parameters = default_parameters;
     m.keyword_parameters = keyword_parameters;
+    m.keyword_rest_parameter = parameters
+        .iter()
+        .find(|p| p.is_keyword)
+        .map(|p| p.name.clone());
     m.block_parameter = block_parameter;
     m.variadic_param = variadic_param;
     m.captured_refinements = refinements;

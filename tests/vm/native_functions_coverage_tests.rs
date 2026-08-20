@@ -204,9 +204,9 @@ fn assert_raises_block_raises_passes() {
 // ── __method__ outside method ────────────────────────────────────────────────
 
 #[test]
-fn method_token_outside_method_is_empty_symbol() {
+fn method_token_outside_method_is_nil() {
     let result = run(r#"__method__()"#);
-    assert!(matches!(result, Some(Object::Symbol(_))));
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]

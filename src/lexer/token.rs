@@ -72,6 +72,7 @@ pub enum TokenKind {
     // Literals
     Int(i64),
     Float(f64),
+    Rational(i64, i64), // numerator, denominator — the `r` literal suffix
     String(String),
     InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
     Regex(String, String),                      // pattern, flags
@@ -257,6 +258,9 @@ impl fmt::Display for TokenKind {
             TokenKind::BangEqual => write!(f, "!="),
             TokenKind::Match => write!(f, "=~"),
             TokenKind::NotMatch => write!(f, "!~"),
+            TokenKind::Rational(numerator, denominator) => {
+                write!(f, "{}/{}r", numerator, denominator)
+            }
             TokenKind::StarStar => write!(f, "**"),
             TokenKind::Less => write!(f, "<"),
             TokenKind::Greater => write!(f, ">"),

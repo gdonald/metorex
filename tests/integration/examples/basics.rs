@@ -172,3 +172,24 @@ fn test_type_annotations_collection_types_execution() {
         output
     );
 }
+
+#[test]
+fn test_scientific_notation_execution() {
+    let expected = "2000\n2000\n2000\n0.0015\nFloat\n2001\n-2000\n10\n";
+    let output = run_example("basics/scientific_notation.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_radix_literals_execution() {
+    let expected = "31\n31\n10\n10\n15\n15\n15\n99\n99\n0\n0.5\n1000000\n65535\n";
+    let output = run_example("basics/radix_literals.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_float_division_execution() {
+    let expected = "Infinity\n-Infinity\nNaN\nInfinity\nInfinity\n2\ninteger division raises\n";
+    let output = run_example("basics/float_division.rb");
+    assert_eq!(output, expected);
+}

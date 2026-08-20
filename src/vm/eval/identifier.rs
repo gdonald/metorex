@@ -28,11 +28,13 @@ impl VirtualMachine {
             // 0-arg form raises ArgumentError), and the visibility modifiers,
             // whose 0-arg form is a toggle on the enclosing class or module.
             if let Object::NativeFunction(fn_name) = &val
-                && (matches!(fn_name.as_str(), "top_level_to_s" | "using")
-                    || (matches!(
-                        fn_name.as_str(),
-                        "module_function" | "private" | "public" | "protected"
-                    ) && self.self_is_class_or_module()))
+                && (matches!(
+                    fn_name.as_str(),
+                    "top_level_to_s" | "using" | "__method__" | "__callee__"
+                ) || (matches!(
+                    fn_name.as_str(),
+                    "module_function" | "private" | "public" | "protected"
+                ) && self.self_is_class_or_module()))
             {
                 return self.call_native_function(fn_name, vec![], position);
             }

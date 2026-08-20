@@ -69,7 +69,21 @@ impl VirtualMachine {
                             .collect(),
                     );
                 }
-                let result = self.execute_function_body(&method, arguments);
+                // A top-level function is still a method activation, so
+                // `__method__` and `__callee__` inside it name it.
+                let defined_name = method
+                    .original_name
+                    .clone()
+                    .unwrap_or_else(|| method.name.clone());
+                let result = self.with_call_frame(
+                    crate::vm::CallFrame::method(
+                        method.name.clone(),
+                        None,
+                        method.name.clone(),
+                        defined_name,
+                    ),
+                    |vm| vm.execute_function_body(&method, arguments),
+                );
                 if has_captured {
                     self.refinement_scopes.pop();
                 }
@@ -118,26 +132,6 @@ impl VirtualMachine {
         // Kernel conversion functions: Integer(), String(), Array()
         if arguments.len() == 1 {
             match class.name() {
-                "Integer" => {
-                    return match &arguments[0] {
-                        Object::Int(n) => Ok(Object::Int(*n)),
-                        Object::Float(f) => Ok(Object::Int(*f as i64)),
-                        Object::String(s) => {
-                            s.trim().parse::<i64>().map(Object::Int).map_err(|_| {
-                                MetorexError::runtime_error(
-                                    format!("invalid value for Integer(): \"{}\"", s),
-                                    position_to_location(position),
-                                )
-                            })
-                        }
-                        Object::Bool(b) => Ok(Object::Int(if *b { 1 } else { 0 })),
-                        Object::Nil => Ok(Object::Int(0)),
-                        other => Err(MetorexError::runtime_error(
-                            format!("can't convert {} into Integer", other.type_name()),
-                            position_to_location(position),
-                        )),
-                    };
-                }
                 "String" => {
                     return Ok(Object::String(Rc::new(format!("{}", arguments[0]))));
                 }
@@ -168,6 +162,23 @@ impl VirtualMachine {
             inst.set_var("real".to_string(), real);
             inst.set_var("imaginary".to_string(), imag);
             return Ok(Object::Instance(Rc::new(RefCell::new(inst))));
+        }
+
+        // A subclass of String holds its characters in an instance variable,
+        // since a plain String is a primitive rather than an instance.
+        if descends_from(&class, "String") && class.find_method("initialize").is_none() {
+            self.pending_block.take();
+            let text = match arguments.first() {
+                Some(Object::String(text)) => (**text).clone(),
+                Some(other) => format!("{}", other),
+                None => String::new(),
+            };
+            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.set_var(
+                crate::vm::native_methods::STRING_SUBCLASS_VAR.to_string(),
+                Object::string(text),
+            );
+            return Ok(Object::Instance(Rc::new(RefCell::new(instance))));
         }
 
         // Check if this is an exception class
@@ -267,4 +278,16 @@ impl VirtualMachine {
 
         false
     }
+}
+
+/// Whether `class` is `name` or descends from it.
+fn descends_from(class: &Rc<Class>, name: &str) -> bool {
+    let mut cursor = Some(Rc::clone(class));
+    while let Some(current) = cursor {
+        if current.name() == name {
+            return true;
+        }
+        cursor = current.superclass();
+    }
+    false
 }

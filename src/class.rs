@@ -672,9 +672,17 @@ impl Class {
     /// `self` too (matching MRI's behavior for `alias_method`).
     pub fn alias_method(&self, new_name: &str, old_name: &str) -> bool {
         if let Some(method) = self.find_method(old_name) {
+            let mut aliased = (*method).clone();
+            aliased.original_name = Some(
+                method
+                    .original_name
+                    .clone()
+                    .unwrap_or_else(|| method.name.clone()),
+            );
+            aliased.name = new_name.to_string();
             self.methods
                 .borrow_mut()
-                .insert(new_name.to_string(), method);
+                .insert(new_name.to_string(), std::rc::Rc::new(aliased));
             if self.is_method_protected_in_chain(old_name) {
                 self.set_method_protected(new_name.to_string());
             } else if self.is_method_private_in_chain(old_name) {

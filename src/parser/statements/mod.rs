@@ -75,6 +75,7 @@ impl Parser {
             TokenKind::Include => self.parse_include(),
             TokenKind::Extend => self.parse_extend(),
             TokenKind::Alias => self.parse_alias(),
+            TokenKind::Ident(name) if name == "undef" => self.parse_undef(),
             _ => {
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;

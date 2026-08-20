@@ -453,6 +453,7 @@ impl Parser {
             self.peek().kind,
             TokenKind::Ident(_)
                 | TokenKind::Int(_)
+                | TokenKind::Rational(_, _)
                 | TokenKind::Float(_)
                 | TokenKind::String(_)
                 | TokenKind::InterpolatedString(_)
@@ -471,7 +472,8 @@ impl Parser {
                 | TokenKind::Colon
                 | TokenKind::Include
                 | TokenKind::Extend
-        );
+        ) || (self.peek().kind == TokenKind::Arrow
+            && self.arrow_starts_lambda_argument());
 
         if !can_be_arg {
             return false;
@@ -571,6 +573,7 @@ impl Parser {
                 self.peek().kind,
                 TokenKind::Ident(_)
                     | TokenKind::Int(_)
+                    | TokenKind::Rational(_, _)
                     | TokenKind::Float(_)
                     | TokenKind::String(_)
                     | TokenKind::InterpolatedString(_)
@@ -630,6 +633,40 @@ impl Parser {
         }
 
         true
+    }
+
+    /// Whether the `->` at the cursor introduces a lambda literal that is an
+    /// argument to the identifier just parsed, as in `guard -> { cond } do`.
+    /// Metorex also accepts `name -> expr` as a one-parameter lambda, so the
+    /// two are told apart by looking past the parameter list for the `{` or
+    /// `do` that opens a lambda body.
+    fn arrow_starts_lambda_argument(&mut self) -> bool {
+        let saved_position = self.stream().current_position();
+        self.advance(); // consume '->'
+        self.skip_whitespace();
+
+        let opens_body = if self.check(&[TokenKind::LBrace, TokenKind::Do, TokenKind::LParen]) {
+            true
+        } else {
+            loop {
+                self.skip_whitespace();
+                self.match_token(&[TokenKind::Star]);
+                self.skip_whitespace();
+                if !matches!(self.peek().kind, TokenKind::Ident(_)) {
+                    break;
+                }
+                self.advance();
+                self.skip_whitespace();
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+            self.skip_whitespace();
+            self.check(&[TokenKind::LBrace, TokenKind::Do])
+        };
+
+        self.stream.restore_position(saved_position);
+        opens_body
     }
 
     /// Parse arguments without parentheses, returning the argument list

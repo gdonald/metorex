@@ -21,6 +21,11 @@ pub struct Method {
     /// Named keyword parameters: (name, optional_default_expression)
     /// e.g., `def f(name:, age: 10)` → [("name", None), ("age", Some(IntLiteral(10)))]
     pub keyword_parameters: Vec<(String, Option<Expression>)>,
+    /// Keyword-rest parameter name from `**kwargs`, when declared.
+    pub keyword_rest_parameter: Option<String>,
+    /// The name this method was defined under, when it is reachable by a
+    /// different name because `alias_method` renamed a copy.
+    pub original_name: Option<String>,
     /// Optional block parameter name (from `&block` syntax)
     pub block_parameter: Option<String>,
     /// Variadic (splat) parameter: (positional_index, name) for `*args`
@@ -70,6 +75,8 @@ impl Method {
             parameters,
             default_parameters: vec![],
             keyword_parameters: vec![],
+            keyword_rest_parameter: None,
+            original_name: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -99,6 +106,8 @@ impl Method {
             parameters,
             default_parameters: vec![],
             keyword_parameters: vec![],
+            keyword_rest_parameter: None,
+            original_name: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -128,6 +137,8 @@ impl Method {
             parameters,
             default_parameters: vec![],
             keyword_parameters: vec![],
+            keyword_rest_parameter: None,
+            original_name: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -158,6 +169,8 @@ impl Method {
             parameters,
             default_parameters: vec![],
             keyword_parameters: vec![],
+            keyword_rest_parameter: None,
+            original_name: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -182,6 +195,8 @@ impl Method {
             parameters: vec![],
             default_parameters: vec![],
             keyword_parameters: vec![],
+            keyword_rest_parameter: None,
+            original_name: None,
             block_parameter: None,
             variadic_param: None,
             body: vec![],
@@ -206,6 +221,8 @@ impl Method {
             parameters: self.parameters.clone(),
             default_parameters: self.default_parameters.clone(),
             keyword_parameters: self.keyword_parameters.clone(),
+            keyword_rest_parameter: self.keyword_rest_parameter.clone(),
+            original_name: self.original_name.clone(),
             block_parameter: self.block_parameter.clone(),
             variadic_param: self.variadic_param.clone(),
             body: self.body.clone(),
@@ -251,12 +268,21 @@ impl PartialEq for Method {
                 .all(|((a_mod, a_names), (b_mod, b_names))| {
                     Rc::ptr_eq(a_mod, b_mod) && a_names == b_names
                 });
+        // An alias and the method it was made from are the same definition,
+        // so they compare by the name each was defined under.
+        let defined_name = |method: &Method| {
+            method
+                .original_name
+                .clone()
+                .unwrap_or_else(|| method.name.clone())
+        };
         same_owner_class
             && same_refinements
-            && self.name == other.name
+            && defined_name(self) == defined_name(other)
             && self.parameters == other.parameters
             && self.default_parameters == other.default_parameters
             && self.keyword_parameters == other.keyword_parameters
+            && self.keyword_rest_parameter == other.keyword_rest_parameter
             && self.block_parameter == other.block_parameter
             && self.variadic_param == other.variadic_param
             && self.body == other.body

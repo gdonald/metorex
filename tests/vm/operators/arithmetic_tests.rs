@@ -53,15 +53,16 @@ fn float_modulo() {
 }
 
 #[test]
-fn float_divide_by_zero_error() {
-    let err = run_err("4.0 / 0.0");
-    assert!(err.contains("zero") || err.contains("Division"));
+fn float_divide_by_zero_is_infinite() {
+    assert_eq!(run("4.0 / 0.0"), Some(Object::Float(f64::INFINITY)));
 }
 
 #[test]
-fn float_modulo_by_zero_error() {
-    let err = run_err("4.0 % 0.0");
-    assert!(err.contains("zero") || err.contains("Division"));
+fn float_modulo_by_zero_is_nan() {
+    let Some(Object::Float(result)) = run("4.0 % 0.0") else {
+        panic!("expected a Float");
+    };
+    assert!(result.is_nan());
 }
 
 // ── Int / Float ──────────────────────────────────────────────────────────────
@@ -87,15 +88,16 @@ fn int_float_modulo() {
 }
 
 #[test]
-fn int_float_divide_by_zero_error() {
-    let err = run_err("5 / 0.0");
-    assert!(err.contains("zero") || err.contains("Division"));
+fn int_float_divide_by_zero_is_infinite() {
+    assert_eq!(run("5 / 0.0"), Some(Object::Float(f64::INFINITY)));
 }
 
 #[test]
-fn int_float_modulo_by_zero_error() {
-    let err = run_err("5 % 0.0");
-    assert!(err.contains("zero") || err.contains("Division"));
+fn int_float_modulo_by_zero_is_nan() {
+    let Some(Object::Float(result)) = run("5 % 0.0") else {
+        panic!("expected a Float");
+    };
+    assert!(result.is_nan());
 }
 
 // ── Float / Int ──────────────────────────────────────────────────────────────
@@ -121,15 +123,16 @@ fn float_int_modulo() {
 }
 
 #[test]
-fn float_int_divide_by_zero_error() {
-    let err = run_err("5.0 / 0");
-    assert!(err.contains("zero") || err.contains("Division"));
+fn float_int_divide_by_zero_is_infinite() {
+    assert_eq!(run("5.0 / 0"), Some(Object::Float(f64::INFINITY)));
 }
 
 #[test]
-fn float_int_modulo_by_zero_error() {
-    let err = run_err("5.0 % 0");
-    assert!(err.contains("zero") || err.contains("Division"));
+fn float_int_modulo_by_zero_is_nan() {
+    let Some(Object::Float(result)) = run("5.0 % 0") else {
+        panic!("expected a Float");
+    };
+    assert!(result.is_nan());
 }
 
 // ── Addition ─────────────────────────────────────────────────────────────────

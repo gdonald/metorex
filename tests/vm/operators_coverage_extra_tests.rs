@@ -424,9 +424,8 @@ fn int_div_by_zero_errors() {
 }
 
 #[test]
-fn float_div_by_zero_errors() {
-    let err = run_err("5.0 / 0.0");
-    assert!(err.contains("divide") || err.contains("zero") || err.contains("ZeroDivision"));
+fn float_div_by_zero_is_infinite() {
+    assert_eq!(run("5.0 / 0.0"), Some(Object::Float(f64::INFINITY)));
 }
 
 #[test]
@@ -436,9 +435,11 @@ fn int_mod_zero_errors() {
 }
 
 #[test]
-fn float_mod_zero_errors() {
-    let err = run_err("5.0 % 0.0");
-    assert!(err.contains("divide") || err.contains("zero"));
+fn float_mod_zero_is_nan() {
+    let Some(Object::Float(result)) = run("5.0 % 0.0") else {
+        panic!("expected a Float");
+    };
+    assert!(result.is_nan());
 }
 
 #[test]

@@ -191,6 +191,30 @@ impl VirtualMachine {
                 Object::String(s) => Ok(Some(Object::Symbol(s.clone()))),
                 _ => Ok(None),
             },
+            // Kernel's conversion functions are private instance methods on
+            // every object, which is how `obj.send(:Integer, "10")` reaches
+            // them.
+            name if super::kernel_conversion::is_kernel_conversion(name) => {
+                self.call_kernel_conversion(name, arguments, position)
+            }
+            // Kernel functions that report on the running method, so
+            // `send(:__callee__)` reaches them like any other Kernel method.
+            "__method__" | "__callee__" => self
+                .call_native_function(method_name, arguments.to_vec(), position)
+                .map(Some),
+            // `hash` — equal values answer equal digests, and reference
+            // types fall back to their identity.
+            "hash" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Int(self.hash_digest(receiver, position)?)))
+            }
             "object_id" | "__id__" => {
                 // Return a unique integer for the object (use pointer address for ref types)
                 let id = match receiver {
@@ -1222,4 +1246,26 @@ fn binary_op_for_method_name(name: &str) -> Option<crate::ast::BinaryOp> {
         "^" => BinaryOp::Xor,
         _ => return None,
     })
+}
+
+impl VirtualMachine {
+    /// The integer `Object#hash` answers. Value types digest their canonical
+    /// string form so equal values agree; everything else uses its identity.
+    pub(crate) fn hash_digest(
+        &mut self,
+        receiver: &Object,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        if let Some(hashable) = crate::object::ObjectHash::from_object(receiver) {
+            let mut digest: i64 = 0;
+            for byte in hashable.hash_value.bytes() {
+                digest = digest.wrapping_mul(31).wrapping_add(byte as i64);
+            }
+            return Ok(digest);
+        }
+        match self.call_object_method(receiver, "object_id", &[], position)? {
+            Some(Object::Int(id)) => Ok(id),
+            _ => Ok(0),
+        }
+    }
 }

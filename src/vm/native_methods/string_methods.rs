@@ -737,6 +737,14 @@ impl VirtualMachine {
                     .unwrap_or(0);
                 Ok(Some(Object::Int(n)))
             }
+            // `to_r` reads the leading rational value and answers (0/1) when
+            // the string does not start with one.
+            "to_r" => {
+                let (numerator, denominator) =
+                    super::rational_methods::parse_rational_text(string_value);
+                self.make_rational(numerator, denominator, position)
+                    .map(Some)
+            }
             "to_f" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

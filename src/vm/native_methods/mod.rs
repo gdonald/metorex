@@ -3,10 +3,11 @@
 //! This module contains the implementations of all built-in methods for
 //! standard classes like Object, String, and Array.
 
-mod array_methods;
+pub(crate) mod array_methods;
 pub(crate) mod ast_methods;
 mod class_methods;
 pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
+pub(crate) use class_methods::is_native_kernel_method;
 pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod constant_visibility;
 mod define_method;
@@ -15,12 +16,32 @@ mod file_methods;
 mod float_methods;
 mod hash_methods;
 mod int_methods;
+pub(crate) mod kernel_conversion;
 mod method_object_methods;
 mod module_methods;
 mod object_methods;
 mod range_methods;
+pub(crate) mod rational_methods;
+pub(crate) use rational_methods::rational_parts;
 mod set_methods;
 mod string_methods;
+mod struct_methods;
+pub(crate) use struct_methods::struct_members;
+
+/// Instance variable a String subclass keeps its characters in.
+pub(crate) const STRING_SUBCLASS_VAR: &str = "__string__";
+
+/// The characters behind an instance of a String subclass.
+pub(crate) fn string_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(STRING_SUBCLASS_VAR)
+        .cloned()
+}
 mod visibility;
 
 use super::VirtualMachine;
@@ -112,6 +133,11 @@ impl VirtualMachine {
         // Class-specific methods (File/Dir dispatch first, then general class methods)
         if let Object::Class(class_rc) = receiver {
             if let Some(result) =
+                self.call_struct_class_methods(class_rc, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+            if let Some(result) =
                 self.call_file_dir_methods(class_rc, method_name, arguments, position)?
             {
                 return Ok(Some(result));
@@ -145,6 +171,38 @@ impl VirtualMachine {
             return Ok(Some(result));
         }
 
+        // An instance of a String subclass answers String's methods, backed
+        // by the characters it was built with.
+        if let Some(text) = string_subclass_value(receiver) {
+            // `to_s` and `to_str` answer the characters themselves; String
+            // implements neither natively because a String already is one.
+            if matches!(method_name, "to_s" | "to_str") {
+                return Ok(Some(text));
+            }
+            if let Some(result) =
+                self.call_string_method(&text, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+        }
+
+        // Instances of a generated struct class get Struct's instance methods.
+        if let Object::Instance(instance) = receiver {
+            let instance_class = Rc::clone(&instance.borrow().class);
+            if let Some(members) = struct_methods::struct_members(&instance_class)
+                && let Some(result) = self.call_struct_instance_method(
+                    &instance_class,
+                    &members,
+                    receiver,
+                    method_name,
+                    arguments,
+                    position,
+                )?
+            {
+                return Ok(Some(result));
+            }
+        }
+
         // Dispatch to the appropriate class-specific method implementation
         match class.name() {
             "Object" | "Proc" | "Method" => {
@@ -156,6 +214,7 @@ impl VirtualMachine {
             "Hash" => self.call_hash_method(receiver, method_name, arguments, position),
             "Float" => self.call_float_method(receiver, method_name, arguments, position),
             "Range" => self.call_range_method(receiver, method_name, arguments, position),
+            "Rational" => self.call_rational_method(receiver, method_name, arguments, position),
             "Set" => self.call_set_method(receiver, method_name, arguments, position),
             "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
             "Thread" => self.call_thread_method(receiver, method_name, arguments, position),

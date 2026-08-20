@@ -211,17 +211,21 @@ impl VirtualMachine {
                 };
                 self.evaluate_string_format(fmt, rest_obj, position)
             }
-            "__method__" => {
-                let name = self
-                    .call_stack()
-                    .last()
-                    .map(|f| {
-                        let n = f.name();
-                        n.rsplit('#').next().unwrap_or(n).to_string()
-                    })
-                    .unwrap_or_default();
-                Ok(Object::Symbol(std::rc::Rc::new(name)))
-            }
+            // `__method__` names the method as it was defined, `__callee__`
+            // as it was called. They differ inside an aliased method. Both
+            // look through block frames to the method that encloses them and
+            // stop at a class body or file scope, where neither has an answer.
+            "__method__" | "__callee__" => Ok(match self.enclosing_method_names() {
+                Some((callee, defined)) => {
+                    let chosen = if name == "__callee__" {
+                        callee
+                    } else {
+                        defined
+                    };
+                    Object::Symbol(std::rc::Rc::new(chosen))
+                }
+                None => Object::Nil,
+            }),
             "caller" => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
                 Vec::new(),
             )))),
@@ -922,7 +926,7 @@ impl VirtualMachine {
                 result?;
                 Ok(Object::Bool(true))
             }
-            "exit" => {
+            "exit" | "exit!" => {
                 let code = if arguments.is_empty() {
                     0
                 } else if let Object::Int(n) = &arguments[0] {
@@ -933,6 +937,46 @@ impl VirtualMachine {
                     0
                 };
                 std::process::exit(code);
+            }
+            "abort" => {
+                if let Some(message) = arguments.first() {
+                    let text = self.get_string_representation(message, position)?;
+                    eprintln!("{}", text);
+                }
+                std::process::exit(1);
+            }
+            "system" => {
+                let Some(command) = arguments.first() else {
+                    return Err(MetorexError::runtime_error(
+                        "system requires at least 1 argument".to_string(),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                };
+                let program = self.get_string_representation(command, position)?;
+                let mut rest = Vec::new();
+                for arg in arguments.iter().skip(1) {
+                    rest.push(self.get_string_representation(arg, position)?);
+                }
+                let status = if rest.is_empty() {
+                    std::process::Command::new("/bin/sh")
+                        .arg("-c")
+                        .arg(&program)
+                        .status()
+                } else {
+                    std::process::Command::new(&program).args(&rest).status()
+                };
+                Ok(match status {
+                    Ok(status) => Object::Bool(status.success()),
+                    Err(_) => Object::Nil,
+                })
+            }
+            "fork" => {
+                let message = "fork() function is unimplemented on this machine".to_string();
+                Err(MetorexError::UncaughtException {
+                    exception: Object::exception("NotImplementedError", message.clone()),
+                    location: crate::vm::utils::position_to_location(position),
+                    message,
+                })
             }
             _ => Err(MetorexError::runtime_error(
                 format!("Unknown native function: {}", name),
@@ -965,6 +1009,14 @@ impl VirtualMachine {
                     if let Object::String(s) = result {
                         return Ok(s.to_string());
                     }
+                }
+                // Classes whose `to_s` is native, such as Rational, have no
+                // entry in any method map for the lookups above to find.
+                let class = self.builtins().class_of(obj);
+                if let Some(Object::String(rendered)) =
+                    self.call_native_method(&class, obj, "to_s", &[], position)?
+                {
+                    return Ok(rendered.to_string());
                 }
                 // Fall back to default Display
                 Ok(format!("{}", obj))

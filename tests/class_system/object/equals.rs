@@ -179,6 +179,8 @@ fn test_equals_method() {
         parameters: vec![],
         default_parameters: vec![],
         keyword_parameters: vec![],
+        keyword_rest_parameter: None,
+        original_name: None,
         block_parameter: None,
         variadic_param: None,
         body: vec![],
@@ -200,6 +202,8 @@ fn test_equals_method() {
         parameters: vec![],
         default_parameters: vec![],
         keyword_parameters: vec![],
+        keyword_rest_parameter: None,
+        original_name: None,
         block_parameter: None,
         variadic_param: None,
         body: vec![],
@@ -235,6 +239,7 @@ fn test_equals_block() {
         body: vec![],
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
+        defining_method: None,
     });
     let block2 = Rc::clone(&block1);
     let block3 = Rc::new(BlockStatement {
@@ -243,6 +248,7 @@ fn test_equals_block() {
         body: vec![],
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
+        defining_method: None,
     });
 
     let obj1 = Object::Block(block1);

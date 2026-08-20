@@ -308,60 +308,26 @@ impl VirtualMachine {
             (Object::Float(a), Object::Float(b)) => match op {
                 BinaryOp::Subtract => Ok(Object::Float(a - b)),
                 BinaryOp::Multiply => Ok(Object::Float(a * b)),
-                BinaryOp::Divide => {
-                    if b == 0.0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Float(a / b))
-                    }
-                }
-                BinaryOp::Modulo => {
-                    if b == 0.0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Float(a % b))
-                    }
-                }
+                // Float division by zero follows IEEE 754 and answers an
+                // infinity or NaN. Only Integer / Integer raises.
+                BinaryOp::Divide => Ok(Object::Float(a / b)),
+                BinaryOp::Modulo => Ok(Object::Float(a % b)),
                 BinaryOp::Power => Ok(Object::Float(a.powf(b))),
                 _ => unreachable!(),
             },
             (Object::Int(a), Object::Float(b)) => match op {
                 BinaryOp::Subtract => Ok(Object::Float((a as f64) - b)),
                 BinaryOp::Multiply => Ok(Object::Float((a as f64) * b)),
-                BinaryOp::Divide => {
-                    if b == 0.0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Float((a as f64) / b))
-                    }
-                }
-                BinaryOp::Modulo => {
-                    if b == 0.0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Float((a as f64) % b))
-                    }
-                }
+                BinaryOp::Divide => Ok(Object::Float((a as f64) / b)),
+                BinaryOp::Modulo => Ok(Object::Float((a as f64) % b)),
                 BinaryOp::Power => Ok(Object::Float((a as f64).powf(b))),
                 _ => unreachable!(),
             },
             (Object::Float(a), Object::Int(b)) => match op {
                 BinaryOp::Subtract => Ok(Object::Float(a - (b as f64))),
                 BinaryOp::Multiply => Ok(Object::Float(a * (b as f64))),
-                BinaryOp::Divide => {
-                    if b == 0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Float(a / (b as f64)))
-                    }
-                }
-                BinaryOp::Modulo => {
-                    if b == 0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Float(a % (b as f64)))
-                    }
-                }
+                BinaryOp::Divide => Ok(Object::Float(a / (b as f64))),
+                BinaryOp::Modulo => Ok(Object::Float(a % (b as f64))),
                 BinaryOp::Power => Ok(Object::Float(a.powi(b as i32))),
                 _ => unreachable!(),
             },

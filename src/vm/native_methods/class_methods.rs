@@ -219,6 +219,11 @@ impl VirtualMachine {
                 message: format!("undefined method 'new' for {}:Class", class_rc.name()),
             });
         }
+        if class_rc.name() == "Kernel"
+            && let Some(result) = self.call_kernel_conversion(method_name, arguments, position)?
+        {
+            return Ok(Some(result));
+        }
         if method_name == "new" && class_rc.name() == "Class" {
             let superclass = match arguments.first() {
                 Some(Object::Class(c)) => {
@@ -859,7 +864,9 @@ impl VirtualMachine {
                 // in Object's method table. A body-less stub reaches the same
                 // native implementation when invoked, so `Object` can hand out
                 // an UnboundMethod for them.
-                if class_rc.name() == "Object" && is_native_kernel_method(&name_str) {
+                if matches!(class_rc.name(), "Object" | "Kernel")
+                    && is_native_kernel_method(&name_str)
+                {
                     let mut stub = Method::with_owner(
                         name_str.clone(),
                         vec!["args".to_string()],
@@ -978,6 +985,18 @@ impl VirtualMachine {
                     for n in MODULE_PRIVATE_HOOKS
                         .iter()
                         .chain(MODULE_PRIVATE_DECLARATIONS.iter())
+                    {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push((*n).to_string());
+                        }
+                        priv_set.insert((*n).to_string());
+                    }
+                }
+                // Kernel's conversion functions are private instance methods
+                // on Kernel, implemented natively rather than in its table.
+                if class_rc.name() == "Kernel" {
+                    for n in
+                        crate::vm::native_methods::kernel_conversion::KERNEL_CONVERSION_FUNCTIONS
                     {
                         if !method_list.iter().any(|m| m == n) {
                             method_list.push((*n).to_string());
@@ -1954,9 +1973,12 @@ impl VirtualMachine {
                     });
                 }
                 for name in names {
+                    // Kernel methods live in the native dispatch tables rather
+                    // than in a class's method map, so they count as present.
                     if class_rc
                         .find_method(&name)
                         .is_none_or(|method| method.is_undefined)
+                        && !is_native_kernel_method(&name)
                     {
                         let msg = format!(
                             "undefined method '{}' for {} '{}'",
@@ -2014,6 +2036,20 @@ impl VirtualMachine {
                         && let Some(method) = object_class.find_method(&old_name)
                     {
                         class_rc.define_method(&new_name, method);
+                        found = true;
+                    }
+                    // Kernel methods live in the native dispatch tables, so
+                    // there is no entry to copy. A stub carrying the name
+                    // keeps the alias present for later removal.
+                    if !found && is_native_kernel_method(&old_name) {
+                        let mut stub = Method::with_owner(
+                            new_name.clone(),
+                            vec!["args".to_string()],
+                            vec![],
+                            "Kernel".to_string(),
+                        );
+                        stub.variadic_param = Some((0, "args".to_string()));
+                        class_rc.define_method(&new_name, Rc::new(stub));
                         found = true;
                     }
                     if !found {
@@ -2722,7 +2758,7 @@ fn is_valid_class_variable_ident(name: &str) -> bool {
 
 /// Kernel methods that `call_object_method` implements natively, so a
 /// body-less stub can stand in for them in `Object.instance_method`.
-fn is_native_kernel_method(name: &str) -> bool {
+pub(crate) fn is_native_kernel_method(name: &str) -> bool {
     matches!(
         name,
         "class"
@@ -2749,6 +2785,7 @@ fn is_native_kernel_method(name: &str) -> bool {
             | "require"
             | "require_relative"
             | "respond_to?"
+            | "respond_to_missing?"
             | "send"
             | "tap"
             | "to_s"

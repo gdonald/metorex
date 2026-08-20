@@ -30,6 +30,11 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Traits/Interfaces**: Flexible polymorphism through trait system
 - **Optional Type System**: Gradual typing with type inference for performance and safety
 - **Advanced Collections**: Set, Deque, PriorityQueue, TreeMap, and immutable structures
+- **Struct**: `Struct.new` builds member classes with accessors, `[]`/`[]=`, `to_a`, `to_h`, `each`, `each_pair`, `dig`, `values_at`, and value equality, with `keyword_init:` and a class-body block
+- **Kernel Conversion Functions**: `Hash()`, `Integer()`, `Rational()`, and `String()`, with coercion through `to_hash` / `to_int` / `to_i` / `to_r` / `to_s` and `exception: false`
+- **Rational Numbers**: the `5r` literal suffix, arithmetic and ordering against Integer, Float, and Rational, `to_r` on String, Integer, and Float, and results always in lowest terms and frozen
+- **Numeric Literals**: decimal, `0x`/`0b`/`0o`/`0d` radix prefixes, bare-leading-zero octal, scientific notation, `_` digit separators, and the `r` rational suffix
+- **String Subclasses**: `class Name < String` instances carry their characters and answer String's methods, comparing equal to a String with the same content
 - **Runtime Class System**: Classes support inheritance, runtime method definition, instance variables, and class-level state
 - **File Loading**: `require_relative` with extension auto-detection, deduplication, circular dependency handling, and shared scope
 
@@ -38,7 +43,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Runtime Method Definition**: `define_method` for dynamic behavior
 - **Method Missing Hook**: `method_missing` intercepts calls to undefined methods with method name and arguments
 - **Runtime Class Modification**: `remove_method`, `undef_method`, `alias_method`, `module_function`, `class_variable_set`, `class_variable_get`, `class_variable_defined?`, `class_variables` for dynamic class/module manipulation
-- **Reflection and Introspection**: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
+- **Reflection and Introspection**: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`, `__method__`, `__callee__`
 - **AST Manipulation**: `eval` for runtime code execution, `parse` for AST inspection, runtime code generation via string evaluation
 - **Block Execution**: Blocks are objects with `.call()` method; trailing `do...end` and `{...}` blocks captured implicitly via `&block` parameter with `block_given?` support
 - **DSL Construction**: Build domain-specific languages naturally

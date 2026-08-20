@@ -53,11 +53,8 @@ pub fn binary_div(a: &Object, b: &Object) -> Result<Object, String> {
     match (a, b) {
         (Object::Int(_), Object::Int(0)) => Err("Division by zero".to_string()),
         (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a / b)),
-        (Object::Float(_), Object::Float(b)) if *b == 0.0 => Err("Division by zero".to_string()),
         (Object::Float(a), Object::Float(b)) => Ok(Object::Float(a / b)),
-        (Object::Int(a), Object::Float(b)) if *b == 0.0 => Err("Division by zero".to_string()),
         (Object::Int(a), Object::Float(b)) => Ok(Object::Float(*a as f64 / b)),
-        (Object::Float(_), Object::Int(0)) => Err("Division by zero".to_string()),
         (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a / *b as f64)),
         _ => Err(format!(
             "Cannot divide {} by {}",

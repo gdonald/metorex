@@ -1,6 +1,6 @@
 // Object operations - comparison and boolean logic
 
-use super::Object;
+use super::{Method, Object};
 
 impl Object {
     /// Check if this object is truthy (for conditional evaluation)
@@ -61,6 +61,15 @@ impl Object {
                 (Err(a_err), Err(b_err)) => a_err.equals(b_err),
                 _ => false,
             },
+            // An instance of a String subclass compares by its characters,
+            // in either order.
+            (Object::Instance(_), Object::String(_)) | (Object::String(_), Object::Instance(_)) => {
+                match (subclass_string(self), subclass_string(other)) {
+                    (Some(text), None) => text.equals(other),
+                    (None, Some(text)) => self.equals(&text),
+                    _ => false,
+                }
+            }
             // Instance comparisons: value equality for Rational/Complex, reference for others
             (Object::Instance(a), Object::Instance(b)) => {
                 let inst_a = a.borrow();
@@ -94,8 +103,14 @@ impl Object {
                 // same source method (e.g. from `obj.method(:x)` called
                 // twice, or via aliases sharing the source method) compare
                 // as equal — matching MRI's `Method#==`.
+                let defined_name = |method: &Method| {
+                    method
+                        .original_name
+                        .clone()
+                        .unwrap_or_else(|| method.name.clone())
+                };
                 Rc::ptr_eq(a, b)
-                    || (a.name == b.name
+                    || (defined_name(a) == defined_name(b)
                         && a.body.len() == b.body.len()
                         && match (&a.receiver, &b.receiver) {
                             (Some(ra), Some(rb)) => ra.equals(rb),
@@ -151,3 +166,11 @@ impl Object {
 }
 
 use std::rc::Rc;
+
+/// The characters behind an instance of a String subclass.
+fn subclass_string(value: &Object) -> Option<Object> {
+    let Object::Instance(instance) = value else {
+        return None;
+    };
+    instance.borrow().instance_vars.get("__string__").cloned()
+}

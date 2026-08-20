@@ -158,14 +158,14 @@ run_spec "$SPEC_DIR/core/module/undef_method_spec.rb"
 run_spec "$SPEC_DIR/core/module/undefined_instance_methods_spec.rb"
 run_spec "$SPEC_DIR/core/module/used_refinements_spec.rb"
 run_spec "$SPEC_DIR/core/module/using_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Array_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Complex_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Float_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Hash_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Integer_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Rational_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/String_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/__callee___spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/Array_spec.rb"  # needs Kernel#Array to_ary/to_a coercion
+# run_spec "$SPEC_DIR/core/kernel/Complex_spec.rb"  # Complex is a stub class with no arithmetic
+# run_spec "$SPEC_DIR/core/kernel/Float_spec.rb"  # needs Kernel#Float string parsing and coercion
+run_spec "$SPEC_DIR/core/kernel/Hash_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/Integer_spec.rb"  # 2 examples need arbitrary-precision integers
+run_spec "$SPEC_DIR/core/kernel/Rational_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/String_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/__callee___spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/__dir___spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/__method___spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/abort_spec.rb"

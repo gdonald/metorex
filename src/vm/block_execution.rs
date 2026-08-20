@@ -125,7 +125,12 @@ impl VirtualMachine {
         let frame_location_string = Some(format!("{}", frame_location));
 
         let execution_result = self.with_call_frame(
-            CallFrame::new(frame_name.clone(), frame_location_string),
+            match block.defining_method.clone() {
+                Some((callee, defined)) => {
+                    CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
+                }
+                None => CallFrame::boundary(frame_name.clone()),
+            },
             move |vm| vm.execute_block_body(block, arguments),
         );
 
@@ -149,7 +154,12 @@ impl VirtualMachine {
         let frame_location_string = Some(format!("{}", frame_location));
 
         let execution_result = self.with_call_frame(
-            CallFrame::new(frame_name.clone(), frame_location_string),
+            match block.defining_method.clone() {
+                Some((callee, defined)) => {
+                    CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
+                }
+                None => CallFrame::boundary(frame_name.clone()),
+            },
             move |vm| {
                 vm.environment_mut().push_scope();
                 let result = (|| -> Result<Object, MetorexError> {

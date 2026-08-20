@@ -390,6 +390,40 @@ impl Parser {
         })
     }
 
+    /// Parse `undef name, :other` into the equivalent `undef_method` call on
+    /// the enclosing class or module.
+    pub(crate) fn parse_undef(&mut self) -> Result<Statement, MetorexError> {
+        let start_pos = self.advance().position;
+        self.skip_whitespace();
+
+        let mut arguments = Vec::new();
+        loop {
+            let name = self.parse_alias_method_name()?;
+            arguments.push(Expression::Symbol {
+                value: name,
+                position: start_pos,
+            });
+            self.skip_whitespace();
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+            self.skip_whitespace();
+        }
+
+        Ok(Statement::Expression {
+            expression: Expression::MethodCall {
+                receiver: Box::new(Expression::SelfExpr {
+                    position: start_pos,
+                }),
+                method: "undef_method".to_string(),
+                arguments,
+                trailing_block: None,
+                position: start_pos,
+            },
+            position: start_pos,
+        })
+    }
+
     /// Parse a method name accepted by `alias`: a bare identifier or a
     /// symbol literal (`:name`). Certain keywords are accepted because they
     /// are valid Ruby method names.

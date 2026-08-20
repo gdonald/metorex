@@ -25,7 +25,25 @@ impl Parser {
             if !self.check(&[TokenKind::RParen]) {
                 loop {
                     self.skip_whitespace();
-                    args.push(self.parse_expression()?);
+                    if self.match_token(&[TokenKind::Ampersand]) {
+                        let arg_position = self.previous().position;
+                        let expression = Box::new(self.parse_expression()?);
+                        args.push(Expression::BlockArg {
+                            expression,
+                            position: arg_position,
+                        });
+                    } else if self.match_token(&[TokenKind::Star]) {
+                        let arg_position = self.previous().position;
+                        let expression = Box::new(self.parse_expression()?);
+                        args.push(Expression::Splat {
+                            expression,
+                            position: arg_position,
+                        });
+                    } else {
+                        // `**expr` reaches the callee as a trailing hash.
+                        self.match_token(&[TokenKind::StarStar]);
+                        args.push(self.parse_expression()?);
+                    }
                     self.skip_whitespace();
 
                     if !self.match_token(&[TokenKind::Comma]) {

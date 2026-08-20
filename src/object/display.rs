@@ -12,6 +12,12 @@ impl fmt::Display for Object {
             Object::Nil => write!(f, "nil"),
             Object::Bool(b) => write!(f, "{}", b),
             Object::Int(i) => write!(f, "{}", i),
+            // Ruby spells the non-finite floats out rather than using Rust's
+            // "inf" / "NaN" forms.
+            Object::Float(fl) if fl.is_nan() => write!(f, "NaN"),
+            Object::Float(fl) if fl.is_infinite() => {
+                write!(f, "{}Infinity", if *fl < 0.0 { "-" } else { "" })
+            }
             Object::Float(fl) => write!(f, "{}", fl),
             Object::String(s) => write!(f, "{}", s),
             Object::Symbol(s) => write!(f, ":{}", s),

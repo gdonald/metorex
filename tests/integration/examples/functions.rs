@@ -181,3 +181,17 @@ fn test_splat_variadic_coverage_parens_execution() {
     let output = run_example("functions/splat_variadic_coverage_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_double_splat_parameters_execution() {
+    let expected = "[1, 0, nil, nil]\n[1, 2, 2, 3]\n[1, 2, 1, 3]\n[1, 5, 1, 3]\n1\n[1, 1]\n";
+    let output = run_example("functions/double_splat_params.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_lambda_parenless_arg_execution() {
+    let expected = "ran without parentheses\nran with parentheses\n42\n42\n";
+    let output = run_example("functions/lambda_parenless_arg.rb");
+    assert_eq!(output, expected);
+}

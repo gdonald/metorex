@@ -116,6 +116,7 @@ fn class_of_block() {
         body: vec![],
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
+        defining_method: None,
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");

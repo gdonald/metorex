@@ -1,0 +1,13 @@
+puts 0x1f
+puts 0X1F
+puts 0b1010
+puts 0B1010
+puts 0o17
+puts 0O17
+puts 017
+puts 0d99
+puts 0D99
+puts 0
+puts 0.5
+puts 1_000_000
+puts 0xff_ff

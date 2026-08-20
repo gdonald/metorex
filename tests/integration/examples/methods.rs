@@ -69,3 +69,10 @@ fn test_splat_empty_call_execution() {
     let output = run_example("methods/splat_empty_call.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_callee_and_method_execution() {
+    let expected = "[:plain, :plain]\n[:aliased, :plain]\n[:in_block, :in_block]\n:defined\n:from_send\nnil\nnil\nnil\nnil\nsuper-sub\n";
+    let output = run_example("methods/callee_and_method.rb");
+    assert_eq!(output, expected);
+}

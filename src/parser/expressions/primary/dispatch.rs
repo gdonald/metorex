@@ -18,6 +18,19 @@ impl Parser {
             // ── Literals ────────────────────────────────────────────────────
             TokenKind::Int(value) => Ok(literals::int_literal(value, position)),
             TokenKind::Float(value) => Ok(literals::float_literal(value, position)),
+            // `5r` is spelled out as the `Rational(5, 1)` it stands for.
+            TokenKind::Rational(numerator, denominator) => Ok(Expression::Call {
+                callee: Box::new(Expression::Identifier {
+                    name: "Rational".to_string(),
+                    position,
+                }),
+                arguments: vec![
+                    literals::int_literal(numerator, position),
+                    literals::int_literal(denominator, position),
+                ],
+                trailing_block: None,
+                position,
+            }),
             TokenKind::String(value) => Ok(literals::string_literal(value, position)),
             TokenKind::Regex(pattern, flags) => self.regex_expression(pattern, flags, position),
             TokenKind::PercentW(value) => Ok(self.primary_percent_w(value, position)),

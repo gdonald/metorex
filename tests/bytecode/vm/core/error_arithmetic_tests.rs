@@ -311,20 +311,17 @@ fn execute_float_div_int() {
 
 #[test]
 fn execute_float_div_int_zero() {
-    let result = run("return 10.0 / 0");
-    assert!(result.is_err());
+    assert_eq!(run_ok("return 10.0 / 0"), Object::Float(f64::INFINITY));
 }
 
 #[test]
 fn execute_int_div_float_zero() {
-    let result = run("return 10 / 0.0");
-    assert!(result.is_err());
+    assert_eq!(run_ok("return 10 / 0.0"), Object::Float(f64::INFINITY));
 }
 
 #[test]
 fn execute_float_div_float_zero() {
-    let result = run("return 10.0 / 0.0");
-    assert!(result.is_err());
+    assert_eq!(run_ok("return 10.0 / 0.0"), Object::Float(f64::INFINITY));
 }
 
 #[test]

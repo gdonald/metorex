@@ -172,6 +172,35 @@ impl VirtualMachine {
                     position,
                 )?))
             }
+            // `dig(index, *rest)` — index, then keep digging into the result.
+            "dig" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                }
+                let Object::Int(index) = &arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "Integer",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                let array = array_rc.borrow();
+                let length = array.len() as i64;
+                let resolved = if *index < 0 { index + length } else { *index };
+                if resolved < 0 || resolved >= length {
+                    return Ok(Some(Object::Nil));
+                }
+                let mut value = array[resolved as usize].clone();
+                drop(array);
+                for key in &arguments[1..] {
+                    if matches!(value, Object::Nil) {
+                        return Ok(Some(Object::Nil));
+                    }
+                    value = self.dig_into(&value, key, position)?;
+                }
+                Ok(Some(value))
+            }
             "each" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -1062,7 +1091,7 @@ fn inspect_elements(elements: &[Object]) -> String {
     format!("[{}]", parts.join(", "))
 }
 
-fn inspect_element(element: &Object) -> String {
+pub(crate) fn inspect_element(element: &Object) -> String {
     match element {
         Object::String(s) => format!("{:?}", s.as_str()),
         Object::Symbol(s) => format!(":{}", s.as_str()),

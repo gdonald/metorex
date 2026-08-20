@@ -107,6 +107,14 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     let complex_class = Rc::new(Class::new("Complex", Some(Rc::clone(&numeric))));
     globals.set("Complex", Object::Class(complex_class));
 
+    // Struct — the builder every `Struct.new(...)` class descends from.
+    let object_class = match globals.get("Object") {
+        Some(Object::Class(class)) => Some(class),
+        _ => None,
+    };
+    let struct_class = Rc::new(Class::new("Struct", object_class));
+    globals.set("Struct", Object::Class(struct_class));
+
     // Regexp — stub class so `case x; when Regexp; ...; end` and
     // `obj.kind_of?(Regexp)` resolve.
     let regexp_class = Rc::new(Class::new("Regexp", Some(Rc::clone(&object))));
@@ -390,6 +398,10 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("eval", Object::NativeFunction("eval".to_string()));
     globals.set("parse", Object::NativeFunction("parse".to_string()));
     globals.set("exit", Object::NativeFunction("exit".to_string()));
+    globals.set("exit!", Object::NativeFunction("exit!".to_string()));
+    globals.set("abort", Object::NativeFunction("abort".to_string()));
+    globals.set("system", Object::NativeFunction("system".to_string()));
+    globals.set("fork", Object::NativeFunction("fork".to_string()));
     globals.set("load", Object::NativeFunction("load".to_string()));
     // Refinements — `using` activates a refinement module (stub for now).
     globals.set("using", Object::NativeFunction("using".to_string()));
@@ -441,6 +453,10 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set(
         "__method__",
         Object::NativeFunction("__method__".to_string()),
+    );
+    globals.set(
+        "__callee__",
+        Object::NativeFunction("__callee__".to_string()),
     );
     globals.set("caller", Object::NativeFunction("caller".to_string()));
     globals.set(

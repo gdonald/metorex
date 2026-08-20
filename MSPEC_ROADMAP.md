@@ -265,11 +265,11 @@ Parser fixes during Phase 4 work:
   - [ ] 4.8.1. core/kernel/Array_spec
   - [ ] 4.8.2. core/kernel/Complex_spec
   - [ ] 4.8.3. core/kernel/Float_spec
-  - [ ] 4.8.4. core/kernel/Hash_spec
+  - [x] 4.8.4. core/kernel/Hash_spec
   - [ ] 4.8.5. core/kernel/Integer_spec
-  - [ ] 4.8.6. core/kernel/Rational_spec
-  - [ ] 4.8.7. core/kernel/String_spec
-  - [ ] 4.8.8. core/kernel/__callee___spec
+  - [x] 4.8.6. core/kernel/Rational_spec
+  - [x] 4.8.7. core/kernel/String_spec
+  - [x] 4.8.8. core/kernel/__callee___spec
   - [ ] 4.8.9. core/kernel/__dir___spec
   - [ ] 4.8.10. core/kernel/__method___spec
   - [ ] 4.8.11. core/kernel/abort_spec

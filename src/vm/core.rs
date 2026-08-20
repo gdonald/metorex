@@ -309,6 +309,34 @@ impl VirtualMachine {
         result
     }
 
+    /// Push a frame that stays until it is popped, for scopes whose body is
+    /// run by a loop rather than a single closure.
+    pub(crate) fn call_stack_push(&mut self, frame: CallFrame) {
+        self.call_stack.push(frame);
+    }
+
+    /// Pop the frame `call_stack_push` added.
+    pub(crate) fn call_stack_pop(&mut self) {
+        self.call_stack.pop();
+    }
+
+    /// The (callee, defined) names of the method currently running, or None
+    /// at file or class-body scope. Block frames report the method that
+    /// lexically encloses them rather than whichever method called them.
+    pub(crate) fn enclosing_method_names(&self) -> Option<(String, String)> {
+        use crate::vm::FrameKind;
+        for frame in self.call_stack.iter().rev() {
+            match frame.kind() {
+                FrameKind::Block => continue,
+                FrameKind::Boundary => return None,
+                FrameKind::Method { callee, defined } => {
+                    return Some((callee.clone(), defined.clone()));
+                }
+            }
+        }
+        None
+    }
+
     /// Inspect the current call stack (top is last element).
     pub fn call_stack(&self) -> &[CallFrame] {
         &self.call_stack

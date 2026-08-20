@@ -501,6 +501,18 @@ impl VirtualMachine {
                                 *position,
                             )?;
                             Ok(())
+                        } else if let Some(members) =
+                            crate::vm::native_methods::struct_members(&class)
+                        {
+                            self.call_struct_instance_method(
+                                &class,
+                                &members,
+                                &Object::Instance(instance_rc),
+                                "[]=",
+                                &[idx, value],
+                                *position,
+                            )?;
+                            Ok(())
                         } else if class.name() == "Thread" {
                             // Thread-local storage: `t[:k] = v`. Targeted
                             // here to avoid recursing through a general

@@ -99,6 +99,13 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(*f as i64)))
             }
+            // `to_r` is the float's exact binary value, so `0.6.to_r` is
+            // (5404319552844595/9007199254740992) rather than (3/5).
+            "to_r" => {
+                let (numerator, denominator) = super::rational_methods::float_exact_fraction(*f);
+                self.make_rational(numerator, denominator, position)
+                    .map(Some)
+            }
             "to_f" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
