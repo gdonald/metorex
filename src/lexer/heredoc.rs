@@ -21,19 +21,11 @@ impl<'a> Lexer<'a> {
         // - `<<-IDENT`: terminator may be indented; body content kept verbatim.
         // - `<<~IDENT`: terminator may be indented AND common leading whitespace
         //   is stripped from body lines.
-        let allow_indented_terminator;
-        let strip_indent;
-        match self.peek() {
-            Some('-') => {
-                allow_indented_terminator = true;
-                strip_indent = false;
-            }
-            Some('~') => {
-                allow_indented_terminator = true;
-                strip_indent = true;
-            }
+        let (allow_indented_terminator, strip_indent) = match self.peek() {
+            Some('-') => (true, false),
+            Some('~') => (true, true),
             _ => return None,
-        }
+        };
         // Save state so we can roll back if the next characters don't form
         // a valid heredoc terminator.
         let saved_chars = self.chars.clone();
