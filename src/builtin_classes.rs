@@ -42,6 +42,8 @@ pub struct BuiltinClasses {
     pub proc_class: Rc<Class>,
     /// Method class (bound and unbound method objects)
     pub method_class: Rc<Class>,
+    /// Binding class (captured execution contexts)
+    pub binding_class: Rc<Class>,
 }
 
 impl BuiltinClasses {
@@ -66,6 +68,7 @@ impl BuiltinClasses {
         let dir_class = Rc::new(Class::new("Dir", Some(Rc::clone(&object_class))));
         let proc_class = Rc::new(Class::new("Proc", Some(Rc::clone(&object_class))));
         let method_class = Rc::new(Class::new("Method", Some(Rc::clone(&object_class))));
+        let binding_class = Rc::new(Class::new("Binding", Some(Rc::clone(&object_class))));
 
         // Create exception hierarchy
         let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
@@ -104,6 +107,7 @@ impl BuiltinClasses {
             dir_class,
             proc_class,
             method_class,
+            binding_class,
         }
     }
 
@@ -123,7 +127,7 @@ impl BuiltinClasses {
             Object::Class(_) | Object::Module(_) => Rc::clone(&self.object_class),
             Object::Method(_) => Rc::clone(&self.method_class),
             Object::Block(_) => Rc::clone(&self.proc_class),
-            Object::Binding(_) => Rc::clone(&self.object_class),
+            Object::Binding(_) => Rc::clone(&self.binding_class),
             Object::Exception(_) => Rc::clone(&self.exception_class),
             Object::Result(_) => Rc::clone(&self.object_class),
             Object::NativeFunction(_) => Rc::clone(&self.object_class),
@@ -240,6 +244,7 @@ impl BuiltinClasses {
         classes.insert("Proc".to_string(), Rc::clone(&self.proc_class));
         classes.insert("Method".to_string(), Rc::clone(&self.method_class));
         classes.insert("UnboundMethod".to_string(), Rc::clone(&self.method_class));
+        classes.insert("Binding".to_string(), Rc::clone(&self.binding_class));
         classes.insert("NilClass".to_string(), Rc::clone(&self.object_class));
         classes.insert("TrueClass".to_string(), Rc::clone(&self.object_class));
         classes.insert("FalseClass".to_string(), Rc::clone(&self.object_class));

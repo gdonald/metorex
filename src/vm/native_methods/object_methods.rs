@@ -197,6 +197,23 @@ impl VirtualMachine {
             name if super::kernel_conversion::is_kernel_conversion(name) => {
                 self.call_kernel_conversion(name, arguments, position)
             }
+            // `abort` is a private instance method on Kernel, so every
+            // object reaches it — the fixture classes make it public.
+            "abort" => self
+                .call_native_function(method_name, arguments.to_vec(), position)
+                .map(Some),
+            // `send(:block_given?)` reports on the frame that sent it, the
+            // same as the bare form.
+            "block_given?" if arguments.is_empty() => Ok(Some(Object::Bool(matches!(
+                self.environment().get("block_given?"),
+                Some(Object::Bool(true))
+            )))),
+            // `binding` is likewise private on Kernel. It captures the frame
+            // that called it rather than anything about this receiver, so
+            // `obj.send(:binding)` answers the sender's context.
+            "binding" if arguments.is_empty() => self
+                .call_native_function("binding_kernel", Vec::new(), position)
+                .map(Some),
             // Kernel functions that report on the running method, so
             // `send(:__callee__)` reaches them like any other Kernel method.
             "__method__" | "__callee__" => self
@@ -430,6 +447,22 @@ impl VirtualMachine {
                     if let Some(Object::Class(cls)) = self.globals().get(&exc_type) {
                         return Ok(Some(Object::Class(cls)));
                     }
+                }
+                // A class is an instance of Class, a module an instance of
+                // Module. `class_of` answers Object for both because it drives
+                // `is_a?` over the inheritance chain.
+                match receiver {
+                    Object::Class(_) => {
+                        if let Some(Object::Class(cls)) = self.globals().get("Class") {
+                            return Ok(Some(Object::Class(cls)));
+                        }
+                    }
+                    Object::Module(_) => {
+                        if let Some(Object::Class(cls)) = self.globals().get("Module") {
+                            return Ok(Some(Object::Class(cls)));
+                        }
+                    }
+                    _ => {}
                 }
                 // For booleans and nil, return the specific class
                 match receiver {
@@ -883,6 +916,20 @@ impl VirtualMachine {
                         }
                     }
                 }
+                // Methods on the receiver's own singleton class — what
+                // `define_singleton_method` and `class << obj` install.
+                let singleton = match receiver {
+                    Object::Class(c) | Object::Module(c) => c.singleton_class_slot().clone(),
+                    Object::Instance(inst) => inst.borrow().singleton_class.borrow().clone(),
+                    _ => None,
+                };
+                if let Some(sc) = singleton {
+                    for name in sc.method_names() {
+                        if !name.starts_with("__") && !names.contains(&name) {
+                            names.push(name);
+                        }
+                    }
+                }
                 // A tombstone left by `undef_method` is not a method any more.
                 if let Object::Class(c) | Object::Module(c) = receiver {
                     names.retain(|n| c.find_method(n).is_none_or(|method| !method.is_undefined));
@@ -1075,6 +1122,32 @@ impl VirtualMachine {
                 let result =
                     self.class_eval_with_args(&backing, receiver.clone(), arguments, position)?;
                 Ok(Some(result))
+            }
+            // `then` / `yield_self` pass the receiver to the block and answer
+            // the block's value; `tap` answers the receiver instead.
+            "then" | "yield_self" | "tap" => {
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    _ => {
+                        return Err(MetorexError::runtime_error(
+                            format!("{} requires a block", method_name),
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                // A block that declares no parameter is called with none:
+                // Ruby's non-lambda blocks drop what they did not ask for.
+                let block_arguments = if block.binding_parameters().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![receiver.clone()]
+                };
+                let value = block.call(self, block_arguments, position)?;
+                Ok(Some(if method_name == "tap" {
+                    receiver.clone()
+                } else {
+                    value
+                }))
             }
             "instance_exec" | "instance_eval" => {
                 let block = self.pending_block.take().or_else(|| {

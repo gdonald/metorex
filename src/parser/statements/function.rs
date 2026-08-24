@@ -120,6 +120,32 @@ impl Parser {
                     "[]".to_string()
                 }
             }
+            // `def @obj.name` / `def $stream.name` — a singleton method on
+            // whatever the variable holds. The sigil stays in the recorded
+            // receiver name so the VM knows where to look it up.
+            TokenKind::InstanceVar(variable) | TokenKind::GlobalVar(variable)
+                if self.check(&[TokenKind::Dot]) =>
+            {
+                let sigil = match self.previous().kind {
+                    TokenKind::InstanceVar(_) => '@',
+                    _ => '$',
+                };
+                self.advance(); // consume .
+                _singleton_receiver = Some(format!("{}{}", sigil, variable));
+                match self.advance().kind {
+                    TokenKind::Ident(method_name) => {
+                        if self.check(&[TokenKind::Equal])
+                            && matches!(self.peek_ahead(1).kind, TokenKind::LParen)
+                        {
+                            self.advance(); // consume =
+                            format!("{}=", method_name)
+                        } else {
+                            method_name
+                        }
+                    }
+                    _ => return Err(self.error_at_previous("Expected method name after '.'")),
+                }
+            }
             // def (expr).method_name — singleton method on expression result.
             TokenKind::LParen => {
                 let receiver_expr = self.parse_expression()?;
@@ -232,8 +258,15 @@ impl Parser {
 
         self.expect(TokenKind::End, "Expected 'end' after function body")?;
 
+        // A `def @obj.name` / `def $stream.name` targets whatever the
+        // variable holds, which is only known at run time, so it stays a
+        // FunctionDef carrying the receiver even inside a class body.
+        let variable_receiver = _singleton_receiver
+            .as_deref()
+            .is_some_and(|receiver| receiver.starts_with('@') || receiver.starts_with('$'));
+
         // Return MethodDef if we're inside a class, otherwise FunctionDef
-        if self.in_class_body {
+        if self.in_class_body && !variable_receiver {
             let is_class_method = _singleton_receiver.is_some();
             Ok(Statement::MethodDef {
                 name,

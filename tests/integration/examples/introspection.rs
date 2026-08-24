@@ -34,7 +34,7 @@ simple_func
 nil
 Proc
 Proc
-<Binding with 163 vars>
+Binding
 18
 "#;
     let output = run_example("introspection/closure_namespace.rb");
@@ -104,5 +104,27 @@ fn test_introspection_instance_variable_set_frozen() {
 fn test_introspection_instance_variable_set_frozen_no_parens() {
     let expected = "true: FrozenError\nfalse: FrozenError\nnil: FrozenError\ninteger: FrozenError\nsymbol: FrozenError\ninstance: 99\nfrozen instance: FrozenError\nrescued via RuntimeError\n";
     let output = run_example("introspection/instance_variable_set_frozen_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_class_of_class_execution() {
+    let expected = "Class\nClass\nClass\nClass\nClass\nModule\nGreeter\ntrue\ntrue\n";
+    let output = run_example("introspection/class_of_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_binding_context_execution() {
+    let expected = "Binding\ntrue\n99\ntrue\npassword\n4\n4\nfalse\ntrue\ntrue\n";
+    let output = run_example("introspection/binding_context.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_block_given_context_execution() {
+    let expected =
+        "true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\nfalse\nfalse\n";
+    let output = run_example("introspection/block_given_context.rb");
     assert_eq!(output, expected);
 }

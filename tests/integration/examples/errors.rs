@@ -1,3 +1,6 @@
+use crate::common::EXAMPLES_DIR;
+use std::process::Command;
+
 use super::run_example;
 
 #[test]
@@ -133,4 +136,26 @@ fn test_rescue_mspec_flow() {
     let expected = "......rescued: location=nil, exc=NoMethodError\n\ndone\n";
     let output = run_example("rescue/mspec_flow_test.rb");
     assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_abort_rescued_execution() {
+    let expected = "with parentheses omitted\n1\nwith parentheses\n1\nSystemExit\n1\nfrom the Kernel module\nfrom an instance\ncoerced with to_str\nno implicit conversion of Integer into String\ntrue\n";
+    let output = run_example("errors/abort_rescued.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_abort_uncaught_execution() {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let full_path = format!("{}/errors/abort_uncaught.rb", EXAMPLES_DIR);
+    let mut command = Command::new(binary);
+    command.current_dir(manifest_dir).arg(&full_path);
+
+    let output = command.output().expect("failed to execute example");
+    let stdout = String::from_utf8(output.stdout).expect("stdout was not utf8");
+
+    assert_eq!(stdout, "captured: redirected message\n\n");
+    assert_eq!(output.status.code(), Some(1));
 }

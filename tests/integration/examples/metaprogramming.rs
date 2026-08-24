@@ -9,7 +9,7 @@ fn test_metaprogramming_top_level_define_method_execution() {
 
 #[test]
 fn test_metaprogramming_anonymous_class_execution() {
-    let expected = "foo\nfoo\nbaz\nObject\n";
+    let expected = "foo\nfoo\nbaz\nModule\n";
     let output = run_example("metaprogramming/anonymous_class.rb");
     assert_eq!(output, expected);
 }
@@ -832,5 +832,13 @@ fn test_metaprogramming_define_method_lambda_control_flow_execution() {
 fn test_metaprogramming_define_method_lambda_control_flow_no_parens_execution() {
     let expected = "42\n42\n[:first, :second]\n";
     let output = run_example("metaprogramming/define_method_lambda_control_flow_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_define_singleton_method_sources_execution() {
+    let expected =
+        "[:LIMIT]\ntrue\nfrom parent\nnot defined on the parent\nhello\ntrue\nFrozenError\n";
+    let output = run_example("metaprogramming/define_singleton_method_sources.rb");
     assert_eq!(output, expected);
 }

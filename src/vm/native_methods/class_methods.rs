@@ -224,6 +224,24 @@ impl VirtualMachine {
         {
             return Ok(Some(result));
         }
+        if class_rc.name() == "Kernel" && method_name == "abort" {
+            return self
+                .call_native_function(method_name, arguments.to_vec(), position)
+                .map(Some);
+        }
+        // `Kernel.block_given?` reports on the frame that called it, the same
+        // as the bare form.
+        if class_rc.name() == "Kernel" && method_name == "block_given?" {
+            return Ok(Some(Object::Bool(matches!(
+                self.environment().get("block_given?"),
+                Some(Object::Bool(true))
+            ))));
+        }
+        if class_rc.name() == "Kernel" && method_name == "binding" {
+            return self
+                .call_native_function("binding_kernel", arguments.to_vec(), position)
+                .map(Some);
+        }
         if method_name == "new" && class_rc.name() == "Class" {
             let superclass = match arguments.first() {
                 Some(Object::Class(c)) => {
@@ -997,6 +1015,8 @@ impl VirtualMachine {
                 if class_rc.name() == "Kernel" {
                     for n in
                         crate::vm::native_methods::kernel_conversion::KERNEL_CONVERSION_FUNCTIONS
+                            .iter()
+                            .chain(KERNEL_PRIVATE_FUNCTIONS.iter())
                     {
                         if !method_list.iter().any(|m| m == n) {
                             method_list.push((*n).to_string());
@@ -2567,6 +2587,11 @@ impl VirtualMachine {
 /// as an instance method.
 pub(crate) const MODULE_FUNCTION_VISIBILITY: &str = "module_function";
 
+/// Kernel's process-control functions, which Ruby exposes as private instance
+/// methods on Kernel and as public singleton methods on the module.
+pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] =
+    &["abort", "binding", "block_given?", "catch", "throw"];
+
 /// The hooks Module defines as private instance methods with a no-op default
 /// implementation. Each takes one argument and returns nil unless the module
 /// overrides it.
@@ -2604,6 +2629,7 @@ pub(super) const NATIVE_MODULE_METHODS: &[(&str, &[&str], bool)] = &[
     ("attr_accessor", &["names"], true),
     ("attr_reader", &["names"], true),
     ("attr_writer", &["names"], true),
+    ("constants", &["inherit"], true),
     ("define_method", &["name", "body"], true),
     ("include", &["modules"], true),
     ("method_defined?", &["name", "inherit"], true),

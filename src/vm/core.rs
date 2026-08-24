@@ -94,6 +94,10 @@ pub struct VirtualMachine {
     /// The lexical nesting captured by each method currently on the call
     /// stack, so `Module.nesting` inside a body reports the definition site.
     pub(crate) method_nesting_stack: Vec<Vec<Rc<crate::class::Class>>>,
+    /// Tags of the `catch` blocks currently running, innermost last. `throw`
+    /// consults them so a tag nothing is catching raises rather than unwinding
+    /// past the whole program.
+    pub(crate) catch_tags: Vec<crate::object::Object>,
     /// Depth of autoload-driven re-runs of an already-required file. A
     /// constant assignment during one is repeating work Ruby would not have
     /// repeated, so its "already initialized" warning is an artifact.
@@ -147,6 +151,7 @@ impl VirtualMachine {
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
             method_nesting_stack: Vec::new(),
+            catch_tags: Vec::new(),
             autoload_reload_depth: 0,
         }
     }

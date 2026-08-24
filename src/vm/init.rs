@@ -178,6 +178,10 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
         Some(Rc::clone(&standard_error)),
     ));
     let regexp_error = Rc::new(Class::new("RegexpError", Some(Rc::clone(&standard_error))));
+    let uncaught_throw_error = Rc::new(Class::new(
+        "UncaughtThrowError",
+        Some(Rc::clone(&argument_error)),
+    ));
     let math_domain_error = Rc::new(Class::new(
         "Math::DomainError",
         Some(Rc::clone(&argument_error)),
@@ -210,6 +214,7 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     globals.set("FrozenError", Object::Class(frozen_error));
     globals.set("LocalJumpError", Object::Class(local_jump_error));
     globals.set("RegexpError", Object::Class(regexp_error));
+    globals.set("UncaughtThrowError", Object::Class(uncaught_throw_error));
     globals.set("Math::DomainError", Object::Class(math_domain_error));
 }
 
@@ -467,6 +472,8 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         "binding",
         Object::NativeFunction("binding_kernel".to_string()),
     );
+    globals.set("catch", Object::NativeFunction("catch".to_string()));
+    globals.set("throw", Object::NativeFunction("throw".to_string()));
     globals.set("rand", Object::NativeFunction("rand".to_string()));
     globals.set("srand", Object::NativeFunction("srand".to_string()));
     globals.set("sleep", Object::NativeFunction("sleep".to_string()));

@@ -52,6 +52,18 @@ impl VirtualMachine {
             return Ok(result);
         }
 
+        // A stub copied under a new name (`define_singleton_method(:other,
+        // method(:constants))`) still means the native method it was cut from.
+        if method.body.is_empty()
+            && method.captured_vars.is_none()
+            && let Some(original) = &method.original_name
+            && original != &method_name
+            && let Some(result) =
+                self.call_native_method(class.as_ref(), &receiver, original, &arguments, position)?
+        {
+            return Ok(result);
+        }
+
         // For stub methods (empty body, registered on Object for introspection),
         // fall through to base Object native methods (class, to_s, respond_to?, etc.)
         if method.body.is_empty()
@@ -232,8 +244,17 @@ impl VirtualMachine {
 
             // Bind the block: define block_given? as a Bool, __block__ for internal use,
             // and the named &block parameter if the method declared one.
-            self.environment_mut()
-                .define("block_given?".to_string(), Object::Bool(block.is_some()));
+            // A body that came from a `define_method` block keeps the
+            // `block_given?` of the frame the block was written in, which is
+            // why Ruby answers false there however the method is called.
+            let inherits_block_given = method
+                .captured_vars
+                .as_ref()
+                .is_some_and(|captured| captured.contains_key("block_given?"));
+            if !inherits_block_given {
+                self.environment_mut()
+                    .define("block_given?".to_string(), Object::Bool(block.is_some()));
+            }
             if let Some(block_value) = block {
                 self.environment_mut()
                     .define("__block__".to_string(), block_value.clone());

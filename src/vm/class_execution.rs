@@ -1295,10 +1295,17 @@ impl VirtualMachine {
             let sole_instance_receiver =
                 receiver_name.strip_prefix(crate::parser::SOLE_INSTANCE_RECEIVER);
             let receiver_name = sole_instance_receiver.unwrap_or(receiver_name);
-            let resolved = self
-                .environment()
-                .get(receiver_name)
-                .or_else(|| self.globals().get(receiver_name));
+            // `def @obj.name` reads the instance variable off the current
+            // self; `def $stream.name` reads the global.
+            let resolved = if let Some(variable) = receiver_name.strip_prefix('@') {
+                self.eval_instance_var_read(variable, position).ok()
+            } else if let Some(variable) = receiver_name.strip_prefix('$') {
+                self.globals().get(variable)
+            } else {
+                self.environment()
+                    .get(receiver_name)
+                    .or_else(|| self.globals().get(receiver_name))
+            };
             if sole_instance_receiver.is_some() {
                 if let Some(Object::Class(target_class)) = resolved {
                     target_class.define_method(name, Rc::clone(&function));

@@ -154,7 +154,7 @@ fn class_of_binding() {
     use metorex::object::Binding;
     let binding = Object::Binding(Rc::new(Binding::new(HashMap::new())));
     let class = builtins.class_of(&binding);
-    assert_eq!(class.name(), "Object");
+    assert_eq!(class.name(), "Binding");
 }
 
 #[test]

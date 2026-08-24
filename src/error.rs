@@ -151,6 +151,16 @@ pub enum MetorexError {
     /// enclosing body, which then re-runs from the top.
     #[error("Block redo")]
     BlockRedo { location: SourceLocation },
+
+    /// A `throw tag, value` unwinding to the matching `catch`. `throw` only
+    /// raises this once it has found a live catch for the tag, so it always
+    /// has somewhere to land.
+    #[error("Throw")]
+    Throw {
+        tag: crate::object::Object,
+        value: crate::object::Object,
+        location: SourceLocation,
+    },
 }
 
 // Custom From implementation for std::io::Error
@@ -252,6 +262,7 @@ impl MetorexError {
             Self::BlockBreak { .. } => "block break",
             Self::BlockNext { .. } => "block next",
             Self::BlockRedo { .. } => "block redo",
+            Self::Throw { .. } => "throw",
         }
     }
 

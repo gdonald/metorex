@@ -74,18 +74,18 @@ impl VirtualMachine {
             return self.call_native_function("using", evaluated_args, position);
         }
 
-        // `__method__()` and `__callee__()` are auto-invoked when named bare,
-        // so the parenthesised call form has to reach the native function
-        // rather than trying to call whatever the bare name evaluated to.
+        // `__method__()`, `__callee__()`, `abort` and `binding` are
+        // auto-invoked when named bare, so a call form has to reach the native
+        // function rather than calling whatever the bare name evaluated to.
         if let Expression::Identifier { name, .. } = callee
-            && matches!(name.as_str(), "__method__" | "__callee__")
             && matches!(
-                self.environment().get(name),
-                Some(Object::NativeFunction(_))
+                name.as_str(),
+                "__method__" | "__callee__" | "abort" | "binding"
             )
+            && let Some(Object::NativeFunction(native_name)) = self.environment().get(name)
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
-            return self.call_native_function(name, evaluated_args, position);
+            return self.call_native_function(&native_name, evaluated_args, position);
         }
 
         // `Hash(x)` and the other Kernel conversion functions share a name

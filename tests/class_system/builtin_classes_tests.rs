@@ -287,7 +287,7 @@ fn test_all_classes() {
     let builtins = BuiltinClasses::new();
     let all = builtins.all_classes();
 
-    assert_eq!(all.len(), 24);
+    assert_eq!(all.len(), 25);
     assert!(all.contains_key("Dir"));
     assert!(all.contains_key("BasicObject"));
     assert!(all.contains_key("Object"));
@@ -302,6 +302,7 @@ fn test_all_classes() {
     assert!(all.contains_key("RuntimeError"));
     assert!(all.contains_key("TypeError"));
     assert!(all.contains_key("ValueError"));
+    assert!(all.contains_key("Binding"));
 }
 
 #[test]

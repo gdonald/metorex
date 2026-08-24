@@ -245,3 +245,10 @@ fn test_unless_else_parens_execution() {
     let output = run_example("control_flow/unless_else_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_control_flow_catch_throw_execution() {
+    let expected = "thrown value\nblock value\nunwound to the outer catch\n-4\nnil\nObject\nmatched by identity\nUncaughtThrowError\nuncaught throw :b\nLocalJumpError\n";
+    let output = run_example("control_flow/catch_throw.rb");
+    assert_eq!(output, expected);
+}

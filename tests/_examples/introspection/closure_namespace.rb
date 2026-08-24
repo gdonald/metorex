@@ -15,7 +15,7 @@ def outer(x)
 
   puts inner.class.name
   puts inner.class.name
-  puts inner.binding
+  puts inner.binding.class
 
   inner.call(5)
 end

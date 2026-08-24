@@ -271,24 +271,24 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.7. core/kernel/String_spec
   - [x] 4.8.8. core/kernel/__callee___spec
   - [ ] 4.8.9. core/kernel/__dir___spec
-  - [ ] 4.8.10. core/kernel/__method___spec
-  - [ ] 4.8.11. core/kernel/abort_spec
+  - [x] 4.8.10. core/kernel/__method___spec
+  - [x] 4.8.11. core/kernel/abort_spec
   - [ ] 4.8.12. core/kernel/at_exit_spec
-  - [ ] 4.8.13. core/kernel/autoload_relative_spec
+  - [x] 4.8.13. core/kernel/autoload_relative_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (all examples guarded under ruby_version_is "4.1")
   - [ ] 4.8.14. core/kernel/autoload_spec
   - [ ] 4.8.15. core/kernel/backtick_spec
-  - [ ] 4.8.16. core/kernel/binding_spec
-  - [ ] 4.8.17. core/kernel/block_given_spec
+  - [x] 4.8.16. core/kernel/binding_spec — 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.8.17. core/kernel/block_given_spec — 1 file, 8 examples, 32 expectations, 0 failures, 0 errors
   - [ ] 4.8.18. core/kernel/caller_locations_spec
   - [ ] 4.8.19. core/kernel/caller_spec
-  - [ ] 4.8.20. core/kernel/case_compare_spec
-  - [ ] 4.8.21. core/kernel/catch_spec
+  - [x] 4.8.20. core/kernel/case_compare_spec — 1 file, 10 examples, 30 expectations, 0 failures, 0 errors
+  - [x] 4.8.21. core/kernel/catch_spec — 1 file, 15 examples, 15 expectations, 0 failures, 0 errors
   - [ ] 4.8.22. core/kernel/chomp_spec
   - [ ] 4.8.23. core/kernel/chop_spec
-  - [ ] 4.8.24. core/kernel/class_spec
+  - [x] 4.8.24. core/kernel/class_spec — 1 file, 3 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.8.25. core/kernel/clone_spec
-  - [ ] 4.8.26. core/kernel/comparison_spec
-  - [ ] 4.8.27. core/kernel/define_singleton_method_spec
+  - [x] 4.8.26. core/kernel/comparison_spec — 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.8.27. core/kernel/define_singleton_method_spec — 1 file, 12 examples, 17 expectations, 0 failures, 0 errors
   - [ ] 4.8.28. core/kernel/display_spec
   - [ ] 4.8.29. core/kernel/dup_spec
   - [ ] 4.8.30. core/kernel/enum_for_spec

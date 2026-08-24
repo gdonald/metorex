@@ -25,12 +25,18 @@ impl VirtualMachine {
         if let Some(val) = self.environment().get(name) {
             // A few natives are always a call rather than a reference when
             // named bare: top-level `to_s` (Ruby's "main"), `using` (whose
-            // 0-arg form raises ArgumentError), and the visibility modifiers,
-            // whose 0-arg form is a toggle on the enclosing class or module.
+            // 0-arg form raises ArgumentError), `abort` (whose 0-arg form
+            // raises SystemExit), and the visibility modifiers, whose 0-arg
+            // form is a toggle on the enclosing class or module.
             if let Object::NativeFunction(fn_name) = &val
                 && (matches!(
                     fn_name.as_str(),
-                    "top_level_to_s" | "using" | "__method__" | "__callee__"
+                    "top_level_to_s"
+                        | "using"
+                        | "__method__"
+                        | "__callee__"
+                        | "abort"
+                        | "binding_kernel"
                 ) || (matches!(
                     fn_name.as_str(),
                     "module_function" | "private" | "public" | "protected"
@@ -136,6 +142,24 @@ impl VirtualMachine {
                         return Ok(val);
                     }
                     current = cls.superclass();
+                }
+            }
+            // Inside a method body the lexical scope is the one open where the
+            // method was defined, which is what `Module.nesting` reports. A
+            // method on a nested class reaches its own name and its enclosing
+            // module's constants through it.
+            if let Some(nesting) = self.method_nesting_stack.last() {
+                for enclosing in nesting.clone() {
+                    if enclosing.name() == name {
+                        return Ok(if enclosing.is_module() {
+                            Object::Module(enclosing)
+                        } else {
+                            Object::Class(enclosing)
+                        });
+                    }
+                    if let Some(val) = enclosing.get_class_var(name) {
+                        return Ok(val);
+                    }
                 }
             }
             // Walk the lexical def-scope stack (outer class/module bodies) so a

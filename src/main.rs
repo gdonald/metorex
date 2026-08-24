@@ -231,6 +231,16 @@ fn real_main() {
     vm.set_argv(script_args);
 
     if let Err(err) = vm.execute_program(&program) {
+        // `abort` and `exit` raise SystemExit: it ends the program with the
+        // status it carries, having already reported anything it wanted to.
+        if let metorex::error::MetorexError::UncaughtException {
+            exception: metorex::object::Object::Exception(exc),
+            ..
+        } = &err
+            && exc.borrow().exception_type == "SystemExit"
+        {
+            process::exit(exc.borrow().status.unwrap_or(0) as i32);
+        }
         eprintln!("Runtime error: {}", err);
         if let metorex::error::MetorexError::RuntimeError { stack_trace, .. } = &err
             && !stack_trace.is_empty()

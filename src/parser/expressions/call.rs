@@ -27,10 +27,17 @@ impl Parser {
                     self.advance();
                     self.advance();
                     let position = expr.position();
+                    // `.[](index)` carries its index in the parentheses that
+                    // follow, the same as any other named method call.
+                    let arguments = if self.match_token(&[TokenKind::LParen]) {
+                        self.parse_arguments()?
+                    } else {
+                        Vec::new()
+                    };
                     expr = Expression::MethodCall {
                         receiver: Box::new(expr),
                         method: "[]".to_string(),
-                        arguments: vec![],
+                        arguments,
                         trailing_block: None,
                         position,
                     };
@@ -75,6 +82,26 @@ impl Parser {
                     TokenKind::Nil => "nil".to_string(),
                     TokenKind::True => "true".to_string(),
                     TokenKind::False => "false".to_string(),
+                    // Operators named as methods: `obj.<=>(other)`, `a.+(b)`.
+                    TokenKind::Plus => "+".to_string(),
+                    TokenKind::Minus => "-".to_string(),
+                    TokenKind::Star => "*".to_string(),
+                    TokenKind::StarStar => "**".to_string(),
+                    TokenKind::Slash => "/".to_string(),
+                    TokenKind::Percent => "%".to_string(),
+                    TokenKind::EqualEqual => "==".to_string(),
+                    TokenKind::TripleEqual => "===".to_string(),
+                    TokenKind::BangEqual => "!=".to_string(),
+                    TokenKind::Less => "<".to_string(),
+                    TokenKind::Greater => ">".to_string(),
+                    TokenKind::LessEqual => "<=".to_string(),
+                    TokenKind::GreaterEqual => ">=".to_string(),
+                    TokenKind::Spaceship => "<=>".to_string(),
+                    TokenKind::Shovel => "<<".to_string(),
+                    TokenKind::Pipe => "|".to_string(),
+                    TokenKind::Ampersand => "&".to_string(),
+                    TokenKind::Match => "=~".to_string(),
+                    TokenKind::NotMatch => "!~".to_string(),
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
                 };
 

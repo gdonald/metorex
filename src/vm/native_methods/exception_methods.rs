@@ -42,6 +42,11 @@ impl VirtualMachine {
                     None => Object::Nil,
                 }))
             }
+            // SystemExit#status — the exit status the exception carries.
+            "status" if exception.borrow().exception_type == "SystemExit" => {
+                let status = exception.borrow().status.unwrap_or(0);
+                Ok(Some(Object::Int(status)))
+            }
             "type" | "exception_type" => {
                 // Return the exception type as a String
                 let exception_type = exception.borrow().exception_type.clone();

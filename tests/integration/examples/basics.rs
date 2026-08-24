@@ -193,3 +193,10 @@ fn test_float_division_execution() {
     let output = run_example("basics/float_division.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_then_yield_self_tap_execution() {
+    let expected = "6\n10\n5\n5\nVALUE\n3\n42\n";
+    let output = run_example("basics/then_yield_self_tap.rb");
+    assert_eq!(output, expected);
+}

@@ -166,25 +166,25 @@ run_spec "$SPEC_DIR/core/kernel/Hash_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/Rational_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/String_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/__callee___spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/__dir___spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/__method___spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/abort_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/at_exit_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/autoload_relative_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/autoload_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/backtick_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/binding_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/block_given_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/caller_locations_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/__dir___spec.rb"  # needs Dir.chdir + ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/__method___spec.rb"
+run_spec "$SPEC_DIR/core/kernel/abort_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/at_exit_spec.rb"  # 10 examples need ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/autoload_relative_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/autoload_spec.rb"  # frozen-Object example needs ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/kernel/backtick_spec.rb"  # needs backtick literals, subprocess execution, Process::Status, and external encodings
+run_spec "$SPEC_DIR/core/kernel/binding_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/block_given_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/caller_locations_spec.rb"  # needs a real backtrace model, Thread::Backtrace::Location, and Array#[] with ranges
 # run_spec "$SPEC_DIR/core/kernel/caller_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/case_compare_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/catch_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/chomp_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/chop_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/class_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/clone_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/comparison_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/define_singleton_method_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/case_compare_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/catch_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/chomp_spec.rb"  # every example needs ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/kernel/chop_spec.rb"  # every example needs ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/class_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/clone_spec.rb"  # needs singleton-class copying, clone(freeze:), and Complex/Rational identity
+run_spec "$SPEC_DIR/core/kernel/comparison_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/define_singleton_method_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/display_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/dup_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/enum_for_spec.rb"

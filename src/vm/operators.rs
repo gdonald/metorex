@@ -173,14 +173,43 @@ impl VirtualMachine {
                         return Ok(Object::Bool(false));
                     }
                 }
-                // Fallback: === behaves like ==
+                // Object#=== is the same object, or whatever #== says. It
+                // consults neither #equal? nor #object_id, so a class that
+                // overrides those does not change the answer.
+                if let Object::Instance(inst_rc) = &left {
+                    if let Object::Instance(rhs) = &right
+                        && Rc::ptr_eq(inst_rc, rhs)
+                    {
+                        return Ok(Object::Bool(true));
+                    }
+                    return self.evaluate_binary_operation(&Equal, left, right, position);
+                }
                 Ok(Object::Bool(left.equals(&right)))
             }
             NotEqual => Ok(Object::Bool(!left.equals(&right))),
             Less | Greater | LessEqual | GreaterEqual => {
                 self.evaluate_comparison(op, left, right, position)
             }
-            Spaceship => self.evaluate_spaceship(left, right, position),
+            Spaceship => {
+                // Object#<=> answers 0 for the same object or when #== says
+                // so, and nil otherwise. It never consults #eql?. A class that
+                // defines its own #<=> is dispatched before reaching here.
+                if let Object::Instance(inst_rc) = &left {
+                    if let Object::Instance(rhs) = &right
+                        && Rc::ptr_eq(inst_rc, rhs)
+                    {
+                        return Ok(Object::Int(0));
+                    }
+                    let equal =
+                        self.evaluate_binary_operation(&Equal, left, right.clone(), position)?;
+                    return Ok(if equal.is_truthy() {
+                        Object::Int(0)
+                    } else {
+                        Object::Nil
+                    });
+                }
+                self.evaluate_spaceship(left, right, position)
+            }
             BitwiseAnd => match (left, right) {
                 // nil & x always returns false (Ruby semantics)
                 (Object::Nil, _) | (_, Object::Nil) => Ok(Object::Bool(false)),

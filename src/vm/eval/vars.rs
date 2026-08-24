@@ -19,7 +19,7 @@ impl VirtualMachine {
     /// Evaluate an instance variable read (`@name`). Falls back to nil for
     /// undefined ivars on instances; reads class-level ivars when self is a
     /// Class or Module.
-    pub(super) fn eval_instance_var_read(
+    pub(crate) fn eval_instance_var_read(
         &self,
         name: &str,
         position: Position,

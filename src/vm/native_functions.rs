@@ -308,7 +308,26 @@ impl VirtualMachine {
                     locations,
                 ))))
             }
-            "binding_kernel" => Ok(Object::Nil),
+            // `binding` captures the frame that called it, not the receiver
+            // it was sent to: the local variables in scope (as shared cells,
+            // so an assignment through the binding is visible to both) and the
+            // `self` in force there.
+            "binding_kernel" => {
+                let variables = self.environment().current_scope_var_refs();
+                // At file scope there is no `self` binding; Ruby's top-level
+                // self is `main`, which is what TOPLEVEL_BINDING holds.
+                let receiver = self
+                    .environment()
+                    .get("self")
+                    .or_else(|| match self.globals().get("TOPLEVEL_BINDING") {
+                        Some(Object::Binding(b)) => b.receiver.clone(),
+                        _ => None,
+                    })
+                    .unwrap_or(Object::Nil);
+                Ok(Object::Binding(std::rc::Rc::new(
+                    crate::object::Binding::with_receiver(variables, receiver),
+                )))
+            }
             "top_level_to_s" => Ok(Object::string("main".to_string())),
             "define_method" => {
                 use crate::object::Method;
@@ -818,6 +837,24 @@ impl VirtualMachine {
                             crate::vm::utils::position_to_location(position),
                         )
                     })?;
+                // A Binding argument re-establishes the frame it captured:
+                // its locals (shared cells, so assignment through the eval is
+                // visible to a later one) and the `self` in force there.
+                let binding = match arguments.get(1) {
+                    Some(Object::Binding(b)) => Some(std::rc::Rc::clone(b)),
+                    _ => None,
+                };
+                if let Some(b) = &binding {
+                    self.environment_mut().push_isolated_scope();
+                    for (name, cell) in &b.variables {
+                        self.environment_mut()
+                            .define_shared(name.clone(), std::rc::Rc::clone(cell));
+                    }
+                    if let Some(receiver) = &b.receiver {
+                        self.environment_mut()
+                            .define("self".to_string(), receiver.clone());
+                    }
+                }
                 // eval runs at top-level of its string: treat as non-method scope.
                 // Refinements activated inside eval are lexical to the eval string.
                 let saved_nesting = self.user_def_nesting;
@@ -837,6 +874,9 @@ impl VirtualMachine {
                     _ => None,
                 };
                 let result = self.execute_program(&statements);
+                if binding.is_some() {
+                    self.environment_mut().pop_scope();
+                }
                 if let Some((class, visibility)) = enclosing {
                     class.set_current_visibility(visibility);
                 }
@@ -844,6 +884,81 @@ impl VirtualMachine {
                 self.pop_refinement_scope();
                 self.user_def_nesting = saved_nesting;
                 Ok(result?.unwrap_or(Object::Nil))
+            }
+            // `catch(tag) { |tag| ... }` runs the block, answering a matching
+            // `throw`'s value or, absent one, the block's own value. Called
+            // with no tag it makes a fresh object and yields that.
+            "catch" => {
+                if arguments.len() > 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("catch() expects 0-1 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(b)) => b,
+                    _ => {
+                        let message = "no block given (yield)".to_string();
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("LocalJumpError", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        });
+                    }
+                };
+                let tag = match arguments.first() {
+                    Some(tag) => tag.clone(),
+                    None => match self.globals().get("Object") {
+                        Some(Object::Class(object_class)) => Object::instance(object_class),
+                        _ => Object::Nil,
+                    },
+                };
+                self.catch_tags.push(tag.clone());
+                let block_arguments = if block.binding_parameters().is_empty() {
+                    Vec::new()
+                } else {
+                    vec![tag.clone()]
+                };
+                let result = block.call(self, block_arguments, position);
+                self.catch_tags.pop();
+                match result {
+                    Err(MetorexError::Throw {
+                        tag: thrown, value, ..
+                    }) if throw_tags_match(&tag, &thrown) => Ok(value),
+                    other => other,
+                }
+            }
+            // `throw tag, value` unwinds to the matching `catch`. Ruby raises
+            // UncaughtThrowError when no live catch holds the tag, rather than
+            // unwinding out of the program.
+            "throw" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(MetorexError::runtime_error(
+                        format!("throw() expects 1-2 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let tag = arguments[0].clone();
+                if !self
+                    .catch_tags
+                    .iter()
+                    .any(|live| throw_tags_match(live, &tag))
+                {
+                    let message = format!(
+                        "uncaught throw {}",
+                        crate::vm::native_methods::array_methods::inspect_element(&tag)
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("UncaughtThrowError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+                Err(MetorexError::Throw {
+                    tag,
+                    value: arguments.get(1).cloned().unwrap_or(Object::Nil),
+                    location: crate::vm::utils::position_to_location(position),
+                })
             }
             "load" => {
                 if arguments.is_empty() || arguments.len() > 2 {
@@ -939,11 +1054,30 @@ impl VirtualMachine {
                 std::process::exit(code);
             }
             "abort" => {
-                if let Some(message) = arguments.first() {
-                    let text = self.get_string_representation(message, position)?;
-                    eprintln!("{}", text);
-                }
-                std::process::exit(1);
+                let message = match arguments.first() {
+                    Some(argument) => {
+                        let text = self.coerce_abort_message(argument, position)?;
+                        self.emit_warning_to_stderr(&text, position);
+                        text
+                    }
+                    None => "SystemExit".to_string(),
+                };
+                let exception = Object::Exception(std::rc::Rc::new(std::cell::RefCell::new(
+                    crate::object::Exception {
+                        exception_type: "SystemExit".to_string(),
+                        message: message.clone(),
+                        backtrace: None,
+                        location: None,
+                        cause: None,
+                        status: Some(1),
+                        name: None,
+                    },
+                )));
+                Err(MetorexError::UncaughtException {
+                    exception,
+                    location: crate::vm::utils::position_to_location(position),
+                    message,
+                })
             }
             "system" => {
                 let Some(command) = arguments.first() else {
@@ -983,6 +1117,35 @@ impl VirtualMachine {
                 crate::vm::utils::position_to_location(position),
             )),
         }
+    }
+
+    /// Coerce `abort`'s argument to a String the way Ruby does: a String is
+    /// taken as is, anything else must answer `to_str`, and a receiver without
+    /// one raises TypeError.
+    fn coerce_abort_message(
+        &mut self,
+        argument: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(text) = argument {
+            return Ok((**text).clone());
+        }
+        if let Some((class, method)) = self.lookup_method(argument, "to_str")
+            && !method.is_undefined
+        {
+            let converted =
+                self.invoke_method(class, method, argument.clone(), vec![], position)?;
+            if let Object::String(text) = converted {
+                return Ok((*text).clone());
+            }
+        }
+        let source_class = self.builtins().class_of(argument).name().to_string();
+        let message = format!("no implicit conversion of {} into String", source_class);
+        Err(MetorexError::UncaughtException {
+            exception: Object::exception("TypeError", message.clone()),
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        })
     }
 
     /// Get the string representation of an object by calling to_s or inspect if available.
@@ -1100,5 +1263,25 @@ impl VirtualMachine {
                     .collect(),
             )))),
         }
+    }
+}
+
+/// Whether a thrown tag names the same object a `catch` is holding. Ruby
+/// matches by identity, so two equal Strings are different tags while a
+/// Symbol is only ever itself.
+fn throw_tags_match(live: &Object, thrown: &Object) -> bool {
+    use std::rc::Rc;
+    match (live, thrown) {
+        (Object::String(a), Object::String(b)) => Rc::ptr_eq(a, b),
+        (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
+        (Object::Array(a), Object::Array(b)) => Rc::ptr_eq(a, b),
+        (Object::Dict(a), Object::Dict(b)) => Rc::ptr_eq(a, b),
+        (Object::Class(a), Object::Class(b)) => Rc::ptr_eq(a, b),
+        (Object::Module(a), Object::Module(b)) => Rc::ptr_eq(a, b),
+        (Object::Symbol(a), Object::Symbol(b)) => a == b,
+        (Object::Int(a), Object::Int(b)) => a == b,
+        (Object::Bool(a), Object::Bool(b)) => a == b,
+        (Object::Nil, Object::Nil) => true,
+        _ => false,
     }
 }

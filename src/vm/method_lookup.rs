@@ -79,17 +79,22 @@ impl VirtualMachine {
         trailing_block: Option<&Expression>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // `native_fn[args]` — a call with the bracketed args wrapped as an
+        // Array, matching Ruby's `private [:foo, :bar]` where `[...]` is the
+        // sole argument. Natives that auto-invoke when their name is evaluated
+        // (`private` inside a class body) make this check precede evaluating
+        // the receiver expression.
+        if method_name == "[]"
+            && let Expression::Identifier { name, .. } = receiver_expr
+            && let Some(Object::NativeFunction(native_name)) = self.environment().get(name)
+        {
+            let arguments = self.evaluate_arguments(argument_exprs)?;
+            let array_arg = Object::Array(Rc::new(RefCell::new(arguments)));
+            return self.call_native_function(&native_name, vec![array_arg], position);
+        }
+
         let receiver = self.evaluate_expression(receiver_expr)?;
         let arguments = self.evaluate_arguments(argument_exprs)?;
-
-        // `native_fn[args]` — treat as a call with the bracketed args wrapped as an Array.
-        // This matches Ruby's `private [:foo, :bar]` where `[...]` is the sole argument.
-        if method_name == "[]"
-            && let Object::NativeFunction(name) = &receiver
-        {
-            let array_arg = Object::Array(Rc::new(RefCell::new(arguments)));
-            return self.call_native_function(&name.clone(), vec![array_arg], position);
-        }
 
         // If there's a trailing block, evaluate it and store as pending_block.
         // Native methods (each, map, etc.) will take it from self.pending_block.

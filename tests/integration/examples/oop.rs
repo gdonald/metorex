@@ -943,3 +943,31 @@ fn test_struct_basics_execution() {
     let output = run_example("oop/struct_basics.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_case_equality_execution() {
+    let expected = "true\ntrue\ntrue\nfalse\nfalse\ntrue\nfalse\n";
+    let output = run_example("oop/case_equality.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_nested_constant_lookup_execution() {
+    let expected = "true\nfalse\n3\nCatalog::Storage::Shelf\n";
+    let output = run_example("oop/nested_constant_lookup.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_singleton_on_variable_execution() {
+    let expected = "the one\nwrote data\nfalse\n";
+    let output = run_example("oop/singleton_on_variable.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_operator_method_names_execution() {
+    let expected = "-1\n1\n30\n30\n9\n-1\n0\nnil\nnil\n";
+    let output = run_example("oop/operator_method_names.rb");
+    assert_eq!(output, expected);
+}

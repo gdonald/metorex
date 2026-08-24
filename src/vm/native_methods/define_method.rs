@@ -96,6 +96,13 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
+        if self.object_is_frozen(receiver) {
+            return Err(raise(
+                "FrozenError",
+                &format!("can't modify frozen object: {}", receiver),
+                position,
+            ));
+        }
         let singleton = self.singleton_class_of(receiver);
         self.module_define_method(&singleton, arguments, position)
     }
@@ -168,7 +175,10 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-            } else if owner.superclass().is_some() && !class_rc.has_ancestor(owner) {
+            } else if owner.superclass().is_some()
+                && !class_rc.has_ancestor(owner)
+                && !singleton_of_descendant(class_rc, owner)
+            {
                 // Only class-owned methods are restricted; a module's methods
                 // may be installed anywhere.
                 return Err(raise(
@@ -183,6 +193,12 @@ impl VirtualMachine {
         }
 
         let mut method = (**source).clone();
+        // A body-less stub stands in for a natively implemented method, which
+        // dispatch finds by name — so the new copy has to remember the name it
+        // was cut from.
+        if method.body.is_empty() && method.captured_vars.is_none() {
+            method.original_name = Some(method.name.clone());
+        }
         method.name = method_name.to_string();
         method.receiver = None;
         method.owner = Some(class_rc.name().to_string());
@@ -234,6 +250,15 @@ fn singleton_rebind_allowed(owner: &Rc<Class>, target: &Rc<Class>) -> bool {
         }
         _ => false,
     }
+}
+
+/// Whether `target` is the singleton class of a class that inherits from
+/// `owner`. Metorex stores class methods on the class itself rather than on a
+/// metaclass, so a parent's class method has the parent as its owner where
+/// Ruby would name the parent's singleton class.
+fn singleton_of_descendant(target: &Rc<Class>, owner: &Rc<Class>) -> bool {
+    target.is_singleton_class()
+        && attached_class(target).is_some_and(|attached| attached.has_ancestor(owner))
 }
 
 /// The class or module a singleton class was created for, if it has one.
