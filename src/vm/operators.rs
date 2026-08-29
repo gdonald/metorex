@@ -119,7 +119,8 @@ impl VirtualMachine {
             CaseEqual => {
                 // Regexp === str: whether the pattern matches anywhere.
                 if let Object::Regex(pattern, flags) = &left {
-                    let Object::String(subject) = &right else {
+                    // A Regexp matches a Symbol's name as readily as a String.
+                    let (Object::String(subject) | Object::Symbol(subject)) = &right else {
                         return Ok(Object::Bool(false));
                     };
                     let source = if flags.contains('i') {

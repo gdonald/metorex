@@ -649,7 +649,7 @@ impl VirtualMachine {
             return Ok(Some(Object::Instance(inst_rc)));
         }
         // Thread.new captures the block; we run it lazily on `value` so that
-        // serialised "concurrent" specs (which set a shared flag between
+        // serialized "concurrent" specs (which set a shared flag between
         // construction and value-collection) still observe the flag change.
         // Newly-constructed threads land on `pending_threads` so an empty
         // `Queue#pop` (which would block in real Ruby) can drain them and
@@ -971,7 +971,7 @@ impl VirtualMachine {
                 // For the `Module` / `Class` receiver, advertise the native
                 // mutation methods we actually implement so mspec matchers
                 // (e.g. `have_public_instance_method(:alias_method, false)`)
-                // recognise them as public instance methods.
+                // recognize them as public instance methods.
                 if matches!(class_rc.name(), "Module" | "Class") {
                     for (n, _, _) in NATIVE_MODULE_METHODS {
                         if !method_list.iter().any(|m| m == n) {
@@ -1232,9 +1232,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // Ruby takes a module here and rejects a class.
                 let module_rc = match &arguments[0] {
                     Object::Module(m) => Rc::clone(m),
-                    Object::Class(c) => Rc::clone(c),
                     other => {
                         return Err(method_argument_type_error(
                             "extend", "Module", other, position,
@@ -2589,8 +2589,19 @@ pub(crate) const MODULE_FUNCTION_VISIBILITY: &str = "module_function";
 
 /// Kernel's process-control functions, which Ruby exposes as private instance
 /// methods on Kernel and as public singleton methods on the module.
-pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] =
-    &["abort", "binding", "block_given?", "catch", "throw"];
+pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
+    "abort",
+    "binding",
+    "block_given?",
+    "catch",
+    "fail",
+    "gets",
+    "global_variables",
+    "initialize_clone",
+    "initialize_copy",
+    "initialize_dup",
+    "throw",
+];
 
 /// The hooks Module defines as private instance methods with a no-op default
 /// implementation. Each takes one argument and returns nil unless the module
@@ -2645,6 +2656,62 @@ pub(super) const NATIVE_MODULE_METHODS: &[(&str, &[&str], bool)] = &[
     ("module_function", &["names"], true),
     ("name", &[], false),
 ];
+
+/// The Kernel methods `call_object_method` implements natively, with the
+/// parameter list each one takes, so `obj.method(:name)` can hand out a stub
+/// whose `arity` matches Ruby's. A trailing `true` marks the last parameter
+/// variadic.
+pub(super) const NATIVE_KERNEL_METHODS: &[(&str, &[&str], bool)] = &[
+    ("class", &[], false),
+    ("clone", &["options"], true),
+    ("dup", &[], false),
+    ("eql?", &["other"], false),
+    ("equal?", &["other"], false),
+    ("extend", &["modules"], true),
+    ("freeze", &[], false),
+    ("frozen?", &[], false),
+    ("hash", &[], false),
+    ("inspect", &[], false),
+    ("instance_of?", &["klass"], false),
+    ("instance_variable_get", &["name"], false),
+    ("instance_variable_set", &["name", "value"], false),
+    ("instance_variables", &[], false),
+    ("is_a?", &["klass"], false),
+    ("itself", &[], false),
+    ("kind_of?", &["klass"], false),
+    ("method", &["name"], false),
+    ("methods", &["regular"], true),
+    ("nil?", &[], false),
+    ("object_id", &[], false),
+    ("public_send", &["arguments"], true),
+    ("require", &["path"], false),
+    ("require_relative", &["path"], false),
+    ("respond_to?", &["arguments"], true),
+    ("respond_to_missing?", &["name", "include_private"], false),
+    ("send", &["arguments"], true),
+    ("tap", &[], false),
+    ("to_s", &[], false),
+    ("__id__", &[], false),
+    ("__send__", &["arguments"], true),
+];
+
+/// A body-less stub for one of the natively implemented Kernel methods.
+pub(super) fn native_kernel_method_stub(name: &str) -> Option<Method> {
+    let (_, parameters, variadic) = NATIVE_KERNEL_METHODS
+        .iter()
+        .find(|(entry, _, _)| *entry == name)?;
+    let mut stub = Method::with_owner(
+        name.to_string(),
+        parameters.iter().map(|p| (*p).to_string()).collect(),
+        vec![],
+        "Kernel".to_string(),
+    );
+    if *variadic {
+        let last = parameters.len().saturating_sub(1);
+        stub.variadic_param = Some((last, parameters[last].to_string()));
+    }
+    Some(stub)
+}
 
 /// The NameError `Module#instance_method` raises for a name that is not
 /// defined, or has been removed with `undef_method`. Ruby exposes the missing
@@ -2792,6 +2859,7 @@ pub(crate) fn is_native_kernel_method(name: &str) -> bool {
             | "dup"
             | "eql?"
             | "equal?"
+            | "extend"
             | "freeze"
             | "frozen?"
             | "hash"

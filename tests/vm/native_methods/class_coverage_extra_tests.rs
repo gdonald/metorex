@@ -412,9 +412,10 @@ T2.extend(42)
 }
 
 #[test]
-fn extend_with_class_works() {
-    // Class is accepted wherever Module is, since Class.is_a?(Module).
-    let result = run(r#"
+fn extend_with_class_raises_type_error() {
+    // `extend` takes a module; a class is rejected.
+    let error = run_err(
+        r#"
 class SrcClass
   def shared
     "class-mixin"
@@ -423,9 +424,13 @@ end
 class ExtTarget
 end
 ExtTarget.extend(SrcClass)
-ExtTarget.shared
-"#);
-    assert_eq!(result, Some(Object::string("class-mixin")));
+"#,
+    );
+    assert!(
+        error.contains("TypeError") || error.contains("Module"),
+        "{}",
+        error
+    );
 }
 
 // ── `private_class_method` / `public_class_method` (lines 552-588) ──────────

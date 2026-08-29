@@ -138,6 +138,10 @@ impl Parser {
             TokenKind::Match => Ok(symbol("=~", symbol_position)),
             TokenKind::NotMatch => Ok(symbol("!~", symbol_position)),
 
+            // `:$stdout` — the sigil is part of the symbol's name, as it
+            // already is for `:@name` and `:@@count` above.
+            TokenKind::GlobalVar(name) => Ok(symbol(format!("${}", name), symbol_position)),
+
             // :"string" syntax — symbol from string literal
             TokenKind::String(s) => Ok(symbol(s, symbol_position)),
 

@@ -971,3 +971,36 @@ fn test_oop_operator_method_names_execution() {
     let output = run_example("oop/operator_method_names.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_dup_initialize_copy_execution() {
+    let expected = "original\ncopy of original\n1\n2\nfalse\ntrue\ntrue\ntrue\n";
+    let output = run_example("oop/dup_initialize_copy.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_extend_module_execution() {
+    let expected = "tagged\ntrue\ntagged\ntrue\ntagged\ntrue\nfalse\nTypeError\n-1\n";
+    let output = run_example("oop/extend_module.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_freeze_singleton_class_execution() {
+    let expected =
+        "false\ntrue\ntrue\nFrozenError\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\nfalse\ntrue\ntrue\n";
+    let output = run_example("oop/freeze_singleton_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_copy_hooks_execution() {
+    let expected = concat!(
+        "[\"copied\"]\ntrue\ntrue\ntrue\n",
+        "FrozenError\nFrozenError\n",
+        "initialize_copy should take same class object\ntrue\n"
+    );
+    let output = run_example("oop/copy_hooks.rb");
+    assert_eq!(output, expected);
+}

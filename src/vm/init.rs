@@ -335,47 +335,47 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
 pub(super) fn register_special_globals(globals: &mut GlobalRegistry) {
     // $LOAD_PATH / $: — shared array
     let load_path = Object::Array(Rc::new(RefCell::new(Vec::new())));
-    globals.set(":", load_path.clone());
-    globals.set("LOAD_PATH", load_path);
+    globals.set_variable(":", load_path.clone());
+    globals.set_variable("LOAD_PATH", load_path);
 
     // $LOADED_FEATURES / $" — shared array
     let loaded_features = Object::Array(Rc::new(RefCell::new(Vec::new())));
-    globals.set("\"", loaded_features.clone());
-    globals.set("LOADED_FEATURES", loaded_features);
+    globals.set_variable("\"", loaded_features.clone());
+    globals.set_variable("LOADED_FEATURES", loaded_features);
 
     // $stdout / $stderr / $stdin — placeholders
-    globals.set("stdout", Object::String(Rc::new("$stdout".to_string())));
-    globals.set("stderr", Object::String(Rc::new("$stderr".to_string())));
-    globals.set("stdin", Object::String(Rc::new("$stdin".to_string())));
+    globals.set_variable("stdout", Object::String(Rc::new("$stdout".to_string())));
+    globals.set_variable("stderr", Object::String(Rc::new("$stderr".to_string())));
+    globals.set_variable("stdin", Object::String(Rc::new("$stdin".to_string())));
 
     // $0 / $PROGRAM_NAME — set later by main when file is known
-    globals.set("0", Object::String(Rc::new(String::new())));
-    globals.set("PROGRAM_NAME", Object::String(Rc::new(String::new())));
+    globals.set_variable("0", Object::String(Rc::new(String::new())));
+    globals.set_variable("PROGRAM_NAME", Object::String(Rc::new(String::new())));
 
     // $; $, $/ $\ — string separator globals
-    globals.set(";", Object::Nil);
-    globals.set(",", Object::Nil);
-    globals.set("/", Object::String(Rc::new("\n".to_string())));
-    globals.set("\\", Object::Nil);
+    globals.set_variable(";", Object::Nil);
+    globals.set_variable(",", Object::Nil);
+    globals.set_variable("/", Object::String(Rc::new("\n".to_string())));
+    globals.set_variable("\\", Object::Nil);
 
     // $! $@ $~ $& — exception/regex globals
-    globals.set("!", Object::Nil);
-    globals.set("@", Object::Nil);
-    globals.set("~", Object::Nil);
-    globals.set("&", Object::Nil);
+    globals.set_variable("!", Object::Nil);
+    globals.set_variable("@", Object::Nil);
+    globals.set_variable("~", Object::Nil);
+    globals.set_variable("&", Object::Nil);
 
     // $? — process status
-    globals.set("?", Object::Nil);
+    globals.set_variable("?", Object::Nil);
 
     // $_ — last input line
-    globals.set("_", Object::Nil);
+    globals.set_variable("_", Object::Nil);
 
     // $. — line number
-    globals.set(".", Object::Int(0));
+    globals.set_variable(".", Object::Int(0));
 
     // $DEBUG / $VERBOSE
-    globals.set("DEBUG", Object::Bool(false));
-    globals.set("VERBOSE", Object::Bool(false));
+    globals.set_variable("DEBUG", Object::Bool(false));
+    globals.set_variable("VERBOSE", Object::Bool(false));
 }
 
 /// Register native functions in the global registry.
@@ -384,6 +384,11 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("print", Object::NativeFunction("print".to_string()));
     globals.set("p", Object::NativeFunction("p".to_string()));
     globals.set("gets", Object::NativeFunction("gets".to_string()));
+    // ARGF — the stream `gets` reads from. An instance rather than a module,
+    // so a singleton method can stand in for `gets` during a test.
+    let argf_class = Rc::new(Class::new("ARGF.class", None));
+    globals.set("ARGF.class", Object::Class(Rc::clone(&argf_class)));
+    globals.set("ARGF", Object::instance(argf_class));
     globals.set("assert", Object::NativeFunction("assert".to_string()));
     globals.set(
         "assert_equal",
@@ -471,6 +476,11 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set(
         "binding",
         Object::NativeFunction("binding_kernel".to_string()),
+    );
+    globals.set("fail", Object::NativeFunction("fail".to_string()));
+    globals.set(
+        "global_variables",
+        Object::NativeFunction("global_variables".to_string()),
     );
     globals.set("catch", Object::NativeFunction("catch".to_string()));
     globals.set("throw", Object::NativeFunction("throw".to_string()));

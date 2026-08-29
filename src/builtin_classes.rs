@@ -145,13 +145,17 @@ impl BuiltinClasses {
         if self.is_subclass_of(&obj_class, class) {
             return true;
         }
-        if let Object::Instance(inst_rc) = obj {
-            let sc_opt = inst_rc.borrow().singleton_class.borrow().clone();
-            if let Some(sc) = sc_opt
-                && self.is_subclass_of(&sc, class)
-            {
-                return true;
-            }
+        let singleton = match obj {
+            Object::Instance(inst_rc) => inst_rc.borrow().singleton_class.borrow().clone(),
+            // A class or module extended with a module carries it on its own
+            // singleton class, the same as any other object.
+            Object::Class(c) | Object::Module(c) => c.singleton_class_slot().clone(),
+            _ => None,
+        };
+        if let Some(sc) = singleton
+            && self.is_subclass_of(&sc, class)
+        {
+            return true;
         }
         false
     }

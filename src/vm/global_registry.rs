@@ -4,12 +4,15 @@
 //! including built-in classes and singleton values.
 
 use crate::object::Object;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 /// Registry that owns global objects accessible throughout the VM.
 #[derive(Debug, Default)]
 pub struct GlobalRegistry {
     objects: HashMap<String, Object>,
+    /// The subset of names that are Ruby global variables rather than
+    /// constants, classes, or native functions, which share this registry.
+    variable_names: BTreeSet<String>,
 }
 
 impl GlobalRegistry {
@@ -21,6 +24,19 @@ impl GlobalRegistry {
     /// Insert or replace a named global object.
     pub fn set(&mut self, name: impl Into<String>, object: Object) {
         self.objects.insert(name.into(), object);
+    }
+
+    /// Insert or replace a global *variable*, recording its name so
+    /// `global_variables` can report it.
+    pub fn set_variable(&mut self, name: impl Into<String>, object: Object) {
+        let name = name.into();
+        self.variable_names.insert(name.clone());
+        self.objects.insert(name, object);
+    }
+
+    /// The global variable names, without their `$` sigil, in sorted order.
+    pub fn variable_names(&self) -> impl Iterator<Item = &String> {
+        self.variable_names.iter()
     }
 
     /// Fetch a named global object if present.

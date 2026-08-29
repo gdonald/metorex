@@ -10,6 +10,14 @@ use crate::parser::Parser;
 /// class's instance method table. Shared with the VM's function-def path.
 pub(crate) const SOLE_INSTANCE_RECEIVER: &str = "sole-instance:";
 
+/// The name a bare `&` parameter binds to, so `def foo(&)` can hand its block
+/// on with `bar(&)`.
+pub(crate) const ANONYMOUS_BLOCK: &str = "__anon_block";
+
+/// The names a bare `*` and a bare `**` parameter bind to.
+pub(crate) const ANONYMOUS_SPLAT: &str = "__anon_splat";
+pub(crate) const ANONYMOUS_KWREST: &str = "__anon_kwrest";
+
 impl Parser {
     /// Parse a function definition
     pub(crate) fn parse_function_def(&mut self) -> Result<Statement, MetorexError> {
@@ -315,7 +323,7 @@ impl Parser {
                 params.push(Parameter::block(name, param_pos));
             } else if self.match_token(&[TokenKind::StarStar]) {
                 if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
-                    params.push(Parameter::keyword("__anon_kwrest".to_string(), param_pos));
+                    params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,
@@ -329,7 +337,7 @@ impl Parser {
                 }
             } else if self.match_token(&[TokenKind::Star]) {
                 if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
-                    params.push(Parameter::variadic("__anon_splat".to_string(), param_pos));
+                    params.push(Parameter::variadic(ANONYMOUS_SPLAT.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,
@@ -389,19 +397,26 @@ impl Parser {
 
             let param_pos = self.peek().position;
 
-            // Check for block parameter (&block)
+            // Check for block parameter (&block). A bare `&` with no name is
+            // an anonymous block parameter, forwarded on by a bare `&`.
             if self.match_token(&[TokenKind::Ampersand]) {
-                let name = match self.advance().kind {
-                    TokenKind::Ident(name) => name,
-                    _ => return Err(self.error_at_previous("Expected parameter name after '&'")),
-                };
-                params.push(Parameter::block(name, param_pos));
+                if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    params.push(Parameter::block(ANONYMOUS_BLOCK.to_string(), param_pos));
+                } else {
+                    let name = match self.advance().kind {
+                        TokenKind::Ident(name) => name,
+                        _ => {
+                            return Err(self.error_at_previous("Expected parameter name after '&'"));
+                        }
+                    };
+                    params.push(Parameter::block(name, param_pos));
+                }
             }
             // Check for variadic parameter (*args). A bare `*` with no name is
             // an anonymous splat, which discards the remaining positional args.
             else if self.match_token(&[TokenKind::StarStar]) {
                 if self.check(&[TokenKind::Comma, TokenKind::RParen, TokenKind::Pipe]) {
-                    params.push(Parameter::keyword("__anon_kwrest".to_string(), param_pos));
+                    params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,
@@ -418,7 +433,7 @@ impl Parser {
             // an anonymous splat, which discards the remaining positional args.
             else if self.match_token(&[TokenKind::Star]) {
                 if self.check(&[TokenKind::Comma, TokenKind::RParen, TokenKind::Pipe]) {
-                    params.push(Parameter::variadic("__anon_splat".to_string(), param_pos));
+                    params.push(Parameter::variadic(ANONYMOUS_SPLAT.to_string(), param_pos));
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,

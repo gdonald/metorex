@@ -128,3 +128,14 @@ fn test_introspection_block_given_context_execution() {
     let output = run_example("introspection/block_given_context.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_introspection_instance_variable_queries_execution() {
+    let expected = concat!(
+        "true\ntrue\nfalse\nfalse\nTypeError\n",
+        "false\nfalse\nfalse\n",
+        "true\nfalse\nfalse\nfalse\n"
+    );
+    let output = run_example("introspection/instance_variable_queries.rb");
+    assert_eq!(output, expected);
+}

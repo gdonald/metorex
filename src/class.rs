@@ -414,7 +414,7 @@ impl Class {
 
     /// Inspect-style label used when an anonymous class needs a printable
     /// identifier — e.g. when it acts as the namespace in `parent::C`, we
-    /// synthesise `#<Class:0x<ptr>>::C` for the subclass's name.
+    /// synthesize `#<Class:0x<ptr>>::C` for the subclass's name.
     pub fn inspect_name(&self) -> String {
         // A refinement always displays by its label, whatever it is named.
         if let Some(crate::object::Object::String(label)) =

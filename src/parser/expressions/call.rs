@@ -369,9 +369,17 @@ impl Parser {
             } else if self.match_token(&[TokenKind::Ampersand]) {
                 // `&expr`: convert to a block argument. The runtime drops it
                 // entirely if `expr` evaluates to nil and binds it as the
-                // pending block otherwise.
+                // pending block otherwise. A bare `&` forwards the anonymous
+                // block parameter the enclosing `def foo(&)` bound.
                 let position = self.previous().position;
-                let expr = self.parse_expression()?;
+                let expr = if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    Expression::Identifier {
+                        name: crate::parser::ANONYMOUS_BLOCK.to_string(),
+                        position,
+                    }
+                } else {
+                    self.parse_expression()?
+                };
                 arguments.push(Expression::BlockArg {
                     expression: Box::new(expr),
                     position,
@@ -481,6 +489,7 @@ impl Parser {
             TokenKind::Ident(_)
                 | TokenKind::Int(_)
                 | TokenKind::Rational(_, _)
+                | TokenKind::Imaginary(_)
                 | TokenKind::Float(_)
                 | TokenKind::String(_)
                 | TokenKind::InterpolatedString(_)
@@ -601,6 +610,7 @@ impl Parser {
                 TokenKind::Ident(_)
                     | TokenKind::Int(_)
                     | TokenKind::Rational(_, _)
+                    | TokenKind::Imaginary(_)
                     | TokenKind::Float(_)
                     | TokenKind::String(_)
                     | TokenKind::InterpolatedString(_)

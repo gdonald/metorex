@@ -73,3 +73,22 @@ fn test_expand_path_nonexistent_parens_execution() {
     assert!(lines[0].ends_with("/foo/bar") || lines[0].contains("foo/bar"));
     assert!(lines[1].ends_with("/tmp/base/baz") || lines[1].contains("base/baz"));
 }
+
+#[test]
+fn test_globals_argf_gets_execution() {
+    let expected = "stubbed line\nstubbed line\ntrue\nARGF.class\n";
+    let output = run_example("globals/argf_gets.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_globals_global_variables_list_execution() {
+    let expected = concat!(
+        "true\ntrue\ntrue\nfalse\n1\ntrue\n",
+        "[:$stderr, :$stdin, :$stdout]\n",
+        "[\"apple\", \"avocado\"]\n[\"banana\"]\n[\"APPLE\", \"AVOCADO\"]\n",
+        "[1, 4]\ntrue\n"
+    );
+    let output = run_example("globals/global_variables_list.rb");
+    assert_eq!(output, expected);
+}

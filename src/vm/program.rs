@@ -163,7 +163,7 @@ impl VirtualMachine {
                             self.pending_block = Some(value);
                         }
                         Object::Symbol(sym) => {
-                            // `&:method` is symbol-to-proc: synthesise a block
+                            // `&:method` is symbol-to-proc: synthesize a block
                             // `|x| x.send(:method)`. The block has no captured
                             // vars and a one-statement body that calls .send
                             // on the parameter.

@@ -363,10 +363,23 @@ impl Parser {
             .position;
         self.skip_whitespace();
 
-        let module_name = match self.advance().kind {
+        let mut module_name = match self.advance().kind {
             TokenKind::Ident(name) => name,
             _ => return Err(self.error_at_previous("Expected module name after 'extend'")),
         };
+        // Support qualified names: `extend Foo::Bar::Baz`
+        while self.check(&[TokenKind::ColonColon]) {
+            self.advance();
+            match self.advance().kind {
+                TokenKind::Ident(part) => {
+                    module_name.push_str("::");
+                    module_name.push_str(&part);
+                }
+                _ => {
+                    return Err(self.error_at_previous("Expected constant name after '::'"));
+                }
+            }
+        }
 
         Ok(Statement::Extend {
             module_name,

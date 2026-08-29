@@ -31,6 +31,19 @@ impl Parser {
                 trailing_block: None,
                 position,
             }),
+            // `1.3i` is spelled out as the `Complex(0, 1.3)` it stands for.
+            TokenKind::Imaginary(value) => Ok(Expression::Call {
+                callee: Box::new(Expression::Identifier {
+                    name: "Complex".to_string(),
+                    position,
+                }),
+                arguments: vec![
+                    literals::int_literal(0, position),
+                    literals::float_literal(value, position),
+                ],
+                trailing_block: None,
+                position,
+            }),
             TokenKind::String(value) => Ok(literals::string_literal(value, position)),
             TokenKind::Regex(pattern, flags) => self.regex_expression(pattern, flags, position),
             TokenKind::PercentW(value) => Ok(self.primary_percent_w(value, position)),

@@ -42,6 +42,37 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Consume a trailing `i`, which makes the literal imaginary: `1.3i` is
+    /// (0+1.3i). As with the rational suffix, the `i` only counts when no
+    /// identifier character follows it, so `2if x` still lexes as `2` then
+    /// `if`.
+    fn read_imaginary_suffix(&mut self, number: &str) -> Option<TokenKind> {
+        if self.peek() != Some('i') {
+            return None;
+        }
+
+        let saved_chars = self.chars.clone();
+        let saved_prepend = self.prepend.clone();
+        let saved_line = self.line;
+        let saved_column = self.column;
+        let saved_offset = self.offset;
+
+        self.advance(); // consume the 'i'
+        if self
+            .peek()
+            .is_some_and(|ch| ch.is_alphanumeric() || ch == '_')
+        {
+            self.chars = saved_chars;
+            self.prepend = saved_prepend;
+            self.line = saved_line;
+            self.column = saved_column;
+            self.offset = saved_offset;
+            return None;
+        }
+
+        Some(TokenKind::Imaginary(number.parse().unwrap_or(0.0)))
+    }
+
     /// Whether the `_` at the cursor sits between digits, as in `1_000`. A
     /// trailing `_` is left for the next token instead of being swallowed.
     fn underscore_joins_digits(&mut self) -> bool {
@@ -230,6 +261,10 @@ impl<'a> Lexer<'a> {
         }
 
         if let Some(token) = self.read_rational_suffix(&number, is_float) {
+            return token;
+        }
+
+        if let Some(token) = self.read_imaginary_suffix(&number) {
             return token;
         }
 

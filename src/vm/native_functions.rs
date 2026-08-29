@@ -652,29 +652,21 @@ impl VirtualMachine {
                     Ok(Object::Nil)
                 }
             }
+            // `gets` is ARGF's, so a stand-in installed on ARGF answers here.
             "gets" => {
-                // gets reads a line from stdin
                 if !arguments.is_empty() {
                     return Err(MetorexError::runtime_error(
                         format!("gets() expects 0 arguments, got {}", arguments.len()),
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
-                let mut input = String::new();
-                std::io::stdin().read_line(&mut input).map_err(|e| {
-                    MetorexError::runtime_error(
-                        format!("Failed to read from stdin: {}", e),
-                        crate::vm::utils::position_to_location(position),
-                    )
-                })?;
-                // Remove trailing newline (like Ruby's gets)
-                if input.ends_with('\n') {
-                    input.pop();
-                    if input.ends_with('\r') {
-                        input.pop();
-                    }
+                let argf = self.globals().get("ARGF").unwrap_or(Object::Nil);
+                if let Some((class, method)) = self.lookup_method(&argf, "gets")
+                    && !method.is_undefined
+                {
+                    return self.invoke_method(class, method, argf, vec![], position);
                 }
-                Ok(Object::string(input))
+                self.read_line_from_stdin(position)
             }
             "assert" => {
                 if arguments.is_empty() || arguments.len() > 2 {
@@ -888,6 +880,45 @@ impl VirtualMachine {
             // `catch(tag) { |tag| ... }` runs the block, answering a matching
             // `throw`'s value or, absent one, the block's own value. Called
             // with no tag it makes a fresh object and yields that.
+            // `global_variables` names every global variable, sigil included.
+            "global_variables" => {
+                if !arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        format!(
+                            "global_variables() expects 0 arguments, got {}",
+                            arguments.len()
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let names: Vec<Object> = self
+                    .globals()
+                    .variable_names()
+                    .map(|name| Object::Symbol(std::rc::Rc::new(format!("${}", name))))
+                    .collect();
+                Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    names,
+                ))))
+            }
+            // `fail` is Ruby's other spelling of `raise`.
+            "fail" => {
+                if arguments.len() > 2 {
+                    return Err(MetorexError::runtime_error(
+                        format!("fail() expects 0-2 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let exception = self.build_raise_exception(&arguments, position)?;
+                let message = match &exception {
+                    Object::Exception(cell) => cell.borrow().message.clone(),
+                    _ => String::new(),
+                };
+                Err(MetorexError::UncaughtException {
+                    exception,
+                    location: crate::vm::utils::position_to_location(position),
+                    message,
+                })
+            }
             "catch" => {
                 if arguments.len() > 1 {
                     return Err(MetorexError::runtime_error(
@@ -1117,6 +1148,27 @@ impl VirtualMachine {
                 crate::vm::utils::position_to_location(position),
             )),
         }
+    }
+
+    /// Read one line from stdin, without its line ending.
+    pub(crate) fn read_line_from_stdin(
+        &mut self,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let mut input = String::new();
+        std::io::stdin().read_line(&mut input).map_err(|error| {
+            MetorexError::runtime_error(
+                format!("Failed to read from stdin: {}", error),
+                crate::vm::utils::position_to_location(position),
+            )
+        })?;
+        if input.ends_with('\n') {
+            input.pop();
+            if input.ends_with('\r') {
+                input.pop();
+            }
+        }
+        Ok(Object::string(input))
     }
 
     /// Coerce `abort`'s argument to a String the way Ruby does: a String is

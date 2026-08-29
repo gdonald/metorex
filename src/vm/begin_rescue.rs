@@ -24,7 +24,7 @@ impl VirtualMachine {
 
         // Convert internal RuntimeError/TypeError to a rescuable UncaughtException so that
         // `rescue Object => e` (and other rescue clauses) can catch them — mirroring Ruby's
-        // behaviour where all errors are rescuable.
+        // behavior where all errors are rescuable.
         let body_result = match body_result {
             Err(MetorexError::RuntimeError {
                 ref message,

@@ -289,29 +289,29 @@ Parser fixes during Phase 4 work:
   - [ ] 4.8.25. core/kernel/clone_spec
   - [x] 4.8.26. core/kernel/comparison_spec — 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.8.27. core/kernel/define_singleton_method_spec — 1 file, 12 examples, 17 expectations, 0 failures, 0 errors
-  - [ ] 4.8.28. core/kernel/display_spec
-  - [ ] 4.8.29. core/kernel/dup_spec
-  - [ ] 4.8.30. core/kernel/enum_for_spec
+  - [x] 4.8.28. core/kernel/display_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
+  - [x] 4.8.29. core/kernel/dup_spec — 1 file, 18 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 4.8.30. core/kernel/enum_for_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
   - [ ] 4.8.31. core/kernel/eql_spec
-  - [ ] 4.8.32. core/kernel/equal_value_spec
+  - [x] 4.8.32. core/kernel/equal_value_spec — 1 file, 1 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.8.33. core/kernel/eval_spec
   - [ ] 4.8.34. core/kernel/exec_spec
   - [ ] 4.8.35. core/kernel/exit_spec
-  - [ ] 4.8.36. core/kernel/extend_spec
-  - [ ] 4.8.37. core/kernel/fail_spec
+  - [x] 4.8.36. core/kernel/extend_spec — 1 file, 10 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.8.37. core/kernel/fail_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.8.38. core/kernel/fork_spec
   - [ ] 4.8.39. core/kernel/format_spec
-  - [ ] 4.8.40. core/kernel/freeze_spec
-  - [ ] 4.8.41. core/kernel/frozen_spec
-  - [ ] 4.8.42. core/kernel/gets_spec
-  - [ ] 4.8.43. core/kernel/global_variables_spec
-  - [ ] 4.8.44. core/kernel/gsub_spec
-  - [ ] 4.8.45. core/kernel/initialize_clone_spec
-  - [ ] 4.8.46. core/kernel/initialize_copy_spec
-  - [ ] 4.8.47. core/kernel/initialize_dup_spec
+  - [x] 4.8.40. core/kernel/freeze_spec — 1 file, 11 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.8.41. core/kernel/frozen_spec — 1 file, 9 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.8.42. core/kernel/gets_spec — 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.8.43. core/kernel/global_variables_spec — 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.8.44. core/kernel/gsub_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (all examples guarded under ruby_version_is ""..."1.9")
+  - [x] 4.8.45. core/kernel/initialize_clone_spec — 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.8.46. core/kernel/initialize_copy_spec — 1 file, 4 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.8.47. core/kernel/initialize_dup_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.8.48. core/kernel/inspect_spec
-  - [ ] 4.8.49. core/kernel/instance_of_spec
-  - [ ] 4.8.50. core/kernel/instance_variable_defined_spec
+  - [x] 4.8.49. core/kernel/instance_of_spec — 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.8.50. core/kernel/instance_variable_defined_spec — 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
   - [ ] 4.8.51. core/kernel/instance_variable_get_spec
   - [ ] 4.8.52. core/kernel/instance_variable_set_spec
   - [ ] 4.8.53. core/kernel/instance_variables_spec

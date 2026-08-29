@@ -1005,7 +1005,9 @@ impl VirtualMachine {
                     module_name,
                     position,
                 } => {
-                    // extend ModuleName: add module methods as class-level methods
+                    // extend ModuleName: add module methods as class-level
+                    // methods, and record the mixin on the singleton class so
+                    // `kind_of?` reports it the way an `obj.extend` does.
                     match self.resolve_constant_in_scope(module_name) {
                         Some(Object::Module(module)) => {
                             for method_name in module.method_names() {
@@ -1016,6 +1018,8 @@ impl VirtualMachine {
                                     );
                                 }
                             }
+                            let target = Object::Class(Rc::clone(class));
+                            self.apply_module_extend(&target, &module, *position)?;
                         }
                         Some(_) => {
                             return Err(MetorexError::runtime_error(
@@ -2196,7 +2200,10 @@ impl VirtualMachine {
             | Object::Symbol(_)
             | Object::String(_) => true,
             Object::Class(c) | Object::Module(c) => c.is_frozen(),
-            Object::Instance(inst) => inst.borrow().frozen,
+            // Complex and Rational are value objects, frozen from birth.
+            Object::Instance(inst) => {
+                inst.borrow().frozen || matches!(inst.borrow().class.name(), "Complex" | "Rational")
+            }
             _ => false,
         }
     }

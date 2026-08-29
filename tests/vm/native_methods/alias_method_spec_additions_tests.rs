@@ -666,7 +666,7 @@ fn class_new_with_non_class_superclass_raises() {
     assert!(err.contains("TypeError") || err.contains("superclass"));
 }
 
-// ── File.join with array / File.realpath-ish behaviour ────────────────
+// ── File.join with array / File.realpath-ish behavior ────────────────
 
 #[test]
 fn file_join_flattens_array_of_strings() {

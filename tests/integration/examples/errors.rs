@@ -159,3 +159,10 @@ fn test_errors_abort_uncaught_execution() {
     assert_eq!(stdout, "captured: redirected message\n\n");
     assert_eq!(output.status.code(), Some(1));
 }
+
+#[test]
+fn test_errors_kernel_fail_execution() {
+    let expected = "RuntimeError\nthe duck is not irish.\nMissingWidget\nno widget here\nStandardError: built by hand\nsent along\ntrue\n";
+    let output = run_example("errors/kernel_fail.rb");
+    assert_eq!(output, expected);
+}

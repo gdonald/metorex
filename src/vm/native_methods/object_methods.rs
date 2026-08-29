@@ -159,21 +159,7 @@ impl VirtualMachine {
                 }
                 Err(undefined_method_error(&method, receiver, position))
             }
-            "frozen?" => {
-                // In Metorex, booleans, nil, integers, floats, and symbols are frozen
-                let frozen = match receiver {
-                    Object::Bool(_)
-                    | Object::Nil
-                    | Object::Int(_)
-                    | Object::Float(_)
-                    | Object::Symbol(_)
-                    | Object::String(_) => true,
-                    Object::Class(c) | Object::Module(c) => c.is_frozen(),
-                    Object::Instance(inst) => inst.borrow().frozen,
-                    _ => false,
-                };
-                Ok(Some(Object::Bool(frozen)))
-            }
+            "frozen?" => Ok(Some(Object::Bool(self.object_is_frozen(receiver)))),
             "freeze" => {
                 match receiver {
                     Object::Class(c) | Object::Module(c) => {
@@ -181,6 +167,12 @@ impl VirtualMachine {
                     }
                     Object::Instance(inst) => {
                         inst.borrow_mut().frozen = true;
+                        // Freezing an object freezes its singleton class, so
+                        // no singleton method can be added afterwards.
+                        let singleton = inst.borrow().singleton_class.borrow().clone();
+                        if let Some(sc) = singleton {
+                            sc.freeze();
+                        }
                     }
                     _ => {}
                 }
@@ -208,6 +200,65 @@ impl VirtualMachine {
                 self.environment().get("block_given?"),
                 Some(Object::Bool(true))
             )))),
+            // ARGF#gets reads a line from the input stream.
+            "gets"
+                if arguments.is_empty()
+                    && matches!(receiver, Object::Instance(inst) if inst.borrow().class.name() == "ARGF.class") =>
+            {
+                self.read_line_from_stdin(position).map(Some)
+            }
+            // `initialize_copy(source)` is the hook `dup` and `clone` call on
+            // the new object. Its default does nothing beyond checking that
+            // the copy is allowed.
+            "initialize_copy" if arguments.len() == 1 => {
+                let source = &arguments[0];
+                if same_object(receiver, source) {
+                    return Ok(Some(receiver.clone()));
+                }
+                if self.object_is_frozen(receiver) {
+                    let message = format!("can't modify frozen object: {}", receiver);
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("FrozenError", message.clone()),
+                        location: position_to_location(position),
+                        message,
+                    });
+                }
+                let receiver_class = self.builtins().class_of(receiver);
+                let source_class = self.builtins().class_of(source);
+                if !std::rc::Rc::ptr_eq(&receiver_class, &source_class) {
+                    let message = "initialize_copy should take same class object".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", message.clone()),
+                        location: position_to_location(position),
+                        message,
+                    });
+                }
+                Ok(Some(receiver.clone()))
+            }
+            // `clone` and `dup` reach `initialize_copy` through these, so a
+            // class can hook either copy on its own.
+            "initialize_clone" | "initialize_dup" if !arguments.is_empty() => {
+                let source = arguments[0].clone();
+                match self.lookup_method(receiver, "initialize_copy") {
+                    Some((class, method)) if !method.is_undefined => {
+                        self.invoke_method(
+                            class,
+                            method,
+                            receiver.clone(),
+                            vec![source],
+                            position,
+                        )?;
+                    }
+                    _ => {
+                        self.call_object_method(receiver, "initialize_copy", &[source], position)?;
+                    }
+                }
+                Ok(Some(receiver.clone()))
+            }
+            // `fail` is private on Kernel too, so `send(:fail, ...)` reaches it.
+            "fail" if arguments.len() <= 2 => self
+                .call_native_function(method_name, arguments.to_vec(), position)
+                .map(Some),
             // `binding` is likewise private on Kernel. It captures the frame
             // that called it rather than anything about this receiver, so
             // `obj.send(:binding)` answers the sender's context.
@@ -374,9 +425,9 @@ impl VirtualMachine {
                     ));
                 }
                 for arg in arguments {
+                    // Ruby takes a module here and rejects a class.
                     let module_rc = match arg {
                         Object::Module(m) => std::rc::Rc::clone(m),
-                        Object::Class(c) => std::rc::Rc::clone(c),
                         other => {
                             return Err(method_argument_type_error(
                                 "extend", "Module", other, position,
@@ -528,6 +579,11 @@ impl VirtualMachine {
                     stub.receiver = Some(Box::new(receiver.clone()));
                     return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
                 }
+                // The Kernel methods every object carries are native too.
+                if let Some(mut stub) = super::class_methods::native_kernel_method_stub(&name_str) {
+                    stub.receiver = Some(Box::new(receiver.clone()));
+                    return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
+                }
                 let cls = self.builtins().class_of(receiver);
                 let msg = format!("undefined method '{}' for class '{}'", name_str, cls.name());
                 let exc = Object::exception("NameError", msg.clone());
@@ -674,6 +730,41 @@ impl VirtualMachine {
                     std::cell::RefCell::new(vars),
                 ))))
             }
+            // `instance_variable_defined?(name)` — whether the receiver holds
+            // that variable. Nothing but an instance, class, or module can.
+            "instance_variable_defined?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let var_name = match &arguments[0] {
+                    Object::String(name) => name.as_str().to_string(),
+                    Object::Symbol(name) => name.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let bare_name = var_name.strip_prefix('@').unwrap_or(&var_name);
+                let defined = match receiver {
+                    Object::Instance(inst_rc) => {
+                        inst_rc.borrow().instance_vars.contains_key(bare_name)
+                    }
+                    Object::Class(class_rc) | Object::Module(class_rc) => {
+                        class_rc.get_class_var(&format!("@{}", bare_name)).is_some()
+                    }
+                    _ => false,
+                };
+                Ok(Some(Object::Bool(defined)))
+            }
             "instance_variable_get" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -798,6 +889,9 @@ impl VirtualMachine {
                 }
                 let target_class = match &arguments[0] {
                     Object::Class(c) => c,
+                    // An object is never an instance *of* a module, so a
+                    // module argument is simply false rather than an error.
+                    Object::Module(_) => return Ok(Some(Object::Bool(false))),
                     other => {
                         return Err(method_argument_type_error(
                             method_name,
@@ -986,16 +1080,37 @@ impl VirtualMachine {
                     ));
                 }
                 match receiver {
+                    // Complex and Rational are value objects: there is nothing
+                    // to copy, so Ruby answers the receiver itself.
+                    Object::Instance(inst_rc)
+                        if matches!(inst_rc.borrow().class.name(), "Complex" | "Rational") =>
+                    {
+                        Ok(Some(receiver.clone()))
+                    }
                     Object::Instance(inst_rc) => {
-                        let inst = inst_rc.borrow();
-                        let mut new_inst =
-                            crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
-                        for (k, v) in &inst.instance_vars {
-                            new_inst.set_var(k.clone(), v.clone());
+                        let copy = {
+                            let inst = inst_rc.borrow();
+                            let mut new_inst =
+                                crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
+                            for (k, v) in &inst.instance_vars {
+                                new_inst.set_var(k.clone(), v.clone());
+                            }
+                            Object::Instance(std::rc::Rc::new(std::cell::RefCell::new(new_inst)))
+                        };
+                        // The copy gets `initialize_copy` with the original, so
+                        // a class can deep-copy what the shallow copy shared.
+                        if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
+                            && !method.is_undefined
+                        {
+                            self.invoke_method(
+                                class,
+                                method,
+                                copy.clone(),
+                                vec![receiver.clone()],
+                                position,
+                            )?;
                         }
-                        Ok(Some(Object::Instance(std::rc::Rc::new(
-                            std::cell::RefCell::new(new_inst),
-                        ))))
+                        Ok(Some(copy))
                     }
                     Object::Array(arr_rc) => {
                         let arr = arr_rc.borrow().clone();
@@ -1340,5 +1455,25 @@ impl VirtualMachine {
             Some(Object::Int(id)) => Ok(id),
             _ => Ok(0),
         }
+    }
+}
+
+/// Whether two values are the same object. Reference types compare by
+/// identity, immediates by value.
+fn same_object(left: &Object, right: &Object) -> bool {
+    use std::rc::Rc;
+    match (left, right) {
+        (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),
+        (Object::String(a), Object::String(b)) => Rc::ptr_eq(a, b),
+        (Object::Array(a), Object::Array(b)) => Rc::ptr_eq(a, b),
+        (Object::Dict(a), Object::Dict(b)) => Rc::ptr_eq(a, b),
+        (Object::Class(a), Object::Class(b)) => Rc::ptr_eq(a, b),
+        (Object::Module(a), Object::Module(b)) => Rc::ptr_eq(a, b),
+        (Object::Symbol(a), Object::Symbol(b)) => a == b,
+        (Object::Int(a), Object::Int(b)) => a == b,
+        (Object::Float(a), Object::Float(b)) => a == b,
+        (Object::Bool(a), Object::Bool(b)) => a == b,
+        (Object::Nil, Object::Nil) => true,
+        _ => false,
     }
 }

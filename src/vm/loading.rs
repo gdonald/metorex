@@ -64,7 +64,7 @@ impl VirtualMachine {
         name: &str,
     ) -> Option<String> {
         let path = class_rc.lookup_autoload(name)?;
-        // If this autoload is currently loading, behaviour depends on
+        // If this autoload is currently loading, behavior depends on
         // which thread is asking. The loading thread itself observes
         // the autoload as cleared (Ruby treats the entry as already
         // satisfied from inside its own load). Other threads still see

@@ -1,4 +1,4 @@
-// Group/collection literal parsing: parenthesised expressions, arrays, hashes.
+// Group/collection literal parsing: parenthesized expressions, arrays, hashes.
 
 use crate::ast::Expression;
 use crate::error::MetorexError;
@@ -6,8 +6,8 @@ use crate::lexer::{Position, TokenKind};
 use crate::parser::Parser;
 
 impl Parser {
-    /// Parse a parenthesised expression after the opening `(` has been consumed.
-    /// Also handles parenthesised assignment: `(x = 5)`, `(@x = 5)`, etc.
+    /// Parse a parenthesized expression after the opening `(` has been consumed.
+    /// Also handles parenthesized assignment: `(x = 5)`, `(@x = 5)`, etc.
     pub(super) fn parse_paren_group(
         &mut self,
         token_position: Position,

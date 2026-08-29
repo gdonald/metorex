@@ -36,6 +36,9 @@ impl VirtualMachine {
                         | "__method__"
                         | "__callee__"
                         | "abort"
+                        | "fail"
+                        | "gets"
+                        | "global_variables"
                         | "binding_kernel"
                 ) || (matches!(
                     fn_name.as_str(),
@@ -222,6 +225,11 @@ impl VirtualMachine {
             if let Ok(Some(result)) =
                 self.call_native_method(&class_for_native, &receiver, name, &[], position)
             {
+                return Ok(result);
+            }
+            // The Object/Kernel natives (`object_id`, `frozen?`, `inspect`)
+            // are reachable bare too, the same way `self.object_id` is.
+            if let Ok(Some(result)) = self.call_object_method(&receiver, name, &[], position) {
                 return Ok(result);
             }
         }

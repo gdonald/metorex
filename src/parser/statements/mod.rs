@@ -18,7 +18,7 @@ impl Parser {
         // Skip leading whitespace
         self.skip_whitespace();
 
-        // Recognise `private def …` / `public def …` / `protected def …` /
+        // Recognize `private def …` / `public def …` / `protected def …` /
         // `module_function def …` as a special two-keyword form. The
         // visibility modifier is parsed and discarded; the wrapped `def`
         // becomes a normal method definition.

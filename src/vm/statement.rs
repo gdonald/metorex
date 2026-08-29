@@ -735,7 +735,7 @@ impl VirtualMachine {
                 }
             }
             Expression::GlobalVariable { name, .. } => {
-                self.globals_mut().set(name.clone(), value);
+                self.globals_mut().set_variable(name.clone(), value);
                 Ok(())
             }
             // `Ns::Name = value` — assign to a constant on a module/class.

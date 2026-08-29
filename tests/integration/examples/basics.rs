@@ -200,3 +200,10 @@ fn test_basics_then_yield_self_tap_execution() {
     let output = run_example("basics/then_yield_self_tap.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_imaginary_literals_execution() {
+    let expected = "Complex\nComplex\ntrue\nComplex\n2\nComplex\nRational\n";
+    let output = run_example("basics/imaginary_literals.rb");
+    assert_eq!(output, expected);
+}

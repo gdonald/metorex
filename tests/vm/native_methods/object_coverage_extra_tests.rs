@@ -58,7 +58,7 @@ F2.frozen?
 #[test]
 fn to_sym_on_integer_returns_nil_or_error() {
     // to_sym on an Int falls through to the `_ => Ok(None)` arm (line 155),
-    // which bubbles out of object_methods. The resulting behaviour: either
+    // which bubbles out of object_methods. The resulting behavior: either
     // a NoMethodError, or Nil from a higher-level fallback. Either confirms
     // the code path executes.
     let result = std::panic::catch_unwind(|| {

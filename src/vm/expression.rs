@@ -310,7 +310,7 @@ impl VirtualMachine {
                         // silently swallowed by the if-as-expression
                         // wrapper. BlockBreak is the signal that
                         // execute_block_callable / each-style natives
-                        // recognise.
+                        // recognize.
                         return Err(MetorexError::BlockBreak {
                             value,
                             location: position_to_location(position),

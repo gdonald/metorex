@@ -80,7 +80,13 @@ impl VirtualMachine {
         if let Expression::Identifier { name, .. } = callee
             && matches!(
                 name.as_str(),
-                "__method__" | "__callee__" | "abort" | "binding"
+                "__method__"
+                    | "__callee__"
+                    | "abort"
+                    | "fail"
+                    | "gets"
+                    | "global_variables"
+                    | "binding"
             )
             && let Some(Object::NativeFunction(native_name)) = self.environment().get(name)
         {

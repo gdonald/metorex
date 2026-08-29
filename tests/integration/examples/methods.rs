@@ -76,3 +76,10 @@ fn test_callee_and_method_execution() {
     let output = run_example("methods/callee_and_method.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_methods_anonymous_block_parameter_execution() {
+    let expected = "plain\nlabeled: value\n42\n";
+    let output = run_example("methods/anonymous_block_parameter.rb");
+    assert_eq!(output, expected);
+}

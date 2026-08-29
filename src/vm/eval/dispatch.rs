@@ -199,7 +199,7 @@ impl VirtualMachine {
                     }
                     // Comparable-style fallback: if the class defines `<=>`,
                     // derive `<`, `<=`, `>`, `>=` from its result. (Ruby gets
-                    // these from the Comparable mixin; metorex synthesises
+                    // these from the Comparable mixin; metorex synthesizes
                     // them.)
                     if matches!(
                         op,

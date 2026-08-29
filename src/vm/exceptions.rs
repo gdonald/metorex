@@ -69,6 +69,59 @@ impl VirtualMachine {
         })
     }
 
+    /// Build the exception `raise`/`fail` was handed. A String becomes a
+    /// RuntimeError, a class is instantiated, and any other receiver is asked
+    /// for one through `#exception`. With no arguments the current `$!` is
+    /// re-raised, or a bare RuntimeError when there is none.
+    pub(crate) fn build_raise_exception(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let message = arguments.get(1).cloned();
+        let exception = match arguments.first() {
+            None => match self.environment().get("$!") {
+                Some(exception @ Object::Exception(_)) => exception,
+                _ => Object::exception("RuntimeError", "unhandled exception"),
+            },
+            Some(Object::Exception(cell)) => {
+                let existing = Object::Exception(Rc::clone(cell));
+                if let Some(Object::String(text)) = &message {
+                    cell.borrow_mut().message = (**text).clone();
+                }
+                existing
+            }
+            Some(Object::String(text)) => Object::exception("RuntimeError", (**text).clone()),
+            // An exception class is instantiated with the message.
+            Some(value @ Object::Class(_)) => {
+                let call_arguments = message.into_iter().collect();
+                self.invoke_callable(value.clone(), call_arguments, position)?
+            }
+            Some(value) => {
+                // Any other receiver is asked for an exception of its own.
+                let Some((class, method)) = self.lookup_method(value, "exception") else {
+                    let msg = "exception class/object expected".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", msg.clone()),
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                };
+                let call_arguments = message.into_iter().collect();
+                self.invoke_method(class, method, value.clone(), call_arguments, position)?
+            }
+        };
+        if !matches!(exception, Object::Exception(_)) {
+            let msg = "exception object expected".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", msg.clone()),
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        Ok(self.add_stack_trace_to_exception(exception, position))
+    }
+
     /// Add stack trace and source location to an exception object
     fn add_stack_trace_to_exception(&self, exception: Object, position: Position) -> Object {
         if let Object::Exception(exc_ref) = exception {
