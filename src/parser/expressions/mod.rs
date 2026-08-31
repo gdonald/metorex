@@ -48,6 +48,7 @@ impl Parser {
                         parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()),
+                        is_lambda: true,
                         position,
                     };
                     return self.parse_postfix_calls(lambda);
@@ -66,6 +67,7 @@ impl Parser {
                         parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()),
+                        is_lambda: true,
                         position,
                     };
                     return self.parse_postfix_calls(lambda);
@@ -97,6 +99,7 @@ impl Parser {
                             parameter_defaults: Vec::new(),
                             body,
                             captured_vars: Some(Vec::new()),
+                            is_lambda: true,
                             position,
                         });
                     }
@@ -108,6 +111,7 @@ impl Parser {
                             parameter_defaults: Vec::new(),
                             body,
                             captured_vars: Some(Vec::new()),
+                            is_lambda: true,
                             position,
                         });
                     }
@@ -121,6 +125,7 @@ impl Parser {
                         position: arrow_pos,
                     }],
                     captured_vars: Some(Vec::new()),
+                    is_lambda: true,
                     position: arrow_pos,
                 });
             }
@@ -158,6 +163,7 @@ impl Parser {
                             parameter_defaults: Vec::new(),
                             body,
                             captured_vars: Some(Vec::new()),
+                            is_lambda: true,
                             position,
                         });
                     }
@@ -178,6 +184,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
+                is_lambda: true,
                 position: arrow_pos,
             });
         }
@@ -238,6 +245,7 @@ impl Parser {
                         parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
+                        is_lambda: true,
                         position: start_pos,
                     });
                 }
@@ -291,6 +299,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()), // Empty vec signals automatic capture
+                is_lambda: true,
                 position: expr.position(),
             });
         }
@@ -433,6 +442,7 @@ impl Parser {
             parameter_defaults,
             body,
             captured_vars: None, // Will be filled by semantic analysis
+            is_lambda: false,
             position: start_pos,
         })
     }
@@ -534,6 +544,7 @@ impl Parser {
             parameter_defaults,
             body,
             captured_vars: None, // Will be filled by semantic analysis
+            is_lambda: false,
             position: start_pos,
         })
     }

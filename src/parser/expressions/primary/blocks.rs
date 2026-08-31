@@ -12,45 +12,33 @@ impl Parser {
         &mut self,
         token_position: Position,
     ) -> Result<Expression, MetorexError> {
-        self.skip_whitespace();
-
-        // Check for brace or 'do' keyword
-        let use_braces = self.match_token(&[TokenKind::LBrace]);
-        if !use_braces {
-            self.match_token(&[TokenKind::Do]);
-        }
-        self.skip_whitespace();
-
-        let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
-
-        self.skip_whitespace();
-        let mut body = Vec::new();
-        let end_token = if use_braces {
-            TokenKind::RBrace
+        // `lambda` is a method, not syntax: a class can redefine it, and
+        // `send(:lambda) { }` has to reach the same place. Parse every form
+        // as a call so dispatch picks the user's method when one exists and
+        // Kernel#lambda otherwise.
+        let arguments = if self.check(&[TokenKind::LParen]) {
+            self.advance(); // consume (
+            self.parse_arguments()?
         } else {
-            TokenKind::End
+            Vec::new()
         };
 
-        while !self.check(std::slice::from_ref(&end_token)) && !self.is_at_end() {
-            self.skip_whitespace();
-            if self.check(std::slice::from_ref(&end_token)) {
-                break;
-            }
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
-
-        if use_braces {
-            self.expect(TokenKind::RBrace, "Expected '}' after lambda body")?;
+        self.skip_whitespace();
+        let trailing_block = if self.check(&[TokenKind::LBrace]) {
+            Some(Box::new(self.parse_brace_block()?))
+        } else if self.check(&[TokenKind::Do]) {
+            Some(Box::new(self.parse_block()?))
         } else {
-            self.expect(TokenKind::End, "Expected 'end' after lambda body")?;
-        }
+            None
+        };
 
-        Ok(Expression::Lambda {
-            parameters,
-            parameter_defaults,
-            body,
-            captured_vars: Some(Vec::new()),
+        Ok(Expression::Call {
+            callee: Box::new(Expression::Identifier {
+                name: "lambda".to_string(),
+                position: token_position,
+            }),
+            arguments,
+            trailing_block,
             position: token_position,
         })
     }
@@ -73,6 +61,7 @@ impl Parser {
             parameter_defaults,
             body,
             captured_vars: Some(Vec::new()),
+            is_lambda: false,
             position: token_position,
         })
     }
@@ -126,6 +115,7 @@ impl Parser {
                         parameter_defaults: Vec::new(),
                         body,
                         captured_vars: Some(Vec::new()),
+                        is_lambda: true,
                         position,
                     });
                 }
@@ -143,6 +133,7 @@ impl Parser {
                 position: token_position,
             }],
             captured_vars: Some(Vec::new()),
+            is_lambda: true,
             position: token_position,
         })
     }
@@ -161,6 +152,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
+                is_lambda: true,
                 position,
             })
         } else {
@@ -182,6 +174,7 @@ impl Parser {
                 parameter_defaults: Vec::new(),
                 body,
                 captured_vars: Some(Vec::new()),
+                is_lambda: true,
                 position,
             })
         } else {
@@ -236,6 +229,7 @@ impl Parser {
                     parameter_defaults: Vec::new(),
                     body,
                     captured_vars: Some(Vec::new()),
+                    is_lambda: true,
                     position,
                 });
             }
@@ -251,6 +245,7 @@ impl Parser {
                 position: token_position,
             }],
             captured_vars: Some(Vec::new()),
+            is_lambda: true,
             position: token_position,
         })
     }

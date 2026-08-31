@@ -42,6 +42,7 @@ impl Environment {
     pub fn push_isolated_scope(&mut self) {
         let global = self.scopes[0].clone();
         let new_scope = Rc::new(RefCell::new(Scope::with_parent(global)));
+        new_scope.borrow_mut().mark_method_boundary();
         self.scopes.push(new_scope);
         self.depth += 1;
     }
@@ -120,10 +121,50 @@ impl Environment {
         self.current_scope().borrow().collect_all_var_refs()
     }
 
+    /// Names bound as local variables where execution currently sits. At the
+    /// top level that is the root scope's own names; anywhere else it is the
+    /// chain up to but not including the root, which holds the builtins.
+    pub fn local_variable_names(&self) -> Vec<String> {
+        let current = self.current_scope();
+        let scope = current.borrow();
+        if scope.is_root() {
+            scope.own_variable_names()
+        } else {
+            scope.collect_local_variable_names()
+        }
+    }
+
+    /// Whether `name` resolves to the very reference the root scope holds.
+    /// A block captures enclosing names by reference, so a builtin or a
+    /// top-level local reaches a block's own scope as the same reference
+    /// rather than as a local of its own.
+    pub fn resolves_to_root_binding(&self, name: &str) -> bool {
+        if self.current_scope().borrow().is_root() {
+            return false;
+        }
+        let Some(root_ref) = self.scopes[0].borrow().own_var_ref(name) else {
+            return false;
+        };
+        self.get_ref(name)
+            .is_some_and(|current| std::rc::Rc::ptr_eq(&current, &root_ref))
+    }
+
     /// Defines a variable in the current scope with a shared reference
     /// Used when a closure defines a captured variable
     pub fn define_shared(&mut self, name: String, value: std::rc::Rc<std::cell::RefCell<Object>>) {
         self.current_scope().borrow_mut().define_shared(name, value);
+    }
+
+    /// Defines a name a block captured from its definition site. It resolves
+    /// like any other variable but is not reported as a local of this scope.
+    pub fn define_captured(
+        &mut self,
+        name: String,
+        value: std::rc::Rc<std::cell::RefCell<Object>>,
+    ) {
+        self.current_scope()
+            .borrow_mut()
+            .define_captured(name, value);
     }
 
     /// Gets a shared reference to a variable

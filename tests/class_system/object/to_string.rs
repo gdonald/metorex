@@ -1,8 +1,8 @@
 // Type System Tests - to_string() method
 
+use indexmap::IndexMap;
 use metorex::object::{Class, Object};
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 #[test]
@@ -27,7 +27,7 @@ fn test_to_string_array() {
 
 #[test]
 fn test_to_string_dict() {
-    let mut map = HashMap::new();
+    let mut map = IndexMap::new();
     map.insert("x".to_string(), Object::Int(10));
     let dict = Object::Dict(Rc::new(RefCell::new(map)));
     let s = dict.to_string();

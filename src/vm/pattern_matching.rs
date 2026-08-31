@@ -61,11 +61,10 @@ impl VirtualMachine {
             }
         }
 
-        // No pattern matched — Ruby returns nil (no error for case/when).
-        Err(MetorexError::runtime_error(
-            format!("No pattern matched value: {}", match_value),
-            position_to_location(position),
-        ))
+        // No branch matched and there is no `else`. Ruby's `case/when`
+        // evaluates to nil; only `case/in` raises.
+        let _ = match_value;
+        Ok(ControlFlow::Value(Object::Nil))
     }
 
     /// Execute a `case/in` statement (Ruby 2.7+ pattern matching).
@@ -103,10 +102,7 @@ impl VirtualMachine {
                         }
                     }
 
-                    Ok(ControlFlow::Return {
-                        value: last_value,
-                        position,
-                    })
+                    Ok(ControlFlow::Value(last_value))
                 })();
 
                 self.environment_mut().pop_scope();
@@ -379,7 +375,7 @@ impl VirtualMachine {
     pub(crate) fn match_object_pattern(
         &self,
         key_patterns: &[(String, crate::ast::MatchPattern)],
-        dict: &HashMap<String, Object>,
+        dict: &indexmap::IndexMap<String, Object>,
         bindings: &mut HashMap<String, Object>,
         position: Position,
     ) -> Result<bool, MetorexError> {

@@ -43,7 +43,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Runtime Method Definition**: `define_method` for dynamic behavior
 - **Method Missing Hook**: `method_missing` intercepts calls to undefined methods with method name and arguments
 - **Runtime Class Modification**: `remove_method`, `undef_method`, `alias_method`, `module_function`, `class_variable_set`, `class_variable_get`, `class_variable_defined?`, `class_variables` for dynamic class/module manipulation
-- **Reflection and Introspection**: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`, `__method__`, `__callee__`
+- **Reflection and Introspection**: `class`, `instance_of?`, `is_a?`, `itself`, `respond_to?`, `methods`, `send`, `instance_variables`, `instance_variable_get`, `instance_variable_set`, `local_variables`, `__method__`, `__callee__`
 - **AST Manipulation**: `eval` for runtime code execution, `parse` for AST inspection, runtime code generation via string evaluation
 - **Block Execution**: Blocks are objects with `.call()` method; trailing `do...end` and `{...}` blocks captured implicitly via `&block` parameter with `block_given?` support
 - **DSL Construction**: Build domain-specific languages naturally
@@ -204,14 +204,25 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `define_method` for dynamic method definition on classes, taking a block, a Proc, a `Method`, or an `UnboundMethod`. It returns the method name as a Symbol, inherits the current `private`/`public` visibility when called from inside the target module, always makes `initialize` private, fires the `method_added` hook, and raises `FrozenError` on a frozen module
 - `define_singleton_method` for defining a method on a single object's singleton class, accepting the same block, Proc, `Method`, or `UnboundMethod` bodies as `define_method`
 - Bodies installed by `define_method` follow lambda control flow: `return`, `break`, and `next` finish the method with a value, and `redo` re-runs it
-- Proc and Method objects: `Kernel#proc`, `Proc.new`, `Symbol#to_proc`, `Method#to_proc` (which stays bound to its original receiver), `Method#unbind`, and `Method#owner` (returns the defining module)
+- Proc and Method objects: `Kernel#proc`, `Kernel#lambda`, `Proc.new`, `Proc#lambda?`, `Symbol#to_proc`, `Method#to_proc` (which stays bound to its original receiver), `Method#unbind`, and `Method#owner` (returns the defining module)
+- `Object#method` converts its name argument with `#to_str`, and builds a `method_missing` dispatcher for a name the object claims through `respond_to_missing?`
+- Procs and lambdas are distinct kinds. A lambda checks its arity and its `return` returns from the lambda, while a proc pads missing arguments with nil, drops extras, and its `return` returns from the method that created it
+- `Kernel#loop` runs its block until `break` (whose value the loop returns) or until the block raises `StopIteration` or one of its subclasses. Every other exception propagates
 - `method_missing` hook for intercepting undefined method calls
 - Runtime class modification: `remove_method`, `undef_method`, `alias_method`, `module_function`
 - Constant visibility on a module receiver: `private_constant`, `public_constant`, and `deprecate_constant` (which returns the receiver and raises `NameError` for an undefined name). Reading a deprecated constant through `::`, `const_get`, or `remove_const` warns once the `Warning[:deprecated]` category is switched on
 - `Warning[:category]` and `Warning[:category] = bool` for reading and setting the warning category switches. Like MRI, `:deprecated` starts off
 - Class variables: `class_variable_set`, `class_variable_get`, `class_variable_defined?`, `class_variables` (lookup walks included modules and superclasses; `class_variables(false)` lists only own names)
 - Module ancestry comparison with `<=>`: `-1` when the receiver is a descendant or includer of the argument, `+1` when it is an ancestor or included-by, `0` when they are the same module, and `nil` when unrelated or the argument is not a module
-- Reflection: `class`, `instance_of?`, `is_a?`, `respond_to?`, `methods`, `send`, `instance_variables`
+- Reflection: `class`, `instance_of?`, `is_a?`, `itself`, `respond_to?`, `send`, `instance_variables` (Symbols, in declaration order), `instance_variable_get`, `instance_variable_set`, `local_variables`
+- `Object#methods` reports `def obj.name`, `class << obj`, `define_singleton_method`, and the modules `extend` attached, leaving out private ones and anything `undef_method` removed
+- `Symbol` is its own class rather than an alias of `String`, keeping String's character-level methods (`length`, `upcase`, `start_with?`)
+- `Array#&` and `Array#|` for intersection and union, both dropping duplicates
+- `!~` dispatches `=~` on the receiver and negates the result, raising `NoMethodError` when the receiver has no `=~`
+- `object_id` identifies a reference type by its address and an immediate by its value, so two equal Symbol, String, Integer, or Float literals share an id
+- Hashes iterate in insertion order. A reassigned key keeps its position and a deleted one leaves the rest in place
+- An array literal gathers trailing `key: value` or `key => value` pairs into one Hash as its last element, so `[1, a: 2, b: 3]` is `[1, {a: 2, b: 3}]`
+- `Kernel#p` writes each argument's `inspect` on its own line, honoring a user-defined `inspect`, and returns the argument, the argument list, or nil for none
 - `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access

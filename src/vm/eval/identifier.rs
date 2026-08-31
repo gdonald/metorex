@@ -9,6 +9,26 @@ use crate::vm::core::VirtualMachine;
 use crate::vm::errors::undefined_variable_error;
 
 impl VirtualMachine {
+    /// Whether `name` is bound to the very method a `def` installed on the
+    /// default definee, rather than to a local variable holding a Method.
+    pub(crate) fn name_is_a_definition(&self, name: &str, value: &Object) -> bool {
+        let Object::Method(method) = value else {
+            return false;
+        };
+        if method.name != name || method.receiver.is_some() {
+            return false;
+        }
+        let same = |owner: &Rc<crate::class::Class>| {
+            owner
+                .find_own_method(name)
+                .is_some_and(|installed| Rc::ptr_eq(&installed, method))
+        };
+        if self.def_scope_stack.iter().any(same) {
+            return true;
+        }
+        matches!(self.globals().get("Object"), Some(Object::Class(object_class)) if same(&object_class))
+    }
+
     /// Evaluate a bare identifier expression.
     ///
     /// Resolution order:
@@ -39,6 +59,8 @@ impl VirtualMachine {
                         | "fail"
                         | "gets"
                         | "global_variables"
+                        | "local_variables"
+                        | "p"
                         | "binding_kernel"
                 ) || (matches!(
                     fn_name.as_str(),
@@ -46,6 +68,22 @@ impl VirtualMachine {
                 ) && self.self_is_class_or_module()))
             {
                 return self.call_native_function(fn_name, vec![], position);
+            }
+            // A `def` registers its name in the environment as a Method so the
+            // function is reachable, but Ruby's bare `foo` is a call, not a
+            // reference to the method. Invoke it when the environment entry is
+            // the very method the definee holds under that name and it needs
+            // no arguments. A Method held in a local (from `method(:x)` or
+            // `instance_method(:x)`) is a different object, so it stays a value.
+            if let Object::Method(method) = &val
+                && method.parameters.is_empty()
+                && method.variadic_param.is_none()
+                && self.name_is_a_definition(name, &val)
+            {
+                let receiver = self.environment().get("self").unwrap_or(Object::Nil);
+                let class = self.builtins().class_of(&receiver);
+                let method = Rc::clone(method);
+                return self.invoke_method(class, method, receiver, vec![], position);
             }
             return Ok(val);
         }

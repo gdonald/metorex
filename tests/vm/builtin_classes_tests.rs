@@ -1,5 +1,6 @@
 // Coverage tests for builtin_classes.rs uncovered paths
 
+use indexmap::IndexMap;
 use metorex::builtin_classes::BuiltinClasses;
 use metorex::object::Object;
 use metorex::object::ObjectHash;
@@ -48,7 +49,7 @@ fn class_of_string() {
 fn class_of_symbol() {
     let builtins = BuiltinClasses::new();
     let class = builtins.class_of(&Object::Symbol(Rc::new("foo".to_string())));
-    assert_eq!(class.name(), "String");
+    assert_eq!(class.name(), "Symbol");
 }
 
 #[test]
@@ -61,7 +62,7 @@ fn class_of_array() {
 #[test]
 fn class_of_dict() {
     let builtins = BuiltinClasses::new();
-    let class = builtins.class_of(&Object::Dict(Rc::new(RefCell::new(HashMap::new()))));
+    let class = builtins.class_of(&Object::Dict(Rc::new(RefCell::new(IndexMap::new()))));
     assert_eq!(class.name(), "Hash");
 }
 
@@ -117,6 +118,7 @@ fn class_of_block() {
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
         defining_method: None,
+        is_lambda: false,
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");

@@ -225,9 +225,9 @@ sum.call(1, 2, 3)
 }
 
 #[test]
-fn test_compact_lambda_no_params() {
+fn test_brace_lambda_no_params() {
     let source = r#"
-l = lambda || 42 end
+l = lambda { || 42 }
 l.call
 "#;
 
@@ -248,9 +248,9 @@ l.call
 }
 
 #[test]
-fn test_compact_lambda_single_param() {
+fn test_brace_lambda_single_param() {
     let source = r#"
-double = lambda |x| x * 2 end
+double = lambda { |x| x * 2 }
 double.call(5)
 "#;
 
@@ -271,9 +271,9 @@ double.call(5)
 }
 
 #[test]
-fn test_compact_lambda_multi_params() {
+fn test_brace_lambda_multi_params() {
     let source = r#"
-add = lambda |a, b| a + b end
+add = lambda { |a, b| a + b }
 add.call(3, 7)
 "#;
 
@@ -505,4 +505,94 @@ fn block_captured_vars() {
         run_lambda("x = 10\nf = lambda { x + 5 }\nf.call"),
         Some(Object::Int(15))
     );
+}
+
+// ── Proc and lambda are distinct kinds ───────────────────────────────────────
+
+fn run_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
+#[test]
+fn case_in_inside_a_block_yields_its_value() {
+    let result = run_lambda(
+        r#"
+result = [1, 2].map do |n|
+  case n
+  in 1
+    "one"
+  in 2
+    "two"
+  end
+end
+result[1]
+"#,
+    );
+    assert_eq!(result, Some(Object::string("two")));
+}
+
+#[test]
+fn a_proc_ignores_extra_arguments() {
+    let result = run_lambda("proc { |a| a }.call(1, 2, 3)");
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn a_proc_fills_missing_arguments_with_nil() {
+    let result = run_lambda("proc { |a, b| b }.call(1).inspect");
+    assert_eq!(result, Some(Object::string("nil")));
+}
+
+#[test]
+fn a_lambda_rejects_extra_arguments() {
+    let error = run_err("lambda { |a| a }.call(1, 2)");
+    assert!(error.contains("expected 1 argument(s) but received 2"));
+}
+
+#[test]
+fn a_lambda_rejects_missing_arguments() {
+    let error = run_err("lambda { |a, b| a }.call(1)");
+    assert!(error.contains("expected 2 argument(s) but received 1"));
+}
+
+#[test]
+fn a_do_end_lambda_is_a_lambda() {
+    let result = run_lambda("lambda do 1 end.lambda?");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn send_reaches_kernel_lambda() {
+    let result = run_lambda(
+        r#"
+class Holder
+  def make
+    send(:lambda) { 1 }
+  end
+end
+Holder.new.make.lambda?
+"#,
+    );
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn lambda_without_a_block_raises_argument_error() {
+    let error = run_err("lambda");
+    assert!(error.contains("tried to create Proc object without a block"));
+}
+
+#[test]
+fn lambda_is_a_private_instance_method_on_kernel() {
+    let result = run_lambda("Kernel.private_instance_methods(false).include?(:lambda)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn a_symbol_to_proc_block_is_not_a_lambda() {
+    let result = run_lambda("proc { |x| x }.lambda?");
+    assert_eq!(result, Some(Object::Bool(false)));
 }

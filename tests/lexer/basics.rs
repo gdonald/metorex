@@ -244,8 +244,7 @@ fn test_lexer_unicode_character() {
     let mut lexer = Lexer::new("🦀");
     let token = lexer.next_token();
 
-    // This will consume the character and return EOF (default case)
-    assert_eq!(token.kind, TokenKind::EOF);
+    assert_eq!(token.kind, TokenKind::Ident("🦀".to_string()));
     assert_eq!(token.position.offset, 0);
 }
 
@@ -253,14 +252,14 @@ fn test_lexer_unicode_character() {
 fn test_lexer_multi_byte_utf8() {
     let mut lexer = Lexer::new("😀abc");
 
-    // First token consumes the emoji
+    // Ruby treats every non-ASCII character as an identifier character, so
+    // the emoji and the letters after it are one identifier.
     let token1 = lexer.next_token();
-    assert_eq!(token1.kind, TokenKind::EOF);
+    assert_eq!(token1.kind, TokenKind::Ident("😀abc".to_string()));
     assert_eq!(token1.position.offset, 0);
 
-    // Next tokens consume the letters
     let token2 = lexer.next_token();
-    assert_eq!(token2.position.offset, 4); // emoji is 4 bytes
+    assert_eq!(token2.kind, TokenKind::EOF);
 }
 
 #[test]

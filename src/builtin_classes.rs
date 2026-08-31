@@ -12,6 +12,7 @@ pub struct BuiltinClasses {
     pub object_class: Rc<Class>,
     /// String class
     pub string_class: Rc<Class>,
+    pub symbol_class: Rc<Class>,
     /// Integer class
     pub integer_class: Rc<Class>,
     /// Float class
@@ -54,6 +55,7 @@ impl BuiltinClasses {
 
         // Create primitive type classes
         let string_class = Rc::new(Class::new("String", Some(Rc::clone(&object_class))));
+        let symbol_class = Rc::new(Class::new("Symbol", Some(Rc::clone(&object_class))));
         let integer_class = Rc::new(Class::new("Integer", Some(Rc::clone(&object_class))));
         let float_class = Rc::new(Class::new("Float", Some(Rc::clone(&object_class))));
 
@@ -92,6 +94,7 @@ impl BuiltinClasses {
         Self {
             object_class,
             string_class,
+            symbol_class,
             integer_class,
             float_class,
             array_class,
@@ -119,7 +122,7 @@ impl BuiltinClasses {
             Object::Int(_) => Rc::clone(&self.integer_class),
             Object::Float(_) => Rc::clone(&self.float_class),
             Object::String(_) => Rc::clone(&self.string_class),
-            Object::Symbol(_) => Rc::clone(&self.string_class), // Symbols are like strings
+            Object::Symbol(_) => Rc::clone(&self.symbol_class),
             Object::Array(_) => Rc::clone(&self.array_class),
             Object::Dict(_) => Rc::clone(&self.hash_class),
             Object::Set(_) => Rc::clone(&self.set_class),
@@ -243,7 +246,7 @@ impl BuiltinClasses {
             "BasicObject".to_string(),
             Rc::new(Class::new("BasicObject", None)),
         );
-        classes.insert("Symbol".to_string(), Rc::clone(&self.string_class));
+        classes.insert("Symbol".to_string(), Rc::clone(&self.symbol_class));
         classes.insert("Numeric".to_string(), Rc::clone(&self.integer_class));
         classes.insert("Proc".to_string(), Rc::clone(&self.proc_class));
         classes.insert("Method".to_string(), Rc::clone(&self.method_class));

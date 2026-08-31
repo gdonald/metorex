@@ -115,8 +115,11 @@ fn keyword_method_name_return() {
 
 #[test]
 fn keyword_method_name_lambda() {
+    // `nil.lambda` parses as a call and reaches Kernel#lambda, which needs a
+    // block. Metorex does not yet enforce Kernel's private visibility for an
+    // explicit receiver, where Ruby raises NoMethodError instead.
     let err = run_err("nil.lambda");
-    assert!(err.contains("lambda") || err.contains("method") || err.contains("nil"));
+    assert!(err.contains("tried to create Proc object without a block"));
 }
 
 #[test]

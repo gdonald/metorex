@@ -96,35 +96,9 @@ impl VirtualMachine {
         let mut last_value = Object::Nil;
         for (i, statement) in statements.iter().enumerate() {
             let is_last = i == statements.len() - 1;
-            if is_last {
-                match statement {
-                    Statement::Expression { expression, .. } => {
-                        last_value = self.evaluate_expression(expression)?;
-                        continue;
-                    }
-                    Statement::Assignment { value, target, .. } => {
-                        let evaluated = self.evaluate_expression(value)?;
-                        self.assign_value(target, evaluated.clone())?;
-                        last_value = evaluated;
-                        continue;
-                    }
-                    Statement::Begin {
-                        body: begin_body,
-                        rescue_clauses,
-                        else_clause,
-                        ensure_block,
-                        ..
-                    } => {
-                        last_value = self.evaluate_begin_value(
-                            begin_body,
-                            rescue_clauses,
-                            else_clause.as_deref(),
-                            ensure_block.as_deref(),
-                        )?;
-                        continue;
-                    }
-                    _ => {}
-                }
+            if is_last && let Some(value) = self.terminal_statement_value(statement)? {
+                last_value = value;
+                continue;
             }
             match self.execute_statement(statement)? {
                 ControlFlow::Next => continue,

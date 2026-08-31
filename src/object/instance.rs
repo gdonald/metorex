@@ -1,6 +1,7 @@
 // Instance struct - represents an instance of a class
 
 use crate::class::Class;
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -12,8 +13,9 @@ use super::{Method, Object};
 pub struct Instance {
     /// Reference to the class this is an instance of
     pub class: Rc<Class>,
-    /// Instance variables (@variable)
-    pub instance_vars: HashMap<String, Object>,
+    /// Instance variables (@variable), in the order they were first assigned
+    /// so `instance_variables` reports Ruby's declaration order.
+    pub instance_vars: IndexMap<String, Object>,
     /// Singleton methods defined directly on this instance (def obj.method).
     pub singleton_methods: Rc<RefCell<HashMap<String, Rc<Method>>>>,
     /// Lazily-allocated singleton class for this instance (Ruby semantics:
@@ -29,7 +31,7 @@ impl Instance {
     pub fn new(class: Rc<Class>) -> Self {
         Self {
             class,
-            instance_vars: HashMap::new(),
+            instance_vars: IndexMap::new(),
             singleton_methods: Rc::new(RefCell::new(HashMap::new())),
             singleton_class: Rc::new(RefCell::new(None)),
             frozen: false,

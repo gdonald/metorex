@@ -195,3 +195,31 @@ fn test_lambda_parenless_arg_execution() {
     let output = run_example("functions/lambda_parenless_arg.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_lambda_and_proc_execution() {
+    let expected = concat!(
+        "true\nfalse\ntrue\nfalse\n",
+        "3\n[1, nil]\n[1, 2]\nArgumentError\n",
+        "[:from_lambda, :method_finished]\n:from_proc\ntrue\n",
+        "ArgumentError: the lambda method requires a literal block\n",
+        "ArgumentError: tried to create Proc object without a block\n",
+        "false\n"
+    );
+    let output = run_example("procs/lambda_and_proc.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_lambda_and_proc_no_parens_execution() {
+    let expected = concat!(
+        "true\nfalse\ntrue\nfalse\n",
+        "3\n[1, nil]\n[1, 2]\nArgumentError\n",
+        "[:from_lambda, :method_finished]\n:from_proc\ntrue\n",
+        "ArgumentError: the lambda method requires a literal block\n",
+        "ArgumentError: tried to create Proc object without a block\n",
+        "false\n"
+    );
+    let output = run_example("procs/lambda_and_proc_no_parens.rb");
+    assert_eq!(output, expected);
+}

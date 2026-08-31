@@ -1,6 +1,7 @@
 // Coverage tests for Object::type_name, Display, operations (equals, hash, is_truthy),
 // constructors, and lib::version
 
+use indexmap::IndexMap;
 use metorex::object::{Class, Method, Object, ObjectHash};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -194,7 +195,7 @@ fn display_dict_empty() {
 
 #[test]
 fn display_dict_elements() {
-    let mut m = HashMap::new();
+    let mut m = IndexMap::new();
     m.insert("a".to_string(), Object::Int(1));
     let d = Object::dict(m);
     let s = format!("{}", d);
@@ -370,11 +371,11 @@ fn equals_array() {
 
 #[test]
 fn equals_dict() {
-    let mut m1 = HashMap::new();
+    let mut m1 = IndexMap::new();
     m1.insert("x".to_string(), Object::Int(1));
-    let mut m2 = HashMap::new();
+    let mut m2 = IndexMap::new();
     m2.insert("x".to_string(), Object::Int(1));
-    let mut m3 = HashMap::new();
+    let mut m3 = IndexMap::new();
     m3.insert("y".to_string(), Object::Int(1));
     assert!(Object::dict(m1.clone()).equals(&Object::dict(m2)));
     assert!(!Object::dict(m1).equals(&Object::dict(m3)));
@@ -524,7 +525,7 @@ fn constructor_empty_dict() {
 
 #[test]
 fn constructor_dict() {
-    let mut m = HashMap::new();
+    let mut m = IndexMap::new();
     m.insert("k".to_string(), Object::Int(1));
     let d = Object::dict(m);
     if let Object::Dict(d) = d {

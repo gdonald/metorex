@@ -490,9 +490,10 @@ fn object_match_operator_invalid_regex_returns_nil() {
 // ── object_methods.rs: !~ on non-string/regex pair returns true (lines 440, 452) ─
 
 #[test]
-fn object_not_match_operator_non_string_returns_true() {
-    let result = run(r#"42 !~ 99"#);
-    assert_eq!(result, Some(Object::Bool(true)));
+fn object_not_match_operator_without_a_match_method_raises() {
+    // Ruby has no `Object#=~`, so an Integer has no `!~` either.
+    let error = run_err(r#"42 !~ 99"#);
+    assert!(error.contains("undefined method '=~' for an instance of Integer"));
 }
 
 // ── object_methods.rs: !~ with invalid regex returns true (lines 445-448) ──
@@ -537,4 +538,54 @@ fn object_instance_exec_without_block_error() {
 fn object_instance_eval_without_block_error() {
     let err = run_err(r#"42.instance_eval"#);
     assert!(err.contains("block") || err.contains("requires"));
+}
+
+// ── !~ dispatches =~ ─────────────────────────────────────────────────────────
+
+#[test]
+fn not_match_negates_a_user_defined_match_method() {
+    let result = run(r#"
+class Matcher
+  def =~(other)
+    other == :expected
+  end
+end
+Matcher.new !~ :expected
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn not_match_is_true_when_the_match_method_says_no() {
+    let result = run(r#"
+class Matcher
+  def =~(other)
+    false
+  end
+end
+Matcher.new !~ :anything
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn not_match_can_be_overridden_directly() {
+    let result = run(r#"
+class Overridden
+  def !~(other)
+    :custom
+  end
+end
+(Overridden.new !~ :anything).inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new(":custom".to_string())))
+    );
+}
+
+#[test]
+fn not_match_raises_for_a_receiver_without_a_match_method() {
+    let error = run_err("Object.new !~ :foo");
+    assert!(error.contains("undefined method '=~' for an instance of Object"));
 }

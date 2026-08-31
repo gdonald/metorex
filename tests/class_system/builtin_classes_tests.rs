@@ -396,8 +396,7 @@ fn test_class_of_symbol() {
     let builtins = BuiltinClasses::new();
     let obj = Object::Symbol(Rc::new("hello".to_string()));
     let class = builtins.class_of(&obj);
-    // Symbols are treated as strings in the type system
-    assert_eq!(class.name(), "String");
+    assert_eq!(class.name(), "Symbol");
 }
 
 // ── class_of for NativeFunction (builtin_classes.rs line 111) ─────────────────

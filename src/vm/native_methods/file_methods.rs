@@ -409,6 +409,36 @@ impl VirtualMachine {
                 };
                 Ok(Some(Object::Bool(std::path::Path::new(&path).is_file())))
             }
+            // File.executable?(path) — whether the owner-, group-, or
+            // other-execute bit is set on an existing path.
+            "executable?" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        "executable?",
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let path = match &arguments[0] {
+                    Object::String(s) => s.as_str().to_string(),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "executable?",
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let executable = std::fs::metadata(&path)
+                    .map(|metadata| {
+                        use std::os::unix::fs::PermissionsExt;
+                        metadata.permissions().mode() & 0o111 != 0
+                    })
+                    .unwrap_or(false);
+                Ok(Some(Object::Bool(executable)))
+            }
             "expand_path" => {
                 if arguments.is_empty() || arguments.len() > 2 {
                     return Err(MetorexError::runtime_error(

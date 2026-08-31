@@ -1,8 +1,9 @@
 // Core Object enum definition for runtime value representation
 
 use crate::class::Class;
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::{Binding, BlockStatement, CompiledFunction, Exception, Instance, Method, ObjectHash};
@@ -32,7 +33,9 @@ pub enum Object {
     Array(Rc<RefCell<Vec<Object>>>),
 
     /// Dictionary/hash map (mutable, reference counted)
-    Dict(Rc<RefCell<HashMap<String, Object>>>),
+    /// Hash. Backed by an `IndexMap` so entries iterate in insertion order,
+    /// the way Ruby's do.
+    Dict(Rc<RefCell<IndexMap<String, Object>>>),
 
     /// Instance of a class
     Instance(Rc<RefCell<Instance>>),

@@ -602,9 +602,8 @@ impl VirtualMachine {
             return Ok((**s).clone());
         }
         let class_name = match arg {
-            Object::Instance(i) => i.borrow().class.name().to_string(),
             Object::Class(_) | Object::Module(_) => "Module".to_string(),
-            other => other.type_name().to_string(),
+            other => self.builtins().class_of(other).name().to_string(),
         };
         if let Some((cls, m)) = self.lookup_method(arg, "to_str")
             && !m.is_undefined
@@ -1158,6 +1157,7 @@ impl VirtualMachine {
                             define_args.push(self.evaluate_expression(arg_expr)?);
                         }
                         self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                        self.pending_block_from_ampersand = false;
                         last_value = self.module_define_method(class, &define_args, position)?;
                     }
                     // `refine(target) { body }` inside a module body — dispatch
@@ -1323,9 +1323,13 @@ impl VirtualMachine {
                 Some(Object::Class(target_class)) | Some(Object::Module(target_class)) => {
                     target_class.define_method(format!("__class__{}", name), Rc::clone(&function));
                 }
-                Some(Object::Instance(inst)) => {
-                    inst.borrow()
-                        .define_singleton_method(name.to_string(), Rc::clone(&function));
+                // `def obj.name` installs on the object's singleton class,
+                // the same place `define_singleton_method` and `class << obj`
+                // put one, so `methods`, `undef_method`, and `remove_method`
+                // all see it.
+                Some(instance @ Object::Instance(_)) => {
+                    let singleton = self.singleton_class_of(&instance);
+                    singleton.define_method(name, Rc::clone(&function));
                 }
                 _ => {}
             }

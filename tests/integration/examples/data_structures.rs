@@ -68,3 +68,33 @@ fn test_hash_non_primitive_keys_execution() {
     let output = run_example("data_structures/hash_non_primitive_keys.rb");
     assert_eq!(output, "first\nsecond\n");
 }
+
+#[test]
+fn test_data_structures_hash_ordering() {
+    let expected = concat!(
+        "[\"name\", \"servings\", \"vegetarian\"]\n",
+        "[\"stew\", 4, false]\n",
+        "[\"name\", \"servings\", \"vegetarian\", \"rating\"]\n",
+        "[\"name\", \"servings\", \"vegetarian\", \"rating\"]\n",
+        "[\"name\", \"vegetarian\", \"rating\"]\n",
+        "[\"name\", \"vegetarian\", \"rating\"]\n",
+        "3\n[:first, :second]\n1\n[\"x\", \"y\"]\n[:alpha, :beta]\n"
+    );
+    let output = run_example("data_structures/hash_ordering.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_data_structures_hash_ordering_no_parens() {
+    let expected = concat!(
+        "[\"name\", \"servings\", \"vegetarian\"]\n",
+        "[\"stew\", 4, false]\n",
+        "[\"name\", \"servings\", \"vegetarian\", \"rating\"]\n",
+        "[\"name\", \"servings\", \"vegetarian\", \"rating\"]\n",
+        "[\"name\", \"vegetarian\", \"rating\"]\n",
+        "[\"name\", \"vegetarian\", \"rating\"]\n",
+        "3\n[:first, :second]\n1\n[\"x\", \"y\"]\n[:alpha, :beta]\n"
+    );
+    let output = run_example("data_structures/hash_ordering_no_parens.rb");
+    assert_eq!(output, expected);
+}

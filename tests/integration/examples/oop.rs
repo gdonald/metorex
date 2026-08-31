@@ -1004,3 +1004,23 @@ fn test_oop_copy_hooks_execution() {
     let output = run_example("oop/copy_hooks.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_super_reaches_kernel() {
+    let expected = concat!(
+        "false\n:ready\ntrue\ntrue\n",
+        "Superclass Object does not define method 'no_such_kernel_method'\n"
+    );
+    let output = run_example("oop/super_reaches_kernel.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_super_reaches_kernel_no_parens() {
+    let expected = concat!(
+        "false\n:ready\ntrue\ntrue\n",
+        "Superclass Object does not define method 'no_such_kernel_method'\n"
+    );
+    let output = run_example("oop/super_reaches_kernel_no_parens.rb");
+    assert_eq!(output, expected);
+}

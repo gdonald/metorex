@@ -70,6 +70,7 @@ impl VirtualMachine {
             let evaluated_args = self.evaluate_arguments(arguments)?;
             if let Some(block_expr) = trailing_block {
                 self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block_from_ampersand = false;
             }
             return self.call_native_function("using", evaluated_args, position);
         }
@@ -86,6 +87,8 @@ impl VirtualMachine {
                     | "fail"
                     | "gets"
                     | "global_variables"
+                    | "local_variables"
+                    | "p"
                     | "binding"
             )
             && let Some(Object::NativeFunction(native_name)) = self.environment().get(name)
@@ -106,11 +109,54 @@ impl VirtualMachine {
             }
         }
 
+        // A method defined on `self` beats a same-named Kernel function.
+        // `lambda` is the case the specs exercise: a class that defines its
+        // own `lambda` must have it reached by a receiverless call too.
+        if let Expression::Identifier { name, .. } = callee
+            && matches!(
+                self.environment().get(name),
+                Some(Object::NativeFunction(_))
+            )
+            && let Some(current_self) = self.environment().get("self")
+            && let Some((_, method)) = self.lookup_method(&current_self, name)
+            && !method.is_undefined
+        {
+            return self.evaluate_method_call(
+                &Expression::SelfExpr { position },
+                name,
+                arguments,
+                trailing_block,
+                position,
+            );
+        }
+
+        // A bare identifier naming a zero-argument `def` is a call, so
+        // evaluating it as the callee would run the method and then try to
+        // call its result. Invoke the definition with this call's arguments
+        // instead.
+        if let Expression::Identifier { name, .. } = callee
+            && let Some(value) = self.environment().get(name)
+            && self.name_is_a_definition(name, &value)
+        {
+            let evaluated_args = self.evaluate_arguments(arguments)?;
+            let has_block = trailing_block.is_some();
+            if let Some(block_expr) = trailing_block {
+                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block_from_ampersand = false;
+            }
+            let result = self.invoke_callable(value, evaluated_args, position);
+            return match result {
+                Err(MetorexError::BlockBreak { value, .. }) if has_block => Ok(value),
+                other => other,
+            };
+        }
+
         let callable = self.evaluate_expression(callee);
         let evaluated_args = self.evaluate_arguments(arguments)?;
         let has_block = trailing_block.is_some();
         if let Some(block_expr) = trailing_block {
             self.pending_block = Some(self.evaluate_expression(block_expr)?);
+            self.pending_block_from_ampersand = false;
         }
         match callable {
             Ok(func) => {

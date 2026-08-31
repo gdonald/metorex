@@ -207,3 +207,47 @@ fn test_basics_imaginary_literals_execution() {
     let output = run_example("basics/imaginary_literals.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_not_match_operator() {
+    let expected = concat!(
+        "false\ntrue\nfalse\nfalse\ntrue\n:custom\n",
+        "NoMethodError: undefined method '=~' for an instance of Object\n",
+        "undefined method '=~' for an instance of Integer\n"
+    );
+    let output = run_example("basics/not_match_operator.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_not_match_operator_no_parens() {
+    let expected = concat!(
+        "false\ntrue\nfalse\nfalse\ntrue\n:custom\n",
+        "NoMethodError: undefined method '=~' for an instance of Object\n",
+        "undefined method '=~' for an instance of Integer\n"
+    );
+    let output = run_example("basics/not_match_operator_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_kernel_p() {
+    let expected = concat!(
+        "\"abcde\"\n42\n:symbol\nnil\n",
+        "[1, :two, \"three\"]\ncustom inspect\n",
+        "7\n7\n1\n2\n[1, 2]\nnil\ntrue\n"
+    );
+    let output = run_example("basics/kernel_p.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_kernel_p_parens() {
+    let expected = concat!(
+        "\"abcde\"\n42\n:symbol\nnil\n",
+        "[1, :two, \"three\"]\ncustom inspect\n",
+        "7\n7\n1\n2\n[1, 2]\nnil\ntrue\n"
+    );
+    let output = run_example("basics/kernel_p_parens.rb");
+    assert_eq!(output, expected);
+}

@@ -161,6 +161,7 @@ impl VirtualMachine {
                         Object::Nil => {}
                         Object::Block(_) => {
                             self.pending_block = Some(value);
+                            self.pending_block_from_ampersand = true;
                         }
                         Object::Symbol(sym) => {
                             // `&:method` is symbol-to-proc: synthesize a block
@@ -169,6 +170,7 @@ impl VirtualMachine {
                             // on the parameter.
                             self.pending_block =
                                 Some(Object::Block(std::rc::Rc::new(symbol_to_proc_block(&sym))));
+                            self.pending_block_from_ampersand = true;
                         }
                         other => {
                             // Non-block, non-nil &arg: push as positional so

@@ -356,6 +356,97 @@ Foo.value
 "#);
 }
 
+// ── lambda with a parenthesized argument list ────────────────────────────────
+
+#[test]
+fn lambda_with_a_block_pass_argument_parses_as_a_call() {
+    parse_ok("lambda(&some_proc)");
+}
+
+#[test]
+fn lambda_with_a_literal_block_still_parses_as_a_lambda() {
+    let result = run("lambda { 42 }.call");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn lambda_with_a_do_block_still_parses_as_a_lambda() {
+    let result = run("lambda do
+  42
+end.call");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+// ── Keyword and operator method names after the singleton dot ────────────────
+
+#[test]
+fn singleton_def_accepts_a_keyword_method_name() {
+    let result = run(r#"
+class Widget
+end
+obj = Widget.new
+def obj.class
+  Integer
+end
+obj.class
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some("Integer".to_string()));
+}
+
+#[test]
+fn singleton_def_on_instance_variable_accepts_a_keyword_method_name() {
+    let result = run(r#"
+class Holder
+  def initialize
+    @target = Object.new
+    def @target.begin
+      "opened"
+    end
+  end
+
+  def target_begin
+    @target.begin
+  end
+end
+Holder.new.target_begin
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some("opened".to_string()));
+}
+
+#[test]
+fn singleton_def_on_instance_variable_accepts_an_index_method_name() {
+    let result = run(r#"
+class Holder
+  def initialize
+    @target = Object.new
+    def @target.[](index)
+      index * 2
+    end
+  end
+
+  def target_at(index)
+    @target[index]
+  end
+end
+Holder.new.target_at(21)
+"#);
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn singleton_def_on_parenthesized_receiver_accepts_a_keyword_method_name() {
+    let result = run(r#"
+class Widget
+end
+obj = Widget.new
+def (obj).class
+  Integer
+end
+obj.class
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some("Integer".to_string()));
+}
+
 // ── Singleton method with invalid token after dot ─────────────────────────────
 
 #[test]

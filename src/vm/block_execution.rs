@@ -106,8 +106,11 @@ impl VirtualMachine {
         // may run from `expected - defaults` up to `expected`.
         let required = expected.saturating_sub(block.parameter_defaults.len());
 
-        // Variadic params accept any number of args; skip strict arity check
-        if !has_variadic
+        // Variadic params accept any number of args; skip strict arity check.
+        // Only a lambda checks arity at all: a proc pads missing arguments
+        // with nil and drops extras.
+        if block.is_lambda
+            && !has_variadic
             && !has_block_param
             && !destructured
             && (found < required || found > expected)
@@ -161,11 +164,11 @@ impl VirtualMachine {
                 None => CallFrame::boundary(frame_name.clone()),
             },
             move |vm| {
-                vm.environment_mut().push_scope();
+                vm.environment_mut().push_isolated_scope();
                 let result = (|| -> Result<Object, MetorexError> {
                     for (name, value_ref) in block.captured_vars() {
                         vm.environment_mut()
-                            .define_shared(name.clone(), value_ref.clone());
+                            .define_captured(name.clone(), value_ref.clone());
                     }
                     // Override `self` with the instance_exec receiver
                     vm.environment_mut().define("self".to_string(), receiver);
@@ -241,7 +244,11 @@ impl VirtualMachine {
         block: &BlockStatement,
         arguments: Vec<Object>,
     ) -> Result<Object, MetorexError> {
-        self.environment_mut().push_scope();
+        // A block body runs in its own scope seeded from `captured_vars`, not
+        // chained to whatever method happens to be invoking it. Ruby's block
+        // sees the locals of the scope it was written in, and nothing of its
+        // caller's.
+        self.environment_mut().push_isolated_scope();
         // Restore the lexical class/module nesting from the block's
         // definition site so an uppercase `Foo = ...` inside the body
         // assigns to the same enclosing module the surrounding code would
@@ -255,7 +262,7 @@ impl VirtualMachine {
             // Define captured variables using shared references
             for (name, value_ref) in block.captured_vars() {
                 self.environment_mut()
-                    .define_shared(name.clone(), value_ref.clone());
+                    .define_captured(name.clone(), value_ref.clone());
             }
 
             // Define parameters as regular variables (handles *args/&block prefixes)
@@ -290,9 +297,18 @@ impl VirtualMachine {
                     ControlFlow::Value(value) => {
                         last_value = value;
                     }
-                    ControlFlow::Return { value, .. } => {
-                        last_value = value;
-                        break;
+                    // `return` in a lambda returns from the lambda. In a
+                    // proc or ordinary block it is a long return: it unwinds
+                    // to the method that lexically created the block.
+                    ControlFlow::Return { value, position } => {
+                        if block.is_lambda {
+                            last_value = value;
+                            break;
+                        }
+                        return Err(MetorexError::NonLocalReturn {
+                            value,
+                            location: position_to_location(position),
+                        });
                     }
                     ControlFlow::Exception {
                         exception,
@@ -339,13 +355,13 @@ impl VirtualMachine {
         block: &BlockStatement,
         arguments: Vec<Object>,
     ) -> Result<ControlFlow, MetorexError> {
-        self.environment_mut().push_scope();
+        self.environment_mut().push_isolated_scope();
 
         let result = (|| -> Result<ControlFlow, MetorexError> {
             // Define captured variables using shared references
             for (name, value_ref) in block.captured_vars() {
                 self.environment_mut()
-                    .define_shared(name.clone(), value_ref.clone());
+                    .define_captured(name.clone(), value_ref.clone());
             }
 
             // Define parameters as regular variables (handles *args/&block prefixes)

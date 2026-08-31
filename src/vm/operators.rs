@@ -212,6 +212,22 @@ impl VirtualMachine {
                 self.evaluate_spaceship(left, right, position)
             }
             BitwiseAnd => match (left, right) {
+                // Array intersection, keeping the left operand's order and
+                // dropping duplicates.
+                (Object::Array(left_items), Object::Array(right_items)) => {
+                    let right_items = right_items.borrow().clone();
+                    let mut intersection: Vec<Object> = Vec::new();
+                    for item in left_items.borrow().iter() {
+                        if right_items.iter().any(|other| other.equals(item))
+                            && !intersection.iter().any(|kept| kept.equals(item))
+                        {
+                            intersection.push(item.clone());
+                        }
+                    }
+                    Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                        intersection,
+                    ))))
+                }
                 // nil & x always returns false (Ruby semantics)
                 (Object::Nil, _) | (_, Object::Nil) => Ok(Object::Bool(false)),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a & b)),
@@ -221,6 +237,23 @@ impl VirtualMachine {
                 (lhs, rhs) => Err(binary_type_error(BitwiseAnd, &lhs, &rhs, position)),
             },
             BitwiseOr => match (left, right) {
+                // Array union, keeping first-seen order and dropping
+                // duplicates.
+                (Object::Array(left_items), Object::Array(right_items)) => {
+                    let mut union: Vec<Object> = Vec::new();
+                    for item in left_items
+                        .borrow()
+                        .iter()
+                        .chain(right_items.borrow().iter())
+                    {
+                        if !union.iter().any(|kept| kept.equals(item)) {
+                            union.push(item.clone());
+                        }
+                    }
+                    Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                        union,
+                    ))))
+                }
                 // nil | x returns truthiness of x
                 (Object::Nil, other) => Ok(Object::Bool(other.is_truthy())),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a | b)),

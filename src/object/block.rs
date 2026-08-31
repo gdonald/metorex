@@ -38,6 +38,10 @@ pub struct BlockStatement {
     /// pair `__callee__` and `__method__` report. None for a block created
     /// outside any method.
     pub defining_method: Option<(String, String)>,
+    /// True for `-> {}` and `lambda {}`, false for `proc {}` and every
+    /// ordinary block. Lambdas check arity strictly; procs pad missing
+    /// arguments with nil and drop extras.
+    pub is_lambda: bool,
 }
 
 impl BlockStatement {
@@ -54,6 +58,7 @@ impl BlockStatement {
             captured_vars,
             captured_def_scope: Vec::new(),
             defining_method: None,
+            is_lambda: false,
         }
     }
 
@@ -67,6 +72,7 @@ impl BlockStatement {
         captured_vars: HashMap<String, Rc<RefCell<Object>>>,
         captured_def_scope: Vec<Rc<Class>>,
         defining_method: Option<(String, String)>,
+        is_lambda: bool,
     ) -> Self {
         Self {
             parameters,
@@ -75,6 +81,7 @@ impl BlockStatement {
             captured_vars,
             captured_def_scope,
             defining_method,
+            is_lambda,
         }
     }
 

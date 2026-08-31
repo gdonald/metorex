@@ -174,6 +174,10 @@ pub enum Expression {
         parameter_defaults: Vec<(usize, Expression)>,
         body: Vec<Statement>,
         captured_vars: Option<Vec<String>>, // Variables captured from outer scope
+        /// True for `-> {}` and `lambda {}`, false for `proc {}` and every
+        /// ordinary block. Lambdas check arity strictly and return from
+        /// themselves; procs do neither.
+        is_lambda: bool,
         position: Position,
     },
 

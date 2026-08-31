@@ -21,7 +21,7 @@ fn is_internal_key(key: &str) -> bool {
 
 /// Reconstruct the original key Object from its string key, using the sentinel
 /// __MX_KEY_OBJECTS__ sub-map if present for non-primitive keys.
-fn reconstruct_key(dict: &std::collections::HashMap<String, Object>, key_str: &str) -> Object {
+fn reconstruct_key(dict: &indexmap::IndexMap<String, Object>, key_str: &str) -> Object {
     if let Some(Object::Dict(key_objs)) = dict.get(KEY_OBJECTS_KEY)
         && let Some(obj) = key_objs.borrow().get(key_str)
     {
@@ -149,10 +149,10 @@ impl VirtualMachine {
                 let key_str =
                     crate::vm::utils::object_to_dict_key(&arguments[0]).unwrap_or_default();
                 let mut dict = dict_rc.borrow_mut();
-                let removed = dict.remove(&key_str).unwrap_or(Object::Nil);
+                let removed = dict.shift_remove(&key_str).unwrap_or(Object::Nil);
                 // Also remove from key objects sentinel if present
                 if let Some(Object::Dict(key_objs)) = dict.get(KEY_OBJECTS_KEY) {
-                    key_objs.borrow_mut().remove(&key_str);
+                    key_objs.borrow_mut().shift_remove(&key_str);
                 }
                 Ok(Some(removed))
             }

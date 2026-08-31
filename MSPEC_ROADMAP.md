@@ -312,21 +312,21 @@ Parser fixes during Phase 4 work:
   - [ ] 4.8.48. core/kernel/inspect_spec
   - [x] 4.8.49. core/kernel/instance_of_spec — 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.8.50. core/kernel/instance_variable_defined_spec — 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
-  - [ ] 4.8.51. core/kernel/instance_variable_get_spec
-  - [ ] 4.8.52. core/kernel/instance_variable_set_spec
-  - [ ] 4.8.53. core/kernel/instance_variables_spec
-  - [ ] 4.8.54. core/kernel/is_a_spec
-  - [ ] 4.8.55. core/kernel/itself_spec
-  - [ ] 4.8.56. core/kernel/kind_of_spec
-  - [ ] 4.8.57. core/kernel/lambda_spec
+  - [x] 4.8.51. core/kernel/instance_variable_get_spec — 1 file, 17 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 4.8.52. core/kernel/instance_variable_set_spec — 1 file, 15 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.8.53. core/kernel/instance_variables_spec — 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.8.54. core/kernel/is_a_spec — 1 file, 10 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.8.55. core/kernel/itself_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.56. core/kernel/kind_of_spec — 1 file, 10 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.8.57. core/kernel/lambda_spec — 1 file, 16 examples, 24 expectations, 0 failures, 0 errors
   - [ ] 4.8.58. core/kernel/load_spec
-  - [ ] 4.8.59. core/kernel/local_variables_spec
+  - [x] 4.8.59. core/kernel/local_variables_spec — 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.8.60. core/kernel/loop_spec
   - [x] 4.8.61. core/kernel/match_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.8.62. core/kernel/method_spec
-  - [ ] 4.8.63. core/kernel/methods_spec
-  - [ ] 4.8.64. core/kernel/nil_spec
-  - [ ] 4.8.65. core/kernel/not_match_spec
+  - [x] 4.8.62. core/kernel/method_spec — 1 file, 16 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 4.8.63. core/kernel/methods_spec — 1 file, 18 examples, 22 expectations, 0 failures, 0 errors
+  - [x] 4.8.64. core/kernel/nil_spec — 1 file, 1 example, 5 expectations, 0 failures, 0 errors
+  - [x] 4.8.65. core/kernel/not_match_spec — 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.8.66. core/kernel/object_id_spec
   - [ ] 4.8.67. core/kernel/open_spec
   - [ ] 4.8.68. core/kernel/p_spec

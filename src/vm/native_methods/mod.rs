@@ -209,6 +209,23 @@ impl VirtualMachine {
                 self.call_object_method(receiver, method_name, arguments, position)
             }
             "String" => self.call_string_method(receiver, method_name, arguments, position),
+            // Symbol shares String's character-level methods (`length`,
+            // `upcase`, `start_with?`, comparison). Object's come first so
+            // `class`, `inspect`, and friends report Symbol.
+            "Symbol" => {
+                if let Some(result) =
+                    self.call_object_method(receiver, method_name, arguments, position)?
+                {
+                    return Ok(Some(result));
+                }
+                // The rest of Symbol's surface is String's, applied to the
+                // characters the symbol is named with.
+                let Object::Symbol(text) = receiver else {
+                    return Ok(None);
+                };
+                let as_string = Object::String(Rc::clone(text));
+                self.call_string_method(&as_string, method_name, arguments, position)
+            }
             "Integer" => self.call_int_method(receiver, method_name, arguments, position),
             "Array" => self.call_array_method(receiver, method_name, arguments, position),
             "Hash" => self.call_hash_method(receiver, method_name, arguments, position),
@@ -417,7 +434,7 @@ impl VirtualMachine {
                 let dict = match existing {
                     Some(Object::Dict(d)) => d,
                     _ => {
-                        let d = Rc::new(std::cell::RefCell::new(std::collections::HashMap::new()));
+                        let d = Rc::new(std::cell::RefCell::new(indexmap::IndexMap::new()));
                         inst.borrow_mut()
                             .set_var("__thread_locals".to_string(), Object::Dict(Rc::clone(&d)));
                         d

@@ -48,6 +48,9 @@ impl Parser {
         token_position: Position,
     ) -> Result<Expression, MetorexError> {
         let mut elements = Vec::new();
+        // `[1, a: 2, b: 3]` and `[1, "k" => 2]` gather their trailing pairs
+        // into one Hash, the last element of the array.
+        let mut entries: Vec<(Expression, Expression)> = Vec::new();
         self.skip_whitespace();
 
         if !self.check(&[TokenKind::RBracket]) {
@@ -57,7 +60,10 @@ impl Parser {
                 if self.check(&[TokenKind::RBracket]) {
                     break;
                 }
-                elements.push(self.parse_expression()?);
+                match self.parse_implicit_hash_entry()? {
+                    Some(entry) => entries.push(entry),
+                    None => elements.push(self.parse_expression()?),
+                }
                 self.skip_whitespace();
 
                 if !self.match_token(&[TokenKind::Comma]) {
@@ -69,10 +75,52 @@ impl Parser {
         self.skip_whitespace();
         self.expect(TokenKind::RBracket, "Expected ']' after array elements")?;
 
+        if !entries.is_empty() {
+            elements.push(Expression::Dictionary {
+                entries,
+                position: token_position,
+            });
+        }
+
         Ok(Expression::Array {
             elements,
             position: token_position,
         })
+    }
+
+    /// Parse one `key: value` or `key => value` pair when the next tokens form
+    /// one. Returns `None` (having consumed nothing) for a plain element.
+    fn parse_implicit_hash_entry(
+        &mut self,
+    ) -> Result<Option<(Expression, Expression)>, MetorexError> {
+        // `ident: value` — the shorthand whose key is a Symbol.
+        if matches!(self.peek().kind, TokenKind::Ident(_))
+            && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            && !matches!(self.peek_ahead(2).kind, TokenKind::Colon)
+        {
+            let ident_token = self.advance();
+            let TokenKind::Ident(name) = ident_token.kind else {
+                unreachable!()
+            };
+            self.advance(); // consume ':'
+            self.skip_whitespace();
+            let key = Expression::Symbol {
+                value: name,
+                position: ident_token.position,
+            };
+            return Ok(Some((key, self.parse_expression()?)));
+        }
+
+        // `key => value` — parse the key, then commit only if `=>` follows.
+        let saved_position = self.stream().current_position();
+        let key = self.parse_expression()?;
+        self.skip_whitespace();
+        if self.match_token(&[TokenKind::FatArrow]) {
+            self.skip_whitespace();
+            return Ok(Some((key, self.parse_expression()?)));
+        }
+        self.stream.restore_position(saved_position);
+        Ok(None)
     }
 
     /// Parse a hash/dictionary literal after the opening `{` has been consumed.

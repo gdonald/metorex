@@ -210,3 +210,102 @@ fn test_continue_in_while_loop() {
     // count should only increment on odd numbers (1,3,5,7,9) = 5 times
     assert_eq!(vm.environment().get("count"), Some(Object::Int(5)));
 }
+
+// ── Kernel#loop ──────────────────────────────────────────────────────────────
+
+use metorex::lexer::Lexer;
+use metorex::parser::Parser;
+
+fn run_source(code: &str) -> Option<Object> {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).expect("execution failed")
+}
+
+fn run_source_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
+#[test]
+fn kernel_loop_runs_until_break() {
+    let result = run_source("count = 0\nloop do\n  count += 1\n  break if count == 10\nend\ncount");
+    assert_eq!(result, Some(Object::Int(10)));
+}
+
+#[test]
+fn kernel_loop_returns_the_break_value() {
+    let result = run_source("loop { break 123 }");
+    assert_eq!(result, Some(Object::Int(123)));
+}
+
+#[test]
+fn kernel_loop_returns_nil_for_a_bare_break() {
+    let result = run_source("loop { break }");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn kernel_loop_ends_on_stop_iteration() {
+    let result = run_source(
+        "tries = 0\nloop do\n  tries += 1\n  raise StopIteration if tries == 3\nend\ntries",
+    );
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn kernel_loop_ends_on_a_stop_iteration_subclass() {
+    let result = run_source(
+        "class Finished < StopIteration\nend\nreached = 0\nloop do\n  reached += 1\n  raise Finished\nend\nreached",
+    );
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn kernel_loop_ends_on_an_anonymous_stop_iteration_subclass() {
+    let result = run_source(
+        "finish = Class.new StopIteration\nreached = 0\nloop do\n  reached += 1\n  raise finish\nend\nreached",
+    );
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn kernel_loop_does_not_swallow_other_errors() {
+    let error = run_source_err(r#"loop { raise ArgumentError, "escapes" }"#);
+    assert!(error.contains("escapes"));
+}
+
+#[test]
+fn kernel_loop_rejects_arguments() {
+    let error = run_source_err("loop(1) { break }");
+    assert!(error.contains("loop() expects 0 arguments, got 1"));
+}
+
+#[test]
+fn kernel_loop_is_a_private_instance_method_on_kernel() {
+    let result = run_source("Kernel.private_instance_methods(false).include?(:loop)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn an_anonymous_exception_subclass_is_rescued_by_its_named_ancestor() {
+    let result = run_source(
+        r#"
+finish = Class.new StopIteration
+begin
+  raise finish
+rescue StopIteration => error
+  error.class.name
+end
+"#,
+    );
+    assert_eq!(
+        result,
+        Some(Object::String(std::rc::Rc::new(
+            "StopIteration".to_string()
+        )))
+    );
+}

@@ -302,3 +302,76 @@ end
         err
     );
 }
+
+// ── super falling through to a native Kernel method ──────────────────────────
+
+#[test]
+fn super_reaches_a_native_kernel_method_with_forwarded_args() {
+    let result = run(r#"
+class Loader
+  def instance_variable_get(name)
+    super
+  end
+end
+loader = Loader.new
+loader.instance_variable_set(:@state, 7)
+loader.instance_variable_get(:@state)
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn super_reaches_a_native_kernel_method_with_explicit_args() {
+    let result = run(r#"
+class Loader
+  def instance_variable_get(name)
+    super(name)
+  end
+end
+loader = Loader.new
+loader.instance_variable_set(:@state, 8)
+loader.instance_variable_get(:@state)
+"#);
+    assert_eq!(result, Some(Object::Int(8)));
+}
+
+#[test]
+fn super_reaches_a_zero_argument_native_kernel_method() {
+    let result = run(r#"
+class Loader
+  def frozen?
+    super
+  end
+end
+Loader.new.frozen?
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn super_reaches_a_kernel_native_function() {
+    let result = run(r#"
+class Loader
+  def require_relative(path)
+    super
+  end
+end
+Loader.new.respond_to?(:require_relative)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn super_still_errors_for_a_name_no_ancestor_defines() {
+    let error = run_err(
+        r#"
+class Missing
+  def no_such_kernel_method
+    super
+  end
+end
+Missing.new.no_such_kernel_method
+"#,
+    );
+    assert!(error.contains("Superclass Object does not define method 'no_such_kernel_method'"));
+}

@@ -64,7 +64,7 @@ fn find_compiled_functions_recursive<'a>(
 
 #[test]
 fn compile_simple_lambda() {
-    let chunk = compile("lambda do 42 end");
+    let chunk = compile("-> { 42 }");
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
     assert_eq!(block.arity, 0);
@@ -72,7 +72,7 @@ fn compile_simple_lambda() {
 
 #[test]
 fn compile_lambda_with_parameter() {
-    let chunk = compile("lambda do |x| x end");
+    let chunk = compile("-> (x) { x }");
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
     assert_eq!(block.arity, 1);
@@ -80,7 +80,7 @@ fn compile_lambda_with_parameter() {
 
 #[test]
 fn compile_lambda_with_multiple_parameters() {
-    let chunk = compile("lambda do |a, b| a end");
+    let chunk = compile("-> (a, b) { a }");
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
     assert_eq!(block.arity, 2);
@@ -88,7 +88,7 @@ fn compile_lambda_with_multiple_parameters() {
 
 #[test]
 fn block_body_has_return() {
-    let chunk = compile("lambda do 42 end");
+    let chunk = compile("-> { 42 }");
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
     let body_ops = opcodes(&block.chunk);
@@ -100,7 +100,7 @@ fn block_body_has_return() {
 #[test]
 fn block_captures_enclosing_variable() {
     // x is defined in outer function, block captures it
-    let source = "def outer\n  x = 10\n  lambda do x end\nend";
+    let source = "def outer\n  x = 10\n  -> { x }\nend";
     let chunk = compile(source);
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
@@ -114,7 +114,7 @@ fn block_captures_enclosing_variable() {
 
 #[test]
 fn block_captures_function_parameter() {
-    let source = "def outer(val)\n  lambda do val end\nend";
+    let source = "def outer(val)\n  -> { val }\nend";
     let chunk = compile(source);
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
@@ -124,7 +124,7 @@ fn block_captures_function_parameter() {
 
 #[test]
 fn block_without_captures_no_closure_op() {
-    let chunk = compile("lambda do 42 end");
+    let chunk = compile("-> { 42 }");
     let ops = opcodes(&chunk);
     assert!(
         !ops.contains(&OpCode::Closure),
@@ -136,7 +136,7 @@ fn block_without_captures_no_closure_op() {
 
 #[test]
 fn block_with_captures_emits_closure() {
-    let source = "def outer\n  x = 1\n  lambda do x end\nend";
+    let source = "def outer\n  x = 1\n  -> { x }\nend";
     let chunk = compile(source);
     let funcs = find_compiled_functions(&chunk);
     let outer = funcs.iter().find(|f| f.name == "outer").unwrap();
@@ -152,7 +152,7 @@ fn block_with_captures_emits_closure() {
 
 #[test]
 fn block_stored_as_compiled_function() {
-    let chunk = compile("lambda do |x| x + 1 end");
+    let chunk = compile("-> (x) { x + 1 }");
     let funcs = find_compiled_functions(&chunk);
     assert!(
         funcs.iter().any(|f| f.name == "<block>"),
@@ -162,7 +162,7 @@ fn block_stored_as_compiled_function() {
 
 #[test]
 fn block_body_contains_correct_bytecode() {
-    let chunk = compile("lambda do |a, b| a + b end");
+    let chunk = compile("-> (a, b) { a + b }");
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
     let body_ops = opcodes(&block.chunk);
@@ -180,7 +180,7 @@ fn block_body_contains_correct_bytecode() {
 
 #[test]
 fn block_with_if_in_body() {
-    let source = "lambda do |x| if x\n    1\n  else\n    2\n  end end";
+    let source = "-> (x) { if x\n    1\n  else\n    2\n  end }";
     let chunk = compile(source);
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
@@ -193,7 +193,7 @@ fn block_with_if_in_body() {
 #[test]
 fn block_as_expression_statement() {
     // Block as a standalone expression (gets popped)
-    let chunk = compile("lambda do 42 end");
+    let chunk = compile("-> { 42 }");
     let ops = opcodes(&chunk);
     assert!(ops.contains(&OpCode::Pop));
 }
@@ -202,7 +202,7 @@ fn block_as_expression_statement() {
 
 #[test]
 fn multiple_blocks_in_same_scope() {
-    let chunk = compile("lambda do 1 end\nlambda do 2 end");
+    let chunk = compile("-> { 1 }\n-> { 2 }");
     let funcs = find_compiled_functions(&chunk);
     let block_count = funcs.iter().filter(|f| f.name == "<block>").count();
     assert_eq!(block_count, 2, "Expected 2 blocks");
@@ -212,7 +212,7 @@ fn multiple_blocks_in_same_scope() {
 
 #[test]
 fn block_with_local_assignment() {
-    let chunk = compile("lambda do\n  x = 42\n  x\nend");
+    let chunk = compile("-> {\n  x = 42\n  x\n}");
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();
     let body_ops = opcodes(&block.chunk);
@@ -223,7 +223,7 @@ fn block_with_local_assignment() {
 
 #[test]
 fn block_captures_multiple_variables() {
-    let source = "def f\n  a = 1\n  b = 2\n  lambda do a + b end\nend";
+    let source = "def f\n  a = 1\n  b = 2\n  -> { a + b }\nend";
     let chunk = compile(source);
     let funcs = find_compiled_functions(&chunk);
     let block = funcs.iter().find(|f| f.name == "<block>").unwrap();

@@ -11,8 +11,8 @@ use crate::ast::{Expression, InterpolationPart, Statement};
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
@@ -62,8 +62,8 @@ impl VirtualMachine {
         &mut self,
         entries: &[(Expression, Expression)],
     ) -> Result<Object, MetorexError> {
-        let mut map = HashMap::with_capacity(entries.len());
-        let mut key_objs: HashMap<String, Object> = HashMap::new();
+        let mut map = IndexMap::with_capacity(entries.len());
+        let mut key_objs: IndexMap<String, Object> = IndexMap::new();
 
         for (key_expr, value_expr) in entries {
             let key_value = self.evaluate_expression(key_expr)?;

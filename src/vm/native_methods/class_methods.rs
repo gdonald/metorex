@@ -2272,14 +2272,12 @@ impl VirtualMachine {
             Object::String(s) => Ok((**s).clone()),
             other => {
                 let other_obj = other.clone();
+                let source_class = self.builtins().class_of(other).name().to_string();
                 let converted =
                     if let Some((cls, method)) = self.lookup_method(&other_obj, "to_str") {
                         self.invoke_method(cls, method, other_obj, Vec::new(), position)?
                     } else {
-                        let msg = format!(
-                            "no implicit conversion of {} into String",
-                            other.type_name()
-                        );
+                        let msg = format!("no implicit conversion of {} into String", source_class);
                         let exc = Object::exception("TypeError", msg.clone());
                         return Err(MetorexError::UncaughtException {
                             exception: exc,
@@ -2290,7 +2288,8 @@ impl VirtualMachine {
                 match converted {
                     Object::String(s) => Ok((*s).clone()),
                     other => {
-                        let msg = format!("can't convert {} to String", other.type_name());
+                        let converted_class = self.builtins().class_of(&other).name().to_string();
+                        let msg = format!("can't convert {} to String", converted_class);
                         let exc = Object::exception("TypeError", msg.clone());
                         Err(MetorexError::UncaughtException {
                             exception: exc,
@@ -2320,6 +2319,31 @@ impl VirtualMachine {
             return Ok(rest.to_string());
         }
         let msg = format!("`{}' is not allowed as a class variable name", name);
+        let exc = Object::exception("NameError", msg.clone());
+        Err(MetorexError::UncaughtException {
+            exception: exc,
+            location: position_to_location(position),
+            message: msg,
+        })
+    }
+
+    /// Coerce an instance-variable name argument to its storage key (the name
+    /// with the leading `@` removed). Strings and Symbols are used directly;
+    /// any other object is converted via `to_str`. Raises TypeError when that
+    /// conversion is missing or returns a non-String, and NameError when the
+    /// resulting name is not a valid instance variable name.
+    pub(crate) fn coerce_instance_variable_name(
+        &mut self,
+        arg: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let name = self.coerce_name_argument(arg, position)?;
+        if let Some(rest) = name.strip_prefix('@')
+            && is_valid_class_variable_ident(rest)
+        {
+            return Ok(rest.to_string());
+        }
+        let msg = format!("`{}' is not allowed as an instance variable name", name);
         let exc = Object::exception("NameError", msg.clone());
         Err(MetorexError::UncaughtException {
             exception: exc,
@@ -2600,6 +2624,16 @@ pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "initialize_clone",
     "initialize_copy",
     "initialize_dup",
+    "lambda",
+    "local_variables",
+    "loop",
+    "p",
+    "pp",
+    "print",
+    "printf",
+    "proc",
+    "putc",
+    "puts",
     "throw",
 ];
 
@@ -2679,6 +2713,7 @@ pub(super) const NATIVE_KERNEL_METHODS: &[(&str, &[&str], bool)] = &[
     ("is_a?", &["klass"], false),
     ("itself", &[], false),
     ("kind_of?", &["klass"], false),
+    ("lambda", &[], false),
     ("method", &["name"], false),
     ("methods", &["regular"], true),
     ("nil?", &[], false),
@@ -2843,10 +2878,10 @@ pub(super) fn push_class_ancestors(
 fn is_valid_class_variable_ident(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
-        Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+        Some(c) if c.is_alphabetic() || c == '_' || !c.is_ascii() => {}
         _ => return false,
     }
-    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    chars.all(|c| c.is_alphanumeric() || c == '_' || !c.is_ascii())
 }
 
 /// Kernel methods that `call_object_method` implements natively, so a
@@ -2871,6 +2906,7 @@ pub(crate) fn is_native_kernel_method(name: &str) -> bool {
             | "is_a?"
             | "itself"
             | "kind_of?"
+            | "lambda"
             | "method"
             | "methods"
             | "nil?"

@@ -130,6 +130,213 @@ fn test_introspection_block_given_context_execution() {
 }
 
 #[test]
+fn test_introspection_instance_variable_get_names() {
+    let expected = concat!(
+        "hello\nhello\nhello\nnil\nnil\n",
+        "NameError: `@' is not allowed as an instance variable name\n",
+        "NameError: `@0' is not allowed as an instance variable name\n",
+        "NameError: `@@greeting' is not allowed as an instance variable name\n",
+        "NameError: `greeting' is not allowed as an instance variable name\n",
+        "TypeError: no implicit conversion of Integer into String\n"
+    );
+    let output = run_example("introspection/instance_variable_get_names.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_instance_variable_get_names_no_parens() {
+    let expected = concat!(
+        "hello\nhello\nhello\nnil\nnil\n",
+        "NameError: `@' is not allowed as an instance variable name\n",
+        "NameError: `@0' is not allowed as an instance variable name\n",
+        "NameError: `@@greeting' is not allowed as an instance variable name\n",
+        "NameError: `greeting' is not allowed as an instance variable name\n",
+        "TypeError: no implicit conversion of Integer into String\n"
+    );
+    let output = run_example("introspection/instance_variable_get_names_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_instance_variable_set_names() {
+    let expected = concat!(
+        "hi\nhey\nhowdy\nhowdy\n42\n",
+        "NameError: `@' is not allowed as an instance variable name\n",
+        "NameError: `@0' is not allowed as an instance variable name\n",
+        "NameError: `@@greeting' is not allowed as an instance variable name\n",
+        "NameError: `greeting' is not allowed as an instance variable name\n",
+        "NameError: `greeting' is not allowed as an instance variable name\n",
+        "FrozenError: can't modify frozen NilClass: nil\n",
+        "TypeError: no implicit conversion of Integer into String\n"
+    );
+    let output = run_example("introspection/instance_variable_set_names.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_instance_variable_set_names_no_parens() {
+    let expected = concat!(
+        "hi\nhey\nhowdy\nhowdy\n42\n",
+        "NameError: `@' is not allowed as an instance variable name\n",
+        "NameError: `@0' is not allowed as an instance variable name\n",
+        "NameError: `@@greeting' is not allowed as an instance variable name\n",
+        "NameError: `greeting' is not allowed as an instance variable name\n",
+        "NameError: `greeting' is not allowed as an instance variable name\n",
+        "FrozenError: can't modify frozen NilClass: nil\n",
+        "TypeError: no implicit conversion of Integer into String\n"
+    );
+    let output = run_example("introspection/instance_variable_set_names_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_instance_variables_order() {
+    let expected = concat!(
+        "[:@name, :@servings, :@vegetarian]\n",
+        "[:@name, :@servings, :@vegetarian, :@rating]\n",
+        "[]\n[]\n[]\n"
+    );
+    let output = run_example("introspection/instance_variables_order.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_instance_variables_order_no_parens() {
+    let expected = concat!(
+        "[:@name, :@servings, :@vegetarian]\n",
+        "[:@name, :@servings, :@vegetarian, :@rating]\n",
+        "[]\n[]\n[]\n"
+    );
+    let output = run_example("introspection/instance_variables_order_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_itself() {
+    let expected = concat!(
+        "gear\ntrue\n42\ntext\n:symbol\nnil\n",
+        "[3, 1, 2]\n[3, 1, 2]\nWidget\nArgumentError\n"
+    );
+    let output = run_example("introspection/itself.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_itself_no_parens() {
+    let expected = concat!(
+        "gear\ntrue\n42\ntext\n:symbol\nnil\n",
+        "[3, 1, 2]\n[3, 1, 2]\nWidget\nArgumentError\n"
+    );
+    let output = run_example("introspection/itself_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_local_variables() {
+    let expected = concat!(
+        "[:top_level_one, :top_level_two]\n",
+        "[:inside_one, :inside_two]\n",
+        "[:shadowed]\n",
+        "[:bound_one, :bound_two]\n",
+        "[:in_block]\n",
+        "[:collected, :evaluated_one, :evaluated_two, :top_level_one, :top_level_two]\n"
+    );
+    let output = run_example("introspection/local_variables.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_local_variables_no_parens() {
+    let expected = concat!(
+        "[:top_level_one, :top_level_two]\n",
+        "[:inside_one, :inside_two]\n",
+        "[:shadowed]\n",
+        "[:bound_one, :bound_two]\n",
+        "[:in_block]\n",
+        "[:binding_locals, :collected, :evaluated_one, :evaluated_two, ",
+        ":top_level_one, :top_level_two]\n"
+    );
+    let output = run_example("introspection/local_variables_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_method_via_respond_to_missing() {
+    let expected = concat!(
+        "Method\n",
+        "called haunt with []\n",
+        "called haunt with [1, 2]\n",
+        "called whisper with [\"softly\"]\n",
+        "NameError: undefined method 'unknown' for class 'Ghost'\n",
+        ":only_name\nArgumentError\nSHOUT\n",
+        "TypeError: no implicit conversion of Object into String\n"
+    );
+    let output = run_example("introspection/method_via_respond_to_missing.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_method_via_respond_to_missing_no_parens() {
+    let expected = concat!(
+        "Method\n",
+        "called haunt with []\n",
+        "called haunt with [1, 2]\n",
+        "called whisper with [\"softly\"]\n",
+        "NameError: undefined method 'unknown' for class 'Ghost'\n",
+        ":only_name\nArgumentError\nSHOUT\n",
+        "TypeError: no implicit conversion of Object into String\n"
+    );
+    let output = run_example("introspection/method_via_respond_to_missing_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_methods_listing() {
+    let expected = concat!(
+        "[]\n[:polish]\n[:greet, :polish]\ntrue\n",
+        "[:buff, :greet, :polish]\n[:buff, :greet]\n",
+        "false\ntrue\nSymbol\nfalse\n6\n",
+        "[2, 3]\n[1, 2, 3, 4]\n"
+    );
+    let output = run_example("introspection/methods_listing.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_methods_listing_no_parens() {
+    let expected = concat!(
+        "[]\n[:polish]\n[:greet, :polish]\ntrue\n",
+        "[:buff, :greet, :polish]\n[:buff, :greet]\n",
+        "false\ntrue\nSymbol\nfalse\n6\n",
+        "[2, 3]\n[1, 2, 3, 4]\n"
+    );
+    let output = run_example("introspection/methods_listing_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_object_id() {
+    let expected = concat!(
+        "true\ntrue\nfalse\nfalse\n",
+        "true\nfalse\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\n",
+        "4\n2\n0\n3\nfalse\nfalse\n"
+    );
+    let output = run_example("introspection/object_id.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_object_id_no_parens() {
+    let expected = concat!(
+        "true\ntrue\nfalse\nfalse\n",
+        "true\nfalse\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\n",
+        "4\n2\n0\n3\nfalse\nfalse\n"
+    );
+    let output = run_example("introspection/object_id_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
 fn test_introspection_instance_variable_queries_execution() {
     let expected = concat!(
         "true\ntrue\nfalse\nfalse\nTypeError\n",

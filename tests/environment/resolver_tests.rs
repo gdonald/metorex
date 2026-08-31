@@ -497,6 +497,7 @@ fn resolver_lambda_expression() {
                 },
             )],
             captured_vars: None,
+            is_lambda: false,
             position: pos(),
         },
     );

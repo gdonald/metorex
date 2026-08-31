@@ -1,5 +1,6 @@
 // Type System Tests - hash() method
 
+use indexmap::IndexMap;
 use metorex::object::{Class, Instance, Object};
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -66,7 +67,7 @@ fn test_hash_non_hashable() {
     let class = Rc::new(Class::new("Test", None));
     let inst = Object::Instance(Rc::new(RefCell::new(Instance {
         class,
-        instance_vars: HashMap::new(),
+        instance_vars: IndexMap::new(),
         singleton_methods: Rc::new(RefCell::new(HashMap::new())),
         singleton_class: Rc::new(RefCell::new(None)),
         frozen: false,

@@ -1,7 +1,7 @@
 // Main execution loop for the bytecode VM
 
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::bytecode::opcode::OpCode;
@@ -251,7 +251,7 @@ impl BytecodeVm {
                     let pair_count = count * 2;
                     let start = self.stack.len() - pair_count;
                     let items: Vec<Object> = self.stack.drain(start..).collect();
-                    let mut map = HashMap::new();
+                    let mut map = IndexMap::new();
                     for pair in items.chunks(2) {
                         let key = match &pair[0] {
                             Object::String(s) => s.to_string(),

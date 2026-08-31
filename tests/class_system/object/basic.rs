@@ -1,5 +1,6 @@
 // Basic Object Tests - creation, type checking, variables, and ObjectHash
 
+use indexmap::IndexMap;
 use metorex::object::{BlockStatement, Class, Method, Object, ObjectHash};
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -65,7 +66,7 @@ fn test_empty_array() {
 
 #[test]
 fn test_dict_object() {
-    let mut map = HashMap::new();
+    let mut map = IndexMap::new();
     map.insert("x".to_string(), Object::Int(1));
     map.insert("y".to_string(), Object::Int(2));
     let obj = Object::dict(map);

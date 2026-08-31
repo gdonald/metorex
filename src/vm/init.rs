@@ -8,6 +8,7 @@ use crate::builtin_classes::{self, BuiltinClasses};
 use crate::class::Class;
 use crate::environment::Environment;
 use crate::object::{Binding, Object};
+use indexmap::IndexMap;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -324,7 +325,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
 
     // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)
     // because object_to_dict_key returns the raw String for Object::String.
-    let mut env_map = std::collections::HashMap::new();
+    let mut env_map = IndexMap::new();
     for (k, v) in std::env::vars() {
         env_map.insert(k, Object::String(Rc::new(v)));
     }
@@ -399,6 +400,12 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
         Object::NativeFunction("assert_raises".to_string()),
     );
     globals.set("method", Object::NativeFunction("method".to_string()));
+    globals.set("lambda", Object::NativeFunction("lambda".to_string()));
+    globals.set("loop", Object::NativeFunction("loop".to_string()));
+    globals.set(
+        "local_variables",
+        Object::NativeFunction("local_variables".to_string()),
+    );
     globals.set("proc", Object::NativeFunction("proc".to_string()));
     globals.set("require", Object::NativeFunction("require".to_string()));
     globals.set(

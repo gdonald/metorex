@@ -1,5 +1,6 @@
 // Type System Tests - equals() method
 
+use indexmap::IndexMap;
 use metorex::object::{BlockStatement, Class, Exception, Instance, Method, Object, ObjectHash};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -85,17 +86,17 @@ fn test_equals_array_nested() {
 
 #[test]
 fn test_equals_dict_simple() {
-    let mut map1 = HashMap::new();
+    let mut map1 = IndexMap::new();
     map1.insert("x".to_string(), Object::Int(10));
     map1.insert("y".to_string(), Object::Int(20));
     let dict1 = Object::Dict(Rc::new(RefCell::new(map1)));
 
-    let mut map2 = HashMap::new();
+    let mut map2 = IndexMap::new();
     map2.insert("x".to_string(), Object::Int(10));
     map2.insert("y".to_string(), Object::Int(20));
     let dict2 = Object::Dict(Rc::new(RefCell::new(map2)));
 
-    let mut map3 = HashMap::new();
+    let mut map3 = IndexMap::new();
     map3.insert("x".to_string(), Object::Int(10));
     let dict3 = Object::Dict(Rc::new(RefCell::new(map3)));
 
@@ -105,24 +106,24 @@ fn test_equals_dict_simple() {
 
 #[test]
 fn test_equals_dict_nested() {
-    let mut inner1 = HashMap::new();
+    let mut inner1 = IndexMap::new();
     inner1.insert("a".to_string(), Object::Int(1));
 
-    let mut map1 = HashMap::new();
+    let mut map1 = IndexMap::new();
     map1.insert("x".to_string(), Object::Dict(Rc::new(RefCell::new(inner1))));
     let dict1 = Object::Dict(Rc::new(RefCell::new(map1)));
 
-    let mut inner2 = HashMap::new();
+    let mut inner2 = IndexMap::new();
     inner2.insert("a".to_string(), Object::Int(1));
 
-    let mut map2 = HashMap::new();
+    let mut map2 = IndexMap::new();
     map2.insert("x".to_string(), Object::Dict(Rc::new(RefCell::new(inner2))));
     let dict2 = Object::Dict(Rc::new(RefCell::new(map2)));
 
-    let mut inner3 = HashMap::new();
+    let mut inner3 = IndexMap::new();
     inner3.insert("a".to_string(), Object::Int(2));
 
-    let mut map3 = HashMap::new();
+    let mut map3 = IndexMap::new();
     map3.insert("x".to_string(), Object::Dict(Rc::new(RefCell::new(inner3))));
     let dict3 = Object::Dict(Rc::new(RefCell::new(map3)));
 
@@ -136,7 +137,7 @@ fn test_equals_instance() {
 
     let inst1 = Rc::new(RefCell::new(Instance {
         class: Rc::clone(&class),
-        instance_vars: HashMap::new(),
+        instance_vars: IndexMap::new(),
         singleton_methods: Rc::new(RefCell::new(HashMap::new())),
         singleton_class: Rc::new(RefCell::new(None)),
         frozen: false,
@@ -144,7 +145,7 @@ fn test_equals_instance() {
     let inst2 = Rc::clone(&inst1);
     let inst3 = Rc::new(RefCell::new(Instance {
         class: Rc::clone(&class),
-        instance_vars: HashMap::new(),
+        instance_vars: IndexMap::new(),
         singleton_methods: Rc::new(RefCell::new(HashMap::new())),
         singleton_class: Rc::new(RefCell::new(None)),
         frozen: false,
@@ -240,6 +241,7 @@ fn test_equals_block() {
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
         defining_method: None,
+        is_lambda: false,
     });
     let block2 = Rc::clone(&block1);
     let block3 = Rc::new(BlockStatement {
@@ -249,6 +251,7 @@ fn test_equals_block() {
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
         defining_method: None,
+        is_lambda: false,
     });
 
     let obj1 = Object::Block(block1);

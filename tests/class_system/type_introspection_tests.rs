@@ -178,6 +178,45 @@ C.ancestors.length
 // ============================================================================
 
 #[test]
+fn itself_returns_the_same_instance() {
+    let result = run(r#"
+class Widget
+end
+widget = Widget.new
+widget.itself.equal?(widget)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn itself_returns_an_immediate_receiver() {
+    let result = run("42.itself");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn itself_returns_a_class_receiver() {
+    let result = run(r#"
+class Widget
+end
+Widget.itself.name
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("Widget".to_string()))));
+}
+
+#[test]
+fn itself_with_an_argument_raises_argument_error() {
+    let error = run_err("Object.new.itself(1)");
+    assert!(error.contains("Method 'itself' expected 0 argument(s) but received 1"));
+}
+
+#[test]
+fn itself_is_reported_by_respond_to() {
+    let result = run("Object.new.respond_to?(:itself)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
 fn instance_variables_returns_array() {
     let result = run(r#"
 class Person
@@ -190,6 +229,61 @@ p = Person.new("Alice", 30)
 p.instance_variables.length
 "#);
     assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn instance_variables_returns_symbols_in_declaration_order() {
+    let result = run(r#"
+class Recipe
+  def initialize
+    @c = 1
+    @a = 2
+    @b = 3
+  end
+end
+Recipe.new.instance_variables.inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:@c, :@a, :@b]".to_string())))
+    );
+}
+
+#[test]
+fn instance_variables_appends_a_later_assignment_last() {
+    let result = run(r#"
+class Recipe
+  def initialize
+    @name = "stew"
+  end
+end
+recipe = Recipe.new
+recipe.instance_variable_set(:@rating, 5)
+recipe.instance_variables.inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:@name, :@rating]".to_string())))
+    );
+}
+
+#[test]
+fn instance_variables_keeps_position_when_reassigned() {
+    let result = run(r#"
+class Recipe
+  def initialize
+    @name = "stew"
+    @servings = 4
+  end
+end
+recipe = Recipe.new
+recipe.instance_variable_set(:@name, "soup")
+recipe.instance_variables.inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:@name, :@servings]".to_string())))
+    );
 }
 
 #[test]
@@ -217,8 +311,9 @@ p.instance_variable_get("@name")
 }
 
 #[test]
-fn instance_variable_get_without_at_prefix() {
-    let result = run(r#"
+fn instance_variable_get_string_without_at_prefix_raises_name_error() {
+    let error = run_err(
+        r#"
 class Person
   def initialize(name)
     @name = name
@@ -226,8 +321,118 @@ class Person
 end
 p = Person.new("Bob")
 p.instance_variable_get("name")
+"#,
+    );
+    assert!(error.contains("`name' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_set_without_at_prefix_raises_name_error() {
+    let error = run_err(r#"Object.new.instance_variable_set("name", 1)"#);
+    assert!(error.contains("`name' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_set_validates_name_before_frozen_receiver() {
+    let error = run_err(r#""".instance_variable_set(:name, 1)"#);
+    assert!(error.contains("`name' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_set_converts_argument_with_to_str() {
+    let result = run(r#"
+class Name
+  def to_str
+    "@test"
+  end
+end
+obj = Object.new
+obj.instance_variable_set(Name.new, 7)
+obj.instance_variable_get(:@test)
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Bob".to_string()))));
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn instance_variable_set_integer_raises_type_error() {
+    let error = run_err("Object.new.instance_variable_set(10, 1)");
+    assert!(error.contains("no implicit conversion of Integer into String"));
+}
+
+#[test]
+fn instance_variable_set_accepts_a_non_ascii_name() {
+    let result = run(r#"
+obj = Object.new
+obj.instance_variable_set(:@été, 5)
+obj.instance_variable_get(:@été)
+"#);
+    assert_eq!(result, Some(Object::Int(5)));
+}
+
+#[test]
+fn instance_variable_get_symbol_without_at_prefix_raises_name_error() {
+    let error = run_err("Object.new.instance_variable_get(:name)");
+    assert!(error.contains("`name' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_get_bare_at_raises_name_error() {
+    let error = run_err(r#"Object.new.instance_variable_get("@")"#);
+    assert!(error.contains("`@' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_get_digit_start_raises_name_error() {
+    let error = run_err(r#"Object.new.instance_variable_get("@0")"#);
+    assert!(error.contains("`@0' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_get_class_variable_name_raises_name_error() {
+    let error = run_err(r#"Object.new.instance_variable_get("@@name")"#);
+    assert!(error.contains("`@@name' is not allowed as an instance variable name"));
+}
+
+#[test]
+fn instance_variable_get_integer_raises_type_error() {
+    let error = run_err("Object.new.instance_variable_get(10)");
+    assert!(error.contains("no implicit conversion of Integer into String"));
+}
+
+#[test]
+fn instance_variable_get_converts_argument_with_to_str() {
+    let result = run(r#"
+class Name
+  def to_str
+    "@test"
+  end
+end
+obj = Object.new
+obj.instance_variable_set(:@test, 7)
+obj.instance_variable_get(Name.new)
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn instance_variable_get_to_str_returning_non_string_raises_type_error() {
+    let error = run_err(
+        r#"
+class Name
+  def to_str
+    123
+  end
+end
+Object.new.instance_variable_get(Name.new)
+"#,
+    );
+    assert!(error.contains("can't convert Integer to String"));
+}
+
+#[test]
+fn instance_variable_get_on_nil_returns_nil() {
+    let result = run("nil.instance_variable_get(:@foo)");
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]
@@ -369,7 +574,7 @@ class Person
   end
 end
 p = Person.new("Alice")
-p.instance_variable_get(:name)
+p.instance_variable_get(:@name)
 "#);
     assert_eq!(result, Some(Object::String(Rc::new("Alice".to_string()))));
 }
@@ -383,4 +588,408 @@ h2["c"] = 3
 h1.size
 "#);
     assert_eq!(result, Some(Object::Int(2)));
+}
+
+// ── Kernel#local_variables ───────────────────────────────────────────────────
+
+#[test]
+fn local_variables_reports_top_level_locals() {
+    let result = run("a = 1\nb = 2\nlocal_variables.inspect");
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:a, :b]".to_string())))
+    );
+}
+
+#[test]
+fn local_variables_excludes_the_callers_locals_inside_a_method() {
+    let result = run(r#"
+outer = 1
+def only_mine
+  mine = 2
+  local_variables
+end
+only_mine().inspect
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("[:mine]".to_string()))));
+}
+
+#[test]
+fn local_variables_reports_a_name_once_when_a_block_shadows_it() {
+    let result = run(r#"
+def shadowing
+  name = 1
+  1.times do |;name|
+    return local_variables
+  end
+end
+shadowing().inspect
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("[:name]".to_string()))));
+}
+
+#[test]
+fn local_variables_reports_a_bindings_locals() {
+    let result = run(r#"
+def bound
+  first = 1
+  second = 2
+  binding
+end
+eval("local_variables", bound()).inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:first, :second]".to_string())))
+    );
+}
+
+#[test]
+fn local_variables_rejects_arguments() {
+    let error = run_err("local_variables(1)");
+    assert!(error.contains("local_variables() expects 0 arguments, got 1"));
+}
+
+#[test]
+fn local_variables_is_a_private_instance_method_on_kernel() {
+    let result = run("Kernel.private_instance_methods(false).include?(:local_variables)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── case/when with no matching branch ────────────────────────────────────────
+
+#[test]
+fn case_when_without_a_matching_branch_is_nil() {
+    let result = run("case 5\nwhen 1 then :one\nwhen 2 then :two\nend");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+// ── A bare zero-argument def name is a call ──────────────────────────────────
+
+#[test]
+fn a_bare_zero_argument_method_name_calls_it() {
+    let result = run("def answer\n  42\nend\nanswer");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn a_local_holding_a_method_object_stays_a_value() {
+    let result = run(r#"
+def answer
+  42
+end
+held = method(:answer)
+held.class.name
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("Method".to_string()))));
+}
+
+// ── File.executable? ─────────────────────────────────────────────────────────
+
+#[test]
+fn file_executable_is_false_for_a_missing_path() {
+    let result = run(r#"File.executable?("/no/such/path/at/all")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn file_executable_is_true_for_a_shell_binary() {
+    let result = run(r#"File.executable?("/bin/sh")"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn file_executable_is_false_for_a_plain_file() {
+    let result = run(r#"File.executable?("/etc/hosts")"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+// ── Object#method ────────────────────────────────────────────────────────────
+
+#[test]
+fn method_converts_its_name_argument_with_to_str() {
+    let result = run(r#"
+class Named
+  def to_str
+    "upcase"
+  end
+end
+"shout".method(Named.new).call
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("SHOUT".to_string()))));
+}
+
+#[test]
+fn method_raises_type_error_for_a_name_it_cannot_convert() {
+    let error = run_err("Object.new.method([])");
+    assert!(error.contains("no implicit conversion of Array into String"));
+}
+
+#[test]
+fn method_propagates_an_error_raised_inside_to_str() {
+    let error = run_err(
+        r#"
+class Exploding
+  def to_str
+    raise NoMethodError, "from to_str"
+  end
+end
+Object.new.method(Exploding.new)
+"#,
+    );
+    assert!(error.contains("from to_str"));
+}
+
+#[test]
+fn method_answers_a_name_claimed_by_respond_to_missing() {
+    let result = run(r#"
+class Ghost
+  def respond_to_missing?(name, include_private = false)
+    name == :haunt
+  end
+
+  def method_missing(name, *args)
+    "called #{name} with #{args.inspect}"
+  end
+end
+Ghost.new.method(:haunt).call(1, 2)
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new(
+            "called haunt with [1, 2]".to_string()
+        )))
+    );
+}
+
+#[test]
+fn method_asks_respond_to_missing_with_private_allowed() {
+    let result = run(r#"
+class Ghost
+  def respond_to_missing?(name, include_private = false)
+    name == :whisper && include_private
+  end
+
+  def method_missing(name, *args)
+    name
+  end
+end
+Ghost.new.method(:whisper).call.inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new(":whisper".to_string())))
+    );
+}
+
+#[test]
+fn method_missing_dispatcher_keeps_its_own_arity() {
+    let error = run_err(
+        r#"
+class OneArgument
+  def respond_to_missing?(name, include_private = false)
+    name == :only_name
+  end
+
+  def method_missing(name)
+    name
+  end
+end
+OneArgument.new.method(:only_name).call(1)
+"#,
+    );
+    assert!(error.contains("expected 1 argument(s) but received 2"));
+}
+
+#[test]
+fn method_still_raises_name_error_when_respond_to_missing_says_no() {
+    let error = run_err(
+        r#"
+class Ghost
+  def respond_to_missing?(name, include_private = false)
+    false
+  end
+end
+Ghost.new.method(:unknown)
+"#,
+    );
+    assert!(error.contains("undefined method 'unknown' for class 'Ghost'"));
+}
+
+// ── Object#methods ───────────────────────────────────────────────────────────
+
+#[test]
+fn methods_lists_a_def_on_the_object_itself() {
+    let result = run(r#"
+class Widget
+end
+widget = Widget.new
+def widget.polish
+  :shiny
+end
+widget.methods(false).inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:polish]".to_string())))
+    );
+}
+
+#[test]
+fn methods_lists_a_module_attached_by_extend() {
+    let result = run(r#"
+module Greeting
+  def greet
+    "hello"
+  end
+end
+class Widget
+end
+widget = Widget.new
+widget.extend(Greeting)
+widget.methods(false).inspect
+"#);
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[:greet]".to_string())))
+    );
+}
+
+#[test]
+fn methods_omits_a_private_singleton_method() {
+    let result = run(r#"
+class Widget
+end
+widget = Widget.new
+class << widget
+  def buff
+    :buffed
+  end
+
+  private
+
+  def secret
+    :hidden
+  end
+end
+widget.methods(false).inspect
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("[:buff]".to_string()))));
+}
+
+#[test]
+fn methods_omits_a_singleton_method_that_was_undefined() {
+    let result = run(r#"
+class Widget
+end
+widget = Widget.new
+def widget.polish
+  :shiny
+end
+singleton = class << widget
+  self
+end
+singleton.send(:undef_method, :polish)
+widget.methods(false).inspect
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("[]".to_string()))));
+}
+
+#[test]
+fn methods_omits_an_inherited_method_the_class_undefined() {
+    let result = run(r#"
+class Parent
+  def inherited_method
+    :from_parent
+  end
+end
+class Child < Parent
+  undef_method :inherited_method
+end
+Child.new.methods.include?(:inherited_method)
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn methods_omits_class_methods_from_an_instance() {
+    let result = run(r#"
+class Widget
+  def self.build
+    :built
+  end
+end
+Widget.new.methods.any? { |name| name.to_s.start_with?("__class__") }
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+// ── Symbol is its own class ──────────────────────────────────────────────────
+
+#[test]
+fn a_symbol_reports_the_symbol_class() {
+    let result = run(":name.class.name");
+    assert_eq!(result, Some(Object::String(Rc::new("Symbol".to_string()))));
+}
+
+#[test]
+fn a_symbol_is_not_a_string() {
+    let result = run("String === :name");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn a_symbol_keeps_the_character_level_methods() {
+    let result = run(":alpha.length");
+    assert_eq!(result, Some(Object::Int(5)));
+}
+
+// ── Array intersection and union ─────────────────────────────────────────────
+
+#[test]
+fn array_intersection_keeps_left_order_without_duplicates() {
+    let result = run("([1, 2, 3, 2] & [2, 3, 4]).inspect");
+    assert_eq!(result, Some(Object::String(Rc::new("[2, 3]".to_string()))));
+}
+
+#[test]
+fn array_union_keeps_first_seen_order_without_duplicates() {
+    let result = run("([1, 2, 3, 2] | [2, 3, 4]).inspect");
+    assert_eq!(
+        result,
+        Some(Object::String(Rc::new("[1, 2, 3, 4]".to_string())))
+    );
+}
+
+// ── A body ending in `if` under a method-level rescue ────────────────────────
+
+#[test]
+fn a_method_with_a_rescue_clause_returns_its_trailing_if() {
+    let result = run(r#"
+def choose(flag)
+  if flag
+    "yes"
+  else
+    "no"
+  end
+rescue => error
+  "rescued"
+end
+choose(true)
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
+}
+
+#[test]
+fn a_begin_block_returns_its_trailing_unless() {
+    let result = run(r#"
+begin
+  unless false
+    "taken"
+  end
+rescue => error
+  "rescued"
+end
+"#);
+    assert_eq!(result, Some(Object::String(Rc::new("taken".to_string()))));
 }

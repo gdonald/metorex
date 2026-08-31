@@ -478,7 +478,7 @@ impl VirtualMachine {
                             let key_objs_key = "__MX_KEY_OBJECTS__".to_string();
                             let mut key_objs = match dict.get(&key_objs_key) {
                                 Some(Object::Dict(d)) => d.borrow().clone(),
-                                _ => std::collections::HashMap::new(),
+                                _ => indexmap::IndexMap::new(),
                             };
                             key_objs.insert(key_str.clone(), idx.clone());
                             dict.insert(
@@ -529,7 +529,7 @@ impl VirtualMachine {
                                     Some(Object::Dict(d)) => d,
                                     _ => {
                                         let d = Rc::new(std::cell::RefCell::new(
-                                            std::collections::HashMap::new(),
+                                            indexmap::IndexMap::new(),
                                         ));
                                         instance_rc.borrow_mut().set_var(
                                             "__thread_locals".to_string(),

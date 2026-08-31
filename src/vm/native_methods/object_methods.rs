@@ -8,6 +8,78 @@ use crate::vm::errors::*;
 use crate::vm::utils::position_to_location;
 
 impl VirtualMachine {
+    /// Public method names the receiver's own singleton layer contributes:
+    /// `def obj.name`, `class << obj`, `define_singleton_method`, and the
+    /// modules `extend` attached. Private ones are left out, matching what
+    /// `Object#methods` reports.
+    fn singleton_layer_names(&self, receiver: &Object) -> Vec<String> {
+        let mut names: Vec<String> = Vec::new();
+        // `def obj.name` records the method on the instance itself.
+        if let Object::Instance(inst) = receiver {
+            for name in inst.borrow().singleton_methods.borrow().keys() {
+                names.push(name.clone());
+            }
+        }
+        let singleton = match receiver {
+            Object::Class(c) | Object::Module(c) => c.singleton_class_slot().clone(),
+            Object::Instance(inst) => inst.borrow().singleton_class.borrow().clone(),
+            _ => None,
+        };
+        let Some(singleton_class) = singleton else {
+            return names;
+        };
+        for name in singleton_class.method_names() {
+            if !name.starts_with("__")
+                && !singleton_class.is_method_private(&name)
+                && !names.contains(&name)
+            {
+                names.push(name);
+            }
+        }
+        // A tombstone `undef_method` left on the singleton class removes the
+        // name from the object, however it originally arrived.
+        names.retain(|name| {
+            singleton_class
+                .find_own_method(name)
+                .is_none_or(|method| !method.is_undefined)
+        });
+        // `obj.extend(Mod)` mixes Mod into the singleton class.
+        for mixin in singleton_class.transitive_mixins() {
+            for name in mixin.method_names() {
+                if !name.starts_with("__")
+                    && !mixin.is_method_private(&name)
+                    && !names.contains(&name)
+                {
+                    names.push(name);
+                }
+            }
+        }
+        names
+    }
+
+    /// Whether `receiver` claims `name` through `respond_to_missing?`. Ruby
+    /// passes `true` for the private flag here, so a name the object handles
+    /// only privately still produces a Method.
+    fn responds_via_missing(
+        &mut self,
+        receiver: &Object,
+        name: &str,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let Some((class, method)) = self.lookup_method(receiver, "respond_to_missing?") else {
+            return Ok(false);
+        };
+        if method.is_undefined {
+            return Ok(false);
+        }
+        let arguments = vec![
+            Object::Symbol(std::rc::Rc::new(name.to_string())),
+            Object::Bool(true),
+        ];
+        let answer = self.invoke_method(class, method, receiver.clone(), arguments, position)?;
+        Ok(!matches!(answer, Object::Nil | Object::Bool(false)))
+    }
+
     /// Execute native methods for the Object class.
     pub(crate) fn call_object_method(
         &mut self,
@@ -61,7 +133,7 @@ impl VirtualMachine {
                 }
                 "to_h" => {
                     return Ok(Some(Object::Dict(std::rc::Rc::new(
-                        std::cell::RefCell::new(std::collections::HashMap::new()),
+                        std::cell::RefCell::new(indexmap::IndexMap::new()),
                     ))));
                 }
                 "to_s" => return Ok(Some(Object::string(""))),
@@ -158,6 +230,22 @@ impl VirtualMachine {
                     return Ok(Some(result));
                 }
                 Err(undefined_method_error(&method, receiver, position))
+            }
+            // Kernel#lambda reached by dispatch (`send(:lambda) { }`) rather
+            // than by a bare call. The block is already in `pending_block`.
+            "lambda" => self
+                .call_native_function("lambda", arguments.to_vec(), position)
+                .map(Some),
+            "itself" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(receiver.clone()))
             }
             "frozen?" => Ok(Some(Object::Bool(self.object_is_frozen(receiver)))),
             "freeze" => {
@@ -284,18 +372,28 @@ impl VirtualMachine {
                 Ok(Some(Object::Int(self.hash_digest(receiver, position)?)))
             }
             "object_id" | "__id__" => {
-                // Return a unique integer for the object (use pointer address for ref types)
+                // A reference type is identified by its address. An immediate
+                // gets a value-derived id, so two literals that are the same
+                // value share one, the way Ruby's do.
                 let id = match receiver {
                     Object::Instance(inst) => std::rc::Rc::as_ptr(inst) as i64,
                     Object::Array(arr) => std::rc::Rc::as_ptr(arr) as i64,
                     Object::Dict(dict) => std::rc::Rc::as_ptr(dict) as i64,
+                    Object::Set(set) => std::rc::Rc::as_ptr(set) as i64,
                     Object::Class(cls) => std::rc::Rc::as_ptr(cls) as i64,
                     Object::Module(m) => std::rc::Rc::as_ptr(m) as i64,
-                    Object::Int(n) => 2 * n + 1, // Ruby's fixnum object_id
+                    Object::Block(block) => std::rc::Rc::as_ptr(block) as i64,
+                    Object::Exception(exc) => std::rc::Rc::as_ptr(exc) as i64,
+                    // Ruby's fixnum object_id. Wrapping keeps the far ends of
+                    // the range from overflowing.
+                    Object::Int(n) => n.wrapping_mul(2).wrapping_add(1),
                     Object::Bool(true) => 2,
                     Object::Bool(false) => 0,
                     Object::Nil => 4,
-                    _ => 0,
+                    Object::Symbol(name) => value_object_id("symbol", name),
+                    Object::String(text) => value_object_id("string", text),
+                    Object::Float(value) => value_object_id("float", &value.to_bits().to_string()),
+                    other => value_object_id("other", &other.to_string()),
                 };
                 Ok(Some(Object::Int(id)))
             }
@@ -546,18 +644,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let name_str = match &arguments[0] {
-                    Object::String(s) => (**s).clone(),
-                    Object::Symbol(s) => (**s).clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
+                let name_str = self.coerce_name_argument(&arguments[0], position)?;
                 // Full lookup so singleton methods (`class << obj`,
                 // `def self.foo`) and mixins resolve, not just the class's
                 // own method table.
@@ -582,6 +669,13 @@ impl VirtualMachine {
                 // The Kernel methods every object carries are native too.
                 if let Some(mut stub) = super::class_methods::native_kernel_method_stub(&name_str) {
                     stub.receiver = Some(Box::new(receiver.clone()));
+                    return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
+                }
+                // An object that answers `respond_to_missing?` for the name
+                // has a method as far as Ruby is concerned, so hand out one
+                // that routes through `method_missing`.
+                if self.responds_via_missing(receiver, &name_str, position)? {
+                    let stub = method_missing_dispatcher(&name_str, receiver, position);
                     return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
                 }
                 let cls = self.builtins().class_of(receiver);
@@ -721,7 +815,7 @@ impl VirtualMachine {
                     let inst = inst_rc.borrow();
                     inst.instance_vars
                         .keys()
-                        .map(|k| Object::string(format!("@{}", k)))
+                        .map(|k| Object::Symbol(std::rc::Rc::new(format!("@{}", k))))
                         .collect()
                 } else {
                     vec![]
@@ -774,20 +868,8 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let var_name = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
-                    Object::Symbol(s) => s.as_str().to_string(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                // Strip leading @ if present
-                let clean_name = var_name.strip_prefix('@').unwrap_or(&var_name);
+                let clean_name = self.coerce_instance_variable_name(&arguments[0], position)?;
+                let clean_name = clean_name.as_str();
                 match receiver {
                     Object::Instance(inst_rc) => {
                         let inst = inst_rc.borrow();
@@ -820,18 +902,10 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let var_name = match &arguments[0] {
-                    Object::String(s) => s.strip_prefix('@').unwrap_or(s).to_string(),
-                    Object::Symbol(s) => s.strip_prefix('@').unwrap_or(s).to_string(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String or Symbol",
-                            other,
-                            position,
-                        ));
-                    }
-                };
+                // Ruby validates the name before it checks whether the
+                // receiver is frozen, so `"".instance_variable_set(:c, 1)`
+                // raises NameError rather than FrozenError.
+                let var_name = self.coerce_instance_variable_name(&arguments[0], position)?;
                 let value = arguments[1].clone();
                 match receiver {
                     Object::Instance(instance_rc) => {
@@ -1010,23 +1084,36 @@ impl VirtualMachine {
                         }
                     }
                 }
-                // Methods on the receiver's own singleton class — what
-                // `define_singleton_method` and `class << obj` install.
+                for name in self.singleton_layer_names(receiver) {
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
+                // `def self.name` is stored under the `__class__` convention;
+                // it belongs to the class object, not to its instances.
+                if matches!(receiver, Object::Instance(_)) {
+                    names.retain(|name| !name.starts_with("__class__"));
+                }
+                // A tombstone left by `undef_method` is not a method any more.
+                let lookup_class = match receiver {
+                    Object::Class(c) | Object::Module(c) => Some(std::rc::Rc::clone(c)),
+                    Object::Instance(inst) => Some(std::rc::Rc::clone(&inst.borrow().class)),
+                    _ => None,
+                };
+                if let Some(class) = lookup_class {
+                    names.retain(|n| class.find_method(n).is_none_or(|m| !m.is_undefined));
+                }
                 let singleton = match receiver {
                     Object::Class(c) | Object::Module(c) => c.singleton_class_slot().clone(),
                     Object::Instance(inst) => inst.borrow().singleton_class.borrow().clone(),
                     _ => None,
                 };
-                if let Some(sc) = singleton {
-                    for name in sc.method_names() {
-                        if !name.starts_with("__") && !names.contains(&name) {
-                            names.push(name);
-                        }
-                    }
-                }
-                // A tombstone left by `undef_method` is not a method any more.
-                if let Object::Class(c) | Object::Module(c) = receiver {
-                    names.retain(|n| c.find_method(n).is_none_or(|method| !method.is_undefined));
+                if let Some(singleton_class) = singleton {
+                    names.retain(|n| {
+                        singleton_class
+                            .find_own_method(n)
+                            .is_none_or(|m| !m.is_undefined)
+                    });
                 }
                 names.sort();
                 names.dedup();
@@ -1173,26 +1260,46 @@ impl VirtualMachine {
                     _ => Ok(Some(Object::Nil)),
                 }
             }
+            // Ruby's `!~` is `!(self =~ other)`. An object with no `=~` of
+            // its own has no `!~` either, so this raises rather than
+            // answering true.
             "!~" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error("!~", 1, arguments.len(), position));
                 }
-                match (receiver, &arguments[0]) {
-                    (Object::Regex(pattern, flags), Object::String(s))
-                    | (Object::String(s), Object::Regex(pattern, flags)) => {
-                        let case_insensitive = flags.contains('i');
-                        let re_pattern = if case_insensitive {
-                            format!("(?i){}", pattern)
-                        } else {
-                            pattern.as_ref().clone()
-                        };
-                        match regex::Regex::new(&re_pattern) {
-                            Ok(re) => Ok(Some(Object::Bool(!re.is_match(s.as_ref())))),
-                            Err(_) => Ok(Some(Object::Bool(true))),
-                        }
-                    }
-                    _ => Ok(Some(Object::Bool(true))),
+                if let Some((class, method)) = self.lookup_method(receiver, "=~")
+                    && !method.is_undefined
+                {
+                    let matched = self.invoke_method(
+                        class,
+                        method,
+                        receiver.clone(),
+                        vec![arguments[0].clone()],
+                        position,
+                    )?;
+                    return Ok(Some(Object::Bool(!matched.is_truthy())));
                 }
+                if matches!(
+                    (receiver, &arguments[0]),
+                    (Object::Regex(_, _), Object::String(_))
+                        | (Object::String(_), Object::Regex(_, _))
+                ) {
+                    let matched = self
+                        .call_object_method(receiver, "=~", arguments, position)?
+                        .unwrap_or(Object::Nil);
+                    return Ok(Some(Object::Bool(!matched.is_truthy())));
+                }
+                let cls = self.builtins().class_of(receiver);
+                let msg = format!("undefined method '=~' for an instance of {}", cls.name());
+                let exc = Object::exception("NoMethodError", msg.clone());
+                if let Object::Exception(cell) = &exc {
+                    cell.borrow_mut().name = Some("=~".to_string());
+                }
+                Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                })
             }
             // An instance of a `Module` subclass (`class Sub < Module; end;
             // Sub.new`) is itself a module and answers the module-body methods.
@@ -1354,16 +1461,9 @@ impl VirtualMachine {
                 }
             }
         }
-        let singleton = match receiver {
-            Object::Class(c) | Object::Module(c) => c.singleton_class_slot().clone(),
-            Object::Instance(inst) => inst.borrow().singleton_class.borrow().clone(),
-            _ => None,
-        };
-        if let Some(sc) = singleton {
-            for name in sc.method_names() {
-                if !name.starts_with("__") && !names.contains(&name) {
-                    names.push(name);
-                }
+        for name in self.singleton_layer_names(receiver) {
+            if !names.contains(&name) {
+                names.push(name);
             }
         }
         names.sort();
@@ -1476,4 +1576,57 @@ fn same_object(left: &Object, right: &Object) -> bool {
         (Object::Nil, Object::Nil) => true,
         _ => false,
     }
+}
+
+/// A `Method` that forwards to the receiver's `method_missing`, for a name the
+/// object claims through `respond_to_missing?`. The name goes in front of the
+/// call's own arguments, so `method_missing`'s arity applies as written.
+fn method_missing_dispatcher(
+    name: &str,
+    receiver: &Object,
+    position: Position,
+) -> crate::object::Method {
+    use crate::ast::{Expression, Statement};
+
+    let call = Expression::MethodCall {
+        receiver: Box::new(Expression::SelfExpr { position }),
+        method: "method_missing".to_string(),
+        arguments: vec![
+            Expression::Symbol {
+                value: name.to_string(),
+                position,
+            },
+            Expression::Splat {
+                expression: Box::new(Expression::Identifier {
+                    name: "__method_missing_args".to_string(),
+                    position,
+                }),
+                position,
+            },
+        ],
+        trailing_block: None,
+        position,
+    };
+
+    let mut method = crate::object::Method::new(
+        name.to_string(),
+        vec!["__method_missing_args".to_string()],
+        vec![Statement::Expression {
+            expression: call,
+            position,
+        }],
+    );
+    method.variadic_param = Some((0, "__method_missing_args".to_string()));
+    method.receiver = Some(Box::new(receiver.clone()));
+    method
+}
+
+/// A stable, non-negative id derived from a value rather than an address, for
+/// the objects metorex stores by value. Two equal values share an id.
+fn value_object_id(tag: &str, value: &str) -> i64 {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    tag.hash(&mut hasher);
+    value.hash(&mut hasher);
+    (hasher.finish() >> 1) as i64
 }

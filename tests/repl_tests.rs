@@ -1,5 +1,6 @@
 // Tests for the Metorex REPL
 
+use indexmap::IndexMap;
 use metorex::object::Object;
 use metorex::repl::{CommandResult, LineResult, Repl, ReplCore};
 use std::cell::RefCell;
@@ -341,7 +342,7 @@ fn format_object_nested_array() {
 
 #[test]
 fn format_object_dict() {
-    let mut map = std::collections::HashMap::new();
+    let mut map = indexmap::IndexMap::new();
     map.insert("a".to_string(), Object::Int(1));
     let dict = Object::Dict(Rc::new(RefCell::new(map)));
     assert_eq!(ReplCore::format_object(&dict), "{\"a\" => 1}");
@@ -384,6 +385,7 @@ fn format_object_block() {
         captured_vars: std::collections::HashMap::new(),
         captured_def_scope: vec![],
         defining_method: None,
+        is_lambda: false,
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }
@@ -753,7 +755,7 @@ fn format_object_float_nan() {
 
 #[test]
 fn format_object_dict_multiple_entries() {
-    let mut map = HashMap::new();
+    let mut map = IndexMap::new();
     map.insert("x".to_string(), Object::Int(1));
     map.insert("y".to_string(), Object::Int(2));
     let dict = Object::Dict(Rc::new(RefCell::new(map)));

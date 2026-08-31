@@ -7,6 +7,11 @@ METOREX="$REPO_ROOT/target/debug/metorex"
 MSPEC="$REPO_ROOT/ruby/mspec/bin/mspec"
 SPEC_DIR="$REPO_ROOT/ruby/spec"
 
+# mspec's ruby_exe helper resolves an interpreter at load time and raises when
+# it finds none. Point it at metorex so loading succeeds; specs that shell out
+# to a subprocess stay commented out regardless.
+export RUBY_EXE="$METOREX"
+
 if [ ! -f "$METOREX" ]; then
   echo "Building metorex..."
   cargo build --manifest-path "$REPO_ROOT/Cargo.toml"
@@ -208,24 +213,24 @@ run_spec "$SPEC_DIR/core/kernel/initialize_dup_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/inspect_spec.rb"  # needs endless method definitions, %i literals, and the instance_variables_to_inspect protocol
 run_spec "$SPEC_DIR/core/kernel/instance_of_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/instance_variable_defined_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/instance_variable_get_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/instance_variable_set_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/instance_variables_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/is_a_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/itself_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/kind_of_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/lambda_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/load_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/local_variables_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/loop_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/instance_variable_get_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/instance_variable_set_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/instance_variables_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/is_a_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/itself_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/kind_of_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/lambda_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/load_spec.rb"  # needs Process.euid, Dir.chdir, LoadError, $LOADED_FEATURES semantics, and load(path, wrap) scoping
+run_spec "$SPEC_DIR/core/kernel/local_variables_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/loop_spec.rb"  # 3 examples need an Enumerator class: loop without a block, Enumerator#next, and Enumerator#size
 run_spec "$SPEC_DIR/core/kernel/match_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/method_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/methods_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/nil_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/not_match_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/object_id_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/open_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/p_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/method_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/methods_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/nil_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/not_match_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/object_id_spec.rb"  # the Bignum example needs arbitrary-precision integers
+# run_spec "$SPEC_DIR/core/kernel/open_spec.rb"  # needs Kernel#open, File::CREAT, IO.popen, and ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/kernel/p_spec.rb"  # the output matchers need $stdout to be a real IO object writes route through
 # run_spec "$SPEC_DIR/core/kernel/pp_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/print_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/printf_spec.rb"

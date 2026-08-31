@@ -6,8 +6,8 @@
 use crate::ast::Expression;
 use crate::error::MetorexError;
 use crate::object::Object;
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 use super::VirtualMachine;
@@ -86,14 +86,14 @@ pub(crate) fn bind_params(
 pub(crate) fn split_keyword_args(
     mut arguments: Vec<Object>,
     has_keyword_params: bool,
-) -> (Vec<Object>, HashMap<String, Object>) {
+) -> (Vec<Object>, IndexMap<String, Object>) {
     // Only split if the trailing dict carries the parser-emitted kwargs marker.
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
         if dict.contains_key("__MX_KWARGS__") {
             if !has_keyword_params {
                 // Promote the kwargs dict to a regular Hash positional arg.
-                let cleaned: HashMap<String, Object> = dict
+                let cleaned: IndexMap<String, Object> = dict
                     .iter()
                     .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")
                     .map(|(k, v)| (k.clone(), v.clone()))
@@ -101,9 +101,9 @@ pub(crate) fn split_keyword_args(
                 drop(dict);
                 arguments.pop();
                 arguments.push(Object::Dict(Rc::new(RefCell::new(cleaned))));
-                return (arguments, HashMap::new());
+                return (arguments, IndexMap::new());
             }
-            let kwargs: HashMap<String, Object> = dict
+            let kwargs: IndexMap<String, Object> = dict
                 .iter()
                 .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")
                 .map(|(k, v)| {
@@ -120,5 +120,5 @@ pub(crate) fn split_keyword_args(
             return (arguments, kwargs);
         }
     }
-    (arguments, HashMap::new())
+    (arguments, IndexMap::new())
 }

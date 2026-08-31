@@ -100,6 +100,7 @@ impl VirtualMachine {
         // Native methods (each, map, etc.) will take it from self.pending_block.
         if let Some(block_expr) = trailing_block {
             self.pending_block = Some(self.evaluate_expression(block_expr)?);
+            self.pending_block_from_ampersand = false;
         }
 
         // Refinement dispatch: if an active refinement covers this receiver's

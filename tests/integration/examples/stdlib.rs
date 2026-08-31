@@ -58,14 +58,14 @@ fn test_stdlib_numbers_parens_execution() {
 
 #[test]
 fn test_stdlib_io_execution() {
-    let expected = "Hello from puts\nHello from print\nInt(42)\nHello from file!\ntrue\n";
+    let expected = "Hello from puts\nHello from print\n42\nHello from file!\ntrue\n";
     let output = run_example("stdlib/io/io.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_io_parens_execution() {
-    let expected = "Hello from puts\nHello from print\nInt(42)\nHello from file!\ntrue\n";
+    let expected = "Hello from puts\nHello from print\n42\nHello from file!\ntrue\n";
     let output = run_example("stdlib/io/io_parens.rb");
     assert_eq!(output, expected);
 }

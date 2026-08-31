@@ -8,8 +8,8 @@ use crate::object::{Instance, Object};
 use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
 use crate::vm::utils::position_to_location;
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Class variable holding the ordered member names of a generated struct class.
@@ -68,7 +68,7 @@ fn name_error(message: String, position: Position) -> MetorexError {
 
 /// Pull the parser-marked keyword-argument hash off the end of an argument
 /// list, leaving the positional arguments behind.
-fn take_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, HashMap<String, Object>) {
+fn take_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, IndexMap<String, Object>) {
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
         if dict.contains_key("__MX_KWARGS__") {
@@ -85,7 +85,7 @@ fn take_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, HashMap<String,
             return (arguments[..arguments.len() - 1].to_vec(), keywords);
         }
     }
-    (arguments.to_vec(), HashMap::new())
+    (arguments.to_vec(), IndexMap::new())
 }
 
 /// The value stored for `member` on a struct instance.
@@ -358,14 +358,14 @@ impl VirtualMachine {
                 member_values(receiver, members),
             ))))),
             "to_h" => {
-                let mut pairs = HashMap::new();
+                let mut pairs = IndexMap::new();
                 for member in members {
                     pairs.insert(format!(":{}", member), member_value(receiver, member));
                 }
                 Ok(Some(Object::Dict(Rc::new(RefCell::new(pairs)))))
             }
             "deconstruct_keys" => {
-                let mut pairs = HashMap::new();
+                let mut pairs = IndexMap::new();
                 for member in members {
                     pairs.insert(format!(":{}", member), member_value(receiver, member));
                 }

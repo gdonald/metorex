@@ -102,10 +102,11 @@ fn object_id_on_nil_is_four() {
 }
 
 #[test]
-fn object_id_on_float_fallthrough() {
-    // Float uses the `_ => 0` catch-all at line 169.
-    let result = run("3.14.object_id");
-    assert_eq!(result, Some(Object::Int(0)));
+fn object_id_is_stable_and_distinct_for_floats() {
+    let result = run("3.14.object_id == 3.14.object_id");
+    assert_eq!(result, Some(Object::Bool(true)));
+    let distinct = run("3.14.object_id == 2.72.object_id");
+    assert_eq!(distinct, Some(Object::Bool(false)));
 }
 
 // ── clamp arg count errors (lines 199-214) ───────────────────────────────────
@@ -557,9 +558,9 @@ fn not_match_no_args_errors() {
 }
 
 #[test]
-fn not_match_non_regex_returns_true() {
-    let result = run("1 !~ 2");
-    assert_eq!(result, Some(Object::Bool(true)));
+fn not_match_without_a_match_method_raises() {
+    let error = run_err("1 !~ 2");
+    assert!(error.contains("undefined method '=~' for an instance of Integer"));
 }
 
 #[test]
@@ -925,4 +926,59 @@ GS4.new.get_source(42)
 "#,
     );
     assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+}
+
+// ── object_id for values metorex stores inline ───────────────────────────────
+
+#[test]
+fn object_id_matches_for_equal_symbols() {
+    let result = run(":hello.object_id == :hello.object_id");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn object_id_differs_for_different_symbols() {
+    let result = run(":hello.object_id == :goodbye.object_id");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn object_id_matches_for_equal_strings() {
+    let result = run(r#""hello".object_id == "hello".object_id"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn object_id_differs_for_different_strings() {
+    let result = run(r#""hello".object_id == "goodbye".object_id"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn object_id_differs_for_an_object_and_its_dup() {
+    let result = run(r#"
+class Widget
+end
+widget = Widget.new
+widget.object_id == widget.dup.object_id
+"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn object_id_does_not_overflow_at_the_top_of_the_integer_range() {
+    let result = run("(2 ** 62 - 1).object_id.is_a?(Integer)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn object_id_differs_across_the_thirty_two_bit_boundary() {
+    let result = run("(-1).object_id == (2 ** 30 - 1).object_id");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn object_id_of_a_symbol_is_not_negative() {
+    let result = run(":anything.object_id >= 0");
+    assert_eq!(result, Some(Object::Bool(true)));
 }

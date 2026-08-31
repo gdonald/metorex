@@ -353,6 +353,7 @@ fn test_lambda_expression() {
             position: pos(1, 10),
         }],
         captured_vars: None,
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));

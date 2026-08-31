@@ -1,6 +1,7 @@
 // Type system integration tests for Metorex runtime objects
 // Tests the Object type system including equality, hashing, and type operations
 
+use indexmap::IndexMap;
 use metorex::object::{BlockStatement, Class, Exception, Instance, Method, Object, ObjectHash};
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
@@ -159,12 +160,12 @@ fn test_array_deep_equality() {
 #[test]
 fn test_dict_deep_equality() {
     // Simple dicts
-    let mut map1 = HashMap::new();
+    let mut map1 = IndexMap::new();
     map1.insert("x".to_string(), Object::Int(10));
     map1.insert("y".to_string(), Object::Int(20));
     let dict1 = Object::Dict(Rc::new(RefCell::new(map1)));
 
-    let mut map2 = HashMap::new();
+    let mut map2 = IndexMap::new();
     map2.insert("x".to_string(), Object::Int(10));
     map2.insert("y".to_string(), Object::Int(20));
     let dict2 = Object::Dict(Rc::new(RefCell::new(map2)));
@@ -172,7 +173,7 @@ fn test_dict_deep_equality() {
     assert!(dict1.equals(&dict2));
 
     // Different values
-    let mut map3 = HashMap::new();
+    let mut map3 = IndexMap::new();
     map3.insert("x".to_string(), Object::Int(10));
     map3.insert("y".to_string(), Object::Int(30));
     let dict3 = Object::Dict(Rc::new(RefCell::new(map3)));
@@ -180,7 +181,7 @@ fn test_dict_deep_equality() {
     assert!(!dict1.equals(&dict3));
 
     // Different keys
-    let mut map4 = HashMap::new();
+    let mut map4 = IndexMap::new();
     map4.insert("x".to_string(), Object::Int(10));
     map4.insert("z".to_string(), Object::Int(20));
     let dict4 = Object::Dict(Rc::new(RefCell::new(map4)));
@@ -188,20 +189,20 @@ fn test_dict_deep_equality() {
     assert!(!dict1.equals(&dict4));
 
     // Nested dicts
-    let mut inner1 = HashMap::new();
+    let mut inner1 = IndexMap::new();
     inner1.insert("a".to_string(), Object::Int(1));
 
-    let mut outer1 = HashMap::new();
+    let mut outer1 = IndexMap::new();
     outer1.insert(
         "nested".to_string(),
         Object::Dict(Rc::new(RefCell::new(inner1))),
     );
     let nested_dict1 = Object::Dict(Rc::new(RefCell::new(outer1)));
 
-    let mut inner2 = HashMap::new();
+    let mut inner2 = IndexMap::new();
     inner2.insert("a".to_string(), Object::Int(1));
 
-    let mut outer2 = HashMap::new();
+    let mut outer2 = IndexMap::new();
     outer2.insert(
         "nested".to_string(),
         Object::Dict(Rc::new(RefCell::new(inner2))),
@@ -441,7 +442,7 @@ fn test_to_string_collections() {
 
 #[test]
 fn test_to_string_dict() {
-    let mut map = HashMap::new();
+    let mut map = IndexMap::new();
     map.insert("x".to_string(), Object::Int(10));
     let dict = Object::Dict(Rc::new(RefCell::new(map)));
     let s = dict.to_string();
@@ -489,7 +490,7 @@ fn test_mixed_type_collections() {
     assert_eq!(mixed_arr.to_string(), expected);
 
     // Dict with mixed value types
-    let mut mixed_map = HashMap::new();
+    let mut mixed_map = IndexMap::new();
     mixed_map.insert("nil".to_string(), Object::Nil);
     mixed_map.insert("bool".to_string(), Object::Bool(true));
     mixed_map.insert("int".to_string(), Object::Int(42));

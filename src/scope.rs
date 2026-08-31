@@ -3,7 +3,7 @@
 
 use crate::object::Object;
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 /// Represents a single scope in the scope chain
@@ -16,6 +16,14 @@ pub struct Scope {
 
     /// Reference to the parent scope (None for global scope)
     parent: Option<Rc<RefCell<Scope>>>,
+
+    /// Whether this scope is a method boundary. A method body cannot see the
+    /// caller's locals, so `local_variables` stops here.
+    is_method_boundary: bool,
+
+    /// Names this scope holds only because a block captured them from the
+    /// scope it was written in. They are not locals of this scope.
+    captured_names: HashSet<String>,
 }
 
 impl Scope {
@@ -24,6 +32,8 @@ impl Scope {
         Scope {
             variables: HashMap::new(),
             parent: None,
+            is_method_boundary: false,
+            captured_names: HashSet::new(),
         }
     }
 
@@ -32,18 +42,30 @@ impl Scope {
         Scope {
             variables: HashMap::new(),
             parent: Some(parent),
+            is_method_boundary: false,
+            captured_names: HashSet::new(),
         }
     }
 
     /// Defines a new variable in the current scope
     /// If the variable already exists in this scope, it will be overwritten
     pub fn define(&mut self, name: String, value: Object) {
+        self.captured_names.remove(&name);
         self.variables.insert(name, Rc::new(RefCell::new(value)));
     }
 
     /// Defines a new variable in the current scope with a shared reference
     /// Used when a closure defines a captured variable
     pub fn define_shared(&mut self, name: String, value: Rc<RefCell<Object>>) {
+        self.captured_names.remove(&name);
+        self.variables.insert(name, value);
+    }
+
+    /// Binds a name a block captured from the scope it was written in. The
+    /// binding behaves like any other, but it is not a local of this scope,
+    /// so `local_variables` leaves it out.
+    pub fn define_captured(&mut self, name: String, value: Rc<RefCell<Object>>) {
+        self.captured_names.insert(name.clone());
         self.variables.insert(name, value);
     }
 
@@ -155,6 +177,45 @@ impl Scope {
         }
 
         all_vars
+    }
+
+    /// Names bound in this scope alone, excluding those a block captured.
+    pub fn own_variable_names(&self) -> Vec<String> {
+        self.variables
+            .keys()
+            .filter(|name| !self.captured_names.contains(*name))
+            .cloned()
+            .collect()
+    }
+
+    /// Names bound in this scope and the enclosing scopes a Ruby local would
+    /// be visible from. The walk stops at the root, which holds the builtins,
+    /// and at a method boundary, whose locals belong to the method rather
+    /// than to the block running inside it.
+    pub fn collect_local_variable_names(&self) -> Vec<String> {
+        let mut names = self.own_variable_names();
+        if let Some(parent) = &self.parent {
+            let parent_ref = parent.borrow();
+            if parent_ref.parent.is_some() && !parent_ref.is_method_boundary {
+                names.extend(parent_ref.collect_local_variable_names());
+            }
+        }
+        names
+    }
+
+    /// Mark this scope as a method boundary.
+    pub fn mark_method_boundary(&mut self) {
+        self.is_method_boundary = true;
+    }
+
+    /// The reference this scope holds for `name`, ignoring enclosing scopes.
+    pub fn own_var_ref(&self, name: &str) -> Option<Rc<RefCell<Object>>> {
+        self.variables.get(name).cloned()
+    }
+
+    /// Whether this scope is the root of the chain.
+    pub fn is_root(&self) -> bool {
+        self.parent.is_none()
     }
 
     /// Collects all variable references from the entire scope chain

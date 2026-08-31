@@ -33,8 +33,18 @@ impl VirtualMachine {
                     Object::exception("RuntimeError", (*message).clone())
                 }
                 Object::Class(class) => {
-                    // Instantiate the exception class with an empty message
-                    Object::exception(class.name(), String::new())
+                    // Instantiate the exception class with an empty message.
+                    // An anonymous subclass records the nearest named
+                    // ancestor, so `rescue StopIteration` still matches a
+                    // `Class.new StopIteration`.
+                    let mut named = class;
+                    while named.ruby_name().is_empty() {
+                        match named.superclass() {
+                            Some(parent) => named = parent,
+                            None => break,
+                        }
+                    }
+                    Object::exception(named.name(), String::new())
                 }
                 _ => {
                     return Err(MetorexError::runtime_error(
@@ -311,8 +321,7 @@ impl VirtualMachine {
         let mut last_value: Option<Object> = None;
         for (idx, statement) in body.iter().enumerate() {
             let is_last = idx == body.len() - 1;
-            if is_last && let Statement::Expression { expression, .. } = statement {
-                let value = self.evaluate_expression(expression)?;
+            if is_last && let Some(value) = self.terminal_statement_value(statement)? {
                 return Ok(ControlFlow::Value(value));
             }
             match self.execute_statement(statement)? {

@@ -49,7 +49,7 @@ fn lambda_expression_serializes_type() {
         r#"
 class C
   def f
-    lambda do |x|
+    -> (x) do
       x * 2
     end
   end
@@ -66,7 +66,7 @@ fn lambda_expression_has_body() {
         r#"
 class C
   def f
-    lambda do |x|
+    -> (x) do
       x * 2
     end
   end

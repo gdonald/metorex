@@ -47,8 +47,14 @@ fn p_returns_the_argument() {
 }
 
 #[test]
-fn p_multiple_returns_nil() {
-    let result = run("p(1, 2)");
+fn p_multiple_returns_the_arguments() {
+    let result = run("p(1, 2).inspect");
+    assert_eq!(result, Some(Object::string("[1, 2]")));
+}
+
+#[test]
+fn p_without_arguments_returns_nil() {
+    let result = run("p()");
     assert_eq!(result, Some(Object::Nil));
 }
 
@@ -377,4 +383,47 @@ fn kernel_load_wrong_arg_count_errors() {
 fn kernel_load_non_string_arg_errors() {
     let err = run_err("Kernel.load(42)");
     assert!(err.contains("String") || err.contains("argument") || err.contains("type"));
+}
+
+// ── p renders with inspect ───────────────────────────────────────────────────
+
+#[test]
+fn p_returns_its_single_argument() {
+    let result = run(r#"p("abcde")"#);
+    assert_eq!(result, Some(Object::string("abcde")));
+}
+
+#[test]
+fn p_uses_a_user_defined_inspect() {
+    let result = run(r#"
+class Widget
+  def inspect
+    "custom inspect"
+  end
+end
+p(Widget.new).class.name
+"#);
+    assert_eq!(result, Some(Object::string("Widget")));
+}
+
+#[test]
+fn p_on_an_instance_without_inspect_does_not_recurse() {
+    let result = run(r#"
+class Plain
+end
+p(Plain.new).class.name
+"#);
+    assert_eq!(result, Some(Object::string("Plain")));
+}
+
+#[test]
+fn a_bare_p_prints_nothing_and_returns_nil() {
+    let result = run("p");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn p_is_a_private_instance_method_on_kernel() {
+    let result = run("Kernel.private_instance_methods(false).include?(:p)");
+    assert_eq!(result, Some(Object::Bool(true)));
 }

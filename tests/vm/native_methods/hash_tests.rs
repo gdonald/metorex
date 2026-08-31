@@ -471,3 +471,91 @@ h.keys.length
 "#);
     assert_eq!(result, Some(Object::Int(0)));
 }
+
+// ── Insertion order ──────────────────────────────────────────────────────────
+
+#[test]
+fn hash_keys_come_back_in_insertion_order() {
+    let result = run(r#"{ "c" => 1, "a" => 2, "b" => 3 }.keys.inspect"#);
+    assert_eq!(result, Some(Object::string("[\"c\", \"a\", \"b\"]")));
+}
+
+#[test]
+fn hash_values_come_back_in_insertion_order() {
+    let result = run(r#"{ "c" => 1, "a" => 2, "b" => 3 }.values.inspect"#);
+    assert_eq!(result, Some(Object::string("[1, 2, 3]")));
+}
+
+#[test]
+fn a_new_key_goes_to_the_end() {
+    let result = run(r#"
+h = { "a" => 1, "b" => 2 }
+h["c"] = 3
+h.keys.inspect
+"#);
+    assert_eq!(result, Some(Object::string("[\"a\", \"b\", \"c\"]")));
+}
+
+#[test]
+fn reassigning_a_key_keeps_its_position() {
+    let result = run(r#"
+h = { "a" => 1, "b" => 2, "c" => 3 }
+h["a"] = 99
+h.keys.inspect
+"#);
+    assert_eq!(result, Some(Object::string("[\"a\", \"b\", \"c\"]")));
+}
+
+#[test]
+fn deleting_a_key_keeps_the_rest_in_order() {
+    let result = run(r#"
+h = { "a" => 1, "b" => 2, "c" => 3 }
+h.delete("b")
+h.keys.inspect
+"#);
+    assert_eq!(result, Some(Object::string("[\"a\", \"c\"]")));
+}
+
+#[test]
+fn each_walks_a_hash_in_insertion_order() {
+    let result = run(r#"
+seen = []
+{ "z" => 1, "y" => 2, "x" => 3 }.each do |key, value|
+  seen << key
+end
+seen.inspect
+"#);
+    assert_eq!(result, Some(Object::string("[\"z\", \"y\", \"x\"]")));
+}
+
+// ── An implicit hash at the end of an array literal ──────────────────────────
+
+#[test]
+fn an_array_literal_gathers_trailing_keyword_pairs_into_a_hash() {
+    let result = run(r#"[1, 2, first: "a", second: "b"].length"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn the_gathered_hash_keeps_its_keys_in_order() {
+    let result = run(r#"[1, first: "a", second: "b"].last.keys.inspect"#);
+    assert_eq!(result, Some(Object::string("[:first, :second]")));
+}
+
+#[test]
+fn an_array_literal_gathers_arrow_pairs_too() {
+    let result = run(r#"["x" => 1, "y" => 2].first.keys.inspect"#);
+    assert_eq!(result, Some(Object::string("[\"x\", \"y\"]")));
+}
+
+#[test]
+fn an_array_of_only_keyword_pairs_holds_one_hash() {
+    let result = run("[alpha: 1, beta: 2].length");
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn an_array_literal_without_pairs_is_unchanged() {
+    let result = run(r#"[1, "two", :three].length"#);
+    assert_eq!(result, Some(Object::Int(3)));
+}

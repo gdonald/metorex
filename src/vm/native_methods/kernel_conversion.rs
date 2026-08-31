@@ -6,8 +6,8 @@ use crate::lexer::Position;
 use crate::object::Object;
 use crate::vm::VirtualMachine;
 use crate::vm::utils::position_to_location;
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 
 /// Kernel's conversion functions, which Ruby exposes as private instance
@@ -19,7 +19,7 @@ pub(crate) fn is_kernel_conversion(name: &str) -> bool {
 }
 
 /// Split the parser-marked keyword hash off the end of an argument list.
-fn split_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, HashMap<String, Object>) {
+fn split_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, IndexMap<String, Object>) {
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
         if dict.contains_key("__MX_KWARGS__") {
@@ -36,7 +36,7 @@ fn split_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, HashMap<String
             return (arguments[..arguments.len() - 1].to_vec(), keywords);
         }
     }
-    (arguments.to_vec(), HashMap::new())
+    (arguments.to_vec(), IndexMap::new())
 }
 
 /// Whether `error` is one of the conversion failures `exception: false` turns
@@ -545,7 +545,7 @@ impl VirtualMachine {
                 position,
             ));
         }
-        let empty = || Object::Dict(Rc::new(RefCell::new(HashMap::new())));
+        let empty = || Object::Dict(Rc::new(RefCell::new(IndexMap::new())));
         match &arguments[0] {
             Object::Nil => Ok(empty()),
             Object::Array(elements) if elements.borrow().is_empty() => Ok(empty()),

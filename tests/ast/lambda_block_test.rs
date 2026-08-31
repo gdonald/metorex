@@ -14,6 +14,7 @@ fn test_lambda_without_captured_vars() {
             position: pos(1, 10),
         }],
         captured_vars: None,
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -41,6 +42,7 @@ fn test_lambda_with_captured_vars() {
             position: pos(1, 10),
         }],
         captured_vars: Some(vec!["y".to_string()]),
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -76,6 +78,7 @@ fn test_lambda_with_multiple_captured_vars() {
             position: pos(1, 10),
         }],
         captured_vars: Some(vec!["a".to_string(), "b".to_string(), "c".to_string()]),
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -103,6 +106,7 @@ fn test_lambda_implicit_return() {
             position: pos(1, 10),
         }],
         captured_vars: None,
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -143,6 +147,7 @@ fn test_lambda_with_multiple_statements() {
             },
         ],
         captured_vars: None,
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -162,6 +167,7 @@ fn test_lambda_no_parameters() {
             position: pos(1, 5),
         }],
         captured_vars: None,
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -189,6 +195,7 @@ fn test_lambda_with_instance_var_capture() {
             position: pos(1, 10),
         }],
         captured_vars: Some(vec!["@count".to_string()]),
+        is_lambda: false,
         position: pos(1, 1),
     };
     assert_eq!(expr.position(), pos(1, 1));
@@ -216,6 +223,7 @@ fn test_nested_lambdas() {
             position: pos(2, 10),
         }],
         captured_vars: Some(vec!["x".to_string()]),
+        is_lambda: false,
         position: pos(2, 1),
     };
 
@@ -227,6 +235,7 @@ fn test_nested_lambdas() {
             position: pos(2, 1),
         }],
         captured_vars: None,
+        is_lambda: false,
         position: pos(1, 1),
     };
 

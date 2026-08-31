@@ -1,8 +1,9 @@
 // Constructor helper methods for Object
 
 use crate::class::Class;
+use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::{Exception, Instance, Object};
@@ -25,11 +26,11 @@ impl Object {
 
     /// Create an empty dictionary
     pub fn empty_dict() -> Self {
-        Object::Dict(Rc::new(RefCell::new(HashMap::new())))
+        Object::Dict(Rc::new(RefCell::new(IndexMap::new())))
     }
 
-    /// Create a dictionary from a HashMap
-    pub fn dict(map: HashMap<String, Object>) -> Self {
+    /// Create a dictionary from an ordered map
+    pub fn dict(map: IndexMap<String, Object>) -> Self {
         Object::Dict(Rc::new(RefCell::new(map)))
     }
 

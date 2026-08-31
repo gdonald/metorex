@@ -64,6 +64,12 @@ pub struct VirtualMachine {
     /// Trailing block passed to the current call (e.g., `foo() do |x| ... end`).
     /// Set before invoke_method/invoke_callable; taken at method body entry.
     pub(crate) pending_block: Option<Object>,
+    /// Whether `pending_block` arrived as `&expr` rather than as a literal
+    /// block. `Kernel#lambda` rejects a non-lambda proc passed that way.
+    pub(crate) pending_block_from_ampersand: bool,
+    /// Names the environment already held once the builtins were seeded.
+    /// `local_variables` reports the names a program bound, not these.
+    pub(crate) seeded_global_names: HashSet<String>,
     /// Depth of nested wrapped `load(path, true)` calls. While >0, top-level
     /// `include` is suppressed (Ruby wraps the loaded scope in an anonymous
     /// module so includes don't pollute Object).
@@ -129,6 +135,7 @@ impl VirtualMachine {
         register_native_functions(&mut globals);
 
         seed_environment_with_globals(&mut environment, &globals);
+        let seeded_global_names = environment.current_scope_vars().into_keys().collect();
 
         Self {
             environment,
@@ -144,6 +151,8 @@ impl VirtualMachine {
             loading_paths: Vec::new(),
             autoload_loading: Vec::new(),
             pending_block: None,
+            pending_block_from_ampersand: false,
+            seeded_global_names,
             load_wrap_depth: 0,
             user_def_nesting: 0,
             refinement_scopes: vec![Vec::new()],
@@ -301,6 +310,7 @@ impl VirtualMachine {
         let argv = Object::Array(Rc::new(RefCell::new(elements)));
         self.globals.set("ARGV", argv.clone());
         self.environment.define("ARGV".to_string(), argv);
+        self.seeded_global_names.insert("ARGV".to_string());
     }
 
     /// Run a closure with a new call frame pushed onto the stack.

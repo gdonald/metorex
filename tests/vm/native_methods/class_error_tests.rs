@@ -931,7 +931,7 @@ end
 CeBad.class_eval(42)
 "#,
     );
-    assert!(err.contains("no implicit conversion of Int into String"));
+    assert!(err.contains("no implicit conversion of Integer into String"));
 }
 
 // ── class_exec / module_exec ────────────────────────────────────────────────

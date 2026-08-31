@@ -290,6 +290,32 @@ impl VirtualMachine {
                 return Ok(Object::Nil);
             }
             None => {
+                // Kernel's methods live in the native dispatch tables rather
+                // than in any class's method map, so `super` inside a class
+                // that overrides one (a `def load` calling `super`) has to
+                // reach them here.
+                drop(instance_borrowed);
+                let evaluated_args = if forward_args {
+                    self.method_arg_stack.last().cloned().unwrap_or_default()
+                } else {
+                    let mut evaluated_args = Vec::with_capacity(arguments.len());
+                    for arg in arguments {
+                        evaluated_args.push(self.evaluate_expression(arg)?);
+                    }
+                    evaluated_args
+                };
+                let self_val = self.environment().get("self").unwrap_or(Object::Nil);
+                if let Some(result) =
+                    self.call_object_method(&self_val, &method_name, &evaluated_args, position)?
+                {
+                    return Ok(result);
+                }
+                if matches!(
+                    self.globals().get(&method_name),
+                    Some(Object::NativeFunction(_))
+                ) {
+                    return self.call_native_function(&method_name, evaluated_args, position);
+                }
                 return Err(MetorexError::runtime_error(
                     format!(
                         "Superclass {} does not define method '{}'",

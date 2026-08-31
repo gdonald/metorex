@@ -401,6 +401,7 @@ fn test_lambda_parameter_scope() {
                 position: Position::default(),
             }],
             captured_vars: None,
+            is_lambda: false,
             position: Position::default(),
         },
         position: Position::default(),

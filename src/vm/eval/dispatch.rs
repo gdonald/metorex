@@ -69,6 +69,7 @@ impl VirtualMachine {
                 parameter_defaults,
                 body,
                 captured_vars,
+                is_lambda,
                 ..
             } => {
                 let mut captured = HashMap::new();
@@ -99,6 +100,7 @@ impl VirtualMachine {
                     captured,
                     self.def_scope_stack.clone(),
                     self.enclosing_method_names(),
+                    *is_lambda,
                 );
                 Ok(Object::Block(Rc::new(block)))
             }

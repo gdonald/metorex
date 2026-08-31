@@ -131,6 +131,9 @@ impl VirtualMachine {
                 "arity" => {
                     return Ok(Some(Object::Int(block_obj.parameters.len() as i64)));
                 }
+                "lambda?" => {
+                    return Ok(Some(Object::Bool(block_obj.is_lambda)));
+                }
                 _ => {}
             }
         }

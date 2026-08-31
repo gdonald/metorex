@@ -107,7 +107,7 @@ impl VirtualMachine {
         // Hash.new (with or without default block) returns a native Dict.
         if class.name() == "Hash" && arguments.is_empty() {
             let block = self.pending_block.take();
-            let mut map = std::collections::HashMap::new();
+            let mut map = indexmap::IndexMap::new();
             if let Some(block_obj) = block {
                 map.insert("__MX_DEFAULT_PROC__".to_string(), block_obj);
             }

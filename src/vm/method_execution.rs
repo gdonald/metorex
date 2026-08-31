@@ -13,7 +13,7 @@ use crate::class::Class;
 use crate::error::{MetorexError, StackFrame};
 use crate::lexer::Position;
 use crate::object::{Method, Object};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::rc::Rc;
 
 use super::param_binding::{bind_params, positional_arg_count, split_keyword_args};
@@ -83,6 +83,7 @@ impl VirtualMachine {
             && matches!(arguments.last(), Some(Object::Block(_)))
         {
             self.pending_block = arguments.pop();
+            self.pending_block_from_ampersand = false;
             positional_count = positional_arg_count(&arguments);
         }
         let has_variadic = method.variadic_param.is_some();
@@ -360,6 +361,53 @@ impl VirtualMachine {
         }
     }
 
+    /// The value a statement produces when it is the last one in a body.
+    /// Ruby's `if`, `unless`, `begin`, and assignment are expressions, so a
+    /// method or block ending in one evaluates to its value. Returns `None`
+    /// for statement kinds that carry no value of their own.
+    pub(crate) fn terminal_statement_value(
+        &mut self,
+        statement: &Statement,
+    ) -> Result<Option<Object>, MetorexError> {
+        let value = match statement {
+            Statement::Expression { expression, .. } => self.evaluate_expression(expression)?,
+            Statement::Assignment { value, target, .. } => {
+                let evaluated = self.evaluate_expression(value)?;
+                self.assign_value(target, evaluated.clone())?;
+                evaluated
+            }
+            Statement::If {
+                condition,
+                then_branch,
+                elsif_branches,
+                else_branch,
+                ..
+            } => {
+                self.evaluate_if_expression(condition, then_branch, elsif_branches, else_branch)?
+            }
+            Statement::Unless {
+                condition,
+                then_branch,
+                else_branch,
+                ..
+            } => self.evaluate_unless_expression(condition, then_branch, else_branch)?,
+            Statement::Begin {
+                body,
+                rescue_clauses,
+                else_clause,
+                ensure_block,
+                ..
+            } => self.evaluate_begin_value(
+                body,
+                rescue_clauses,
+                else_clause.as_deref(),
+                ensure_block.as_deref(),
+            )?,
+            _ => return Ok(None),
+        };
+        Ok(Some(value))
+    }
+
     /// Run a method body once, without the lambda-style restart loop.
     fn run_body_statements(
         &mut self,
@@ -383,60 +431,9 @@ impl VirtualMachine {
             let is_last = i == body.len() - 1;
 
             // If this is the last statement, capture its value
-            if is_last {
-                match statement {
-                    Statement::Expression { expression, .. } => {
-                        last_value = self.evaluate_expression(expression)?;
-                        continue;
-                    }
-                    Statement::Assignment { value, target, .. } => {
-                        let evaluated = self.evaluate_expression(value)?;
-                        self.assign_value(target, evaluated.clone())?;
-                        last_value = evaluated;
-                        continue;
-                    }
-                    Statement::If {
-                        condition,
-                        then_branch,
-                        elsif_branches,
-                        else_branch,
-                        ..
-                    } => {
-                        last_value = self.evaluate_if_expression(
-                            condition,
-                            then_branch,
-                            elsif_branches,
-                            else_branch,
-                        )?;
-                        continue;
-                    }
-                    Statement::Unless {
-                        condition,
-                        then_branch,
-                        else_branch,
-                        ..
-                    } => {
-                        last_value =
-                            self.evaluate_unless_expression(condition, then_branch, else_branch)?;
-                        continue;
-                    }
-                    Statement::Begin {
-                        body: begin_body,
-                        rescue_clauses,
-                        else_clause,
-                        ensure_block,
-                        ..
-                    } => {
-                        last_value = self.evaluate_begin_value(
-                            begin_body,
-                            rescue_clauses,
-                            else_clause.as_deref(),
-                            ensure_block.as_deref(),
-                        )?;
-                        continue;
-                    }
-                    _ => {}
-                }
+            if is_last && let Some(value) = self.terminal_statement_value(statement)? {
+                last_value = value;
+                continue;
             }
 
             let is_last = i == body.len() - 1;
@@ -490,7 +487,7 @@ impl VirtualMachine {
         &mut self,
         keyword_parameters: &[(String, Option<Expression>)],
         keyword_rest_parameter: Option<&str>,
-        kwargs: HashMap<String, Object>,
+        kwargs: IndexMap<String, Object>,
     ) -> Result<(), MetorexError> {
         for (name, default_expr) in keyword_parameters {
             let value = if let Some(v) = kwargs.get(name) {
@@ -511,7 +508,7 @@ impl VirtualMachine {
                 .iter()
                 .map(|(name, _)| name.as_str())
                 .collect();
-            let rest: HashMap<String, Object> = kwargs
+            let rest: IndexMap<String, Object> = kwargs
                 .iter()
                 .filter(|(name, _)| !declared.contains(name.as_str()))
                 .map(|(name, value)| (format!(":{}", name), value.clone()))

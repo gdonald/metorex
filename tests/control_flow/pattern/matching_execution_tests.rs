@@ -639,11 +639,11 @@ fn test_match_multiple_cases() {
 }
 
 #[test]
-fn test_match_no_match_error() {
+fn test_match_with_no_matching_branch_is_nil() {
     let mut vm = VirtualMachine::new();
 
-    // match 5 when 1 => "one" when 2 => "two" end
-    // Should error because 5 doesn't match any pattern
+    // `case 5 when 1 ... when 2 ... end` has no `else`, so Ruby evaluates it
+    // to nil rather than raising.
     let match_stmt = Statement::Match {
         expression: Expression::IntLiteral {
             value: 5,
@@ -679,13 +679,7 @@ fn test_match_no_match_error() {
     };
 
     let result = vm.execute_program(&[match_stmt]);
-    assert!(result.is_err());
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("No pattern matched")
-    );
+    assert_eq!(result.expect("execution failed"), Some(Object::Nil));
 }
 
 #[test]

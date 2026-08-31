@@ -4,15 +4,15 @@ use super::{Lexer, TokenKind};
 
 impl<'a> Lexer<'a> {
     /// Check if a character can start an identifier (letter or underscore).
-    /// Non-ASCII letters are allowed, matching Ruby's treatment of
+    /// Every non-ASCII character is allowed, matching Ruby's treatment of
     /// multibyte characters in identifiers (e.g. `CS_CONSTλ`).
     pub(super) fn is_identifier_start(ch: char) -> bool {
-        ch.is_alphabetic() || ch == '_'
+        ch.is_alphabetic() || ch == '_' || !ch.is_ascii()
     }
 
     /// Check if a character can continue an identifier (letter, digit, or underscore)
     pub(super) fn is_identifier_continue(ch: char) -> bool {
-        ch.is_alphanumeric() || ch == '_'
+        ch.is_alphanumeric() || ch == '_' || !ch.is_ascii()
     }
 
     /// Read an identifier or keyword

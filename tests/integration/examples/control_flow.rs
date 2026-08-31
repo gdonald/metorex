@@ -252,3 +252,25 @@ fn test_control_flow_catch_throw_execution() {
     let output = run_example("control_flow/catch_throw.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_control_flow_kernel_loop() {
+    let expected = concat!(
+        "10\n123\nnil\n3\nnil\n1\n",
+        "anonymous subclass ended the loop\n",
+        "ArgumentError: not swallowed\ntrue\n"
+    );
+    let output = run_example("control_flow/kernel_loop.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_kernel_loop_no_parens() {
+    let expected = concat!(
+        "10\n123\nnil\n3\nnil\n1\n",
+        "anonymous subclass ended the loop\n",
+        "ArgumentError: not swallowed\ntrue\n"
+    );
+    let output = run_example("control_flow/kernel_loop_no_parens.rb");
+    assert_eq!(output, expected);
+}

@@ -118,6 +118,39 @@ impl VirtualMachine {
                 }
                 Ok(current_self)
             }
+            // Kernel#lambda — the block becomes a lambda-style Proc. A proc
+            // handed over as `&expr` is not a literal block, so Ruby rejects
+            // it unless it is already a lambda.
+            "lambda" => {
+                let from_ampersand = self.pending_block_from_ampersand;
+                match self.pending_block.take() {
+                    Some(Object::Block(block)) => {
+                        if block.is_lambda {
+                            return Ok(Object::Block(block));
+                        }
+                        if from_ampersand {
+                            let msg = "the lambda method requires a literal block";
+                            return Err(MetorexError::UncaughtException {
+                                exception: Object::exception("ArgumentError", msg.to_string()),
+                                location: crate::vm::utils::position_to_location(position),
+                                message: msg.to_string(),
+                            });
+                        }
+                        let mut as_lambda = (*block).clone();
+                        as_lambda.is_lambda = true;
+                        Ok(Object::Block(std::rc::Rc::new(as_lambda)))
+                    }
+                    Some(other) => Ok(other),
+                    None => {
+                        let msg = "tried to create Proc object without a block";
+                        Err(MetorexError::UncaughtException {
+                            exception: Object::exception("ArgumentError", msg.to_string()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message: msg.to_string(),
+                        })
+                    }
+                }
+            }
             // Kernel#proc — the block itself is the Proc.
             "proc" => {
                 if let Some(block) = self.pending_block.take() {
@@ -641,15 +674,19 @@ impl VirtualMachine {
                 std::io::stdout().flush().ok();
                 Ok(Object::Nil)
             }
+            // Kernel#p writes each argument's `inspect` on its own line and
+            // answers with the argument, the argument list, or nil for none.
             "p" => {
-                // p prints the inspect representation of each argument
-                for arg in &arguments {
-                    println!("{:?}", arg);
+                for argument in &arguments {
+                    let rendered = self.get_inspect_representation(argument, position)?;
+                    println!("{}", rendered);
                 }
-                if arguments.len() == 1 {
-                    Ok(arguments.into_iter().next().unwrap())
-                } else {
-                    Ok(Object::Nil)
+                match arguments.len() {
+                    0 => Ok(Object::Nil),
+                    1 => Ok(arguments.into_iter().next().unwrap()),
+                    _ => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                        arguments,
+                    )))),
                 }
             }
             // `gets` is ARGF's, so a stand-in installed on ARGF answers here.
@@ -900,6 +937,44 @@ impl VirtualMachine {
                     names,
                 ))))
             }
+            // Kernel#local_variables — the names bound in the current scope
+            // chain, as Symbols. `self` is bound like a variable internally
+            // but is not a local, and a name rebound in an inner scope is
+            // reported once.
+            "local_variables" => {
+                if !arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        format!(
+                            "local_variables() expects 0 arguments, got {}",
+                            arguments.len()
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let mut names: Vec<String> = self
+                    .environment()
+                    .local_variable_names()
+                    .into_iter()
+                    .filter(|name| {
+                        name != "self"
+                            && !self.seeded_global_names.contains(name)
+                            && !self.environment().resolves_to_root_binding(name)
+                            && !self
+                                .environment()
+                                .get(name)
+                                .is_some_and(|value| self.name_is_a_definition(name, &value))
+                    })
+                    .collect();
+                names.sort();
+                names.dedup();
+                let names: Vec<Object> = names
+                    .into_iter()
+                    .map(|name| Object::Symbol(std::rc::Rc::new(name)))
+                    .collect();
+                Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    names,
+                ))))
+            }
             // `fail` is Ruby's other spelling of `raise`.
             "fail" => {
                 if arguments.len() > 2 {
@@ -918,6 +993,45 @@ impl VirtualMachine {
                     location: crate::vm::utils::position_to_location(position),
                     message,
                 })
+            }
+            // Kernel#loop — run the block until `break` or StopIteration.
+            // `break value` is the loop's value; a StopIteration (or a
+            // subclass) ends the loop and yields the iterator's result. Every
+            // other exception propagates.
+            "loop" => {
+                if !arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        format!("loop() expects 0 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => block,
+                    _ => {
+                        let message = "no block given (yield)".to_string();
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("LocalJumpError", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        });
+                    }
+                };
+                loop {
+                    match block.call(self, Vec::new(), position) {
+                        Ok(_) => {}
+                        Err(MetorexError::BlockBreak { value, .. }) => return Ok(value),
+                        Err(MetorexError::UncaughtException { exception, .. })
+                            if self.exception_matches(
+                                &exception,
+                                &["StopIteration".to_string()],
+                            )? =>
+                        {
+                            let _ = exception;
+                            return Ok(Object::Nil);
+                        }
+                        Err(error) => return Err(error),
+                    }
+                }
             }
             "catch" => {
                 if arguments.len() > 1 {
@@ -1238,6 +1352,30 @@ impl VirtualMachine {
             }
             _ => Ok(format!("{}", obj)),
         }
+    }
+
+    /// The string `inspect` produces for an object, preferring a method the
+    /// object defines over the native rendering.
+    pub(crate) fn get_inspect_representation(
+        &mut self,
+        obj: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Some((class, method)) = self.lookup_method(obj, "inspect")
+            && !method.is_undefined
+        {
+            let result = self.invoke_method(class, method, obj.clone(), vec![], position)?;
+            if let Object::String(text) = result {
+                return Ok(text.to_string());
+            }
+        }
+        let class = self.builtins().class_of(obj);
+        if let Some(Object::String(rendered)) =
+            self.call_native_method(&class, obj, "inspect", &[], position)?
+        {
+            return Ok(rendered.to_string());
+        }
+        Ok(format!("{}", obj))
     }
 
     /// Apply `private` / `public` visibility modifier to top-level methods.

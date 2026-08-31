@@ -507,9 +507,9 @@ fn test_self_outside_method_context_error() {
 fn test_pattern_match_no_match_error() {
     let mut vm = VirtualMachine::new();
 
-    // match 5 when 1 => "one" when 2 => "two" end
-    // Should error because 5 doesn't match any pattern
-    let stmt = Statement::Match {
+    // `case 5 in 1 ... in 2 ... end` raises when nothing matches, and the
+    // error carries the case's own position.
+    let stmt = Statement::CaseIn {
         expression: Expression::IntLiteral {
             value: 5,
             position: pos_at(45, 7),
@@ -547,7 +547,7 @@ fn test_pattern_match_no_match_error() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("No pattern matched"));
+    assert!(error.to_string().contains("NoMatchingPatternError"));
     assert!(error.to_string().contains("45:1"));
 }
 
