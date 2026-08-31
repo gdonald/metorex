@@ -84,14 +84,34 @@ impl VirtualMachine {
                         }));
                     }
                     let owner_name = method_obj.owner.as_deref().unwrap_or("main");
+                    // A native stub records its owner by name; answer the
+                    // module itself when that name resolves to one.
+                    if let Some(owner @ (Object::Class(_) | Object::Module(_))) =
+                        self.globals().get(owner_name)
+                    {
+                        return Ok(Some(owner));
+                    }
                     return Ok(Some(Object::String(Rc::new(owner_name.to_string()))));
                 }
+                // Ruby answers `[path, lineno]`, or nil for a method with no
+                // Ruby source behind it.
                 "source_location" => {
-                    if let Some(loc) = &method_obj.source_location {
-                        return Ok(Some(Object::String(Rc::new(loc.to_string()))));
-                    } else {
-                        return Ok(Some(Object::String(Rc::new("unknown".to_string()))));
-                    }
+                    let Some(location) = &method_obj.source_location else {
+                        return Ok(Some(Object::Nil));
+                    };
+                    let path = location
+                        .filename
+                        .clone()
+                        .or_else(|| {
+                            self.current_file
+                                .as_ref()
+                                .map(|file| file.display().to_string())
+                        })
+                        .unwrap_or_default();
+                    return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(vec![
+                        Object::String(Rc::new(path)),
+                        Object::Int(location.line as i64),
+                    ])))));
                 }
                 "parameters" => {
                     let params: Vec<Object> = method_obj

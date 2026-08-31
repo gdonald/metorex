@@ -272,6 +272,7 @@ fn walk_expression(expr: &Expression, names: &mut Vec<String>) {
         }
         Expression::Grouped { expression, .. }
         | Expression::Splat { expression, .. }
+        | Expression::KeywordSplat { expression, .. }
         | Expression::BlockArg { expression, .. }
         | Expression::Defined { expression, .. } => walk_expression(expression, names),
         Expression::SingletonClass { target, .. } => {

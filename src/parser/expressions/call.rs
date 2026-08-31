@@ -361,11 +361,13 @@ impl Parser {
                     position,
                 });
             } else if self.match_token(&[TokenKind::StarStar]) {
-                // Double-splat: **expr — pass-through as-is; runtime treats it
-                // as a positional hash (good enough for most mspec usages).
-                let _position = self.previous().position;
+                // Double-splat: **expr — a Hash passed as keyword arguments.
+                let position = self.previous().position;
                 let expr = self.parse_expression()?;
-                arguments.push(expr);
+                arguments.push(Expression::KeywordSplat {
+                    expression: Box::new(expr),
+                    position,
+                });
             } else if self.match_token(&[TokenKind::Ampersand]) {
                 // `&expr`: convert to a block argument. The runtime drops it
                 // entirely if `expr` evaluates to nil and binds it as the

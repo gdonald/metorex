@@ -427,3 +427,145 @@ fn p_is_a_private_instance_method_on_kernel() {
     let result = run("Kernel.private_instance_methods(false).include?(:p)");
     assert_eq!(result, Some(Object::Bool(true)));
 }
+
+// ── Output routes through $stdout ────────────────────────────────────────────
+
+const CAPTURE: &str = r#"
+class Capture
+  def initialize
+    @written = ""
+  end
+  def write(text)
+    @written += text.to_s
+  end
+  def written
+    @written
+  end
+end
+capture = Capture.new
+$stdout = capture
+"#;
+
+#[test]
+fn puts_writes_through_a_replaced_stdout() {
+    let result = run(&format!(
+        "{CAPTURE}\nputs \"line\"\ncapture.written.inspect"
+    ));
+    assert_eq!(result, Some(Object::string("\"line\\n\"")));
+}
+
+#[test]
+fn print_writes_through_a_replaced_stdout() {
+    let result = run(&format!(
+        "{CAPTURE}\nprint \"bare\"\ncapture.written.inspect"
+    ));
+    assert_eq!(result, Some(Object::string("\"bare\"")));
+}
+
+#[test]
+fn p_writes_through_a_replaced_stdout() {
+    let result = run(&format!("{CAPTURE}\np \"quoted\"\ncapture.written.inspect"));
+    assert_eq!(result, Some(Object::string("\"\\\"quoted\\\"\\n\"")));
+}
+
+#[test]
+fn a_bare_puts_writes_one_newline() {
+    let result = run(&format!("{CAPTURE}\nputs\ncapture.written.inspect"));
+    assert_eq!(result, Some(Object::string("\"\\n\"")));
+}
+
+// ── print with no arguments writes $_ ────────────────────────────────────────
+
+#[test]
+fn a_bare_print_writes_the_last_read_line() {
+    let result = run(&format!(
+        "{CAPTURE}\n$_ = \"remembered\"\nprint\ncapture.written.inspect"
+    ));
+    assert_eq!(result, Some(Object::string("\"remembered\"")));
+}
+
+// ── puts and print use to_s, not inspect ─────────────────────────────────────
+
+#[test]
+fn puts_renders_a_symbol_without_its_colon() {
+    let result = run(&format!("{CAPTURE}\nputs :name\ncapture.written.inspect"));
+    assert_eq!(result, Some(Object::string("\"name\\n\"")));
+}
+
+#[test]
+fn p_keeps_the_colon_on_a_symbol() {
+    let result = run(&format!("{CAPTURE}\np :name\ncapture.written.inspect"));
+    assert_eq!(result, Some(Object::string("\":name\\n\"")));
+}
+
+// ── A bare call reaches self's method, not the Kernel function ───────────────
+
+#[test]
+fn a_bare_to_s_inside_a_class_reaches_that_class() {
+    let result = run(r#"
+class Speaker
+  def to_s
+    "speaker to_s"
+  end
+  def describe
+    to_s
+  end
+end
+Speaker.new.describe
+"#);
+    assert_eq!(result, Some(Object::string("speaker to_s")));
+}
+
+#[test]
+fn a_user_defined_equals_can_call_a_bare_to_s() {
+    let result = run(r#"
+class Named
+  def to_s
+    "named"
+  end
+  def ==(other)
+    to_s == other
+  end
+end
+Named.new == "named"
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── readline / readlines / gets at end of input ──────────────────────────────
+
+#[test]
+fn readline_is_a_private_instance_method_on_kernel() {
+    let result = run("Kernel.private_instance_methods(false).include?(:readline)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn readlines_is_a_private_instance_method_on_kernel() {
+    let result = run("Kernel.private_instance_methods(false).include?(:readlines)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn eof_error_descends_from_io_error() {
+    let result = run("EOFError.superclass.name");
+    assert_eq!(result, Some(Object::string("IOError")));
+}
+
+#[test]
+fn eof_error_is_a_standard_error() {
+    let result = run("EOFError.ancestors.include?(StandardError)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn readline_rejects_arguments() {
+    let error = run_err("readline(1)");
+    assert!(error.contains("readline() expects 0 arguments, got 1"));
+}
+
+#[test]
+fn readlines_rejects_arguments() {
+    let error = run_err("readlines(1)");
+    assert!(error.contains("readlines() expects 0 arguments, got 1"));
+}

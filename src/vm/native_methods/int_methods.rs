@@ -20,6 +20,64 @@ impl VirtualMachine {
             return Ok(None);
         };
         match method_name {
+            // Integer#divmod — the floored quotient and the modulus, as a
+            // two-element Array. The signs follow the divisor, as Ruby's do.
+            "divmod" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                match &arguments[0] {
+                    Object::Int(0) => {
+                        let message = "divided by 0".to_string();
+                        Err(MetorexError::UncaughtException {
+                            exception: Object::exception("ZeroDivisionError", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        })
+                    }
+                    Object::Int(divisor) => {
+                        let quotient = n.div_euclid(*divisor);
+                        let remainder = n - quotient * divisor;
+                        // `div_euclid` floors toward zero for a negative
+                        // divisor, so correct it back to Ruby's floor.
+                        let (quotient, remainder) =
+                            if remainder != 0 && (remainder < 0) != (*divisor < 0) {
+                                (quotient - 1, remainder + divisor)
+                            } else {
+                                (quotient, remainder)
+                            };
+                        Ok(Some(Object::Array(std::rc::Rc::new(
+                            std::cell::RefCell::new(vec![
+                                Object::Int(quotient),
+                                Object::Int(remainder),
+                            ]),
+                        ))))
+                    }
+                    // Ruby answers an Integer quotient and a Float modulus
+                    // when the divisor is a Float.
+                    Object::Float(divisor) => {
+                        let value = *n as f64;
+                        let quotient = (value / divisor).floor();
+                        Ok(Some(Object::Array(std::rc::Rc::new(
+                            std::cell::RefCell::new(vec![
+                                Object::Int(quotient as i64),
+                                Object::Float(value - quotient * divisor),
+                            ]),
+                        ))))
+                    }
+                    other => Err(method_argument_type_error(
+                        method_name,
+                        "Integer or Float",
+                        other,
+                        position,
+                    )),
+                }
+            }
             "abs" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

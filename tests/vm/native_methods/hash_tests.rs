@@ -559,3 +559,15 @@ fn an_array_literal_without_pairs_is_unchanged() {
     let result = run(r#"[1, "two", :three].length"#);
     assert_eq!(result, Some(Object::Int(3)));
 }
+
+#[test]
+fn each_pair_walks_a_hash_like_each() {
+    let result = run(r##"
+seen = []
+{ "a" => 1, "b" => 2 }.each_pair do |key, value|
+  seen << "#{key}=#{value}"
+end
+seen.inspect
+"##);
+    assert_eq!(result, Some(Object::string("[\"a=1\", \"b=2\"]")));
+}

@@ -487,15 +487,14 @@ f
 }
 
 #[test]
-fn method_optional_param_gets_nil_when_not_provided() {
-    // method_invocation.rs line 937: bind_params falls through to Object::Nil
-    // when a param has no default and no positional arg is provided for it.
-    // With def foo(a = 1, b), calling foo(2): a=2 (positional), b=nil (no default, no arg).
+fn method_required_param_after_optional_takes_the_last_argument() {
+    // With `def needs_two(a = 1, b)`, calling `needs_two 2` binds the trailing
+    // required parameter first, so a keeps its default and b takes the 2.
     let result = run(r#"
 def needs_two(a = 1, b)
-  b.nil?
+  [a, b].inspect
 end
 needs_two 2
 "#);
-    assert_eq!(result, Some(Object::Bool(true)));
+    assert_eq!(result, Some(Object::string("[1, 2]")));
 }

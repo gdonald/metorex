@@ -58,14 +58,43 @@ pub(crate) fn bind_params(
             };
             vm.environment_mut().define(param.clone(), value);
         }
+    } else if let (Some(first_optional), Some(last_optional)) = (
+        default_parameters.iter().map(|(index, _)| *index).min(),
+        default_parameters.iter().map(|(index, _)| *index).max(),
+    ) {
+        // `def f(a, b = 1, c)` fills the required parameters on either side
+        // first, from the front and from the back, and gives what is left to
+        // the optional ones in the middle.
+        let trailing_required = params.len() - last_optional - 1;
+        let for_optionals = positional
+            .len()
+            .saturating_sub(first_optional + trailing_required);
+        for (i, param) in params.iter().enumerate() {
+            let value = if i < first_optional {
+                positional.get(i).cloned().unwrap_or(Object::Nil)
+            } else if i <= last_optional {
+                let rank = i - first_optional;
+                match positional
+                    .get(first_optional + rank)
+                    .filter(|_| rank < for_optionals)
+                {
+                    Some(value) => value.clone(),
+                    None => match default_parameters.iter().find(|(index, _)| *index == i) {
+                        Some((_, default_expr)) => vm.evaluate_expression(default_expr)?,
+                        None => Object::Nil,
+                    },
+                }
+            } else {
+                let offset_from_end = params.len() - i;
+                let index = positional.len().saturating_sub(offset_from_end);
+                positional.get(index).cloned().unwrap_or(Object::Nil)
+            };
+            vm.environment_mut().define(param.clone(), value);
+        }
     } else {
         for (i, param) in params.iter().enumerate() {
             let value = if i < positional.len() {
                 positional[i].clone()
-            } else if let Some((_, default_expr)) =
-                default_parameters.iter().find(|(idx, _)| *idx == i)
-            {
-                vm.evaluate_expression(default_expr)?
             } else {
                 Object::Nil
             };

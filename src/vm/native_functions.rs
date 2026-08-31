@@ -221,13 +221,7 @@ impl VirtualMachine {
                     None => self.environment().get("self").unwrap_or(Object::Nil),
                 })
             }
-            "warn" => {
-                for arg in &arguments {
-                    let s = self.get_string_representation(arg, position)?;
-                    eprintln!("{}", s);
-                }
-                Ok(Object::Nil)
-            }
+            "warn" => self.kernel_warn(arguments, position),
             "sprintf" => {
                 if arguments.is_empty() {
                     return Err(MetorexError::runtime_error(
@@ -235,7 +229,9 @@ impl VirtualMachine {
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
-                let fmt = arguments[0].clone();
+                // Ruby converts the format with `#to_str`, so a non-String
+                // that answers it works and anything else raises TypeError.
+                let fmt = Object::string(self.coerce_name_argument(&arguments[0], position)?);
                 let rest: Vec<Object> = arguments.into_iter().skip(1).collect();
                 let rest_obj = if rest.len() == 1 {
                     rest.into_iter().next().unwrap()
@@ -421,32 +417,110 @@ impl VirtualMachine {
                 }
                 Ok(Object::Symbol(Rc::new(method_name)))
             }
+            // Kernel#rand — a Float in [0, 1) with no argument, an Integer
+            // below the given bound, or a value drawn from a Range.
             "rand" => {
-                use std::time::{SystemTime, UNIX_EPOCH};
-                let nanos = SystemTime::now()
-                    .duration_since(UNIX_EPOCH)
-                    .map(|d| d.subsec_nanos())
-                    .unwrap_or(0);
-                if arguments.is_empty() {
-                    Ok(Object::Float((nanos as f64 / u32::MAX as f64).abs()))
-                } else if let Object::Int(n) = &arguments[0] {
-                    if *n > 0 {
-                        Ok(Object::Int((nanos as i64) % n))
-                    } else {
-                        Ok(Object::Int(0))
-                    }
-                } else {
-                    Ok(Object::Int(0))
+                if arguments.len() > 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("rand() expects 0-1 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
                 }
+                let Some(limit) = arguments.first().cloned() else {
+                    return Ok(Object::Float(self.next_random_float()));
+                };
+                self.random_below(limit, position)
             }
-            "srand" => Ok(Object::Int(0)),
+            // Kernel#trace_var — run a hook whenever the named global is
+            // assigned. The hook comes from a block, a Proc argument, or a
+            // String of code to evaluate.
+            "trace_var" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    let message = format!(
+                        "wrong number of arguments (given {}, expected 1..2)",
+                        arguments.len()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+                let name = global_name_from(&arguments[0]);
+                let hook = match arguments.get(1) {
+                    Some(hook) => hook.clone(),
+                    None => match self.pending_block.take() {
+                        Some(block) => block,
+                        None => {
+                            let message = "tracing requires a block or a proc".to_string();
+                            return Err(MetorexError::UncaughtException {
+                                exception: Object::exception("ArgumentError", message.clone()),
+                                location: crate::vm::utils::position_to_location(position),
+                                message,
+                            });
+                        }
+                    },
+                };
+                self.traced_globals.entry(name).or_default().push(hook);
+                Ok(Object::Nil)
+            }
+            // Kernel#untrace_var — drop the hooks on a global. With a second
+            // argument only that hook goes.
+            "untrace_var" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    let message = format!(
+                        "wrong number of arguments (given {}, expected 1..2)",
+                        arguments.len()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+                let name = global_name_from(&arguments[0]);
+                match arguments.get(1) {
+                    Some(hook) => {
+                        if let Some(hooks) = self.traced_globals.get_mut(&name) {
+                            hooks.retain(|existing| !existing.equals(hook));
+                        }
+                    }
+                    None => {
+                        self.traced_globals.remove(&name);
+                    }
+                }
+                Ok(Object::Nil)
+            }
+            // Kernel#srand — reseed the generator and answer the seed it had.
+            // With no argument it picks one, so successive calls differ.
+            "srand" => {
+                if arguments.len() > 1 {
+                    return Err(MetorexError::runtime_error(
+                        format!("srand() expects 0-1 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let seed = match arguments.first() {
+                    None => crate::vm::core::seed_from_clock() as i64,
+                    Some(given) => self.coerce_to_seed(given, position)?,
+                };
+                let previous = self.random_seed;
+                self.random_seed = seed;
+                // The generator takes the seed as-is; a seed of zero still has
+                // to produce a usable sequence, so it is mixed rather than
+                // used directly.
+                self.random_state = (seed as u64) ^ 0x9E3779B97F4A7C15;
+                Ok(Object::Int(previous))
+            }
             "sleep" => Ok(Object::Int(0)),
             "puts" => {
-                // puts prints each argument on a new line
+                if arguments.is_empty() {
+                    self.write_to_stdout("\n", position)?;
+                }
                 for arg in &arguments {
                     // Try to call to_s or inspect method if it exists on the object
                     let output = self.get_string_representation(arg, position)?;
-                    println!("{}", output);
+                    self.write_to_stdout(&format!("{}\n", output), position)?;
                 }
                 Ok(Object::Nil)
             }
@@ -481,6 +555,11 @@ impl VirtualMachine {
                             crate::vm::utils::position_to_location(position),
                         )),
                     }
+                } else if let Some(receiver) = self.environment().get("self") {
+                    // Inside an instance method a bare `method(:name)` means
+                    // `self.method(:name)`, and the name is not a local.
+                    let name = Object::Symbol(std::rc::Rc::new(method_name.to_string()));
+                    self.send_to_object(receiver, "method", vec![name], position)
                 } else {
                     Err(MetorexError::runtime_error(
                         format!("undefined method '{}'", method_name),
@@ -664,14 +743,21 @@ impl VirtualMachine {
                 // Return true if newly loaded, false if already loaded (Ruby behavior)
                 Ok(Object::Bool(!was_already_loaded))
             }
+            // Kernel#print writes its arguments with no separator. With no
+            // arguments it writes `$_`, the last line `gets` read.
             "print" => {
-                // print outputs arguments without trailing newline
+                if arguments.is_empty() {
+                    let last_line = self.globals().get("_").unwrap_or(Object::Nil);
+                    if !matches!(last_line, Object::Nil) {
+                        let output = self.get_string_representation(&last_line, position)?;
+                        self.write_to_stdout(&output, position)?;
+                    }
+                    return Ok(Object::Nil);
+                }
                 for arg in &arguments {
                     let output = self.get_string_representation(arg, position)?;
-                    print!("{}", output);
+                    self.write_to_stdout(&output, position)?;
                 }
-                use std::io::Write;
-                std::io::stdout().flush().ok();
                 Ok(Object::Nil)
             }
             // Kernel#p writes each argument's `inspect` on its own line and
@@ -679,7 +765,7 @@ impl VirtualMachine {
             "p" => {
                 for argument in &arguments {
                     let rendered = self.get_inspect_representation(argument, position)?;
-                    println!("{}", rendered);
+                    self.write_to_stdout(&format!("{}\n", rendered), position)?;
                 }
                 match arguments.len() {
                     0 => Ok(Object::Nil),
@@ -688,6 +774,43 @@ impl VirtualMachine {
                         arguments,
                     )))),
                 }
+            }
+            // Kernel#readline — `gets` that refuses to answer nil: at end of
+            // input it raises EOFError.
+            "readline" => {
+                if !arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        format!("readline() expects 0 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                match self.read_raw_line_from_stdin(position)? {
+                    Some(line) => Ok(Object::string(line)),
+                    None => {
+                        let message = "end of file reached".to_string();
+                        Err(MetorexError::UncaughtException {
+                            exception: Object::exception("EOFError", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        })
+                    }
+                }
+            }
+            // Kernel#readlines — every remaining line, as an Array.
+            "readlines" => {
+                if !arguments.is_empty() {
+                    return Err(MetorexError::runtime_error(
+                        format!("readlines() expects 0 arguments, got {}", arguments.len()),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                }
+                let mut lines = Vec::new();
+                while let Some(line) = self.read_raw_line_from_stdin(position)? {
+                    lines.push(Object::string(line));
+                }
+                Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    lines,
+                ))))
             }
             // `gets` is ARGF's, so a stand-in installed on ARGF answers here.
             "gets" => {
@@ -976,10 +1099,13 @@ impl VirtualMachine {
                 ))))
             }
             // `fail` is Ruby's other spelling of `raise`.
-            "fail" => {
+            // `fail` is Ruby's other spelling of `raise`. Both are reachable
+            // as methods, so `send(:raise, ...)` and a singleton that makes
+            // `raise` public find them here.
+            "fail" | "raise" => {
                 if arguments.len() > 2 {
                     return Err(MetorexError::runtime_error(
-                        format!("fail() expects 0-2 arguments, got {}", arguments.len()),
+                        format!("{}() expects 0-2 arguments, got {}", name, arguments.len()),
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
@@ -1078,10 +1204,15 @@ impl VirtualMachine {
             // unwinding out of the program.
             "throw" => {
                 if arguments.is_empty() || arguments.len() > 2 {
-                    return Err(MetorexError::runtime_error(
-                        format!("throw() expects 1-2 arguments, got {}", arguments.len()),
-                        crate::vm::utils::position_to_location(position),
-                    ));
+                    let message = format!(
+                        "wrong number of arguments (given {}, expected 1..2)",
+                        arguments.len()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
                 }
                 let tag = arguments[0].clone();
                 if !self
@@ -1269,20 +1400,35 @@ impl VirtualMachine {
         &mut self,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        match self.read_raw_line_from_stdin(position)? {
+            Some(line) => Ok(Object::string(line)),
+            None => Ok(Object::Nil),
+        }
+    }
+
+    /// One line of stdin with its terminator trimmed, or `None` at end of
+    /// input. `gets` answers nil there and `readline` raises EOFError.
+    fn read_raw_line_from_stdin(
+        &mut self,
+        position: Position,
+    ) -> Result<Option<String>, MetorexError> {
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).map_err(|error| {
+        let read = std::io::stdin().read_line(&mut input).map_err(|error| {
             MetorexError::runtime_error(
                 format!("Failed to read from stdin: {}", error),
                 crate::vm::utils::position_to_location(position),
             )
         })?;
+        if read == 0 {
+            return Ok(None);
+        }
         if input.ends_with('\n') {
             input.pop();
             if input.ends_with('\r') {
                 input.pop();
             }
         }
-        Ok(Object::string(input))
+        Ok(Some(input))
     }
 
     /// Coerce `abort`'s argument to a String the way Ruby does: a String is
@@ -1322,6 +1468,8 @@ impl VirtualMachine {
     ) -> Result<String, MetorexError> {
         // First try to_s, then inspect, then fall back to Display
         match obj {
+            // `:name.to_s` is the bare name; only `inspect` keeps the colon.
+            Object::Symbol(name) => Ok((**name).clone()),
             Object::Instance(_) => {
                 // Try to_s first
                 if let Some((class, method)) = self.lookup_method(obj, "to_s") {
@@ -1376,6 +1524,220 @@ impl VirtualMachine {
             return Ok(rendered.to_string());
         }
         Ok(format!("{}", obj))
+    }
+
+    /// The Integer `srand` seeds with. A Float truncates and any other object
+    /// must answer `#to_int`, as Ruby requires.
+    fn coerce_to_seed(&mut self, given: &Object, position: Position) -> Result<i64, MetorexError> {
+        match given {
+            Object::Int(seed) => Ok(*seed),
+            Object::Float(seed) => Ok(*seed as i64),
+            other => {
+                let Some((class, method)) = self.lookup_method(other, "to_int") else {
+                    let message = format!(
+                        "no implicit conversion of {} into Integer",
+                        self.builtins().class_of(other).name()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                };
+                let converted =
+                    self.invoke_method(class, method, other.clone(), vec![], position)?;
+                self.coerce_to_seed(&converted, position)
+            }
+        }
+    }
+
+    /// Run the hooks `trace_var` registered for `name`, with the value just
+    /// assigned. A String hook is evaluated as code, the way Ruby's is.
+    pub(crate) fn fire_global_trace(
+        &mut self,
+        name: &str,
+        value: &Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let Some(hooks) = self.traced_globals.get(name).cloned() else {
+            return Ok(());
+        };
+        for hook in hooks {
+            match hook {
+                Object::String(code) => {
+                    let tokens = crate::lexer::Lexer::new(&code).tokenize();
+                    let statements =
+                        crate::parser::Parser::new(tokens)
+                            .parse()
+                            .map_err(|errors| {
+                                MetorexError::runtime_error(
+                                    format!(
+                                        "trace_var: parse error: {}",
+                                        errors
+                                            .iter()
+                                            .map(|error| error.to_string())
+                                            .collect::<Vec<_>>()
+                                            .join("; ")
+                                    ),
+                                    crate::vm::utils::position_to_location(position),
+                                )
+                            })?;
+                    for statement in &statements {
+                        self.execute_statement(statement)?;
+                    }
+                }
+                callable => {
+                    self.invoke_callable(callable, vec![value.clone()], position)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Advance the generator and answer the next 64 bits. A SplitMix64 step,
+    /// which needs no state beyond the seed itself.
+    fn next_random_bits(&mut self) -> u64 {
+        self.random_state = self.random_state.wrapping_add(0x9E3779B97F4A7C15);
+        let mut mixed = self.random_state;
+        mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
+        mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D049BB133111EB);
+        mixed ^ (mixed >> 31)
+    }
+
+    /// The next draw as a Float in [0, 1).
+    pub(crate) fn next_random_float(&mut self) -> f64 {
+        // 53 bits is the whole mantissa, so every representable value in the
+        // interval is reachable and none round up to 1.0.
+        (self.next_random_bits() >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    /// The next draw as an Integer in [0, bound).
+    fn next_random_int(&mut self, bound: i64) -> i64 {
+        if bound <= 0 {
+            return 0;
+        }
+        (self.next_random_bits() % bound as u64) as i64
+    }
+
+    /// `Kernel#rand(limit)` for every argument shape Ruby accepts.
+    fn random_below(&mut self, limit: Object, position: Position) -> Result<Object, MetorexError> {
+        match limit {
+            // Ruby ignores the sign, and a bound of zero means "no bound",
+            // which draws a Float instead.
+            Object::Int(bound) => match bound.unsigned_abs() {
+                0 => Ok(Object::Float(self.next_random_float())),
+                magnitude => Ok(Object::Int(self.next_random_int(magnitude as i64))),
+            },
+            // A Float bound truncates. `rand(0.999)` truncates to zero, so it
+            // draws a Float the way `rand(0)` does.
+            Object::Float(bound) => match bound.abs().trunc() as i64 {
+                0 => Ok(Object::Float(self.next_random_float())),
+                magnitude => Ok(Object::Int(self.next_random_int(magnitude))),
+            },
+            Object::Range {
+                ref start,
+                ref end,
+                exclusive,
+            } => self.random_in_range(start, end, exclusive, position),
+            other => {
+                // Anything else is asked for an Integer bound.
+                let Some((class, method)) = self.lookup_method(&other, "to_int") else {
+                    let message = format!(
+                        "no implicit conversion of {} into Integer",
+                        self.builtins().class_of(&other).name()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                };
+                let converted = self.invoke_method(class, method, other, vec![], position)?;
+                self.random_below(converted, position)
+            }
+        }
+    }
+
+    /// `Kernel#rand(range)`. An all-Integer range draws an Integer; a Float on
+    /// either side draws a Float. A backwards range answers nil.
+    fn random_in_range(
+        &mut self,
+        start: &Object,
+        end: &Object,
+        exclusive: bool,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if let (Object::Int(low), Object::Int(high)) = (start, end) {
+            let span = if exclusive {
+                high - low
+            } else {
+                high - low + 1
+            };
+            if span <= 0 {
+                return Ok(Object::Nil);
+            }
+            return Ok(Object::Int(low + self.next_random_int(span)));
+        }
+        let (Some(low), Some(high)) = (numeric_value(start), numeric_value(end)) else {
+            let message = "bad value for range";
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("ArgumentError", message.to_string()),
+                location: crate::vm::utils::position_to_location(position),
+                message: message.to_string(),
+            });
+        };
+        if high < low || (exclusive && high == low) {
+            return Ok(Object::Nil);
+        }
+        if high == low {
+            return Ok(Object::Float(low));
+        }
+        Ok(Object::Float(low + self.next_random_float() * (high - low)))
+    }
+
+    /// Write `text` where `$stdout` points. The default is the process's own
+    /// stdout; when a program (or a spec harness) assigns an object with its
+    /// own `write`, the text goes there instead.
+    pub(crate) fn write_to_stdout(
+        &mut self,
+        text: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        self.write_to_stream("stdout", text, position)
+    }
+
+    /// The `$stderr` counterpart of `write_to_stdout`.
+    pub(crate) fn write_to_stderr(
+        &mut self,
+        text: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        self.write_to_stream("stderr", text, position)
+    }
+
+    fn write_to_stream(
+        &mut self,
+        stream: &str,
+        text: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let target = self.globals().get(stream).unwrap_or(Object::Nil);
+        if let Some((class, method)) = self.lookup_method(&target, "write")
+            && !method.is_undefined
+        {
+            let argument = Object::string(text.to_string());
+            self.invoke_method(class, method, target, vec![argument], position)?;
+            return Ok(());
+        }
+        use std::io::Write;
+        if stream == "stderr" {
+            eprint!("{}", text);
+            let _ = std::io::stderr().flush();
+        } else {
+            print!("{}", text);
+            let _ = std::io::stdout().flush();
+        }
+        Ok(())
     }
 
     /// Apply `private` / `public` visibility modifier to top-level methods.
@@ -1474,4 +1836,22 @@ fn throw_tags_match(live: &Object, thrown: &Object) -> bool {
         (Object::Nil, Object::Nil) => true,
         _ => false,
     }
+}
+
+/// The numeric value of a Range endpoint, when it has one.
+fn numeric_value(object: &Object) -> Option<f64> {
+    match object {
+        Object::Int(value) => Some(*value as f64),
+        Object::Float(value) => Some(*value),
+        _ => None,
+    }
+}
+
+/// The global's name without its `$`, however it was named.
+fn global_name_from(named: &Object) -> String {
+    let text = match named {
+        Object::Symbol(name) | Object::String(name) => (**name).clone(),
+        other => other.to_string(),
+    };
+    text.strip_prefix('$').unwrap_or(&text).to_string()
 }

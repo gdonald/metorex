@@ -22,6 +22,9 @@ pub struct CallFrame {
     name: String,
     /// Optional source location ("file:line") to aid debugging.
     location: Option<String>,
+    /// The file the call site sits in, when known. `location` carries only a
+    /// line and column, so this is what names the file for a backtrace.
+    source_file: Option<String>,
     /// What the frame is running.
     kind: FrameKind,
 }
@@ -32,6 +35,7 @@ impl CallFrame {
         Self {
             name: name.into(),
             location,
+            source_file: None,
             kind: FrameKind::Block,
         }
     }
@@ -46,6 +50,7 @@ impl CallFrame {
         Self {
             name: name.into(),
             location,
+            source_file: None,
             kind: FrameKind::Method {
                 callee: callee.into(),
                 defined: defined.into(),
@@ -58,6 +63,7 @@ impl CallFrame {
         Self {
             name: name.into(),
             location: None,
+            source_file: None,
             kind: FrameKind::Boundary,
         }
     }
@@ -75,5 +81,16 @@ impl CallFrame {
     /// Return the optional source location.
     pub fn location(&self) -> Option<&str> {
         self.location.as_deref()
+    }
+
+    /// Record the file the call site sits in.
+    pub fn with_source_file(mut self, source_file: Option<String>) -> Self {
+        self.source_file = source_file;
+        self
+    }
+
+    /// The file the call site sits in, when it was recorded.
+    pub fn source_file(&self) -> Option<&str> {
+        self.source_file.as_deref()
     }
 }

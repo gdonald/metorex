@@ -14,6 +14,7 @@ pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
         TokenKind::Ident(_)
             | TokenKind::InstanceVar(_)
             | TokenKind::ClassVar(_)
+            | TokenKind::GlobalVar(_)
             | TokenKind::String(_)
             | TokenKind::InterpolatedString(_)
             | TokenKind::Def
@@ -73,6 +74,9 @@ impl Parser {
             }
             TokenKind::InstanceVar(name) => Ok(symbol(format!("@{}", name), symbol_position)),
             TokenKind::ClassVar(name) => Ok(symbol(format!("@@{}", name), symbol_position)),
+            // `:$name` is a symbol too, which is how `trace_var` names the
+            // global it watches.
+            TokenKind::GlobalVar(name) => Ok(symbol(format!("${}", name), symbol_position)),
 
             // Keyword names as symbols
             TokenKind::Def => Ok(symbol("def", symbol_position)),
@@ -137,10 +141,6 @@ impl Parser {
             TokenKind::Caret => Ok(symbol("^", symbol_position)),
             TokenKind::Match => Ok(symbol("=~", symbol_position)),
             TokenKind::NotMatch => Ok(symbol("!~", symbol_position)),
-
-            // `:$stdout` — the sigil is part of the symbol's name, as it
-            // already is for `:@name` and `:@@count` above.
-            TokenKind::GlobalVar(name) => Ok(symbol(format!("${}", name), symbol_position)),
 
             // :"string" syntax — symbol from string literal
             TokenKind::String(s) => Ok(symbol(s, symbol_position)),

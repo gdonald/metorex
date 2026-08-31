@@ -45,7 +45,20 @@ fn unary_minus_float() {
 }
 
 #[test]
-fn unary_minus_error_on_string() {
-    let err = run_err(r#"-"hello""#);
-    assert!(err.contains("unary") || err.contains("-") || err.contains("operator"));
+fn unary_minus_on_a_string_answers_the_string() {
+    // Ruby's `-"str"` is the frozen, deduplicated string.
+    let result = run(r#"-"hello""#);
+    assert_eq!(result.map(|o| o.to_string()), Some("hello".to_string()));
+}
+
+#[test]
+fn unary_plus_on_nil_raises() {
+    let error = run_err("+nil");
+    assert!(error.contains("Cannot apply unary operator"));
+}
+
+#[test]
+fn unary_minus_on_true_raises() {
+    let error = run_err("-true");
+    assert!(error.contains("Cannot apply unary operator"));
 }

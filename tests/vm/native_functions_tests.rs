@@ -514,9 +514,10 @@ fn rand_with_int_arg() {
 }
 
 #[test]
-fn rand_with_zero_arg() {
-    let result = run("rand(0)");
-    assert_eq!(result, Some(Object::Int(0)));
+fn rand_with_zero_arg_gives_a_float() {
+    // Ruby treats a bound of zero as no bound, so it draws a Float.
+    let result = run("rand(0).is_a?(Float)");
+    assert_eq!(result, Some(Object::Bool(true)));
 }
 
 // ── sleep ────────────────────────────────────────────────────────────────────
@@ -605,15 +606,15 @@ MyClass.new.greet
 // ── rand with non-Int argument (line 89) ──────────────────────────────────────
 
 #[test]
-fn rand_with_float_arg_returns_zero() {
-    let result = run("rand(3.14)");
-    assert_eq!(result, Some(Object::Int(0)));
+fn rand_with_a_float_bound_above_one_gives_an_integer() {
+    let result = run("rand(3.14).is_a?(Integer)");
+    assert_eq!(result, Some(Object::Bool(true)));
 }
 
 #[test]
-fn rand_with_string_arg_returns_zero() {
-    let result = run(r#"rand("hello")"#);
-    assert_eq!(result, Some(Object::Int(0)));
+fn rand_with_an_uncoercible_argument_raises_type_error() {
+    let error = run_err(r#"rand("hello")"#);
+    assert!(error.contains("no implicit conversion of String into Integer"));
 }
 
 // ── require with non-Array $LOAD_PATH (lines 174) ────────────────────────────
@@ -814,4 +815,270 @@ fn require_nonexistent_file_errors() {
 fn require_relative_no_context_errors() {
     let err = run_err(r#"require_relative "foo""#);
     assert!(err.contains("require_relative") || err.contains("context") || err.contains("REPL"));
+}
+
+// ── Kernel#rand ──────────────────────────────────────────────────────────────
+
+#[test]
+fn rand_without_arguments_gives_a_float_below_one() {
+    let result = run("value = rand\nvalue.is_a?(Float) && value >= 0.0 && value < 1.0");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_with_an_integer_bound_stays_below_it() {
+    let result = run("1000.times.all? { |i| (0...100).include?(rand(100)) }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_ignores_the_sign_of_its_bound() {
+    let result = run("1000.times.all? { |i| (0...4).include?(rand(-4)) }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_with_a_float_below_one_gives_a_float() {
+    let result = run("rand(0.999).is_a?(Float)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_over_an_integer_range_gives_an_integer_inside_it() {
+    let result =
+        run("1000.times.all? { |i| x = rand(4...6); x.is_a?(Integer) && (4...6).include?(x) }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_over_a_mixed_range_gives_a_float_inside_it() {
+    let result =
+        run("1000.times.all? { |i| x = rand(4...6.5); x.is_a?(Float) && (4...6.5).include?(x) }");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_over_a_backwards_range_is_nil() {
+    let result = run("rand(1..0)");
+    assert_eq!(result, Some(Object::Nil));
+}
+
+#[test]
+fn rand_over_a_zero_width_integer_range_is_that_integer() {
+    let result = run("rand(42..42)");
+    assert_eq!(result, Some(Object::Int(42)));
+}
+
+#[test]
+fn rand_calls_to_int_on_its_argument() {
+    let result = run(r#"
+class Limit
+  def to_int
+    7
+  end
+end
+1000.times.all? { |i| (0...7).include?(rand(Limit.new)) }
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn rand_is_a_private_instance_method_on_kernel() {
+    let result = run("Kernel.private_instance_methods(false).include?(:rand)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn srand_answers_the_previous_seed() {
+    let result = run("srand(1)\nsrand(2).is_a?(Integer)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn the_same_seed_draws_the_same_sequence() {
+    let result = run("srand(99)\nfirst = rand\nsrand(99)\nfirst == rand");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── Numeric is a real ancestor ───────────────────────────────────────────────
+
+#[test]
+fn an_integer_is_a_numeric() {
+    let result = run("5.is_a?(Numeric)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn a_float_is_a_numeric() {
+    let result = run("0.5.is_a?(Numeric)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn float_reports_numeric_as_its_superclass() {
+    let result = run("Float.superclass.name");
+    assert_eq!(result.map(|o| o.to_string()), Some("Numeric".to_string()));
+}
+
+// ── Comparing an Integer against a Float ─────────────────────────────────────
+
+#[test]
+fn an_integer_range_includes_a_float_inside_it() {
+    let result = run("(0...1).include?(0.38)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn a_range_with_one_float_side_includes_a_float() {
+    let result = run("(3.5..6).include?(5.93)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn spaceship_compares_a_float_against_an_integer() {
+    let result = run("[0.38 <=> 0, 5 <=> 5.5, 2 <=> 2.0].inspect");
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("[1, -1, 0]".to_string())
+    );
+}
+
+// ── sprintf format coercion ──────────────────────────────────────────────────
+
+#[test]
+fn sprintf_converts_its_format_with_to_str() {
+    let result = run(r#"
+class Template
+  def to_str
+    "converted %s"
+  end
+end
+sprintf(Template.new, "format")
+"#);
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("converted format".to_string())
+    );
+}
+
+#[test]
+fn sprintf_raises_type_error_for_a_format_it_cannot_convert() {
+    let error = run_err(r#"sprintf(42, "value")"#);
+    assert!(error.contains("no implicit conversion of Integer into String"));
+}
+
+#[test]
+fn a_numeric_modulo_by_a_string_raises() {
+    let error = run_err(r#"42 % "not a format""#);
+    assert!(error.contains("Cannot apply operator 'Modulo' to types 'Int' and 'String'"));
+}
+
+#[test]
+fn percent_s_renders_a_symbol_with_to_s() {
+    let result = run(r#"sprintf("%s", :symbol)"#);
+    assert_eq!(result.map(|o| o.to_string()), Some("symbol".to_string()));
+}
+
+// ── Float constants ──────────────────────────────────────────────────────────
+
+#[test]
+fn float_infinity_is_larger_than_any_finite_value() {
+    let result = run("Float::INFINITY > 1e308");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn float_nan_does_not_equal_itself() {
+    let result = run("Float::NAN == Float::NAN");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn float_reports_its_precision_constants() {
+    let result = run("[Float::DIG, Float::MANT_DIG].inspect");
+    assert_eq!(result.map(|o| o.to_string()), Some("[15, 53]".to_string()));
+}
+
+#[test]
+fn float_epsilon_and_bounds_are_present() {
+    let result = run("[Float::EPSILON > 0, Float::MAX > Float::MIN].inspect");
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("[true, true]".to_string())
+    );
+}
+
+// ── Kernel#srand ─────────────────────────────────────────────────────────────
+
+#[test]
+fn srand_answers_the_seed_it_replaced() {
+    let result = run("srand(10)\nsrand(20)");
+    assert_eq!(result, Some(Object::Int(10)));
+}
+
+#[test]
+fn srand_accepts_a_seed_of_zero() {
+    let result = run("srand(0)\nsrand");
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn srand_accepts_a_negative_seed() {
+    let result = run("srand(-17)\nsrand");
+    assert_eq!(result, Some(Object::Int(-17)));
+}
+
+#[test]
+fn srand_truncates_a_float_seed() {
+    let result = run("srand(3.8)\nsrand");
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn srand_calls_to_int_on_its_seed() {
+    let result = run(r#"
+class Seed
+  def to_int
+    7
+  end
+end
+srand(Seed.new)
+srand
+"#);
+    assert_eq!(result, Some(Object::Int(7)));
+}
+
+#[test]
+fn srand_with_no_argument_picks_a_seed() {
+    let result = run("srand.is_a?(Integer)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn the_same_seed_repeats_a_whole_sequence() {
+    let result = run(r#"
+srand(99)
+first = 3.times.map { rand }
+srand(99)
+first == 3.times.map { rand }
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn srand_raises_type_error_for_nil() {
+    let error = run_err("srand(nil)");
+    assert!(error.contains("into Integer"));
+}
+
+#[test]
+fn srand_raises_type_error_for_a_string() {
+    let error = run_err(r#"srand("7")"#);
+    assert!(error.contains("no implicit conversion of String into Integer"));
+}
+
+#[test]
+fn srand_is_a_private_instance_method_on_kernel() {
+    let result = run("Kernel.private_instance_methods(false).include?(:srand)");
+    assert_eq!(result, Some(Object::Bool(true)));
 }

@@ -159,7 +159,8 @@ impl VirtualMachine {
                 frame_location_string,
                 method_name.clone(),
                 defined_name.clone(),
-            ),
+            )
+            .with_source_file(self.current_source_file.clone()),
             move |vm| {
                 vm.execute_method_body(
                     method_for_body.as_ref(),
@@ -208,6 +209,16 @@ impl VirtualMachine {
                 method.captured_def_scope.clone(),
             ))
         };
+
+        // The body runs in the file the method was defined in, which is what
+        // a backtrace entry for a call made from here has to name.
+        let saved_source_file = std::mem::replace(
+            &mut self.current_source_file,
+            method
+                .source_location
+                .as_ref()
+                .and_then(|location| location.filename.clone()),
+        );
 
         let result = (|| -> Result<Object, MetorexError> {
             self.environment_mut()
@@ -274,6 +285,7 @@ impl VirtualMachine {
         if let Some(previous) = saved_def_scope {
             self.def_scope_stack = previous;
         }
+        self.current_source_file = saved_source_file;
         self.environment_mut().pop_scope();
         match result {
             Err(MetorexError::NonLocalReturn { value, .. }) => Ok(value),

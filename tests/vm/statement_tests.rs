@@ -399,15 +399,18 @@ include UndefinedNopeNope
 }
 
 #[test]
-fn extend_outside_class_error() {
-    let err = run_err(
-        r#"
+fn extend_outside_class_makes_the_methods_callable() {
+    // Top-level `extend M` puts M's methods where a top-level `def` goes.
+    let result = run(r#"
 module M
+  def hello
+    :hi
+  end
 end
 extend M
-"#,
-    );
-    assert!(err.contains("extend") || err.contains("class"));
+hello
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some(":hi".to_string()));
 }
 
 // ── break / continue outside loop (via execute_program) ──────────────────────

@@ -20,8 +20,8 @@ main
 
 #[test]
 fn test_introspection_code_object_execution() {
-    let expected = r#"greet.source_location = 1:1
-calculate.source_location = 5:1
+    let expected = r#"greet defined in code_object.rb line 1
+calculate defined in code_object.rb line 5
 "#;
     let output = run_example("introspection/code_object.rb");
     assert_eq!(output, expected);
@@ -293,8 +293,8 @@ fn test_introspection_method_via_respond_to_missing_no_parens() {
 #[test]
 fn test_introspection_methods_listing() {
     let expected = concat!(
-        "[]\n[:polish]\n[:greet, :polish]\ntrue\n",
-        "[:buff, :greet, :polish]\n[:buff, :greet]\n",
+        "[]\n[:polish]\n[:polish]\ntrue\ntrue\n",
+        "[:buff, :polish]\n[:buff]\n",
         "false\ntrue\nSymbol\nfalse\n6\n",
         "[2, 3]\n[1, 2, 3, 4]\n"
     );
@@ -305,8 +305,8 @@ fn test_introspection_methods_listing() {
 #[test]
 fn test_introspection_methods_listing_no_parens() {
     let expected = concat!(
-        "[]\n[:polish]\n[:greet, :polish]\ntrue\n",
-        "[:buff, :greet, :polish]\n[:buff, :greet]\n",
+        "[]\n[:polish]\n[:polish]\ntrue\ntrue\n",
+        "[:buff, :polish]\n[:buff]\n",
         "false\ntrue\nSymbol\nfalse\n6\n",
         "[2, 3]\n[1, 2, 3, 4]\n"
     );
@@ -333,6 +333,228 @@ fn test_introspection_object_id_no_parens() {
         "4\n2\n0\n3\nfalse\nfalse\n"
     );
     let output = run_example("introspection/object_id_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_private_methods() {
+    let expected = concat!(
+        "[:child_secret]\n",
+        "[:child_secret, :parent_secret]\n",
+        "[:child_class_secret, :parent_class_secret]\n",
+        "[:child_class_secret, :child_secret, :parent_class_secret, :parent_secret]\n",
+        "[:child_secret]\n[:singleton_secret]\ntrue\n5\nnil\nfalse\n"
+    );
+    let output = run_example("introspection/private_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_private_methods_no_parens() {
+    let expected = concat!(
+        "[:child_secret]\n",
+        "[:child_secret, :parent_secret]\n",
+        "[:child_class_secret, :parent_class_secret]\n",
+        "[:child_class_secret, :child_secret, :parent_class_secret, :parent_secret]\n",
+        "[:child_secret]\n[:singleton_secret]\ntrue\n5\nnil\nfalse\n"
+    );
+    let output = run_example("introspection/private_methods_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_protected_methods() {
+    let expected = concat!(
+        "[:child_guard]\n",
+        "[:child_guard, :mixed_in_guard, :parent_guard]\n",
+        "[:child_class_guard, :parent_class_guard]\n",
+        "[:child_guard]\n[:singleton_guard]\ntrue\nfalse\n"
+    );
+    let output = run_example("introspection/protected_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_protected_methods_no_parens() {
+    let expected = concat!(
+        "[:child_guard]\n",
+        "[:child_guard, :mixed_in_guard, :parent_guard]\n",
+        "[:child_class_guard, :parent_class_guard]\n",
+        "[:child_guard]\n[:singleton_guard]\ntrue\nfalse\n"
+    );
+    let output = run_example("introspection/protected_methods_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_public_method() {
+    let expected = concat!(
+        ":opened\n:built\n",
+        "NameError: undefined method 'hidden' for class 'Vault'\n",
+        "NameError: undefined method 'guarded' for class 'Vault'\n",
+        "called publicly_handled\ncalled privately_handled\nNameError\n"
+    );
+    let output = run_example("introspection/public_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_public_method_no_parens() {
+    let expected = concat!(
+        ":opened\n:built\n",
+        "NameError: undefined method 'hidden' for class 'Vault'\n",
+        "NameError: undefined method 'guarded' for class 'Vault'\n",
+        "called publicly_handled\ncalled privately_handled\nNameError\n"
+    );
+    let output = run_example("introspection/public_method_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_public_methods() {
+    let expected = concat!(
+        "[:child_open]\n",
+        "[:child_open, :mixed_in_open, :opens, :parent_open]\n",
+        "[:child_class_open, :parent_class_open]\n",
+        "[:child_open]\nfalse\nfalse\n",
+        "[3, 1]\n[-4, -3]\n[-4, 3]\ntrue\n",
+        "ZeroDivisionError: divided by 0\n"
+    );
+    let output = run_example("introspection/public_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_public_methods_no_parens() {
+    let expected = concat!(
+        "[:child_open]\n",
+        "[:child_open, :mixed_in_open, :opens, :parent_open]\n",
+        "[:child_class_open, :parent_class_open]\n",
+        "[:child_open]\nfalse\nfalse\n",
+        "[3, 1]\n[-4, -3]\n[-4, 3]\ntrue\n",
+        "ZeroDivisionError: divided by 0\n"
+    );
+    let output = run_example("introspection/public_methods_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_remove_instance_variable() {
+    let expected = concat!(
+        "[:@greeting, :@name]\n\"hello\"\n[:@name]\nfalse\n",
+        "\"world\"\n[]\n",
+        "NameError: instance variable @unknown not defined\n",
+        "NameError: `@0' is not allowed as an instance variable name\n",
+        "TypeError\n\"hello\"\nFrozenError\nFrozenError\nNameError\ntrue\n"
+    );
+    let output = run_example("introspection/remove_instance_variable.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_remove_instance_variable_no_parens() {
+    let expected = concat!(
+        "[:@greeting, :@name]\n\"hello\"\n[:@name]\nfalse\n",
+        "\"world\"\n[]\n",
+        "NameError: instance variable @unknown not defined\n",
+        "NameError: `@0' is not allowed as an instance variable name\n",
+        "TypeError\n\"hello\"\nFrozenError\nFrozenError\nNameError\ntrue\n"
+    );
+    let output = run_example("introspection/remove_instance_variable_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_respond_to_missing() {
+    let expected = concat!(
+        "true\nfalse\ntrue\nfalse\n",
+        "true\nfalse\ntrue\ntrue\nfalse\ntrue\n",
+        "true\nfalse\ntrue\ntrue\n"
+    );
+    let output = run_example("introspection/respond_to_missing.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_respond_to_missing_no_parens() {
+    let expected = concat!(
+        "true\nfalse\ntrue\nfalse\n",
+        "true\nfalse\ntrue\ntrue\nfalse\ntrue\n",
+        "true\nfalse\ntrue\ntrue\n"
+    );
+    let output = run_example("introspection/respond_to_missing_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_respond_to() {
+    let expected = concat!(
+        "true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n",
+        "false\nfalse\ntrue\n",
+        "NoMethodError: private method 'new' called for Sealed\n",
+        "true\ntrue\ntrue\n",
+        "TypeError: 42 is not a symbol nor a string\n"
+    );
+    let output = run_example("introspection/respond_to.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_respond_to_no_parens() {
+    let expected = concat!(
+        "true\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\n",
+        "false\nfalse\ntrue\n",
+        "NoMethodError: private method 'new' called for Sealed\n",
+        "true\ntrue\ntrue\n",
+        "TypeError: 42 is not a symbol nor a string\n"
+    );
+    let output = run_example("introspection/respond_to_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_singleton_method() {
+    let expected = concat!(
+        "Method\n:shiny\n:included\n:prepended\n:extended\n",
+        ":from_class\nNameError\nNameError\n:found\n"
+    );
+    let output = run_example("introspection/singleton_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_singleton_method_no_parens() {
+    let expected = concat!(
+        "Method\n:shiny\n:included\n:prepended\n:extended\n",
+        ":from_class\nNameError\nNameError\n:found\n"
+    );
+    let output = run_example("introspection/singleton_method_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_singleton_methods() {
+    let expected = concat!(
+        "[]\n[:polish]\n[:greet, :polish]\n[:polish]\n",
+        "[:child_class_method, :opened_on_child, :parent_class_method]\n",
+        "[:child_class_method, :opened_on_child]\n",
+        "[:parent_class_method]\n:assisted\n[:assist]\n",
+        "[2, 3, 4]\n[2, 3]\n[3, 4, 5]\n[1, 2, 3]\n[4, 5]\nnil\n"
+    );
+    let output = run_example("introspection/singleton_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_introspection_singleton_methods_no_parens() {
+    let expected = concat!(
+        "[]\n[:polish]\n[:greet, :polish]\n[:polish]\n",
+        "[:child_class_method, :opened_on_child, :parent_class_method]\n",
+        "[:child_class_method, :opened_on_child]\n",
+        "[:parent_class_method]\n:assisted\n[:assist]\n",
+        "[2, 3, 4]\n[2, 3]\n[3, 4, 5]\n[1, 2, 3]\n[4, 5]\nnil\n"
+    );
+    let output = run_example("introspection/singleton_methods_no_parens.rb");
     assert_eq!(output, expected);
 }
 

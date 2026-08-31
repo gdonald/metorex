@@ -100,14 +100,14 @@ fn test_stdlib_testing_framework_parens_execution() {
 
 #[test]
 fn test_builtins_type_introspection_execution() {
-    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nObject\nBasicObject\n2\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n3\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
     let output = run_example("builtins/type_introspection.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_builtins_type_introspection_parens_execution() {
-    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nObject\nBasicObject\n2\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n3\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
     let output = run_example("builtins/type_introspection_parens.rb");
     assert_eq!(output, expected);
 }

@@ -331,57 +331,57 @@ Parser fixes during Phase 4 work:
   - [ ] 4.8.67. core/kernel/open_spec
   - [ ] 4.8.68. core/kernel/p_spec
   - [ ] 4.8.69. core/kernel/pp_spec
-  - [ ] 4.8.70. core/kernel/print_spec
+  - [x] 4.8.70. core/kernel/print_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.8.71. core/kernel/printf_spec
-  - [ ] 4.8.72. core/kernel/private_methods_spec
-  - [ ] 4.8.73. core/kernel/proc_spec
-  - [ ] 4.8.74. core/kernel/protected_methods_spec
-  - [ ] 4.8.75. core/kernel/public_method_spec
-  - [ ] 4.8.76. core/kernel/public_methods_spec
+  - [x] 4.8.72. core/kernel/private_methods_spec — 1 file, 11 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.8.73. core/kernel/proc_spec — 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.8.74. core/kernel/protected_methods_spec — 1 file, 11 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.8.75. core/kernel/public_method_spec — 1 file, 10 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.8.76. core/kernel/public_methods_spec — 1 file, 13 examples, 18 expectations, 0 failures, 0 errors
   - [ ] 4.8.77. core/kernel/public_send_spec
   - [ ] 4.8.78. core/kernel/putc_spec
   - [ ] 4.8.79. core/kernel/puts_spec
   - [ ] 4.8.80. core/kernel/raise_spec
   - [ ] 4.8.81. core/kernel/rand_spec
-  - [ ] 4.8.82. core/kernel/readline_spec
-  - [ ] 4.8.83. core/kernel/readlines_spec
-  - [ ] 4.8.84. core/kernel/remove_instance_variable_spec
+  - [x] 4.8.82. core/kernel/readline_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.83. core/kernel/readlines_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.84. core/kernel/remove_instance_variable_spec — 1 file, 11 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.8.85. core/kernel/require_relative_spec
   - [ ] 4.8.86. core/kernel/require_spec
-  - [ ] 4.8.87. core/kernel/respond_to_missing_spec
-  - [ ] 4.8.88. core/kernel/respond_to_spec
+  - [x] 4.8.87. core/kernel/respond_to_missing_spec — 1 file, 17 examples, 26 expectations, 0 failures, 0 errors
+  - [x] 4.8.88. core/kernel/respond_to_spec — 1 file, 18 examples, 34 expectations, 0 failures, 0 errors
   - [ ] 4.8.89. core/kernel/select_spec
   - [ ] 4.8.90. core/kernel/send_spec
   - [ ] 4.8.91. core/kernel/set_trace_func_spec
   - [ ] 4.8.92. core/kernel/singleton_class_spec
-  - [ ] 4.8.93. core/kernel/singleton_method_spec
-  - [ ] 4.8.94. core/kernel/singleton_methods_spec
+  - [x] 4.8.93. core/kernel/singleton_method_spec — 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.8.94. core/kernel/singleton_methods_spec — 1 file, 85 examples, 94 expectations, 0 failures, 0 errors
   - [ ] 4.8.95. core/kernel/sleep_spec
   - [ ] 4.8.96. core/kernel/spawn_spec
   - [ ] 4.8.97. core/kernel/sprintf_spec
   - [ ] 4.8.98. core/kernel/srand_spec
-  - [ ] 4.8.99. core/kernel/sub_spec
+  - [x] 4.8.99. core/kernel/sub_spec — 1 file, 0 examples (all guarded to Ruby before 1.9), 0 failures, 0 errors
   - [ ] 4.8.100. core/kernel/syscall_spec
   - [ ] 4.8.101. core/kernel/system_spec
-  - [ ] 4.8.102. core/kernel/taint_spec
-  - [ ] 4.8.103. core/kernel/tainted_spec
-  - [ ] 4.8.104. core/kernel/tap_spec
+  - [x] 4.8.102. core/kernel/taint_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.103. core/kernel/tainted_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.104. core/kernel/tap_spec — 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.8.105. core/kernel/test_spec
-  - [ ] 4.8.106. core/kernel/then_spec
-  - [ ] 4.8.107. core/kernel/throw_spec
-  - [ ] 4.8.108. core/kernel/to_enum_spec
-  - [ ] 4.8.109. core/kernel/to_s_spec
-  - [ ] 4.8.110. core/kernel/trace_var_spec
+  - [x] 4.8.106. core/kernel/then_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.8.107. core/kernel/throw_spec — 1 file, 9 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.8.108. core/kernel/to_enum_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 4.8.109. core/kernel/to_s_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.110. core/kernel/trace_var_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.8.111. core/kernel/trap_spec
-  - [ ] 4.8.112. core/kernel/trust_spec
-  - [ ] 4.8.113. core/kernel/untaint_spec
-  - [ ] 4.8.114. core/kernel/untrace_var_spec
-  - [ ] 4.8.115. core/kernel/untrust_spec
-  - [ ] 4.8.116. core/kernel/untrusted_spec
-  - [ ] 4.8.117. core/kernel/warn_spec
-  - [ ] 4.8.118. core/kernel/yield_self_spec
+  - [x] 4.8.112. core/kernel/trust_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.113. core/kernel/untaint_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.114. core/kernel/untrace_var_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.115. core/kernel/untrust_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.8.116. core/kernel/untrusted_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [ ] 4.8.117. core/kernel/warn_spec - 32 examples, 43 expectations, 0 failures, 4 errors; the last 4 shell out through IO.popen
+  - [x] 4.8.118. core/kernel/yield_self_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
 - [ ] 4.9. core/basicobject
-  - [ ] 4.9.1. core/basicobject/__id__spec
+  - [ ] 4.9.1. core/basicobject/__id__spec - 13 examples, 13 expectations, 1 failure, 0 errors; its Bignum example needs arbitrary-precision integers
   - [ ] 4.9.2. core/basicobject/__send___spec
   - [ ] 4.9.3. core/basicobject/basicobject_spec
   - [ ] 4.9.4. core/basicobject/equal_spec

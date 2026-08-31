@@ -309,3 +309,69 @@ end
         )))
     );
 }
+
+// ── throw arity and tap without a block ──────────────────────────────────────
+
+#[test]
+fn throw_with_too_many_arguments_raises_argument_error() {
+    let error = run_source_err("throw(:one, :two, :three)");
+    assert!(error.contains("wrong number of arguments (given 3, expected 1..2)"));
+}
+
+#[test]
+fn a_bare_throw_raises_argument_error() {
+    let error = run_source_err("throw");
+    assert!(error.contains("wrong number of arguments (given 0, expected 1..2)"));
+}
+
+#[test]
+fn throw_without_a_catch_raises_uncaught_throw_error() {
+    let error = run_source_err("throw(:nothing_catches_this)");
+    assert!(error.contains("UncaughtThrowError") || error.contains("uncaught throw"));
+}
+
+#[test]
+fn catch_answers_the_thrown_value() {
+    let result = run_source(
+        r#"
+catch(:done) do
+  10.times do |i|
+    throw(:done, i) if i == 3
+  end
+  :never
+end
+"#,
+    );
+    assert_eq!(result, Some(Object::Int(3)));
+}
+
+#[test]
+fn tap_answers_the_receiver() {
+    let result = run_source(
+        r#"
+class Widget
+end
+widget = Widget.new
+widget.tap { :ignored }.equal?(widget)
+"#,
+    );
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn tap_without_a_block_raises_local_jump_error() {
+    let error = run_source_err("3.tap");
+    assert!(error.contains("no block given (yield)"));
+}
+
+// ── taint was removed from Ruby ──────────────────────────────────────────────
+
+#[test]
+fn taint_and_tainted_are_absent() {
+    let result =
+        run_source("[Object.new.respond_to?(:taint), Object.new.respond_to?(:tainted?)].inspect");
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("[false, false]".to_string())
+    );
+}

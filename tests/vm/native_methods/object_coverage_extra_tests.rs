@@ -307,7 +307,7 @@ end
 R1.new.respond_to?(42)
 "#,
     );
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(err.contains("42 is not a symbol nor a string"));
 }
 
 // ── is_a? non-class arg (lines 472-479) ──────────────────────────────────────

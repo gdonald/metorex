@@ -735,7 +735,10 @@ impl VirtualMachine {
                 }
             }
             Expression::GlobalVariable { name, .. } => {
-                self.globals_mut().set_variable(name.clone(), value);
+                self.globals_mut().set_variable(name.clone(), value.clone());
+                // A `trace_var` hook on this global runs with the new value.
+                let name = name.clone();
+                self.fire_global_trace(&name, &value, crate::lexer::Position::new(0, 0, 0))?;
                 Ok(())
             }
             // `Ns::Name = value` — assign to a constant on a module/class.

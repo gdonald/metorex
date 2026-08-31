@@ -374,6 +374,7 @@ impl Compiler {
             | Expression::MagicDir { position, .. }
             | Expression::RegexLiteral { position, .. }
             | Expression::Splat { position, .. }
+            | Expression::KeywordSplat { position, .. }
             | Expression::BlockArg { position, .. }
             | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }

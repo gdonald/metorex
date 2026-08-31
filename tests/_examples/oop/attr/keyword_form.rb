@@ -24,20 +24,20 @@ c.instance_variable_set(:@b, 2)
 puts c.a
 puts c.b
 
-result_one = nil
+# `attr` answers the names it defined. A class body has its own local scope,
+# so the value is printed there rather than assigned to an outer variable.
+
 class D
-  result_one = (attr :foo, 'bar')
+  defined_names = attr :foo, 'bar'
+  puts defined_names.inspect
 end
-puts result_one.inspect
 
-result_two = nil
 class E
-  result_two = (attr :baz, false)
+  defined_names = attr :baz, false
+  puts defined_names.inspect
 end
-puts result_two.inspect
 
-result_three = nil
 class F
-  result_three = (attr :qux, true)
+  defined_names = attr :qux, true
+  puts defined_names.inspect
 end
-puts result_three.inspect

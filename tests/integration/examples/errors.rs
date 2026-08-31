@@ -166,3 +166,31 @@ fn test_errors_kernel_fail_execution() {
     let output = run_example("errors/kernel_fail.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_errors_kernel_raise_method() {
+    let expected = concat!(
+        "keyword form\n",
+        "ArgumentError: through send\n",
+        "TypeError: with a receiver\n",
+        "IndexError: on Kernel\n",
+        "KeyError: through a Method object\n",
+        "true\nunhandled exception\n"
+    );
+    let output = run_example("errors/kernel_raise_method.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_kernel_raise_method_parens() {
+    let expected = concat!(
+        "keyword form\n",
+        "ArgumentError: through send\n",
+        "TypeError: with a receiver\n",
+        "IndexError: on Kernel\n",
+        "KeyError: through a Method object\n",
+        "true\nunhandled exception\n"
+    );
+    let output = run_example("errors/kernel_raise_method_parens.rb");
+    assert_eq!(output, expected);
+}

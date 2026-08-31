@@ -103,6 +103,40 @@ impl VirtualMachine {
                         Ok(elements[index as usize].clone())
                     }
                 }
+                // `ary[range]` answers the slice the range covers. A negative
+                // bound counts from the end, and a start past the end answers
+                // nil the way Ruby's does.
+                Object::Range {
+                    ref start,
+                    ref end,
+                    exclusive,
+                } => {
+                    let elements = elements_rc.borrow();
+                    let length = elements.len() as i64;
+                    let resolve = |bound: &Object| match bound {
+                        Object::Int(value) if *value < 0 => value + length,
+                        Object::Int(value) => *value,
+                        _ => 0,
+                    };
+                    let from = match start.as_ref() {
+                        Object::Nil => 0,
+                        bound => resolve(bound),
+                    };
+                    let mut to = match end.as_ref() {
+                        Object::Nil => length,
+                        bound => {
+                            let resolved = resolve(bound);
+                            if exclusive { resolved } else { resolved + 1 }
+                        }
+                    };
+                    if from < 0 || from > length {
+                        return Ok(Object::Nil);
+                    }
+                    to = to.clamp(from, length);
+                    let slice = elements[from as usize..to as usize].to_vec();
+                    drop(elements);
+                    Ok(Object::Array(Rc::new(RefCell::new(slice))))
+                }
                 _ => Err(MetorexError::type_error(
                     format!("Array index must be an Integer, found {}", key.type_name()),
                     position_to_location(position),

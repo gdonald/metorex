@@ -272,7 +272,8 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Dict(Rc::new(RefCell::new(merged)))))
             }
-            "each" => {
+            // `each_pair` is Ruby's alias for `each`.
+            "each" | "each_pair" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,

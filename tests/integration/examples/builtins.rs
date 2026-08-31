@@ -4,7 +4,7 @@ use super::run_example;
 
 #[test]
 fn test_builtins_type_introspection() {
-    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nObject\nBasicObject\n2\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n3\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
     let output = run_example("builtins/type_introspection.rb");
     assert_eq!(output, expected);
 }
@@ -39,14 +39,14 @@ fn test_kernel_conversion_parens_execution() {
 
 #[test]
 fn test_keyword_symbols_execution() {
-    let expected = ":def\n:class\n:if\n:else\n:end\n:do\n:nil\n:true\n:false\n:return\n:begin\n:rescue\n:ensure\n:while\n:for\n:case\n:when\n:module\n:include\n:yield\n:super\n:lambda\n:break\n:next\n:raise\n:@ivar\n:@@cvar\n";
+    let expected = "def\nclass\nif\nelse\nend\ndo\nnil\ntrue\nfalse\nreturn\nbegin\nrescue\nensure\nwhile\nfor\ncase\nwhen\nmodule\ninclude\nyield\nsuper\nlambda\nbreak\nnext\nraise\n@ivar\n@@cvar\n";
     let output = run_example("builtins/keyword_symbols.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_keyword_symbols_parens_execution() {
-    let expected = ":def\n:class\n:@ivar\n:@@cvar\n:yield\n";
+    let expected = "def\nclass\n@ivar\n@@cvar\nyield\n";
     let output = run_example("builtins/keyword_symbols_parens.rb");
     assert_eq!(output, expected);
 }
@@ -136,5 +136,117 @@ fn test_rational_execution() {
 fn test_kernel_string_execution() {
     let expected = "\"already\"\n\"\"\n\"1.12\"\n\"true\"\n\"false\"\n\"42\"\n\"Object\"\nsymbol\ntag\ncan't convert Silent into String\ncan't convert Wrong to String (Wrong#to_s gives Integer)\ntrue\nmetorex\n7\nMETOREX\ntrue\ntrue\n7\ntrue\n";
     let output = run_example("builtins/kernel_string.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_rand_and_numeric() {
+    let expected = concat!(
+        "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "nil\n42\n1.5\ntrue\n",
+        "TypeError: no implicit conversion of String into Integer\n",
+        "true\ntrue\nNumeric\nNumeric\n",
+        "true\ntrue\ntrue\n1\n-1\ntrue\n"
+    );
+    let output = run_example("builtins/rand_and_numeric.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_rand_and_numeric_parens() {
+    let expected = concat!(
+        "true\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n",
+        "nil\n42\n1.5\ntrue\n",
+        "TypeError: no implicit conversion of String into Integer\n",
+        "true\ntrue\nNumeric\nNumeric\n",
+        "true\ntrue\ntrue\n1\n-1\ntrue\n"
+    );
+    let output = run_example("builtins/rand_and_numeric_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_sprintf_and_float_constants() {
+    let expected = concat!(
+        "one and two\n42\nsymbol\nconverted format\n",
+        "TypeError: no implicit conversion of Integer into String\n",
+        "TypeError\nInfinity\ntrue\ntrue\nfalse\n15\n53\ntrue\ntrue\n"
+    );
+    let output = run_example("builtins/sprintf_and_float_constants.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_sprintf_and_float_constants_no_parens() {
+    let expected = concat!(
+        "one and two\n42\nsymbol\nconverted format\n",
+        "TypeError: no implicit conversion of Integer into String\n",
+        "TypeError\nInfinity\ntrue\ntrue\nfalse\n15\n53\ntrue\ntrue\n"
+    );
+    let output = run_example("builtins/sprintf_and_float_constants_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_srand_seeding() {
+    let expected = concat!(
+        "10\n20\n0\ntrue\ntrue\n3\n7\ntrue\ntrue\n",
+        "TypeError\nTypeError\ntrue\n"
+    );
+    let output = run_example("builtins/srand_seeding.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_srand_seeding_parens() {
+    let expected = concat!(
+        "10\n20\n0\ntrue\ntrue\n3\n7\ntrue\ntrue\n",
+        "TypeError\nTypeError\ntrue\n"
+    );
+    let output = run_example("builtins/srand_seeding_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_enumerator_stepping_execution() {
+    let expected = concat!(
+        "[\"a\", \"b\"]\n",
+        "a\n",
+        "b\n",
+        "iteration reached an end\n",
+        "a\n",
+        "[1, 2, 3]\n",
+        "[[1, 2], [3, 4]]\n",
+        "[\"a\", \"b\"]\n",
+        "Enumerator\n",
+        "1\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "true\n"
+    );
+    let output = run_example("builtins/enumerator/stepping.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_enumerator_stepping_parens_execution() {
+    let expected = concat!(
+        "[\"a\", \"b\"]\n",
+        "a\n",
+        "b\n",
+        "iteration reached an end\n",
+        "a\n",
+        "[1, 2, 3]\n",
+        "[[1, 2], [3, 4]]\n",
+        "[\"a\", \"b\"]\n",
+        "Enumerator\n",
+        "1\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "true\n"
+    );
+    let output = run_example("builtins/enumerator/stepping_parens.rb");
     assert_eq!(output, expected);
 }

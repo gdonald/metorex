@@ -18,7 +18,8 @@ class Overridden
   end
 end
 
-puts (Overridden.new !~ :anything).inspect
+overridden = Overridden.new !~ :anything
+puts overridden.inspect
 
 begin
   Object.new !~ :foo

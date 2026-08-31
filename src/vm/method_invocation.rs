@@ -22,6 +22,53 @@ use super::param_binding::positional_arg_count;
 
 impl VirtualMachine {
     /// Invoke a resolved method with evaluated arguments.
+    /// Send `name` to `receiver` with already-evaluated arguments, the way
+    /// `Object#send` does: a method the receiver defines wins over a native.
+    pub(crate) fn send_to_object(
+        &mut self,
+        receiver: Object,
+        name: &str,
+        arguments: Vec<Object>,
+        position: crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        // A module-level method lives either on the singleton class, put
+        // there by `class << Mod`, or under the name-mangled key `def
+        // self.name` uses. Neither is reachable by an instance-method lookup.
+        if let Object::Class(class) | Object::Module(class) = &receiver {
+            let singleton_method = class
+                .singleton_class_slot()
+                .as_ref()
+                .and_then(|singleton| singleton.find_method(name));
+            if let Some(method) = singleton_method
+                .or_else(|| crate::vm::method_lookup::module_level_method(class, name))
+                && !method.is_undefined
+            {
+                let owner = Rc::clone(class);
+                return self.invoke_method(owner, method, receiver, arguments, position);
+            }
+        }
+        if let Some((owner, method)) = self.lookup_method(&receiver, name)
+            && !method.is_undefined
+        {
+            return self.invoke_method(owner, method, receiver, arguments, position);
+        }
+        let class = self.builtins().class_of(&receiver);
+        if let Some(result) =
+            self.call_native_method(class.as_ref(), &receiver, name, &arguments, position)?
+        {
+            return Ok(result);
+        }
+        if let Some(result) = self.call_object_method(&receiver, name, &arguments, position)? {
+            return Ok(result);
+        }
+        let message = format!("undefined method '{}' for {}", name, receiver.type_name());
+        Err(MetorexError::UncaughtException {
+            exception: Object::exception("NoMethodError", message.clone()),
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        })
+    }
+
     pub(crate) fn invoke_callable(
         &mut self,
         callable: Object,

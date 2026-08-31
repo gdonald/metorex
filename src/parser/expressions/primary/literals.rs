@@ -18,6 +18,18 @@ impl Parser {
         Expression::Array { elements, position }
     }
 
+    /// Build the Array a `%i[a b c]` symbol-array literal denotes.
+    pub(super) fn primary_percent_i(&self, value: String, position: Position) -> Expression {
+        let elements: Vec<Expression> = value
+            .split_whitespace()
+            .map(|word| Expression::Symbol {
+                value: word.to_string(),
+                position,
+            })
+            .collect();
+        Expression::Array { elements, position }
+    }
+
     /// Parse a lexer-produced interpolated string into an `Expression::InterpolatedString`.
     pub(super) fn primary_interpolated_string(
         &self,

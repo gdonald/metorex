@@ -89,11 +89,27 @@ impl VirtualMachine {
                     | "global_variables"
                     | "local_variables"
                     | "p"
+                    | "pp"
+                    | "proc"
+                    | "print"
+                    | "putc"
+                    | "puts"
+                    | "rand"
+                    | "readline"
+                    | "readlines"
+                    | "srand"
+                    | "throw"
                     | "binding"
             )
             && let Some(Object::NativeFunction(native_name)) = self.environment().get(name)
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
+            // `proc { }` and friends take a literal block, so attach it
+            // before the native runs.
+            if let Some(block_expr) = trailing_block {
+                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block_from_ampersand = false;
+            }
             return self.call_native_function(&native_name, evaluated_args, position);
         }
 

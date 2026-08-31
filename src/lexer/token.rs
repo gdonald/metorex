@@ -78,6 +78,7 @@ pub enum TokenKind {
     InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
     Regex(String, String),                      // pattern, flags
     PercentW(String),                           // %w[...] array of whitespace-split words
+    PercentI(String),                           // %i[...] array of whitespace-split symbols
     True,
     False,
     Nil,
@@ -224,6 +225,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
             TokenKind::PercentW(s) => write!(f, "%w[{}]", s),
+            TokenKind::PercentI(s) => write!(f, "%i[{}]", s),
             TokenKind::InterpolatedString(parts) => {
                 write!(f, "\"")?;
                 for part in parts {

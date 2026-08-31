@@ -91,8 +91,12 @@ fn keyword_method_name_ensure() {
 
 #[test]
 fn keyword_method_name_raise() {
+    // `nil.raise` parses as a call and reaches Kernel#raise, which with no
+    // arguments and no `$!` raises RuntimeError. Metorex does not yet enforce
+    // Kernel's private visibility for an explicit receiver, where Ruby raises
+    // NoMethodError instead.
     let err = run_err("nil.raise");
-    assert!(err.contains("raise") || err.contains("method") || err.contains("nil"));
+    assert!(err.contains("unhandled exception"));
 }
 
 #[test]

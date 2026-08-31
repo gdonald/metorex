@@ -748,6 +748,7 @@ impl VirtualMachine {
                     parameters,
                     body: method_body,
                     is_class_method,
+                    position: def_position,
                     ..
                 } => {
                     // Create a Method object
@@ -779,6 +780,7 @@ impl VirtualMachine {
                         .find(|(_, p)| p.is_variadic)
                         .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.source_location = Some(self.source_location_for(*def_position));
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.keyword_rest_parameter = parameters
@@ -1007,7 +1009,19 @@ impl VirtualMachine {
                     // extend ModuleName: add module methods as class-level
                     // methods, and record the mixin on the singleton class so
                     // `kind_of?` reports it the way an `obj.extend` does.
-                    match self.resolve_constant_in_scope(module_name) {
+                    // `extend self` names the module being defined, which is
+                    // how a module makes its instance methods callable on
+                    // itself.
+                    let resolved = if module_name == "self" {
+                        Some(if class.is_module() {
+                            Object::Module(Rc::clone(class))
+                        } else {
+                            Object::Class(Rc::clone(class))
+                        })
+                    } else {
+                        self.resolve_constant_in_scope(module_name)
+                    };
+                    match resolved {
                         Some(Object::Module(module)) => {
                             for method_name in module.method_names() {
                                 if let Some(method) = module.find_method(&method_name) {
@@ -1050,10 +1064,11 @@ impl VirtualMachine {
                             target,
                             body: inner_body,
                             position: sc_pos,
+                            ..
                         },
                     ..
                 } => {
-                    self.evaluate_singleton_class_expression(target, inner_body, *sc_pos)?;
+                    self.evaluate_singleton_class_expression(target, None, inner_body, *sc_pos)?;
                 }
                 // class << self block — treat inner statements as class-level
                 Statement::Block { statements, .. } => {
@@ -1576,6 +1591,7 @@ impl VirtualMachine {
                     parameters,
                     body: method_body,
                     is_class_method,
+                    position: def_position,
                     ..
                 } => {
                     let param_names: Vec<String> = parameters
@@ -1606,6 +1622,7 @@ impl VirtualMachine {
                         .find(|(_, p)| p.is_variadic)
                         .map(|(i, p)| (i, p.name.clone()));
                     let mut m = Method::new(method_name.clone(), param_names, method_body.clone());
+                    m.source_location = Some(self.source_location_for(*def_position));
                     m.default_parameters = default_params;
                     m.keyword_parameters = keyword_parameters;
                     m.keyword_rest_parameter = parameters
@@ -1689,10 +1706,11 @@ impl VirtualMachine {
                             target,
                             body: inner_body,
                             position: sc_pos,
+                            ..
                         },
                     ..
                 } => {
-                    self.evaluate_singleton_class_expression(target, inner_body, *sc_pos)?;
+                    self.evaluate_singleton_class_expression(target, None, inner_body, *sc_pos)?;
                 }
                 // class << self block — process inner statements at module level
                 Statement::Block {
@@ -1781,6 +1799,30 @@ impl VirtualMachine {
                     let resolved = self.resolve_constant_with_autoload(inc_name)?;
                     if let Some(Object::Module(inc_module)) = resolved {
                         self.apply_module_include(module, &inc_module, *inc_pos)?;
+                    }
+                }
+                Statement::Extend {
+                    module_name: ext_name,
+                    position: ext_pos,
+                } => {
+                    // `extend self` is the idiom that makes a module's
+                    // instance methods callable on the module itself.
+                    let resolved = if ext_name == "self" {
+                        Some(Object::Module(Rc::clone(module)))
+                    } else {
+                        self.resolve_constant_with_autoload(ext_name)?
+                    };
+                    if let Some(Object::Module(ext_module)) = resolved {
+                        for method_name in ext_module.method_names() {
+                            if let Some(method) = ext_module.find_method(&method_name) {
+                                module.set_class_var(
+                                    format!("__ext__{}", method_name),
+                                    Object::Method(method),
+                                );
+                            }
+                        }
+                        let target = Object::Module(Rc::clone(module));
+                        self.apply_module_extend(&target, &ext_module, *ext_pos)?;
                     }
                 }
                 Statement::Alias {
@@ -1937,12 +1979,35 @@ impl VirtualMachine {
         Some(current)
     }
 
-    /// Execute extend at statement level (outside class body - error).
+    /// Execute `extend Mod` at statement level. Outside a class body the
+    /// receiver is the current `self`, so the module's methods become
+    /// singleton methods of that object, the way `main.extend Mod` works.
     pub(crate) fn execute_extend(
         &mut self,
         _module_name: &str,
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
+        if let Some(Object::Module(module_rc)) = self.globals().get(_module_name) {
+            // At the top level there is no `self` to extend, and metorex
+            // already installs top-level `def`s on Object, so the module's
+            // methods go there too.
+            let target = self
+                .environment()
+                .get("self")
+                .or_else(|| self.globals().get("Object"));
+            if let Some(target) = target {
+                let singleton = self.singleton_class_of(&target);
+                singleton.add_mixin(std::rc::Rc::clone(&module_rc));
+                if matches!(target, Object::Class(_)) {
+                    // Top-level extend makes the methods callable without a
+                    // receiver, which means Object's instances answer them.
+                    if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                        object_class.add_mixin(module_rc);
+                    }
+                }
+                return Ok(ControlFlow::Next);
+            }
+        }
         Err(MetorexError::runtime_error(
             "extend can only be used inside a class definition",
             position_to_location(position),

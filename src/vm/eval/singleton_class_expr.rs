@@ -121,10 +121,16 @@ impl VirtualMachine {
     pub(crate) fn evaluate_singleton_class_expression(
         &mut self,
         target: &Expression,
+        assign_to: Option<&Expression>,
         body: &[Statement],
         position: Position,
     ) -> Result<Object, MetorexError> {
         let target_obj = self.evaluate_expression(target)?;
+        // `class << @receiver = Object.new` stores the object first, so the
+        // body's `def`s land on the same one the name now holds.
+        if let Some(destination) = assign_to {
+            self.assign_value(destination, target_obj.clone())?;
+        }
         let singleton_cls = self.singleton_class_of(&target_obj);
 
         // Enter the singleton class as both the lexical def scope and `self`

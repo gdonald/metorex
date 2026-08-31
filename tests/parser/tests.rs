@@ -554,6 +554,18 @@ fn parse_symbol_literal_test() {
     parse_sym("x = :hello");
 }
 
+#[test]
+fn parse_global_variable_symbol_literal() {
+    let result = run_sym("x = :$stdout; x.to_s");
+    assert_eq!(result, Some(Object::string("$stdout")));
+}
+
+#[test]
+fn parse_global_variable_symbol_as_parenless_argument() {
+    let result = run_sym("def name_of(sym)\n  sym.to_s\nend\nname_of :$loaded");
+    assert_eq!(result, Some(Object::string("$loaded")));
+}
+
 // ── Parenthesized assignment — (target = value) as expression ───────────────
 
 #[test]
@@ -621,10 +633,20 @@ fn percent_w_first_element_is_string() {
 // ── Double-splat **expr in argument list ───────────────────────────────────
 
 #[test]
-fn double_splat_in_call_passes_through() {
-    // `**h` in a call is accepted; downstream it behaves like passing h itself.
-    let result = run_sym("def f(h)\n  h.class.to_s\nend\nh = {\"a\" => 1}\nf(**h)");
-    assert_eq!(result, Some(Object::string("Hash")));
+fn double_splat_in_call_passes_keywords() {
+    // `**h` passes keywords, not a positional Hash, so a method wanting one
+    // positional argument gets none.
+    let tokens = Lexer::new("def f(h)\n  h.class.to_s\nend\nh = {\"a\" => 1}\nf(**h)").tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    let error = vm.execute_program(&stmts).unwrap_err().to_string();
+    assert!(error.contains("expected 1 argument(s) but received 0"));
+}
+
+#[test]
+fn double_splat_of_empty_hash_passes_nothing() {
+    let result = run_sym("def f\n  \"called\"\nend\nh = {}\nf(**h)");
+    assert_eq!(result, Some(Object::string("called")));
 }
 
 // ── return target = value (assignment in return value) ─────────────────────

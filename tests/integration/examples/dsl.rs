@@ -49,7 +49,7 @@ fn test_dsl_method_call_with_symbol_arg_execution() {
     // Paren-less method call where the sole arg is a symbol literal:
     // `have_method :boom` must parse as `have_method(:boom)`, not as a
     // `have_method:` keyword arg.
-    let expected = ":boom\n:boom\nmatcher for :boom\nmatcher for :boom\n";
+    let expected = "boom\nboom\nmatcher for :boom\nmatcher for :boom\n";
     let output = run_example("dsl/method_call_with_symbol_arg.rb");
     assert_eq!(output, expected);
 }

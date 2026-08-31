@@ -92,7 +92,7 @@ fn nil_respond_to_error_no_args() {
 #[test]
 fn nil_respond_to_error_wrong_type() {
     let err = run_err("nil.respond_to?(42)");
-    assert!(err.contains("String"));
+    assert!(err.contains("42 is not a symbol nor a string"));
 }
 
 // ── Object#nil? ──────────────────────────────────────────────────────────────

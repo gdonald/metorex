@@ -11,6 +11,7 @@ pub struct BuiltinClasses {
     /// Base Object class (all classes inherit from this)
     pub object_class: Rc<Class>,
     /// String class
+    pub numeric_class: Rc<Class>,
     pub string_class: Rc<Class>,
     pub symbol_class: Rc<Class>,
     /// Integer class
@@ -56,8 +57,10 @@ impl BuiltinClasses {
         // Create primitive type classes
         let string_class = Rc::new(Class::new("String", Some(Rc::clone(&object_class))));
         let symbol_class = Rc::new(Class::new("Symbol", Some(Rc::clone(&object_class))));
-        let integer_class = Rc::new(Class::new("Integer", Some(Rc::clone(&object_class))));
-        let float_class = Rc::new(Class::new("Float", Some(Rc::clone(&object_class))));
+        // Integer and Float are Numerics, so `5.is_a?(Numeric)` holds.
+        let numeric_class = Rc::new(Class::new("Numeric", Some(Rc::clone(&object_class))));
+        let integer_class = Rc::new(Class::new("Integer", Some(Rc::clone(&numeric_class))));
+        let float_class = Rc::new(Class::new("Float", Some(Rc::clone(&numeric_class))));
 
         // Create collection classes
         let array_class = Rc::new(Class::new("Array", Some(Rc::clone(&object_class))));
@@ -93,6 +96,7 @@ impl BuiltinClasses {
 
         Self {
             object_class,
+            numeric_class,
             string_class,
             symbol_class,
             integer_class,
@@ -247,7 +251,7 @@ impl BuiltinClasses {
             Rc::new(Class::new("BasicObject", None)),
         );
         classes.insert("Symbol".to_string(), Rc::clone(&self.symbol_class));
-        classes.insert("Numeric".to_string(), Rc::clone(&self.integer_class));
+        classes.insert("Numeric".to_string(), Rc::clone(&self.numeric_class));
         classes.insert("Proc".to_string(), Rc::clone(&self.proc_class));
         classes.insert("Method".to_string(), Rc::clone(&self.method_class));
         classes.insert("UnboundMethod".to_string(), Rc::clone(&self.method_class));
@@ -344,6 +348,35 @@ pub fn init_string_methods(string_class: &Class) {
 }
 
 /// Initialize built-in methods for the Array class
+/// Register Integer's native methods so introspection reports them. The
+/// bodies live in the native dispatch table; these stubs carry the names and
+/// parameter counts.
+pub fn init_integer_methods(integer_class: &Class) {
+    for (name, parameters) in [
+        ("abs", &[][..]),
+        ("denominator", &[]),
+        ("divmod", &["other"][..]),
+        ("downto", &["limit"]),
+        ("numerator", &[]),
+        ("quo", &["other"]),
+        ("rationalize", &[]),
+        ("size", &[]),
+        ("times", &[]),
+        ("to_f", &[]),
+        ("to_i", &[]),
+        ("to_r", &[]),
+        ("to_s", &[]),
+        ("upto", &["limit"]),
+    ] {
+        let method = Rc::new(Method::new(
+            name.to_string(),
+            parameters.iter().map(|p| (*p).to_string()).collect(),
+            vec![],
+        ));
+        integer_class.define_method(name, method);
+    }
+}
+
 pub fn init_array_methods(array_class: &Class) {
     // Array#length
     let length_method = Rc::new(Method::new("length".to_string(), vec![], vec![]));
@@ -387,6 +420,15 @@ pub fn init_float_methods(float_class: &Class) {
         vec![],
     ));
     float_class.define_method("round", round_method);
+
+    // The IEEE values Ruby exposes as Float constants.
+    float_class.set_class_var("INFINITY", Object::Float(f64::INFINITY));
+    float_class.set_class_var("NAN", Object::Float(f64::NAN));
+    float_class.set_class_var("EPSILON", Object::Float(f64::EPSILON));
+    float_class.set_class_var("MAX", Object::Float(f64::MAX));
+    float_class.set_class_var("MIN", Object::Float(f64::MIN_POSITIVE));
+    float_class.set_class_var("DIG", Object::Int(15));
+    float_class.set_class_var("MANT_DIG", Object::Int(53));
 }
 
 /// Initialize built-in methods for the Hash class

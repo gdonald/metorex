@@ -497,9 +497,10 @@ fn between_wrong_arg_count_errors() {
 // ── singleton_class / singleton_method ──────────────────────────────────────
 
 #[test]
-fn singleton_class_returns_class() {
-    let result = run("42.singleton_class");
-    assert!(matches!(result, Some(Object::Class(_))));
+fn singleton_class_on_an_integer_raises() {
+    // An Integer is not an object that can carry one.
+    let err = run_err("42.singleton_class");
+    assert!(err.contains("can't define singleton"));
 }
 
 #[test]
@@ -813,4 +814,68 @@ end
 FltOrd.new(1.5) < FltOrd.new(2.5)
 "#);
     assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── Kernel#singleton_class ───────────────────────────────────────────────────
+
+#[test]
+fn singleton_class_matches_the_class_shovel_form() {
+    let result = run(r#"
+widget = Object.new
+opened = class << widget
+  self
+end
+opened == widget.singleton_class
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn nil_has_nil_class_as_its_singleton_class() {
+    let result = run("nil.singleton_class == NilClass");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn true_and_false_have_their_own_classes_as_singletons() {
+    let result =
+        run("[true.singleton_class == TrueClass, false.singleton_class == FalseClass].inspect");
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("[true, true]".to_string())
+    );
+}
+
+#[test]
+fn singleton_class_on_a_float_raises() {
+    let err = run_err("3.14.singleton_class");
+    assert!(err.contains("can't define singleton"));
+}
+
+#[test]
+fn singleton_class_on_a_symbol_raises() {
+    let err = run_err(":name.singleton_class");
+    assert!(err.contains("can't define singleton"));
+}
+
+#[test]
+fn a_frozen_objects_singleton_class_is_frozen() {
+    let result = run(r#"
+obj = Object.new
+obj.freeze
+obj.singleton_class.frozen?
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn an_unfrozen_objects_singleton_class_is_not_frozen() {
+    let result = run("Object.new.singleton_class.frozen?");
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn unary_plus_on_a_string_answers_the_string() {
+    let result = run(r#"+"mutable""#);
+    assert_eq!(result.map(|o| o.to_string()), Some("mutable".to_string()));
 }

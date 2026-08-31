@@ -55,21 +55,14 @@ impl VirtualMachine {
                 }
             }
         } else {
-            // Bare raise - re-raise current exception
-            // For now, we'll check if there's a $! variable (current exception)
-            // If not, it's an error to use bare raise outside a rescue block
+            // Bare `raise` re-raises `$!`. With nothing to re-raise Ruby
+            // raises `RuntimeError: unhandled exception`, which is what
+            // Kernel#raise called with no arguments does too.
             match self.environment().get("$!") {
                 Some(Object::Exception(_)) => self.environment().get("$!").unwrap(),
-                _ => {
-                    return Err(MetorexError::runtime_error(
-                        "No exception to re-raise (bare raise only allowed in rescue blocks)"
-                            .to_string(),
-                        position_to_location(position),
-                    ));
-                }
+                _ => Object::exception("RuntimeError", "unhandled exception"),
             }
         };
-
         // Capture stack trace and add source location to exception
         let exception_obj = self.add_stack_trace_to_exception(exception_obj, position);
 
@@ -405,6 +398,7 @@ impl VirtualMachine {
                 | "RangeError"
                 | "StopIteration"
                 | "IOError"
+                | "EOFError"
                 | "FrozenError"
         ) || name.starts_with("Errno::")
     }

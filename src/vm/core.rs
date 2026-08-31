@@ -9,7 +9,7 @@
 // Operator/statement/method-call helpers live in their own existing modules.
 
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -28,6 +28,9 @@ pub struct VirtualMachine {
     pub(crate) heap: Rc<RefCell<Heap>>,
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
+    /// The file whose code is running right now, which differs from
+    /// `current_file` inside a method defined in another file.
+    pub(crate) current_source_file: Option<String>,
     pub(crate) loaded_files: HashSet<PathBuf>,
     /// Depth counter that tracks whether we're inside a const-access
     /// autoload trigger. While >0, `effective_autoload` skips moving the
@@ -67,6 +70,13 @@ pub struct VirtualMachine {
     /// Whether `pending_block` arrived as `&expr` rather than as a literal
     /// block. `Kernel#lambda` rejects a non-lambda proc passed that way.
     pub(crate) pending_block_from_ampersand: bool,
+    /// State for `Kernel#rand`, advanced on each draw and reset by `srand`.
+    pub(crate) random_state: u64,
+    /// The seed `srand` last installed, which it answers on the next call.
+    pub(crate) random_seed: i64,
+    /// Hooks `trace_var` registered, keyed by global name without its `$`.
+    /// Each runs with the new value whenever that global is assigned.
+    pub(crate) traced_globals: HashMap<String, Vec<Object>>,
     /// Names the environment already held once the builtins were seeded.
     /// `local_variables` reports the names a program bound, not these.
     pub(crate) seeded_global_names: HashSet<String>,
@@ -137,13 +147,14 @@ impl VirtualMachine {
         seed_environment_with_globals(&mut environment, &globals);
         let seeded_global_names = environment.current_scope_vars().into_keys().collect();
 
-        Self {
+        let mut vm = Self {
             environment,
             call_stack: Vec::new(),
             globals,
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
             current_file: None,
+            current_source_file: None,
             loaded_files: HashSet::new(),
             autoload_const_access_depth: 0,
             thread_current_stack: Vec::new(),
@@ -152,6 +163,9 @@ impl VirtualMachine {
             autoload_loading: Vec::new(),
             pending_block: None,
             pending_block_from_ampersand: false,
+            random_state: seed_from_clock(),
+            random_seed: seed_from_clock() as i64,
+            traced_globals: HashMap::new(),
             seeded_global_names,
             load_wrap_depth: 0,
             user_def_nesting: 0,
@@ -162,7 +176,29 @@ impl VirtualMachine {
             method_nesting_stack: Vec::new(),
             catch_tags: Vec::new(),
             autoload_reload_depth: 0,
-        }
+        };
+        vm.load_prelude();
+        // The prelude's own class and module names are part of the core
+        // library, not locals the program declared, so `local_variables` and
+        // friends have to keep skipping them.
+        vm.seeded_global_names
+            .extend(vm.environment.current_scope_vars().into_keys());
+        vm
+    }
+
+    /// A `SourceLocation` for `position`, tagged with the file being run so
+    /// `Method#source_location` can name it.
+    pub(crate) fn source_location_for(
+        &self,
+        position: crate::lexer::Position,
+    ) -> crate::error::SourceLocation {
+        let mut location =
+            crate::error::SourceLocation::new(position.line, position.column, position.offset);
+        location.filename = self
+            .current_file
+            .as_ref()
+            .map(|file| file.display().to_string());
+        location
     }
 
     /// Activate a refinement module in the innermost scope.
@@ -367,4 +403,14 @@ impl Default for VirtualMachine {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// A starting seed drawn from the clock, so a fresh process draws a different
+/// sequence than the last one.
+pub(crate) fn seed_from_clock() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_nanos() as u64)
+        .unwrap_or(0x9E3779B97F4A7C15)
+        | 1
 }

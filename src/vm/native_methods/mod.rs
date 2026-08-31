@@ -8,6 +8,7 @@ pub(crate) mod ast_methods;
 mod class_methods;
 pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
 pub(crate) use class_methods::is_native_kernel_method;
+pub(crate) use class_methods::native_module_method_stub;
 pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod constant_visibility;
 mod define_method;

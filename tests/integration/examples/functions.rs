@@ -223,3 +223,25 @@ fn test_lambda_and_proc_no_parens_execution() {
     let output = run_example("procs/lambda_and_proc_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_kernel_proc_execution() {
+    let expected = concat!(
+        "false\n42\ntrue\ntrue\n:from_send\n:early\n",
+        "ArgumentError: tried to create Proc object without a block\n",
+        "true\nfalse\ntrue\n"
+    );
+    let output = run_example("procs/kernel_proc.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_kernel_proc_no_parens_execution() {
+    let expected = concat!(
+        "false\n42\ntrue\ntrue\n:from_send\n:early\n",
+        "ArgumentError: tried to create Proc object without a block\n",
+        "true\nfalse\ntrue\n"
+    );
+    let output = run_example("procs/kernel_proc_no_parens.rb");
+    assert_eq!(output, expected);
+}

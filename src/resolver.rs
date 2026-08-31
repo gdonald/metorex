@@ -778,6 +778,7 @@ impl Resolver {
             | Expression::MagicDir { .. }
             | Expression::RegexLiteral { .. }
             | Expression::Splat { .. }
+            | Expression::KeywordSplat { .. }
             | Expression::BlockArg { .. }
             | Expression::BeginRescue { .. }
             | Expression::Defined { .. }

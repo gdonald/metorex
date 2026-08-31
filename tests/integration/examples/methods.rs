@@ -97,3 +97,49 @@ fn test_methods_singleton_keyword_method_names_no_parens() {
     let output = run_example("methods/singleton_keyword_method_names_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_methods_optional_before_required_binding_execution() {
+    let expected = concat!(
+        "<only\n",
+        "[both\n",
+        "(-)\n",
+        "=-)\n",
+        "{=}\n",
+        "[1, 2, 3, 9]\n",
+        "[1, 8, 3, 9]\n",
+        "[1, 7, 8, 9]\n"
+    );
+    let output = run_example("methods/optional_before_required/binding.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_optional_before_required_binding_no_parens_execution() {
+    let expected = concat!(
+        "<only\n",
+        "[both\n",
+        "(-)\n",
+        "=-)\n",
+        "{=}\n",
+        "[1, 2, 3, 9]\n",
+        "[1, 8, 3, 9]\n",
+        "[1, 7, 8, 9]\n"
+    );
+    let output = run_example("methods/optional_before_required/binding_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_scope_locals_stay_local_execution() {
+    let expected = "inner\nouter\nouter\nouter\nclass body\nouter\n6\n";
+    let output = run_example("methods/scope/locals_stay_local.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_scope_locals_stay_local_parens_execution() {
+    let expected = "inner\nouter\nouter\nouter\nclass body\nouter\n6\n";
+    let output = run_example("methods/scope/locals_stay_local_parens.rb");
+    assert_eq!(output, expected);
+}

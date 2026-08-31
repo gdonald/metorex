@@ -349,6 +349,10 @@ impl VirtualMachine {
                     other => Ok(Object::Array(Rc::new(RefCell::new(vec![other])))),
                 }
             }
+            Expression::KeywordSplat { expression, .. } => {
+                // Outside of an argument list, `**expr` is just `expr`.
+                self.evaluate_expression(expression)
+            }
             Expression::BlockArg { expression, .. } => {
                 // Outside of an argument list, `&expr` is just `expr`.
                 self.evaluate_expression(expression)
@@ -458,9 +462,15 @@ impl VirtualMachine {
             } => self.evaluate_unless_expression(condition, then_branch, else_branch),
             Expression::SingletonClass {
                 target,
+                assign_to,
                 body,
                 position,
-            } => self.evaluate_singleton_class_expression(target, body, *position),
+            } => self.evaluate_singleton_class_expression(
+                target,
+                assign_to.as_deref(),
+                body,
+                *position,
+            ),
         }
     }
 }

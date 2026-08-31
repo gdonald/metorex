@@ -251,3 +251,87 @@ fn test_basics_kernel_p_parens() {
     let output = run_example("basics/kernel_p_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_stdout_redirection() {
+    let expected = concat!(
+        "\"through puts\\nthrough print\\\"through p\\\"\\n\\n\"\n",
+        "symbol\nsymbol\n:symbol\nlast line\nspeaker to_s\n"
+    );
+    let output = run_example("basics/stdout_redirection.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_stdout_redirection_no_parens() {
+    let expected = concat!(
+        "\"through puts\\nthrough print\\\"through p\\\"\\n\\n\"\n",
+        "symbol\nsymbol\n:symbol\nlast line\nspeaker to_s\n"
+    );
+    let output = run_example("basics/stdout_redirection_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_readline_and_readlines() {
+    let expected = concat!(
+        "true\ntrue\ntrue\nIOError\ntrue\n",
+        "nil\n[]\n",
+        "EOFError: end of file reached\n",
+        "readline() expects 0 arguments, got 1\n"
+    );
+    let output = run_example("basics/readline_and_readlines.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_readline_and_readlines_no_parens() {
+    let expected = concat!(
+        "true\ntrue\ntrue\nIOError\ntrue\n",
+        "nil\n[]\n",
+        "EOFError: end of file reached\n",
+        "readline() expects 0 arguments, got 1\n"
+    );
+    let output = run_example("basics/readline_and_readlines_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_warn_messages_execution() {
+    let expected = concat!(
+        "plain\n",
+        "already ended\n",
+        "first\n",
+        "second\n",
+        "from\n",
+        "an array\n",
+        "categorized\n",
+        "with empty keywords\n",
+        "warning: too far\n",
+        "TypeError for an unconvertible category\n",
+        "ArgumentError for a negative uplevel\n",
+        "TypeError for a non-Integer uplevel\n"
+    );
+    let output = run_example("basics/warn/messages.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_warn_messages_parens_execution() {
+    let expected = concat!(
+        "plain\n",
+        "already ended\n",
+        "first\n",
+        "second\n",
+        "from\n",
+        "an array\n",
+        "categorized\n",
+        "with empty keywords\n",
+        "warning: too far\n",
+        "TypeError for an unconvertible category\n",
+        "ArgumentError for a negative uplevel\n",
+        "TypeError for a non-Integer uplevel\n"
+    );
+    let output = run_example("basics/warn/messages_parens.rb");
+    assert_eq!(output, expected);
+}

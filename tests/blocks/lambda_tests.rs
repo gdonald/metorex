@@ -596,3 +596,89 @@ fn a_symbol_to_proc_block_is_not_a_lambda() {
     let result = run_lambda("proc { |x| x }.lambda?");
     assert_eq!(result, Some(Object::Bool(false)));
 }
+
+// ── Kernel#proc ──────────────────────────────────────────────────────────────
+
+#[test]
+fn proc_hands_back_an_existing_proc_unchanged() {
+    let result = run_lambda(
+        r#"
+stabby = -> { 7 }
+proc(&stabby).equal?(stabby)
+"#,
+    );
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn proc_keeps_a_lambda_a_lambda() {
+    let result = run_lambda(
+        r#"
+stabby = -> { 7 }
+proc(&stabby).lambda?
+"#,
+    );
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn send_reaches_kernel_proc() {
+    let result = run_lambda(
+        r#"
+class Holder
+  def build
+    send(:proc) { :from_send }
+  end
+end
+Holder.new.build.call.inspect
+"#,
+    );
+    assert_eq!(result, Some(Object::string(":from_send")));
+}
+
+#[test]
+fn a_bare_proc_without_a_block_raises_argument_error() {
+    let error = run_err(
+        r#"
+class Holder
+  def no_block
+    proc
+  end
+end
+Holder.new.no_block
+"#,
+    );
+    assert!(error.contains("tried to create Proc object without a block"));
+}
+
+#[test]
+fn proc_is_a_private_instance_method_on_kernel() {
+    let result = run_lambda("Kernel.private_instance_methods(false).include?(:proc)");
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── equal? is identity for reference types ───────────────────────────────────
+
+#[test]
+fn equal_compares_two_blocks_by_identity() {
+    let result = run_lambda(
+        r#"
+first = proc { 1 }
+second = proc { 1 }
+[first.equal?(first), first.equal?(second)].inspect
+"#,
+    );
+    assert_eq!(result, Some(Object::string("[true, false]")));
+}
+
+#[test]
+fn equal_terminates_on_a_block_that_closed_over_itself() {
+    let result = run_lambda(
+        r#"
+looping = nil
+looping = proc { looping }
+looping.equal?(looping)
+"#,
+    );
+    assert_eq!(result, Some(Object::Bool(true)));
+}

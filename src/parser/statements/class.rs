@@ -138,12 +138,25 @@ impl Parser {
     /// Parse the tail of `class << <target>; body; end` after the `<<` has been
     /// consumed. Used both from statement parsing and from primary-expression
     /// parsing (so `(class << a; self; end)` works as an rvalue).
+    /// Parse `class << target ... end` after the `<<`.
     pub(crate) fn parse_singleton_class_after_shovel(
         &mut self,
         start_pos: Position,
     ) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
         let target = self.parse_expression()?;
+        self.skip_whitespace();
+
+        // `class << @receiver = Object.new` assigns first, then opens the
+        // singleton class of what was assigned. Assignment is a statement in
+        // metorex, so the pair is recorded here and emitted by the caller.
+        let assigned_value = if self.check(&[TokenKind::Equal]) {
+            self.advance(); // consume =
+            self.skip_whitespace();
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
         self.skip_whitespace();
 
         let mut body = Vec::new();
@@ -157,10 +170,21 @@ impl Parser {
         }
         self.expect(TokenKind::End, "Expected 'end' after 'class << ...' body")?;
 
-        Ok(Expression::SingletonClass {
-            target: Box::new(target),
-            body,
-            position: start_pos,
+        // With an assignment the value is what gets a singleton class, and
+        // the name it was written to is where that value is stored.
+        Ok(match assigned_value {
+            Some(value) => Expression::SingletonClass {
+                target: Box::new(value),
+                assign_to: Some(Box::new(target)),
+                body,
+                position: start_pos,
+            },
+            None => Expression::SingletonClass {
+                target: Box::new(target),
+                assign_to: None,
+                body,
+                position: start_pos,
+            },
         })
     }
 

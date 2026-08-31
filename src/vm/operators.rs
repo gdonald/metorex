@@ -35,6 +35,10 @@ impl VirtualMachine {
             UnaryOp::Minus => match value {
                 Object::Int(v) => Ok(Object::Int(-v)),
                 Object::Float(v) => Ok(Object::Float(-v)),
+                // Ruby's `-"str"` answers a frozen, deduplicated string.
+                // Metorex's strings are already shared and report frozen, so
+                // this is an identity op the way `+"str"` is.
+                Object::String(_) => Ok(value),
                 _ => Err(unary_type_error(op, &value, position)),
             },
             UnaryOp::Not => Ok(Object::Bool(matches!(
@@ -578,10 +582,15 @@ impl VirtualMachine {
         right: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let fmt_str = match &left {
-            Object::String(s) => s.as_ref().clone(),
-            _ => unreachable!("caller guarantees left is String"),
+        let Object::String(format) = &left else {
+            let message = format!("no implicit conversion of {} into String", left.type_name());
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
         };
+        let fmt_str = format.as_ref().clone();
 
         let args: Vec<Object> = match right {
             Object::Array(arr) => arr.borrow().clone(),
@@ -693,7 +702,12 @@ impl VirtualMachine {
 
                 let formatted = match specifier {
                     's' => {
-                        let s = format!("{}", arg);
+                        // `%s` renders with `to_s`, so a Symbol loses its
+                        // leading colon the way `puts` drops it.
+                        let s = match &arg {
+                            Object::Symbol(name) => (**name).clone(),
+                            other => format!("{}", other),
+                        };
                         if let Some(prec) = precision {
                             s[..s.len().min(prec)].to_string()
                         } else {

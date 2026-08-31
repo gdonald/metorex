@@ -118,6 +118,13 @@ impl Scope {
             return true;
         }
 
+        // A method or block scope does not assign to a name it never bound:
+        // Ruby makes that a new local of its own. Only the names it captured
+        // reach outward, and those are already bound here as shared cells.
+        if self.is_method_boundary {
+            return false;
+        }
+
         // If not found, try to set it in the parent scope
         if let Some(parent) = &self.parent {
             return parent.borrow_mut().set(name, value);

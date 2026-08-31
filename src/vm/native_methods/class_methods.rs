@@ -1010,9 +1010,15 @@ impl VirtualMachine {
                         priv_set.insert((*n).to_string());
                     }
                 }
-                // Kernel's conversion functions are private instance methods
-                // on Kernel, implemented natively rather than in its table.
+                // Kernel's methods are implemented natively rather than in
+                // its table, so they are listed here. The public ones come
+                // first; the pass below marks the private ones.
                 if class_rc.name() == "Kernel" {
+                    for (n, _, _) in NATIVE_KERNEL_METHODS.iter() {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push((*n).to_string());
+                        }
+                    }
                     for n in
                         crate::vm::native_methods::kernel_conversion::KERNEL_CONVERSION_FUNCTIONS
                             .iter()
@@ -1414,8 +1420,18 @@ impl VirtualMachine {
                     .map(Some);
             }
             "private_methods" => {
-                let include_super = !matches!(arguments.first(), Some(Object::Bool(false)));
-                let mut names: Vec<String> = class_rc.private_method_names();
+                let include_super = !matches!(
+                    arguments.first(),
+                    Some(Object::Bool(false)) | Some(Object::Nil)
+                );
+                // What is private *on the class object* lives in its
+                // singleton chain. Its own private instance methods are its
+                // instances' business, so they only surface once ancestors do.
+                let mut names: Vec<String> = self
+                    .private_method_names_for(&Object::Class(Rc::clone(class_rc)), include_super);
+                if include_super {
+                    names.extend(class_rc.private_method_names());
+                }
                 // Classes and modules inherit Module's private instance
                 // methods. `extend_object` and the `*_features` pair are
                 // undefined on Class, so the module dispatch path adds those.
@@ -2632,9 +2648,18 @@ pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "print",
     "printf",
     "proc",
+    "raise",
+    "rand",
+    "readline",
+    "readlines",
+    "respond_to_missing?",
+    "srand",
     "putc",
     "puts",
     "throw",
+    "trace_var",
+    "untrace_var",
+    "warn",
 ];
 
 /// The hooks Module defines as private instance methods with a no-op default
@@ -2714,7 +2739,12 @@ pub(super) const NATIVE_KERNEL_METHODS: &[(&str, &[&str], bool)] = &[
     ("itself", &[], false),
     ("kind_of?", &["klass"], false),
     ("lambda", &[], false),
+    ("proc", &[], false),
+    ("raise", &["arguments"], true),
     ("method", &["name"], false),
+    ("public_method", &["name"], false),
+    ("remove_instance_variable", &["name"], false),
+    ("singleton_methods", &["all"], true),
     ("methods", &["regular"], true),
     ("nil?", &[], false),
     ("object_id", &[], false),
@@ -2728,6 +2758,7 @@ pub(super) const NATIVE_KERNEL_METHODS: &[(&str, &[&str], bool)] = &[
     ("to_s", &[], false),
     ("__id__", &[], false),
     ("__send__", &["arguments"], true),
+    ("warn", &["messages"], true),
 ];
 
 /// A body-less stub for one of the natively implemented Kernel methods.
@@ -2771,7 +2802,7 @@ fn undefined_instance_method_error(
 /// A body-less stub for one of the natively implemented Module methods,
 /// carrying its parameter list so `arity` and `bind` behave. Invoking it
 /// reaches the same native implementation.
-pub(super) fn native_module_method_stub(name: &str) -> Option<Method> {
+pub(crate) fn native_module_method_stub(name: &str) -> Option<Method> {
     let (_, parameters, variadic) = NATIVE_MODULE_METHODS
         .iter()
         .find(|(entry, _, _)| *entry == name)?;
@@ -2907,11 +2938,14 @@ pub(crate) fn is_native_kernel_method(name: &str) -> bool {
             | "itself"
             | "kind_of?"
             | "lambda"
+            | "proc"
             | "method"
             | "methods"
             | "nil?"
             | "object_id"
             | "public_send"
+            | "remove_instance_variable"
+            | "singleton_methods"
             | "require"
             | "require_relative"
             | "respond_to?"

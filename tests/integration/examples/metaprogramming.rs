@@ -2,7 +2,7 @@ use super::run_example;
 
 #[test]
 fn test_metaprogramming_top_level_define_method_execution() {
-    let expected = "true\n:boing\nfalse\nfalse\n";
+    let expected = "true\nboing\nfalse\nfalse\n";
     let output = run_example("metaprogramming/top_level_define_method.rb");
     assert_eq!(output, expected);
 }
@@ -593,14 +593,14 @@ fn test_metaprogramming_class_variable_defined_parens_execution() {
 
 #[test]
 fn test_metaprogramming_class_variable_get_execution() {
-    let expected = "7\n7\n:yes\n7\nhere\nmissing raises NameError\n";
+    let expected = "7\n7\nyes\n7\nhere\nmissing raises NameError\n";
     let output = run_example("metaprogramming/class_variable_get.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_metaprogramming_class_variable_get_parens_execution() {
-    let expected = "7\n7\n:yes\n7\nhere\nmissing raises NameError\n";
+    let expected = "7\n7\nyes\n7\nhere\nmissing raises NameError\n";
     let output = run_example("metaprogramming/class_variable_get_parens.rb");
     assert_eq!(output, expected);
 }
@@ -608,7 +608,7 @@ fn test_metaprogramming_class_variable_get_parens_execution() {
 #[test]
 fn test_metaprogramming_class_variable_set_execution() {
     let expected =
-        ":on\n:on\n3\n3\nfrozen Class raises FrozenError\nfrozen Module raises FrozenError\n";
+        "on\non\n3\n3\nfrozen Class raises FrozenError\nfrozen Module raises FrozenError\n";
     let output = run_example("metaprogramming/class_variable_set.rb");
     assert_eq!(output, expected);
 }
@@ -616,7 +616,7 @@ fn test_metaprogramming_class_variable_set_execution() {
 #[test]
 fn test_metaprogramming_class_variable_set_parens_execution() {
     let expected =
-        ":on\n:on\n3\n3\nfrozen Class raises FrozenError\nfrozen Module raises FrozenError\n";
+        "on\non\n3\n3\nfrozen Class raises FrozenError\nfrozen Module raises FrozenError\n";
     let output = run_example("metaprogramming/class_variable_set_parens.rb");
     assert_eq!(output, expected);
 }

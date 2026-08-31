@@ -18,6 +18,8 @@ pub(super) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
     builtin_classes::init_object_methods(builtins.object_class.as_ref());
     builtin_classes::init_string_methods(builtins.string_class.as_ref());
     builtin_classes::init_array_methods(builtins.array_class.as_ref());
+    builtin_classes::init_integer_methods(builtins.integer_class.as_ref());
+    builtin_classes::init_float_methods(builtins.float_class.as_ref());
     builtin_classes::init_hash_methods(builtins.hash_class.as_ref());
     builtin_classes::init_exception_methods(builtins.exception_class.as_ref());
 }
@@ -143,6 +145,7 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     let type_error = Rc::new(Class::new("TypeError", Some(Rc::clone(&standard_error))));
     let range_error = Rc::new(Class::new("RangeError", Some(Rc::clone(&standard_error))));
     let io_error = Rc::new(Class::new("IOError", Some(Rc::clone(&standard_error))));
+    let eof_error = Rc::new(Class::new("EOFError", Some(Rc::clone(&io_error))));
     let index_error = Rc::new(Class::new("IndexError", Some(Rc::clone(&standard_error))));
     let key_error = Rc::new(Class::new("KeyError", Some(Rc::clone(&index_error))));
     let stop_iteration = Rc::new(Class::new("StopIteration", Some(Rc::clone(&index_error))));
@@ -197,6 +200,7 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     globals.set("TypeError", Object::Class(type_error));
     globals.set("RangeError", Object::Class(range_error));
     globals.set("IOError", Object::Class(io_error));
+    globals.set("EOFError", Object::Class(eof_error));
     globals.set("IndexError", Object::Class(index_error));
     globals.set("KeyError", Object::Class(key_error));
     globals.set("StopIteration", Object::Class(stop_iteration));
@@ -402,6 +406,9 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("method", Object::NativeFunction("method".to_string()));
     globals.set("lambda", Object::NativeFunction("lambda".to_string()));
     globals.set("loop", Object::NativeFunction("loop".to_string()));
+    globals.set("raise", Object::NativeFunction("raise".to_string()));
+    globals.set("readline", Object::NativeFunction("readline".to_string()));
+    globals.set("readlines", Object::NativeFunction("readlines".to_string()));
     globals.set(
         "local_variables",
         Object::NativeFunction("local_variables".to_string()),
@@ -455,13 +462,10 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     // Lifecycle hooks — accept and discard the block, never run it.
     globals.set("at_exit", Object::NativeFunction("at_exit".to_string()));
     globals.set("END", Object::NativeFunction("at_exit".to_string()));
-    globals.set(
-        "trace_var",
-        Object::NativeFunction("noop_with_block".to_string()),
-    );
+    globals.set("trace_var", Object::NativeFunction("trace_var".to_string()));
     globals.set(
         "untrace_var",
-        Object::NativeFunction("noop_with_block".to_string()),
+        Object::NativeFunction("untrace_var".to_string()),
     );
     // Misc Kernel methods used by mspec
     globals.set("warn", Object::NativeFunction("warn".to_string()));

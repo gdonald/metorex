@@ -152,6 +152,22 @@ impl VirtualMachine {
                         }
                     }
                 }
+                Expression::KeywordSplat { expression, .. } => {
+                    // `**hash`: an empty Hash contributes no argument, so
+                    // `f(**{})` calls `f` with nothing at all.
+                    let value = self.evaluate_expression(expression)?;
+                    match &value {
+                        Object::Dict(entries) if entries.borrow().is_empty() => {}
+                        Object::Dict(entries) => {
+                            let mut keywords = entries.borrow().clone();
+                            keywords.insert("__MX_KWARGS__".to_string(), Object::Bool(true));
+                            args.push(Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(
+                                keywords,
+                            ))));
+                        }
+                        _ => args.push(value),
+                    }
+                }
                 Expression::BlockArg { expression, .. } => {
                     // `&expr`: bind the value as the pending block. If the
                     // value is nil, the call is treated as if no block were

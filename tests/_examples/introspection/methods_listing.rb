@@ -20,6 +20,7 @@ puts widget.methods(false).inspect
 
 widget.extend(Greeting)
 puts widget.methods(false).inspect
+puts widget.methods.include?(:greet)
 puts widget.methods.include?(:spin)
 
 class << widget

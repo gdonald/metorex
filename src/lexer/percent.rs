@@ -11,8 +11,10 @@ impl<'a> Lexer<'a> {
         if self.peek() == Some('r') {
             return self.lex_percent_r(position);
         }
-        if !matches!(self.prev_significant, Some(TokenKind::Def)) && self.peek() == Some('w') {
-            return self.lex_percent_w(position);
+        if !matches!(self.prev_significant, Some(TokenKind::Def))
+            && matches!(self.peek(), Some('w') | Some('i'))
+        {
+            return self.lex_percent_list(position);
         }
         if !matches!(self.prev_significant, Some(TokenKind::Def))
             && (self.peek() == Some('Q')
@@ -63,10 +65,11 @@ impl<'a> Lexer<'a> {
         Token::new(TokenKind::Regex(pattern, flags), position)
     }
 
-    /// Lex `%w[a b c]` word-array literal. Returns a PercentW token whose
-    /// content is the raw whitespace-separated source for the parser to split.
-    fn lex_percent_w(&mut self, position: Position) -> Token {
-        self.advance(); // consume 'w'
+    /// Lex a `%w[a b c]` word array or a `%i[a b c]` symbol array. The token
+    /// carries the raw whitespace-separated source for the parser to split.
+    fn lex_percent_list(&mut self, position: Position) -> Token {
+        let symbols = self.peek() == Some('i');
+        self.advance(); // consume 'w' or 'i'
         let open = self.peek().unwrap_or('(');
         let close = matching_close(open);
         self.advance(); // consume opening delimiter
@@ -86,7 +89,12 @@ impl<'a> Lexer<'a> {
                 self.advance();
             }
         }
-        Token::new(TokenKind::PercentW(content), position)
+        let kind = if symbols {
+            TokenKind::PercentI(content)
+        } else {
+            TokenKind::PercentW(content)
+        };
+        Token::new(kind, position)
     }
 
     /// Lex `%Q[...]`, `%[...]`, `%(...)`, `%{...}`, `%<...>` string literals.

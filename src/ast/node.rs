@@ -196,6 +196,9 @@ pub enum Expression {
     // Evaluates to the value of the final body statement (or nil for an empty body).
     SingletonClass {
         target: Box<Expression>,
+        /// Where to store `target` before opening its singleton class, for
+        /// `class << @receiver = Object.new`.
+        assign_to: Option<Box<Expression>>,
         body: Vec<Statement>,
         position: Position,
     },
@@ -212,6 +215,13 @@ pub enum Expression {
 
     // Splat expression (*expr) — expands an array into individual arguments
     Splat {
+        expression: Box<Expression>,
+        position: Position,
+    },
+
+    // Keyword-splat expression (**expr) — passes a Hash as keyword arguments.
+    // An empty Hash contributes no argument at all, the way Ruby's does.
+    KeywordSplat {
         expression: Box<Expression>,
         position: Position,
     },
@@ -763,6 +773,7 @@ impl Expression {
             | Expression::SingletonClass { position, .. }
             | Expression::Super { position, .. }
             | Expression::Splat { position, .. }
+            | Expression::KeywordSplat { position, .. }
             | Expression::BlockArg { position, .. }
             | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }

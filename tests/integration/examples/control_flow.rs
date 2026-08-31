@@ -274,3 +274,27 @@ fn test_control_flow_kernel_loop_no_parens() {
     let output = run_example("control_flow/kernel_loop_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_control_flow_throw_and_tap() {
+    let expected = concat!(
+        "3\nnil\n",
+        "ArgumentError: wrong number of arguments (given 3, expected 1..2)\n",
+        "ArgumentError\nUncaughtThrowError\ntrue\ntrue\n",
+        "LocalJumpError: no block given (yield)\nfalse\nfalse\n"
+    );
+    let output = run_example("control_flow/throw_and_tap.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_throw_and_tap_parens() {
+    let expected = concat!(
+        "3\nnil\n",
+        "ArgumentError: wrong number of arguments (given 3, expected 1..2)\n",
+        "ArgumentError\nUncaughtThrowError\ntrue\ntrue\n",
+        "LocalJumpError: no block given (yield)\nfalse\nfalse\n"
+    );
+    let output = run_example("control_flow/throw_and_tap_parens.rb");
+    assert_eq!(output, expected);
+}

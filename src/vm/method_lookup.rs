@@ -184,6 +184,25 @@ impl VirtualMachine {
             _ => {}
         }
 
+        // A natively-implemented class method carries visibility too, so
+        // `private_class_method :new` refuses an explicit-receiver call the
+        // way a table-backed one does.
+        if let Object::Class(class_rc) | Object::Module(class_rc) = &receiver
+            && !matches!(receiver_expr, Expression::SelfExpr { .. })
+            && self.method_is_restricted(&receiver, method_name)
+        {
+            let msg = format!(
+                "private method '{}' called for {}",
+                method_name,
+                class_rc.ruby_name()
+            );
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("NoMethodError", msg.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message: msg,
+            });
+        }
+
         // Try native method as fallback
         let class = self.builtins().class_of(&receiver);
         let native_result =
@@ -290,10 +309,24 @@ impl VirtualMachine {
             }
             cursor = current.superclass();
         }
-        self.builtins()
+        if self
+            .builtins()
             .class_of(receiver)
             .find_method(name)
             .is_some()
+        {
+            return true;
+        }
+        // A class answers to `new` and to Module's own natives, which live in
+        // the dispatch tables rather than in a method map. It also carries
+        // Kernel's default `respond_to_missing?` the way any object does. The
+        // rest of Kernel's surface is not reported here yet: turning it all on
+        // changes which names mspec's mocks alias and breaks Module#autoload.
+        if name == "respond_to_missing?" || (name == "new" && matches!(receiver, Object::Class(_)))
+        {
+            return true;
+        }
+        crate::vm::native_methods::native_module_method_stub(name).is_some()
     }
 
     /// Whether `name` resolves to a private or protected method on
@@ -387,16 +420,18 @@ impl VirtualMachine {
             let mut defining_singleton = None;
             let mut cursor = Some(Rc::clone(class_rc));
             while let Some(current) = cursor {
-                if let Some(sc) = current.singleton_class_slot().clone()
-                    && let Some((owner, _)) = sc.find_method_with_owner(name)
-                {
+                if let Some(sc) = current.singleton_class_slot().clone() {
                     // The nearest singleton with its own marking for this
                     // name settles it; a subclass's `private_class_method`
-                    // marks the name without redefining the method.
+                    // marks the name without redefining the method. A
+                    // natively-implemented name such as `new` is marked the
+                    // same way with no method map entry to find.
                     if sc.has_public_override(name) || sc.is_method_restricted(name) {
                         return Some(sc);
                     }
-                    defining_singleton.get_or_insert(owner);
+                    if let Some((owner, _)) = sc.find_method_with_owner(name) {
+                        defining_singleton.get_or_insert(owner);
+                    }
                 }
                 cursor = current.superclass();
             }
@@ -503,7 +538,7 @@ impl VirtualMachine {
 /// A module-level method on a class or module object: one stored under the
 /// `__class__` convention by `def self.name` or `module_function`, or copied
 /// in by `extend` under the `__ext__` convention.
-fn module_level_method(class_rc: &Rc<Class>, method_name: &str) -> Option<Rc<Method>> {
+pub(crate) fn module_level_method(class_rc: &Rc<Class>, method_name: &str) -> Option<Rc<Method>> {
     if let Some(method) = class_rc.find_method(&format!("__class__{}", method_name)) {
         return Some(method);
     }

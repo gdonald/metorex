@@ -238,7 +238,8 @@ end
 }
 
 #[test]
-fn test_bare_raise_outside_rescue_fails() {
+fn test_bare_raise_outside_rescue_raises_runtime_error() {
+    // With no `$!` to re-raise, Ruby raises RuntimeError: unhandled exception.
     let code = r#"raise"#;
     let result = execute_code(code);
     assert!(result.is_err());
@@ -246,7 +247,7 @@ fn test_bare_raise_outside_rescue_fails() {
         result
             .unwrap_err()
             .to_string()
-            .contains("No exception to re-raise")
+            .contains("unhandled exception")
     );
 }
 
@@ -360,9 +361,9 @@ fn raise_with_non_exception_value_errors() {
 }
 
 #[test]
-fn bare_raise_outside_rescue_errors() {
+fn bare_raise_outside_rescue_raises_runtime_error() {
     let err = run_exc_err("raise");
-    assert!(err.contains("No exception to re-raise"));
+    assert!(err.contains("unhandled exception"));
 }
 
 #[test]
@@ -495,4 +496,71 @@ x
 "#,
     );
     assert_eq!(result, Some(Object::Int(99)));
+}
+
+// ── Kernel#raise as a method ─────────────────────────────────────────────────
+
+#[test]
+fn raise_is_reachable_through_send() {
+    let err = run_exc_err(
+        r#"
+class Thrower
+  def throw_it
+    send(:raise, ArgumentError, "through send")
+  end
+end
+Thrower.new.throw_it
+"#,
+    );
+    assert!(err.contains("through send"));
+}
+
+#[test]
+fn raise_is_reachable_with_an_explicit_receiver() {
+    let err = run_exc_err(
+        r#"
+raiser = Object.new
+class << raiser
+  public :raise
+end
+raiser.raise(TypeError, "with a receiver")
+"#,
+    );
+    assert!(err.contains("with a receiver"));
+}
+
+#[test]
+fn raise_is_reachable_on_kernel() {
+    let err = run_exc_err(r#"Kernel.raise(IndexError, "on Kernel")"#);
+    assert!(err.contains("on Kernel"));
+}
+
+#[test]
+fn raise_is_reachable_through_a_method_object() {
+    let err = run_exc_err(r#"Kernel.method(:raise).call(KeyError, "through a Method")"#);
+    assert!(err.contains("through a Method"));
+}
+
+#[test]
+fn raise_is_a_private_instance_method_on_kernel() {
+    let result = run_exc("Kernel.private_instance_methods(false).include?(:raise)");
+    assert_eq!(result.map(|o| o.to_string()), Some("true".to_string()));
+}
+
+#[test]
+fn a_bare_raise_still_reraises_the_rescued_exception() {
+    let err = run_exc_err(
+        r#"
+begin
+  begin
+    raise ArgumentError, "original"
+  rescue ArgumentError
+    raise
+  end
+rescue ArgumentError => error
+  raise RuntimeError, error.message
+end
+"#,
+    );
+    assert!(err.contains("original"));
 }

@@ -230,58 +230,58 @@ run_spec "$SPEC_DIR/core/kernel/nil_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/not_match_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/object_id_spec.rb"  # the Bignum example needs arbitrary-precision integers
 # run_spec "$SPEC_DIR/core/kernel/open_spec.rb"  # needs Kernel#open, File::CREAT, IO.popen, and ruby_exe subprocess support
-# run_spec "$SPEC_DIR/core/kernel/p_spec.rb"  # the output matchers need $stdout to be a real IO object writes route through
-# run_spec "$SPEC_DIR/core/kernel/pp_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/print_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/printf_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/private_methods_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/proc_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/protected_methods_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/public_method_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/public_methods_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/public_send_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/putc_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/puts_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/raise_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/rand_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/readline_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/readlines_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/remove_instance_variable_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/require_relative_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/require_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/respond_to_missing_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/respond_to_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/select_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/send_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/set_trace_func_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/singleton_class_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/singleton_method_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/singleton_methods_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/sleep_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/spawn_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/sprintf_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/srand_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/sub_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/syscall_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/system_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/taint_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/tainted_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/tap_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/test_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/then_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/throw_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/to_enum_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/to_s_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/trace_var_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/p_spec.rb"  # needs a File IO object for `$stdout = file` and fd-level redirection
+# run_spec "$SPEC_DIR/core/kernel/pp_spec.rb"  # its one example needs ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/print_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/printf_spec.rb"  # 204 of its examples need a StringIO class, and the rest need a File IO object
+run_spec "$SPEC_DIR/core/kernel/private_methods_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/proc_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/protected_methods_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/public_method_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/public_methods_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/public_send_spec.rb"  # needs real module ancestry so `super` walks included modules
+# run_spec "$SPEC_DIR/core/kernel/putc_spec.rb"  # every example needs a File IO object for `new_io`
+# run_spec "$SPEC_DIR/core/kernel/puts_spec.rb"  # every example needs a File IO object for `new_io`
+# run_spec "$SPEC_DIR/core/kernel/raise_spec.rb"  # needs Exception#data, three-argument raise with a backtrace, cause chaining, and backtrace preservation on re-raise
+# run_spec "$SPEC_DIR/core/kernel/rand_spec.rb"  # needs a Random class, custom range endpoint types, and ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/readline_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/readlines_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/remove_instance_variable_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/require_relative_spec.rb"  # needs $LOADED_FEATURES tracking, extension resolution, Dir.chdir, and File.symlink
+# run_spec "$SPEC_DIR/core/kernel/require_spec.rb"  # hangs, and needs the same $LOADED_FEATURES tracking as require_relative_spec
+run_spec "$SPEC_DIR/core/kernel/respond_to_missing_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/respond_to_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/select_spec.rb"  # needs IO.pipe and fd-level select
+# run_spec "$SPEC_DIR/core/kernel/send_spec.rb"  # needs real module ancestry so `super` walks included modules
+# run_spec "$SPEC_DIR/core/kernel/set_trace_func_spec.rb"  # needs a tracing hook the interpreter calls on each event
+# run_spec "$SPEC_DIR/core/kernel/singleton_class_spec.rb"  # needs per-string frozen state for a deduplicated String, and File IO for the reopen example
+run_spec "$SPEC_DIR/core/kernel/singleton_method_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/singleton_methods_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/sleep_spec.rb"  # hangs: needs Thread scheduling (Thread.pass, wakeup, status) and a Fiber scheduler
+# run_spec "$SPEC_DIR/core/kernel/spawn_spec.rb"  # needs subprocess execution and fd-level output capture
+# run_spec "$SPEC_DIR/core/kernel/sprintf_spec.rb"  # needs the full format surface: %e %g %G %B, the # flag, width and precision, RangeError, and KeyError for named references
+# run_spec "$SPEC_DIR/core/kernel/srand_spec.rb"  # its one remaining example needs ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/sub_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/syscall_spec.rb"  # needs raw OS syscall dispatch
+# run_spec "$SPEC_DIR/core/kernel/system_spec.rb"  # needs subprocess execution and Process::Status
+run_spec "$SPEC_DIR/core/kernel/taint_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/tainted_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/tap_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/test_spec.rb"  # needs the file-test operators and File IO
+run_spec "$SPEC_DIR/core/kernel/then_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/throw_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/to_enum_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/to_s_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/trace_var_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/trap_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/trust_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/untaint_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/untrace_var_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/untrust_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/untrusted_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/warn_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/yield_self_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/__id__spec.rb"
+run_spec "$SPEC_DIR/core/kernel/trust_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/untaint_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/untrace_var_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/untrust_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/untrusted_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/warn_spec.rb"  # its last 4 examples shell out through IO.popen
+run_spec "$SPEC_DIR/core/kernel/yield_self_spec.rb"
+# run_spec "$SPEC_DIR/core/basicobject/__id__spec.rb"  # its Bignum example needs arbitrary-precision integers
 # run_spec "$SPEC_DIR/core/basicobject/__send___spec.rb"
 # run_spec "$SPEC_DIR/core/basicobject/basicobject_spec.rb"
 # run_spec "$SPEC_DIR/core/basicobject/equal_spec.rb"

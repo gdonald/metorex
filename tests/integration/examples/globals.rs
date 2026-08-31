@@ -92,3 +92,29 @@ fn test_globals_global_variables_list_execution() {
     let output = run_example("globals/global_variables_list.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_globals_trace_var_hooks_execution() {
+    let expected = concat!(
+        "proc saw 1\n",
+        "block saw here\n",
+        "[10, 20]\n",
+        "string hook ran\n",
+        "tracing requires a block or a proc\n"
+    );
+    let output = run_example("globals/trace_var/hooks.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_globals_trace_var_hooks_parens_execution() {
+    let expected = concat!(
+        "proc saw 1\n",
+        "block saw here\n",
+        "[10, 20]\n",
+        "string hook ran\n",
+        "tracing requires a block or a proc\n"
+    );
+    let output = run_example("globals/trace_var/hooks_parens.rb");
+    assert_eq!(output, expected);
+}

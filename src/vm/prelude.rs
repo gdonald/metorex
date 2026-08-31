@@ -1,0 +1,122 @@
+// Core library pieces defined in Ruby rather than in Rust.
+//
+// A method written here is a real user-defined method, so it can be aliased,
+// redefined, mocked, and introspected the way MRI's own Ruby-level core
+// methods can. Kernel#warn relies on that: the specs alias `Warning.warn`
+// away and put their own back.
+
+use crate::vm::core::VirtualMachine;
+
+/// Ruby source evaluated into every fresh VM.
+const PRELUDE_SOURCE: &str = r##"
+module Warning
+  def self.warn(message, category: nil)
+    $stderr.write message
+    nil
+  end
+end
+
+class Enumerator
+  include Enumerable
+
+  def initialize(receiver, method_name, arguments = [], size = nil)
+    @receiver = receiver
+    @method_name = method_name
+    @arguments = arguments
+    @size = size
+    @position = 0
+  end
+
+  def size
+    @size
+  end
+
+  def to_a
+    if @values.nil?
+      collected = []
+      @receiver.send(@method_name, *@arguments) do |*yielded|
+        collected.push(yielded.size == 1 ? yielded[0] : yielded)
+      end
+      @values = collected
+    end
+    @values
+  end
+
+  def peek
+    values = to_a
+    raise StopIteration, "iteration reached an end" if @position >= values.size
+    values[@position]
+  end
+
+  def next
+    value = peek
+    @position = @position + 1
+    value
+  end
+
+  def rewind
+    @position = 0
+    self
+  end
+
+  def each(&block)
+    return self if block.nil?
+    to_a.each { |value| block.call(value) }
+    @receiver
+  end
+
+  def first(count = nil)
+    return to_a[0] if count.nil?
+    to_a[0, count]
+  end
+
+  def inspect
+    "#<Enumerator: #{@receiver.inspect}:#{@method_name}>"
+  end
+end
+"##;
+
+impl VirtualMachine {
+    /// Build an `Enumerator` over `method_name` sent to `receiver`, which is
+    /// what a method that yields answers when called without a block.
+    pub(crate) fn build_enumerator(
+        &mut self,
+        receiver: crate::object::Object,
+        method_name: &str,
+        arguments: Vec<crate::object::Object>,
+        size: Option<i64>,
+        position: crate::lexer::Position,
+    ) -> Result<crate::object::Object, crate::error::MetorexError> {
+        use crate::object::Object;
+        let Some(enumerator_class) = self.globals().get("Enumerator") else {
+            let message = "uninitialized constant Enumerator".to_string();
+            return Err(crate::error::MetorexError::UncaughtException {
+                exception: Object::exception("NameError", message.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message,
+            });
+        };
+        let arguments = vec![
+            receiver,
+            Object::Symbol(std::rc::Rc::new(method_name.to_string())),
+            Object::Array(std::rc::Rc::new(std::cell::RefCell::new(arguments))),
+            match size {
+                Some(size) => Object::Int(size),
+                None => Object::Nil,
+            },
+        ];
+        self.send_to_object(enumerator_class, "new", arguments, position)
+    }
+
+    /// Evaluate the Ruby-level core library. A parse or runtime failure here
+    /// is a defect in `PRELUDE_SOURCE` itself, so it panics rather than
+    /// leaving a half-built VM behind.
+    pub(crate) fn load_prelude(&mut self) {
+        let tokens = crate::lexer::Lexer::new(PRELUDE_SOURCE).tokenize();
+        let statements = crate::parser::Parser::new(tokens)
+            .parse()
+            .unwrap_or_else(|errors| panic!("prelude failed to parse: {:?}", errors));
+        self.execute_program(&statements)
+            .unwrap_or_else(|error| panic!("prelude failed to run: {}", error));
+    }
+}

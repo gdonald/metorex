@@ -1024,3 +1024,49 @@ fn test_oop_super_reaches_kernel_no_parens() {
     let output = run_example("oop/super_reaches_kernel_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_singleton_class_assignment() {
+    let expected = concat!(
+        ":hello\n:HELLO\n[:greet, :shout]\n:built\n:yes\n",
+        "[:alpha, :beta, :gamma]\nSymbol\nString\n[:one, :two]\n"
+    );
+    let output = run_example("oop/singleton_class_assignment.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_singleton_class_assignment_no_parens() {
+    let expected = concat!(
+        ":hello\n:HELLO\n[:greet, :shout]\n:built\n:yes\n",
+        "[:alpha, :beta, :gamma]\nSymbol\nString\n[:one, :two]\n"
+    );
+    let output = run_example("oop/singleton_class_assignment_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_singleton_class_of() {
+    let expected = concat!(
+        "true\ntrue\ntrue\ntrue\n",
+        "TypeError: can't define singleton\n",
+        "TypeError: can't define singleton\n",
+        "TypeError: can't define singleton\n",
+        "true\nfalse\ndeduplicated\nmutable\n"
+    );
+    let output = run_example("oop/singleton_class_of.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_singleton_class_of_parens() {
+    let expected = concat!(
+        "true\ntrue\ntrue\ntrue\n",
+        "TypeError: can't define singleton\n",
+        "TypeError: can't define singleton\n",
+        "TypeError: can't define singleton\n",
+        "true\nfalse\ndeduplicated\nmutable\n"
+    );
+    let output = run_example("oop/singleton_class_of_parens.rb");
+    assert_eq!(output, expected);
+}

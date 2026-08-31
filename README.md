@@ -206,6 +206,7 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Bodies installed by `define_method` follow lambda control flow: `return`, `break`, and `next` finish the method with a value, and `redo` re-runs it
 - Proc and Method objects: `Kernel#proc`, `Kernel#lambda`, `Proc.new`, `Proc#lambda?`, `Symbol#to_proc`, `Method#to_proc` (which stays bound to its original receiver), `Method#unbind`, and `Method#owner` (returns the defining module)
 - `Object#method` converts its name argument with `#to_str`, and builds a `method_missing` dispatcher for a name the object claims through `respond_to_missing?`
+- `Object#public_method` does the same lookup but raises `NameError` for a private or protected name, and asks `respond_to_missing?` without the private flag
 - Procs and lambdas are distinct kinds. A lambda checks its arity and its `return` returns from the lambda, while a proc pads missing arguments with nil, drops extras, and its `return` returns from the method that created it
 - `Kernel#loop` runs its block until `break` (whose value the loop returns) or until the block raises `StopIteration` or one of its subclasses. Every other exception propagates
 - `method_missing` hook for intercepting undefined method calls
@@ -221,8 +222,46 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `!~` dispatches `=~` on the receiver and negates the result, raising `NoMethodError` when the receiver has no `=~`
 - `object_id` identifies a reference type by its address and an immediate by its value, so two equal Symbol, String, Integer, or Float literals share an id
 - Hashes iterate in insertion order. A reassigned key keeps its position and a deleted one leaves the rest in place
+- `Hash#each_pair`, Ruby's alias for `Hash#each`
+- `Object#public_methods`, `Object#private_methods`, and `Object#protected_methods` report the methods of that visibility, including those a `class << obj` or `extend` supplied, and, unless passed false or nil, the ancestors' and mixins'. On a class they walk the class-method chain
+- `Integer#divmod` returns the floored quotient and the modulus, with the signs following the divisor
+- `Kernel#rand` draws a Float in [0, 1) with no argument, an Integer below a given bound (whose sign it ignores), or a value from a Range, answering nil for a backwards one. It converts other arguments with `#to_int`
+- `Kernel#srand` installs a seed and answers the one it replaced, picking a seed of its own when given none. It converts its argument with `#to_int`, and the same seed repeats a whole sequence
+- `Kernel#readline` reads a line and raises `EOFError` at end of input, where `gets` answers nil. `Kernel#readlines` collects every remaining line into an Array
+- `Kernel#remove_instance_variable` takes a variable off an object and answers what it held, raising `NameError` for one that is not defined and `FrozenError` on a frozen receiver
+- `Kernel.instance_methods` lists Kernel's native methods, with the private ones reported as private
+- `respond_to?` falls back to `respond_to_missing?` for a name the lookup missed, passing along the private flag it was given. Every object carries a default `respond_to_missing?` that answers false
+- `Method#owner` answers the module itself for a native Kernel method, not its name
+- A class reports and enforces visibility on its natively-implemented methods, so `private_class_method :new` makes `respond_to?(:new)` false and `Klass.new` raise `NoMethodError`
+- `singleton_class` answers `NilClass`, `TrueClass`, or `FalseClass` for those three objects, raises `TypeError` for an Integer, Float, or Symbol, and is frozen when the object is
+- `-"str"` and `+"str"` both answer the string, matching Ruby's deduplicated and mutable forms
+- `singleton_method` looks only at the singleton layer: a `def obj.name`, a class method, and the modules `include`, `prepend`, or `extend` attached. A method the object's class defines raises `NameError`
+- `singleton_methods(all = true)` reports the same layer as names, adding what the ancestors' singleton classes supply. Passing false leaves out both the ancestors and the modules `extend` attached
+- `extend self` inside a module body, and `extend Mod` at the top level
+- `ary[range]` slices an Array, counting a negative bound from the end and answering nil for a start past the end
+- `sprintf` and `format` convert their format argument with `#to_str` and raise `TypeError` otherwise, and `%s` renders a Symbol without its colon
+- `Float::INFINITY`, `NAN`, `EPSILON`, `MAX`, `MIN`, `DIG`, and `MANT_DIG`
+- `tap`, `then`, and `yield_self` raise `LocalJumpError` when given no block, and `throw` raises `ArgumentError` for the wrong argument count
+- `Numeric` is a real superclass of `Integer` and `Float`
+- An Integer and a Float compare against each other, so `(0...1).include?(0.38)` and `0.38 <=> 0` answer correctly
+- `class << target = value` assigns first, then opens the singleton class of what was assigned
+- `%i[a b c]` and `%i(a b c)` build an Array of Symbols, alongside `%w` for Strings
+- `Kernel#raise` is a method as well as a keyword, so `send(:raise, ...)`, `Kernel.raise`, `method(:raise)`, and a singleton that makes it public all reach it. A bare `raise` with nothing to re-raise gives `RuntimeError: unhandled exception`
+- `=~` and `!~` match a Symbol against a Regexp on the characters it is named with
+- `Kernel#proc` is reachable through `send` and hands back an existing Proc unchanged, keeping a lambda a lambda. Without a literal block it raises `ArgumentError`
+- `equal?` compares reference types by address, so two Procs, Sets, or Exceptions are only equal when they are the same object
 - An array literal gathers trailing `key: value` or `key => value` pairs into one Hash as its last element, so `[1, a: 2, b: 3]` is `[1, {a: 2, b: 3}]`
 - `Kernel#p` writes each argument's `inspect` on its own line, honoring a user-defined `inspect`, and returns the argument, the argument list, or nil for none
+- `puts`, `print`, `p`, and `warn` write through `$stdout` and `$stderr`, so assigning an object with its own `write` captures the output. `print` with no arguments writes `$_`
+- `puts` and `print` render with `to_s`, so a Symbol prints without its colon, while `p` and `inspect` keep it
+- A bare method call reaches the method on `self` before a same-named Kernel function, so a class defining `to_s` can call it bare from another of its methods
+- `Kernel#trace_var` runs a hook every time the named global is assigned, taking the hook as a block, a Proc, or a String of code to evaluate, and raising `ArgumentError` when given none. `Kernel#untrace_var` drops every hook on a global, or just the one it is handed. A `:$name` symbol names the global for both
+- `Kernel#warn` writes through `Warning.warn`, which is defined in Ruby so a program can replace it, and stays silent while `$VERBOSE` is nil. Each argument warns on its own line, as does each element of an Array argument, and a message already ending in a newline keeps just the one. `uplevel:` prefixes `path:line: warning: ` taken from that many frames out, `category:` converts through `to_sym`, and a negative uplevel raises `ArgumentError`
+- `**hash` in a call passes keyword arguments rather than a positional Hash, so an empty Hash contributes no argument at all
+- A required parameter written after an optional one binds from the end of the argument list: `def pad(prefix = "<", value)` called with one argument fills `value`
+- `Method#source_location` answers `[path, lineno]`, and a bare `method(:name)` inside an instance method resolves against `self`
+- `Enumerator` steps through the values a method yields: `to_enum`/`enum_for` build one over any method that yields, `next` and `peek` walk it, `rewind` restarts it, and running past the end raises `StopIteration`. A method that yields answers one when called without a block, which is what `then` and `yield_self` return
+- A method body and a class body each own their locals. An assignment inside one defines a new local there rather than reaching a same-named variable outside it, and a block still sees and assigns the locals of the scope it was written in
 - `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access

@@ -534,3 +534,88 @@ end
 "#,
     );
 }
+
+// ── `class << target = value` ────────────────────────────────────────────────
+
+#[test]
+fn singleton_class_on_an_assignment_stores_the_object() {
+    let result = run(r#"
+class << $receiver = Object.new
+  def greet
+    :hello
+  end
+end
+$receiver.greet.inspect
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some(":hello".to_string()));
+}
+
+#[test]
+fn singleton_class_on_an_instance_variable_assignment_stores_the_object() {
+    let result = run(r#"
+class Holder
+  def build
+    class << @target = Object.new
+      def describe
+        :built
+      end
+    end
+    @target.describe
+  end
+end
+Holder.new.build.inspect
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some(":built".to_string()));
+}
+
+#[test]
+fn singleton_class_without_an_assignment_still_parses() {
+    let result = run(r#"
+plain = Object.new
+class << plain
+  def still_works
+    :yes
+  end
+end
+plain.still_works.inspect
+"#);
+    assert_eq!(result.map(|o| o.to_string()), Some(":yes".to_string()));
+}
+
+// ── %i symbol-array literals ─────────────────────────────────────────────────
+
+#[test]
+fn percent_i_builds_an_array_of_symbols() {
+    let result = run("%i[alpha beta gamma].inspect");
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("[:alpha, :beta, :gamma]".to_string())
+    );
+}
+
+#[test]
+fn percent_i_accepts_parenthesis_delimiters() {
+    let result = run("%i(one two).inspect");
+    assert_eq!(
+        result.map(|o| o.to_string()),
+        Some("[:one, :two]".to_string())
+    );
+}
+
+#[test]
+fn percent_i_elements_are_symbols() {
+    let result = run("%i[alpha].first.class.name");
+    assert_eq!(result.map(|o| o.to_string()), Some("Symbol".to_string()));
+}
+
+#[test]
+fn percent_w_still_builds_an_array_of_strings() {
+    let result = run("%w[alpha beta].first.class.name");
+    assert_eq!(result.map(|o| o.to_string()), Some("String".to_string()));
+}
+
+#[test]
+fn an_empty_percent_i_is_an_empty_array() {
+    let result = run("%i[].inspect");
+    assert_eq!(result.map(|o| o.to_string()), Some("[]".to_string()));
+}

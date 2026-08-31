@@ -46,12 +46,12 @@ fn test_string_inherits_from_object() {
 }
 
 #[test]
-fn test_integer_inherits_from_object() {
+fn test_integer_inherits_from_numeric() {
     let builtins = BuiltinClasses::new();
 
     let superclass = builtins.integer_class.superclass();
     assert!(superclass.is_some());
-    assert_eq!(superclass.unwrap().name(), "Object");
+    assert_eq!(superclass.unwrap().name(), "Numeric");
 }
 
 #[test]

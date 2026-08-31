@@ -390,7 +390,7 @@ fn object_to_s_with_args_error() {
 #[test]
 fn object_respond_to_non_string_arg_error() {
     let err = run_err(r#"42.respond_to?(123)"#);
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(err.contains("123 is not a symbol nor a string"));
 }
 
 // ── object_methods.rs: instance_variable_set on immediates raises FrozenError ─

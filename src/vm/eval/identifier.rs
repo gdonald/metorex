@@ -43,6 +43,18 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         if let Some(val) = self.environment().get(name) {
+            // A method on `self` wins over a same-named Kernel function, so a
+            // bare `to_s` inside a class reaches that class's `to_s` rather
+            // than the top-level one.
+            if matches!(val, Object::NativeFunction(_))
+                && let Some(current_self) = self.environment().get("self")
+                && let Some((class, method)) = self.lookup_method(&current_self, name)
+                && !method.is_undefined
+                && method.parameters.is_empty()
+                && method.variadic_param.is_none()
+            {
+                return self.invoke_method(class, method, current_self, vec![], position);
+            }
             // A few natives are always a call rather than a reference when
             // named bare: top-level `to_s` (Ruby's "main"), `using` (whose
             // 0-arg form raises ArgumentError), `abort` (whose 0-arg form
@@ -61,6 +73,16 @@ impl VirtualMachine {
                         | "global_variables"
                         | "local_variables"
                         | "p"
+                        | "pp"
+                        | "proc"
+                        | "print"
+                        | "putc"
+                        | "puts"
+                        | "rand"
+                        | "readline"
+                        | "readlines"
+                        | "srand"
+                        | "throw"
                         | "binding_kernel"
                 ) || (matches!(
                     fn_name.as_str(),
