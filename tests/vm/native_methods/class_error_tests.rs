@@ -255,21 +255,23 @@ Util3.send(:module_function, 42)
     );
 }
 
-// ── Signal.trap stub ─────────────────────────────────────────────────────
+// ── Signal.trap ─────────────────────────────────────────────────────
 
 #[test]
-fn signal_trap_with_block_is_noop() {
+fn signal_trap_with_block_answers_the_previous_handler() {
     let result = run(r#"
 Signal.trap("INT") { puts "intercepted" }
 "#);
-    // The block is silently discarded; no output, return nil.
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(result, Some(Object::string("DEFAULT")));
 }
 
 #[test]
-fn signal_trap_returns_nil() {
-    let result = run(r#"Signal.trap("INT")"#);
-    assert_eq!(result, Some(Object::Nil));
+fn signal_trap_answers_the_handler_it_replaced() {
+    let result = run(r#"
+Signal.trap("INT", "IGNORE")
+Signal.trap("INT")
+"#);
+    assert_eq!(result, Some(Object::string("IGNORE")));
 }
 
 // ── Dir methods (mod.rs lines 60-116) ────────────────────────────────────
@@ -401,9 +403,9 @@ fn process_ppid_returns_integer() {
 }
 
 #[test]
-fn process_kill_returns_nil() {
-    let result = run("Process.kill");
-    assert_eq!(result, Some(Object::Nil));
+fn process_kill_without_a_signal_errors() {
+    let err = run_err("Process.kill");
+    assert!(err.contains("wrong number of arguments"));
 }
 
 #[test]

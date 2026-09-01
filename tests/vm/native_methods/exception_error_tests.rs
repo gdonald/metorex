@@ -13,6 +13,13 @@ fn run(code: &str) -> Option<Object> {
     vm.execute_program(&stmts).expect("execution failed")
 }
 
+fn run_err(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&stmts).unwrap_err().to_string()
+}
+
 // ══════════════════════════════════════════════════════════════════════════════
 // Exception methods (lines 23-25, 78 of exception_methods.rs)
 // ══════════════════════════════════════════════════════════════════════════════
@@ -103,7 +110,7 @@ t
 }
 
 #[test]
-fn exception_to_s_includes_type_and_message() {
+fn exception_to_s_is_the_message_alone() {
     let result = run(r#"
 def t
   begin
@@ -114,12 +121,7 @@ def t
 end
 t
 "#);
-    if let Some(Object::String(s)) = result {
-        assert!(s.contains("RuntimeError"));
-        assert!(s.contains("specific message"));
-    } else {
-        panic!("expected String, got {:?}", result);
-    }
+    assert_eq!(result, Some(Object::string("specific message")));
 }
 
 #[test]
@@ -319,14 +321,34 @@ t
 // ── exception_methods.rs line 52: backtrace returns empty array when no trace ──
 
 #[test]
-fn exception_backtrace_none_returns_empty_array() {
-    // RuntimeError.new creates an exception without a backtrace (no raise has been called)
+fn exception_backtrace_is_nil_before_it_is_raised() {
+    // An exception that was never raised has no backtrace at all, which Ruby
+    // reports as nil rather than an empty Array.
     let result = run(r#"
 e = RuntimeError.new("test")
-bt = e.backtrace
-bt.length
+e.backtrace.inspect
 "#);
-    assert_eq!(result, Some(Object::Int(0)));
+    assert_eq!(result, Some(Object::string("nil")));
+}
+
+#[test]
+fn exception_set_backtrace_keeps_the_array_it_was_given() {
+    let result = run(r#"
+e = RuntimeError.new("test")
+lines = ["one", "two"]
+e.set_backtrace(lines)
+e.backtrace.equal?(lines)
+"#);
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn exception_set_backtrace_refuses_a_non_string_entry() {
+    let error = run_err(r#"RuntimeError.new("t").set_backtrace([:symbol])"#);
+    assert!(
+        error.contains("backtrace must be an Array of String"),
+        "unexpected error: {error}"
+    );
 }
 
 // ── exceptions.rs line 279: Errno:: exception type name matching ─────────────

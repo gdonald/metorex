@@ -22,6 +22,14 @@ fn bind_block_params(
     defaults: &[(usize, crate::ast::Expression)],
     arguments: Vec<Object>,
 ) {
+    // A `**kwargs` parameter takes no positional value, so it is left out of
+    // the positional binding entirely.
+    let params: Vec<String> = params
+        .iter()
+        .filter(|param| !param.starts_with("**"))
+        .cloned()
+        .collect();
+    let params = params.as_slice();
     // Find variadic param index (if any)
     let variadic_idx = params.iter().position(|p| p.starts_with('*'));
     let block_idx = params.iter().position(|p| p.starts_with('&'));
@@ -38,6 +46,9 @@ fn bind_block_params(
 
         for (i, param) in positional_params.iter().enumerate() {
             let name = param.trim_start_matches('*').to_string();
+            if name.is_empty() {
+                continue;
+            }
             let value = if i < vi {
                 arguments.get(i).cloned().unwrap_or(Object::Nil)
             } else if i == vi {
@@ -73,7 +84,9 @@ fn bind_block_params(
     // Bind block param to nil for now (no block passing through blocks)
     if let Some(bi) = block_idx {
         let name = params[bi].trim_start_matches('&').to_string();
-        vm.environment_mut().define(name, Object::Nil);
+        if !name.is_empty() {
+            vm.environment_mut().define(name, Object::Nil);
+        }
     }
 }
 

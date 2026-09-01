@@ -4,7 +4,7 @@
 // tokenizing source code and producing valid AST nodes.
 
 use metorex::ast::Statement;
-use metorex::lexer::Lexer;
+use metorex::lexer::{Lexer, TokenKind};
 use metorex::parser::Parser;
 
 fn parse(code: &str) -> Vec<Statement> {
@@ -193,19 +193,17 @@ end"#;
 // ── Error recovery: lexer errors propagate through parser ──
 
 #[test]
-fn unterminated_string_produces_error_token() {
-    // The lexer produces an error token for unterminated strings
+fn unterminated_string_lexes_to_end_of_input() {
     let tokens = Lexer::new("\"unterminated").tokenize();
-    let has_error = tokens
-        .iter()
-        .any(|t| format!("{:?}", t.kind).contains("Error"));
-    // Even if the lexer doesn't error, the parser may handle it gracefully
-    // This test verifies the pipeline doesn't panic
-    let _result = Parser::new(tokens).parse();
-    assert!(
-        has_error || true,
-        "Pipeline should not panic on unterminated string"
-    );
+    let kinds: Vec<_> = tokens.into_iter().map(|token| token.kind).collect();
+    assert_eq!(kinds, vec![TokenKind::EOF]);
+}
+
+#[test]
+fn unterminated_string_parses_to_an_empty_program() {
+    let tokens = Lexer::new("\"unterminated").tokenize();
+    let statements = Parser::new(tokens).parse().expect("parse failed");
+    assert!(statements.is_empty());
 }
 
 #[test]

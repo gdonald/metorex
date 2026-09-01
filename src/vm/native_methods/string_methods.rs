@@ -493,6 +493,29 @@ impl VirtualMachine {
                 };
                 Ok(Some(Object::string(result)))
             }
+            // `lines` splits on the line separator, keeping it on each piece.
+            "lines" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let mut lines: Vec<Object> = Vec::new();
+                let mut current = String::new();
+                for character in string_value.chars() {
+                    current.push(character);
+                    if character == '\n' {
+                        lines.push(Object::string(std::mem::take(&mut current)));
+                    }
+                }
+                if !current.is_empty() {
+                    lines.push(Object::string(current));
+                }
+                Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(lines)))))
+            }
             "split" => {
                 if arguments.len() > 1 {
                     return Err(method_argument_error(

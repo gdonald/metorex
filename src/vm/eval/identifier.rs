@@ -9,6 +9,26 @@ use crate::vm::core::VirtualMachine;
 use crate::vm::errors::undefined_variable_error;
 
 impl VirtualMachine {
+    /// The object a NameError for `name` was raised on. A constant belongs to
+    /// `Object` when nothing namespaces it, and any other name to `self`.
+    pub(crate) fn name_error_receiver(&self, name: &str) -> Option<Object> {
+        if name.starts_with(char::is_uppercase) {
+            return self.globals().get("Object");
+        }
+        self.environment().get("self")
+    }
+
+    /// A NameError for a constant nothing defines, raised on `Object`.
+    pub(crate) fn constant_name_error(&self, message: &str, name: &str) -> Object {
+        let exception = Object::exception("NameError", message);
+        if let Object::Exception(details) = &exception {
+            let mut details = details.borrow_mut();
+            details.name = Some(name.to_string());
+            details.receiver = self.globals().get("Object").map(Box::new);
+        }
+        exception
+    }
+
     /// Whether `name` is bound to the very method a `def` installed on the
     /// default definee, rather than to a local variable holding a Method.
     pub(crate) fn name_is_a_definition(&self, name: &str, value: &Object) -> bool {
@@ -58,7 +78,7 @@ impl VirtualMachine {
             }
             let message = format!("uninitialized constant {}", name);
             return Err(MetorexError::UncaughtException {
-                exception: Object::exception("NameError", message.clone()),
+                exception: self.constant_name_error(&message, name),
                 location: crate::vm::utils::position_to_location(position),
                 message,
             });
@@ -191,7 +211,11 @@ impl VirtualMachine {
                     return Ok(Object::Method(Rc::new(bound)));
                 }
             }
-            return Err(undefined_variable_error(name, position));
+            return Err(undefined_variable_error(
+                name,
+                self.name_error_receiver(name),
+                position,
+            ));
         };
 
         // Constant lookup: bare `NAME` inside a class/method resolves to the
@@ -336,6 +360,10 @@ impl VirtualMachine {
             }
         }
 
-        Err(undefined_variable_error(name, position))
+        Err(undefined_variable_error(
+            name,
+            self.name_error_receiver(name),
+            position,
+        ))
     }
 }

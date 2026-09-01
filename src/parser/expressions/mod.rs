@@ -23,17 +23,21 @@ impl Parser {
     }
 
     /// `expr rescue fallback` answers `fallback` when `expr` raises a
-    /// StandardError. The `rescue` has to sit on the same line, so the one
-    /// that opens a clause inside `begin ... end` is left alone.
+    /// StandardError. The `rescue` has to follow the expression directly, so
+    /// the one that opens a clause inside `begin ... end` is left alone.
     pub(crate) fn wrap_with_rescue_modifier(
         &mut self,
         expr: Expression,
     ) -> Result<Expression, MetorexError> {
-        // The `rescue` has to sit on the same line. One that opens a clause
-        // inside `begin ... end` starts a line of its own, even when the
-        // statement before it consumed the newline.
+        // A modifier binds to the expression it follows, so nothing may come
+        // between them. A `rescue` on its own line opens a clause, and so
+        // does one after a semicolon, even though that shares the line.
         if !self.check(&[TokenKind::Rescue])
             || self.peek().position.line != self.previous().position.line
+            || matches!(
+                self.previous().kind,
+                TokenKind::Semicolon | TokenKind::Newline
+            )
         {
             return Ok(expr);
         }
@@ -422,7 +426,9 @@ impl Parser {
         if !self.check(&[TokenKind::Pipe]) {
             loop {
                 self.skip_whitespace();
-                let prefix = if self.match_token(&[TokenKind::Star]) {
+                let prefix = if self.match_token(&[TokenKind::StarStar]) {
+                    "**"
+                } else if self.match_token(&[TokenKind::Star]) {
                     "*"
                 } else if self.match_token(&[TokenKind::Ampersand]) {
                     "&"
@@ -430,12 +436,18 @@ impl Parser {
                     ""
                 };
                 self.skip_whitespace();
-                let param_token = self.advance();
-                match param_token.kind {
-                    TokenKind::Ident(name) => {
-                        params.push(format!("{}{}", prefix, name));
+                // `|*|`, `|**|`, and `|&|` take the values without naming
+                // them, so the prefix stands alone.
+                if !prefix.is_empty() && self.check(&[TokenKind::Pipe, TokenKind::Comma]) {
+                    params.push(prefix.to_string());
+                } else {
+                    let param_token = self.advance();
+                    match param_token.kind {
+                        TokenKind::Ident(name) => {
+                            params.push(format!("{}{}", prefix, name));
+                        }
+                        _ => return Err(self.error_at_previous("Expected parameter name")),
                     }
-                    _ => return Err(self.error_at_previous("Expected parameter name")),
                 }
                 self.skip_whitespace();
                 if self.match_token(&[TokenKind::Equal]) {

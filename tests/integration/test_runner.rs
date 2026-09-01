@@ -98,9 +98,9 @@ impl TestCase {
                 && !contents.contains("end")
                 && !contents.contains("# Missing 'end'")
             {
-                return Err(format!(
-                    "File contains 'def' but no 'end' and no comment about missing end"
-                ));
+                return Err(
+                    "File contains 'def' but no 'end' and no comment about missing end".to_string(),
+                );
             }
         }
 

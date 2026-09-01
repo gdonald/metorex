@@ -156,16 +156,20 @@ impl VirtualMachine {
                 .map(Some);
         }
 
-        if module_rc.name() == "Signal" && method_name == "trap" {
-            self.pending_block.take();
-            return Ok(Some(Object::Nil));
+        if module_rc.name() == "Signal" {
+            match method_name {
+                "list" => return Ok(Some(self.signal_list())),
+                "trap" => return self.install_signal_trap(arguments, position).map(Some),
+                _ => {}
+            }
         }
 
         if module_rc.name() == "Process" {
             match method_name {
                 "pid" => return Ok(Some(Object::Int(std::process::id() as i64))),
                 "ppid" => return Ok(Some(Object::Int(0))),
-                "kill" | "wait" | "waitall" | "exit" | "exit!" | "abort" => {
+                "kill" => return self.send_signal(arguments, position).map(Some),
+                "wait" | "waitall" | "exit" | "exit!" | "abort" => {
                     return Ok(Some(Object::Nil));
                 }
                 _ => {}

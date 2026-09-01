@@ -372,7 +372,7 @@ impl VirtualMachine {
                 }
                 let message = format!("uninitialized constant {}", name);
                 Err(MetorexError::UncaughtException {
-                    exception: Object::exception("NameError", message.clone()),
+                    exception: self.constant_name_error(&message, name),
                     location: position_to_location(*position),
                     message,
                 })

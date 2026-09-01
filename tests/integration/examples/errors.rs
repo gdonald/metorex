@@ -40,9 +40,9 @@ fn test_errors_exception_chaining_execution() {
 
 #[test]
 fn test_errors_stack_trace_basic_execution() {
+    let expected = "Division by zero!\nRuntimeError\nDivision by zero!\nArray\n";
     let output = run_example("errors/stack_trace_basic.rb");
-    assert!(output.contains("RuntimeError: Division by zero!"));
-    assert!(output.contains("Backtrace:"));
+    assert_eq!(output, expected);
 }
 
 #[test]
@@ -175,7 +175,7 @@ fn test_errors_kernel_raise_method() {
         "TypeError: with a receiver\n",
         "IndexError: on Kernel\n",
         "KeyError: through a Method object\n",
-        "true\nunhandled exception\n"
+        "true\nRuntimeError\n\"\"\n"
     );
     let output = run_example("errors/kernel_raise_method.rb");
     assert_eq!(output, expected);
@@ -189,7 +189,7 @@ fn test_errors_kernel_raise_method_parens() {
         "TypeError: with a receiver\n",
         "IndexError: on Kernel\n",
         "KeyError: through a Method object\n",
-        "true\nunhandled exception\n"
+        "true\nRuntimeError\n\"\"\n"
     );
     let output = run_example("errors/kernel_raise_method_parens.rb");
     assert_eq!(output, expected);
@@ -220,5 +220,551 @@ fn test_rescue_modifier_fallbacks_parens_execution() {
         "propagated: fatal\n"
     );
     let output = run_example("rescue/modifier/fallbacks_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exception_message_to_s_execution() {
+    let expected = concat!(
+        "something went wrong\n",
+        "Exceptional\n",
+        "Exception\n",
+        "boom\n",
+        "a described message\n",
+        "raised message\n",
+        "RuntimeError\n",
+        "raised message\n",
+        "RuntimeError\n"
+    );
+    let output = run_example("errors/exception_message/to_s.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exception_message_to_s_parens_execution() {
+    let expected = concat!(
+        "something went wrong\n",
+        "Exceptional\n",
+        "Exception\n",
+        "boom\n",
+        "a described message\n",
+        "raised message\n",
+        "RuntimeError\n",
+        "raised message\n",
+        "RuntimeError\n"
+    );
+    let output = run_example("errors/exception_message/to_s_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_backtrace_access_execution() {
+    let expected = concat!(
+        "nil\n",
+        "Array\n",
+        "true\n",
+        "RuntimeError\n",
+        "raised here\n",
+        "Array\n",
+        "[\"one\", \"two\"]\n",
+        "true\n",
+        "[\"single\"]\n",
+        "nil\n",
+        "backtrace must be an Array of String, got Symbol\n"
+    );
+    let output = run_example("errors/backtrace/access.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_backtrace_access_parens_execution() {
+    let expected = concat!(
+        "nil\n",
+        "Array\n",
+        "true\n",
+        "RuntimeError\n",
+        "raised here\n",
+        "Array\n",
+        "[\"one\", \"two\"]\n",
+        "true\n",
+        "[\"single\"]\n",
+        "nil\n",
+        "backtrace must be an Array of String, got Symbol\n"
+    );
+    let output = run_example("errors/backtrace/access_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_backtrace_locations_execution() {
+    let expected = concat!(
+        "nil\n",
+        "Array\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "[\"0:a\", \"1:b\"]\n",
+        "Enumerator\n"
+    );
+    let output = run_example("errors/backtrace/locations.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_backtrace_locations_parens_execution() {
+    let expected = concat!(
+        "nil\n",
+        "Array\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "[\"0:a\", \"1:b\"]\n",
+        "Enumerator\n"
+    );
+    let output = run_example("errors/backtrace/locations_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_errno_classes_execution() {
+    let expected = concat!(
+        "Errno::EINVAL\n",
+        "SystemCallError\n",
+        "22\n2\ntrue\n",
+        "Errno::EINVAL\n",
+        "22\ntrue\ntrue\nfalse\n",
+        "Errno::ENOENT\n",
+        "boom\ntrue\ntrue\nnil\n",
+        "Invalid argument\n",
+        "Invalid argument - custom message\n",
+        "Invalid argument @ location - custom message\n",
+        "No such file or directory\n",
+        "No such file or directory - custom message\n"
+    );
+    let output = run_example("errors/errno/classes.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_errno_classes_parens_execution() {
+    let expected = concat!(
+        "Errno::EINVAL\n",
+        "SystemCallError\n",
+        "22\n2\ntrue\n",
+        "Errno::EINVAL\n",
+        "22\ntrue\ntrue\nfalse\n",
+        "Errno::ENOENT\n",
+        "boom\ntrue\ntrue\nnil\n",
+        "Invalid argument\n",
+        "Invalid argument - custom message\n",
+        "Invalid argument @ location - custom message\n",
+        "No such file or directory\n",
+        "No such file or directory - custom message\n"
+    );
+    let output = run_example("errors/errno/classes_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_cause_chain_execution() {
+    let expected = concat!(
+        "nil\n",
+        "the consequence\n",
+        "Exception\n",
+        "the cause\n",
+        "ZeroDivisionError\n",
+        "true\ntrue\ntrue\n",
+        "nil\n"
+    );
+    let output = run_example("errors/cause/chain.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_cause_chain_parens_execution() {
+    let expected = concat!(
+        "nil\n",
+        "the consequence\n",
+        "Exception\n",
+        "the cause\n",
+        "ZeroDivisionError\n",
+        "true\ntrue\ntrue\n",
+        "nil\n"
+    );
+    let output = run_example("errors/cause/chain_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_message_detailed_execution() {
+    let expected = concat!(
+        "new error (RuntimeError)\n",
+        "unhandled exception\n",
+        "StandardError\n",
+        "new error (RuntimeError)\n",
+        "message\ntrue\ntrue\n",
+        "a.rb:1: Some runtime error (RuntimeError)\n\tfrom b.rb:2\n\n",
+        "Traceback (most recent call last):\n\tfrom b.rb:2\na.rb:1: Some runtime error (RuntimeError)\n\n",
+        "<prefix>new error<suffix>\n",
+        "true\n"
+    );
+    let output = run_example("errors/message/detailed.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_message_detailed_parens_execution() {
+    let expected = concat!(
+        "new error (RuntimeError)\n",
+        "unhandled exception\n",
+        "StandardError\n",
+        "new error (RuntimeError)\n",
+        "message\ntrue\ntrue\n",
+        "a.rb:1: Some runtime error (RuntimeError)\n\tfrom b.rb:2\n\n",
+        "Traceback (most recent call last):\n\tfrom b.rb:2\na.rb:1: Some runtime error (RuntimeError)\n\n",
+        "<prefix>new error<suffix>\n",
+        "true\n"
+    );
+    let output = run_example("errors/message/detailed_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_subclass_state_execution() {
+    let expected = concat!(
+        "first failure\n42\nfalse\n",
+        ":mine\n",
+        "first failure\n42\ntrue\nfalse\n",
+        "the consequence\nthe cause\ntrue\n"
+    );
+    let output = run_example("errors/subclass/state.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_subclass_state_parens_execution() {
+    let expected = concat!(
+        "first failure\n42\nfalse\n",
+        ":mine\n",
+        "first failure\n42\ntrue\nfalse\n",
+        "the consequence\nthe cause\ntrue\n"
+    );
+    let output = run_example("errors/subclass/state_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_equality_comparison_execution() {
+    let expected = "true\ntrue\ntrue\ntrue\nfalse\nfalse\nfalse\ntrue\nfalse\ntrue\n";
+    let output = run_example("errors/equality/comparison.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_equality_comparison_parens_execution() {
+    let expected = "true\ntrue\ntrue\ntrue\nfalse\nfalse\nfalse\ntrue\nfalse\ntrue\n";
+    let output = run_example("errors/equality/comparison_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exception_method_copies_execution() {
+    let expected = concat!(
+        "true\ntrue\n",
+        "RuntimeError\nsecond\nfirst\nfalse\n",
+        "Tagged\n:boom\nmessage\n",
+        "built\nException\nRuntimeError\n",
+        "RuntimeError\n\"\"\n"
+    );
+    let output = run_example("errors/exception_method/copies.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exception_method_copies_parens_execution() {
+    let expected = concat!(
+        "true\ntrue\n",
+        "RuntimeError\nsecond\nfirst\nfalse\n",
+        "Tagged\n:boom\nmessage\n",
+        "built\nException\nRuntimeError\n",
+        "RuntimeError\n\"\"\n"
+    );
+    let output = run_example("errors/exception_method/copies_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_frozen_modification_execution() {
+    let expected = concat!(
+        "FrozenError\ntrue\ntrue\n",
+        "true\n",
+        "can't modify frozen Array: [1, 2]\n",
+        "[1, 2]\n",
+        "[1, 2]\nfalse\n",
+        "true\n",
+        "can't modify frozen Object: ...\n"
+    );
+    let output = run_example("errors/frozen/modification.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_frozen_modification_parens_execution() {
+    let expected = concat!(
+        "FrozenError\ntrue\ntrue\n",
+        "true\n",
+        "can't modify frozen Array: [1, 2]\n",
+        "[1, 2]\n",
+        "[1, 2]\nfalse\n",
+        "true\n",
+        "can't modify frozen Object: ...\n"
+    );
+    let output = run_example("errors/frozen/modification_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_full_message_rendering_execution() {
+    let expected = concat!(
+        "true\ntrue\ntrue\ntrue\n",
+        "a.rb:1: Some runtime error (RuntimeError)\n\n",
+        "Traceback (most recent call last):\n\n",
+        "true\ntrue\n",
+        "keywords ignored\npositionals ignored\n",
+        "second\nfirst\nnil\nnil\n"
+    );
+    let output = run_example("errors/full_message/rendering.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_full_message_rendering_parens_execution() {
+    let expected = concat!(
+        "true\ntrue\ntrue\ntrue\n",
+        "a.rb:1: Some runtime error (RuntimeError)\n\n",
+        "Traceback (most recent call last):\n\n",
+        "true\ntrue\n",
+        "keywords ignored\npositionals ignored\n",
+        "second\nfirst\nnil\nnil\n"
+    );
+    let output = run_example("errors/full_message/rendering_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_hierarchy_classes_execution() {
+    let expected = concat!(
+        "Object\nClass\n",
+        "Exception\nException\nException\nException\nException\nException\nException\n",
+        "SignalException\nScriptError\nIOError\nIndexError\nIndexError\nStopIteration\n",
+        "NameError\nRangeError\nRuntimeError\nArgumentError\nStandardError\nStandardError\n",
+        "KeyError\ntrue\n"
+    );
+    let output = run_example("errors/hierarchy/classes.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_hierarchy_classes_parens_execution() {
+    let expected = concat!(
+        "Object\nClass\n",
+        "Exception\nException\nException\nException\nException\nException\nException\n",
+        "SignalException\nScriptError\nIOError\nIndexError\nIndexError\nStopIteration\n",
+        "NameError\nRangeError\nRuntimeError\nArgumentError\nStandardError\nStandardError\n",
+        "KeyError\ntrue\n"
+    );
+    let output = run_example("errors/hierarchy/classes_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_inspect_rendering_execution() {
+    let expected = concat!(
+        "#<Exception: Exception>\n",
+        "#<Exception: boom>\n",
+        "#<RuntimeError: boom>\n",
+        "RuntimeError\n",
+        "#<Described: this is from to_s>\n",
+        "Silent\n",
+        "#<Plain: Plain>\n",
+        "true\n"
+    );
+    let output = run_example("errors/inspect/rendering.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_inspect_rendering_parens_execution() {
+    let expected = concat!(
+        "#<Exception: Exception>\n",
+        "#<Exception: boom>\n",
+        "#<RuntimeError: boom>\n",
+        "RuntimeError\n",
+        "#<Described: this is from to_s>\n",
+        "Silent\n",
+        "#<Plain: Plain>\n",
+        "true\n"
+    );
+    let output = run_example("errors/inspect/rendering_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_io_wait_constants_execution() {
+    let expected = "Errno::EAGAIN\ntrue\ntrue\nErrno::EAGAIN\ntrue\ntrue\nfalse\ntrue\nIO::EAGAINWaitReadable\ntrue\ntrue\n";
+    let output = run_example("errors/io_wait/constants.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_io_wait_constants_parens_execution() {
+    let expected = "Errno::EAGAIN\ntrue\ntrue\nErrno::EAGAIN\ntrue\ntrue\nfalse\ntrue\nIO::EAGAINWaitReadable\ntrue\ntrue\n";
+    let output = run_example("errors/io_wait/constants_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_key_error_named_arguments_execution() {
+    let expected = "\"lookup source\"\n:b\nKeyError\nkey not found: :b\n:b\nno key is available\nno receiver is available\n\"text\"\ncan't modify\n";
+    let output = run_example("errors/key_error/named_arguments.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_key_error_named_arguments_parens_execution() {
+    let expected = "\"lookup source\"\n:b\nKeyError\nkey not found: :b\n:b\nno key is available\nno receiver is available\n\"text\"\ncan't modify\n";
+    let output = run_example("errors/key_error/named_arguments_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_load_error_path_execution() {
+    let expected = "nil\nnil\n\"file_that_does_not_exist\"\ncannot load such file -- file_that_does_not_exist\nLoadError\ntrue\nfalse\n";
+    let output = run_example("errors/load_error/path.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_load_error_path_parens_execution() {
+    let expected = "nil\nnil\n\"file_that_does_not_exist\"\ncannot load such file -- file_that_does_not_exist\nLoadError\ntrue\nfalse\n";
+    let output = run_example("errors/load_error/path_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_message_dispatch_execution() {
+    let expected =
+        "Exception\nOuch!\nthis is from to_s\nQuiet\nplain\nfrom a singleton\nthis is from to_s\n";
+    let output = run_example("errors/message/dispatch.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_message_dispatch_parens_execution() {
+    let expected =
+        "Exception\nOuch!\nthis is from to_s\nQuiet\nplain\nfrom a singleton\nthis is from to_s\n";
+    let output = run_example("errors/message/dispatch_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_name_error_names_execution() {
+    let expected = ":doesnt_exist\n:DoesntExist\n:DoesntExist\n\"invalid_ivar_name\"\n\"invalid_cvar_name\"\n7\n7\nuninitialized class variable @@never_set in Counter\n:@@never_set\n";
+    let output = run_example("errors/name_error/names.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_name_error_names_parens_execution() {
+    let expected = ":doesnt_exist\n:DoesntExist\n:DoesntExist\n\"invalid_ivar_name\"\n\"invalid_cvar_name\"\n7\n7\nuninitialized class variable @@never_set in Counter\n:@@never_set\n";
+    let output = run_example("errors/name_error/names_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_name_error_construction_execution() {
+    let expected = "msg\n\"name\"\nno receiver is available\n:name\n\"the receiver\"\njust a message\nnil\n:missing_helper\n\"Caller\"\n:missing_helper\n\"Caller\"\n";
+    let output = run_example("errors/name_error/construction.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_name_error_construction_parens_execution() {
+    let expected = "msg\n\"name\"\nno receiver is available\n:name\n\"the receiver\"\njust a message\nnil\n:missing_helper\n\"Caller\"\n:missing_helper\n\"Caller\"\n";
+    let output = run_example("errors/name_error/construction_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_no_method_error_args_execution() {
+    let expected = "[\"args\"]\n\"name\"\nmsg\nnil\n:missing\n[]\n[1, :two, \"three\"]\n:missing\n[1, :two, \"three\"]\n\"Receiver\"\nababab\n-----\nnegative argument\n";
+    let output = run_example("errors/no_method_error/args.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_no_method_error_args_parens_execution() {
+    let expected = "[\"args\"]\n\"name\"\nmsg\nnil\n:missing\n[]\n[1, :two, \"three\"]\n:missing\n[1, :two, \"three\"]\n\"Receiver\"\nababab\n-----\nnegative argument\n";
+    let output = run_example("errors/no_method_error/args_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_receiver_lookup_execution() {
+    let expected = "true\ntrue\ntrue\ntrue\ntrue\ntrue\nno receiver is available\n";
+    let output = run_example("errors/receiver/lookup.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_receiver_lookup_parens_execution() {
+    let expected = "true\ntrue\ntrue\ntrue\ntrue\ntrue\nno receiver is available\n";
+    let output = run_example("errors/receiver/lookup_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_stop_iteration_result_execution() {
+    let expected = "3\n2\n1\niteration reached an end\n:liftoff\n3\nnil\nnil\n";
+    let output = run_example("errors/stop_iteration/result.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_stop_iteration_result_parens_execution() {
+    let expected = "3\n2\n1\niteration reached an end\n:liftoff\n3\nnil\nnil\n";
+    let output = run_example("errors/stop_iteration/result_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_backtrace_locations_fields_execution() {
+    let expected = "true\nObject#inner\n2\ntrue\ntrue\ntrue\n<main>\nObject#inner\nnil\ntrue\nObject#inner\ntrue\n";
+    let output = run_example("errors/backtrace_locations/fields.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_backtrace_locations_fields_parens_execution() {
+    let expected = "true\nObject#inner\n2\ntrue\ntrue\ntrue\n<main>\nObject#inner\nnil\ntrue\nObject#inner\ntrue\n";
+    let output = run_example("errors/backtrace_locations/fields_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_rescue_scope_bare_rescue_execution() {
+    let expected =
+        "caught\ncaught\ncaught\ncaught\ncaught\ncaught\nException\npassed the bare rescue\n";
+    let output = run_example("errors/rescue_scope/bare_rescue.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_rescue_scope_bare_rescue_parens_execution() {
+    let expected =
+        "caught\ncaught\ncaught\ncaught\ncaught\ncaught\nException\npassed the bare rescue\n";
+    let output = run_example("errors/rescue_scope/bare_rescue_parens.rb");
     assert_eq!(output, expected);
 }

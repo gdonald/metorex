@@ -16,6 +16,11 @@ pub(super) fn format_exception(exception: &Object) -> String {
     match exception {
         Object::Exception(ex) => {
             let exc = ex.borrow();
+            // Ruby reports a RuntimeError with an empty message, which a bare
+            // `raise` produces, as "unhandled exception".
+            if exc.message.is_empty() && exc.exception_type == "RuntimeError" {
+                return format!("{}: unhandled exception", exc.exception_type);
+            }
             format!("{}: {}", exc.exception_type, exc.message)
         }
         _ => format!("{:?}", exception),

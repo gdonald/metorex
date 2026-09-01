@@ -33,18 +33,27 @@ impl VirtualMachine {
                     Object::exception("RuntimeError", (*message).clone())
                 }
                 Object::Class(class) => {
-                    // Instantiate the exception class with an empty message.
+                    // Instantiated the way `raise` does it, so the class
+                    // travels with the exception and a subclass that writes
+                    // its own `initialize` or `to_s` is honored.
+                    let built =
+                        self.invoke_callable(Object::Class(Rc::clone(&class)), vec![], position)?;
                     // An anonymous subclass records the nearest named
                     // ancestor, so `rescue StopIteration` still matches a
                     // `Class.new StopIteration`.
-                    let mut named = class;
-                    while named.ruby_name().is_empty() {
-                        match named.superclass() {
-                            Some(parent) => named = parent,
-                            None => break,
+                    if class.ruby_name().is_empty()
+                        && let Object::Exception(details) = &built
+                    {
+                        let mut named = class;
+                        while named.ruby_name().is_empty() {
+                            match named.superclass() {
+                                Some(parent) => named = parent,
+                                None => break,
+                            }
                         }
+                        details.borrow_mut().exception_type = named.name().to_string();
                     }
-                    Object::exception(named.name(), String::new())
+                    built
                 }
                 _ => {
                     return Err(MetorexError::runtime_error(
@@ -60,7 +69,7 @@ impl VirtualMachine {
             // Kernel#raise called with no arguments does too.
             match self.environment().get("$!") {
                 Some(Object::Exception(_)) => self.environment().get("$!").unwrap(),
-                _ => Object::exception("RuntimeError", "unhandled exception"),
+                _ => Object::exception("RuntimeError", ""),
             }
         };
         // Capture stack trace and add source location to exception
@@ -85,7 +94,7 @@ impl VirtualMachine {
         let exception = match arguments.first() {
             None => match self.environment().get("$!") {
                 Some(exception @ Object::Exception(_)) => exception,
-                _ => Object::exception("RuntimeError", "unhandled exception"),
+                _ => Object::exception("RuntimeError", ""),
             },
             Some(Object::Exception(cell)) => {
                 let existing = Object::Exception(Rc::clone(cell));
@@ -130,6 +139,16 @@ impl VirtualMachine {
         if let Object::Exception(exc_ref) = exception {
             let mut exc = exc_ref.borrow_mut();
 
+            // Ruby sets `#cause` from the exception a rescue clause is
+            // handling, once, and never to the exception itself.
+            if exc.cause.is_none()
+                && let Some(active) = self.globals().get("!")
+                && let Object::Exception(active_ref) = &active
+                && !Rc::ptr_eq(&exc_ref, active_ref)
+            {
+                exc.cause = Some(Box::new(active));
+            }
+
             // Add source location if not already set
             if exc.location.is_none() {
                 exc.location = Some(crate::object::SourceLocation::new(
@@ -140,23 +159,59 @@ impl VirtualMachine {
             }
 
             // Generate stack trace from call stack
-            let backtrace: Vec<String> = self
+            // Ruby's entries read `file:line:in 'label'`, so a backtrace is
+            // usable for locating the code that raised.
+            let entry = |path: &str, line: usize, label: &str| -> String {
+                if label.is_empty() {
+                    format!("{}:{}", path, line)
+                } else {
+                    format!("{}:{}:in '{}'", path, line, label)
+                }
+            };
+            let raise_file = self
+                .current_source_file
+                .clone()
+                .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()))
+                .unwrap_or_default();
+            let raising_method = self
                 .call_stack()
-                .iter()
-                .map(|frame| {
-                    if let Some(loc) = frame.location() {
-                        format!("  at {} ({})", frame.name(), loc)
-                    } else {
-                        format!("  at {}", frame.name())
-                    }
-                })
-                .collect();
+                .last()
+                .map(|frame| frame.name().to_string())
+                .unwrap_or_default();
+            // The raise site comes first, then each frame's own call site. A
+            // frame records where it was called from, so its location pairs
+            // with the name of the frame below it: the method that made the
+            // call. The outermost one is the file body itself.
+            let mut sites = vec![(raise_file.clone(), position.line, raising_method)];
+            let frames: Vec<_> = self.call_stack().iter().rev().collect();
+            for (index, frame) in frames.iter().enumerate() {
+                let line = frame
+                    .location()
+                    .and_then(|location| {
+                        location
+                            .rsplit(':')
+                            .nth(1)
+                            .and_then(|line| line.parse::<usize>().ok())
+                    })
+                    .unwrap_or(0);
+                let path = frame
+                    .source_file()
+                    .map(|file| file.to_string())
+                    .unwrap_or_else(|| raise_file.clone());
+                let label = frames
+                    .get(index + 1)
+                    .map(|caller| caller.name().to_string())
+                    .unwrap_or_else(|| "<main>".to_string());
+                sites.push((path, line, label));
+            }
 
-            // Add current position to backtrace
-            let mut full_backtrace = vec![format!("  at {}:{}", position.line, position.column)];
-            full_backtrace.extend(backtrace);
-
-            exc.backtrace = Some(full_backtrace);
+            exc.backtrace = Some(
+                sites
+                    .iter()
+                    .map(|(path, line, label)| entry(path, *line, label))
+                    .collect(),
+            );
+            exc.backtrace_sites = Some(sites);
 
             drop(exc); // Release the borrow before returning
             Object::Exception(exc_ref)
@@ -239,8 +294,7 @@ impl VirtualMachine {
         }) = &final_result
         {
             // Store the current exception in $! for access in rescue blocks
-            self.environment_mut()
-                .define("$!".to_string(), exception.clone());
+            self.set_current_exception(exception.clone());
 
             // Try each rescue clause in order
             for rescue_clause in rescue_clauses {
@@ -252,7 +306,16 @@ impl VirtualMachine {
                     }
 
                     // Execute the rescue block
+                    let handled_cause = exception.clone();
                     final_result = self.execute_begin_branch(&rescue_clause.body);
+                    // An exception raised by the rescue body takes the one
+                    // being handled as its cause.
+                    if let Err(MetorexError::UncaughtException {
+                        exception: raised, ..
+                    }) = &final_result
+                    {
+                        Self::record_cause(raised, &handled_cause);
+                    }
                     handled_exception = true;
                     break;
                 }
@@ -264,7 +327,7 @@ impl VirtualMachine {
                 // Don't execute else clause
             } else {
                 // Clear the $! variable since exception was handled
-                self.environment_mut().define("$!".to_string(), Object::Nil);
+                self.set_current_exception(Object::Nil);
             }
         } else if final_result.is_ok()
             && matches!(
@@ -335,14 +398,20 @@ impl VirtualMachine {
         exception: &Object,
         exception_types: &[String],
     ) -> Result<bool, MetorexError> {
-        // Empty exception_types list means catch all exceptions
+        // A bare `rescue` catches StandardError, not everything: an Exception
+        // that is not one of its descendants goes past it.
         if exception_types.is_empty() {
-            return Ok(true);
+            return self.exception_matches(exception, &["StandardError".to_string()]);
         }
 
-        // Get the exception's type name
-        let exception_type_name = match exception {
-            Object::Exception(ex) => ex.borrow().exception_type.clone(),
+        // Get the exception's type name, and the class it carries when it has
+        // one. An anonymous or namespaced class has no name to look up later,
+        // so the carried class is the only way to place it.
+        let (exception_type_name, exception_class) = match exception {
+            Object::Exception(ex) => {
+                let details = ex.borrow();
+                (details.exception_type.clone(), details.class.clone())
+            }
             _ => return Ok(false),
         };
 
@@ -362,17 +431,24 @@ impl VirtualMachine {
             {
                 return Ok(true);
             }
-            // Look up the exception type class in the environment
-            if let Some(Object::Class(target_class)) = self.environment().get(type_name) {
-                // Get the class for this exception type
-                if let Some(Object::Class(exception_class)) =
-                    self.environment().get(&exception_type_name)
-                {
-                    // Check if exception_class is the target_class or a subclass of it
-                    if Self::is_class_or_subclass(&exception_class, &target_class) {
-                        return Ok(true);
-                    }
+            // Otherwise place the exception by its class chain.
+            let target_class = match self.environment().get(type_name) {
+                Some(Object::Class(class)) => Some(class),
+                _ => match self.resolve_qualified_constant(type_name) {
+                    Some(Object::Class(class)) => Some(class),
+                    _ => None,
+                },
+            };
+            let raised_class = exception_class.clone().or_else(|| {
+                match self.environment().get(&exception_type_name) {
+                    Some(Object::Class(class)) => Some(class),
+                    _ => None,
                 }
+            });
+            if let (Some(target_class), Some(raised_class)) = (target_class, raised_class)
+                && Self::is_class_or_subclass(&raised_class, &target_class)
+            {
+                return Ok(true);
             }
         }
 

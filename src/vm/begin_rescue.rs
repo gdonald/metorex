@@ -57,8 +57,7 @@ impl VirtualMachine {
         let mut handled = false;
 
         if let Err(MetorexError::UncaughtException { exception, .. }) = &body_result {
-            self.environment_mut()
-                .define("$!".to_string(), exception.clone());
+            self.set_current_exception(exception.clone());
             for rescue_clause in rescue_clauses {
                 if self.exception_matches(exception, &rescue_clause.exception_types)? {
                     if let Some(var_name) = &rescue_clause.variable_name {
@@ -66,12 +65,20 @@ impl VirtualMachine {
                             .define(var_name.clone(), exception.clone());
                     }
                     final_value = self.execute_statements_for_value(&rescue_clause.body);
+                    // An exception raised by the rescue body takes the one
+                    // being handled as its cause.
+                    if let Err(MetorexError::UncaughtException {
+                        exception: raised, ..
+                    }) = &final_value
+                    {
+                        Self::record_cause(raised, exception);
+                    }
                     handled = true;
                     break;
                 }
             }
             if handled {
-                self.environment_mut().define("$!".to_string(), Object::Nil);
+                self.set_current_exception(Object::Nil);
             }
         } else if body_result.is_ok()
             && let Some(else_stmts) = else_clause

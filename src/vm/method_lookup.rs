@@ -135,7 +135,12 @@ impl VirtualMachine {
                         class_rc.ruby_name()
                     );
                     return Err(MetorexError::UncaughtException {
-                        exception: crate::vm::errors::no_method_error(&msg, method_name, &receiver),
+                        exception: crate::vm::errors::no_method_error(
+                            &msg,
+                            method_name,
+                            &receiver,
+                            &arguments,
+                        ),
                         location: crate::vm::utils::position_to_location(position),
                         message: msg,
                     });
@@ -188,7 +193,12 @@ impl VirtualMachine {
                         method_name,
                         class.name()
                     );
-                    let exc = crate::vm::errors::no_method_error(&msg, method_name, &receiver);
+                    let exc = crate::vm::errors::no_method_error(
+                        &msg,
+                        method_name,
+                        &receiver,
+                        &arguments,
+                    );
                     return Err(MetorexError::UncaughtException {
                         exception: exc,
                         location: crate::vm::utils::position_to_location(position),
@@ -222,7 +232,12 @@ impl VirtualMachine {
                 class_rc.ruby_name()
             );
             return Err(MetorexError::UncaughtException {
-                exception: crate::vm::errors::no_method_error(&msg, method_name, &receiver),
+                exception: crate::vm::errors::no_method_error(
+                    &msg,
+                    method_name,
+                    &receiver,
+                    &arguments,
+                ),
                 location: crate::vm::utils::position_to_location(position),
                 message: msg,
             });
@@ -281,7 +296,12 @@ impl VirtualMachine {
                 position,
             )
         } else {
-            Err(undefined_method_error(method_name, &receiver, position))
+            Err(undefined_method_error(
+                method_name,
+                &receiver,
+                &arguments,
+                position,
+            ))
         }
     }
 
@@ -579,6 +599,24 @@ impl VirtualMachine {
                 None
             }
             _ => {
+                // A value kind with its own singleton class, such as an
+                // exception given a `def obj.name`, answers from there first.
+                if let Some(singleton) = self.existing_singleton_class(receiver)
+                    && let Some(method) = singleton.find_method(method_name)
+                {
+                    return Some((singleton, method));
+                }
+                // An exception built from a user-defined subclass looks the
+                // method up on that class, which `class_of` cannot report.
+                if let Object::Exception(details) = receiver
+                    && let Some(class) = details.borrow().class.clone()
+                    && let Some(method) = class.find_method(method_name)
+                    // A body-less stub stands in for a native method, so it
+                    // must not shadow the implementation.
+                    && !method.body.is_empty()
+                {
+                    return Some((class, method));
+                }
                 let class = self.builtins().class_of(receiver);
                 class.find_method(method_name).map(|method| (class, method))
             }

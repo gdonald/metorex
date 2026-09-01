@@ -39,7 +39,7 @@ impl VirtualMachine {
                 .unwrap_or(&method_name)
                 .to_string();
             return Err(crate::vm::errors::undefined_method_error(
-                &reported, &receiver, position,
+                &reported, &receiver, &arguments, position,
             ));
         }
 

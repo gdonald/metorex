@@ -100,9 +100,9 @@ fn kernel_load_non_string_errors() {
 // ── Signal.trap (lines 76-79) ────────────────────────────────────────────────
 
 #[test]
-fn signal_trap_discards_block() {
+fn signal_trap_takes_a_block_as_the_handler() {
     let result = run(r#"Signal.trap("INT") { }"#);
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(result, Some(Object::string("DEFAULT")));
 }
 
 // ── undef_method on module (lines 130-153) ───────────────────────────────────

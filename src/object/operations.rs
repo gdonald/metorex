@@ -125,7 +125,19 @@ impl Object {
             }
             (Object::Block(a), Object::Block(b)) => Rc::ptr_eq(a, b),
             (Object::Binding(a), Object::Binding(b)) => Rc::ptr_eq(a, b),
-            (Object::Exception(a), Object::Exception(b)) => Rc::ptr_eq(a, b),
+            // Ruby compares two exceptions by class, message, and backtrace,
+            // so a dup equals its original.
+            (Object::Exception(a), Object::Exception(b)) => {
+                if Rc::ptr_eq(a, b) {
+                    return true;
+                }
+                let (left, right) = (a.borrow(), b.borrow());
+                let same_class = match (&left.class, &right.class) {
+                    (Some(one), Some(two)) => Rc::ptr_eq(one, two),
+                    _ => left.exception_type == right.exception_type,
+                };
+                same_class && left.message == right.message && left.backtrace == right.backtrace
+            }
             // Different types are not equal
             _ => false,
         }

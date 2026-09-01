@@ -29,6 +29,12 @@ impl VirtualMachine {
                 let instance = instance_rc.borrow();
                 Ok(instance.get_var(name).cloned().unwrap_or(Object::Nil))
             }
+            Some(Object::Exception(details)) => Ok(details
+                .borrow()
+                .instance_vars
+                .get(name)
+                .cloned()
+                .unwrap_or(Object::Nil)),
             Some(Object::Class(class_rc)) => Ok(class_rc
                 .get_class_var(&format!("@{}", name))
                 .unwrap_or(Object::Nil)),
@@ -57,10 +63,12 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         match self.environment().get("self") {
             Some(Object::Instance(instance_rc)) => {
-                let instance = instance_rc.borrow();
-                Ok(instance.class.get_class_var(name).unwrap_or(Object::Nil))
+                let class = std::rc::Rc::clone(&instance_rc.borrow().class);
+                Self::inherited_class_var(&class, name)
+                    .ok_or_else(|| uninitialized_class_var_error(name, &class, position))
             }
-            Some(Object::Class(class)) => Ok(class.get_class_var(name).unwrap_or(Object::Nil)),
+            Some(Object::Class(class)) => Self::inherited_class_var(&class, name)
+                .ok_or_else(|| uninitialized_class_var_error(name, &class, position)),
             Some(_) => Err(MetorexError::runtime_error(
                 format!("Cannot read class variable @@{} in this context", name),
                 position_to_location(position),
@@ -73,5 +81,42 @@ impl VirtualMachine {
                 position_to_location(position),
             )),
         }
+    }
+
+    /// A class variable as seen from `class`, which Ruby looks for up the
+    /// superclass chain rather than on the one class alone.
+    fn inherited_class_var(class: &std::rc::Rc<crate::class::Class>, name: &str) -> Option<Object> {
+        let mut cursor = Some(std::rc::Rc::clone(class));
+        while let Some(current) = cursor {
+            if let Some(value) = current.get_class_var(name) {
+                return Some(value);
+            }
+            cursor = current.superclass();
+        }
+        None
+    }
+}
+
+/// The NameError Ruby raises for a class variable that was never assigned.
+fn uninitialized_class_var_error(
+    name: &str,
+    class: &std::rc::Rc<crate::class::Class>,
+    position: Position,
+) -> MetorexError {
+    let message = format!(
+        "uninitialized class variable @@{} in {}",
+        name,
+        class.inspect_name()
+    );
+    let exception = Object::exception("NameError", message.clone());
+    if let Object::Exception(details) = &exception {
+        let mut details = details.borrow_mut();
+        details.name = Some(format!("@@{}", name));
+        details.receiver = Some(Box::new(Object::Class(std::rc::Rc::clone(class))));
+    }
+    MetorexError::UncaughtException {
+        exception,
+        location: position_to_location(position),
+        message,
     }
 }

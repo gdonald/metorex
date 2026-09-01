@@ -1366,8 +1366,13 @@ impl VirtualMachine {
                 // the same place `define_singleton_method` and `class << obj`
                 // put one, so `methods`, `undef_method`, and `remove_method`
                 // all see it.
-                Some(instance @ Object::Instance(_)) => {
-                    let singleton = self.singleton_class_of(&instance);
+                // `def obj.name` installs on any receiver's singleton class,
+                // exceptions included.
+                Some(receiver @ (Object::Instance(_) | Object::Exception(_))) => {
+                    if self.object_is_frozen(&receiver) {
+                        return Err(self.frozen_modification_error(&receiver, position));
+                    }
+                    let singleton = self.singleton_class_of(&receiver);
                     singleton.define_method(name, Rc::clone(&function));
                     self.invoke_class_hook(&singleton, "singleton_method_added", name, position)?;
                 }
@@ -2013,7 +2018,7 @@ impl VirtualMachine {
 
     /// Resolve a `Foo::Bar::Baz` qualified constant by walking from the
     /// outermost name through nested module/class constants.
-    fn resolve_qualified_constant(&self, qualified: &str) -> Option<Object> {
+    pub(crate) fn resolve_qualified_constant(&self, qualified: &str) -> Option<Object> {
         let mut parts = qualified.split("::");
         let head = parts.next()?;
         let mut current = self
@@ -2309,6 +2314,48 @@ impl VirtualMachine {
         Ok(())
     }
 
+    /// The address a collection lives at, used to record that it is frozen.
+    /// An Array, Hash, or Set has nowhere of its own to keep the flag.
+    pub(crate) fn collection_address(receiver: &Object) -> Option<usize> {
+        match receiver {
+            Object::Array(items) => Some(Rc::as_ptr(items) as usize),
+            Object::Dict(entries) => Some(Rc::as_ptr(entries) as usize),
+            Object::Set(items) => Some(Rc::as_ptr(items) as usize),
+            _ => None,
+        }
+    }
+
+    /// The FrozenError Ruby raises for modifying `receiver`. The message
+    /// names the class and inspects the object, falling back to `...` when
+    /// that inspection would itself modify the frozen object.
+    pub(crate) fn frozen_modification_error(
+        &mut self,
+        receiver: &Object,
+        position: Position,
+    ) -> MetorexError {
+        let class_name = crate::vm::native_methods::define_method::ruby_class_name(receiver);
+        // `inspect` may itself modify the object, which raises here again.
+        // Ruby shows `...` rather than recursing.
+        let rendered = if self.rendering_frozen_error {
+            "...".to_string()
+        } else {
+            self.rendering_frozen_error = true;
+            let rendered = self.get_inspect_representation(receiver, position);
+            self.rendering_frozen_error = false;
+            rendered.unwrap_or_else(|_| "...".to_string())
+        };
+        let message = format!("can't modify frozen {}: {}", class_name, rendered);
+        let exception = Object::exception("FrozenError", message.clone());
+        if let Object::Exception(details) = &exception {
+            details.borrow_mut().receiver = Some(Box::new(receiver.clone()));
+        }
+        MetorexError::UncaughtException {
+            exception,
+            location: position_to_location(position),
+            message,
+        }
+    }
+
     /// Whether `receiver` is frozen. Immediates are always frozen; instances
     /// and classes/modules carry their own flag.
     pub(crate) fn object_is_frozen(&self, receiver: &Object) -> bool {
@@ -2321,6 +2368,10 @@ impl VirtualMachine {
             | Object::Symbol(_)
             | Object::String(_) => true,
             Object::Class(c) | Object::Module(c) => c.is_frozen(),
+            Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                Self::collection_address(receiver)
+                    .is_some_and(|address| self.frozen_collections.contains_key(&address))
+            }
             // Complex and Rational are value objects, frozen from birth.
             Object::Instance(inst) => {
                 inst.borrow().frozen || matches!(inst.borrow().class.name(), "Complex" | "Rational")

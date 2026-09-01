@@ -154,7 +154,7 @@ fn invoke_shows_args_and_name() {
         .add_constant(Object::String(Rc::new("greet".to_string())))
         .unwrap();
     // Invoke: first byte = name index, second byte = arg count
-    chunk.write_op_u16(OpCode::Invoke, ((idx as u16) << 8) | 2, 1);
+    chunk.write_op_u16(OpCode::Invoke, (idx << 8) | 2, 1);
 
     let output = disassemble(&chunk, "invoke");
     assert!(output.contains("OP_INVOKE"));

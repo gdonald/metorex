@@ -264,8 +264,7 @@ impl VirtualMachine {
             // top frame's recorded location. Returns Location objects
             // responding to `lineno` and `path`.
             "caller_locations" => {
-                use crate::ast::{Expression, Statement};
-                use crate::object::{Instance, Method};
+                use crate::object::Instance;
                 use std::cell::RefCell;
                 use std::rc::Rc;
                 let start = match arguments.first() {
@@ -276,31 +275,7 @@ impl VirtualMachine {
                     Some(Object::Int(n)) => Some((*n).max(0) as usize),
                     _ => None,
                 };
-                let loc_class = match self.globals().get("__Backtrace_Location_class") {
-                    Some(Object::Class(c)) => c,
-                    _ => {
-                        let cls = Rc::new(crate::class::Class::new(
-                            "Thread::Backtrace::Location",
-                            None,
-                        ));
-                        for attr in ["lineno", "path"] {
-                            let body = vec![Statement::Return {
-                                value: Some(Expression::InstanceVariable {
-                                    name: attr.to_string(),
-                                    position: crate::lexer::Position::default(),
-                                }),
-                                position: crate::lexer::Position::default(),
-                            }];
-                            cls.define_method(
-                                attr,
-                                Rc::new(Method::new(attr.to_string(), vec![], body)),
-                            );
-                        }
-                        self.globals_mut()
-                            .set("__Backtrace_Location_class", Object::Class(Rc::clone(&cls)));
-                        cls
-                    }
-                };
+                let loc_class = self.backtrace_location_class();
                 let stack = self.call_stack();
                 let mut locations: Vec<Object> = Vec::new();
                 let mut level = start;
@@ -626,9 +601,9 @@ impl VirtualMachine {
                     Some(p) => p,
                     None => {
                         // Raise a LoadError exception so Ruby-level rescue LoadError catches it.
-                        let exc = Object::exception(
-                            "LoadError",
+                        let exc = crate::vm::errors::load_error(
                             format!("cannot load such file -- {}", require_name),
+                            &require_name,
                         );
                         return Err(MetorexError::UncaughtException {
                             exception: exc.clone(),
@@ -708,14 +683,25 @@ impl VirtualMachine {
                             )
                         })?;
 
-                // Find the actual file path with extension auto-detection
-                let actual_path =
-                    crate::file_loader::find_file_path(&resolved_path).map_err(|e| {
-                        MetorexError::runtime_error(
-                            format!("require_relative('{}') — {}", relative_path, e.message()),
-                            crate::vm::utils::position_to_location(position),
-                        )
-                    })?;
+                // Find the actual file path with extension auto-detection. A
+                // missing file is a LoadError, the way Ruby reports one.
+                let actual_path = match crate::file_loader::find_file_path(&resolved_path) {
+                    Ok(path) => path,
+                    Err(_) => {
+                        let feature = resolved_path.display().to_string();
+                        let mut message = format!("cannot load such file -- {}", feature);
+                        let suggestions = crate::file_loader::suggest_similar_files(&resolved_path);
+                        if !suggestions.is_empty() {
+                            message
+                                .push_str(&format!(". Did you mean: {}?", suggestions.join(", ")));
+                        }
+                        return Err(MetorexError::UncaughtException {
+                            exception: crate::vm::errors::load_error(message.clone(), &feature),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        });
+                    }
+                };
 
                 // Canonicalize to get the absolute path for deduplication checking
                 let canonical_path = actual_path.canonicalize().map_err(|e| {
@@ -1111,7 +1097,7 @@ impl VirtualMachine {
                 }
                 let exception = self.build_raise_exception(&arguments, position)?;
                 let message = match &exception {
-                    Object::Exception(cell) => cell.borrow().message.clone(),
+                    Object::Exception(_) => crate::vm::utils::format_exception(&exception),
                     _ => String::new(),
                 };
                 Err(MetorexError::UncaughtException {
@@ -1348,6 +1334,12 @@ impl VirtualMachine {
                         status: Some(1),
                         name: None,
                         receiver: None,
+                        backtrace_array: None,
+                        backtrace_sites: None,
+                        backtrace_locations_array: None,
+                        class: None,
+                        instance_vars: indexmap::IndexMap::new(),
+                        message_given: true,
                     },
                 )));
                 Err(MetorexError::UncaughtException {
@@ -1708,6 +1700,24 @@ impl VirtualMachine {
     }
 
     /// The `$stderr` counterpart of `write_to_stdout`.
+    /// The `Thread::Backtrace::Location` class the prelude defines. Its
+    /// instances carry a `path`, `lineno`, `label`, and `absolute_path`,
+    /// which is what both `caller_locations` and
+    /// `Exception#backtrace_locations` hand out.
+    pub(crate) fn backtrace_location_class(&mut self) -> std::rc::Rc<crate::class::Class> {
+        use std::rc::Rc;
+        if let Some(Object::Class(thread)) = self.globals().get("Thread")
+            && let Some(Object::Class(backtrace)) = thread.get_class_var("Backtrace")
+            && let Some(Object::Class(location)) = backtrace.get_class_var("Location")
+        {
+            return location;
+        }
+        Rc::new(crate::class::Class::new(
+            "Thread::Backtrace::Location",
+            None,
+        ))
+    }
+
     pub(crate) fn write_to_stderr(
         &mut self,
         text: &str,

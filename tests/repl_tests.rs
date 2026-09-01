@@ -1,3 +1,6 @@
+// 3.14 is a sample float throughout these tests, not an approximation of pi.
+#![allow(clippy::approx_constant)]
+
 // Tests for the Metorex REPL
 
 use indexmap::IndexMap;
@@ -597,14 +600,14 @@ fn session_nil_handling() {
 fn repl_format_block_object() {
     let mut repl = ReplCore::new();
     let result = repl.process_line("f = lambda do |x|\n  x\nend\nf");
-    match result {
-        LineResult::Value(v) => assert!(
-            v.contains("Block") || v.contains("Lambda") || v.contains("Method"),
-            "Got: {}",
-            v
-        ),
-        _ => {}
-    }
+    let LineResult::Value(v) = result else {
+        panic!("Got: {:?}", result)
+    };
+    assert!(
+        v.contains("Block") || v.contains("Lambda") || v.contains("Method"),
+        "Got: {}",
+        v
+    );
 }
 
 #[test]
@@ -612,14 +615,14 @@ fn repl_format_method_object() {
     let mut repl = ReplCore::new();
     repl.process_line("def foo\n  42\nend");
     let result = repl.process_line("method(:foo)");
-    match result {
-        LineResult::Value(v) => assert!(
-            v.contains("Method") || v.contains("method") || v.contains("foo"),
-            "Got: {}",
-            v
-        ),
-        _ => {}
-    }
+    let LineResult::Value(v) = result else {
+        panic!("Got: {:?}", result)
+    };
+    assert!(
+        v.contains("Method") || v.contains("method") || v.contains("foo"),
+        "Got: {}",
+        v
+    );
 }
 
 // ── REPL format_object Module (repl.rs line 273) ────────────────────────────
@@ -629,28 +632,26 @@ fn repl_format_module_object() {
     let mut repl = ReplCore::new();
     repl.process_line("module TestMod\n  def greet\n    \"hi\"\n  end\nend");
     let result = repl.process_line("TestMod");
-    match result {
-        LineResult::Value(v) => {
-            assert!(v.contains("Module") || v.contains("TestMod"), "Got: {}", v)
-        }
-        _ => {}
-    }
+    let LineResult::Value(v) = result else {
+        panic!("Got: {:?}", result)
+    };
+    assert!(v.contains("Module") || v.contains("TestMod"), "Got: {}", v);
 }
 
 // ── REPL format_object NativeFunction (repl.rs line 271) ────────────────────
 
 #[test]
-fn repl_format_native_function() {
+fn repl_reports_that_a_builtin_has_no_method_object() {
     let mut repl = ReplCore::new();
     let result = repl.process_line("method(:puts)");
-    match result {
-        LineResult::Value(v) => assert!(
-            v.contains("Method") || v.contains("NativeFunction") || v.contains("puts"),
-            "Got: {}",
-            v
-        ),
-        _ => {}
-    }
+    let LineResult::Error(message) = result else {
+        panic!("Got: {:?}", result)
+    };
+    assert!(
+        message.contains("'puts' is not a method"),
+        "Got: {}",
+        message
+    );
 }
 
 // ============================================================================

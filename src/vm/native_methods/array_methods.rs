@@ -42,6 +42,43 @@ impl VirtualMachine {
         let Object::Array(array_rc) = receiver else {
             return Ok(None);
         };
+        // Every method that changes the array in place refuses a frozen one.
+        const MUTATORS: &[&str] = &[
+            "<<",
+            "append",
+            "push",
+            "pop",
+            "shift",
+            "unshift",
+            "prepend",
+            "insert",
+            "delete",
+            "delete_at",
+            "delete_if",
+            "clear",
+            "concat",
+            "replace",
+            "fill",
+            "keep_if",
+            "compact!",
+            "flatten!",
+            "map!",
+            "collect!",
+            "reject!",
+            "select!",
+            "filter!",
+            "reverse!",
+            "rotate!",
+            "shuffle!",
+            "slice!",
+            "sort!",
+            "sort_by!",
+            "uniq!",
+            "[]=",
+        ];
+        if MUTATORS.contains(&method_name) && self.object_is_frozen(receiver) {
+            return Err(self.frozen_modification_error(receiver, position));
+        }
         match method_name {
             "length" => {
                 if !arguments.is_empty() {
@@ -204,6 +241,53 @@ impl VirtualMachine {
                     value = self.dig_into(&value, key, position)?;
                 }
                 Ok(Some(value))
+            }
+            // `each_with_index` yields the element and its position. Without
+            // a block it answers an Enumerator, the way `each` does.
+            "each_with_index" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .build_enumerator(receiver.clone(), method_name, vec![], None, position)
+                        .map(Some);
+                };
+                let elements = array_rc.borrow().clone();
+                for (index, element) in elements.iter().enumerate() {
+                    let args = vec![element.clone(), Object::Int(index as i64)];
+                    match self.execute_block_with_control_flow(&block, args)? {
+                        super::super::ControlFlow::Next
+                        | super::super::ControlFlow::Value(_)
+                        | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Continue { .. } => continue,
+                        super::super::ControlFlow::Break { value, .. } => {
+                            return Ok(Some(value));
+                        }
+                        super::super::ControlFlow::Return { value, position } => {
+                            return Err(MetorexError::NonLocalReturn {
+                                value,
+                                location: super::super::utils::position_to_location(position),
+                            });
+                        }
+                        super::super::ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: super::super::utils::position_to_location(position),
+                                message: super::super::utils::format_exception(&exception),
+                            });
+                        }
+                    }
+                }
+                Ok(Some(receiver.clone()))
             }
             "each" => {
                 if !arguments.is_empty() {

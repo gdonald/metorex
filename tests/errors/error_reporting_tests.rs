@@ -113,7 +113,7 @@ fn test_type_error_has_location() {
 }
 
 #[test]
-fn test_index_out_of_bounds_error_has_location() {
+fn test_index_past_the_end_answers_nil() {
     let mut vm = VirtualMachine::new();
 
     // Create array and try to access out of bounds index
@@ -160,12 +160,9 @@ fn test_index_out_of_bounds_error_has_location() {
         },
     ];
 
-    let result = vm.execute_program(&statements);
-    assert!(result.is_err());
-
-    let error = result.unwrap_err();
-    assert!(error.to_string().contains("out of bounds"));
-    assert!(error.to_string().contains("2:1"));
+    // Ruby answers nil for an index past either end rather than raising.
+    let result = vm.execute_program(&statements).expect("execution failed");
+    assert_eq!(result, Some(metorex::object::Object::Nil));
 }
 
 #[test]

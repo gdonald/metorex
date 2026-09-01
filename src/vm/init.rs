@@ -136,7 +136,13 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
 pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     // Reuse Exception/StandardError/RuntimeError/TypeError already in BuiltinClasses;
     // add the remaining subclasses that specs and mspec reference.
-    let exception = Rc::new(Class::new("Exception", None));
+    // Exception descends from Object, the way every other class does, and it
+    // has to be the same Object the rest of the world sees.
+    let object_class = match globals.get("Object") {
+        Some(Object::Class(object_class)) => object_class,
+        _ => Rc::new(Class::new("Object", None)),
+    };
+    let exception = Rc::new(Class::new("Exception", Some(object_class)));
     let standard_error = Rc::new(Class::new("StandardError", Some(Rc::clone(&exception))));
     let runtime_error = Rc::new(Class::new("RuntimeError", Some(Rc::clone(&standard_error))));
     let name_error = Rc::new(Class::new("NameError", Some(Rc::clone(&standard_error))));
@@ -168,8 +174,19 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
         Some(Rc::clone(&script_error)),
     ));
     let system_exit = Rc::new(Class::new("SystemExit", Some(Rc::clone(&exception))));
-    let interrupt = Rc::new(Class::new("Interrupt", Some(Rc::clone(&exception))));
     let signal_exception = Rc::new(Class::new("SignalException", Some(Rc::clone(&exception))));
+    // Ruby puts Interrupt under SignalException, not directly under Exception.
+    let interrupt = Rc::new(Class::new("Interrupt", Some(Rc::clone(&signal_exception))));
+    // The remaining built-in exception classes, so the hierarchy is complete.
+    let no_memory_error = Rc::new(Class::new("NoMemoryError", Some(Rc::clone(&exception))));
+    let security_error = Rc::new(Class::new("SecurityError", Some(Rc::clone(&exception))));
+    let system_stack_error = Rc::new(Class::new("SystemStackError", Some(Rc::clone(&exception))));
+    let fiber_error = Rc::new(Class::new("FiberError", Some(Rc::clone(&standard_error))));
+    let thread_error = Rc::new(Class::new("ThreadError", Some(Rc::clone(&standard_error))));
+    let closed_queue_error = Rc::new(Class::new(
+        "ClosedQueueError",
+        Some(Rc::clone(&stop_iteration)),
+    ));
     let system_call_error = Rc::new(Class::new(
         "SystemCallError",
         Some(Rc::clone(&standard_error)),
@@ -216,7 +233,15 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     globals.set("SystemExit", Object::Class(system_exit));
     globals.set("Interrupt", Object::Class(interrupt));
     globals.set("SignalException", Object::Class(signal_exception));
+    let system_call_error_for_errno = Rc::clone(&system_call_error);
     globals.set("SystemCallError", Object::Class(system_call_error));
+    register_errno_classes(&errno_module, &system_call_error_for_errno);
+    globals.set("NoMemoryError", Object::Class(no_memory_error));
+    globals.set("SecurityError", Object::Class(security_error));
+    globals.set("SystemStackError", Object::Class(system_stack_error));
+    globals.set("FiberError", Object::Class(fiber_error));
+    globals.set("ThreadError", Object::Class(thread_error));
+    globals.set("ClosedQueueError", Object::Class(closed_queue_error));
     globals.set("Errno", Object::Module(errno_module));
     globals.set("EncodingError", Object::Class(encoding_error));
     globals.set("FrozenError", Object::Class(frozen_error));
@@ -518,5 +543,95 @@ pub(super) fn seed_environment_with_globals(
 ) {
     for (name, value) in globals.iter() {
         environment.define(name.clone(), value.clone());
+    }
+}
+
+/// Where an Errno class keeps the message its number stands for.
+pub(crate) const ERRNO_MESSAGE_KEY: &str = "__errno_message__";
+
+/// Every `Errno::EXXX` class, each a subclass of SystemCallError carrying the
+/// platform's own number in its `Errno` constant. The numbers come from libc
+/// rather than a table, since they differ between Linux and macOS.
+fn register_errno_classes(errno_module: &Rc<Class>, system_call_error: &Rc<Class>) {
+    const ERRNO_NUMBERS: &[(&str, i32, &str)] = &[
+        ("E2BIG", libc::E2BIG, "Argument list too long"),
+        ("EACCES", libc::EACCES, "Permission denied"),
+        ("EADDRINUSE", libc::EADDRINUSE, "Address already in use"),
+        (
+            "EADDRNOTAVAIL",
+            libc::EADDRNOTAVAIL,
+            "Cannot assign requested address",
+        ),
+        ("EAGAIN", libc::EAGAIN, "Resource temporarily unavailable"),
+        ("EBADF", libc::EBADF, "Bad file descriptor"),
+        ("EBUSY", libc::EBUSY, "Device or resource busy"),
+        ("ECHILD", libc::ECHILD, "No child processes"),
+        (
+            "ECONNABORTED",
+            libc::ECONNABORTED,
+            "Software caused connection abort",
+        ),
+        ("ECONNREFUSED", libc::ECONNREFUSED, "Connection refused"),
+        ("ECONNRESET", libc::ECONNRESET, "Connection reset by peer"),
+        ("EDEADLK", libc::EDEADLK, "Resource deadlock avoided"),
+        ("EDOM", libc::EDOM, "Numerical argument out of domain"),
+        ("EEXIST", libc::EEXIST, "File exists"),
+        ("EFAULT", libc::EFAULT, "Bad address"),
+        ("EFBIG", libc::EFBIG, "File too large"),
+        ("EHOSTUNREACH", libc::EHOSTUNREACH, "No route to host"),
+        (
+            "EINPROGRESS",
+            libc::EINPROGRESS,
+            "Operation now in progress",
+        ),
+        ("EINTR", libc::EINTR, "Interrupted system call"),
+        ("EINVAL", libc::EINVAL, "Invalid argument"),
+        ("EIO", libc::EIO, "Input/output error"),
+        ("EISDIR", libc::EISDIR, "Is a directory"),
+        ("ELOOP", libc::ELOOP, "Too many levels of symbolic links"),
+        ("EMFILE", libc::EMFILE, "Too many open files"),
+        ("EMLINK", libc::EMLINK, "Too many links"),
+        ("ENAMETOOLONG", libc::ENAMETOOLONG, "File name too long"),
+        ("ENFILE", libc::ENFILE, "Too many open files in system"),
+        ("ENODEV", libc::ENODEV, "No such device"),
+        ("ENOENT", libc::ENOENT, "No such file or directory"),
+        ("ENOEXEC", libc::ENOEXEC, "Exec format error"),
+        ("ENOMEM", libc::ENOMEM, "Cannot allocate memory"),
+        ("ENOSPC", libc::ENOSPC, "No space left on device"),
+        ("ENOTDIR", libc::ENOTDIR, "Not a directory"),
+        ("ENOTEMPTY", libc::ENOTEMPTY, "Directory not empty"),
+        ("ENOTSOCK", libc::ENOTSOCK, "Socket operation on non-socket"),
+        ("ENOTSUP", libc::ENOTSUP, "Operation not supported"),
+        ("ENOTTY", libc::ENOTTY, "Inappropriate ioctl for device"),
+        ("ENXIO", libc::ENXIO, "No such device or address"),
+        ("EPERM", libc::EPERM, "Operation not permitted"),
+        ("EPIPE", libc::EPIPE, "Broken pipe"),
+        ("ERANGE", libc::ERANGE, "Numerical result out of range"),
+        ("EROFS", libc::EROFS, "Read-only file system"),
+        ("ESPIPE", libc::ESPIPE, "Illegal seek"),
+        ("ESRCH", libc::ESRCH, "No such process"),
+        ("ETIMEDOUT", libc::ETIMEDOUT, "Operation timed out"),
+        ("EXDEV", libc::EXDEV, "Invalid cross-device link"),
+    ];
+    for (name, number, message) in ERRNO_NUMBERS {
+        let class = Rc::new(Class::new(
+            format!("Errno::{}", name),
+            Some(Rc::clone(system_call_error)),
+        ));
+        class.set_class_var("Errno", Object::Int(*number as i64));
+        // The message the errno stands for, which an instance reports when
+        // no custom one is given. Kept under a mangled key so it does not
+        // show up as a Ruby-visible constant.
+        class.set_class_var(
+            ERRNO_MESSAGE_KEY,
+            Object::String(Rc::new((*message).to_string())),
+        );
+        errno_module.set_class_var(*name, Object::Class(class));
+    }
+    // Ruby aliases these where the platform gives them the same number.
+    for (alias, canonical) in [("EWOULDBLOCK", "EAGAIN"), ("EOPNOTSUPP", "ENOTSUP")] {
+        if let Some(existing) = errno_module.get_class_var(canonical) {
+            errno_module.set_class_var(alias, existing);
+        }
     }
 }

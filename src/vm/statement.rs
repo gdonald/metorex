@@ -391,17 +391,20 @@ impl VirtualMachine {
                     Some(Object::Instance(instance_rc)) => {
                         let is_frozen = instance_rc.borrow().frozen;
                         if is_frozen {
-                            let class_name = instance_rc.borrow().class.name().to_string();
-                            let msg = format!("can't modify frozen {}", class_name);
-                            let exc = Object::exception("FrozenError", msg.clone());
-                            return Err(MetorexError::UncaughtException {
-                                exception: exc,
-                                location: position_to_location(*position),
-                                message: msg,
-                            });
+                            let receiver = Object::Instance(Rc::clone(&instance_rc));
+                            return Err(self.frozen_modification_error(&receiver, *position));
                         }
                         let mut instance = instance_rc.borrow_mut();
                         instance.set_var(name.clone(), value);
+                        Ok(())
+                    }
+                    // An exception carries its own instance variables, so a
+                    // user-defined subclass can set state on itself.
+                    Some(Object::Exception(details)) => {
+                        details
+                            .borrow_mut()
+                            .instance_vars
+                            .insert(name.clone(), value);
                         Ok(())
                     }
                     Some(Object::Class(class)) => {
@@ -754,6 +757,13 @@ impl VirtualMachine {
                                     vec![value],
                                     *position,
                                 )?;
+                                Ok(())
+                            } else if let Some((owner, method)) =
+                                self.lookup_method(&other, &setter_method)
+                            {
+                                // An exception carries its own class, which is
+                                // where a reopened `attr_accessor` lives.
+                                self.invoke_method(owner, method, other, vec![value], *position)?;
                                 Ok(())
                             } else {
                                 Err(MetorexError::runtime_error(

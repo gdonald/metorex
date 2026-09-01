@@ -39,6 +39,23 @@ pub struct Exception {
     pub name: Option<String>,
     /// The object the call was made on (used by NameError / NoMethodError).
     pub receiver: Option<Box<Object>>,
+    /// The Array `#backtrace` hands out. Ruby answers the same object every
+    /// time, so an update through it is visible on the next call.
+    pub backtrace_array: Option<Object>,
+    /// The file and line of each backtrace entry, which
+    /// `#backtrace_locations` reports as Location objects.
+    pub backtrace_sites: Option<Vec<(String, usize, String)>>,
+    /// The Array `#backtrace_locations` hands out, kept for the same reason.
+    pub backtrace_locations_array: Option<Object>,
+    /// The class this exception was built from. An exception is identified by
+    /// its type name elsewhere, which cannot name an anonymous class, so the
+    /// class itself is kept when one is known.
+    pub class: Option<std::rc::Rc<crate::class::Class>>,
+    /// Instance variables a user-defined subclass set on itself.
+    pub instance_vars: indexmap::IndexMap<String, Object>,
+    /// Whether a message was supplied. An exception built without one reports
+    /// its class name instead, which an explicitly empty message does not.
+    pub message_given: bool,
 }
 
 impl Exception {
@@ -53,6 +70,12 @@ impl Exception {
             status: None,
             name: None,
             receiver: None,
+            backtrace_array: None,
+            backtrace_sites: None,
+            backtrace_locations_array: None,
+            class: None,
+            instance_vars: indexmap::IndexMap::new(),
+            message_given: true,
         }
     }
 
@@ -67,6 +90,12 @@ impl Exception {
             status: None,
             name: None,
             receiver: None,
+            backtrace_array: None,
+            backtrace_sites: None,
+            backtrace_locations_array: None,
+            class: None,
+            instance_vars: indexmap::IndexMap::new(),
+            message_given: true,
         }
     }
 
@@ -85,6 +114,12 @@ impl Exception {
             status: None,
             name: None,
             receiver: None,
+            backtrace_array: None,
+            backtrace_sites: None,
+            backtrace_locations_array: None,
+            class: None,
+            instance_vars: indexmap::IndexMap::new(),
+            message_given: true,
         }
     }
 
@@ -99,6 +134,12 @@ impl Exception {
             status: None,
             name: None,
             receiver: None,
+            backtrace_array: None,
+            backtrace_sites: None,
+            backtrace_locations_array: None,
+            class: None,
+            instance_vars: indexmap::IndexMap::new(),
+            message_given: true,
         }
     }
 
@@ -119,6 +160,12 @@ impl Exception {
             status: None,
             name: None,
             receiver: None,
+            backtrace_array: None,
+            backtrace_sites: None,
+            backtrace_locations_array: None,
+            class: None,
+            instance_vars: indexmap::IndexMap::new(),
+            message_given: true,
         }
     }
 

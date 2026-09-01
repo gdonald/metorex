@@ -140,6 +140,13 @@ impl VirtualMachine {
         // Get the current self (must be an instance)
         let instance = match self.environment().get("self") {
             Some(Object::Instance(instance_rc)) => instance_rc,
+            // An exception's built-in behaviour already ran, so `super` from
+            // an override of one of these has nothing left to reach.
+            Some(Object::Exception(_))
+                if matches!(method_name.as_str(), "initialize" | "initialize_copy") =>
+            {
+                return Ok(Object::Nil);
+            }
             Some(_) => {
                 return Err(MetorexError::runtime_error(
                     "super can only be called from within an instance method".to_string(),
@@ -340,7 +347,10 @@ impl VirtualMachine {
                     );
                     return Err(MetorexError::UncaughtException {
                         exception: crate::vm::errors::no_method_error(
-                            &message, &missing, &self_val,
+                            &message,
+                            &missing,
+                            &self_val,
+                            evaluated_args.get(1..).unwrap_or(&[]),
                         ),
                         location: position_to_location(position),
                         message,

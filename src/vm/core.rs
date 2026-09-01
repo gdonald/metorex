@@ -74,6 +74,18 @@ pub struct VirtualMachine {
     pub(crate) random_state: u64,
     /// The seed `srand` last installed, which it answers on the next call.
     pub(crate) random_seed: i64,
+    /// True while a FrozenError message is being built. Inspecting the object
+    /// can itself try to modify it, and the nested error must not recurse.
+    pub(crate) rendering_frozen_error: bool,
+    /// Collections frozen by `freeze`, keyed by the address they live at.
+    /// An Array, Hash, or Set has nowhere of its own to record the flag. The
+    /// value keeps the collection alive, so its address cannot be recycled by
+    /// a later one and read back as frozen.
+    pub(crate) frozen_collections: HashMap<usize, Object>,
+    /// Handlers `Signal.trap` installed, keyed by signal name without its
+    /// `SIG` prefix. A String value names a built-in disposition; anything
+    /// else is a callable `Process.kill` runs in place of raising.
+    pub(crate) signal_handlers: HashMap<String, Object>,
     /// Hooks `trace_var` registered, keyed by global name without its `$`.
     /// Each runs with the new value whenever that global is assigned.
     pub(crate) traced_globals: HashMap<String, Vec<Object>>,
@@ -143,8 +155,10 @@ impl VirtualMachine {
         let mut globals = GlobalRegistry::new();
         register_builtin_classes(&mut globals, &builtins);
         register_builtin_modules(&mut globals);
-        register_exception_classes(&mut globals);
+        // After the singletons, which create the canonical Object that every
+        // exception class descends from.
         register_singletons(&mut globals);
+        register_exception_classes(&mut globals);
         register_special_globals(&mut globals);
         register_native_functions(&mut globals);
 
@@ -169,6 +183,9 @@ impl VirtualMachine {
             pending_block_from_ampersand: false,
             random_state: seed_from_clock(),
             random_seed: seed_from_clock() as i64,
+            rendering_frozen_error: false,
+            frozen_collections: HashMap::new(),
+            signal_handlers: HashMap::new(),
             traced_globals: HashMap::new(),
             seeded_global_names,
             load_wrap_depth: 0,
@@ -189,6 +206,53 @@ impl VirtualMachine {
         vm.seeded_global_names
             .extend(vm.environment.current_scope_vars().into_keys());
         vm
+    }
+
+    /// Record the exception a rescue clause is handling. Ruby exposes it as
+    /// `$!`, and its backtrace as `$@`.
+    /// Give `raised` the exception it followed as its `#cause`. Ruby sets it
+    /// once, and never to the exception itself.
+    pub(crate) fn record_cause(raised: &Object, cause: &Object) {
+        let (Object::Exception(raised_ref), Object::Exception(cause_ref)) = (raised, cause) else {
+            return;
+        };
+        if Rc::ptr_eq(raised_ref, cause_ref) || raised_ref.borrow().cause.is_some() {
+            return;
+        }
+        raised_ref.borrow_mut().cause = Some(Box::new(cause.clone()));
+    }
+
+    pub(crate) fn set_current_exception(&mut self, exception: Object) {
+        // An exception reaching a rescue clause takes the one that was active
+        // as its `#cause`, which is how an error raised inside a rescue body
+        // records what it followed. Set once, and never to itself.
+        if let Object::Exception(details) = &exception
+            && details.borrow().cause.is_none()
+            && let Some(active) = self.globals().get("!")
+            && let Object::Exception(active_ref) = &active
+            && !Rc::ptr_eq(details, active_ref)
+        {
+            details.borrow_mut().cause = Some(Box::new(active.clone()));
+        }
+        self.environment_mut()
+            .define("$!".to_string(), exception.clone());
+        let backtrace = match &exception {
+            Object::Exception(details) => details
+                .borrow()
+                .backtrace
+                .as_ref()
+                .map(|trace| {
+                    let entries: Vec<Object> = trace
+                        .iter()
+                        .map(|line| Object::String(Rc::new(line.clone())))
+                        .collect();
+                    Object::Array(Rc::new(RefCell::new(entries)))
+                })
+                .unwrap_or(Object::Nil),
+            _ => Object::Nil,
+        };
+        self.globals_mut().set_variable("!", exception);
+        self.globals_mut().set_variable("@", backtrace);
     }
 
     /// A `SourceLocation` for `position`, tagged with the file being run so

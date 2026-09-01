@@ -283,6 +283,49 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - A `def` nested inside a block or a `begin` within a class body installs on that class, where it used to be an internal error
 - `singleton_method_removed` fires when a singleton method goes, and `remove_method` in a `class << Klass` body reaches a method that `def Klass.name` put there
 - `singleton_method_undefined` fires the same way for `undef_method`, which retires the method so `respond_to?` answers false and a call raises `NoMethodError`
+- `Exception#to_s` is the message alone, and the class name when there is no message. A message argument that is not a String is rendered with `to_s`, which any object may define
+- A bare `raise` followed by a trailing comment is still the re-raise form
+- `Exception#backtrace` is nil until the exception is raised, then answers the same Array every time, so an update through it sticks. `Exception#set_backtrace` takes nil, a String, or an Array of Strings, keeping the very Array it is handed, and refuses anything else with a `TypeError`
+- A rescue clause sets `$!` to the exception it is handling and `$@` to that exception's backtrace
+- `Exception#backtrace_locations` answers `Thread::Backtrace::Location` objects carrying a `path` and a `lineno`, nil until the exception is raised, and the same Array on every call. `set_backtrace` accepts those objects as well as Strings
+- `Array#each_with_index` yields each element with its position, and answers an Enumerator without a block
+- The `Errno` namespace is populated: every `Errno::EXXX` is a subclass of `SystemCallError` carrying the platform's own number in its `Errno` constant, taken from libc rather than a table. `SystemCallError.new(message, errno)` answers the class that number names, and `#errno` reads it back
+- `===` on an object reaches a user-defined `===` or `method_missing` before the default, and `:===` is a symbol name like any other operator
+- `Exception#cause` is the exception a rescue clause was handling when this one was raised, set once and never to the exception itself. An error the interpreter raises inside a rescue body records what it followed just as an explicit `raise` does
+- `is_a?` and `kind_of?` walk an exception's real ancestry, so a rescued `ZeroDivisionError` answers true for `StandardError`
+- `Exception#detailed_message` decorates the message with the class name, stands in with `unhandled exception` or the class name for an empty one, and takes a `highlight:` keyword. `Exception#full_message` renders the backtrace with it, `order:` deciding which end the message sits at, and honors a class that defines its own `detailed_message`
+- An exception carries the class it was built from, so an anonymous `Class.new(RuntimeError)` subclass reports it through `#class`, `is_a?`, and `===`
+- `def exception.name` installs a singleton method, and each exception gets its own singleton class
+- An exception subclass runs its own `initialize` and carries the instance variables it sets, so `attr_reader` on one works. `dup` copies that state along with the message, backtrace, and cause, calls `initialize_copy`, and leaves the singleton class behind
+- Two exceptions are equal when they share a class, a message, and a backtrace, so a copy equals its original
+- Each `Errno::EXXX` carries the message its number stands for, so `Errno::EINVAL.new.message` reads `Invalid argument`. A custom message and location are appended as `<default> - <custom>` and `<default> @ <location> - <custom>`, and a subclass inherits the default
+- `Exception#exception` answers self with no argument or when handed self, and otherwise a copy carrying the new message, without re-running `initialize`. `Exception.exception` is another name for `new`
+- An exception built with no message reports its class name, where one built with an empty message reports that. A bare `raise` makes the second kind, and the "unhandled exception" wording belongs to the uncaught report
+- Modifying a frozen object raises `FrozenError` naming the class and inspecting the object, and the error carries it as `#receiver`, which `FrozenError.new` also takes by keyword. When inspecting would itself modify the object, the message shows `...`
+- An Array, Hash, or Set can be frozen, and every method that changes one in place refuses a frozen receiver
+- A backtrace entry reads `file:line:in 'label'`, the way Ruby's does. `Exception#full_message` appends the cause chain after the exception's own report
+- A block parameter list takes `*`, `**`, and `&` without naming them, so `{ |**| }` accepts and discards keywords
+- `String#lines` splits on the line separator, keeping it on each piece
+- An Array index past either end answers nil rather than raising, and a negative one counts back from the end
+- The built-in exception hierarchy is complete, rooted at Object the way every class is. `NoMemoryError`, `SecurityError`, `SystemStackError`, `FiberError`, `ThreadError`, and `ClosedQueueError` are defined, and `Interrupt` sits under `SignalException`
+- `Exception#inspect` reads `#<ClassName: message>`, using whatever `to_s` answers, and the class name alone when that is empty
+- `Signal.list` and `Signal.trap`, with `Process.kill` running the handler in force when the target is this process. The default disposition raises `Interrupt` for SIGINT and `SignalException` elsewhere, both answering `signo` and `signm`
+- `IO::WaitReadable` and `IO::WaitWritable`, with the four `IO::EAGAINWaitReadable`-style classes that pair them with `Errno::EAGAIN`. The `EWOULDBLOCK` spellings name the same classes, since the two errno values match
+- `KeyError.new` takes `receiver:` and `key:`, read back through `#receiver` and `#key`. A KeyError with no key recorded raises ArgumentError from `#key`, the way Ruby does
+- `LoadError#path` answers the feature that could not be loaded, and nil on a LoadError raised by nothing in particular. A `require_relative` of a missing file raises LoadError rather than RuntimeError
+- `Exception#message` dispatches `to_s`, so a subclass or a singleton that redefines `to_s` decides its message. `raise SomeClass` instantiates the class, which keeps a subclass `initialize` and `to_s` in force
+- `NameError#name` is set on every path that raises one: an undefined variable or method, a constant, and an unset class variable. `instance_variable_get` and `class_variable_get` report back the very name object they were handed
+- Class variables are looked up through the superclass chain, and reading one that was never assigned raises NameError instead of answering nil
+- `NameError.new` takes a name as its second argument and a `receiver:` keyword, and `#dup` carries both to the copy. An undefined name records the object the lookup was made on
+- `NoMethodError#args` answers the arguments the failed call was made with, and `NoMethodError.new` takes them as a third argument
+- `String#*` repeats a string, raising ArgumentError on a negative count
+- `NameError#receiver` is set on every path that raises one: a method call, a bare or namespaced constant, an unset class variable, and `instance_variable_get` / `class_variable_get`. Asking an exception that has none raises ArgumentError, as Ruby does
+- `StopIteration#result` answers what the underlying `each` returned once an Enumerator runs out
+- `Thread::Backtrace::Location` answers `label`, `base_label`, and `absolute_path` alongside `path` and `lineno`, and renders as `path:lineno:in 'label'`
+- `SignalException.new` is named by the signal it stands for, taking a number, a name, or a symbol with or without the `SIG` prefix, with a second argument replacing the name. An argument that names no signal raises ArgumentError
+- A bare `rescue` catches StandardError rather than everything, so an Exception outside that family goes past it
+- A rescue clause places an exception by its class chain, which reaches a namespaced or anonymous subclass that has no name to look up
+- `expr; rescue` inside `begin ... end` opens a rescue clause. Only a `rescue` directly following an expression is the modifier form
 - `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access

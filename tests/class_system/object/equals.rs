@@ -264,22 +264,33 @@ fn test_equals_block() {
 
 #[test]
 fn test_equals_exception() {
+    // Ruby compares two exceptions by class, message, and backtrace, so two
+    // separately built ones with the same three are equal.
     let exc1 = Rc::new(RefCell::new(Exception::new(
         "RuntimeError".to_string(),
         "error".to_string(),
     )));
     let exc2 = Rc::clone(&exc1);
-    let exc3 = Rc::new(RefCell::new(Exception::new(
+    let same_values = Rc::new(RefCell::new(Exception::new(
         "RuntimeError".to_string(),
+        "error".to_string(),
+    )));
+    let other_message = Rc::new(RefCell::new(Exception::new(
+        "RuntimeError".to_string(),
+        "different".to_string(),
+    )));
+    let other_class = Rc::new(RefCell::new(Exception::new(
+        "TypeError".to_string(),
         "error".to_string(),
     )));
 
     let obj1 = Object::Exception(exc1);
     let obj2 = Object::Exception(exc2);
-    let obj3 = Object::Exception(exc3);
 
-    assert!(obj1.equals(&obj2)); // Same reference
-    assert!(!obj1.equals(&obj3)); // Different reference
+    assert!(obj1.equals(&obj2));
+    assert!(obj1.equals(&Object::Exception(same_values)));
+    assert!(!obj1.equals(&Object::Exception(other_message)));
+    assert!(!obj1.equals(&Object::Exception(other_class)));
 }
 
 #[test]

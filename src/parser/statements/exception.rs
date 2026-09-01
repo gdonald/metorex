@@ -241,20 +241,24 @@ impl Parser {
         // with no explicit exception. Skipping newlines first would let
         // `parse_expression` consume the next statement.
 
-        let exception = if self.check(&[
-            TokenKind::Newline,
-            TokenKind::Semicolon,
-            TokenKind::End,
-            TokenKind::RBrace,
-            TokenKind::If,
-            TokenKind::Unless,
-            TokenKind::While,
-            TokenKind::Else,
-            TokenKind::Elsif,
-            TokenKind::When,
-            TokenKind::Rescue,
-            TokenKind::Ensure,
-        ]) || self.is_at_end()
+        // A trailing comment ends the statement the way a newline does, so
+        // `raise # note` is still the bare re-raise form.
+        let exception = if matches!(self.peek().kind, TokenKind::Comment(_))
+            || self.check(&[
+                TokenKind::Newline,
+                TokenKind::Semicolon,
+                TokenKind::End,
+                TokenKind::RBrace,
+                TokenKind::If,
+                TokenKind::Unless,
+                TokenKind::While,
+                TokenKind::Else,
+                TokenKind::Elsif,
+                TokenKind::When,
+                TokenKind::Rescue,
+                TokenKind::Ensure,
+            ])
+            || self.is_at_end()
         {
             None
         } else if self.check(&[TokenKind::LParen]) {

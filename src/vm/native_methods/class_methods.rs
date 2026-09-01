@@ -825,7 +825,8 @@ impl VirtualMachine {
                     message: msg.to_string(),
                 });
             }
-            "new" => {
+            // `Exception.exception` is another name for `new`.
+            "new" | "exception" if method_name == "new" || self.is_exception_class(class_rc) => {
                 return self
                     .invoke_callable(
                         Object::Class(Rc::clone(class_rc)),
@@ -2238,7 +2239,11 @@ impl VirtualMachine {
                         message: msg,
                     });
                 }
-                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                let key = self.coerce_class_variable_name(
+                    &arguments[0],
+                    &Object::Class(Rc::clone(class_rc)),
+                    position,
+                )?;
                 class_rc.set_class_var(key, arguments[1].clone());
                 return Ok(Some(arguments[1].clone()));
             }
@@ -2251,7 +2256,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                let key = self.coerce_class_variable_name(
+                    &arguments[0],
+                    &Object::Class(Rc::clone(class_rc)),
+                    position,
+                )?;
                 match class_rc.lookup_class_var(&key) {
                     Some(value) => return Ok(Some(value)),
                     None => {
@@ -2280,7 +2289,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                let key = self.coerce_class_variable_name(
+                    &arguments[0],
+                    &Object::Class(Rc::clone(class_rc)),
+                    position,
+                )?;
                 match class_rc.remove_class_var(&key) {
                     Some(value) => return Ok(Some(value)),
                     None => {
@@ -2307,7 +2320,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let key = self.coerce_class_variable_name(&arguments[0], position)?;
+                let key = self.coerce_class_variable_name(
+                    &arguments[0],
+                    &Object::Class(Rc::clone(class_rc)),
+                    position,
+                )?;
                 return Ok(Some(Object::Bool(
                     class_rc.lookup_class_var(&key).is_some(),
                 )));
@@ -2398,6 +2415,7 @@ impl VirtualMachine {
     pub(crate) fn coerce_class_variable_name(
         &mut self,
         arg: &Object,
+        receiver: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
         let name = self.coerce_name_argument(arg, position)?;
@@ -2407,12 +2425,9 @@ impl VirtualMachine {
             return Ok(rest.to_string());
         }
         let msg = format!("`{}' is not allowed as a class variable name", name);
-        let exc = Object::exception("NameError", msg.clone());
-        Err(MetorexError::UncaughtException {
-            exception: exc,
-            location: position_to_location(position),
-            message: msg,
-        })
+        Err(crate::vm::errors::invalid_name_error(
+            msg, arg, receiver, position,
+        ))
     }
 
     /// Coerce an instance-variable name argument to its storage key (the name
@@ -2423,6 +2438,7 @@ impl VirtualMachine {
     pub(crate) fn coerce_instance_variable_name(
         &mut self,
         arg: &Object,
+        receiver: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
         let name = self.coerce_name_argument(arg, position)?;
@@ -2432,12 +2448,9 @@ impl VirtualMachine {
             return Ok(rest.to_string());
         }
         let msg = format!("`{}' is not allowed as an instance variable name", name);
-        let exc = Object::exception("NameError", msg.clone());
-        Err(MetorexError::UncaughtException {
-            exception: exc,
-            location: position_to_location(position),
-            message: msg,
-        })
+        Err(crate::vm::errors::invalid_name_error(
+            msg, arg, receiver, position,
+        ))
     }
 
     /// Search `class_rc` for constant `name` the way `const_defined?` does:
@@ -2559,7 +2572,13 @@ impl VirtualMachine {
         let msg = format!("uninitialized constant {}", qualified);
         let exc = Object::exception("NameError", msg.clone());
         if let Object::Exception(e) = &exc {
-            e.borrow_mut().name = Some(name.to_string());
+            let mut details = e.borrow_mut();
+            details.name = Some(name.to_string());
+            details.receiver = Some(Box::new(if module_rc.is_module() {
+                Object::Module(Rc::clone(module_rc))
+            } else {
+                Object::Class(Rc::clone(module_rc))
+            }));
         }
         Err(MetorexError::UncaughtException {
             exception: exc,
@@ -2712,7 +2731,12 @@ impl VirtualMachine {
             }
             let message = format!("undefined method '{}' for {}", hook, attached);
             return Err(MetorexError::UncaughtException {
-                exception: crate::vm::errors::no_method_error(&message, hook, &attached),
+                exception: crate::vm::errors::no_method_error(
+                    &message,
+                    hook,
+                    &attached,
+                    std::slice::from_ref(&arg),
+                ),
                 location: position_to_location(position),
                 message,
             });

@@ -12,11 +12,15 @@ use std::rc::Rc;
 
 use super::VirtualMachine;
 
+/// The key the parser adds to a keyword-argument dict so it can be told
+/// apart from a Hash the caller passed positionally.
+pub(crate) const KWARGS_MARKER: &str = "__MX_KWARGS__";
+
 /// Count the number of positional arguments, excluding a trailing kwargs dict.
 pub(crate) fn positional_arg_count(arguments: &[Object]) -> usize {
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
-        if dict.contains_key("__MX_KWARGS__") {
+        if dict.contains_key(KWARGS_MARKER) {
             return arguments.len() - 1;
         }
     }

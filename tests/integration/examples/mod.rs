@@ -14,6 +14,7 @@ mod metaprogramming;
 mod methods;
 mod oop;
 mod programs;
+mod signals;
 mod stdlib;
 
 use crate::common::EXAMPLES_DIR;

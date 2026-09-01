@@ -256,11 +256,15 @@ impl Parser {
             return Ok(stmt);
         }
         // `stmt rescue fallback` runs the fallback when the statement raises a
-        // StandardError. The `rescue` has to sit on the same line, so the one
-        // that opens a clause inside `begin ... end` is left alone even when
-        // the statement before it consumed the newline.
+        // StandardError. A modifier binds to the statement it follows, so
+        // nothing may come between them: a `rescue` on its own line opens a
+        // clause, and so does one after a semicolon, even on the same line.
         if self.check(&[TokenKind::Rescue])
             && self.peek().position.line == self.previous().position.line
+            && !matches!(
+                self.previous().kind,
+                TokenKind::Semicolon | TokenKind::Newline
+            )
         {
             let position = self.advance().position;
             self.skip_whitespace();

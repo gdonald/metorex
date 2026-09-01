@@ -41,8 +41,11 @@ end
 
 puts Kernel.private_instance_methods(false).include?(:raise)
 
+# A bare raise with nothing to re-raise makes a RuntimeError whose message is
+# empty. The "unhandled exception" wording belongs to the uncaught report.
 begin
   raise
 rescue RuntimeError => error
-  puts error.message
+  puts error.class.to_s
+  puts error.message.inspect
 end

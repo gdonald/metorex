@@ -309,7 +309,7 @@ impl VirtualMachine {
             // pass through unchanged.
             let msg = err.message().to_string();
             if msg.contains("File not found") || msg.contains("cannot load such file") {
-                let exc = Object::exception("LoadError", msg.clone());
+                let exc = crate::vm::errors::load_error(msg.clone(), &path);
                 return Err(MetorexError::UncaughtException {
                     exception: exc,
                     location: SourceLocation::new(0, 0, 0),

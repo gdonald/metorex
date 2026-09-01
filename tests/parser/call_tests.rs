@@ -275,7 +275,7 @@ fn beginless_range_inclusive() {
     // `..10` — beginless range (start = nil, end = 10).
     let result = run("x = ..10\nx.include?(5)");
     // The exact evaluation may vary; assert parse success primarily.
-    assert!(matches!(result, Some(_)));
+    assert!(result.is_some());
 }
 
 #[test]
@@ -320,7 +320,7 @@ x
 "#);
     // Either echo is called with nil (paren-less arg rejected) or :fallback
     // is returned. Any non-panic outcome exercises the ternary_depth path.
-    assert!(matches!(result, Some(_)));
+    assert!(result.is_some());
 }
 
 // ── Postfix calls on lambda block expressions (parse_postfix_calls) ───────

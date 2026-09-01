@@ -16,6 +16,52 @@ module Warning
   end
 end
 
+class IO
+  module WaitReadable
+  end
+
+  module WaitWritable
+  end
+
+  class EAGAINWaitReadable < Errno::EAGAIN
+    include WaitReadable
+  end
+
+  class EAGAINWaitWritable < Errno::EAGAIN
+    include WaitWritable
+  end
+
+  EWOULDBLOCKWaitReadable = EAGAINWaitReadable
+  EWOULDBLOCKWaitWritable = EAGAINWaitWritable
+end
+
+class StopIteration
+  attr_accessor :result
+end
+
+class Thread
+  class Backtrace
+    class Location
+      attr_reader :path, :lineno, :label, :absolute_path
+
+      def base_label
+        return @label if @label.nil?
+        return @label unless @label.start_with?("block ")
+        @label.split(" in ", 2).last
+      end
+
+      def to_s
+        return "#{@path}:#{@lineno}" if @label.nil? || @label.empty?
+        "#{@path}:#{@lineno}:in '#{@label}'"
+      end
+
+      def inspect
+        to_s.inspect
+      end
+    end
+  end
+end
+
 class Enumerator
   include Enumerable
 
@@ -34,7 +80,7 @@ class Enumerator
   def to_a
     if @values.nil?
       collected = []
-      @receiver.send(@method_name, *@arguments) do |*yielded|
+      @result = @receiver.send(@method_name, *@arguments) do |*yielded|
         collected.push(yielded.size == 1 ? yielded[0] : yielded)
       end
       @values = collected
@@ -44,7 +90,11 @@ class Enumerator
 
   def peek
     values = to_a
-    raise StopIteration, "iteration reached an end" if @position >= values.size
+    if @position >= values.size
+      ended = StopIteration.new("iteration reached an end")
+      ended.result = @result
+      raise ended
+    end
     values[@position]
   end
 

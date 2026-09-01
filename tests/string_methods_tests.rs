@@ -1,3 +1,6 @@
+// 3.14 is a sample float throughout these tests, not an approximation of pi.
+#![allow(clippy::approx_constant)]
+
 use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;

@@ -48,13 +48,45 @@ pub(super) fn invalid_assignment_target_error(target: &Expression) -> MetorexErr
 /// Produce an error for referencing an undefined variable. Modeled as a
 /// Ruby-level NameError so `rescue NameError` (and the mspec
 /// `raise_error(NameError)` matcher) catch it the way they would in MRI.
-pub(super) fn undefined_variable_error(name: &str, position: Position) -> MetorexError {
+pub(super) fn undefined_variable_error(
+    name: &str,
+    receiver: Option<Object>,
+    position: Position,
+) -> MetorexError {
     let msg = format!("Undefined variable '{name}'");
     let exc = crate::object::Object::exception("NameError", msg.clone());
+    if let Object::Exception(details) = &exc {
+        let mut details = details.borrow_mut();
+        details.name = Some(name.to_string());
+        details.receiver = receiver.map(Box::new);
+    }
     MetorexError::UncaughtException {
         exception: exc,
         location: position_to_location(position),
         message: msg,
+    }
+}
+
+/// A NameError whose `#name` answers the very object the caller handed over,
+/// which is what `instance_variable_get` and `class_variable_get` report.
+pub(super) fn invalid_name_error(
+    message: String,
+    name: &Object,
+    receiver: &Object,
+    position: Position,
+) -> MetorexError {
+    let exception = Object::exception("NameError", message.clone());
+    if let Object::Exception(details) = &exception {
+        let mut details = details.borrow_mut();
+        details
+            .instance_vars
+            .insert(crate::vm::NAME_ERROR_NAME_KEY.to_string(), name.clone());
+        details.receiver = Some(Box::new(receiver.clone()));
+    }
+    MetorexError::UncaughtException {
+        exception,
+        location: position_to_location(position),
+        message,
     }
 }
 
@@ -74,6 +106,7 @@ pub(super) fn undefined_self_error(position: Position) -> MetorexError {
 pub(super) fn undefined_method_error(
     method: &str,
     receiver: &Object,
+    args: &[Object],
     position: Position,
 ) -> MetorexError {
     let class_info = if let Object::Instance(inst) = receiver {
@@ -82,7 +115,7 @@ pub(super) fn undefined_method_error(
         receiver.type_name().to_string()
     };
     let message = format!("Undefined method '{}' for type '{}'", method, class_info);
-    let exc = no_method_error(&message, method, receiver);
+    let exc = no_method_error(&message, method, receiver, args);
     MetorexError::UncaughtException {
         exception: exc,
         location: position_to_location(position),
@@ -92,12 +125,21 @@ pub(super) fn undefined_method_error(
 
 /// A NoMethodError carrying the name it was raised for and the object it was
 /// called on, which `NameError#name` and `#receiver` report.
-pub(super) fn no_method_error(message: &str, method: &str, receiver: &Object) -> Object {
+pub(super) fn no_method_error(
+    message: &str,
+    method: &str,
+    receiver: &Object,
+    args: &[Object],
+) -> Object {
     let exception = Object::exception("NoMethodError", message);
     if let Object::Exception(details) = &exception {
         let mut details = details.borrow_mut();
         details.name = Some(method.to_string());
         details.receiver = Some(Box::new(receiver.clone()));
+        details.instance_vars.insert(
+            crate::vm::NO_METHOD_ARGS_KEY.to_string(),
+            Object::array(args.to_vec()),
+        );
     }
     exception
 }
@@ -214,6 +256,32 @@ pub(super) fn binary_type_error(
 }
 
 /// Produce a divide-by-zero runtime error.
+/// A LoadError that remembers the feature it could not load, which `#path`
+/// answers.
+pub(super) fn load_error(message: String, feature: &str) -> Object {
+    let exception = Object::exception("LoadError", message);
+    if let Object::Exception(details) = &exception {
+        details.borrow_mut().instance_vars.insert(
+            crate::vm::LOAD_ERROR_PATH_KEY.to_string(),
+            Object::string(feature),
+        );
+    }
+    exception
+}
+
+/// Raise `class_name` with a fixed message.
+pub(super) fn simple_exception(
+    class_name: &str,
+    message: &str,
+    position: Position,
+) -> MetorexError {
+    MetorexError::UncaughtException {
+        exception: Object::exception(class_name, message.to_string()),
+        location: position_to_location(position),
+        message: message.to_string(),
+    }
+}
+
 pub(super) fn divide_by_zero_error(position: Position) -> MetorexError {
     let message = "divided by 0".to_string();
     MetorexError::UncaughtException {
@@ -221,25 +289,6 @@ pub(super) fn divide_by_zero_error(position: Position) -> MetorexError {
         location: position_to_location(position),
         message,
     }
-}
-
-// ============================================================================
-// Indexing and Collection Errors
-// ============================================================================
-
-/// Produce an index out of bounds runtime error.
-pub(super) fn index_out_of_bounds_error(
-    index: i64,
-    length: usize,
-    position: Position,
-) -> MetorexError {
-    MetorexError::runtime_error(
-        format!(
-            "Index {} is out of bounds for array of length {}",
-            index, length
-        ),
-        position_to_location(position),
-    )
 }
 
 // ============================================================================

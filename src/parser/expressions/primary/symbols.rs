@@ -131,6 +131,7 @@ impl Parser {
             TokenKind::Slash => Ok(symbol("/", symbol_position)),
             TokenKind::Percent => Ok(symbol("%", symbol_position)),
             TokenKind::EqualEqual => Ok(symbol("==", symbol_position)),
+            TokenKind::TripleEqual => Ok(symbol("===", symbol_position)),
             TokenKind::BangEqual => Ok(symbol("!=", symbol_position)),
             TokenKind::Less => Ok(symbol("<", symbol_position)),
             TokenKind::Greater => Ok(symbol(">", symbol_position)),

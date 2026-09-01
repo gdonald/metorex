@@ -69,6 +69,93 @@ impl VirtualMachine {
         })
     }
 
+    /// Give a freshly built `Interrupt` the signal it stands for. Its
+    /// argument is a message, and the signal is always SIGINT.
+    fn record_signal_state(class: &Rc<crate::class::Class>, exception: &Object) {
+        if class.name() != "Interrupt" {
+            return;
+        }
+        let Object::Exception(details) = exception else {
+            return;
+        };
+        details.borrow_mut().instance_vars.insert(
+            crate::vm::signals::SIGNO_KEY.to_string(),
+            Object::Int(libc::SIGINT as i64),
+        );
+    }
+
+    /// `SignalException.new(signal)` is named by its argument rather than
+    /// carrying a message of its own, and `SignalException.new(number, text)`
+    /// takes that text as the name. Anything that does not name a signal is
+    /// an ArgumentError.
+    fn build_signal_exception(
+        &mut self,
+        class: &Rc<crate::class::Class>,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        use crate::vm::signals::{name_for_number, number_for_name};
+        let invalid = |detail: String| {
+            crate::vm::errors::simple_exception("ArgumentError", &detail, position)
+        };
+        let (number, name) = match arguments.first() {
+            Some(Object::Int(given)) => {
+                let number = i32::try_from(*given).ok().unwrap_or(-1);
+                let Some(name) = name_for_number(number) else {
+                    return Err(invalid(format!("invalid signal number {}", given)));
+                };
+                (number, format!("SIG{}", name))
+            }
+            Some(Object::String(given) | Object::Symbol(given)) => {
+                // A name and a message together is one argument too many:
+                // the name is already the message.
+                if arguments.len() > 1 {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Exact(1),
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(number) = number_for_name(given) else {
+                    return Err(invalid(format!("invalid signal name {}", given)));
+                };
+                (
+                    number,
+                    format!("SIG{}", given.strip_prefix("SIG").unwrap_or(given)),
+                )
+            }
+            other => {
+                let type_name = match other {
+                    Some(value) => self.builtins().class_of(value).name().to_string(),
+                    None => {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Range(1, 2),
+                            0,
+                            position,
+                        ));
+                    }
+                };
+                return Err(invalid(format!("bad signal type {}", type_name)));
+            }
+        };
+        // A second argument replaces the name the signal would have gone by.
+        let message = match arguments.get(1) {
+            Some(text) => self.coerce_name_argument(text, position)?,
+            None => name,
+        };
+        let exception = Object::exception(class.name(), message);
+        if let Object::Exception(details) = &exception {
+            let mut details = details.borrow_mut();
+            details.class = Some(Rc::clone(class));
+            details.message_given = true;
+            details.instance_vars.insert(
+                crate::vm::signals::SIGNO_KEY.to_string(),
+                Object::Int(number as i64),
+            );
+        }
+        Ok(exception)
+    }
+
     pub(crate) fn invoke_callable(
         &mut self,
         callable: Object,
@@ -233,13 +320,98 @@ impl VirtualMachine {
 
         // Check if this is an exception class
         if self.is_exception_class(&class) {
+            // A SignalException is named by the signal it stands for, which
+            // its own constructor works out. Interrupt is the exception to
+            // that: its argument is an ordinary message.
+            if descends_from(&class, "SignalException") && !descends_from(&class, "Interrupt") {
+                return self.build_signal_exception(&class, &arguments, position);
+            }
+            // An Errno class reports the message its number stands for, with
+            // any custom message and location appended the way Ruby does.
+            if let Some(default) = Self::errno_default_message(&class) {
+                let custom = match arguments.first() {
+                    None | Some(Object::Nil) => None,
+                    Some(value) => Some(self.coerce_name_argument(value, position)?),
+                };
+                let location = match arguments.get(1) {
+                    None | Some(Object::Nil) => None,
+                    Some(value) => Some(self.coerce_name_argument(value, position)?),
+                };
+                let message = match (custom, location) {
+                    (None, _) => default,
+                    (Some(custom), None) => format!("{} - {}", default, custom),
+                    (Some(custom), Some(location)) => {
+                        format!("{} @ {} - {}", default, location, custom)
+                    }
+                };
+                let exception = Object::exception(class.name(), message);
+                if let Object::Exception(details) = &exception {
+                    details.borrow_mut().class = Some(Rc::clone(&class));
+                }
+                return Ok(exception);
+            }
+            // `FrozenError.new(message, receiver: obj)` records the object the
+            // modification was attempted on, and `KeyError.new(receiver:, key:)`
+            // records the lookup that missed.
+            let mut named_receiver = None;
+            let mut named_key = None;
+            let mut named_name = None;
+            let mut named_args = None;
+            let mut arguments = arguments;
+            if let Some(Object::Dict(entries)) = arguments.last() {
+                let entries = entries.borrow();
+                named_receiver = entries.get(":receiver").cloned();
+                named_key = entries.get(":key").cloned();
+                let recognized = named_receiver.is_some() as usize + named_key.is_some() as usize;
+                let named = entries
+                    .keys()
+                    .filter(|key| key.as_str() != crate::vm::param_binding::KWARGS_MARKER)
+                    .count();
+                let consumed = recognized > 0 && recognized == named;
+                drop(entries);
+                if consumed {
+                    arguments.pop();
+                }
+            }
             let message = if arguments.is_empty() {
                 String::new()
             } else if arguments.len() == 1 {
                 match &arguments[0] {
                     Object::String(s) => (**s).clone(),
-                    other => format!("{:?}", other),
+                    // Ruby renders the message with `to_s`, which a message
+                    // object is free to define.
+                    other => match self.send_to_object(other.clone(), "to_s", vec![], position)? {
+                        Object::String(text) => (*text).clone(),
+                        rendered => rendered.to_string(),
+                    },
                 }
+            } else if (2..=3).contains(&arguments.len()) && descends_from(&class, "NameError") {
+                // `NameError.new(message, name)` records the name the lookup
+                // was for, which `#name` answers as the object given, and
+                // `NoMethodError.new(message, name, args)` its arguments too.
+                named_name = Some(arguments[1].clone());
+                named_args = arguments.get(2).cloned();
+                match &arguments[0] {
+                    Object::String(text) => (**text).clone(),
+                    other => self.coerce_name_argument(other, position)?,
+                }
+            } else if arguments.len() == 2 && Self::is_system_call_error(&class) {
+                // `SystemCallError.new(message, errno)` answers an instance of
+                // the Errno class that number names.
+                let text = match &arguments[0] {
+                    Object::String(text) => (**text).clone(),
+                    other => other.to_string(),
+                };
+                let Object::Int(number) = arguments[1] else {
+                    return Err(MetorexError::runtime_error(
+                        "SystemCallError.new expects an Integer errno".to_string(),
+                        position_to_location(position),
+                    ));
+                };
+                let named = self
+                    .errno_class_for(number)
+                    .unwrap_or_else(|| class.name().to_string());
+                return Ok(Object::exception(named, text));
             } else {
                 return Err(MetorexError::runtime_error(
                     format!(
@@ -249,7 +421,49 @@ impl VirtualMachine {
                     position_to_location(position),
                 ));
             };
-            return Ok(Object::exception(class.name(), message));
+            let exception = Object::exception(class.name(), message);
+            // An anonymous class has no name to look up later, so the class
+            // itself travels with the exception.
+            if let Object::Exception(details) = &exception {
+                let mut details = details.borrow_mut();
+                details.class = Some(Rc::clone(&class));
+                details.message_given = !arguments.is_empty();
+                if let Some(value) = named_receiver {
+                    details.receiver = Some(Box::new(value));
+                }
+                if let Some(value) = named_key {
+                    details
+                        .instance_vars
+                        .insert(crate::vm::KEY_ERROR_KEY.to_string(), value);
+                }
+                if let Some(value) = named_name {
+                    details
+                        .instance_vars
+                        .insert(crate::vm::NAME_ERROR_NAME_KEY.to_string(), value);
+                }
+                if let Some(value) = named_args {
+                    details
+                        .instance_vars
+                        .insert(crate::vm::NO_METHOD_ARGS_KEY.to_string(), value);
+                }
+            }
+            Self::record_signal_state(&class, &exception);
+            // A subclass that writes its own `initialize` runs it, so state it
+            // sets on itself is there. The built-in behaviour already put the
+            // message in place, which is what its `super` would have done.
+            if let Some(initialize) = class.find_method("initialize")
+                && !initialize.is_undefined
+                && !initialize.body.is_empty()
+            {
+                self.invoke_method(
+                    Rc::clone(&class),
+                    initialize,
+                    exception.clone(),
+                    arguments,
+                    position,
+                )?;
+            }
+            return Ok(exception);
         }
 
         // Create a new instance of the class
@@ -291,6 +505,50 @@ impl VirtualMachine {
     }
 
     /// Check if a class is an exception class (Exception or its subclasses)
+    /// The message an Errno class stands for, inherited by a subclass of one.
+    fn errno_default_message(class: &Rc<Class>) -> Option<String> {
+        let mut cursor = Some(Rc::clone(class));
+        while let Some(current) = cursor {
+            if let Some(Object::String(message)) =
+                current.get_class_var(crate::vm::init::ERRNO_MESSAGE_KEY)
+            {
+                return Some((*message).clone());
+            }
+            cursor = current.superclass();
+        }
+        None
+    }
+
+    /// Whether `class` is SystemCallError or one of its Errno subclasses.
+    fn is_system_call_error(class: &Rc<Class>) -> bool {
+        let mut cursor = Some(Rc::clone(class));
+        while let Some(current) = cursor {
+            if current.name() == "SystemCallError" {
+                return true;
+            }
+            cursor = current.superclass();
+        }
+        false
+    }
+
+    /// The name of the `Errno` class carrying `number`, when one does.
+    fn errno_class_for(&self, number: i64) -> Option<String> {
+        let Some(Object::Module(errno) | Object::Class(errno)) = self.globals().get("Errno") else {
+            return None;
+        };
+        errno
+            .class_var_names()
+            .into_iter()
+            .find(|name| {
+                matches!(
+                    errno.get_class_var(name),
+                    Some(Object::Class(class))
+                        if class.get_class_var("Errno") == Some(Object::Int(number))
+                )
+            })
+            .map(|name| format!("Errno::{}", name))
+    }
+
     pub(crate) fn is_exception_class(&self, class: &Class) -> bool {
         Self::is_exception_class_static(class)
     }
@@ -335,7 +593,7 @@ impl VirtualMachine {
 }
 
 /// Whether `class` is `name` or descends from it.
-fn descends_from(class: &Rc<Class>, name: &str) -> bool {
+pub(crate) fn descends_from(class: &Rc<Class>, name: &str) -> bool {
     let mut cursor = Some(Rc::clone(class));
     while let Some(current) = cursor {
         if current.name() == name {

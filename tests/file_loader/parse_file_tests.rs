@@ -189,7 +189,7 @@ puts calc.get_result
 
     assert!(result.is_ok());
     let statements = result.unwrap();
-    assert!(statements.len() > 0);
+    assert!(!statements.is_empty());
 }
 
 #[test]

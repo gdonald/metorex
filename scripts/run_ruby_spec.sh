@@ -297,7 +297,45 @@ run_spec "$SPEC_DIR/core/basicobject/singleton_method_removed_spec.rb"
 run_spec "$SPEC_DIR/core/basicobject/singleton_method_undefined_spec.rb"
 
 # 4.10 - 4.13: Exceptions and Signals
-# run_spec "$SPEC_DIR/core/exception"
+run_spec "$SPEC_DIR/core/exception/backtrace_spec.rb"
+run_spec "$SPEC_DIR/core/exception/backtrace_locations_spec.rb"
+run_spec "$SPEC_DIR/core/exception/case_compare_spec.rb"
+run_spec "$SPEC_DIR/core/exception/cause_spec.rb"
+run_spec "$SPEC_DIR/core/exception/detailed_message_spec.rb"
+run_spec "$SPEC_DIR/core/exception/dup_spec.rb"
+run_spec "$SPEC_DIR/core/exception/equal_value_spec.rb"
+run_spec "$SPEC_DIR/core/exception/errno_spec.rb"
+run_spec "$SPEC_DIR/core/exception/exception_spec.rb"
+run_spec "$SPEC_DIR/core/exception/exit_value_spec.rb"
+run_spec "$SPEC_DIR/core/exception/frozen_error_spec.rb"
+# run_spec "$SPEC_DIR/core/exception/full_message_spec.rb"  # needs the caller when an exception has no backtrace, and file attribution for a raise inside a block
+run_spec "$SPEC_DIR/core/exception/hierarchy_spec.rb"
+run_spec "$SPEC_DIR/core/exception/inspect_spec.rb"
+# run_spec "$SPEC_DIR/core/exception/interrupt_spec.rb"  # 3 of its 5 examples pass; the other 2 need ruby_exe and IO.popen subprocess support
+run_spec "$SPEC_DIR/core/exception/io_error_spec.rb"
+run_spec "$SPEC_DIR/core/exception/key_error_spec.rb"
+run_spec "$SPEC_DIR/core/exception/load_error_spec.rb"
+run_spec "$SPEC_DIR/core/exception/message_spec.rb"
+run_spec "$SPEC_DIR/core/exception/name_spec.rb"
+run_spec "$SPEC_DIR/core/exception/name_error_spec.rb"
+run_spec "$SPEC_DIR/core/exception/new_spec.rb"
+run_spec "$SPEC_DIR/core/exception/no_method_error_spec.rb"
+run_spec "$SPEC_DIR/core/exception/reason_spec.rb"
+run_spec "$SPEC_DIR/core/exception/receiver_spec.rb"
+run_spec "$SPEC_DIR/core/exception/result_spec.rb"
+run_spec "$SPEC_DIR/core/exception/set_backtrace_spec.rb"
+# run_spec "$SPEC_DIR/core/exception/signal_exception_spec.rb"  # 12 of its 16 examples pass; the other 4 need ruby_exe and IO.popen subprocess support
+run_spec "$SPEC_DIR/core/exception/signm_spec.rb"
+run_spec "$SPEC_DIR/core/exception/signo_spec.rb"
+run_spec "$SPEC_DIR/core/exception/standard_error_spec.rb"
+# run_spec "$SPEC_DIR/core/exception/status_spec.rb"  # exits the process; needs SystemExit#status without terminating the run
+# run_spec "$SPEC_DIR/core/exception/success_spec.rb"  # exits the process; needs SystemExit#success? without terminating the run
+# run_spec "$SPEC_DIR/core/exception/syntax_error_spec.rb"  # 3 errors; needs SyntaxError#path
+# run_spec "$SPEC_DIR/core/exception/system_call_error_spec.rb"  # 9 failures and 7 errors; needs SystemCallError.new to map an errno with no custom message
+# run_spec "$SPEC_DIR/core/exception/system_exit_spec.rb"  # 2 failures and 3 errors; needs SystemExit status handling
+run_spec "$SPEC_DIR/core/exception/to_s_spec.rb"
+# run_spec "$SPEC_DIR/core/exception/top_level_spec.rb"  # 5 errors; needs ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/exception/uncaught_throw_error_spec.rb"  # needs UncaughtThrowError#tag and #value
 # run_spec "$SPEC_DIR/core/systemexit"
 # run_spec "$SPEC_DIR/core/signal"
 # run_spec "$SPEC_DIR/core/warning"

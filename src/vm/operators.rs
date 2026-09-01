@@ -153,8 +153,18 @@ impl VirtualMachine {
                         if exc_type == class_rc.name() {
                             return Ok(Object::Bool(true));
                         }
-                        // Check exception class hierarchy via globals
-                        if let Some(Object::Class(exc_class)) = self.globals().get(&exc_type) {
+                        // Check the exception class hierarchy. A namespaced
+                        // type such as `Errno::EINVAL` is a constant on its
+                        // module rather than a top-level name.
+                        let carried = exc_ref.borrow().class.clone().map(Object::Class);
+                        let resolved = match carried {
+                            Some(class) => Some(class),
+                            None => match self.globals().get(&exc_type) {
+                                Some(class @ Object::Class(_)) => Some(class),
+                                _ => self.resolve_qualified_constant(&exc_type),
+                            },
+                        };
+                        if let Some(Object::Class(exc_class)) = resolved {
                             return Ok(Object::Bool(
                                 self.builtins().is_subclass_of(&exc_class, class_rc),
                             ));
@@ -182,8 +192,21 @@ impl VirtualMachine {
                 }
                 // Object#=== is the same object, or whatever #== says. It
                 // consults neither #equal? nor #object_id, so a class that
-                // overrides those does not change the answer.
+                // overrides those does not change the answer. A class that
+                // defines its own `===`, or reaches one through
+                // `method_missing`, wins over that default.
                 if let Object::Instance(inst_rc) = &left {
+                    if let Some((owner, method)) = self.lookup_method(&left, "===")
+                        && !method.is_undefined
+                    {
+                        return self.invoke_method(owner, method, left, vec![right], position);
+                    }
+                    if let Some((owner, handler)) = self.lookup_method(&left, "method_missing")
+                        && !handler.is_undefined
+                    {
+                        let arguments = vec![Object::Symbol(Rc::new("===".to_string())), right];
+                        return self.invoke_method(owner, handler, left, arguments, position);
+                    }
                     if let Object::Instance(rhs) = &right
                         && Rc::ptr_eq(inst_rc, rhs)
                     {
@@ -418,6 +441,18 @@ impl VirtualMachine {
                 BinaryOp::Power => Ok(Object::Float(a.powi(b as i32))),
                 _ => unreachable!(),
             },
+            // `"ab" * 3` repeats the string, and a negative count is an
+            // ArgumentError rather than an empty string.
+            (Object::String(text), Object::Int(count)) if matches!(op, BinaryOp::Multiply) => {
+                let Ok(count) = usize::try_from(count) else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "negative argument",
+                        position,
+                    ));
+                };
+                Ok(Object::string(text.repeat(count)))
+            }
             (lhs, rhs) => Err(binary_type_error(op.clone(), &lhs, &rhs, position)),
         }
     }

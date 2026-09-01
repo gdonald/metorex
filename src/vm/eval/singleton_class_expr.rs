@@ -101,8 +101,14 @@ impl VirtualMachine {
                 sc
             }
             other => {
-                let key = primitive_singleton_key(other)
-                    .unwrap_or_else(|| format!("__other_{}", other.type_name()));
+                let key = primitive_singleton_key(other).unwrap_or_else(|| match other {
+                    // An exception is a reference type, so each one gets its
+                    // own singleton class rather than sharing one per kind.
+                    Object::Exception(details) => {
+                        format!("__exception_{:p}", Rc::as_ptr(details))
+                    }
+                    _ => format!("__other_{}", other.type_name()),
+                });
                 if let Some(existing) = self.primitive_singleton_classes.get(&key) {
                     return Rc::clone(existing);
                 }
@@ -113,6 +119,18 @@ impl VirtualMachine {
                 sc
             }
         }
+    }
+
+    /// The singleton class a value-kind receiver already has, without
+    /// creating one. Used by method lookup, which must not materialize a
+    /// singleton class just by asking.
+    pub(crate) fn existing_singleton_class(&self, receiver: &Object) -> Option<Rc<Class>> {
+        let key = primitive_singleton_key(receiver).or_else(|| match receiver {
+            Object::Exception(details) => Some(format!("__exception_{:p}", Rc::as_ptr(details))),
+            Object::Instance(_) | Object::Class(_) | Object::Module(_) => None,
+            other => Some(format!("__other_{}", other.type_name())),
+        })?;
+        self.primitive_singleton_classes.get(&key).map(Rc::clone)
     }
 
     /// Evaluate `class << target; body; end`.

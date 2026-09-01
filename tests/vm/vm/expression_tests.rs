@@ -267,7 +267,7 @@ fn indexes_into_dictionary_literal() {
 }
 
 #[test]
-fn array_out_of_bounds_produces_runtime_error() {
+fn array_index_past_the_end_answers_nil() {
     let mut vm = VirtualMachine::new();
     let statements = vec![
         Statement::Assignment {
@@ -294,12 +294,9 @@ fn array_out_of_bounds_produces_runtime_error() {
         },
     ];
 
-    match vm.execute_program(&statements) {
-        Err(MetorexError::RuntimeError { message, .. }) => {
-            assert!(message.contains("out of bounds"), "unexpected {}", message);
-        }
-        other => panic!("expected runtime error, got {:?}", other),
-    }
+    // Ruby answers nil for an index past either end rather than raising.
+    let result = vm.execute_program(&statements).expect("execution failed");
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]

@@ -25,4 +25,6 @@ mod reflection_tests;
 mod statement_tests;
 mod super_expr_coverage_tests;
 mod unreachable_paths_tests;
+// The vm test tree mirrors src/vm, which nests a vm module of its own.
+#[allow(clippy::module_inception)]
 mod vm;

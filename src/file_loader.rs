@@ -36,7 +36,7 @@ fn absolute_display(path: &Path) -> String {
 /// Looks at sibling files in the parent directory and returns names that are
 /// similar to the requested filename (using a simple substring / edit-distance
 /// heuristic).  Returns at most 3 suggestions.
-fn suggest_similar_files(path: &Path) -> Vec<String> {
+pub fn suggest_similar_files(path: &Path) -> Vec<String> {
     let parent = match path.parent() {
         Some(p) if p.as_os_str().is_empty() => Path::new("."),
         Some(p) => p,

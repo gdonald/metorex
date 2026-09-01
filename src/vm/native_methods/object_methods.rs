@@ -415,7 +415,9 @@ impl VirtualMachine {
                 {
                     return Ok(Some(result));
                 }
-                Err(undefined_method_error(&method, receiver, position))
+                Err(undefined_method_error(
+                    &method, receiver, &rest_args, position,
+                ))
             }
             // Kernel#lambda reached by dispatch (`send(:lambda) { }`) rather
             // than by a bare call. The block is already in `pending_block`.
@@ -446,6 +448,13 @@ impl VirtualMachine {
                         let singleton = inst.borrow().singleton_class.borrow().clone();
                         if let Some(sc) = singleton {
                             sc.freeze();
+                        }
+                    }
+                    // A collection has nowhere of its own to keep the flag,
+                    // so the VM records the one it lives at.
+                    Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                        if let Some(address) = Self::collection_address(receiver) {
+                            self.frozen_collections.insert(address, receiver.clone());
                         }
                     }
                     _ => {}
@@ -845,9 +854,19 @@ impl VirtualMachine {
                 }
                 // For exceptions, return the specific exception class, not generic Exception
                 if let Object::Exception(exc_ref) = receiver {
+                    if let Some(class) = exc_ref.borrow().class.clone() {
+                        return Ok(Some(Object::Class(class)));
+                    }
                     let exc_type = exc_ref.borrow().exception_type.clone();
                     if let Some(Object::Class(cls)) = self.globals().get(&exc_type) {
                         return Ok(Some(Object::Class(cls)));
+                    }
+                    // A namespaced type such as `Errno::EINVAL` lives as a
+                    // constant on its module rather than at the top level.
+                    if let Some(class @ Object::Class(_)) =
+                        self.resolve_qualified_constant(&exc_type)
+                    {
+                        return Ok(Some(class));
                     }
                 }
                 // A class is an instance of Class, a module an instance of
@@ -1090,6 +1109,26 @@ impl VirtualMachine {
                         }
                     }
                 }
+                // An exception is tagged with its type name rather than
+                // carrying a class pointer, so its ancestry is walked from the
+                // class that name resolves to.
+                if let Object::Exception(details) = receiver {
+                    let carried = details.borrow().class.clone().map(Object::Class);
+                    let exception_type = details.borrow().exception_type.clone();
+                    let resolved = match carried {
+                        Some(class) => Some(class),
+                        None => match self.globals().get(&exception_type) {
+                            Some(class @ Object::Class(_)) => Some(class),
+                            _ => self.resolve_qualified_constant(&exception_type),
+                        },
+                    };
+                    if let Some(Object::Class(exception_class)) = resolved {
+                        return Ok(Some(Object::Bool(
+                            self.builtins()
+                                .is_subclass_of(&exception_class, target_class),
+                        )));
+                    }
+                }
                 Ok(Some(Object::Bool(
                     self.builtins().is_instance_of(receiver, target_class),
                 )))
@@ -1160,7 +1199,8 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let clean_name = self.coerce_instance_variable_name(&arguments[0], position)?;
+                let clean_name =
+                    self.coerce_instance_variable_name(&arguments[0], receiver, position)?;
                 let clean_name = clean_name.as_str();
                 match receiver {
                     Object::Instance(inst_rc) => {
@@ -1199,7 +1239,8 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let var_name = self.coerce_instance_variable_name(&arguments[0], position)?;
+                let var_name =
+                    self.coerce_instance_variable_name(&arguments[0], receiver, position)?;
                 if self.object_is_frozen(receiver) || !matches!(receiver, Object::Instance(_)) {
                     let class_name = self.builtins().class_of(receiver).name().to_string();
                     let msg = format!("can't modify frozen {}: {}", class_name, receiver);
@@ -1245,7 +1286,8 @@ impl VirtualMachine {
                 // Ruby validates the name before it checks whether the
                 // receiver is frozen, so `"".instance_variable_set(:c, 1)`
                 // raises NameError rather than FrozenError.
-                let var_name = self.coerce_instance_variable_name(&arguments[0], position)?;
+                let var_name =
+                    self.coerce_instance_variable_name(&arguments[0], receiver, position)?;
                 let value = arguments[1].clone();
                 match receiver {
                     Object::Instance(instance_rc) => {
@@ -1563,6 +1605,31 @@ impl VirtualMachine {
                         // a class can deep-copy what the shallow copy shared.
                         if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
                             && !method.is_undefined
+                        {
+                            self.invoke_method(
+                                class,
+                                method,
+                                copy.clone(),
+                                vec![receiver.clone()],
+                                position,
+                            )?;
+                        }
+                        Ok(Some(copy))
+                    }
+                    // An exception copies its message, backtrace, cause, and
+                    // instance variables. `dup` leaves the singleton class
+                    // behind, so a method defined on the original is not on
+                    // the copy.
+                    Object::Exception(details) => {
+                        let copy = {
+                            // The backtrace Array is shared with the original,
+                            // the way Ruby's copy shares it.
+                            let copied = details.borrow().clone();
+                            Object::Exception(std::rc::Rc::new(std::cell::RefCell::new(copied)))
+                        };
+                        if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
+                            && !method.is_undefined
+                            && !method.body.is_empty()
                         {
                             self.invoke_method(
                                 class,

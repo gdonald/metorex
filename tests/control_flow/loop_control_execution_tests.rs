@@ -298,16 +298,26 @@ finish = Class.new StopIteration
 begin
   raise finish
 rescue StopIteration => error
+  error.class.equal? finish
+end
+"#,
+    );
+    assert_eq!(result, Some(Object::Bool(true)));
+}
+
+#[test]
+fn an_anonymous_exception_subclass_has_no_class_name() {
+    let result = run_source(
+        r#"
+finish = Class.new StopIteration
+begin
+  raise finish
+rescue StopIteration => error
   error.class.name
 end
 "#,
     );
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new(
-            "StopIteration".to_string()
-        )))
-    );
+    assert_eq!(result, Some(Object::Nil));
 }
 
 // ── throw arity and tap without a block ──────────────────────────────────────

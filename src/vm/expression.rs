@@ -16,7 +16,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
-use super::errors::index_out_of_bounds_error;
 use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
@@ -107,11 +106,17 @@ impl VirtualMachine {
             Object::Array(elements_rc) => match key {
                 Object::Int(index) => {
                     let elements = elements_rc.borrow();
-                    if index < 0 || (index as usize) >= elements.len() {
-                        Err(index_out_of_bounds_error(index, elements.len(), position))
+                    // A negative index counts back from the end, and one past
+                    // either end answers nil rather than raising.
+                    let offset = if index < 0 {
+                        match elements.len().checked_sub(index.unsigned_abs() as usize) {
+                            Some(offset) => offset,
+                            None => return Ok(Object::Nil),
+                        }
                     } else {
-                        Ok(elements[index as usize].clone())
-                    }
+                        index as usize
+                    };
+                    Ok(elements.get(offset).cloned().unwrap_or(Object::Nil))
                 }
                 // `ary[range]` answers the slice the range covers. A negative
                 // bound counts from the end, and a start past the end answers

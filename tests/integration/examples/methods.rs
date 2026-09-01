@@ -86,14 +86,14 @@ fn test_methods_anonymous_block_parameter_execution() {
 
 #[test]
 fn test_methods_singleton_keyword_method_names() {
-    let expected = concat!("Integer\nopened\nnot really\n42\nshoveled log\ntrue\nFloat\ntrue\n");
+    let expected = "Integer\nopened\nnot really\n42\nshoveled log\ntrue\nFloat\ntrue\n";
     let output = run_example("methods/singleton_keyword_method_names.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_methods_singleton_keyword_method_names_no_parens() {
-    let expected = concat!("Integer\nopened\nnot really\n42\nshoveled log\ntrue\nFloat\ntrue\n");
+    let expected = "Integer\nopened\nnot really\n42\nshoveled log\ntrue\nFloat\ntrue\n";
     let output = run_example("methods/singleton_keyword_method_names_no_parens.rb");
     assert_eq!(output, expected);
 }
