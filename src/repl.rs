@@ -242,6 +242,7 @@ impl ReplCore {
             Object::Nil => "nil".to_string(),
             Object::Bool(b) => b.to_string(),
             Object::Int(i) => i.to_string(),
+            Object::BigInt(i) => i.to_string(),
             Object::Float(f) => {
                 if f.fract() == 0.0 && f.is_finite() {
                     format!("{:.1}", f)

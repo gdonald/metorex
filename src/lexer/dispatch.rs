@@ -163,11 +163,18 @@ impl<'a> Lexer<'a> {
                     Token::new(TokenKind::Less, position)
                 }
             }
+            '~' => {
+                self.advance();
+                Token::new(TokenKind::Tilde, position)
+            }
             '>' => {
                 self.advance();
                 if self.peek() == Some('=') {
                     self.advance();
                     Token::new(TokenKind::GreaterEqual, position)
+                } else if self.peek() == Some('>') {
+                    self.advance();
+                    Token::new(TokenKind::RightShift, position)
                 } else {
                     Token::new(TokenKind::Greater, position)
                 }

@@ -121,13 +121,21 @@ impl VirtualMachine {
             if let Some(method) = module_level_method(&class_rc, method_name) {
                 let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
                 if is_explicit_receiver && self.method_is_restricted(&receiver, method_name) {
+                    if let Some(handled) = self.restricted_call_via_method_missing(
+                        &receiver,
+                        method_name,
+                        &arguments,
+                        position,
+                    ) {
+                        return handled;
+                    }
                     let msg = format!(
                         "private method '{}' called for {}",
                         method_name,
                         class_rc.ruby_name()
                     );
                     return Err(MetorexError::UncaughtException {
-                        exception: Object::exception("NoMethodError", msg.clone()),
+                        exception: crate::vm::errors::no_method_error(&msg, method_name, &receiver),
                         location: crate::vm::utils::position_to_location(position),
                         message: msg,
                     });
@@ -167,12 +175,20 @@ impl VirtualMachine {
                     }
                 }
                 if is_explicit_receiver && is_private {
+                    if let Some(handled) = self.restricted_call_via_method_missing(
+                        &receiver,
+                        method_name,
+                        &arguments,
+                        position,
+                    ) {
+                        return handled;
+                    }
                     let msg = format!(
                         "private method '{}' called for an instance of {}",
                         method_name,
                         class.name()
                     );
-                    let exc = Object::exception("NoMethodError", msg.clone());
+                    let exc = crate::vm::errors::no_method_error(&msg, method_name, &receiver);
                     return Err(MetorexError::UncaughtException {
                         exception: exc,
                         location: crate::vm::utils::position_to_location(position),
@@ -191,13 +207,22 @@ impl VirtualMachine {
             && !matches!(receiver_expr, Expression::SelfExpr { .. })
             && self.method_is_restricted(&receiver, method_name)
         {
+            let class_rc = Rc::clone(class_rc);
+            if let Some(handled) = self.restricted_call_via_method_missing(
+                &receiver,
+                method_name,
+                &arguments,
+                position,
+            ) {
+                return handled;
+            }
             let msg = format!(
                 "private method '{}' called for {}",
                 method_name,
                 class_rc.ruby_name()
             );
             return Err(MetorexError::UncaughtException {
-                exception: Object::exception("NoMethodError", msg.clone()),
+                exception: crate::vm::errors::no_method_error(&msg, method_name, &receiver),
                 location: crate::vm::utils::position_to_location(position),
                 message: msg,
             });
@@ -260,6 +285,32 @@ impl VirtualMachine {
         }
     }
 
+    /// A call that visibility refuses still reaches a user-defined
+    /// `method_missing`, which is where Ruby's default implementation turns
+    /// it into the NoMethodError. Answers None when nothing defines one, so
+    /// the caller raises the error itself.
+    fn restricted_call_via_method_missing(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Option<Result<Object, MetorexError>> {
+        let (owner, handler) = self.lookup_method(receiver, "method_missing")?;
+        if handler.is_undefined {
+            return None;
+        }
+        let mut handler_arguments = vec![Object::Symbol(Rc::new(method_name.to_string()))];
+        handler_arguments.extend(arguments.iter().cloned());
+        Some(self.invoke_method(
+            owner,
+            handler,
+            receiver.clone(),
+            handler_arguments,
+            position,
+        ))
+    }
+
     /// Look up a method on the receiver and return its class and method definition.
     /// Whether the current `self` is a class or module object, i.e. execution
     /// is inside a class or module body rather than at the top level.
@@ -297,8 +348,8 @@ impl VirtualMachine {
                 None => crate::vm::native_methods::is_native_kernel_method(name),
             };
         };
-        if module_level_method(class_rc, name).is_some() {
-            return true;
+        if let Some(method) = module_level_method(class_rc, name) {
+            return !method.is_undefined;
         }
         let mut cursor = Some(Rc::clone(class_rc));
         while let Some(current) = cursor {

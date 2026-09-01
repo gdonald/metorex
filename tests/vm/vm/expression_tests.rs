@@ -324,7 +324,7 @@ fn invalid_binary_operands_raise_type_error() {
 }
 
 #[test]
-fn division_by_zero_raises_runtime_error() {
+fn division_by_zero_raises_zero_division_error() {
     let mut vm = VirtualMachine::new();
     let statements = vec![Statement::Expression {
         expression: Expression::BinaryOp {
@@ -337,14 +337,10 @@ fn division_by_zero_raises_runtime_error() {
     }];
 
     match vm.execute_program(&statements) {
-        Err(MetorexError::RuntimeError { message, .. }) => {
-            assert!(
-                message.contains("Division by zero"),
-                "unexpected {}",
-                message
-            );
+        Err(MetorexError::UncaughtException { message, .. }) => {
+            assert!(message.contains("divided by 0"), "unexpected {}", message);
         }
-        other => panic!("expected runtime error, got {:?}", other),
+        other => panic!("expected ZeroDivisionError, got {:?}", other),
     }
 }
 

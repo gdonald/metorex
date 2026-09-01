@@ -349,6 +349,34 @@ impl VirtualMachine {
                     other => Ok(Object::Array(Rc::new(RefCell::new(vec![other])))),
                 }
             }
+            // An integer literal past the i64 range, parsed exactly.
+            Expression::BigIntLiteral { digits, position } => {
+                match num_bigint::BigInt::parse_bytes(digits.as_bytes(), 10) {
+                    Some(value) => Ok(Object::integer(value)),
+                    None => Err(MetorexError::runtime_error(
+                        format!("invalid integer literal '{}'", digits),
+                        position_to_location(*position),
+                    )),
+                }
+            }
+            // `::Name` reads the top level directly, skipping the lexical
+            // chain and any class-local constant of the same name.
+            Expression::TopLevelConstant { name, position } => {
+                if let Some(value) = self.globals().get(name) {
+                    return Ok(value);
+                }
+                if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                    && let Some(value) = object_class.get_class_var(name)
+                {
+                    return Ok(value);
+                }
+                let message = format!("uninitialized constant {}", name);
+                Err(MetorexError::UncaughtException {
+                    exception: Object::exception("NameError", message.clone()),
+                    location: position_to_location(*position),
+                    message,
+                })
+            }
             Expression::KeywordSplat { expression, .. } => {
                 // Outside of an argument list, `**expr` is just `expr`.
                 self.evaluate_expression(expression)

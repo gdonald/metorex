@@ -292,7 +292,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.28. core/kernel/display_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
   - [x] 4.8.29. core/kernel/dup_spec — 1 file, 18 examples, 23 expectations, 0 failures, 0 errors
   - [x] 4.8.30. core/kernel/enum_for_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
-  - [ ] 4.8.31. core/kernel/eql_spec
+  - [x] 4.8.31. core/kernel/eql_spec - 1 file, 9 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.8.32. core/kernel/equal_value_spec — 1 file, 1 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.8.33. core/kernel/eval_spec
   - [ ] 4.8.34. core/kernel/exec_spec
@@ -327,7 +327,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.63. core/kernel/methods_spec — 1 file, 18 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.8.64. core/kernel/nil_spec — 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [x] 4.8.65. core/kernel/not_match_spec — 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
-  - [ ] 4.8.66. core/kernel/object_id_spec
+  - [x] 4.8.66. core/kernel/object_id_spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
   - [ ] 4.8.67. core/kernel/open_spec
   - [ ] 4.8.68. core/kernel/p_spec
   - [ ] 4.8.69. core/kernel/pp_spec
@@ -381,20 +381,20 @@ Parser fixes during Phase 4 work:
   - [ ] 4.8.117. core/kernel/warn_spec - 32 examples, 43 expectations, 0 failures, 4 errors; the last 4 shell out through IO.popen
   - [x] 4.8.118. core/kernel/yield_self_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
 - [ ] 4.9. core/basicobject
-  - [ ] 4.9.1. core/basicobject/__id__spec - 13 examples, 13 expectations, 1 failure, 0 errors; its Bignum example needs arbitrary-precision integers
-  - [ ] 4.9.2. core/basicobject/__send___spec
-  - [ ] 4.9.3. core/basicobject/basicobject_spec
-  - [ ] 4.9.4. core/basicobject/equal_spec
-  - [ ] 4.9.5. core/basicobject/equal_value_spec
-  - [ ] 4.9.6. core/basicobject/initialize_spec
-  - [ ] 4.9.7. core/basicobject/instance_eval_spec
-  - [ ] 4.9.8. core/basicobject/instance_exec_spec
-  - [ ] 4.9.9. core/basicobject/method_missing_spec
-  - [ ] 4.9.10. core/basicobject/not_equal_spec
-  - [ ] 4.9.11. core/basicobject/not_spec
-  - [ ] 4.9.12. core/basicobject/singleton_method_added_spec
-  - [ ] 4.9.13. core/basicobject/singleton_method_removed_spec
-  - [ ] 4.9.14. core/basicobject/singleton_method_undefined_spec
+  - [x] 4.9.1. core/basicobject/__id__spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.9.2. core/basicobject/__send___spec - 1 file, 15 examples, 22 expectations, 0 failures, 0 errors
+  - [ ] 4.9.3. core/basicobject/basicobject_spec - 14 examples, 14 expectations, 0 failures, 1 error; its method_missing example shells out through IO.popen
+  - [x] 4.9.4. core/basicobject/equal_spec - 1 file, 13 examples, 24 expectations, 0 failures, 0 errors
+  - [x] 4.9.5. core/basicobject/equal_value_spec - 1 file, 9 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.9.6. core/basicobject/initialize_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [ ] 4.9.7. core/basicobject/instance_eval_spec - 41 examples, 48 expectations, 18 failures, 6 errors; needs a default definee separate from the lexical scope, eval source locations, and block-local scoping
+  - [ ] 4.9.8. core/basicobject/instance_exec_spec - 16 examples, 20 expectations, 2 failures, 0 errors; both need a default definee separate from the lexical scope
+  - [x] 4.9.9. core/basicobject/method_missing_spec - 1 file, 30 examples, 30 expectations, 0 failures, 0 errors
+  - [x] 4.9.10. core/basicobject/not_equal_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.9.11. core/basicobject/not_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.9.12. core/basicobject/singleton_method_added_spec - 1 file, 11 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.9.13. core/basicobject/singleton_method_removed_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.9.14. core/basicobject/singleton_method_undefined_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
 
 ### Exceptions and Signals
 

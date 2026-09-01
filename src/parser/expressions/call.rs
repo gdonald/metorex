@@ -490,6 +490,7 @@ impl Parser {
             self.peek().kind,
             TokenKind::Ident(_)
                 | TokenKind::Int(_)
+                | TokenKind::BigInt(_)
                 | TokenKind::Rational(_, _)
                 | TokenKind::Imaginary(_)
                 | TokenKind::Float(_)
@@ -611,6 +612,7 @@ impl Parser {
                 self.peek().kind,
                 TokenKind::Ident(_)
                     | TokenKind::Int(_)
+                    | TokenKind::BigInt(_)
                     | TokenKind::Rational(_, _)
                     | TokenKind::Imaginary(_)
                     | TokenKind::Float(_)

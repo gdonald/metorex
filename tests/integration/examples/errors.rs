@@ -194,3 +194,31 @@ fn test_errors_kernel_raise_method_parens() {
     let output = run_example("errors/kernel_raise_method_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_rescue_modifier_fallbacks_execution() {
+    let expected = concat!(
+        "nil\n",
+        "caught\n",
+        "1\n",
+        ":inline\n",
+        "boom\n",
+        "propagated: fatal\n"
+    );
+    let output = run_example("rescue/modifier/fallbacks.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_rescue_modifier_fallbacks_parens_execution() {
+    let expected = concat!(
+        "nil\n",
+        "caught\n",
+        "1\n",
+        ":inline\n",
+        "boom\n",
+        "propagated: fatal\n"
+    );
+    let output = run_example("rescue/modifier/fallbacks_parens.rb");
+    assert_eq!(output, expected);
+}

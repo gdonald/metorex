@@ -435,7 +435,7 @@ fn object_methods_returns_array() {
 #[test]
 fn object_send_non_string_method_name_error() {
     let err = run_err(r#"42.send(123)"#);
-    assert!(err.contains("String") || err.contains("Symbol") || err.contains("argument"));
+    assert!(err.contains("123 is not a symbol nor a string"));
 }
 
 // ── object_methods.rs: send dispatching native method (lines 370-376) ─────
@@ -535,9 +535,14 @@ fn object_instance_exec_without_block_error() {
 }
 
 #[test]
-fn object_instance_eval_without_block_error() {
+fn object_instance_eval_without_block_or_source_error() {
+    // With neither a block nor a source string there is nothing to run, so
+    // Ruby reports the missing argument.
     let err = run_err(r#"42.instance_eval"#);
-    assert!(err.contains("block") || err.contains("requires"));
+    assert!(
+        err.contains("wrong number of arguments (given 0, expected 1..3)"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── !~ dispatches =~ ─────────────────────────────────────────────────────────

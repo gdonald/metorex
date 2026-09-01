@@ -37,6 +37,8 @@ pub struct Exception {
     pub status: Option<i64>,
     /// Offending name (used by NameError / NoMethodError)
     pub name: Option<String>,
+    /// The object the call was made on (used by NameError / NoMethodError).
+    pub receiver: Option<Box<Object>>,
 }
 
 impl Exception {
@@ -50,6 +52,7 @@ impl Exception {
             cause: None,
             status: None,
             name: None,
+            receiver: None,
         }
     }
 
@@ -63,6 +66,7 @@ impl Exception {
             cause: None,
             status: None,
             name: None,
+            receiver: None,
         }
     }
 
@@ -80,6 +84,7 @@ impl Exception {
             cause: None,
             status: None,
             name: None,
+            receiver: None,
         }
     }
 
@@ -93,6 +98,7 @@ impl Exception {
             cause: Some(Box::new(cause)),
             status: None,
             name: None,
+            receiver: None,
         }
     }
 
@@ -112,6 +118,7 @@ impl Exception {
             cause: cause.map(Box::new),
             status: None,
             name: None,
+            receiver: None,
         }
     }
 

@@ -42,6 +42,27 @@ impl VirtualMachine {
         name: &str,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // A class that does not descend from Object never reaches top-level
+        // constants: Ruby finds them among Object's own, which such a class
+        // does not inherit. Only the lexical chain answers there.
+        if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+            && !self.lexical_scope_reaches_top_level()
+        {
+            for enclosing in self.def_scope_stack.iter().rev() {
+                if let Some(val) = enclosing.get_class_var(name) {
+                    return Ok(val);
+                }
+                if enclosing.name() == name {
+                    return Ok(Object::Class(Rc::clone(enclosing)));
+                }
+            }
+            let message = format!("uninitialized constant {}", name);
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("NameError", message.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message,
+            });
+        }
         if let Some(val) = self.environment().get(name) {
             // A method on `self` wins over a same-named Kernel function, so a
             // bare `to_s` inside a class reaches that class's `to_s` rather

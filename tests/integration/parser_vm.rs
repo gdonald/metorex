@@ -230,7 +230,7 @@ fn undefined_variable_error() {
 fn division_by_zero_error() {
     let err = run_err("1 / 0");
     assert!(
-        err.contains("zero") || err.contains("Zero"),
+        err.contains("divided by 0"),
         "Expected division by zero error, got: {}",
         err
     );

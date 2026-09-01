@@ -105,3 +105,68 @@ fn int_to_s_method() {
 "#);
     assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
 }
+
+#[test]
+fn integer_shift_left_wrong_argument_type() {
+    let error = run_err("1 << \"three\"");
+    assert!(error.contains("Integer"));
+}
+
+#[test]
+fn integer_shift_right_wrong_argument_count() {
+    let error = run_err("8.send(:>>, 1, 2)");
+    assert!(error.contains("argument"));
+}
+
+#[test]
+fn integer_complement_takes_no_arguments() {
+    let error = run_err("5.send(:~, 1)");
+    assert!(error.contains("argument"));
+}
+
+#[test]
+fn integer_bit_length_takes_no_arguments() {
+    let error = run_err("5.bit_length(1)");
+    assert!(error.contains("argument"));
+}
+
+#[test]
+fn integer_shift_saturates_past_the_word_width() {
+    assert_eq!(run("1 << 200"), Some(Object::Int(0)));
+    assert_eq!(run("-1 >> 200"), Some(Object::Int(-1)));
+}
+
+#[test]
+fn big_integer_normalizes_back_to_a_machine_word() {
+    // (2**64) - (2**64) fits in an i64 again, so nothing downstream sees a
+    // wide value holding a small number.
+    let result = run("((2 ** 64) - (2 ** 64)).to_s");
+    assert_eq!(result, Some(Object::string("0")));
+}
+
+#[test]
+fn big_integer_power_stays_exact() {
+    let result = run("(2 ** 100).to_s");
+    assert_eq!(
+        result,
+        Some(Object::string("1267650600228229401496703205376"))
+    );
+}
+
+#[test]
+fn big_integer_divmod_floors_toward_negative_infinity() {
+    let result = run("(-(2 ** 64)).divmod(1000).inspect");
+    assert_eq!(result, Some(Object::string("[-18446744073709552, 384]")));
+}
+
+#[test]
+fn big_integer_shift_argument_must_be_an_integer() {
+    let error = run_err("(2 ** 64) << \"two\"");
+    assert!(error.contains("Integer"), "unexpected error: {error}");
+}
+
+#[test]
+fn big_integer_divmod_by_zero_raises() {
+    let error = run_err("(2 ** 64).divmod(0)");
+    assert!(error.contains("divided by 0"), "unexpected error: {error}");
+}

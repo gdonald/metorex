@@ -12,6 +12,19 @@ impl VirtualMachine {
     /// expressions, or `nil` for undefined ones.
     pub(crate) fn eval_defined(&mut self, expression: &Expression) -> Result<Object, MetorexError> {
         let result = match expression {
+            // A constant named inside a class that does not descend from
+            // Object is undefined there, however the top level binds it.
+            Expression::Identifier { name, .. }
+                if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
+                    && !self.lexical_scope_reaches_top_level() =>
+            {
+                let found = self
+                    .def_scope_stack
+                    .iter()
+                    .rev()
+                    .any(|enclosing| enclosing.get_class_var(name).is_some());
+                if found { Some("constant") } else { None }
+            }
             Expression::Identifier { name, .. } => match self.environment().get(name) {
                 Some(Object::Method(_)) => Some("method"),
                 Some(Object::Class(_)) | Some(Object::Module(_)) => Some("constant"),

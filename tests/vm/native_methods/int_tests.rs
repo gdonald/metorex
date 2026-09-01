@@ -103,7 +103,7 @@ fn modulo_operator_edge() {
 #[test]
 fn divide_by_zero_int_edge() {
     let err = run_err("1 / 0");
-    assert!(err.contains("zero") || err.contains("Division"));
+    assert!(err.contains("divided by 0"));
 }
 
 // ── From remaining_tests ────────────────────────────────────────────────────

@@ -842,3 +842,173 @@ fn test_metaprogramming_define_singleton_method_sources_execution() {
     let output = run_example("metaprogramming/define_singleton_method_sources.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_metaprogramming_instance_eval_source_execution() {
+    let expected = concat!(
+        "42\n42\nHOLA\n",
+        "wrong number of arguments (given 2, expected 0)\n",
+        "wrong number of arguments (given 0, expected 1..3)\n",
+        "wrong number of arguments (given 4, expected 1..3)\n"
+    );
+    let output = run_example("metaprogramming/instance_eval_source/strings.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_instance_eval_source_parens_execution() {
+    let expected = concat!(
+        "42\n42\nHOLA\n",
+        "wrong number of arguments (given 2, expected 0)\n",
+        "wrong number of arguments (given 0, expected 1..3)\n",
+        "wrong number of arguments (given 4, expected 1..3)\n"
+    );
+    let output = run_example("metaprogramming/instance_eval_source/strings_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_instance_exec_receivers_execution() {
+    let expected = concat!(
+        "7\n10\n3\n",
+        "no block given (yield)\n",
+        "can't define singleton\n",
+        "can't define singleton\n",
+        "-1\n-1\n"
+    );
+    let output = run_example("metaprogramming/instance_exec/receivers.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_instance_exec_receivers_parens_execution() {
+    let expected = concat!(
+        "7\n10\n3\n",
+        "no block given (yield)\n",
+        "can't define singleton\n",
+        "can't define singleton\n",
+        "-1\n-1\n"
+    );
+    let output = run_example("metaprogramming/instance_exec/receivers_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_method_missing_visibility_execution() {
+    let expected = concat!(
+        "handled hidden with []\n",
+        "handled shielded with [1, 2]\n",
+        "handled absent with [:arg]\n",
+        "private method 'hidden' called for an instance of Plain\n",
+        ":hidden\n",
+        "true\n",
+        "undefined method 'absent' for an instance of Passthrough\n",
+        ":absent\n"
+    );
+    let output = run_example("metaprogramming/method_missing/visibility.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_method_missing_visibility_parens_execution() {
+    let expected = concat!(
+        "handled hidden with []\n",
+        "handled shielded with [1, 2]\n",
+        "handled absent with [:arg]\n",
+        "private method 'hidden' called for an instance of Plain\n",
+        ":hidden\n",
+        "true\n",
+        "undefined method 'absent' for an instance of Passthrough\n",
+        ":absent\n"
+    );
+    let output = run_example("metaprogramming/method_missing/visibility_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_singleton_hooks_added_execution() {
+    let expected = concat!(
+        "object gained singleton_method_added\n",
+        "object gained by_def\n",
+        "object gained in_singleton_body\n",
+        "object gained aliased\n",
+        "object gained by_define_method\n",
+        "object gained by_define_singleton_method\n",
+        "Host gained singleton_method_added\n",
+        "Host gained class_side\n",
+        "1\n",
+        "true\n"
+    );
+    let output = run_example("metaprogramming/singleton_hooks/added.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_singleton_hooks_added_parens_execution() {
+    let expected = concat!(
+        "object gained singleton_method_added\n",
+        "object gained by_def\n",
+        "object gained in_singleton_body\n",
+        "object gained aliased\n",
+        "object gained by_define_method\n",
+        "object gained by_define_singleton_method\n",
+        "Host gained singleton_method_added\n",
+        "Host gained class_side\n",
+        "1\n",
+        "true\n"
+    );
+    let output = run_example("metaprogramming/singleton_hooks/added_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_singleton_hooks_removed_execution() {
+    let expected = concat!(
+        "class lost to_remove\n",
+        "false\n",
+        "object lost gone\n",
+        "false\n",
+        "NameError\n"
+    );
+    let output = run_example("metaprogramming/singleton_hooks/removed.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_singleton_hooks_removed_parens_execution() {
+    let expected = concat!(
+        "class lost to_remove\n",
+        "false\n",
+        "object lost gone\n",
+        "false\n",
+        "NameError\n"
+    );
+    let output = run_example("metaprogramming/singleton_hooks/removed_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_singleton_hooks_undefined_execution() {
+    let expected = concat!(
+        "true\n",
+        "class undefined to_undefine\n",
+        "false\n",
+        "NoMethodError after undef\n",
+        "NameError\n"
+    );
+    let output = run_example("metaprogramming/singleton_hooks/undefined.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_singleton_hooks_undefined_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "class undefined to_undefine\n",
+        "false\n",
+        "NoMethodError after undef\n",
+        "NameError\n"
+    );
+    let output = run_example("metaprogramming/singleton_hooks/undefined_parens.rb");
+    assert_eq!(output, expected);
+}

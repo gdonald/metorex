@@ -15,6 +15,7 @@ impl<'a> Lexer<'a> {
                 // Value-producing tokens: / after these is division
                 TokenKind::Ident(_)
                     | TokenKind::Int(_)
+                    | TokenKind::BigInt(_)
                     | TokenKind::Float(_)
                     | TokenKind::String(_)
                     | TokenKind::InterpolatedString(_)

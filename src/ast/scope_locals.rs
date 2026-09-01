@@ -205,6 +205,7 @@ fn collect_target(target: &Expression, names: &mut Vec<String>) {
 
 fn walk_expression(expr: &Expression, names: &mut Vec<String>) {
     match expr {
+        Expression::TopLevelConstant { .. } | Expression::BigIntLiteral { .. } => {}
         Expression::BinaryOp {
             op, left, right, ..
         } => {

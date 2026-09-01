@@ -375,6 +375,8 @@ impl Compiler {
             | Expression::RegexLiteral { position, .. }
             | Expression::Splat { position, .. }
             | Expression::KeywordSplat { position, .. }
+            | Expression::TopLevelConstant { position, .. }
+            | Expression::BigIntLiteral { position, .. }
             | Expression::BlockArg { position, .. }
             | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }

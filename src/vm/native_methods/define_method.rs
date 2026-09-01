@@ -278,13 +278,13 @@ fn raise(class_name: &str, message: &str, position: Position) -> MetorexError {
     }
 }
 
-/// Ruby-visible class name, used in the "wrong argument type" message.
-fn ruby_class_name(object: &Object) -> &'static str {
+/// Ruby-visible class name, used wherever a message names an object's class.
+pub(crate) fn ruby_class_name(object: &Object) -> &'static str {
     match object {
         Object::Nil => "NilClass",
         Object::Bool(true) => "TrueClass",
         Object::Bool(false) => "FalseClass",
-        Object::Int(_) => "Integer",
+        Object::Int(_) | Object::BigInt(_) => "Integer",
         Object::Float(_) => "Float",
         Object::String(_) => "String",
         Object::Symbol(_) => "Symbol",

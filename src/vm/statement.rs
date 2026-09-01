@@ -166,9 +166,28 @@ impl VirtualMachine {
                 body,
                 *position,
             ),
-            Statement::MethodDef { .. } => {
-                // MethodDef should only appear inside ClassDef bodies, not at top level
-                Err(unimplemented_statement_error(statement))
+            // A `def` nested inside a block or a `begin` within a class body
+            // reaches here rather than the class-body walk, so it installs on
+            // the innermost lexical class the same way that walk would.
+            Statement::MethodDef {
+                name,
+                parameters,
+                body,
+                is_class_method,
+                position,
+            } => {
+                let Some(target) = self.def_scope_stack.last().cloned() else {
+                    return Err(unimplemented_statement_error(statement));
+                };
+                let _ = (parameters, body, is_class_method);
+                self.apply_class_body_statements(
+                    &target,
+                    std::slice::from_ref(statement),
+                    *position,
+                )?;
+                Ok(ControlFlow::Value(Object::Symbol(std::rc::Rc::new(
+                    name.clone(),
+                ))))
             }
             Statement::Begin {
                 body,
@@ -349,6 +368,23 @@ impl VirtualMachine {
                 }
                 Ok(())
             }
+            // `::Name = value` binds at the top level whatever class or
+            // module body the assignment sits in.
+            Expression::TopLevelConstant { name, position } => {
+                if let Object::Class(bound) | Object::Module(bound) = &value {
+                    bound.set_assigned_name_if_anonymous(name);
+                }
+                let assign_file = self
+                    .get_current_file()
+                    .map(|path| path.display().to_string())
+                    .unwrap_or_default();
+                self.globals_mut().set(name.clone(), value.clone());
+                if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                    object_class.set_class_var(name, value);
+                    object_class.set_const_location(name, assign_file, position.line as i64);
+                }
+                Ok(())
+            }
             Expression::InstanceVariable { name, position } => {
                 // Instance variables can only be set within a method (where 'self' is defined)
                 match self.environment().get("self") {
@@ -381,7 +417,11 @@ impl VirtualMachine {
                     // non-instance selves are always frozen; assigning an ivar
                     // raises FrozenError to match Ruby.
                     Some(other) => {
-                        let msg = format!("can't modify frozen {}: {}", other.type_name(), other);
+                        // The Ruby class name, not the internal tag: Ruby
+                        // reports `NilClass`, never `Nil`.
+                        let class_name =
+                            crate::vm::native_methods::define_method::ruby_class_name(&other);
+                        let msg = format!("can't modify frozen {}: {}", class_name, other);
                         let exc = Object::exception("FrozenError", msg.clone());
                         Err(MetorexError::UncaughtException {
                             exception: exc,

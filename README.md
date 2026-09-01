@@ -262,6 +262,27 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `Method#source_location` answers `[path, lineno]`, and a bare `method(:name)` inside an instance method resolves against `self`
 - `Enumerator` steps through the values a method yields: `to_enum`/`enum_for` build one over any method that yields, `next` and `peek` walk it, `rewind` restarts it, and running past the end raises `StopIteration`. A method that yields answers one when called without a block, which is what `then` and `yield_self` return
 - A method body and a class body each own their locals. An assignment inside one defines a new local there rather than reaching a same-named variable outside it, and a block still sees and assigns the locals of the scope it was written in
+- `send`, `__send__`, and `public_send` raise `ArgumentError` with no method name and `TypeError` for a name that is neither a Symbol nor a String. `BasicObject` reports its own instance methods, `__id__` and `__send__` among them
+- `super` from a method defined in an anonymous module reaches the next module in the chain, because each running method records the module it was defined in rather than being placed by name
+- A splat inside an array literal splices its elements in place, so `[first, *rest]` flattens the one level Ruby flattens
+- A class descending from `BasicObject` does not reach top-level constants, since Ruby finds those among Object's own. A leading `::` reads the top level directly, in a reference, in an `include`, and on the left of an assignment
+- `Object.constants` lists every top-level constant, `BasicObject` holds the constant naming itself, and `instance_of?` reports a Class as an instance of `Class` and a Module of `Module`
+- Integer bit operations: `<<` and `>>` shift (a negative count shifts the other way, and a count past the word width leaves 0 or the sign bit), `~` complements, and `bit_length` counts the bits a value needs. `:>>` and `:~` are symbol names like any other operator
+- The default `initialize` takes no arguments, so `new` given any raises `ArgumentError`. Every arity error reads the way Ruby's does: `wrong number of arguments (given 0, expected 2)`, `(given 0, expected 1..2)` when a parameter has a default, and `(given 0, expected 1+)` when one is variadic
+- Integers are arbitrary precision. A literal, a sum, a product, or a power past the machine word keeps its exact value rather than saturating or turning into a Float, and a result that fits again narrows back, so `(2 ** 64) - (2 ** 64)` is the same `0` any other expression produces. Comparison, sorting, `divmod`, the shifts, `abs`, `bit_length`, `Float#to_i`, `Kernel#Integer`, and `Rational` are all exact at any size. Two separately built values of the same large size are separate objects, as Ruby's are
+- Dividing by zero raises `ZeroDivisionError` reading `divided by 0`
+- `expr rescue fallback` answers the fallback when the expression raises a `StandardError`. On the right of an assignment the modifier binds to the value, so `value = risky rescue nil` assigns nil
+- `instance_eval` takes source as well as a block: either runs with `self` bound to the receiver. The block form yields the receiver and takes no other arguments, the source form takes one to three
+- `raise(SomeError, "message")` parses with parentheses, not only in its paren-less form
+- `instance_exec` raises `LocalJumpError` without a block, reports an arity of -1, and refuses a `def` in a block run against an immediate, where a singleton method cannot exist
+- A call that visibility refuses reaches a user-defined `method_missing` before raising, the way Ruby's does, and `super` from an override of it raises the NoMethodError the default would
+- `NoMethodError` and `NameError` carry `#name` and `#receiver`, so a rescue can tell which method was called and on what
+- `!=` is the negation of `==`, so a class that defines only `==` gets both, and `send(:!=, other)` reaches the same definition
+- `singleton_method_added` fires for every way a singleton method arrives: `def obj.name`, a `class << obj` body, `alias`, `alias_method`, `define_method`, and `define_singleton_method`. Undefining the hook makes the next definition raise `NoMethodError`, or reach `method_missing` when one is defined
+- A `class << obj` body answers with its own last value rather than re-running the last statement, so a side effect there happens once
+- A `def` nested inside a block or a `begin` within a class body installs on that class, where it used to be an internal error
+- `singleton_method_removed` fires when a singleton method goes, and `remove_method` in a `class << Klass` body reaches a method that `def Klass.name` put there
+- `singleton_method_undefined` fires the same way for `undef_method`, which retires the method so `respond_to?` answers false and a call raises `NoMethodError`
 - `eval` and `parse` for runtime code execution and AST inspection
 - `get_source` for runtime method introspection
 - AST Inspection API: `Method#body`, `Block#statements`, node type/property access

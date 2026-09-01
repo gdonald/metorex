@@ -208,7 +208,7 @@ Widget.itself.name
 #[test]
 fn itself_with_an_argument_raises_argument_error() {
     let error = run_err("Object.new.itself(1)");
-    assert!(error.contains("Method 'itself' expected 0 argument(s) but received 1"));
+    assert!(error.contains("wrong number of arguments (given 1, expected 0)"));
 }
 
 #[test]
@@ -799,7 +799,7 @@ end
 OneArgument.new.method(:only_name).call(1)
 "#,
     );
-    assert!(error.contains("expected 1 argument(s) but received 2"));
+    assert!(error.contains("wrong number of arguments (given 2, expected 1)"));
 }
 
 #[test]
@@ -1106,7 +1106,7 @@ fn private_methods_excludes_a_mixin_when_ancestors_are_excluded() {
 #[test]
 fn private_methods_rejects_extra_arguments() {
     let error = run_err("Object.new.private_methods(true, false)");
-    assert!(error.contains("expected 1 argument(s) but received 2"));
+    assert!(error.contains("wrong number of arguments (given 2, expected 1)"));
 }
 
 // ── =~ against a Symbol ──────────────────────────────────────────────────────
@@ -1253,7 +1253,7 @@ widget.protected_methods(false).inspect
 #[test]
 fn protected_methods_rejects_extra_arguments() {
     let error = run_err("Object.new.protected_methods(true, false)");
-    assert!(error.contains("expected 1 argument(s) but received 2"));
+    assert!(error.contains("wrong number of arguments (given 2, expected 1)"));
 }
 
 // ── Object#public_method ─────────────────────────────────────────────────────
@@ -1514,7 +1514,7 @@ fn divmod_rejects_a_non_numeric_divisor() {
 #[test]
 fn divmod_requires_one_argument() {
     let error = run_err("1.divmod");
-    assert!(error.contains("expected 1 argument(s) but received 0"));
+    assert!(error.contains("wrong number of arguments (given 0, expected 1)"));
 }
 
 // ── Kernel#remove_instance_variable ──────────────────────────────────────────

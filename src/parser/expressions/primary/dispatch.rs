@@ -17,6 +17,7 @@ impl Parser {
         match token.kind {
             // ── Literals ────────────────────────────────────────────────────
             TokenKind::Int(value) => Ok(literals::int_literal(value, position)),
+            TokenKind::BigInt(digits) => Ok(Expression::BigIntLiteral { digits, position }),
             TokenKind::Float(value) => Ok(literals::float_literal(value, position)),
             // `5r` is spelled out as the `Rational(5, 1)` it stands for.
             TokenKind::Rational(numerator, denominator) => Ok(Expression::Call {

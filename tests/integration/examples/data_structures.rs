@@ -98,3 +98,33 @@ fn test_data_structures_hash_ordering_no_parens() {
     let output = run_example("data_structures/hash_ordering_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_data_structures_array_splat_literals_execution() {
+    let expected = concat!(
+        "[:one]\n",
+        "[:one, :two, :three]\n",
+        "[1, 2, 3, 4]\n",
+        "[2, 3]\n",
+        "[]\n",
+        "[0, \"solo\"]\n",
+        "[[1, 2], [3]]\n"
+    );
+    let output = run_example("data_structures/array_splat/literals.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_data_structures_array_splat_literals_no_parens_execution() {
+    let expected = concat!(
+        "[:one]\n",
+        "[:one, :two, :three]\n",
+        "[1, 2, 3, 4]\n",
+        "[2, 3]\n",
+        "[]\n",
+        "[0, \"solo\"]\n",
+        "[[1, 2], [3]]\n"
+    );
+    let output = run_example("data_structures/array_splat/literals_no_parens.rb");
+    assert_eq!(output, expected);
+}

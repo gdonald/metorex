@@ -20,6 +20,11 @@ pub enum Object {
     /// 64-bit signed integer
     Int(i64),
 
+    /// An integer too large for `Int`. Ruby draws no line between the two, so
+    /// every result that fits in an i64 is normalized back to `Int` and this
+    /// variant only ever holds a value that does not.
+    BigInt(Rc<num_bigint::BigInt>),
+
     /// 64-bit floating point number
     Float(f64),
 
@@ -87,7 +92,7 @@ impl Object {
         match self {
             Object::Nil => "Nil",
             Object::Bool(_) => "Bool",
-            Object::Int(_) => "Int",
+            Object::Int(_) | Object::BigInt(_) => "Int",
             Object::Float(_) => "Float",
             Object::String(_) => "String",
             Object::Symbol(_) => "Symbol",

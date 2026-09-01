@@ -186,10 +186,18 @@ impl VirtualMachine {
         }
         use crate::class::Class;
         let chain = walk_ancestors(instance_class);
-        let defining_class = chain
-            .iter()
-            .find(|c| c.name() == class_name)
+        // The running method records the module it was defined in, which is
+        // the only way to place a method from an anonymous module or from one
+        // of two modules that share a name. Matching the frame's class name
+        // covers the cases where no owner was recorded.
+        let recorded_owner = self
+            .method_owner_stack
+            .last()
             .cloned()
+            .flatten()
+            .filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)));
+        let defining_class = recorded_owner
+            .or_else(|| chain.iter().find(|c| c.name() == class_name).cloned())
             .ok_or_else(|| {
                 MetorexError::runtime_error(
                     format!(
@@ -315,6 +323,28 @@ impl VirtualMachine {
                     Some(Object::NativeFunction(_))
                 ) {
                     return self.call_native_function(&method_name, evaluated_args, position);
+                }
+                // `super` from an override of `method_missing` reaches
+                // BasicObject's, whose whole job is to raise NoMethodError
+                // naming the method that was called.
+                if method_name == "method_missing" {
+                    let missing = match evaluated_args.first() {
+                        Some(Object::Symbol(name) | Object::String(name)) => (**name).clone(),
+                        Some(other) => other.to_string(),
+                        None => "method_missing".to_string(),
+                    };
+                    let message = format!(
+                        "undefined method '{}' for an instance of {}",
+                        missing,
+                        self.builtins().class_of(&self_val).name()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: crate::vm::errors::no_method_error(
+                            &message, &missing, &self_val,
+                        ),
+                        location: position_to_location(position),
+                        message,
+                    });
                 }
                 return Err(MetorexError::runtime_error(
                     format!(

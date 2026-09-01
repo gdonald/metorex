@@ -549,13 +549,13 @@ fn a_proc_fills_missing_arguments_with_nil() {
 #[test]
 fn a_lambda_rejects_extra_arguments() {
     let error = run_err("lambda { |a| a }.call(1, 2)");
-    assert!(error.contains("expected 1 argument(s) but received 2"));
+    assert!(error.contains("wrong number of arguments (given 2, expected 1)"));
 }
 
 #[test]
 fn a_lambda_rejects_missing_arguments() {
     let error = run_err("lambda { |a, b| a }.call(1)");
-    assert!(error.contains("expected 2 argument(s) but received 1"));
+    assert!(error.contains("wrong number of arguments (given 1, expected 2)"));
 }
 
 #[test]

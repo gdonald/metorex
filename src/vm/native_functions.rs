@@ -1347,6 +1347,7 @@ impl VirtualMachine {
                         cause: None,
                         status: Some(1),
                         name: None,
+                        receiver: None,
                     },
                 )));
                 Err(MetorexError::UncaughtException {

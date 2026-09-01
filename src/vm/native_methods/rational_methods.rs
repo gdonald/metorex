@@ -11,19 +11,27 @@ use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 /// Euclid's algorithm, used to put a Rational in lowest terms.
-pub(crate) fn greatest_common_divisor(a: i64, b: i64) -> i64 {
-    let (mut a, mut b) = (a.abs(), b.abs());
-    while b != 0 {
-        let remainder = a % b;
+pub(crate) fn greatest_common_divisor(
+    a: num_bigint::BigInt,
+    b: num_bigint::BigInt,
+) -> num_bigint::BigInt {
+    use num_bigint::BigInt;
+    let zero = BigInt::from(0);
+    let absolute = |value: BigInt| if value < zero { -value } else { value };
+    let (mut a, mut b) = (absolute(a), absolute(b));
+    while b != zero {
+        let remainder = &a % &b;
         a = b;
         b = remainder;
     }
-    if a == 0 { 1 } else { a }
+    if a == zero { BigInt::from(1) } else { a }
 }
 
 /// The numerator and denominator of a Rational instance, or None for anything
 /// that is not one.
-pub(crate) fn rational_parts(receiver: &Object) -> Option<(i64, i64)> {
+pub(crate) fn rational_parts(
+    receiver: &Object,
+) -> Option<(num_bigint::BigInt, num_bigint::BigInt)> {
     let Object::Instance(instance) = receiver else {
         return None;
     };
@@ -31,22 +39,21 @@ pub(crate) fn rational_parts(receiver: &Object) -> Option<(i64, i64)> {
     if instance.class.name() != "Rational" {
         return None;
     }
-    let numerator = match instance.instance_vars.get("numerator") {
-        Some(Object::Int(value)) => *value,
-        _ => return None,
-    };
-    let denominator = match instance.instance_vars.get("denominator") {
-        Some(Object::Int(value)) => *value,
-        _ => return None,
-    };
+    let numerator = instance.instance_vars.get("numerator")?.as_big_integer()?;
+    let denominator = instance
+        .instance_vars
+        .get("denominator")?
+        .as_big_integer()?;
     Some((numerator, denominator))
 }
 
 /// Read `value` as an exact fraction: integers and Rationals directly, floats
 /// through their decimal digits so `Rational(0.5)` is (1/2).
-fn as_fraction(value: &Object) -> Option<(i64, i64)> {
+fn as_fraction(value: &Object) -> Option<(num_bigint::BigInt, num_bigint::BigInt)> {
     match value {
-        Object::Int(number) => Some((*number, 1)),
+        Object::Int(_) | Object::BigInt(_) => {
+            Some((value.as_big_integer()?, num_bigint::BigInt::from(1)))
+        }
         Object::Float(number) if number.is_finite() => {
             let text = format!("{}", number);
             parse_decimal_fraction(&text)
@@ -56,7 +63,7 @@ fn as_fraction(value: &Object) -> Option<(i64, i64)> {
 }
 
 /// Turn a plain decimal string such as "-1.25" into the pair (-125, 100).
-fn parse_decimal_fraction(text: &str) -> Option<(i64, i64)> {
+fn parse_decimal_fraction(text: &str) -> Option<(num_bigint::BigInt, num_bigint::BigInt)> {
     let (whole, fraction) = text.split_once('.').unwrap_or((text, ""));
     if fraction.chars().any(|ch| !ch.is_ascii_digit()) {
         return None;
@@ -70,29 +77,35 @@ fn parse_decimal_fraction(text: &str) -> Option<(i64, i64)> {
         return None;
     }
     let digits = format!("{}{}", whole_digits, fraction);
-    let magnitude = digits.parse::<i64>().ok()?;
-    let denominator = 10i64.checked_pow(fraction.len() as u32)?;
+    let magnitude = num_bigint::BigInt::parse_bytes(digits.as_bytes(), 10)?;
+    let denominator = num_bigint::BigInt::from(10).pow(fraction.len() as u32);
     Some((if negative { -magnitude } else { magnitude }, denominator))
 }
 
 /// A finite float as an exact fraction, read from its decimal digits so
 /// `Rational(0.5)` is (1/2).
-pub(crate) fn float_fraction(value: f64) -> (i64, i64) {
-    parse_decimal_fraction(&format!("{}", value)).unwrap_or((value as i64, 1))
+pub(crate) fn float_fraction(value: f64) -> (num_bigint::BigInt, num_bigint::BigInt) {
+    parse_decimal_fraction(&format!("{}", value)).unwrap_or_else(|| {
+        (
+            num_bigint::BigInt::from(value as i64),
+            num_bigint::BigInt::from(1),
+        )
+    })
 }
 
 /// The exact value of a finite float, which is a fraction over a power of
 /// two. `0.6.to_r` is (5404319552844595/9007199254740992), not (3/5).
-pub(crate) fn float_exact_fraction(value: f64) -> (i64, i64) {
+pub(crate) fn float_exact_fraction(value: f64) -> (num_bigint::BigInt, num_bigint::BigInt) {
     let mut numerator = value;
     let mut denominator: i64 = 1;
     while numerator.fract() != 0.0 && denominator <= (1i64 << 61) {
         numerator *= 2.0;
         denominator *= 2;
     }
-    let numerator = numerator as i64;
-    let divisor = greatest_common_divisor(numerator, denominator);
-    (numerator / divisor, denominator / divisor)
+    let numerator = num_bigint::BigInt::from(numerator as i64);
+    let denominator = num_bigint::BigInt::from(denominator);
+    let divisor = greatest_common_divisor(numerator.clone(), denominator.clone());
+    (numerator / &divisor, denominator / &divisor)
 }
 
 /// The parts of a Complex instance, or None for anything that is not one.
@@ -123,7 +136,8 @@ pub(crate) fn is_zero(value: &Object) -> bool {
     match value {
         Object::Int(number) => *number == 0,
         Object::Float(number) => *number == 0.0,
-        _ => rational_parts(value).is_some_and(|(numerator, _)| numerator == 0),
+        _ => rational_parts(value)
+            .is_some_and(|(numerator, _)| numerator == num_bigint::BigInt::from(0)),
     }
 }
 
@@ -139,15 +153,17 @@ pub(crate) fn format_complex(real: &Object, imaginary: &Object) -> String {
 
 /// Read a string strictly, the way `Rational("...")` does. Unlike
 /// `String#to_r`, text that is not wholly a rational is rejected.
-pub(crate) fn parse_strict_rational_text(text: &str) -> Option<(i64, i64)> {
+pub(crate) fn parse_strict_rational_text(
+    text: &str,
+) -> Option<(num_bigint::BigInt, num_bigint::BigInt)> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return None;
     }
     if let Some((left, right)) = trimmed.split_once('/') {
         let (numerator, scale) = parse_decimal_fraction(left)?;
-        let denominator = right.parse::<i64>().ok()?;
-        return Some((numerator, scale.checked_mul(denominator)?));
+        let denominator = num_bigint::BigInt::parse_bytes(right.trim().as_bytes(), 10)?;
+        return Some((numerator, scale * denominator));
     }
     parse_decimal_fraction(trimmed)
 }
@@ -155,15 +171,17 @@ pub(crate) fn parse_strict_rational_text(text: &str) -> Option<(i64, i64)> {
 /// Read the leading rational value of a string the way `String#to_r` does:
 /// an optional sign, then digits, an optional `.fraction` or `/denominator`.
 /// Text that does not start with a number answers (0, 1).
-pub(crate) fn parse_rational_text(text: &str) -> (i64, i64) {
+pub(crate) fn parse_rational_text(text: &str) -> (num_bigint::BigInt, num_bigint::BigInt) {
+    use num_bigint::BigInt;
     let trimmed = text.trim();
     if let Some((left, right)) = trimmed.split_once('/') {
-        let (numerator, scale) = parse_decimal_fraction(left).unwrap_or((0, 1));
+        let (numerator, scale) =
+            parse_decimal_fraction(left).unwrap_or_else(|| (BigInt::from(0), BigInt::from(1)));
         let denominator = leading_integer(right).unwrap_or(0);
         if denominator == 0 {
-            return (0, 1);
+            return (BigInt::from(0), BigInt::from(1));
         }
-        return (numerator, scale.saturating_mul(denominator));
+        return (numerator, scale * BigInt::from(denominator));
     }
     let mut end = 0;
     for (index, ch) in trimmed.char_indices() {
@@ -174,7 +192,7 @@ pub(crate) fn parse_rational_text(text: &str) -> (i64, i64) {
         }
         end = index + ch.len_utf8();
     }
-    parse_decimal_fraction(&trimmed[..end]).unwrap_or((0, 1))
+    parse_decimal_fraction(&trimmed[..end]).unwrap_or_else(|| (BigInt::from(0), BigInt::from(1)))
 }
 
 fn leading_integer(text: &str) -> Option<i64> {
@@ -187,11 +205,14 @@ impl VirtualMachine {
     /// freezes every Rational, so the instance answers `frozen?` with true.
     pub(crate) fn make_rational(
         &mut self,
-        numerator: i64,
-        denominator: i64,
+        numerator: impl Into<num_bigint::BigInt>,
+        denominator: impl Into<num_bigint::BigInt>,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        if denominator == 0 {
+        use num_bigint::BigInt;
+        let numerator: BigInt = numerator.into();
+        let denominator: BigInt = denominator.into();
+        if denominator == BigInt::from(0) {
             let message = "divided by 0".to_string();
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("ZeroDivisionError", message.clone()),
@@ -200,11 +221,11 @@ impl VirtualMachine {
             });
         }
         let (mut numerator, mut denominator) = (numerator, denominator);
-        if denominator < 0 {
+        if denominator < BigInt::from(0) {
             numerator = -numerator;
             denominator = -denominator;
         }
-        let divisor = greatest_common_divisor(numerator, denominator);
+        let divisor = greatest_common_divisor(numerator.clone(), denominator.clone());
 
         let Some(Object::Class(rational_class)) = self.globals().get("Rational") else {
             return Err(MetorexError::runtime_error(
@@ -213,10 +234,13 @@ impl VirtualMachine {
             ));
         };
         let mut instance = crate::object::Instance::new(rational_class);
-        instance.set_var("numerator".to_string(), Object::Int(numerator / divisor));
+        instance.set_var(
+            "numerator".to_string(),
+            Object::integer(numerator / &divisor),
+        );
         instance.set_var(
             "denominator".to_string(),
-            Object::Int(denominator / divisor),
+            Object::integer(denominator / &divisor),
         );
         instance.frozen = true;
         Ok(Object::Instance(Rc::new(std::cell::RefCell::new(instance))))
@@ -230,7 +254,10 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let (numerator, denominator) = match value {
-            Object::Int(number) => (*number, 1),
+            Object::Int(_) | Object::BigInt(_) => (
+                value.as_big_integer().expect("integer-kinded"),
+                num_bigint::BigInt::from(1),
+            ),
             Object::Float(number) => float_fraction(*number),
             _ => return Ok(value.clone()),
         };
@@ -269,8 +296,8 @@ impl VirtualMachine {
         };
 
         match method_name {
-            "numerator" => Ok(Some(Object::Int(numerator))),
-            "denominator" => Ok(Some(Object::Int(denominator))),
+            "numerator" => Ok(Some(Object::integer(numerator))),
+            "denominator" => Ok(Some(Object::integer(denominator))),
             "to_r" | "rationalize" => Ok(Some(receiver.clone())),
             // Rational truncates toward zero, so (8/3) is 2 and (-8/3) is -2.
             "to_i" | "to_int" | "truncate" => {
@@ -282,15 +309,23 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(numerator / denominator)))
+                Ok(Some(Object::integer(numerator / denominator)))
             }
-            "to_f" => Ok(Some(Object::Float(numerator as f64 / denominator as f64))),
-            "abs" => self
-                .make_rational(numerator.abs(), denominator, position)
-                .map(Some),
-            "zero?" => Ok(Some(Object::Bool(numerator == 0))),
-            "negative?" => Ok(Some(Object::Bool(numerator < 0))),
-            "positive?" => Ok(Some(Object::Bool(numerator > 0))),
+            "to_f" => Ok(Some(Object::Float(
+                big_to_float(&numerator) / big_to_float(&denominator),
+            ))),
+            "abs" => {
+                let magnitude = if numerator < num_bigint::BigInt::from(0) {
+                    -numerator
+                } else {
+                    numerator
+                };
+                self.make_rational(magnitude, denominator, position)
+                    .map(Some)
+            }
+            "zero?" => Ok(Some(Object::Bool(numerator == num_bigint::BigInt::from(0)))),
+            "negative?" => Ok(Some(Object::Bool(numerator < num_bigint::BigInt::from(0)))),
+            "positive?" => Ok(Some(Object::Bool(numerator > num_bigint::BigInt::from(0)))),
             "to_s" => Ok(Some(Object::string(format!(
                 "{}/{}",
                 numerator, denominator
@@ -299,9 +334,7 @@ impl VirtualMachine {
                 "({}/{})",
                 numerator, denominator
             )))),
-            "hash" => Ok(Some(Object::Int(
-                numerator.wrapping_mul(31).wrapping_add(denominator),
-            ))),
+            "hash" => Ok(Some(Object::integer(numerator * 31 + denominator))),
             "frozen?" => Ok(Some(Object::Bool(true))),
             "==" | "eql?" | "!=" => {
                 let Some(other) = arguments.first() else {
@@ -341,13 +374,13 @@ impl VirtualMachine {
     /// operand makes the whole expression a Float, as it does in Ruby.
     fn rational_binary_operation(
         &mut self,
-        (numerator, denominator): (i64, i64),
+        (numerator, denominator): (num_bigint::BigInt, num_bigint::BigInt),
         operator: &str,
         other: &Object,
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         if let Object::Float(value) = other {
-            let left = numerator as f64 / denominator as f64;
+            let left = big_to_float(&numerator) / big_to_float(&denominator);
             return self
                 .float_binary_operation(left, operator, *value, position)
                 .map(Some);
@@ -359,18 +392,24 @@ impl VirtualMachine {
 
         let (result_numerator, result_denominator) = match operator {
             "+" => (
-                numerator * other_denominator + other_numerator * denominator,
-                denominator * other_denominator,
+                &numerator * &other_denominator + &other_numerator * &denominator,
+                &denominator * &other_denominator,
             ),
             "-" => (
-                numerator * other_denominator - other_numerator * denominator,
-                denominator * other_denominator,
+                &numerator * &other_denominator - &other_numerator * &denominator,
+                &denominator * &other_denominator,
             ),
-            "*" => (numerator * other_numerator, denominator * other_denominator),
-            "/" | "quo" => (numerator * other_denominator, denominator * other_numerator),
+            "*" => (
+                &numerator * &other_numerator,
+                &denominator * &other_denominator,
+            ),
+            "/" | "quo" => (
+                &numerator * &other_denominator,
+                &denominator * &other_numerator,
+            ),
             _ => {
-                let left = numerator * other_denominator;
-                let right = other_numerator * denominator;
+                let left = &numerator * &other_denominator;
+                let right = &other_numerator * &denominator;
                 let ordering = left.cmp(&right);
                 return Ok(Some(match operator {
                     "<" => Object::Bool(ordering.is_lt()),
@@ -412,4 +451,10 @@ impl VirtualMachine {
             },
         })
     }
+}
+
+/// The nearest Float to an arbitrary-precision integer.
+fn big_to_float(value: &num_bigint::BigInt) -> f64 {
+    use std::str::FromStr;
+    f64::from_str(&value.to_string()).unwrap_or(f64::INFINITY)
 }

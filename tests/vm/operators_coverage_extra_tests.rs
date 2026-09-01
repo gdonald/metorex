@@ -212,23 +212,21 @@ fn bitwise_and_type_error() {
 // ── Integer arithmetic overflow (lines 201, 232-236) ────────────────────────
 
 #[test]
-fn int_add_overflow_falls_back_to_float() {
-    // i64::MAX + 1 overflows; code path returns Float.
-    let result = run("9223372036854775807 + 1");
-    assert!(matches!(result, Some(Object::Float(_))));
+fn int_add_past_the_word_width_stays_exact() {
+    let result = run("(9223372036854775807 + 1).to_s");
+    assert_eq!(result, Some(Object::string("9223372036854775808")));
 }
 
 #[test]
-fn int_sub_overflow_falls_back_to_float() {
-    // i64::MIN - 1 overflows; code path returns Float.
-    let result = run("-9223372036854775807 - 2");
-    assert!(matches!(result, Some(Object::Float(_))));
+fn int_sub_past_the_word_width_stays_exact() {
+    let result = run("(-9223372036854775807 - 2).to_s");
+    assert_eq!(result, Some(Object::string("-9223372036854775809")));
 }
 
 #[test]
-fn int_mul_overflow_falls_back_to_float() {
-    let result = run("9223372036854775807 * 2");
-    assert!(matches!(result, Some(Object::Float(_))));
+fn int_mul_past_the_word_width_stays_exact() {
+    let result = run("(9223372036854775807 * 2).to_s");
+    assert_eq!(result, Some(Object::string("18446744073709551614")));
 }
 
 // ── Comparable <=> for comparison operators (lines 367-395) ─────────────────

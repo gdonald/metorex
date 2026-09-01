@@ -1,4 +1,4 @@
-# Integer overflow to Float (no parens where possible)
+# Integer arithmetic past the word width stays exact (no parens where possible)
 big = 4611686018427387903
 puts big + big
 puts big * 3

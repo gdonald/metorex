@@ -211,13 +211,10 @@ impl VirtualMachine {
             }
             "get" | "fetch" => {
                 if arguments.is_empty() || arguments.len() > 2 {
-                    return Err(MetorexError::runtime_error(
-                        format!(
-                            "Method '{}' expected 1-2 argument(s) but received {}",
-                            method_name,
-                            arguments.len()
-                        ),
-                        position_to_location(position),
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(1, 2),
+                        arguments.len(),
+                        position,
                     ));
                 }
                 let key_str =

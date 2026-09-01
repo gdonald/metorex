@@ -345,7 +345,7 @@ fn test_lexer_advance_past_end() {
 
 #[test]
 fn test_lexer_unknown_character() {
-    let mut lexer = Lexer::new("~");
+    let mut lexer = Lexer::new("\u{0001}");
     let tok = lexer.next_token();
     assert_eq!(tok.kind, TokenKind::EOF);
 }
@@ -360,15 +360,22 @@ fn lexer_empty_input_returns_eof() {
 
 #[test]
 fn lexer_unknown_character_returns_eof() {
-    let mut lexer = Lexer::new("~");
+    let mut lexer = Lexer::new("\u{0001}");
     assert_eq!(lexer.next_token().kind, TokenKind::EOF);
 }
 
 #[test]
-fn lexer_tilde_is_unknown() {
+fn lexer_tilde_is_bitwise_complement() {
     let mut lexer = Lexer::new("~");
     let token = lexer.next_token();
-    assert_eq!(token.kind, TokenKind::EOF);
+    assert_eq!(token.kind, TokenKind::Tilde);
+}
+
+#[test]
+fn lexer_double_greater_is_right_shift() {
+    let mut lexer = Lexer::new(">>");
+    let token = lexer.next_token();
+    assert_eq!(token.kind, TokenKind::RightShift);
 }
 
 #[test]

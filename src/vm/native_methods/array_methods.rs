@@ -10,6 +10,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 fn compare_for_sort(a: &Object, b: &Object) -> std::cmp::Ordering {
+    // Two exact integers order exactly, whatever their magnitude.
+    if let (Some(x), Some(y)) = (a.as_big_integer(), b.as_big_integer()) {
+        return x.cmp(&y);
+    }
     match (a, b) {
         (Object::Int(x), Object::Int(y)) => x.cmp(y),
         (Object::Float(x), Object::Float(y)) => {

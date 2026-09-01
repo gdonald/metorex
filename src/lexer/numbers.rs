@@ -148,9 +148,14 @@ impl<'a> Lexer<'a> {
             restore(self);
             return None;
         }
-        Some(TokenKind::Int(
-            i64::from_str_radix(&digits, radix).unwrap_or(0),
-        ))
+        Some(match i64::from_str_radix(&digits, radix) {
+            Ok(value) => TokenKind::Int(value),
+            // Past an i64, so keep the exact value as base-ten digits.
+            Err(_) => match num_bigint::BigInt::parse_bytes(digits.as_bytes(), radix) {
+                Some(value) => TokenKind::BigInt(value.to_string()),
+                None => TokenKind::Int(0),
+            },
+        })
     }
 
     /// Read a number (integer or float)
@@ -271,7 +276,10 @@ impl<'a> Lexer<'a> {
         if is_float {
             TokenKind::Float(number.parse().unwrap_or(0.0))
         } else {
-            TokenKind::Int(number.parse().unwrap_or(0))
+            match number.parse::<i64>() {
+                Ok(value) => TokenKind::Int(value),
+                Err(_) => TokenKind::BigInt(number.clone()),
+            }
         }
     }
 }

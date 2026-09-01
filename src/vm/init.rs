@@ -60,6 +60,9 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     // BasicObject — Ruby's true root class. Object inherits from it.
     let basic_object = Rc::new(Class::new("BasicObject", None));
     globals.set("BasicObject", Object::Class(Rc::clone(&basic_object)));
+    // Ruby's BasicObject holds a constant naming itself, which is what makes
+    // `BasicObject::BasicObject` resolve.
+    basic_object.set_class_var("BasicObject", Object::Class(Rc::clone(&basic_object)));
 
     // Object — root class that mspec reopens to inject describe/it/before/after
     let object = Rc::new(Class::new("Object", Some(Rc::clone(&basic_object))));

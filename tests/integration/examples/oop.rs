@@ -1070,3 +1070,129 @@ fn test_oop_singleton_class_of_parens() {
     let output = run_example("oop/singleton_class_of_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_send_dispatch_execution() {
+    let expected = concat!(
+        "hello\nhello\nhello\n",
+        "[:one]\n",
+        "[:one, :two]\n",
+        "42 is not a symbol nor a string\n",
+        "no method name given\n",
+        "NoMethodError for a name nothing defines\n",
+        "[:!, :!=, :==, :__id__, :__send__, :equal?, :instance_eval, :instance_exec]\n",
+        "true\n",
+        "[:first, :second]\n"
+    );
+    let output = run_example("oop/send/dispatch.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_send_dispatch_parens_execution() {
+    let expected = concat!(
+        "hello\nhello\nhello\n",
+        "[:one]\n",
+        "[:one, :two]\n",
+        "42 is not a symbol nor a string\n",
+        "no method name given\n",
+        "NoMethodError for a name nothing defines\n",
+        "[:!, :!=, :==, :__id__, :__send__, :equal?, :instance_eval, :instance_exec]\n",
+        "true\n",
+        "[:first, :second]\n"
+    );
+    let output = run_example("oop/send/dispatch_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_basic_object_constants_execution() {
+    let expected = concat!(
+        "nil\n",
+        "Kernel\n",
+        "uninitialized constant Kernel\n",
+        ":value\n",
+        "true\n",
+        "false\n",
+        "[:BasicObject]\n",
+        "BasicObject\n",
+        "true\n",
+        "true\n",
+        "Class\n",
+        "TopLevelBinding\n"
+    );
+    let output = run_example("oop/basic_object/constants.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_basic_object_constants_parens_execution() {
+    let expected = concat!(
+        "nil\n",
+        "Kernel\n",
+        "uninitialized constant Kernel\n",
+        ":value\n",
+        "true\n",
+        "false\n",
+        "[:BasicObject]\n",
+        "BasicObject\n",
+        "true\n",
+        "true\n",
+        "Class\n",
+        "TopLevelBinding\n"
+    );
+    let output = run_example("oop/basic_object/constants_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_initialize_default_arity_execution() {
+    let expected = concat!(
+        "Plain\n",
+        "wrong number of arguments (given 2, expected 0)\n",
+        "wrong number of arguments (given 1, expected 0)\n",
+        "true\n",
+        "[1, 2]\n",
+        "[1, 9]\n",
+        "wrong number of arguments (given 0, expected 1..2)\n",
+        "[1, 2, 3]\n",
+        "wrong number of arguments (given 0, expected 1+)\n",
+        "wrong number of arguments (given 1, expected 2)\n",
+        "wrong number of arguments (given 3, expected 1..2)\n"
+    );
+    let output = run_example("oop/initialize/default_arity.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_initialize_default_arity_parens_execution() {
+    let expected = concat!(
+        "Plain\n",
+        "wrong number of arguments (given 2, expected 0)\n",
+        "wrong number of arguments (given 1, expected 0)\n",
+        "true\n",
+        "[1, 2]\n",
+        "[1, 9]\n",
+        "wrong number of arguments (given 0, expected 1..2)\n",
+        "[1, 2, 3]\n",
+        "wrong number of arguments (given 0, expected 1+)\n",
+        "wrong number of arguments (given 1, expected 2)\n",
+        "wrong number of arguments (given 3, expected 1..2)\n"
+    );
+    let output = run_example("oop/initialize/default_arity_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_equality_not_equal_execution() {
+    let expected = "true\nfalse\ntrue\nfalse\ntrue\nfalse\nfalse\nfalse\ntrue\n";
+    let output = run_example("oop/equality/not_equal.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_equality_not_equal_parens_execution() {
+    let expected = "true\nfalse\ntrue\nfalse\ntrue\nfalse\nfalse\nfalse\ntrue\n";
+    let output = run_example("oop/equality/not_equal_parens.rb");
+    assert_eq!(output, expected);
+}

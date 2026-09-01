@@ -213,6 +213,12 @@ pub enum Expression {
         position: Position,
     },
 
+    // An integer literal too large for an i64, kept as its base-ten digits.
+    BigIntLiteral {
+        digits: String,
+        position: Position,
+    },
+
     // Splat expression (*expr) — expands an array into individual arguments
     Splat {
         expression: Box<Expression>,
@@ -223,6 +229,13 @@ pub enum Expression {
     // An empty Hash contributes no argument at all, the way Ruby's does.
     KeywordSplat {
         expression: Box<Expression>,
+        position: Position,
+    },
+
+    // `::Name` — a constant taken from the top level, skipping the lexical
+    // chain the way Ruby's leading `::` does.
+    TopLevelConstant {
+        name: String,
         position: Position,
     },
 
@@ -746,6 +759,7 @@ impl Expression {
     pub fn position(&self) -> Position {
         match self {
             Expression::IntLiteral { position, .. }
+            | Expression::BigIntLiteral { position, .. }
             | Expression::FloatLiteral { position, .. }
             | Expression::StringLiteral { position, .. }
             | Expression::RegexLiteral { position, .. }
@@ -774,6 +788,7 @@ impl Expression {
             | Expression::Super { position, .. }
             | Expression::Splat { position, .. }
             | Expression::KeywordSplat { position, .. }
+            | Expression::TopLevelConstant { position, .. }
             | Expression::BlockArg { position, .. }
             | Expression::BeginRescue { position, .. }
             | Expression::Defined { position, .. }

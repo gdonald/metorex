@@ -580,7 +580,7 @@ fn test_error_when_calling_class_with_wrong_argument_count() {
 
     // class Simple
     // end
-    // s = Simple(42)  # Error: no initialize method, but arguments provided
+    // s = Simple(42)  # ArgumentError: the default initialize takes none
     let program = vec![
         Statement::ClassDef {
             name: "Simple".to_string(),
@@ -613,5 +613,5 @@ fn test_error_when_calling_class_with_wrong_argument_count() {
     let result = vm.execute_program(&program);
     assert!(result.is_err());
     let err_msg = result.unwrap_err().to_string();
-    assert!(err_msg.contains("No initialize method"));
+    assert!(err_msg.contains("wrong number of arguments (given 1, expected 0)"));
 }

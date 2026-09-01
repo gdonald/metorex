@@ -105,18 +105,25 @@ impl Parser {
             TokenKind::GreaterEqual,
             TokenKind::Spaceship,
             TokenKind::Shovel,
+            TokenKind::RightShift,
             TokenKind::Caret,
             TokenKind::Pipe,
             TokenKind::Ampersand,
         ]) {
             let op_token = self.advance();
-            if op_token.kind == TokenKind::Shovel {
-                // << is a method call (e.g., array.<<(value))
+            if matches!(op_token.kind, TokenKind::Shovel | TokenKind::RightShift) {
+                // `<<` and `>>` are method calls, so `array << value` and
+                // `number >> bits` both go through dispatch.
+                let method = if op_token.kind == TokenKind::Shovel {
+                    "<<"
+                } else {
+                    ">>"
+                };
                 self.skip_whitespace();
                 let right = self.parse_range()?;
                 expr = Expression::MethodCall {
                     receiver: Box::new(expr),
-                    method: "<<".to_string(),
+                    method: method.to_string(),
                     arguments: vec![right],
                     trailing_block: None,
                     position: op_token.position,

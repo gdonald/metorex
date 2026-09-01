@@ -123,7 +123,7 @@ impl BuiltinClasses {
         match obj {
             Object::Nil => Rc::clone(&self.object_class),
             Object::Bool(_) => Rc::clone(&self.object_class),
-            Object::Int(_) => Rc::clone(&self.integer_class),
+            Object::Int(_) | Object::BigInt(_) => Rc::clone(&self.integer_class),
             Object::Float(_) => Rc::clone(&self.float_class),
             Object::String(_) => Rc::clone(&self.string_class),
             Object::Symbol(_) => Rc::clone(&self.symbol_class),

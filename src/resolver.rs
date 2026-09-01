@@ -779,6 +779,8 @@ impl Resolver {
             | Expression::RegexLiteral { .. }
             | Expression::Splat { .. }
             | Expression::KeywordSplat { .. }
+            | Expression::TopLevelConstant { .. }
+            | Expression::BigIntLiteral { .. }
             | Expression::BlockArg { .. }
             | Expression::BeginRescue { .. }
             | Expression::Defined { .. }

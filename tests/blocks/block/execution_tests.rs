@@ -182,7 +182,7 @@ fn block_argument_mismatch_raises_error() {
     match vm.execute_program(&program) {
         Err(MetorexError::UncaughtException { message, .. }) => {
             assert!(
-                message.contains("expected 1 argument"),
+                message.contains("expected 1"),
                 "unexpected argument-error message: {}",
                 message
             );

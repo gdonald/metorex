@@ -9,6 +9,18 @@ use crate::parser::Parser;
 impl Parser {
     /// Parse unary operators (+, -, !, *splat)
     pub(crate) fn parse_unary(&mut self) -> Result<Expression, MetorexError> {
+        if self.check(&[TokenKind::Tilde]) {
+            // `~x` is a method call, the way Ruby defines it on Integer.
+            let op_token = self.advance();
+            let operand = self.parse_unary()?;
+            return Ok(Expression::MethodCall {
+                receiver: Box::new(operand),
+                method: "~".to_string(),
+                arguments: Vec::new(),
+                trailing_block: None,
+                position: op_token.position,
+            });
+        }
         if self.check(&[TokenKind::Plus, TokenKind::Minus, TokenKind::Bang]) {
             let op_token = self.advance();
             let op = match op_token.kind {

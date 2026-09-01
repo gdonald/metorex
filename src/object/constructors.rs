@@ -14,6 +14,26 @@ impl Object {
         Object::String(Rc::new(s.into()))
     }
 
+    /// An Integer from an arbitrary-precision value, narrowed back to `Int`
+    /// whenever it fits. Ruby draws no line between the two sizes, so nothing
+    /// downstream should ever see a `BigInt` holding a small number.
+    pub fn integer(value: num_bigint::BigInt) -> Self {
+        match i64::try_from(&value) {
+            Ok(small) => Object::Int(small),
+            Err(_) => Object::BigInt(Rc::new(value)),
+        }
+    }
+
+    /// This object's value as an arbitrary-precision integer, for the numeric
+    /// kinds that have one.
+    pub fn as_big_integer(&self) -> Option<num_bigint::BigInt> {
+        match self {
+            Object::Int(value) => Some(num_bigint::BigInt::from(*value)),
+            Object::BigInt(value) => Some((**value).clone()),
+            _ => None,
+        }
+    }
+
     /// Create an empty array
     pub fn empty_array() -> Self {
         Object::Array(Rc::new(RefCell::new(Vec::new())))

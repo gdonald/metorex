@@ -257,6 +257,24 @@ impl Parser {
         ]) || self.is_at_end()
         {
             None
+        } else if self.check(&[TokenKind::LParen]) {
+            // `raise(Class, "message")` — a parenthesized argument list, which
+            // reading the first argument as a grouped expression would choke
+            // on at the comma.
+            self.advance();
+            let arguments = self.parse_arguments()?;
+            let mut arguments = arguments.into_iter();
+            match (arguments.next(), arguments.next()) {
+                (None, _) => None,
+                (Some(only), None) => Some(only),
+                (Some(class), Some(message)) => Some(Expression::MethodCall {
+                    receiver: Box::new(class),
+                    method: "new".to_string(),
+                    arguments: vec![message],
+                    trailing_block: None,
+                    position: start_pos,
+                }),
+            }
         } else {
             let expr = self.parse_expression()?;
             // Check for `raise ExceptionClass, message` form

@@ -363,19 +363,26 @@ impl VirtualMachine {
         match method_name {
             "__send__" | "send" | "public_send" => {
                 if arguments.is_empty() {
-                    return Err(MetorexError::runtime_error(
-                        "wrong number of arguments (given 0, expected 1+)".to_string(),
-                        position_to_location(position),
-                    ));
+                    let message = "no method name given".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: position_to_location(position),
+                        message,
+                    });
                 }
                 let method = match &arguments[0] {
                     Object::String(s) => s.as_str().to_string(),
                     Object::Symbol(s) => s.as_str().to_string(),
-                    _ => {
-                        return Err(MetorexError::runtime_error(
-                            format!("{} requires a String or Symbol method name", method_name),
-                            position_to_location(position),
-                        ));
+                    other => {
+                        let message = format!(
+                            "{} is not a symbol nor a string",
+                            self.get_inspect_representation(other, position)?
+                        );
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("TypeError", message.clone()),
+                            location: position_to_location(position),
+                            message,
+                        });
                     }
                 };
                 let rest_args: Vec<Object> = arguments[1..].to_vec();
@@ -563,6 +570,9 @@ impl VirtualMachine {
                     Object::Module(m) => std::rc::Rc::as_ptr(m) as i64,
                     Object::Block(block) => std::rc::Rc::as_ptr(block) as i64,
                     Object::Exception(exc) => std::rc::Rc::as_ptr(exc) as i64,
+                    // An integer past the i64 range is a heap object in Ruby
+                    // too, so two of the same value have different ids.
+                    Object::BigInt(value) => std::rc::Rc::as_ptr(value) as i64,
                     // Ruby's fixnum object_id. Wrapping keeps the far ends of
                     // the range from overflowing.
                     Object::Int(n) => n.wrapping_mul(2).wrapping_add(1),
@@ -1314,8 +1324,15 @@ impl VirtualMachine {
                     let actual = exc.borrow().exception_type.clone();
                     return Ok(Some(Object::Bool(actual == target_class.name())));
                 }
-                let obj_class = self.builtins().class_of(receiver);
-                Ok(Some(Object::Bool(obj_class.name() == target_class.name())))
+                // A Class is an instance of Class and a Module of Module,
+                // which `class_of` does not report: it answers Object for
+                // both so `is_a?` can walk the inheritance chain.
+                let actual_name = match receiver {
+                    Object::Class(_) => "Class".to_string(),
+                    Object::Module(_) => "Module".to_string(),
+                    other => self.builtins().class_of(other).name().to_string(),
+                };
+                Ok(Some(Object::Bool(actual_name == target_class.name())))
             }
             // `public_methods` is `methods` minus the restricted ones.
             // Kernel#public_methods / #private_methods / #protected_methods —
@@ -1503,6 +1520,9 @@ impl VirtualMachine {
                     (Object::Module(a), Object::Module(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Set(a), Object::Set(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Exception(a), Object::Exception(b)) => std::rc::Rc::ptr_eq(a, b),
+                    // An integer past the i64 range is its own object, so two
+                    // of the same value are not identical.
+                    (Object::BigInt(a), Object::BigInt(b)) => std::rc::Rc::ptr_eq(a, b),
                     // A block can close over itself, so comparing two of them
                     // structurally would never terminate. Ruby's identity
                     // check is the address anyway.
@@ -1761,22 +1781,77 @@ impl VirtualMachine {
                         None
                     }
                 });
-                match block {
-                    Some(Object::Block(b)) => {
-                        let args: Vec<Object> = arguments
-                            .iter()
-                            .filter(|a| !matches!(a, Object::Block(_)))
-                            .cloned()
-                            .collect();
-                        let result =
-                            self.execute_block_with_receiver(&b, receiver.clone(), args, position)?;
-                        Ok(Some(result))
+                let positional: Vec<Object> = arguments
+                    .iter()
+                    .filter(|argument| !matches!(argument, Object::Block(_)))
+                    .cloned()
+                    .collect();
+                if let Some(Object::Block(body)) = block {
+                    // Ruby refuses a singleton method on an immediate, and a
+                    // `def` in the body would be exactly that.
+                    if matches!(
+                        receiver,
+                        Object::Int(_) | Object::BigInt(_) | Object::Float(_) | Object::Symbol(_)
+                    ) && body_defines_a_method(&body.body)
+                    {
+                        let message = "can't define singleton".to_string();
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("TypeError", message.clone()),
+                            location: position_to_location(position),
+                            message,
+                        });
                     }
-                    _ => Err(MetorexError::runtime_error(
-                        format!("{} requires a block", method_name),
-                        position_to_location(position),
-                    )),
+                    // `instance_eval` yields the receiver and takes no other
+                    // arguments; `instance_exec` passes its own along.
+                    if method_name == "instance_eval" {
+                        if !positional.is_empty() {
+                            return Err(crate::vm::errors::argument_count_error(
+                                crate::vm::errors::Arity::Exact(0),
+                                positional.len(),
+                                position,
+                            ));
+                        }
+                        let result = self.execute_block_with_receiver(
+                            &body,
+                            receiver.clone(),
+                            vec![receiver.clone()],
+                            position,
+                        )?;
+                        return Ok(Some(result));
+                    }
+                    let result = self.execute_block_with_receiver(
+                        &body,
+                        receiver.clone(),
+                        positional,
+                        position,
+                    )?;
+                    return Ok(Some(result));
                 }
+                // The String form runs source in the receiver's context. The
+                // trailing file and line arguments only shape the positions
+                // recorded for the code, which metorex takes from the source
+                // it parses.
+                if method_name == "instance_eval" {
+                    if positional.is_empty() || positional.len() > 3 {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Range(1, 3),
+                            positional.len(),
+                            position,
+                        ));
+                    }
+                    let source = self.coerce_name_argument(&positional[0], position)?;
+                    return self
+                        .evaluate_source_with_receiver(&source, receiver.clone(), position)
+                        .map(Some);
+                }
+                // `instance_exec` yields, so without a block Ruby reports the
+                // same LocalJumpError any bare `yield` would.
+                let message = "no block given (yield)".to_string();
+                Err(MetorexError::UncaughtException {
+                    exception: Object::exception("LocalJumpError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                })
             }
             _ => Ok(None),
         }
@@ -1821,7 +1896,11 @@ impl VirtualMachine {
         } else {
             // Fallback for built-in types
             match (receiver, other) {
-                (Object::Int(a), Object::Int(b)) => Ok(Some((*a).cmp(b) as i64)),
+                (Object::Int(_) | Object::BigInt(_), Object::Int(_) | Object::BigInt(_)) => {
+                    let a = receiver.as_big_integer().expect("integer-kinded");
+                    let b = other.as_big_integer().expect("integer-kinded");
+                    Ok(Some(a.cmp(&b) as i64))
+                }
                 (Object::String(a), Object::String(b)) => Ok(Some((**a).cmp(b) as i64)),
                 // Integers and Floats compare against each other, so a Range
                 // with one of each answers `include?` for either.
@@ -2083,4 +2162,16 @@ fn public_method_names(class: &Class) -> Vec<String> {
         .into_iter()
         .filter(|name| !class.is_method_private(name) && !class.is_method_protected(name))
         .collect()
+}
+
+/// Whether a block body defines a method at its top level, which inside
+/// `instance_eval` or `instance_exec` means a singleton method on the
+/// receiver.
+fn body_defines_a_method(body: &[crate::ast::Statement]) -> bool {
+    body.iter().any(|statement| {
+        matches!(
+            statement,
+            crate::ast::Statement::MethodDef { .. } | crate::ast::Statement::FunctionDef { .. }
+        )
+    })
 }

@@ -86,17 +86,20 @@ impl VirtualMachine {
                 let required =
                     expected - method.default_parameters.len() - if has_variadic { 1 } else { 0 };
                 if !has_variadic && (positional_count < required || positional_count > expected) {
-                    return Err(method_argument_error(
-                        &method.name,
-                        expected,
+                    let accepted = if required == expected {
+                        crate::vm::errors::Arity::Exact(expected)
+                    } else {
+                        crate::vm::errors::Arity::Range(required, expected)
+                    };
+                    return Err(crate::vm::errors::argument_count_error(
+                        accepted,
                         positional_count,
                         position,
                     ));
                 }
                 if has_variadic && positional_count < required {
-                    return Err(method_argument_error(
-                        &method.name,
-                        required,
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::AtLeast(required),
                         positional_count,
                         position,
                     ));
@@ -271,13 +274,17 @@ impl VirtualMachine {
                 position,
             )?;
         } else if !arguments.is_empty() {
-            return Err(MetorexError::runtime_error(
-                format!(
-                    "No initialize method defined, but {} argument(s) provided",
-                    arguments.len()
-                ),
-                position_to_location(position),
-            ));
+            // The default `initialize` takes none, so extra arguments are an
+            // ArgumentError, the way any other arity mismatch is.
+            let message = format!(
+                "wrong number of arguments (given {}, expected 0)",
+                arguments.len()
+            );
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("ArgumentError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
         }
 
         Ok(instance_obj)

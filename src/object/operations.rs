@@ -24,6 +24,10 @@ impl Object {
             (Object::Nil, Object::Nil) => true,
             (Object::Bool(a), Object::Bool(b)) => a == b,
             (Object::Int(a), Object::Int(b)) => a == b,
+            (Object::BigInt(a), Object::BigInt(b)) => a == b,
+            // A normalized BigInt never holds a value an Int could, so the
+            // two variants can only be equal through a Float.
+            (Object::Int(_), Object::BigInt(_)) | (Object::BigInt(_), Object::Int(_)) => false,
             (Object::Float(a), Object::Float(b)) => {
                 // Float comparison with epsilon for floating point precision
                 (a - b).abs() < 1e-9

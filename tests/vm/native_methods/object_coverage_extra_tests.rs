@@ -586,9 +586,12 @@ fn instance_exec_with_block_receiver() {
 }
 
 #[test]
-fn instance_eval_without_block_errors() {
+fn instance_eval_without_block_or_source_errors() {
     let err = run_err(r#""x".send(:instance_eval)"#);
-    assert!(err.contains("block") || err.contains("instance_eval"));
+    assert!(
+        err.contains("wrong number of arguments (given 0, expected 1..3)"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── frozen?/freeze on immutable values ───────────────────────────────────────
@@ -753,13 +756,13 @@ fn nil_inspect_returns_nil_string() {
 #[test]
 fn send_no_args_errors() {
     let err = run_err("5.send");
-    assert!(err.contains("argument"));
+    assert!(err.contains("no method name given"));
 }
 
 #[test]
 fn send_non_string_method_errors() {
     let err = run_err("5.send(42)");
-    assert!(err.contains("String") || err.contains("Symbol"));
+    assert!(err.contains("42 is not a symbol nor a string"));
 }
 
 #[test]

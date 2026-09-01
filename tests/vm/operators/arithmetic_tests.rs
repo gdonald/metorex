@@ -27,7 +27,7 @@ fn int_divide_non_evenly_produces_float() {
 #[test]
 fn int_modulo_by_zero_error() {
     let err = run_err("5 % 0");
-    assert!(err.contains("zero") || err.contains("Division"));
+    assert!(err.contains("divided by 0"));
 }
 
 // ── Float / Float ────────────────────────────────────────────────────────────

@@ -77,7 +77,7 @@ fn test_operators_coverage_execution() {
     let output = run_example("builtins/operators_coverage.rb");
     assert_eq!(
         output,
-        "9223372036854775806\n13835058055282164000\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\n"
+        "9223372036854775806\n13835058055282163709\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\ntrue\nfalse\ntrue\ntrue\ntrue\ntrue\n"
     );
 }
 
@@ -86,7 +86,7 @@ fn test_operators_coverage_no_parens_execution() {
     let output = run_example("builtins/operators_coverage_no_parens.rb");
     assert_eq!(
         output,
-        "9223372036854775806\n13835058055282164000\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\n"
+        "9223372036854775806\n13835058055282163709\n-9223372036854775808\ntrue\ntrue\ntrue\ntrue\ntrue\ntrue\n1\n7\n6\n"
     );
 }
 
@@ -248,5 +248,103 @@ fn test_builtins_enumerator_stepping_parens_execution() {
         "true\n"
     );
     let output = run_example("builtins/enumerator/stepping_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_integer_bits_operations_execution() {
+    let expected = concat!(
+        "[8, 34359738368, 2, -2]\n",
+        "[2, 10]\n",
+        "[0, -1, 0]\n",
+        "[-6, -1, 0]\n",
+        "[8, 9, 0, 0]\n",
+        "[1, 3, 2]\n",
+        "42\n",
+        "true\n"
+    );
+    let output = run_example("builtins/integer_bits/operations.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_integer_bits_operations_parens_execution() {
+    let expected = concat!(
+        "[8, 34359738368, 2, -2]\n",
+        "[2, 10]\n",
+        "[0, -1, 0]\n",
+        "[-6, -1, 0]\n",
+        "[8, 9, 0, 0]\n",
+        "[1, 3, 2]\n",
+        "42\n",
+        "true\n"
+    );
+    let output = run_example("builtins/integer_bits/operations_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_big_integers_execution() {
+    let expected = concat!(
+        "[18446744073709551616, 1267650600228229401496703205376]\n",
+        "Integer\n",
+        "true\n",
+        "[9223372036854775808, 18446744073709551614, -9223372036854775809]\n",
+        "42\n",
+        "0\n",
+        "Integer\n",
+        "true\n",
+        "1\n",
+        "[-18446744073709551616, 1, 3, 18446744073709551616]\n",
+        "18446744073709551616\n",
+        "18446744073709551616\n",
+        "true\n",
+        "18446744073709551617\n",
+        "65\n",
+        "[18446744073709551, 616]\n",
+        "4294967296\n",
+        "-18446744073709551617\n",
+        "Integer\n",
+        "340282366920938463463374607431768211456\n",
+        "18446744073709551616\n",
+        "3\n",
+        "true\n",
+        "false\n",
+        "true\n"
+    );
+    let output = run_example("builtins/big_integers/arithmetic.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_big_integers_parens_execution() {
+    let expected = concat!(
+        "[18446744073709551616, 1267650600228229401496703205376]\n",
+        "Integer\n",
+        "true\n",
+        "[9223372036854775808, 18446744073709551614, -9223372036854775809]\n",
+        "42\n",
+        "0\n",
+        "Integer\n",
+        "true\n",
+        "1\n",
+        "[-18446744073709551616, 1, 3, 18446744073709551616]\n",
+        "18446744073709551616\n",
+        "18446744073709551616\n",
+        "true\n",
+        "18446744073709551617\n",
+        "65\n",
+        "[18446744073709551, 616]\n",
+        "4294967296\n",
+        "-18446744073709551617\n",
+        "Integer\n",
+        "340282366920938463463374607431768211456\n",
+        "18446744073709551616\n",
+        "3\n",
+        "true\n",
+        "false\n",
+        "true\n"
+    );
+    let output = run_example("builtins/big_integers/arithmetic_parens.rb");
     assert_eq!(output, expected);
 }

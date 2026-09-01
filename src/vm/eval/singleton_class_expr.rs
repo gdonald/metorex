@@ -142,17 +142,14 @@ impl VirtualMachine {
 
         // Apply class-body semantics (attr_*, def, include, etc.) to the
         // singleton class itself.
+        // The body's own last value is the result, so `class << x; self; end`
+        // evaluates to the singleton class. Re-evaluating the last statement
+        // here instead would run its side effects a second time.
         let apply_result = self.apply_class_body(&singleton_cls, body, position);
-
-        // Then separately capture the last statement's expression value so
-        // `class << x; self; end` evaluates to `self` (the singleton class).
-        let mut last = Object::Nil;
-        if apply_result.is_ok()
-            && let Some(Statement::Expression { expression, .. }) = body.last()
-            && let Ok(v) = self.evaluate_expression(expression)
-        {
-            last = v;
-        }
+        let last = match &apply_result {
+            Ok(value) => value.clone(),
+            Err(_) => Object::Nil,
+        };
 
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {

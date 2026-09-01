@@ -69,6 +69,7 @@ impl TokenStream {
         match (kind, current) {
             (TokenKind::Ident(_), TokenKind::Ident(_)) => true,
             (TokenKind::Int(_), TokenKind::Int(_)) => true,
+            (TokenKind::BigInt(_), TokenKind::BigInt(_)) => true,
             (TokenKind::Float(_), TokenKind::Float(_)) => true,
             (TokenKind::String(_), TokenKind::String(_)) => true,
             (TokenKind::InterpolatedString(_), TokenKind::InterpolatedString(_)) => true,

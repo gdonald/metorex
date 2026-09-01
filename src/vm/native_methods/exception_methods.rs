@@ -33,6 +33,15 @@ impl VirtualMachine {
                 let message = exception.borrow().message.clone();
                 Ok(Some(Object::String(Rc::new(message))))
             }
+            // NameError#receiver / NoMethodError#receiver — the object the
+            // call was made on, nil when unset.
+            "receiver" => {
+                let receiver = exception.borrow().receiver.clone();
+                Ok(Some(match receiver {
+                    Some(value) => *value,
+                    None => Object::Nil,
+                }))
+            }
             "name" => {
                 // NameError#name / NoMethodError#name — the offending
                 // constant or method name as a Symbol, nil when unset.

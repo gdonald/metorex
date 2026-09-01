@@ -138,6 +138,8 @@ impl Parser {
             TokenKind::GreaterEqual => Ok(symbol(">=", symbol_position)),
             TokenKind::Spaceship => Ok(symbol("<=>", symbol_position)),
             TokenKind::Shovel => Ok(symbol("<<", symbol_position)),
+            TokenKind::RightShift => Ok(symbol(">>", symbol_position)),
+            TokenKind::Tilde => Ok(symbol("~", symbol_position)),
             TokenKind::Caret => Ok(symbol("^", symbol_position)),
             TokenKind::Match => Ok(symbol("=~", symbol_position)),
             TokenKind::NotMatch => Ok(symbol("!~", symbol_position)),

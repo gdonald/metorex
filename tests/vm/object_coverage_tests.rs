@@ -251,7 +251,7 @@ fn send_with_args() {
 #[test]
 fn send_no_args_error() {
     let err = run_err("'hello'.send");
-    assert!(err.contains("argument"));
+    assert!(err.contains("no method name given"));
 }
 
 // ── object_methods.rs lines 45-49: to_s with args on Object ─────────────────

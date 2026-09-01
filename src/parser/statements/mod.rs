@@ -255,6 +255,35 @@ impl Parser {
         if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
             return Ok(stmt);
         }
+        // `stmt rescue fallback` runs the fallback when the statement raises a
+        // StandardError. The `rescue` has to sit on the same line, so the one
+        // that opens a clause inside `begin ... end` is left alone even when
+        // the statement before it consumed the newline.
+        if self.check(&[TokenKind::Rescue])
+            && self.peek().position.line == self.previous().position.line
+        {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let fallback = self.parse_expression()?;
+            return Ok(Statement::Expression {
+                expression: crate::ast::Expression::BeginRescue {
+                    body: vec![stmt],
+                    rescue_clauses: vec![crate::ast::RescueClause {
+                        exception_types: vec!["StandardError".to_string()],
+                        variable_name: None,
+                        body: vec![Statement::Expression {
+                            expression: fallback,
+                            position,
+                        }],
+                        position,
+                    }],
+                    else_clause: None,
+                    ensure_block: None,
+                    position,
+                },
+                position,
+            });
+        }
         if self.check(&[TokenKind::If]) {
             let position = self.advance().position; // consume 'if'
             self.skip_whitespace();
@@ -353,7 +382,9 @@ impl Parser {
                 position,
             })
         } else {
-            Ok(expr)
+            // `a = b rescue c` assigns the fallback, so the modifier binds to
+            // the right-hand side rather than to the assignment.
+            self.wrap_with_rescue_modifier(expr)
         }
     }
 }

@@ -237,7 +237,7 @@ impl VirtualMachine {
 
         let (numerator, scale) = self.rational_operand(&positional[0], position)?;
         let (denominator, denominator_scale) = match positional.get(1) {
-            None => (1, 1),
+            None => (num_bigint::BigInt::from(1), num_bigint::BigInt::from(1)),
             Some(value) => self.rational_operand(value, position)?,
         };
         // Dividing (a/b) by (c/d) is (a*d)/(b*c).
@@ -265,8 +265,9 @@ impl VirtualMachine {
         };
         let (top, bottom) = self.rational_operand(numerator, position)?;
         let magnitude = real * real + imaginary * imaginary;
-        let real_part = self.make_rational(top * real, bottom * magnitude, position)?;
-        let imaginary_part = self.make_rational(-top * imaginary, bottom * magnitude, position)?;
+        let real_part = self.make_rational(&top * real, &bottom * magnitude, position)?;
+        let imaginary_part =
+            self.make_rational(-&top * imaginary, &bottom * magnitude, position)?;
         self.make_complex(real_part, imaginary_part, position)
     }
 
@@ -275,13 +276,16 @@ impl VirtualMachine {
         &mut self,
         value: &Object,
         position: Position,
-    ) -> Result<(i64, i64), MetorexError> {
+    ) -> Result<(num_bigint::BigInt, num_bigint::BigInt), MetorexError> {
         use super::rational_methods::{
             complex_parts, format_complex, is_zero, parse_strict_rational_text, rational_parts,
         };
 
         match value {
-            Object::Int(number) => Ok((*number, 1)),
+            Object::Int(_) | Object::BigInt(_) => Ok((
+                value.as_big_integer().expect("integer-kinded"),
+                num_bigint::BigInt::from(1),
+            )),
             Object::Float(number) if number.is_finite() => {
                 Ok(super::rational_methods::float_fraction(*number))
             }
@@ -340,7 +344,7 @@ impl VirtualMachine {
         &mut self,
         value: &Object,
         position: Position,
-    ) -> Result<(i64, i64), MetorexError> {
+    ) -> Result<(num_bigint::BigInt, num_bigint::BigInt), MetorexError> {
         let source = self.conversion_class_name(value, position);
         let attempt = self.try_conversion_call(value, "to_r", position);
         let converted = match attempt {
@@ -356,8 +360,11 @@ impl VirtualMachine {
             if let Some(parts) = super::rational_methods::rational_parts(&converted) {
                 return Ok(parts);
             }
-            if let Object::Int(number) = converted {
-                return Ok((number, 1));
+            if let Object::Int(_) | Object::BigInt(_) = converted {
+                return Ok((
+                    converted.as_big_integer().expect("integer-kinded"),
+                    num_bigint::BigInt::from(1),
+                ));
             }
             let produced = self.conversion_class_name(&converted, position);
             return Err(type_error(
@@ -369,7 +376,10 @@ impl VirtualMachine {
             ));
         }
         match self.try_conversion_call(value, "to_int", position) {
-            Ok(Some(Object::Int(number))) => Ok((number, 1)),
+            Ok(Some(Object::Int(number))) => Ok((
+                num_bigint::BigInt::from(number),
+                num_bigint::BigInt::from(1),
+            )),
             _ => Err(type_error(
                 format!("can't convert {} into Rational", source),
                 position,
@@ -415,13 +425,9 @@ impl VirtualMachine {
 
         match &positional[0] {
             Object::String(text) => match parse_integer_literal(text, base) {
-                Ok(value) => Ok(Object::Int(value)),
+                Ok(value) => Ok(Object::integer(value)),
                 Err(ParseFailure::Malformed) => Err(argument_error(
                     format!("invalid value for Integer(): {:?}", text.as_str()),
-                    position,
-                )),
-                Err(ParseFailure::OutOfRange) => Err(argument_error(
-                    format!("integer {:?} too big to convert", text.as_str()),
                     position,
                 )),
             },
@@ -432,7 +438,7 @@ impl VirtualMachine {
                 ),
                 position,
             )),
-            Object::Int(value) => Ok(Object::Int(*value)),
+            Object::Int(_) | Object::BigInt(_) => Ok(positional[0].clone()),
             Object::Float(value) => {
                 if value.is_nan() || value.is_infinite() {
                     let label = if value.is_nan() {
@@ -448,7 +454,7 @@ impl VirtualMachine {
                         message: label,
                     });
                 }
-                Ok(Object::Int(value.trunc() as i64))
+                Ok(super::float_methods::float_to_integer(value.trunc()))
             }
             Object::Nil => Err(type_error(
                 "can't convert nil into Integer".to_string(),
@@ -467,8 +473,9 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         for name in ["to_int", "to_i"] {
-            if let Some(Object::Int(number)) = self.try_conversion_call(value, name, position)? {
-                return Ok(Object::Int(number));
+            match self.try_conversion_call(value, name, position)? {
+                Some(converted @ (Object::Int(_) | Object::BigInt(_))) => return Ok(converted),
+                _ => continue,
             }
         }
         Err(type_error(
@@ -578,17 +585,19 @@ impl VirtualMachine {
     }
 }
 
-/// Why a string could not be read as an integer. Both map to ArgumentError;
-/// they are kept apart so the message can name the cause.
+/// Why a string could not be read as an integer. Magnitude is never a reason,
+/// since an integer of any size is representable.
 enum ParseFailure {
     Malformed,
-    OutOfRange,
 }
 
 /// Read `text` the way `Integer()` does: optional surrounding whitespace, a
 /// single sign, a radix prefix, and digits separated by lone underscores.
 /// `base` of None means "detect from the prefix, otherwise decimal".
-fn parse_integer_literal(text: &str, base: Option<i64>) -> Result<i64, ParseFailure> {
+fn parse_integer_literal(
+    text: &str,
+    base: Option<i64>,
+) -> Result<num_bigint::BigInt, ParseFailure> {
     if text.contains('\0') {
         return Err(ParseFailure::Malformed);
     }
@@ -659,7 +668,7 @@ fn parse_integer_literal(text: &str, base: Option<i64>) -> Result<i64, ParseFail
         return Err(ParseFailure::Malformed);
     }
 
-    let magnitude =
-        i64::from_str_radix(&digits, radix as u32).map_err(|_| ParseFailure::OutOfRange)?;
+    let magnitude = num_bigint::BigInt::parse_bytes(digits.as_bytes(), radix as u32)
+        .ok_or(ParseFailure::Malformed)?;
     Ok(if negative { -magnitude } else { magnitude })
 }

@@ -115,11 +115,13 @@ impl VirtualMachine {
             && !destructured
             && (found < required || found > expected)
         {
-            return Err(callable_argument_error(
-                block.name(),
-                expected,
-                found,
-                position,
+            let accepted = if required == expected {
+                crate::vm::errors::Arity::Exact(expected)
+            } else {
+                crate::vm::errors::Arity::Range(required, expected)
+            };
+            return Err(crate::vm::errors::argument_count_error(
+                accepted, found, position,
             ));
         }
 
@@ -143,6 +145,55 @@ impl VirtualMachine {
         }
     }
 
+    /// Run Ruby source with `self` bound to `receiver`, which is what the
+    /// String form of `instance_eval` does. The source sees the receiver's
+    /// instance variables and defines methods on its singleton class.
+    pub(crate) fn evaluate_source_with_receiver(
+        &mut self,
+        source: &str,
+        receiver: Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let tokens = crate::lexer::Lexer::new(source).tokenize();
+        let statements = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|errors| {
+                MetorexError::runtime_error(
+                    format!(
+                        "instance_eval: parse error: {}",
+                        errors
+                            .iter()
+                            .map(|error| error.to_string())
+                            .collect::<Vec<_>>()
+                            .join("; ")
+                    ),
+                    position_to_location(position),
+                )
+            })?;
+        let singleton = self.singleton_class_of(&receiver);
+        self.environment_mut().push_isolated_scope();
+        self.environment_mut()
+            .define("self".to_string(), receiver.clone());
+        self.def_scope_stack.push(singleton);
+        let mut last = Object::Nil;
+        let result = (|| -> Result<(), MetorexError> {
+            for statement in &statements {
+                if let Statement::Expression { expression, .. } = statement {
+                    last = self.evaluate_expression(expression)?;
+                    continue;
+                }
+                if let ControlFlow::Value(value) = self.execute_statement(statement)? {
+                    last = value;
+                }
+            }
+            Ok(())
+        })();
+        self.def_scope_stack.pop();
+        self.environment_mut().pop_scope();
+        result?;
+        Ok(last)
+    }
+
     /// Execute a block with a specific `self` receiver (for instance_exec/instance_eval).
     /// The receiver overrides any captured `self` from the block's closure.
     pub(crate) fn execute_block_with_receiver(
@@ -155,7 +206,6 @@ impl VirtualMachine {
         let frame_name = block.name().to_string();
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
-
         let execution_result = self.with_call_frame(
             match block.defining_method.clone() {
                 Some((callee, defined)) => {

@@ -75,7 +75,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(f.ceil() as i64)))
+                Ok(Some(float_to_integer(f.ceil())))
             }
             "floor" => {
                 if !arguments.is_empty() {
@@ -86,7 +86,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(f.floor() as i64)))
+                Ok(Some(float_to_integer(f.floor())))
             }
             "to_i" => {
                 if !arguments.is_empty() {
@@ -97,7 +97,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(*f as i64)))
+                Ok(Some(float_to_integer(f.trunc())))
             }
             // `to_r` is the float's exact binary value, so `0.6.to_r` is
             // (5404319552844595/9007199254740992) rather than (3/5).
@@ -130,5 +130,21 @@ impl VirtualMachine {
             }
             _ => Ok(None),
         }
+    }
+}
+
+/// The Integer a whole Float names. A magnitude past the i64 range keeps its
+/// exact value rather than saturating, the way Ruby's does.
+pub(super) fn float_to_integer(value: f64) -> Object {
+    if !value.is_finite() {
+        // Infinities and NaN have no integer value.
+        return Object::Int(0);
+    }
+    // A whole f64 formats without an exponent at any magnitude, so its digits
+    // are the exact value.
+    let digits = format!("{:.0}", value);
+    match num_bigint::BigInt::parse_bytes(digits.as_bytes(), 10) {
+        Some(exact) => Object::integer(exact),
+        None => Object::Int(value as i64),
     }
 }

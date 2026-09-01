@@ -640,7 +640,7 @@ fn double_splat_in_call_passes_keywords() {
     let stmts = Parser::new(tokens).parse().expect("parse failed");
     let mut vm = VirtualMachine::new();
     let error = vm.execute_program(&stmts).unwrap_err().to_string();
-    assert!(error.contains("expected 1 argument(s) but received 0"));
+    assert!(error.contains("wrong number of arguments (given 0, expected 1)"));
 }
 
 #[test]
@@ -1007,4 +1007,39 @@ fn chained_assignment_rhs_with_call_expression() {
     // The result is returned without chaining and `= 5` is left unconsumed.
     let result = parse_source("def foo; 1; end\na = foo() = 5");
     drop(result);
+}
+
+// ── rescue modifier ─────────────────────────────────────────────────────────
+
+#[test]
+fn rescue_modifier_answers_the_fallback() {
+    let result = run_sym("def boom\n  raise \"x\"\nend\nboom rescue :caught");
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("caught".to_string())))
+    );
+}
+
+#[test]
+fn rescue_modifier_leaves_a_value_that_does_not_raise() {
+    let result = run_sym("1 rescue :never");
+    assert_eq!(result, Some(Object::Int(1)));
+}
+
+#[test]
+fn rescue_modifier_on_an_assignment_binds_to_the_value() {
+    let result = run_sym("def boom\n  raise \"x\"\nend\nvalue = boom rescue :fallback\nvalue");
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("fallback".to_string())))
+    );
+}
+
+#[test]
+fn raise_with_a_parenthesized_class_and_message() {
+    let tokens = Lexer::new("raise(ArgumentError, \"bad\")").tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    let error = vm.execute_program(&stmts).unwrap_err().to_string();
+    assert!(error.contains("bad"), "unexpected error: {error}");
 }

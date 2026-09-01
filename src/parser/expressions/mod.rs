@@ -18,7 +18,46 @@ type BlockParams = (Vec<String>, Vec<(usize, Expression)>);
 impl Parser {
     /// Parse an expression using operator precedence climbing
     pub(crate) fn parse_expression(&mut self) -> Result<Expression, MetorexError> {
-        self.parse_assignment()
+        let expr = self.parse_assignment()?;
+        self.wrap_with_rescue_modifier(expr)
+    }
+
+    /// `expr rescue fallback` answers `fallback` when `expr` raises a
+    /// StandardError. The `rescue` has to sit on the same line, so the one
+    /// that opens a clause inside `begin ... end` is left alone.
+    pub(crate) fn wrap_with_rescue_modifier(
+        &mut self,
+        expr: Expression,
+    ) -> Result<Expression, MetorexError> {
+        // The `rescue` has to sit on the same line. One that opens a clause
+        // inside `begin ... end` starts a line of its own, even when the
+        // statement before it consumed the newline.
+        if !self.check(&[TokenKind::Rescue])
+            || self.peek().position.line != self.previous().position.line
+        {
+            return Ok(expr);
+        }
+        let position = self.advance().position;
+        self.skip_whitespace();
+        let fallback = self.parse_assignment()?;
+        Ok(Expression::BeginRescue {
+            body: vec![Statement::Expression {
+                expression: expr,
+                position,
+            }],
+            rescue_clauses: vec![crate::ast::RescueClause {
+                exception_types: vec!["StandardError".to_string()],
+                variable_name: None,
+                body: vec![Statement::Expression {
+                    expression: fallback,
+                    position,
+                }],
+                position,
+            }],
+            else_clause: None,
+            ensure_block: None,
+            position,
+        })
     }
 
     /// Parse expression with arrow lambda support (for top-level expressions only)

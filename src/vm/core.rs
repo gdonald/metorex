@@ -107,6 +107,10 @@ pub struct VirtualMachine {
     /// invocation. `super` (bare form) reads the top entry to forward args
     /// to the parent method; pushed by invoke_method, popped on return.
     pub(crate) method_arg_stack: Vec<Vec<crate::object::Object>>,
+    /// The module each running method was defined in, innermost last. A
+    /// `super` starts its walk from here, which is the only way to place a
+    /// method defined in an anonymous module.
+    pub(crate) method_owner_stack: Vec<Option<Rc<crate::class::Class>>>,
     /// The lexical nesting captured by each method currently on the call
     /// stack, so `Module.nesting` inside a body reports the definition site.
     pub(crate) method_nesting_stack: Vec<Vec<Rc<crate::class::Class>>>,
@@ -173,6 +177,7 @@ impl VirtualMachine {
             def_scope_stack: Vec::new(),
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
+            method_owner_stack: Vec::new(),
             method_nesting_stack: Vec::new(),
             catch_tags: Vec::new(),
             autoload_reload_depth: 0,

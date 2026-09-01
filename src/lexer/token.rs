@@ -71,6 +71,8 @@ pub enum TokenKind {
 
     // Literals
     Int(i64),
+    /// An integer literal too large for an i64, kept as its digits.
+    BigInt(String),
     Float(f64),
     Rational(i64, i64), // numerator, denominator — the `r` literal suffix
     Imaginary(f64),     // the `i` literal suffix, as in `1.3i`
@@ -137,6 +139,8 @@ pub enum TokenKind {
     LogicalOrAssign,  // ||=
     LogicalAndAssign, // &&=
     ColonColon,       // ::
+    Tilde,            // ~ (bitwise complement)
+    RightShift,       // >> (right shift)
 
     // Special tokens
     Newline,
@@ -222,6 +226,7 @@ impl fmt::Display for TokenKind {
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),
+            TokenKind::BigInt(digits) => write!(f, "{}", digits),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
             TokenKind::PercentW(s) => write!(f, "%w[{}]", s),
@@ -299,6 +304,8 @@ impl fmt::Display for TokenKind {
             TokenKind::LogicalOrAssign => write!(f, "||="),
             TokenKind::LogicalAndAssign => write!(f, "&&="),
             TokenKind::ColonColon => write!(f, "::"),
+            TokenKind::Tilde => write!(f, "~"),
+            TokenKind::RightShift => write!(f, ">>"),
 
             // Special tokens
             TokenKind::Newline => write!(f, "\\n"),

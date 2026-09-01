@@ -301,6 +301,12 @@ impl Parser {
             return Ok(self.include_call_statement(arguments, start_pos));
         }
 
+        // `include ::Kernel` names a top-level constant. Metorex resolves an
+        // unqualified constant from the top level anyway, so the leading `::`
+        // only has to be consumed.
+        if self.check(&[TokenKind::ColonColon]) {
+            self.advance();
+        }
         let mut module_name = match self.advance().kind {
             TokenKind::Ident(name) => name,
             _ => return Err(self.error_at_previous("Expected module name after 'include'")),

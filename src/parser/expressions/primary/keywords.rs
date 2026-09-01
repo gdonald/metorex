@@ -218,7 +218,7 @@ impl Parser {
                 return Err(self.error_at_previous("Expected identifier after leading '::'"));
             }
         };
-        Ok(Expression::Identifier {
+        Ok(Expression::TopLevelConstant {
             name,
             position: token_position,
         })

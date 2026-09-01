@@ -5,6 +5,16 @@ use metorex::ast::{Expression, Parameter, Statement};
 use metorex::lexer::Position;
 use metorex::vm::VirtualMachine;
 
+/// Run source and return the error message it raises.
+fn run_err(code: &str) -> String {
+    let tokens = metorex::lexer::Lexer::new(code).tokenize();
+    let statements = metorex::parser::Parser::new(tokens)
+        .parse()
+        .expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    vm.execute_program(&statements).unwrap_err().to_string()
+}
+
 /// Create a Position at line 1, column 1
 fn pos() -> Position {
     Position {
@@ -69,7 +79,7 @@ fn test_division_by_zero_error_has_location() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("Division by zero"));
+    assert!(error.to_string().contains("divided by 0"));
     assert!(error.to_string().contains("3:5"));
 }
 
@@ -453,7 +463,7 @@ fn test_method_argument_count_error_has_location() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("expected 2 argument"));
+    assert!(error.to_string().contains("expected 2"));
     assert!(error.to_string().contains("30:1"));
 }
 
@@ -651,4 +661,40 @@ fn test_error_in_deeply_nested_calls() {
     // The actual error location will be where undefined_var is referenced
     // which is at the default position in the method body
     assert!(error_string.contains("Runtime error"));
+}
+
+#[test]
+fn arity_error_names_a_range_when_a_parameter_has_a_default() {
+    let error = run_err("def pick(first, second = 2); end\npick");
+    assert!(
+        error.contains("wrong number of arguments (given 0, expected 1..2)"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn arity_error_names_a_minimum_when_a_parameter_is_variadic() {
+    let error = run_err("def gather(first, *rest); end\ngather");
+    assert!(
+        error.contains("wrong number of arguments (given 0, expected 1+)"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn arity_error_names_an_exact_count_for_a_plain_method() {
+    let error = run_err("def pair(first, second); end\npair(1)");
+    assert!(
+        error.contains("wrong number of arguments (given 1, expected 2)"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn hash_fetch_arity_error_names_its_range() {
+    let error = run_err("{}.fetch(1, 2, 3)");
+    assert!(
+        error.contains("wrong number of arguments (given 3, expected 1..2)"),
+        "unexpected error: {error}"
+    );
 }

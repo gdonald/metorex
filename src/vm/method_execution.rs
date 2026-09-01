@@ -30,15 +30,16 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         let method_name = method.name.clone();
 
-        // Check for undefined methods (created by undef_method)
+        // A name that `undef_method` retired raises the same NoMethodError as
+        // a name nothing ever defined. The stored name carries the
+        // `__class__` prefix for a class method, which the message drops.
         if method.is_undefined {
-            return Err(MetorexError::runtime_error(
-                format!(
-                    "Undefined method '{}' for type '{}'",
-                    method_name,
-                    class.name()
-                ),
-                position_to_location(position),
+            let reported = method_name
+                .strip_prefix("__class__")
+                .unwrap_or(&method_name)
+                .to_string();
+            return Err(crate::vm::errors::undefined_method_error(
+                &reported, &receiver, position,
             ));
         }
 
@@ -90,17 +91,20 @@ impl VirtualMachine {
         let required =
             expected - method.default_parameters.len() - if has_variadic { 1 } else { 0 };
         if !has_variadic && (positional_count < required || positional_count > expected) {
-            return Err(method_argument_error(
-                &method_name,
-                expected,
+            let accepted = if required == expected {
+                crate::vm::errors::Arity::Exact(expected)
+            } else {
+                crate::vm::errors::Arity::Range(required, expected)
+            };
+            return Err(crate::vm::errors::argument_count_error(
+                accepted,
                 positional_count,
                 position,
             ));
         }
         if has_variadic && positional_count < required {
-            return Err(method_argument_error(
-                &method_name,
-                required,
+            return Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::AtLeast(required),
                 positional_count,
                 position,
             ));
@@ -149,6 +153,14 @@ impl VirtualMachine {
         // Snapshot the positional args so `super` (bare form, inside the
         // body) can forward them to the parent method.
         self.method_arg_stack.push(arguments_for_body.clone());
+        // Where this method was defined, so a `super` in its body starts from
+        // the right link even when the module has no name.
+        self.method_owner_stack.push(
+            method
+                .owner_class
+                .clone()
+                .or_else(|| Some(Rc::clone(&class))),
+        );
         // `Module.nesting` inside the body reports where the method was
         // defined, not the scopes open at the call site.
         self.method_nesting_stack
@@ -170,6 +182,7 @@ impl VirtualMachine {
             },
         );
         self.method_nesting_stack.pop();
+        self.method_owner_stack.pop();
         self.method_arg_stack.pop();
         self.refinement_scopes = caller_scopes;
         self.user_def_nesting = self.user_def_nesting.saturating_sub(1);

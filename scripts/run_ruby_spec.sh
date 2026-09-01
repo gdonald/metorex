@@ -167,7 +167,7 @@ run_spec "$SPEC_DIR/core/module/using_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/Complex_spec.rb"  # Complex is a stub class with no arithmetic
 # run_spec "$SPEC_DIR/core/kernel/Float_spec.rb"  # needs Kernel#Float string parsing and coercion
 run_spec "$SPEC_DIR/core/kernel/Hash_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Integer_spec.rb"  # 2 examples need arbitrary-precision integers
+# run_spec "$SPEC_DIR/core/kernel/Integer_spec.rb"  # its 2 remaining examples need Integer == Float to compare numerically
 run_spec "$SPEC_DIR/core/kernel/Rational_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/String_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/__callee___spec.rb"
@@ -193,7 +193,7 @@ run_spec "$SPEC_DIR/core/kernel/define_singleton_method_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/display_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/dup_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/enum_for_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/eql_spec.rb"  # bignum example needs arbitrary-precision integers
+run_spec "$SPEC_DIR/core/kernel/eql_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/equal_value_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/eval_spec.rb"  # needs ** and ... argument forwarding
 # run_spec "$SPEC_DIR/core/kernel/exec_spec.rb"  # both behavior examples need ruby_exe subprocess support
@@ -228,7 +228,7 @@ run_spec "$SPEC_DIR/core/kernel/method_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/methods_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/nil_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/not_match_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/object_id_spec.rb"  # the Bignum example needs arbitrary-precision integers
+run_spec "$SPEC_DIR/core/kernel/object_id_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/open_spec.rb"  # needs Kernel#open, File::CREAT, IO.popen, and ruby_exe subprocess support
 # run_spec "$SPEC_DIR/core/kernel/p_spec.rb"  # needs a File IO object for `$stdout = file` and fd-level redirection
 # run_spec "$SPEC_DIR/core/kernel/pp_spec.rb"  # its one example needs ruby_exe subprocess support
@@ -281,20 +281,20 @@ run_spec "$SPEC_DIR/core/kernel/untrust_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/untrusted_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/warn_spec.rb"  # its last 4 examples shell out through IO.popen
 run_spec "$SPEC_DIR/core/kernel/yield_self_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/__id__spec.rb"  # its Bignum example needs arbitrary-precision integers
-# run_spec "$SPEC_DIR/core/basicobject/__send___spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/basicobject_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/equal_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/equal_value_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/initialize_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/instance_eval_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/instance_exec_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/method_missing_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/not_equal_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/not_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/singleton_method_added_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/singleton_method_removed_spec.rb"
-# run_spec "$SPEC_DIR/core/basicobject/singleton_method_undefined_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/__id__spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/__send___spec.rb"
+# run_spec "$SPEC_DIR/core/basicobject/basicobject_spec.rb"  # its method_missing example shells out through IO.popen
+run_spec "$SPEC_DIR/core/basicobject/equal_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/equal_value_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/initialize_spec.rb"
+# run_spec "$SPEC_DIR/core/basicobject/instance_eval_spec.rb"  # needs a default definee separate from the lexical scope, eval source locations, and block-local scoping
+# run_spec "$SPEC_DIR/core/basicobject/instance_exec_spec.rb"  # its last 2 examples need a default definee separate from the lexical scope
+run_spec "$SPEC_DIR/core/basicobject/method_missing_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/not_equal_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/not_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/singleton_method_added_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/singleton_method_removed_spec.rb"
+run_spec "$SPEC_DIR/core/basicobject/singleton_method_undefined_spec.rb"
 
 # 4.10 - 4.13: Exceptions and Signals
 # run_spec "$SPEC_DIR/core/exception"

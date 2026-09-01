@@ -52,6 +52,16 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         let mut evaluated = Vec::with_capacity(elements.len());
         for element in elements {
+            // `[first, *rest]` splices the splatted array in place rather
+            // than nesting it as one element.
+            if let Expression::Splat { expression, .. } = element {
+                match self.evaluate_expression(expression)? {
+                    Object::Array(items) => evaluated.extend(items.borrow().iter().cloned()),
+                    Object::Nil => {}
+                    other => evaluated.push(other),
+                }
+                continue;
+            }
             evaluated.push(self.evaluate_expression(element)?);
         }
         Ok(Object::Array(Rc::new(RefCell::new(evaluated))))

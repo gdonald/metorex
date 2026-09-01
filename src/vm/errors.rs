@@ -82,7 +82,7 @@ pub(super) fn undefined_method_error(
         receiver.type_name().to_string()
     };
     let message = format!("Undefined method '{}' for type '{}'", method, class_info);
-    let exc = Object::exception("NoMethodError", message.clone());
+    let exc = no_method_error(&message, method, receiver);
     MetorexError::UncaughtException {
         exception: exc,
         location: position_to_location(position),
@@ -90,18 +90,60 @@ pub(super) fn undefined_method_error(
     }
 }
 
+/// A NoMethodError carrying the name it was raised for and the object it was
+/// called on, which `NameError#name` and `#receiver` report.
+pub(super) fn no_method_error(message: &str, method: &str, receiver: &Object) -> Object {
+    let exception = Object::exception("NoMethodError", message);
+    if let Object::Exception(details) = &exception {
+        let mut details = details.borrow_mut();
+        details.name = Some(method.to_string());
+        details.receiver = Some(Box::new(receiver.clone()));
+    }
+    exception
+}
+
+/// How many arguments a callable accepts, rendered the way Ruby renders it
+/// in an arity message: one count, a range, or a minimum with a `+`.
+pub(super) enum Arity {
+    /// Exactly this many.
+    Exact(usize),
+    /// From the first count through the second.
+    Range(usize, usize),
+    /// This many or more, which is what a splat parameter accepts.
+    AtLeast(usize),
+}
+
+impl std::fmt::Display for Arity {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Arity::Exact(count) => write!(formatter, "{}", count),
+            Arity::Range(low, high) => write!(formatter, "{}..{}", low, high),
+            Arity::AtLeast(low) => write!(formatter, "{}+", low),
+        }
+    }
+}
+
 /// Produce an `ArgumentError` when a method receives the wrong number of
 /// arguments (Ruby raises ArgumentError, not RuntimeError, for arity
-/// mismatches).
+/// mismatches). The method name is left out, as Ruby leaves it out.
 pub(super) fn method_argument_error(
-    method: &str,
+    _method: &str,
     expected: usize,
     found: usize,
     position: Position,
 ) -> MetorexError {
+    argument_count_error(Arity::Exact(expected), found, position)
+}
+
+/// The same error for a method that accepts a span of counts rather than one.
+pub(super) fn argument_count_error(
+    expected: Arity,
+    found: usize,
+    position: Position,
+) -> MetorexError {
     let msg = format!(
-        "Method '{}' expected {} argument(s) but received {}",
-        method, expected, found
+        "wrong number of arguments (given {}, expected {})",
+        found, expected
     );
     let exc = Object::exception("ArgumentError", msg.clone());
     MetorexError::UncaughtException {
@@ -135,26 +177,6 @@ pub(super) fn not_callable_error(value: &Object, position: Position) -> MetorexE
         format!("Object of type '{}' is not callable", value.type_name()),
         position_to_location(position),
     )
-}
-
-/// Produce an `ArgumentError` when a callable (block/lambda) receives the
-/// wrong number of arguments.
-pub(super) fn callable_argument_error(
-    callable_name: &str,
-    expected: usize,
-    found: usize,
-    position: Position,
-) -> MetorexError {
-    let msg = format!(
-        "Callable '{}' expected {} argument(s) but received {}",
-        callable_name, expected, found
-    );
-    let exc = Object::exception("ArgumentError", msg.clone());
-    MetorexError::UncaughtException {
-        exception: exc,
-        location: position_to_location(position),
-        message: msg,
-    }
 }
 
 // ============================================================================
@@ -193,7 +215,12 @@ pub(super) fn binary_type_error(
 
 /// Produce a divide-by-zero runtime error.
 pub(super) fn divide_by_zero_error(position: Position) -> MetorexError {
-    MetorexError::runtime_error("Division by zero", position_to_location(position))
+    let message = "divided by 0".to_string();
+    MetorexError::UncaughtException {
+        exception: Object::exception("ZeroDivisionError", message.clone()),
+        location: position_to_location(position),
+        message,
+    }
 }
 
 // ============================================================================

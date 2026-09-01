@@ -283,7 +283,10 @@ class Host
 end
 "#,
     );
-    assert!(err.contains("include"), "unexpected error: {err}");
+    assert!(
+        err.contains("wrong number of arguments (given 0, expected 1+)"),
+        "unexpected error: {err}"
+    );
 }
 
 // ── Undefined module for extend (via runtime) ────────────────────────────────

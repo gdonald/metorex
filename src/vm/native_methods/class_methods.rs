@@ -143,6 +143,21 @@ impl VirtualMachine {
             };
             let mut names: Vec<String> = Vec::new();
             collect_from(class_rc, &mut names);
+            // Every top-level constant is a constant of Object, including the
+            // built-in class names, which live in the global registry rather
+            // than in Object's own table.
+            if class_rc.name() == "Object" {
+                for (name, _) in self.globals().iter() {
+                    if name.starts_with("__")
+                        || name.contains("::")
+                        || !name.chars().next().is_some_and(|c| c.is_uppercase())
+                        || names.contains(name)
+                    {
+                        continue;
+                    }
+                    names.push(name.clone());
+                }
+            }
             if inherit {
                 let mut queue: Vec<Rc<Class>> = class_rc.mixin_chain();
                 let mut cursor = class_rc.superclass();
@@ -454,7 +469,11 @@ impl VirtualMachine {
             && arguments.is_empty()
             && !has_user_defined_method(class_rc, method_name)
         {
-            return Err(method_argument_error(method_name, 1, 0, position));
+            return Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::AtLeast(1),
+                0,
+                position,
+            ));
         }
         if matches!(method_name, "include" | "prepend") && !arguments.is_empty() {
             // Ruby applies the arguments in reverse, so the first module
@@ -1010,6 +1029,21 @@ impl VirtualMachine {
                         priv_set.insert((*n).to_string());
                     }
                 }
+                // BasicObject's own methods are native too, and its table is
+                // empty, so they are listed here the way Kernel's are.
+                if class_rc.name() == "BasicObject" {
+                    for n in NATIVE_BASIC_OBJECT_METHODS.iter() {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push((*n).to_string());
+                        }
+                    }
+                    for n in BASIC_OBJECT_PRIVATE_METHODS.iter() {
+                        if !method_list.iter().any(|m| m == n) {
+                            method_list.push((*n).to_string());
+                        }
+                        priv_set.insert((*n).to_string());
+                    }
+                }
                 // Kernel's methods are implemented natively rather than in
                 // its table, so they are listed here. The public ones come
                 // first; the pass below marks the private ones.
@@ -1064,7 +1098,7 @@ impl VirtualMachine {
                 }
                 let filtered: Vec<Object> = method_list
                     .into_iter()
-                    .filter(|n| !n.starts_with("__"))
+                    .filter(|n| !is_internal_method_key(n))
                     .filter(|n| match method_name {
                         "private_instance_methods" => priv_set.contains(n),
                         "protected_instance_methods" => protected_set.contains(n),
@@ -1969,7 +2003,14 @@ impl VirtualMachine {
                     });
                 }
                 for name in names {
-                    if !class_rc.remove_method(&name) {
+                    // A method put on a class by `def Klass.name` lives under
+                    // the `__class__` name on the class itself, so a
+                    // `class << Klass` body has to reach it there.
+                    let removed = class_rc.remove_method(&name)
+                        || self.attached_class_of(class_rc).is_some_and(|attached| {
+                            attached.remove_method(&format!("__class__{}", name))
+                        });
+                    if !removed {
                         let msg =
                             format!("method '{}' not defined in {}", name, class_rc.ruby_name());
                         let exc = Object::exception("NameError", msg.clone());
@@ -1979,7 +2020,12 @@ impl VirtualMachine {
                             message: msg,
                         });
                     }
-                    self.invoke_class_hook(class_rc, "method_removed", &name, position)?;
+                    let hook = if class_rc.get_class_var("__singleton__").is_some() {
+                        "singleton_method_removed"
+                    } else {
+                        "method_removed"
+                    };
+                    self.invoke_class_hook(class_rc, hook, &name, position)?;
                 }
                 return Ok(Some(if class_rc.is_module() {
                     Object::Module(Rc::clone(class_rc))
@@ -2009,12 +2055,25 @@ impl VirtualMachine {
                     });
                 }
                 for name in names {
+                    // A method put on a class by `def Klass.name` lives under
+                    // the `__class__` name on the class itself, so a
+                    // `class << Klass` body has to reach it there.
+                    let class_method_owner = self.attached_class_of(class_rc).filter(|attached| {
+                        attached
+                            .find_method(&format!("__class__{}", name))
+                            .is_some_and(|method| !method.is_undefined)
+                    });
                     // Kernel methods live in the native dispatch tables rather
                     // than in a class's method map, so they count as present.
-                    if class_rc
-                        .find_method(&name)
-                        .is_none_or(|method| method.is_undefined)
+                    if class_method_owner.is_none()
+                        && class_rc
+                            .find_method(&name)
+                            .is_none_or(|method| method.is_undefined)
                         && !is_native_kernel_method(&name)
+                        // The default hooks are native no-ops rather than
+                        // table entries, so they count as present too.
+                        && !MODULE_PRIVATE_HOOKS.contains(&name.as_str())
+                        && !BASIC_OBJECT_PRIVATE_METHODS.contains(&name.as_str())
                     {
                         let msg = format!(
                             "undefined method '{}' for {} '{}'",
@@ -2033,8 +2092,21 @@ impl VirtualMachine {
                         });
                     }
                     let sentinel = Method::undefined(name.clone());
-                    class_rc.define_method(&name, Rc::new(sentinel));
-                    self.invoke_class_hook(class_rc, "method_undefined", &name, position)?;
+                    match &class_method_owner {
+                        // The sentinel has to sit where the lookup will find
+                        // it, which for a class method is the `__class__` name
+                        // on the attached class.
+                        Some(attached) => {
+                            attached.define_method(format!("__class__{}", name), Rc::new(sentinel))
+                        }
+                        None => class_rc.define_method(&name, Rc::new(sentinel)),
+                    }
+                    let hook = if class_rc.get_class_var("__singleton__").is_some() {
+                        "singleton_method_undefined"
+                    } else {
+                        "method_undefined"
+                    };
+                    self.invoke_class_hook(class_rc, hook, &name, position)?;
                 }
                 return Ok(Some(if class_rc.is_module() {
                     Object::Module(Rc::clone(class_rc))
@@ -2576,6 +2648,33 @@ impl VirtualMachine {
         Ok(())
     }
 
+    /// A hook that was undefined still reaches a user-defined
+    /// `method_missing`. Answers None when nothing defines one, so the caller
+    /// raises the NoMethodError itself.
+    fn undefined_hook_via_method_missing(
+        &mut self,
+        receiver: &Object,
+        hook: &str,
+        argument: &Object,
+        position: Position,
+    ) -> Option<Result<Object, MetorexError>> {
+        let (owner, handler) = self.lookup_method(receiver, "method_missing")?;
+        if handler.is_undefined {
+            return None;
+        }
+        let arguments = vec![Object::Symbol(Rc::new(hook.to_string())), argument.clone()];
+        Some(self.invoke_method(owner, handler, receiver.clone(), arguments, position))
+    }
+
+    /// The class or module a singleton class is attached to, when it is one.
+    fn attached_class_of(&self, class_rc: &Rc<Class>) -> Option<Rc<Class>> {
+        class_rc.get_class_var("__singleton__")?;
+        match class_rc.get_class_var("__attached__") {
+            Some(Object::Class(attached) | Object::Module(attached)) => Some(attached),
+            _ => None,
+        }
+    }
+
     pub(crate) fn invoke_class_hook(
         &mut self,
         class_rc: &Rc<Class>,
@@ -2585,7 +2684,41 @@ impl VirtualMachine {
     ) -> Result<(), MetorexError> {
         let arg = Object::Symbol(Rc::new(added_name.to_string()));
 
-        if hook == "singleton_method_added"
+        // A hook that was undefined raises when it would have been called,
+        // the same as any other call to a method that is not there. A
+        // singleton hook lives on the singleton class, which is where
+        // `class << obj; undef_method ...; end` puts the marker.
+        let undefined_marker = class_rc
+            .find_method(hook)
+            .filter(|existing| existing.is_undefined)
+            .or_else(|| {
+                class_rc
+                    .singleton_class_slot()
+                    .clone()
+                    .and_then(|singleton| singleton.find_method(hook))
+                    .filter(|existing| existing.is_undefined)
+            });
+        if undefined_marker.is_some() {
+            let attached = class_rc
+                .get_class_var("__attached__")
+                .unwrap_or(Object::Class(Rc::clone(class_rc)));
+            // An undefined method still reaches `method_missing`, which is
+            // where the default implementation raises.
+            if let Some(handled) =
+                self.undefined_hook_via_method_missing(&attached, hook, &arg, position)
+            {
+                handled?;
+                return Ok(());
+            }
+            let message = format!("undefined method '{}' for {}", hook, attached);
+            return Err(MetorexError::UncaughtException {
+                exception: crate::vm::errors::no_method_error(&message, hook, &attached),
+                location: position_to_location(position),
+                message,
+            });
+        }
+
+        if hook.starts_with("singleton_method_")
             && class_rc.get_class_var("__singleton__").is_some()
             && let Some(attached) = class_rc.get_class_var("__attached__")
         {
@@ -2593,15 +2726,32 @@ impl VirtualMachine {
                 Object::Class(c) | Object::Module(c) => Some(Rc::clone(c)),
                 _ => None,
             };
-            if let Some(target_class) = attached_class
-                && let Some(method) = target_class
-                    .singleton_class_slot()
-                    .clone()
-                    .and_then(|sc| sc.find_method(hook))
-            {
-                let sc = target_class.singleton_class_slot().clone().unwrap();
-                self.invoke_method(sc, method, attached.clone(), vec![arg], position)?;
+            if let Some(target_class) = attached_class {
+                // The hook may sit on the attached class's singleton class or
+                // under the `__class__` name `def self.hook` stores it as.
+                if let Some(sc) = target_class.singleton_class_slot().clone()
+                    && let Some(method) = sc.find_method(hook)
+                {
+                    self.invoke_method(sc, method, attached.clone(), vec![arg], position)?;
+                    return Ok(());
+                }
+                if let Some(method) = self.class_method_of(&target_class, hook) {
+                    self.invoke_method(
+                        target_class,
+                        method,
+                        attached.clone(),
+                        vec![arg],
+                        position,
+                    )?;
+                }
                 return Ok(());
+            }
+            // The attached object is an ordinary one, so the hook is looked
+            // up on it the way any other method call on it would be.
+            if let Some((owner, method)) = self.lookup_method(&attached, hook)
+                && !method.is_undefined
+            {
+                self.invoke_method(owner, method, attached.clone(), vec![arg], position)?;
             }
             return Ok(());
         }
@@ -2629,6 +2779,47 @@ pub(crate) const MODULE_FUNCTION_VISIBILITY: &str = "module_function";
 
 /// Kernel's process-control functions, which Ruby exposes as private instance
 /// methods on Kernel and as public singleton methods on the module.
+/// Whether a name is one of the mangled keys metorex stores alongside real
+/// methods. Ruby's own `__`-prefixed methods, such as `__send__`, are not
+/// among them and stay visible.
+fn is_internal_method_key(name: &str) -> bool {
+    const INTERNAL_PREFIXES: &[&str] = &[
+        "__class__",
+        "__ext__",
+        "__refine__",
+        "__singleton__",
+        "__attached__",
+        "__module_body_class__",
+        "__struct_",
+        "__refinement_label__",
+    ];
+    INTERNAL_PREFIXES
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+
+/// BasicObject's public instance methods, which are native rather than
+/// entries in its method table.
+pub(super) const NATIVE_BASIC_OBJECT_METHODS: &[&str] = &[
+    "!",
+    "!=",
+    "==",
+    "__id__",
+    "__send__",
+    "equal?",
+    "instance_eval",
+    "instance_exec",
+];
+
+/// BasicObject's private instance methods.
+pub(super) const BASIC_OBJECT_PRIVATE_METHODS: &[&str] = &[
+    "initialize",
+    "method_missing",
+    "singleton_method_added",
+    "singleton_method_removed",
+    "singleton_method_undefined",
+];
+
 pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "abort",
     "binding",
@@ -2758,6 +2949,8 @@ pub(super) const NATIVE_KERNEL_METHODS: &[(&str, &[&str], bool)] = &[
     ("to_s", &[], false),
     ("__id__", &[], false),
     ("__send__", &["arguments"], true),
+    ("instance_exec", &["arguments"], true),
+    ("instance_eval", &["arguments"], true),
     ("warn", &["messages"], true),
 ];
 

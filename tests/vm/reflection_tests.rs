@@ -220,7 +220,7 @@ end
 Foo.new.send(123)
 "#,
     );
-    assert!(err.contains("String or Symbol"));
+    assert!(err.contains("not a symbol nor a string"));
 }
 
 #[test]
@@ -232,7 +232,7 @@ end
 Foo.new.send()
 "#,
     );
-    assert!(err.contains("expected 1"));
+    assert!(err.contains("no method name given"));
 }
 
 #[test]

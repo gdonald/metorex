@@ -643,6 +643,17 @@ impl VirtualMachine {
     /// `Class.new { ... }` / anonymous classes). Returns the value of the last
     /// evaluated statement, which `class_eval` / `module_eval` surface as their
     /// result (ordinary class definitions discard it).
+    /// Which hook a newly defined method fires. A method added to a
+    /// singleton class is a singleton method of the object it is attached
+    /// to, so Ruby reports it through `singleton_method_added`.
+    fn method_added_hook_for(class: &Rc<Class>) -> &'static str {
+        if class.get_class_var("__singleton__").is_some() {
+            "singleton_method_added"
+        } else {
+            "method_added"
+        }
+    }
+
     pub(crate) fn apply_class_body(
         &mut self,
         class: &Rc<Class>,
@@ -664,7 +675,7 @@ impl VirtualMachine {
         body_result
     }
 
-    fn apply_class_body_statements(
+    pub(crate) fn apply_class_body_statements(
         &mut self,
         class: &Rc<Class>,
         body: &[Statement],
@@ -715,7 +726,8 @@ impl VirtualMachine {
                     m.owner_class = Some(Rc::clone(class));
                     class.define_method(method_name, Rc::new(m));
                     apply_current_visibility(class, method_name);
-                    self.invoke_class_hook(class, "method_added", method_name, *def_position)?;
+                    let hook = Self::method_added_hook_for(class);
+                    self.invoke_class_hook(class, hook, method_name, *def_position)?;
                     if module_function_is_active(class) {
                         self.copy_to_module_function(class, method_name, *def_position)?;
                     }
@@ -806,7 +818,11 @@ impl VirtualMachine {
                     } else {
                         class.define_method(method_name, method);
                         apply_current_visibility(class, method_name);
-                        self.invoke_class_hook(class, "method_added", method_name, position)?;
+                        // A method defined in a `class << obj` body is a
+                        // singleton method of the attached object, so it
+                        // fires the singleton hook rather than the plain one.
+                        let hook = Self::method_added_hook_for(class);
+                        self.invoke_class_hook(class, hook, method_name, position)?;
                         if module_function_is_active(class) {
                             self.copy_to_module_function(class, method_name, position)?;
                         }
@@ -1054,7 +1070,8 @@ impl VirtualMachine {
                     position: alias_pos,
                 } => {
                     class.alias_method(new_name, old_name);
-                    self.invoke_class_hook(class, "method_added", new_name, *alias_pos)?;
+                    let hook = Self::method_added_hook_for(class);
+                    self.invoke_class_hook(class, hook, new_name, *alias_pos)?;
                 }
                 // `class << <target>` inside a class body — open the target's
                 // singleton class and apply the inner body there.
@@ -1147,7 +1164,8 @@ impl VirtualMachine {
                         };
                         if !new_name.is_empty() && !old_name.is_empty() {
                             class.alias_method(&new_name, &old_name);
-                            self.invoke_class_hook(class, "method_added", &new_name, position)?;
+                            let hook = Self::method_added_hook_for(class);
+                            self.invoke_class_hook(class, hook, &new_name, position)?;
                         }
                     }
                     // Handle define_method(:name) { |args| body } calls in class body
@@ -1337,6 +1355,12 @@ impl VirtualMachine {
                 // `def self.name` inside the body.
                 Some(Object::Class(target_class)) | Some(Object::Module(target_class)) => {
                     target_class.define_method(format!("__class__{}", name), Rc::clone(&function));
+                    self.invoke_class_hook(
+                        &target_class,
+                        "singleton_method_added",
+                        name,
+                        position,
+                    )?;
                 }
                 // `def obj.name` installs on the object's singleton class,
                 // the same place `define_singleton_method` and `class << obj`
@@ -1345,6 +1369,7 @@ impl VirtualMachine {
                 Some(instance @ Object::Instance(_)) => {
                     let singleton = self.singleton_class_of(&instance);
                     singleton.define_method(name, Rc::clone(&function));
+                    self.invoke_class_hook(&singleton, "singleton_method_added", name, position)?;
                 }
                 _ => {}
             }
@@ -1361,7 +1386,8 @@ impl VirtualMachine {
         if let Some(definee) = self.def_scope_stack.last().cloned() {
             definee.define_method(name, Rc::clone(&function));
             apply_current_visibility(&definee, name);
-            self.invoke_class_hook(&definee, "method_added", name, position)?;
+            let hook = Self::method_added_hook_for(&definee);
+            self.invoke_class_hook(&definee, hook, name, position)?;
             if module_function_is_active(&definee) {
                 self.copy_to_module_function(&definee, name, position)?;
             }
@@ -1647,12 +1673,8 @@ impl VirtualMachine {
                     } else {
                         module.define_method(method_name, method);
                         apply_current_visibility(module, method_name);
-                        self.invoke_class_hook(
-                            module,
-                            "method_added",
-                            method_name,
-                            statement.position(),
-                        )?;
+                        let hook = Self::method_added_hook_for(module);
+                        self.invoke_class_hook(module, hook, method_name, statement.position())?;
                         if module_function_is_active(module) {
                             self.copy_to_module_function(
                                 module,
@@ -1840,6 +1862,35 @@ impl VirtualMachine {
             }
         }
         Ok(())
+    }
+
+    /// Whether an unqualified constant may fall through to the top level.
+    /// Ruby reaches top-level constants because they are Object's, so a class
+    /// body whose class does not descend from Object never sees them.
+    pub(crate) fn lexical_scope_reaches_top_level(&self) -> bool {
+        let innermost = self.def_scope_stack.last().cloned().or_else(|| {
+            // Inside a method body the lexical chain is the nesting captured
+            // where the method was defined, innermost first.
+            self.method_nesting_stack
+                .last()
+                .and_then(|nesting| nesting.first())
+                .cloned()
+        });
+        let Some(innermost) = innermost else {
+            return true;
+        };
+        // A module has no superclass chain to judge by, so it stays open.
+        let mut cursor = Some(innermost);
+        while let Some(current) = cursor {
+            if current.name() == "Object" {
+                return true;
+            }
+            if current.name() == "BasicObject" {
+                return false;
+            }
+            cursor = current.superclass();
+        }
+        true
     }
 
     /// Resolve a bare constant name using Ruby-like lexical scoping: walk
@@ -2265,6 +2316,7 @@ impl VirtualMachine {
             Object::Bool(_)
             | Object::Nil
             | Object::Int(_)
+            | Object::BigInt(_)
             | Object::Float(_)
             | Object::Symbol(_)
             | Object::String(_) => true,

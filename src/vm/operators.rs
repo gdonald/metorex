@@ -26,14 +26,16 @@ impl VirtualMachine {
         match op {
             UnaryOp::Plus => match value {
                 // Numeric `+x` is a no-op identity.
-                Object::Int(_) | Object::Float(_) => Ok(value),
+                Object::Int(_) | Object::BigInt(_) | Object::Float(_) => Ok(value),
                 // Ruby's `+"str"` returns a mutable copy of the string. We
                 // don't track frozenness, so this is just an identity op.
                 Object::String(_) => Ok(value),
                 _ => Err(unary_type_error(op, &value, position)),
             },
             UnaryOp::Minus => match value {
-                Object::Int(v) => Ok(Object::Int(-v)),
+                // Negating i64::MIN needs the wider type.
+                Object::Int(v) => Ok(Object::integer(-num_bigint::BigInt::from(v))),
+                Object::BigInt(v) => Ok(Object::integer(-(*v).clone())),
                 Object::Float(v) => Ok(Object::Float(-v)),
                 // Ruby's `-"str"` answers a frozen, deduplicated string.
                 // Metorex's strings are already shared and report frozen, so
@@ -191,7 +193,12 @@ impl VirtualMachine {
                 }
                 Ok(Object::Bool(left.equals(&right)))
             }
-            NotEqual => Ok(Object::Bool(!left.equals(&right))),
+            // Ruby defines `!=` as the negation of `==`, so a class that
+            // defines only `==` gets both.
+            NotEqual => {
+                let equal = self.evaluate_binary_operation(&Equal, left, right, position)?;
+                Ok(Object::Bool(!crate::vm::utils::is_truthy(&equal)))
+            }
             Less | Greater | LessEqual | GreaterEqual => {
                 self.evaluate_comparison(op, left, right, position)
             }
@@ -235,7 +242,13 @@ impl VirtualMachine {
                 // nil & x always returns false (Ruby semantics)
                 (Object::Nil, _) | (_, Object::Nil) => Ok(Object::Bool(false)),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a & b)),
-                (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a & b)),
+                (
+                    ref left @ (Object::Int(_) | Object::BigInt(_)),
+                    ref right @ (Object::Int(_) | Object::BigInt(_)),
+                ) => Ok(Object::integer(
+                    left.as_big_integer().expect("integer-kinded")
+                        & right.as_big_integer().expect("integer-kinded"),
+                )),
                 (Object::Bool(a), other) => Ok(Object::Bool(a & other.is_truthy())),
                 (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() & b)),
                 (lhs, rhs) => Err(binary_type_error(BitwiseAnd, &lhs, &rhs, position)),
@@ -261,7 +274,13 @@ impl VirtualMachine {
                 // nil | x returns truthiness of x
                 (Object::Nil, other) => Ok(Object::Bool(other.is_truthy())),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a | b)),
-                (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a | b)),
+                (
+                    ref left @ (Object::Int(_) | Object::BigInt(_)),
+                    ref right @ (Object::Int(_) | Object::BigInt(_)),
+                ) => Ok(Object::integer(
+                    left.as_big_integer().expect("integer-kinded")
+                        | right.as_big_integer().expect("integer-kinded"),
+                )),
                 (Object::Bool(a), other) => Ok(Object::Bool(a | other.is_truthy())),
                 (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() | b)),
                 (lhs, rhs) => Err(binary_type_error(BitwiseOr, &lhs, &rhs, position)),
@@ -270,7 +289,13 @@ impl VirtualMachine {
                 // nil ^ x returns truthiness of x
                 (Object::Nil, other) => Ok(Object::Bool(other.is_truthy())),
                 (Object::Bool(a), Object::Bool(b)) => Ok(Object::Bool(a ^ b)),
-                (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a ^ b)),
+                (
+                    ref left @ (Object::Int(_) | Object::BigInt(_)),
+                    ref right @ (Object::Int(_) | Object::BigInt(_)),
+                ) => Ok(Object::integer(
+                    left.as_big_integer().expect("integer-kinded")
+                        ^ right.as_big_integer().expect("integer-kinded"),
+                )),
                 (Object::Bool(a), other) => Ok(Object::Bool(a ^ other.is_truthy())),
                 (other, Object::Bool(b)) => Ok(Object::Bool(other.is_truthy() ^ b)),
                 (lhs, rhs) => Err(binary_type_error(Xor, &lhs, &rhs, position)),
@@ -298,8 +323,23 @@ impl VirtualMachine {
         match (left, right) {
             (Object::Int(a), Object::Int(b)) => match a.checked_add(b) {
                 Some(v) => Ok(Object::Int(v)),
-                None => Ok(Object::Float((a as f64) + (b as f64))),
+                // Too large for an i64, so carry on in arbitrary precision.
+                None => Ok(Object::integer(
+                    num_bigint::BigInt::from(a) + num_bigint::BigInt::from(b),
+                )),
             },
+            (
+                ref left @ (Object::Int(_) | Object::BigInt(_)),
+                ref right @ (Object::Int(_) | Object::BigInt(_)),
+            ) => {
+                let (a, b) = (
+                    left.as_big_integer().expect("integer-kinded"),
+                    right.as_big_integer().expect("integer-kinded"),
+                );
+                Ok(Object::integer(a + b))
+            }
+            (Object::BigInt(a), Object::Float(b)) => Ok(Object::Float(big_to_float(&a) + b)),
+            (Object::Float(a), Object::BigInt(b)) => Ok(Object::Float(a + big_to_float(&b))),
             (Object::Float(a), Object::Float(b)) => Ok(Object::Float(a + b)),
             (Object::Int(a), Object::Float(b)) => Ok(Object::Float((a as f64) + b)),
             (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + (b as f64))),
@@ -338,40 +378,20 @@ impl VirtualMachine {
                     .collect();
                 Ok(Object::Array(Rc::new(std::cell::RefCell::new(remaining))))
             }
-            (Object::Int(a), Object::Int(b)) => match op {
-                BinaryOp::Subtract => match a.checked_sub(b) {
-                    Some(v) => Ok(Object::Int(v)),
-                    None => Ok(Object::Float((a as f64) - (b as f64))),
-                },
-                BinaryOp::Multiply => match a.checked_mul(b) {
-                    Some(v) => Ok(Object::Int(v)),
-                    None => Ok(Object::Float((a as f64) * (b as f64))),
-                },
-                BinaryOp::Divide => {
-                    if b == 0 {
-                        Err(divide_by_zero_error(position))
-                    } else if a % b == 0 {
-                        Ok(Object::Int(a / b))
-                    } else {
-                        Ok(Object::Float((a as f64) / (b as f64)))
-                    }
-                }
-                BinaryOp::Modulo => {
-                    if b == 0 {
-                        Err(divide_by_zero_error(position))
-                    } else {
-                        Ok(Object::Int(a % b))
-                    }
-                }
-                BinaryOp::Power => {
-                    if b < 0 {
-                        Ok(Object::Float((a as f64).powf(b as f64)))
-                    } else {
-                        Ok(Object::Int((a as f64).powi(b as i32) as i64))
-                    }
-                }
-                _ => unreachable!(),
-            },
+            (
+                ref left @ (Object::Int(_) | Object::BigInt(_)),
+                ref right @ (Object::Int(_) | Object::BigInt(_)),
+            ) => {
+                let a = left.as_big_integer().expect("integer-kinded");
+                let b = right.as_big_integer().expect("integer-kinded");
+                integer_arithmetic(op, a, b, position)
+            }
+            (Object::BigInt(a), Object::Float(b)) => {
+                float_arithmetic(op, big_to_float(&a), b, position)
+            }
+            (Object::Float(a), Object::BigInt(b)) => {
+                float_arithmetic(op, a, big_to_float(&b), position)
+            }
             (Object::Float(a), Object::Float(b)) => match op {
                 BinaryOp::Subtract => Ok(Object::Float(a - b)),
                 BinaryOp::Multiply => Ok(Object::Float(a * b)),
@@ -414,9 +434,28 @@ impl VirtualMachine {
             return self.evaluate_module_comparison(op, left, right, position);
         }
 
+        // Two exact integers compare exactly, without the rounding a Float
+        // conversion would introduce at large magnitudes.
+        if matches!(left, Object::Int(_) | Object::BigInt(_))
+            && matches!(right, Object::Int(_) | Object::BigInt(_))
+        {
+            let a = left.as_big_integer().expect("integer-kinded");
+            let b = right.as_big_integer().expect("integer-kinded");
+            let result = match op {
+                BinaryOp::Less => a < b,
+                BinaryOp::Greater => a > b,
+                BinaryOp::LessEqual => a <= b,
+                BinaryOp::GreaterEqual => a >= b,
+                _ => unreachable!("caller restricts op to the comparison set"),
+            };
+            return Ok(Object::Bool(result));
+        }
+
         // Numeric comparisons
         let numeric_result = match (&left, &right) {
             (Object::Int(a), Object::Int(b)) => Some((*a as f64, *b as f64)),
+            (Object::BigInt(a), Object::Float(b)) => Some((big_to_float(a), *b)),
+            (Object::Float(a), Object::BigInt(b)) => Some((*a, big_to_float(b))),
             (Object::Float(a), Object::Float(b)) => Some((*a, *b)),
             (Object::Int(a), Object::Float(b)) => Some((*a as f64, *b)),
             (Object::Float(a), Object::Int(b)) => Some((*a, *b as f64)),
@@ -831,8 +870,25 @@ impl VirtualMachine {
         right: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // Two exact integers order exactly, whatever their magnitude.
+        if matches!(left, Object::Int(_) | Object::BigInt(_))
+            && matches!(right, Object::Int(_) | Object::BigInt(_))
+        {
+            let a = left.as_big_integer().expect("integer-kinded");
+            let b = right.as_big_integer().expect("integer-kinded");
+            return Ok(Object::Int(a.cmp(&b) as i64));
+        }
         match (&left, &right) {
             (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a.cmp(b) as i64)),
+            (Object::BigInt(a), Object::Float(b)) => Ok(Object::Int(
+                big_to_float(a)
+                    .partial_cmp(b)
+                    .map_or(0, |order| order as i64),
+            )),
+            (Object::Float(a), Object::BigInt(b)) => Ok(Object::Int(
+                a.partial_cmp(&big_to_float(b))
+                    .map_or(0, |order| order as i64),
+            )),
             (Object::Float(a), Object::Float(b)) => {
                 Ok(Object::Int(a.partial_cmp(b).map_or(0, |o| o as i64)))
             }
@@ -881,4 +937,70 @@ fn comparison_operator_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::GreaterEqual => Some(">="),
         _ => None,
     }
+}
+
+/// The nearest Float to an arbitrary-precision integer, which is what Ruby
+/// answers when one meets a Float in arithmetic. A magnitude past the Float
+/// range becomes an infinity, as Ruby's does.
+fn big_to_float(value: &num_bigint::BigInt) -> f64 {
+    use std::str::FromStr;
+    f64::from_str(&value.to_string()).unwrap_or(f64::INFINITY)
+}
+
+/// Subtract, multiply, divide, modulo, or raise two exact integers.
+fn integer_arithmetic(
+    op: &BinaryOp,
+    left: num_bigint::BigInt,
+    right: num_bigint::BigInt,
+    position: Position,
+) -> Result<Object, MetorexError> {
+    use num_bigint::BigInt;
+    match op {
+        BinaryOp::Subtract => Ok(Object::integer(left - right)),
+        BinaryOp::Multiply => Ok(Object::integer(left * right)),
+        BinaryOp::Divide => {
+            if right == BigInt::from(0) {
+                return Err(divide_by_zero_error(position));
+            }
+            let remainder = &left % &right;
+            if remainder == BigInt::from(0) {
+                Ok(Object::integer(left / right))
+            } else {
+                Ok(Object::Float(big_to_float(&left) / big_to_float(&right)))
+            }
+        }
+        BinaryOp::Modulo => {
+            if right == BigInt::from(0) {
+                return Err(divide_by_zero_error(position));
+            }
+            Ok(Object::integer(left % right))
+        }
+        BinaryOp::Power => {
+            // A negative exponent has no exact integer result.
+            let Ok(exponent) = u32::try_from(&right) else {
+                return Ok(Object::Float(
+                    big_to_float(&left).powf(big_to_float(&right)),
+                ));
+            };
+            Ok(Object::integer(left.pow(exponent)))
+        }
+        _ => unreachable!("caller restricts op to the arithmetic set"),
+    }
+}
+
+/// The same set of operations on two Floats.
+fn float_arithmetic(
+    op: &BinaryOp,
+    left: f64,
+    right: f64,
+    _position: Position,
+) -> Result<Object, MetorexError> {
+    Ok(Object::Float(match op {
+        BinaryOp::Subtract => left - right,
+        BinaryOp::Multiply => left * right,
+        BinaryOp::Divide => left / right,
+        BinaryOp::Modulo => left % right,
+        BinaryOp::Power => left.powf(right),
+        _ => unreachable!("caller restricts op to the arithmetic set"),
+    }))
 }
