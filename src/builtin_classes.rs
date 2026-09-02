@@ -183,6 +183,11 @@ impl BuiltinClasses {
         if std::ptr::eq(class_a, class_b) || class_a.name() == target_name {
             return true;
         }
+        for prepended in class_a.prepend_chain() {
+            if Self::module_matches(&prepended, target_ptr, target_name) {
+                return true;
+            }
+        }
         for mixin in class_a.mixin_chain() {
             if Self::module_matches(&mixin, target_ptr, target_name) {
                 return true;
@@ -192,6 +197,11 @@ impl BuiltinClasses {
         while let Some(parent) = current {
             if Rc::as_ptr(&parent) == target_ptr || parent.name() == target_name {
                 return true;
+            }
+            for prepended in parent.prepend_chain() {
+                if Self::module_matches(&prepended, target_ptr, target_name) {
+                    return true;
+                }
             }
             for mixin in parent.mixin_chain() {
                 if Self::module_matches(&mixin, target_ptr, target_name) {
@@ -209,6 +219,11 @@ impl BuiltinClasses {
     fn module_matches(module: &Rc<Class>, target_ptr: *const Class, target_name: &str) -> bool {
         if Rc::as_ptr(module) == target_ptr || module.name() == target_name {
             return true;
+        }
+        for inner in module.prepend_chain() {
+            if Self::module_matches(&inner, target_ptr, target_name) {
+                return true;
+            }
         }
         for inner in module.mixin_chain() {
             if Self::module_matches(&inner, target_ptr, target_name) {

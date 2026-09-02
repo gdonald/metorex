@@ -179,6 +179,11 @@ impl VirtualMachine {
                 let status = exception.borrow().status.unwrap_or(0);
                 Ok(Some(Object::Int(status)))
             }
+            // SystemExit#success? — true when the status means a clean exit.
+            "success?" if exception.borrow().exception_type == "SystemExit" => {
+                let status = exception.borrow().status.unwrap_or(0);
+                Ok(Some(Object::Bool(status == 0)))
+            }
             "type" | "exception_type" => {
                 // Return the exception type as a String
                 let exception_type = exception.borrow().exception_type.clone();

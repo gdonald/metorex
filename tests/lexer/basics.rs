@@ -1,6 +1,6 @@
 // Basic lexer behavior tests
 
-use metorex::lexer::{Lexer, Position, TokenKind};
+use metorex::lexer::{InterpolationPart, Lexer, Position, TokenKind};
 
 // Unit tests for the lexer core implementation
 
@@ -381,7 +381,11 @@ fn lexer_double_greater_is_right_shift() {
 #[test]
 fn lexer_backtick_command_string() {
     let tokens = Lexer::new("`echo hello`").tokenize();
-    assert!(matches!(&tokens[0].kind, TokenKind::String(s) if s == "echo hello"));
+    assert!(matches!(
+        &tokens[0].kind,
+        TokenKind::CommandString(parts)
+            if matches!(parts.as_slice(), [InterpolationPart::Text(text)] if text == "echo hello")
+    ));
 }
 
 #[test]

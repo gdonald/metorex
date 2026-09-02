@@ -50,6 +50,27 @@ struct Cli {
     #[arg(long = "disable", hide = true)]
     _disable: Option<String>,
 
+    /// Ignored: Ruby --disable-gems
+    #[arg(long = "disable-gems", hide = true, action = clap::ArgAction::SetTrue)]
+    _disable_gems: bool,
+
+    /// Ignored: Ruby --disable-did_you_mean, spelled either way
+    #[arg(
+        long = "disable-did_you_mean",
+        alias = "disable-did-you-mean",
+        hide = true,
+        action = clap::ArgAction::SetTrue
+    )]
+    _disable_did_you_mean: bool,
+
+    /// Ignored: Ruby --disable-rubyopt
+    #[arg(long = "disable-rubyopt", hide = true, action = clap::ArgAction::SetTrue)]
+    _disable_rubyopt: bool,
+
+    /// Ignored: Ruby --disable-all
+    #[arg(long = "disable-all", hide = true, action = clap::ArgAction::SetTrue)]
+    _disable_all: bool,
+
     /// Ruby -r (require library before executing)
     #[arg(short = 'r', hide = true)]
     require_libs: Vec<String>,
@@ -57,6 +78,10 @@ struct Cli {
     /// Ruby -I (prepend to $LOAD_PATH)
     #[arg(short = 'I', hide = true)]
     include_paths: Vec<String>,
+
+    /// Ruby -n (run the program once per input line, with the line in `$_`)
+    #[arg(short = 'n', hide = true, action = clap::ArgAction::SetTrue)]
+    each_line: bool,
 
     /// Ignored: Ruby -w (warnings)
     #[arg(short = 'w', hide = true, action = clap::ArgAction::SetTrue)]
@@ -69,6 +94,30 @@ struct Cli {
     /// Ignored: Ruby -d (debug mode)
     #[arg(short = 'd', hide = true, action = clap::ArgAction::SetTrue)]
     _ruby_debug: bool,
+}
+
+/// Run a program, either once or, under `-n`, once for each line of standard
+/// input with that line in `$_`.
+fn run_program(
+    vm: &mut VirtualMachine,
+    program: &[metorex::ast::Statement],
+    each_line: bool,
+) -> Result<(), metorex::error::MetorexError> {
+    if !each_line {
+        vm.execute_program(program)?;
+        return Ok(());
+    }
+    let mut line = String::new();
+    loop {
+        line.clear();
+        match std::io::stdin().read_line(&mut line) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        vm.set_current_line(line.clone());
+        vm.execute_program(program)?;
+    }
+    Ok(())
 }
 
 /// Apply `-I` (include paths) and `-r` (require libraries) flags to a VM.
@@ -96,7 +145,23 @@ fn main() {
 }
 
 fn real_main() {
-    let cli = Cli::parse();
+    // Ruby lets `-r`, `-I`, and `-W` carry their value attached (`-rfoo`),
+    // which the argument parser only understands as two words.
+    let arguments: Vec<String> = std::env::args()
+        .flat_map(|argument| match argument.as_str() {
+            attached
+                if attached.len() > 2
+                    && (attached.starts_with("-r")
+                        || attached.starts_with("-I")
+                        || attached.starts_with("-W")) =>
+            {
+                let (flag, value) = attached.split_at(2);
+                vec![flag.to_string(), value.to_string()]
+            }
+            _ => vec![argument],
+        })
+        .collect();
+    let cli = Cli::parse_from(arguments);
 
     // Ruby-compatible version output
     if cli.ruby_version {
@@ -121,7 +186,7 @@ fn real_main() {
         };
         let mut vm = VirtualMachine::new();
         apply_cli_flags(&mut vm, &cli);
-        if let Err(err) = vm.execute_program(&program) {
+        if let Err(err) = run_program(&mut vm, &program, cli.each_line) {
             eprintln!("Runtime error: {}", err);
             process::exit(1);
         }
@@ -196,16 +261,21 @@ fn real_main() {
         eprintln!("[debug] Tokens: {}", tokens.len());
     }
 
+    // The VM comes up before the script is parsed so that a library named by
+    // `-r` is loaded either way, and the `at_exit` handlers it registered run
+    // even when the script itself does not parse.
+    let mut vm = VirtualMachine::new();
+    apply_cli_flags(&mut vm, &cli);
+
     // Parse
     let mut parser = Parser::new(tokens);
     let program = match parser.parse() {
         Ok(prog) => prog,
         Err(errors) => {
-            eprintln!("Parse error(s):");
             for err in errors {
-                eprintln!("  {}", err);
+                eprintln!("{}: {} (SyntaxError)", filename, err);
             }
-            process::exit(1);
+            process::exit(vm.run_at_exit_handlers(1, None));
         }
     };
 
@@ -221,26 +291,36 @@ fn real_main() {
         return;
     }
 
-    // Execute
-    let mut vm = VirtualMachine::new();
-    apply_cli_flags(&mut vm, &cli);
-
     // Set the current file path and mark it as loaded
     vm.set_current_file(absolute_path.clone());
+    // `__FILE__` reports the path the script was named by on the command
+    // line, while everything that resolves a path uses the canonical one.
+    vm.set_script_path(absolute_path.clone(), std::path::PathBuf::from(filename));
     vm.mark_file_loaded(absolute_path);
     vm.set_argv(script_args);
 
-    if let Err(err) = vm.execute_program(&program) {
+    if let Err(err) = run_program(&mut vm, &program, cli.each_line) {
         // `abort` and `exit` raise SystemExit: it ends the program with the
         // status it carries, having already reported anything it wanted to.
         if let metorex::error::MetorexError::UncaughtException {
-            exception: metorex::object::Object::Exception(exc),
+            exception: exception @ metorex::object::Object::Exception(exc),
             ..
         } = &err
             && exc.borrow().exception_type == "SystemExit"
         {
-            process::exit(exc.borrow().status.unwrap_or(0) as i32);
+            let status = exc.borrow().status.unwrap_or(0) as i32;
+            let ending = exception.clone();
+            process::exit(vm.run_at_exit_handlers(status, Some(ending)));
         }
+        // The `at_exit` handlers run before the error is reported, so one
+        // that calls `exit!` replaces both the report and the status.
+        let ending = match &err {
+            metorex::error::MetorexError::UncaughtException { exception, .. } => {
+                Some(exception.clone())
+            }
+            _ => None,
+        };
+        let status = vm.run_at_exit_handlers(1, ending);
         eprintln!("Runtime error: {}", err);
         if let metorex::error::MetorexError::RuntimeError { stack_trace, .. } = &err
             && !stack_trace.is_empty()
@@ -250,6 +330,7 @@ fn real_main() {
                 eprintln!("{}", frame);
             }
         }
-        process::exit(1);
+        process::exit(status);
     }
+    process::exit(vm.run_at_exit_handlers(0, None));
 }

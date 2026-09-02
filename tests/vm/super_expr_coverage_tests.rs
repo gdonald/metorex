@@ -373,5 +373,7 @@ end
 Missing.new.no_such_kernel_method
 "#,
     );
-    assert!(error.contains("Superclass Object does not define method 'no_such_kernel_method'"));
+    assert!(error.contains(
+        "super: no superclass method 'no_such_kernel_method' for an instance of Missing"
+    ));
 }

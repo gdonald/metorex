@@ -164,9 +164,16 @@ impl VirtualMachine {
                 })
             }
             "at_exit" => {
-                // Discard the block; we never invoke at_exit handlers.
-                self.pending_block.take();
-                Ok(Object::Nil)
+                let Some(block) = self.pending_block.take() else {
+                    let message = "called without a block".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                };
+                self.at_exit_handlers.push(block.clone());
+                Ok(block)
             }
             "using" => {
                 if arguments.len() != 1 {
@@ -255,63 +262,57 @@ impl VirtualMachine {
                 }
                 None => Object::Nil,
             }),
-            "caller" => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
-                Vec::new(),
-            )))),
+            // `caller` reports the same frames `caller_locations` does, each
+            // rendered the way a backtrace entry reads.
+            "caller" => {
+                let Some(locations) = self.sliced_caller_locations(&arguments, position)? else {
+                    return Ok(Object::Nil);
+                };
+                let entries: Vec<Object> = locations
+                    .iter()
+                    .map(|location| {
+                        let read = |name: &str| match location {
+                            Object::Instance(instance) => instance
+                                .borrow()
+                                .get_var(name)
+                                .cloned()
+                                .unwrap_or(Object::Nil),
+                            _ => Object::Nil,
+                        };
+                        let path = match read("path") {
+                            Object::String(path) => (*path).clone(),
+                            _ => String::new(),
+                        };
+                        let line = match read("lineno") {
+                            Object::Int(line) => line,
+                            _ => 0,
+                        };
+                        let label = match read("label") {
+                            Object::String(label) => (*label).clone(),
+                            _ => String::new(),
+                        };
+                        Object::string(if label.is_empty() {
+                            format!("{}:{}", path, line)
+                        } else {
+                            format!("{}:{}:in '{}'", path, line, label)
+                        })
+                    })
+                    .collect();
+                Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    entries,
+                ))))
+            }
             // `caller_locations(start = 1, length = nil)` — walk the VM call
             // stack. Each frame stores the source position it was called
             // from, so level 1 (the caller of the current method) reads the
             // top frame's recorded location. Returns Location objects
             // responding to `lineno` and `path`.
-            "caller_locations" => {
-                use crate::object::Instance;
-                use std::cell::RefCell;
-                use std::rc::Rc;
-                let start = match arguments.first() {
-                    Some(Object::Int(n)) => (*n).max(1) as usize,
-                    _ => 1,
-                };
-                let length = match arguments.get(1) {
-                    Some(Object::Int(n)) => Some((*n).max(0) as usize),
-                    _ => None,
-                };
-                let loc_class = self.backtrace_location_class();
-                let stack = self.call_stack();
-                let mut locations: Vec<Object> = Vec::new();
-                let mut level = start;
-                loop {
-                    if let Some(len) = length
-                        && locations.len() >= len
-                    {
-                        break;
-                    }
-                    if level > stack.len() {
-                        break;
-                    }
-                    let frame = &stack[stack.len() - level];
-                    // Frame locations are "line:column" or "file:line:column".
-                    let (path, line) = match frame.location() {
-                        Some(loc) => {
-                            let parts: Vec<&str> = loc.rsplitn(3, ':').collect();
-                            let line = parts
-                                .get(1)
-                                .and_then(|s| s.parse::<i64>().ok())
-                                .unwrap_or(0);
-                            let path = parts.get(2).map(|s| s.to_string()).unwrap_or_default();
-                            (path, line)
-                        }
-                        None => (String::new(), 0),
-                    };
-                    let mut inst = Instance::new(Rc::clone(&loc_class));
-                    inst.set_var("lineno".to_string(), Object::Int(line));
-                    inst.set_var("path".to_string(), Object::String(Rc::new(path)));
-                    locations.push(Object::Instance(Rc::new(RefCell::new(inst))));
-                    level += 1;
-                }
-                Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+            "caller_locations" => match self.sliced_caller_locations(&arguments, position)? {
+                Some(locations) => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     locations,
-                ))))
-            }
+                )))),
+                None => Ok(Object::Nil),
+            },
             // `binding` captures the frame that called it, not the receiver
             // it was sent to: the local variables in scope (as shared cells,
             // so an assignment through the binding is visible to both) and the
@@ -493,9 +494,7 @@ impl VirtualMachine {
                     self.write_to_stdout("\n", position)?;
                 }
                 for arg in &arguments {
-                    // Try to call to_s or inspect method if it exists on the object
-                    let output = self.get_string_representation(arg, position)?;
-                    self.write_to_stdout(&format!("{}\n", output), position)?;
+                    self.puts_object(arg, position)?;
                 }
                 Ok(Object::Nil)
             }
@@ -542,6 +541,161 @@ impl VirtualMachine {
                     ))
                 }
             }
+            // Bare `autoload` / `autoload?` register on the definee, which is
+            // Object at the top level and the enclosing module inside one.
+            "autoload" | "autoload?" => {
+                // Inside a method the definee is the module the method was
+                // written in, which a module's instance method reaches
+                // through the nesting it captured.
+                let lexical_owner = self.def_scope_stack.last().map(Rc::clone);
+                let owner = match lexical_owner {
+                    Some(enclosing) => enclosing,
+                    None => match self.globals().get("Object") {
+                        Some(Object::Class(object_class)) => object_class,
+                        _ => {
+                            return Err(MetorexError::runtime_error(
+                                "Object is not defined",
+                                crate::vm::utils::position_to_location(position),
+                            ));
+                        }
+                    },
+                };
+                self.call_class_methods(&owner, name, &arguments, position)
+                    .map(|result| result.unwrap_or(Object::Nil))
+            }
+            // Kernel#` — run the command through the shell, answering what it
+            // wrote to stdout. Its stderr passes through to ours, and `$?`
+            // reports how it ended.
+            "`" => {
+                let Some(argument) = arguments.first() else {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Exact(1),
+                        0,
+                        position,
+                    ));
+                };
+                let command = self.coerce_command_argument(argument, position)?;
+                let output = std::process::Command::new("/bin/sh")
+                    .arg("-c")
+                    .arg(&command)
+                    .stdout(std::process::Stdio::piped())
+                    .stderr(std::process::Stdio::inherit())
+                    .output();
+                let output = match output {
+                    Ok(output) => output,
+                    Err(error) => {
+                        let message =
+                            format!("No such file or directory - {} ({})", command, error);
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("Errno::ENOENT", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        });
+                    }
+                };
+                self.record_last_status(&output.status);
+                // A command the shell could not find ends with status 127,
+                // which Ruby reports as Errno::ENOENT from the spawn itself.
+                if output.status.code() == Some(127) {
+                    let message = format!("No such file or directory - {}", command);
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("Errno::ENOENT", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+                Ok(Object::string(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ))
+            }
+            // `chomp` and `chop` with no receiver rewrite `$_` in place, which
+            // is the line `-n` read. `chomp` takes the separator from `$/`.
+            "chomp" | "chop" => {
+                let line = match self.globals().get("_") {
+                    Some(Object::String(text)) => (*text).clone(),
+                    _ => String::new(),
+                };
+                let separator = match arguments.first() {
+                    Some(Object::String(text)) => Some((**text).clone()),
+                    _ => match self.globals().get("/") {
+                        Some(Object::String(text)) => Some((*text).clone()),
+                        _ => None,
+                    },
+                };
+                let trimmed = if name == "chop" {
+                    let mut trimmed = line.clone();
+                    if trimmed.ends_with("\r\n") {
+                        trimmed.truncate(trimmed.len() - 2);
+                    } else {
+                        trimmed.pop();
+                    }
+                    trimmed
+                } else {
+                    chomped(&line, separator.as_deref())
+                };
+                let result = Object::string(trimmed);
+                self.globals_mut().set_variable("_", result.clone());
+                Ok(result)
+            }
+            // `open(path, mode = "r", perm = nil, **options)` opens a file.
+            // An argument answering `to_open` is asked to open itself, and
+            // whatever it answers is what `open` hands back.
+            "open" => {
+                // Any conversion below invokes a method, which would consume
+                // the block, so it is taken first and put back at the end.
+                let pending = self.pending_block.take();
+                let (positional, _keywords) =
+                    super::native_methods::kernel_conversion::split_conversion_keywords(&arguments);
+                let Some(target) = positional.first() else {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(1, 3),
+                        0,
+                        position,
+                    ));
+                };
+                let target = &target.clone();
+                if self.responds_to(target, "to_open") {
+                    let Some((class, method)) = self.lookup_method(target, "to_open") else {
+                        return Ok(Object::Nil);
+                    };
+                    let opened = self.invoke_method(
+                        class,
+                        method,
+                        target.clone(),
+                        arguments[1..].to_vec(),
+                        position,
+                    )?;
+                    if let Some(Object::Block(block)) = pending {
+                        return self.execute_block_callable(&block, vec![opened], position);
+                    }
+                    return Ok(opened);
+                }
+                // Only the file form is limited to path, mode, and
+                // permissions; `to_open` takes whatever it is given.
+                if positional.len() > 3 {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(1, 3),
+                        positional.len(),
+                        position,
+                    ));
+                }
+                let path = self.coerce_load_path(target, position)?;
+                let mut open_arguments = vec![Object::string(path)];
+                if let Some(mode) = positional.get(1)
+                    && !matches!(mode, Object::Nil)
+                {
+                    open_arguments.push(mode.clone());
+                }
+                let Some(Object::Class(file_class)) = self.globals().get("File") else {
+                    return Err(MetorexError::runtime_error(
+                        "File is not defined",
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                };
+                self.pending_block = pending;
+                self.call_file_dir_methods(&file_class, "open", &open_arguments, position)
+                    .map(|opened| opened.unwrap_or(Object::Nil))
+            }
             "require" => {
                 // require(name) loads and executes a file from $LOAD_PATH
                 if arguments.len() != 1 {
@@ -551,35 +705,41 @@ impl VirtualMachine {
                     ));
                 }
 
-                let require_name = match &arguments[0] {
-                    Object::String(path) => path.as_ref().clone(),
-                    _ => {
-                        return Err(MetorexError::runtime_error(
-                            format!(
-                                "require() expects a String argument, got {}",
-                                arguments[0].type_name()
-                            ),
-                            crate::vm::utils::position_to_location(position),
-                        ));
-                    }
-                };
+                let require_name = self.coerce_load_path(&arguments[0], position)?;
+                // A leading `~` names the home directory, as the shell has it.
+                let require_name = self.expand_home_path(&require_name);
 
                 // Search $LOAD_PATH for the file
-                let load_path = self.globals().get(":").unwrap_or(Object::Nil);
-                let search_dirs: Vec<String> = match &load_path {
-                    Object::Array(arr) => arr
-                        .borrow()
-                        .iter()
-                        .filter_map(|obj| match obj {
-                            Object::String(s) => Some(s.as_ref().clone()),
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => Vec::new(),
-                };
+                let search_dirs = self.load_path_directories();
 
+                // A library metorex provides itself is already loaded, so a
+                // require of it answers false rather than looking for a file.
+                if BUILT_IN_FEATURES.contains(&require_name.trim_end_matches(".rb")) {
+                    return Ok(Object::Bool(false));
+                }
+                // An absolute path, or one written relative to the working
+                // directory, names the file outright rather than being
+                // searched for.
                 let mut found_path = None;
+                let direct = std::path::PathBuf::from(&require_name);
+                if direct.is_absolute()
+                    || require_name.starts_with("./")
+                    || require_name.starts_with("../")
+                {
+                    for candidate in [
+                        std::path::PathBuf::from(format!("{}.rb", require_name)),
+                        direct.clone(),
+                    ] {
+                        if candidate.is_file() {
+                            found_path = Some(candidate);
+                            break;
+                        }
+                    }
+                }
                 for dir in &search_dirs {
+                    if found_path.is_some() {
+                        break;
+                    }
                     let base = std::path::PathBuf::from(dir);
                     // Prefer `.rb` file over a directory of the same name.
                     let candidates = [
@@ -624,7 +784,17 @@ impl VirtualMachine {
                     )
                 })?;
 
-                let was_already_loaded = self.is_file_loaded(&canonical_path);
+                // `$LOADED_FEATURES` is the source of truth: a spec that
+                // restores it expects the next require to load the file again
+                // and answer true.
+                let canonical_str = canonical_path.to_string_lossy().into_owned();
+                let was_already_loaded = match self.globals().get("\"") {
+                    Some(Object::Array(features)) => features
+                        .borrow()
+                        .iter()
+                        .any(|feature| matches!(feature, Object::String(name) if **name == canonical_str)),
+                    _ => self.is_file_loaded(&canonical_path),
+                };
 
                 self.execute_file(&resolved).map_err(|e| {
                     MetorexError::runtime_error(
@@ -748,7 +918,45 @@ impl VirtualMachine {
             }
             // Kernel#p writes each argument's `inspect` on its own line and
             // answers with the argument, the argument list, or nil for none.
-            "p" => {
+            // `printf(io, format, *args)` writes to that io, and
+            // `printf(format, *args)` writes to `$stdout`.
+            "printf" => {
+                if arguments.is_empty() {
+                    return Ok(Object::Nil);
+                }
+                let first_is_format = matches!(&arguments[0], Object::String(_))
+                    || !self.responds_to(&arguments[0], "write");
+                let (target, rest) = if first_is_format {
+                    (None, arguments.as_slice())
+                } else {
+                    (Some(arguments[0].clone()), &arguments[1..])
+                };
+                let Some(format) = rest.first() else {
+                    return Ok(Object::Nil);
+                };
+                let format = match format {
+                    Object::String(text) => Object::String(std::rc::Rc::clone(text)),
+                    other => Object::string(self.coerce_load_path(other, position)?),
+                };
+                let values = Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+                    rest[1..].to_vec(),
+                )));
+                let rendered = self.evaluate_string_format(format, values, position)?;
+                let text = match &rendered {
+                    Object::String(text) => (**text).clone(),
+                    other => other.to_string(),
+                };
+                match target {
+                    Some(target) => {
+                        self.send_to_object(target, "write", vec![Object::string(text)], position)?;
+                    }
+                    None => self.write_to_stdout(&text, position)?,
+                }
+                Ok(Object::Nil)
+            }
+            // `pp` prints the same inspect form `p` does. Ruby breaks a wide
+            // structure across lines; metorex writes it on one.
+            "p" | "pp" => {
                 for argument in &arguments {
                     let rendered = self.get_inspect_representation(argument, position)?;
                     self.write_to_stdout(&format!("{}\n", rendered), position)?;
@@ -999,8 +1207,13 @@ impl VirtualMachine {
                 self.user_def_nesting = 0;
                 self.push_refinement_scope();
                 let prev_file = self.current_file.clone();
-                if let Some(f) = &filename {
-                    self.current_file = Some(std::path::PathBuf::from(f));
+                match &filename {
+                    Some(f) => self.current_file = Some(std::path::PathBuf::from(f)),
+                    // Code eval'd through a binding with no filename has no
+                    // file behind it, which is what `__FILE__` and `__dir__`
+                    // report there.
+                    None if binding.is_some() => self.current_file = None,
+                    None => {}
                 }
                 // The eval'd string runs in the caller's body, so it sees the
                 // visibility state in force there. A toggle it sets belongs to
@@ -1117,28 +1330,45 @@ impl VirtualMachine {
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
+                // Without a block, `loop` answers an enumerator that yields
+                // forever, which is what `loop.size` and `loop.each` read.
                 let block = match self.pending_block.take() {
                     Some(Object::Block(block)) => block,
                     _ => {
-                        let message = "no block given (yield)".to_string();
-                        return Err(MetorexError::UncaughtException {
-                            exception: Object::exception("LocalJumpError", message.clone()),
-                            location: crate::vm::utils::position_to_location(position),
-                            message,
-                        });
+                        let Some(enumerator_class) = self.globals().get("Enumerator") else {
+                            let message = "uninitialized constant Enumerator".to_string();
+                            return Err(MetorexError::UncaughtException {
+                                exception: Object::exception("NameError", message.clone()),
+                                location: crate::vm::utils::position_to_location(position),
+                                message,
+                            });
+                        };
+                        return self.send_to_object(
+                            enumerator_class,
+                            "endless",
+                            Vec::new(),
+                            position,
+                        );
                     }
                 };
                 loop {
                     match block.call(self, Vec::new(), position) {
                         Ok(_) => {}
                         Err(MetorexError::BlockBreak { value, .. }) => return Ok(value),
+                        // A StopIteration ends the loop, which answers the
+                        // result the finished iterator carried.
                         Err(MetorexError::UncaughtException { exception, .. })
                             if self.exception_matches(
                                 &exception,
                                 &["StopIteration".to_string()],
                             )? =>
                         {
-                            let _ = exception;
+                            if let Object::Exception(details) = &exception {
+                                let result = details.borrow().instance_vars.get("result").cloned();
+                                if let Some(result) = result {
+                                    return Ok(result);
+                                }
+                            }
                             return Ok(Object::Nil);
                         }
                         Err(error) => return Err(error),
@@ -1229,20 +1459,20 @@ impl VirtualMachine {
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
-                let wrap = matches!(arguments.get(1), Some(Object::Bool(true)));
-                let path_str = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    _ => {
-                        return Err(MetorexError::runtime_error(
-                            format!(
-                                "load() expects a String argument, got {}",
-                                arguments[0].type_name()
-                            ),
-                            crate::vm::utils::position_to_location(position),
-                        ));
-                    }
+                // `load(path, true)` runs the file inside a fresh anonymous
+                // module, and `load(path, SomeModule)` inside that one.
+                let wrapper: Option<Rc<crate::class::Class>> = match arguments.get(1) {
+                    Some(Object::Bool(true)) => Some(Rc::new(crate::class::Class::new_module(""))),
+                    Some(Object::Module(module) | Object::Class(module)) => Some(Rc::clone(module)),
+                    _ => None,
                 };
-                let path = std::path::Path::new(&path_str);
+                let wrap = wrapper.is_some();
+                self.load_wrap_module = wrapper;
+                let path_str = self.coerce_load_path(&arguments[0], position)?;
+                // A leading `~` names the home directory, as the shell has it.
+                let path_str = self.expand_home_path(&path_str);
+                let path = std::path::PathBuf::from(&path_str);
+                let path = path.as_path();
                 if wrap {
                     self.load_wrap_depth += 1;
                 }
@@ -1253,27 +1483,38 @@ impl VirtualMachine {
                 self.user_def_nesting = 0;
                 // load always executes the file (no deduplication)
                 // Try the path directly first, then search $LOAD_PATH
-                let result = if path.exists() {
-                    self.execute_file(path).map_err(|e| {
+                // A path written relative to the working directory names that
+                // file outright and is never searched for in `$LOAD_PATH`.
+                let anchored = path_str.starts_with("./")
+                    || path_str.starts_with("../")
+                    || path_str.starts_with('/');
+                let result = if path.is_file() {
+                    self.execute_file_recording(path, false).map_err(|error| {
+                        // A file that cannot be read is one that cannot be
+                        // loaded, which Ruby reports as a LoadError.
+                        if error.message().contains("Failed to read file") {
+                            let message = format!("cannot load such file -- {}", path_str);
+                            return MetorexError::UncaughtException {
+                                exception: Object::exception("LoadError", message.clone()),
+                                location: crate::vm::utils::position_to_location(position),
+                                message,
+                            };
+                        }
                         MetorexError::runtime_error(
-                            format!("load('{}') — {}", path_str, e.message()),
+                            format!("load('{}') — {}", path_str, error.message()),
                             crate::vm::utils::position_to_location(position),
                         )
                     })
+                } else if anchored {
+                    let message = format!("cannot load such file -- {}", path_str);
+                    Err(MetorexError::UncaughtException {
+                        exception: Object::exception("LoadError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    })
                 } else {
                     // Search $LOAD_PATH
-                    let load_path = self.globals().get(":").unwrap_or(Object::Nil);
-                    let search_dirs: Vec<String> = match &load_path {
-                        Object::Array(arr) => arr
-                            .borrow()
-                            .iter()
-                            .filter_map(|obj| match obj {
-                                Object::String(s) => Some(s.as_ref().clone()),
-                                _ => None,
-                            })
-                            .collect(),
-                        _ => Vec::new(),
-                    };
+                    let search_dirs = self.load_path_directories();
                     let mut found = None;
                     for dir in &search_dirs {
                         let candidate = std::path::PathBuf::from(dir).join(&path_str);
@@ -1283,16 +1524,22 @@ impl VirtualMachine {
                         }
                     }
                     match found {
-                        Some(resolved) => self.execute_file(&resolved).map_err(|e| {
-                            MetorexError::runtime_error(
-                                format!("load('{}') — {}", path_str, e.message()),
-                                crate::vm::utils::position_to_location(position),
-                            )
-                        }),
-                        None => Err(MetorexError::runtime_error(
-                            format!("cannot load such file -- {}", path_str),
-                            crate::vm::utils::position_to_location(position),
-                        )),
+                        Some(resolved) => {
+                            self.execute_file_recording(&resolved, false).map_err(|e| {
+                                MetorexError::runtime_error(
+                                    format!("load('{}') — {}", path_str, e.message()),
+                                    crate::vm::utils::position_to_location(position),
+                                )
+                            })
+                        }
+                        None => {
+                            let message = format!("cannot load such file -- {}", path_str);
+                            Err(MetorexError::UncaughtException {
+                                exception: Object::exception("LoadError", message.clone()),
+                                location: crate::vm::utils::position_to_location(position),
+                                message,
+                            })
+                        }
                     }
                 };
                 if wrap {
@@ -1304,16 +1551,36 @@ impl VirtualMachine {
                 Ok(Object::Bool(true))
             }
             "exit" | "exit!" => {
-                let code = if arguments.is_empty() {
-                    0
-                } else if let Object::Int(n) = &arguments[0] {
-                    *n as i32
-                } else if let Object::Bool(b) = &arguments[0] {
-                    if *b { 0 } else { 1 }
-                } else {
-                    0
-                };
-                std::process::exit(code);
+                let code = self.exit_status_argument(arguments.first(), position)?;
+                if name == "exit!" {
+                    std::process::exit(code as i32);
+                }
+                // `exit` raises SystemExit so `ensure` blocks and a rescue of
+                // SystemExit still see it. An uncaught one ends the program
+                // with this status.
+                let exception = Object::Exception(std::rc::Rc::new(std::cell::RefCell::new(
+                    crate::object::Exception {
+                        exception_type: "SystemExit".to_string(),
+                        message: "exit".to_string(),
+                        backtrace: None,
+                        location: None,
+                        cause: None,
+                        status: Some(code),
+                        name: None,
+                        receiver: None,
+                        backtrace_array: None,
+                        backtrace_sites: None,
+                        backtrace_locations_array: None,
+                        class: None,
+                        instance_vars: indexmap::IndexMap::new(),
+                        message_given: true,
+                    },
+                )));
+                Err(MetorexError::UncaughtException {
+                    exception,
+                    location: crate::vm::utils::position_to_location(position),
+                    message: "exit".to_string(),
+                })
             }
             "abort" => {
                 let message = match arguments.first() {
@@ -1348,6 +1615,50 @@ impl VirtualMachine {
                     message,
                 })
             }
+            // `exec` replaces this process with the command, so nothing after
+            // it runs. A command the shell cannot find raises Errno::ENOENT.
+            "exec" => {
+                let Some(first) = arguments.first() else {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::AtLeast(1),
+                        0,
+                        position,
+                    ));
+                };
+                let program = self.coerce_command_argument(first, position)?;
+                let mut rest = Vec::new();
+                for argument in arguments.iter().skip(1) {
+                    rest.push(self.coerce_command_argument(argument, position)?);
+                }
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
+                // A command with nothing for the shell to do is run directly,
+                // so a missing program is reported as ENOENT rather than
+                // becoming the shell's own "command not found" exit.
+                let needs_shell = rest.is_empty()
+                    && program.contains(|c: char| " \t\n|&;<>()$`\\\"'*?[]#~=%".contains(c));
+                let status = if !rest.is_empty() {
+                    std::process::Command::new(&program).args(&rest).status()
+                } else if needs_shell {
+                    std::process::Command::new("/bin/sh")
+                        .arg("-c")
+                        .arg(&program)
+                        .status()
+                } else {
+                    std::process::Command::new(&program).status()
+                };
+                match status {
+                    Ok(status) => std::process::exit(status.code().unwrap_or(0)),
+                    Err(_) => {
+                        let message = format!("No such file or directory - {}", program);
+                        Err(MetorexError::UncaughtException {
+                            exception: Object::exception("Errno::ENOENT", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        })
+                    }
+                }
+            }
             "system" => {
                 let Some(command) = arguments.first() else {
                     return Err(MetorexError::runtime_error(
@@ -1373,19 +1684,270 @@ impl VirtualMachine {
                     Err(_) => Object::Nil,
                 })
             }
+            // `fork` splits the process. The child answers nil, or runs the
+            // block and exits with its status; the parent answers the child's
+            // process id either way.
             "fork" => {
-                let message = "fork() function is unimplemented on this machine".to_string();
-                Err(MetorexError::UncaughtException {
-                    exception: Object::exception("NotImplementedError", message.clone()),
-                    location: crate::vm::utils::position_to_location(position),
-                    message,
-                })
+                use std::io::Write as _;
+                let _ = std::io::stdout().flush();
+                let _ = std::io::stderr().flush();
+                let block = self.pending_block.take();
+                // SAFETY: `fork` is called with no other threads running, and
+                // the child does nothing but run the block and exit.
+                let child = unsafe { libc::fork() };
+                if child < 0 {
+                    let message = "fork failed".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("Errno::EAGAIN", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+                if child > 0 {
+                    return Ok(Object::Int(child as i64));
+                }
+                // Only the thread that called `fork` survives into the child,
+                // so every other one is marked finished there.
+                for thread in std::mem::take(&mut self.pending_threads) {
+                    if let Object::Instance(instance) = thread {
+                        instance
+                            .borrow_mut()
+                            .set_var("__thread_value".to_string(), Object::Nil);
+                    }
+                }
+                // In the child. Without a block, `fork` answers nil and the
+                // caller carries on as the child.
+                let Some(Object::Block(block)) = block else {
+                    return Ok(Object::Nil);
+                };
+                let outcome = self.execute_block_callable(&block, Vec::new(), position);
+                let _ = std::io::stdout().flush();
+                let status = match outcome {
+                    Ok(_) => 0,
+                    Err(MetorexError::UncaughtException {
+                        exception: Object::Exception(details),
+                        ..
+                    }) if details.borrow().exception_type == "SystemExit" => {
+                        details.borrow().status.unwrap_or(0) as i32
+                    }
+                    Err(error) => {
+                        eprintln!("{}", error);
+                        1
+                    }
+                };
+                std::process::exit(status);
             }
             _ => Err(MetorexError::runtime_error(
                 format!("Unknown native function: {}", name),
                 crate::vm::utils::position_to_location(position),
             )),
         }
+    }
+
+    /// Write one `puts` argument. An Array is written a line per element,
+    /// however deeply nested, and an empty one writes a line of its own. A
+    /// string that already ends in a newline is not given a second.
+    fn puts_object(&mut self, value: &Object, position: Position) -> Result<(), MetorexError> {
+        if let Object::Array(elements) = value {
+            let elements = elements.borrow().clone();
+            // An empty Array still writes a line, as `puts []` does.
+            if elements.is_empty() {
+                self.write_to_stdout("\n", position)?;
+                return Ok(());
+            }
+            for element in &elements {
+                self.puts_object(element, position)?;
+            }
+            return Ok(());
+        }
+        let output = self.get_string_representation(value, position)?;
+        if output.ends_with('\n') {
+            self.write_to_stdout(&output, position)?;
+        } else {
+            self.write_to_stdout(&format!("{}\n", output), position)?;
+        }
+        Ok(())
+    }
+
+    /// The VM call stack as Location objects, outermost call last, the way
+    /// `caller_locations(0)` reports them.
+    fn caller_location_objects(&mut self, position: Position) -> Vec<Object> {
+        use crate::object::Instance;
+        use std::cell::RefCell;
+        use std::rc::Rc;
+        let loc_class = self.backtrace_location_class();
+        let current_file = self
+            .reported_current_file()
+            .map(|path| path.display().to_string())
+            .unwrap_or_default();
+        let stack = self.call_stack();
+        let mut locations = Vec::with_capacity(stack.len() + 1);
+        // The call stack records where each frame was entered from, so the
+        // line `caller_locations` itself sits on is not among them. Ruby
+        // counts it as the innermost location, which is what level 0 names.
+        let mut here = Instance::new(Rc::clone(&loc_class));
+        here.set_var("lineno".to_string(), Object::Int(position.line as i64));
+        here.set_var(
+            "path".to_string(),
+            Object::String(Rc::new(current_file.clone())),
+        );
+        let here_absolute = std::path::Path::new(&current_file)
+            .canonicalize()
+            .map(|resolved| resolved.display().to_string())
+            .unwrap_or_else(|_| current_file.clone());
+        here.set_var(
+            "absolute_path".to_string(),
+            Object::String(Rc::new(here_absolute)),
+        );
+        let frames: Vec<_> = stack.iter().rev().collect();
+        // A frame's own name labels the location it is running at, and Ruby
+        // names a block by the scope holding it: `block in <main>`.
+        let label_at = |index: usize| -> String {
+            let name = frames
+                .get(index)
+                .map(|frame| frame.name().to_string())
+                .unwrap_or_else(|| "<main>".to_string());
+            if name != "<block>" {
+                return name;
+            }
+            let holder = frames
+                .get(index + 1)
+                .map(|frame| frame.name().to_string())
+                .unwrap_or_else(|| "<main>".to_string());
+            format!("block in {}", holder)
+        };
+        here.set_var("label".to_string(), Object::String(Rc::new(label_at(0))));
+        locations.push(Object::Instance(Rc::new(RefCell::new(here))));
+        for (index, frame) in frames.iter().enumerate() {
+            // A frame with no recorded call site was never called from
+            // anywhere — the file body itself — so it is not a caller.
+            if frame.location().is_none() {
+                continue;
+            }
+            // Frame locations are "line:column" or "file:line:column".
+            let (path, line) = match frame.location() {
+                Some(loc) => {
+                    let parts: Vec<&str> = loc.rsplitn(3, ':').collect();
+                    let line = parts
+                        .get(1)
+                        .and_then(|s| s.parse::<i64>().ok())
+                        .unwrap_or(0);
+                    let path = match parts.get(2) {
+                        Some(path) if !path.is_empty() => (*path).to_string(),
+                        // The frame records the file its call site sits in,
+                        // which is where the location belongs.
+                        _ => frame
+                            .source_file()
+                            .map(|file| file.to_string())
+                            .unwrap_or_else(|| current_file.clone()),
+                    };
+                    (path, line)
+                }
+                None => (
+                    frame
+                        .source_file()
+                        .map(|file| file.to_string())
+                        .unwrap_or_else(|| current_file.clone()),
+                    0,
+                ),
+            };
+            let mut inst = Instance::new(Rc::clone(&loc_class));
+            inst.set_var("lineno".to_string(), Object::Int(line));
+            let absolute = std::path::Path::new(&path)
+                .canonicalize()
+                .map(|resolved| resolved.display().to_string())
+                .unwrap_or_else(|_| path.clone());
+            inst.set_var("path".to_string(), Object::String(Rc::new(path)));
+            inst.set_var(
+                "absolute_path".to_string(),
+                Object::String(Rc::new(absolute)),
+            );
+            // A frame records where it was called from, so its location pairs
+            // with the name of the frame below it: the one that made the call.
+            // A frame records where it was called from, so its location
+            // pairs with the name of the frame below it: the one that made
+            // the call.
+            inst.set_var(
+                "label".to_string(),
+                Object::String(Rc::new(label_at(index + 1))),
+            );
+            locations.push(Object::Instance(Rc::new(RefCell::new(inst))));
+        }
+        locations
+    }
+
+    /// The caller locations a `caller`/`caller_locations` argument list names.
+    /// `(start, length)` drops `start` frames and keeps `length` of them; a
+    /// Range says which frames to keep directly. Dropping more than there are
+    /// answers None, which both report as nil.
+    fn sliced_caller_locations(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<Vec<Object>>, MetorexError> {
+        let all = self.caller_location_objects(position);
+        let (skip, length) = match arguments.first() {
+            Some(Object::Range { .. }) if arguments.len() == 1 => {
+                match self.range_bounds_for(&arguments[0], all.len()) {
+                    Some(bounds) => bounds,
+                    None => return Ok(None),
+                }
+            }
+            Some(Object::Int(number)) => (
+                (*number).max(0) as usize,
+                match arguments.get(1) {
+                    Some(Object::Int(limit)) => Some((*limit).max(0) as usize),
+                    _ => None,
+                },
+            ),
+            _ => (1, None),
+        };
+        if skip > all.len() {
+            return Ok(None);
+        }
+        let mut kept: Vec<Object> = all.into_iter().skip(skip).collect();
+        if let Some(length) = length {
+            kept.truncate(length);
+        }
+        Ok(Some(kept))
+    }
+
+    /// The (skip, length) a Range argument names over `total` frames, or None
+    /// when it starts past the end.
+    fn range_bounds_for(&mut self, value: &Object, total: usize) -> Option<(usize, Option<usize>)> {
+        let Object::Range {
+            start,
+            end,
+            exclusive,
+        } = value
+        else {
+            return None;
+        };
+        let resolve = |bound: &Object, default: i64| -> i64 {
+            match bound {
+                Object::Int(number) => *number,
+                _ => default,
+            }
+        };
+        let first = resolve(start, 0);
+        let first = if first < 0 {
+            (total as i64 + first).max(0)
+        } else {
+            first
+        } as usize;
+        if first > total {
+            return None;
+        }
+        let last = match end.as_ref() {
+            Object::Nil => total as i64 - 1,
+            bound => {
+                let last = resolve(bound, total as i64 - 1);
+                let last = if last < 0 { total as i64 + last } else { last };
+                if *exclusive { last - 1 } else { last }
+            }
+        };
+        let length = (last - first as i64 + 1).max(0) as usize;
+        Some((first, Some(length)))
     }
 
     /// Read one line from stdin, without its line ending.
@@ -1427,6 +1989,139 @@ impl VirtualMachine {
     /// Coerce `abort`'s argument to a String the way Ruby does: a String is
     /// taken as is, anything else must answer `to_str`, and a receiver without
     /// one raises TypeError.
+    /// Coerce a `load` / `require` argument to a path: a String stands, and
+    /// anything else goes through `to_path` and then `to_str`, each of which
+    /// must answer a String.
+    pub(crate) fn coerce_load_path(
+        &mut self,
+        argument: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(path) = argument {
+            return Ok((**path).clone());
+        }
+        let refuse = |vm: &mut Self, value: &Object| {
+            let message = format!(
+                "no implicit conversion of {} into String",
+                vm.builtins().class_of(value).name()
+            );
+            MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", message.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message,
+            }
+        };
+        let mut value = argument.clone();
+        if self.responds_to(&value, "to_path") {
+            value = self.invoke_named_conversion(&value, "to_path", position)?;
+            if let Object::String(path) = &value {
+                return Ok((**path).clone());
+            }
+        }
+        if !self.responds_to(&value, "to_str") {
+            return Err(refuse(self, &value));
+        }
+        let converted = self.invoke_named_conversion(&value, "to_str", position)?;
+        match converted {
+            Object::String(path) => Ok((*path).clone()),
+            other => Err(refuse(self, &other)),
+        }
+    }
+
+    /// Call a conversion method by name on a value.
+    fn invoke_named_conversion(
+        &mut self,
+        value: &Object,
+        method_name: &str,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Some((class, method)) = self.lookup_method(value, method_name) else {
+            return Ok(Object::Nil);
+        };
+        self.invoke_method(class, method, value.clone(), Vec::new(), position)
+    }
+
+    /// The status `exit` was asked for: an Integer as it stands, true or
+    /// false as 0 or 1, a Float truncated, and anything else through `to_int`.
+    fn exit_status_argument(
+        &mut self,
+        argument: Option<&Object>,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let Some(argument) = argument else {
+            return Ok(0);
+        };
+        match argument {
+            Object::Int(status) => Ok(*status),
+            Object::Bool(success) => Ok(if *success { 0 } else { 1 }),
+            Object::Float(status) => Ok(status.trunc() as i64),
+            other => {
+                let source = self.builtins().class_of(other).name().to_string();
+                let refuse = |message: String| MetorexError::UncaughtException {
+                    exception: Object::exception("TypeError", message.clone()),
+                    location: crate::vm::utils::position_to_location(position),
+                    message,
+                };
+                let Some((class, method)) = self.lookup_method(other, "to_int") else {
+                    return Err(refuse(if matches!(other, Object::Nil) {
+                        "no implicit conversion from nil to integer".to_string()
+                    } else {
+                        format!("no implicit conversion of {} into Integer", source)
+                    }));
+                };
+                let converted =
+                    self.invoke_method(class, method, other.clone(), Vec::new(), position)?;
+                match converted {
+                    Object::Int(status) => Ok(status),
+                    produced => Err(refuse(format!(
+                        "can't convert {} to Integer ({}#to_int gives {})",
+                        source,
+                        source,
+                        self.builtins().class_of(&produced).name()
+                    ))),
+                }
+            }
+        }
+    }
+
+    /// Coerce the argument to `` ` `` to a String: one is taken as is, and
+    /// anything else has to answer `to_str`.
+    fn coerce_command_argument(
+        &mut self,
+        argument: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(text) = argument {
+            return Ok((**text).clone());
+        }
+        let source = self.builtins().class_of(argument).name().to_string();
+        let Some((class, method)) = self.lookup_method(argument, "to_str") else {
+            let message = format!("no implicit conversion of {} into String", source);
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", message.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message,
+            });
+        };
+        let converted =
+            self.invoke_method(class, method, argument.clone(), Vec::new(), position)?;
+        match converted {
+            Object::String(text) => Ok((*text).clone()),
+            other => {
+                let produced = self.builtins().class_of(&other).name().to_string();
+                let message = format!(
+                    "can't convert {} to String ({}#to_str gives {})",
+                    source, source, produced
+                );
+                Err(MetorexError::UncaughtException {
+                    exception: Object::exception("TypeError", message.clone()),
+                    location: crate::vm::utils::position_to_location(position),
+                    message,
+                })
+            }
+        }
+    }
+
     fn coerce_abort_message(
         &mut self,
         argument: &Object,
@@ -1454,7 +2149,7 @@ impl VirtualMachine {
     }
 
     /// Get the string representation of an object by calling to_s or inspect if available.
-    fn get_string_representation(
+    pub(crate) fn get_string_representation(
         &mut self,
         obj: &Object,
         position: Position,
@@ -1740,6 +2435,18 @@ impl VirtualMachine {
             self.invoke_method(class, method, target, vec![argument], position)?;
             return Ok(());
         }
+        // A stream reassigned to a File handle answers `write` natively, with
+        // no entry in a method table to find.
+        if let Object::Instance(_) = &target {
+            let argument = Object::string(text.to_string());
+            let class = self.builtins().class_of(&target);
+            if self
+                .call_native_method(&class, &target, "write", &[argument], position)?
+                .is_some()
+            {
+                return Ok(());
+            }
+        }
         use std::io::Write;
         if stream == "stderr" {
             eprint!("{}", text);
@@ -1866,3 +2573,26 @@ fn global_name_from(named: &Object) -> String {
     };
     text.strip_prefix('$').unwrap_or(&text).to_string()
 }
+
+/// A line with its trailing separator removed. With no separator given, a
+/// trailing "\r\n", "\n", or "\r" goes, which is what `$/` names by default.
+fn chomped(line: &str, separator: Option<&str>) -> String {
+    match separator {
+        Some(separator) if separator != "\n" => match line.strip_suffix(separator) {
+            Some(rest) => rest.to_string(),
+            None => line.to_string(),
+        },
+        _ => {
+            for ending in ["\r\n", "\n", "\r"] {
+                if let Some(rest) = line.strip_suffix(ending) {
+                    return rest.to_string();
+                }
+            }
+            line.to_string()
+        }
+    }
+}
+
+/// Libraries metorex provides itself, which `require` answers for without
+/// looking for a file.
+const BUILT_IN_FEATURES: &[&str] = &["stringio", "set", "enumerator", "pp", "prettyprint"];

@@ -228,15 +228,15 @@ fn thread_pass_is_nil() {
 }
 
 #[test]
-fn thread_current_is_nil() {
-    let result = run(r#"Thread.current"#);
-    assert_eq!(result, Some(Object::Nil));
+fn thread_current_is_a_thread() {
+    let result = run(r#"Thread.current.class.name"#);
+    assert_eq!(result, Some(Object::string("Thread")));
 }
 
 #[test]
-fn thread_main_is_nil() {
-    let result = run(r#"Thread.main"#);
-    assert_eq!(result, Some(Object::Nil));
+fn thread_main_is_a_thread() {
+    let result = run(r#"Thread.main.class.name"#);
+    assert_eq!(result, Some(Object::string("Thread")));
 }
 
 #[test]

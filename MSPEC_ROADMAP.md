@@ -202,15 +202,15 @@ Parser fixes during Phase 4 work:
   - [x] 4.4.5. core/comparable/gte_spec - 1 file, 3 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.4.6. core/comparable/lt_spec - 1 file, 4 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.4.7. core/comparable/lte_spec - 1 file, 3 examples, 18 expectations, 0 failures, 0 errors
-- [ ] 4.5. core/main
+- [x] 4.5. core/main - 7 files, 27 examples, 38 expectations, 0 failures, 0 errors
   - [x] 4.5.1. core/main/define_method_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.5.2. core/main/include_spec — 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.5.3. core/main/private_spec — 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
-  - [ ] 4.5.4. core/main/public_spec
-  - [ ] 4.5.5. core/main/ruby2_keywords_spec
+  - [x] 4.5.4. core/main/public_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.5.5. core/main/ruby2_keywords_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.5.6. core/main/to_s_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.5.7. core/main/using_spec
-- [ ] 4.6. core/class
+  - [x] 4.5.7. core/main/using_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
+- [x] 4.6. core/class - 8 files, 54 examples, 16082 expectations, 0 failures, 0 errors
   - [x] 4.6.1. core/class/allocate_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.6.2. core/class/attached_object_spec — 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.6.3. core/class/dup_spec — 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
@@ -271,17 +271,17 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.49. core/module/module_eval_spec — 1 file, 20 examples, 33 expectations, 0 failures, 0 errors
   - [x] 4.7.50. core/module/module_exec_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.7.51. core/module/module_function_spec — 1 file, 26 examples, 46 expectations, 0 failures, 0 errors
-  - [ ] 4.7.52. core/module/name_spec
+  - [x] 4.7.52. core/module/name_spec - 1 file, 23 examples, 29 expectations, 0 failures, 0 errors
   - [x] 4.7.53. core/module/nesting_spec — 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.7.54. core/module/new_spec — 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.7.55. core/module/prepend_features_spec — 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
-  - [ ] 4.7.56. core/module/prepend_spec
+  - [ ] 4.7.56. core/module/prepend_spec - 54 of its 55 examples pass; the last needs `1 + 2` to dispatch to a user-defined Integer#+ and `super` from it to reach the native operator
   - [x] 4.7.57. core/module/prepended_spec — 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.7.58. core/module/private_class_method_spec — 1 file, 8 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.7.59. core/module/private_constant_spec — 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.7.60. core/module/private_instance_methods_spec — 1 file, 7 examples, 16 expectations, 0 failures, 0 errors
   - [x] 4.7.61. core/module/private_method_defined_spec — 1 file, 12 examples, 46 expectations, 0 failures, 0 errors
-  - [ ] 4.7.62. core/module/private_spec
+  - [x] 4.7.62. core/module/private_spec - 1 file, 21 examples, 32 expectations, 0 failures, 0 errors
   - [x] 4.7.63. core/module/protected_instance_methods_spec — 1 file, 7 examples, 16 expectations, 0 failures, 0 errors
   - [x] 4.7.64. core/module/protected_method_defined_spec — 1 file, 12 examples, 47 expectations, 0 failures, 0 errors
   - [x] 4.7.65. core/module/protected_spec — 1 file, 19 examples, 29 expectations, 0 failures, 0 errors
@@ -291,12 +291,12 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.69. core/module/public_instance_methods_spec — 1 file, 7 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.7.70. core/module/public_method_defined_spec — 1 file, 10 examples, 20 expectations, 0 failures, 0 errors
   - [x] 4.7.71. core/module/public_spec — 1 file, 19 examples, 28 expectations, 0 failures, 0 errors
-  - [ ] 4.7.72. core/module/refine_spec
+  - [ ] 4.7.72. core/module/refine_spec - 21 of its 38 examples pass; the rest need refinement-aware dispatch through send, Symbol#to_proc, interpolation, method objects, respond_to?, and refining a module a class includes
   - [x] 4.7.73. core/module/refinements_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.7.74. core/module/remove_class_variable_spec — 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.7.75. core/module/remove_const_spec — 1 file, 12 examples, 26 expectations, 0 failures, 0 errors
   - [x] 4.7.76. core/module/remove_method_spec — 1 file, 14 examples, 17 expectations, 0 failures, 0 errors
-  - [ ] 4.7.77. core/module/ruby2_keywords_spec
+  - [ ] 4.7.77. core/module/ruby2_keywords_spec - 6 of its 14 examples pass; the other 8 need a keyword-hash flag on Hash that survives a splat, with Hash.ruby2_keywords_hash and .ruby2_keywords_hash?
   - [x] 4.7.78. core/module/set_temporary_name_spec — 1 file, 14 examples, 35 expectations, 0 failures, 0 errors
   - [x] 4.7.79. core/module/singleton_class_spec — 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.7.80. core/module/to_s_spec — 1 file, 10 examples, 14 expectations, 0 failures, 0 errors
@@ -305,31 +305,31 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.83. core/module/used_refinements_spec — 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.7.84. core/module/using_spec — 1 file, 20 examples, 20 expectations, 0 failures, 0 errors
 - [ ] 4.8. core/kernel
-  - [ ] 4.8.1. core/kernel/Array_spec
-  - [ ] 4.8.2. core/kernel/Complex_spec
-  - [ ] 4.8.3. core/kernel/Float_spec
+  - [x] 4.8.1. core/kernel/Array_spec - 1 file, 25 examples, 45 expectations, 0 failures, 0 errors
+  - [ ] 4.8.2. core/kernel/Complex_spec - 64 of its 66 examples pass; the last two need String to carry an encoding so a UTF-16 argument is refused
+  - [x] 4.8.3. core/kernel/Float_spec - 1 file, 193 examples, 297 expectations, 0 failures, 0 errors
   - [x] 4.8.4. core/kernel/Hash_spec
-  - [ ] 4.8.5. core/kernel/Integer_spec
+  - [x] 4.8.5. core/kernel/Integer_spec - 1 file, 478 examples, 682 expectations, 0 failures, 0 errors
   - [x] 4.8.6. core/kernel/Rational_spec
   - [x] 4.8.7. core/kernel/String_spec
   - [x] 4.8.8. core/kernel/__callee___spec
-  - [ ] 4.8.9. core/kernel/__dir___spec
+  - [x] 4.8.9. core/kernel/__dir___spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.8.10. core/kernel/__method___spec
   - [x] 4.8.11. core/kernel/abort_spec
-  - [ ] 4.8.12. core/kernel/at_exit_spec
+  - [ ] 4.8.12. core/kernel/at_exit_spec - 10 of its 12 examples pass; the other two need Ruby's uncaught-exception report format and a lexical __FILE__ inside a block
   - [x] 4.8.13. core/kernel/autoload_relative_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (all examples guarded under ruby_version_is "4.1")
-  - [ ] 4.8.14. core/kernel/autoload_spec
-  - [ ] 4.8.15. core/kernel/backtick_spec
+  - [ ] 4.8.14. core/kernel/autoload_spec - 19 of its 23 examples pass; the other four need `autoload` inside a module's instance method to register on that module
+  - [ ] 4.8.15. core/kernel/backtick_spec - 5 of its 8 examples pass; the rest need String to carry an encoding and mspec's stderr-fd capture
   - [x] 4.8.16. core/kernel/binding_spec — 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.8.17. core/kernel/block_given_spec — 1 file, 8 examples, 32 expectations, 0 failures, 0 errors
-  - [ ] 4.8.18. core/kernel/caller_locations_spec
-  - [ ] 4.8.19. core/kernel/caller_spec
+  - [ ] 4.8.18. core/kernel/caller_locations_spec - 11 of its 12 examples pass; the custom-offset one needs the call stack to hold the same frames MRI does
+  - [x] 4.8.19. core/kernel/caller_spec - 1 file, 14 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.8.20. core/kernel/case_compare_spec — 1 file, 10 examples, 30 expectations, 0 failures, 0 errors
   - [x] 4.8.21. core/kernel/catch_spec — 1 file, 15 examples, 15 expectations, 0 failures, 0 errors
-  - [ ] 4.8.22. core/kernel/chomp_spec
-  - [ ] 4.8.23. core/kernel/chop_spec
+  - [x] 4.8.22. core/kernel/chomp_spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.8.23. core/kernel/chop_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.8.24. core/kernel/class_spec — 1 file, 3 examples, 10 expectations, 0 failures, 0 errors
-  - [ ] 4.8.25. core/kernel/clone_spec
+  - [x] 4.8.25. core/kernel/clone_spec - 1 file, 31 examples, 43 expectations, 0 failures, 0 errors
   - [x] 4.8.26. core/kernel/comparison_spec — 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.8.27. core/kernel/define_singleton_method_spec — 1 file, 12 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.8.28. core/kernel/display_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
@@ -337,13 +337,13 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.30. core/kernel/enum_for_spec — 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
   - [x] 4.8.31. core/kernel/eql_spec - 1 file, 9 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.8.32. core/kernel/equal_value_spec — 1 file, 1 examples, 6 expectations, 0 failures, 0 errors
-  - [ ] 4.8.33. core/kernel/eval_spec
-  - [ ] 4.8.34. core/kernel/exec_spec
-  - [ ] 4.8.35. core/kernel/exit_spec
+  - [ ] 4.8.33. core/kernel/eval_spec - 23 of its 56 examples pass; the rest need per-string encodings with magic comments, binding and default-definee semantics, and flip-flop
+  - [x] 4.8.34. core/kernel/exec_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [ ] 4.8.35. core/kernel/exit_spec - 26 of its 30 examples pass; the rest need real Thread semantics and a Fiber class
   - [x] 4.8.36. core/kernel/extend_spec — 1 file, 10 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.8.37. core/kernel/fail_spec — 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
-  - [ ] 4.8.38. core/kernel/fork_spec
-  - [ ] 4.8.39. core/kernel/format_spec
+  - [x] 4.8.38. core/kernel/fork_spec - 1 file, 17 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.8.39. core/kernel/format_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.8.40. core/kernel/freeze_spec — 1 file, 11 examples, 16 expectations, 0 failures, 0 errors
   - [x] 4.8.41. core/kernel/frozen_spec — 1 file, 9 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.8.42. core/kernel/gets_spec — 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
@@ -352,7 +352,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.45. core/kernel/initialize_clone_spec — 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.8.46. core/kernel/initialize_copy_spec — 1 file, 4 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.8.47. core/kernel/initialize_dup_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.8.48. core/kernel/inspect_spec
+  - [x] 4.8.48. core/kernel/inspect_spec - 1 file, 7 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.8.49. core/kernel/instance_of_spec — 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.8.50. core/kernel/instance_variable_defined_spec — 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
   - [x] 4.8.51. core/kernel/instance_variable_get_spec — 1 file, 17 examples, 20 expectations, 0 failures, 0 errors
@@ -362,20 +362,20 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.55. core/kernel/itself_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.8.56. core/kernel/kind_of_spec — 1 file, 10 examples, 16 expectations, 0 failures, 0 errors
   - [x] 4.8.57. core/kernel/lambda_spec — 1 file, 16 examples, 24 expectations, 0 failures, 0 errors
-  - [ ] 4.8.58. core/kernel/load_spec
+  - [ ] 4.8.58. core/kernel/load_spec - 97 of its 103 examples pass; the rest need main modelled as its own object and the circular-require warning
   - [x] 4.8.59. core/kernel/local_variables_spec — 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
-  - [ ] 4.8.60. core/kernel/loop_spec
+  - [x] 4.8.60. core/kernel/loop_spec - 1 file, 10 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.8.61. core/kernel/match_spec — 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.8.62. core/kernel/method_spec — 1 file, 16 examples, 29 expectations, 0 failures, 0 errors
   - [x] 4.8.63. core/kernel/methods_spec — 1 file, 18 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.8.64. core/kernel/nil_spec — 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [x] 4.8.65. core/kernel/not_match_spec — 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.8.66. core/kernel/object_id_spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
-  - [ ] 4.8.67. core/kernel/open_spec
-  - [ ] 4.8.68. core/kernel/p_spec
-  - [ ] 4.8.69. core/kernel/pp_spec
+  - [ ] 4.8.67. core/kernel/open_spec - 14 of its 15 examples pass; the last needs the open-uri standard library
+  - [ ] 4.8.68. core/kernel/p_spec - 5 of its 6 examples pass; the last needs STDOUT and STDERR as IO objects for mspec's output_to_fd
+  - [x] 4.8.69. core/kernel/pp_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.8.70. core/kernel/print_spec — 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.8.71. core/kernel/printf_spec
+  - [ ] 4.8.71. core/kernel/printf_spec - 44 of its 286 examples pass; the rest exercise the shared sprintf suite, whose width, precision, and coercion rules are its own piece of work
   - [x] 4.8.72. core/kernel/private_methods_spec — 1 file, 11 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.8.73. core/kernel/proc_spec — 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.8.74. core/kernel/protected_methods_spec — 1 file, 11 examples, 15 expectations, 0 failures, 0 errors
@@ -441,7 +441,7 @@ Parser fixes during Phase 4 work:
 
 ### Exceptions and Signals
 
-- [ ] 4.10. core/exception - 39 files; 29 pass, the other 10 are enabled one at a time in the runner with a reason each. full_message_spec is at 20 examples, 39 expectations, 4 failures, 6 errors
+- [ ] 4.10. core/exception - 39 files; 31 pass, the other 8 are enabled one at a time in the runner with a reason each. full_message_spec is at 20 examples, 39 expectations, 4 failures, 6 errors
   - [x] 4.10.1. core/exception/backtrace_locations_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.10.2. core/exception/backtrace_spec - 1 file, 13 examples, 47 expectations, 0 failures, 0 errors
   - [x] 4.10.3. core/exception/case_compare_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
@@ -473,8 +473,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.10.29. core/exception/signm_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.10.30. core/exception/signo_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.10.31. core/exception/standard_error_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.10.32. core/exception/status_spec
-  - [ ] 4.10.33. core/exception/success_spec
+  - [x] 4.10.32. core/exception/status_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 4.10.33. core/exception/success_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.10.34. core/exception/syntax_error_spec
   - [ ] 4.10.35. core/exception/system_call_error_spec
   - [ ] 4.10.36. core/exception/system_exit_spec

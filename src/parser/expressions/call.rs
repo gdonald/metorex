@@ -234,6 +234,16 @@ impl Parser {
 
     /// Parse any `.method`, `[index]`, or `::Const` postfix operations on an
     /// already-parsed expression. Used so that lambda literals produced outside
+    /// Whether a `...` in an argument list is argument forwarding rather than
+    /// the start of a beginless range: forwarding stands alone, so the next
+    /// token closes the list or separates it from the next argument.
+    fn dots_are_forwarding(&self) -> bool {
+        matches!(
+            self.peek_ahead(1).kind,
+            TokenKind::RParen | TokenKind::Comma
+        )
+    }
+
     /// of `parse_call` (e.g. `parse_arrow_lambda`) can still have method chains
     /// like `-> { ... }.should raise_error(NameError)`.
     pub(crate) fn parse_postfix_calls(
@@ -352,18 +362,55 @@ impl Parser {
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
                 keyword_pairs.push((name, value));
-            } else if self.match_token(&[TokenKind::Star]) {
-                // Splat argument: *expr — expand array into individual args
+            } else if self.check(&[TokenKind::DotDotDot]) && self.dots_are_forwarding() {
+                // `foo(...)` passes on everything `def foo(...)` collected. A
+                // `...` with an operand after it is a beginless range instead.
+                self.advance();
                 let position = self.previous().position;
-                let expr = self.parse_expression()?;
+                let named = |name: &str| Expression::Identifier {
+                    name: name.to_string(),
+                    position,
+                };
+                arguments.push(Expression::Splat {
+                    expression: Box::new(named(crate::parser::ANONYMOUS_SPLAT)),
+                    position,
+                });
+                arguments.push(Expression::KeywordSplat {
+                    expression: Box::new(named(crate::parser::ANONYMOUS_KWREST)),
+                    position,
+                });
+                arguments.push(Expression::BlockArg {
+                    expression: Box::new(named(crate::parser::ANONYMOUS_BLOCK)),
+                    position,
+                });
+            } else if self.match_token(&[TokenKind::Star]) {
+                // Splat argument: *expr — expand array into individual args.
+                // A bare `*` forwards the anonymous splat `def foo(*)` bound.
+                let position = self.previous().position;
+                let expr = if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    Expression::Identifier {
+                        name: crate::parser::ANONYMOUS_SPLAT.to_string(),
+                        position,
+                    }
+                } else {
+                    self.parse_expression()?
+                };
                 arguments.push(Expression::Splat {
                     expression: Box::new(expr),
                     position,
                 });
             } else if self.match_token(&[TokenKind::StarStar]) {
                 // Double-splat: **expr — a Hash passed as keyword arguments.
+                // A bare `**` forwards what `def foo(**)` bound.
                 let position = self.previous().position;
-                let expr = self.parse_expression()?;
+                let expr = if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    Expression::Identifier {
+                        name: crate::parser::ANONYMOUS_KWREST.to_string(),
+                        position,
+                    }
+                } else {
+                    self.parse_expression()?
+                };
                 arguments.push(Expression::KeywordSplat {
                     expression: Box::new(expr),
                     position,
@@ -507,6 +554,9 @@ impl Parser {
                 | TokenKind::Bang
                 | TokenKind::MagicFile
                 | TokenKind::MagicLine
+                | TokenKind::MagicDir
+                | TokenKind::CommandString(_)
+                | TokenKind::CommandSymbol
                 | TokenKind::Ampersand
                 | TokenKind::Colon
                 | TokenKind::Include
@@ -628,6 +678,9 @@ impl Parser {
                     | TokenKind::Bang
                     | TokenKind::MagicFile
                     | TokenKind::MagicLine
+                    | TokenKind::MagicDir
+                    | TokenKind::CommandString(_)
+                    | TokenKind::CommandSymbol
                     | TokenKind::Ampersand
                     | TokenKind::Colon
                     | TokenKind::Include

@@ -12,14 +12,18 @@ use std::rc::Rc;
 
 /// Kernel's conversion functions, which Ruby exposes as private instance
 /// methods on Kernel and as public singleton methods on the module.
-pub(crate) const KERNEL_CONVERSION_FUNCTIONS: &[&str] = &["Hash", "Integer", "Rational", "String"];
+pub(crate) const KERNEL_CONVERSION_FUNCTIONS: &[&str] = &[
+    "Array", "Complex", "Float", "Hash", "Integer", "Rational", "String",
+];
 
 pub(crate) fn is_kernel_conversion(name: &str) -> bool {
     KERNEL_CONVERSION_FUNCTIONS.contains(&name)
 }
 
 /// Split the parser-marked keyword hash off the end of an argument list.
-fn split_keyword_arguments(arguments: &[Object]) -> (Vec<Object>, IndexMap<String, Object>) {
+pub(crate) fn split_conversion_keywords(
+    arguments: &[Object],
+) -> (Vec<Object>, IndexMap<String, Object>) {
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
         if dict.contains_key("__MX_KWARGS__") {
@@ -80,6 +84,9 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         match name {
+            "Array" => self.kernel_array(arguments, position).map(Some),
+            "Complex" => self.kernel_complex(arguments, position).map(Some),
+            "Float" => self.kernel_float(arguments, position).map(Some),
             "Hash" => self.kernel_hash(arguments, position).map(Some),
             "Integer" => self.kernel_integer(arguments, position).map(Some),
             "Rational" => self.kernel_rational(arguments, position).map(Some),
@@ -201,7 +208,7 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let (positional, keywords) = split_keyword_arguments(arguments);
+        let (positional, keywords) = split_conversion_keywords(arguments);
         let raise = !matches!(keywords.get("exception"), Some(Object::Bool(false)));
         if positional.is_empty() || positional.len() > 2 {
             return Err(super::super::errors::method_argument_error(
@@ -393,7 +400,7 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let (positional, keywords) = split_keyword_arguments(arguments);
+        let (positional, keywords) = split_conversion_keywords(arguments);
         let raise = !matches!(keywords.get("exception"), Some(Object::Bool(false)));
         if positional.is_empty() || positional.len() > 2 {
             return Err(super::super::errors::method_argument_error(
@@ -539,6 +546,171 @@ impl VirtualMachine {
 
     /// `Hash(arg)` — nil and the empty array become `{}`, a Hash is returned
     /// untouched, and anything else must answer `to_hash` with a Hash.
+    /// `Array(arg)` — an Array is answered unchanged. Anything else is put
+    /// through `to_ary` and then `to_a`, either of which may be private. A
+    /// conversion answering nil moves on to the next one, one answering a
+    /// non-Array raises TypeError, and an argument with neither is wrapped in
+    /// a one-element Array. nil answers an empty Array.
+    fn kernel_array(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if arguments.len() != 1 {
+            return Err(super::super::errors::method_argument_error(
+                "Array",
+                1,
+                arguments.len(),
+                position,
+            ));
+        }
+        let value = &arguments[0];
+        match value {
+            Object::Array(_) => return Ok(value.clone()),
+            Object::Nil => return Ok(Object::Array(Rc::new(RefCell::new(Vec::new())))),
+            _ => {}
+        }
+        for conversion in ["to_ary", "to_a"] {
+            let Some((class, method)) = self.lookup_method(value, conversion) else {
+                continue;
+            };
+            if method.is_undefined {
+                continue;
+            }
+            let converted = self.invoke_method(class, method, value.clone(), vec![], position)?;
+            match converted {
+                Object::Array(_) => return Ok(converted),
+                Object::Nil => continue,
+                other => {
+                    let source = self.conversion_class_name(value, position);
+                    let produced = self.conversion_class_name(&other, position);
+                    return Err(type_error(
+                        format!(
+                            "can't convert {} to Array ({}#{} gives {})",
+                            source, source, conversion, produced
+                        ),
+                        position,
+                    ));
+                }
+            }
+        }
+        Ok(Object::Array(Rc::new(RefCell::new(vec![value.clone()]))))
+    }
+
+    /// `Float(arg)` — a Float is answered unchanged, an Integer converts
+    /// exactly, a String is read strictly, and anything else must answer
+    /// `to_f` with a Float. `exception: false` answers nil instead of raising.
+    fn kernel_float(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (positional, keywords) = split_conversion_keywords(arguments);
+        let raise = keywords
+            .get("exception")
+            .map(|value| value.is_truthy())
+            .unwrap_or(true);
+        if positional.len() != 1 {
+            return Err(super::super::errors::method_argument_error(
+                "Float",
+                1,
+                positional.len(),
+                position,
+            ));
+        }
+        let value = &positional[0];
+        let refuse = |vm: &mut Self, kind: &str, message: String| -> Result<Object, MetorexError> {
+            let _ = vm;
+            if !raise {
+                return Ok(Object::Nil);
+            }
+            Err(MetorexError::UncaughtException {
+                exception: Object::exception(kind, message.clone()),
+                location: position_to_location(position),
+                message,
+            })
+        };
+        match value {
+            Object::Float(_) => return Ok(value.clone()),
+            Object::Int(number) => return Ok(Object::Float(*number as f64)),
+            Object::BigInt(number) => {
+                return Ok(Object::Float(
+                    number.to_string().parse::<f64>().unwrap_or(f64::INFINITY),
+                ));
+            }
+            Object::String(text) => {
+                return match parse_strict_float_text(text) {
+                    Some(number) => Ok(Object::Float(number)),
+                    None => refuse(
+                        self,
+                        "ArgumentError",
+                        format!("invalid value for Float(): {:?}", text.as_str()),
+                    ),
+                };
+            }
+            Object::Nil => {
+                return refuse(
+                    self,
+                    "TypeError",
+                    "can't convert nil into Float".to_string(),
+                );
+            }
+            _ => {}
+        }
+        // A Complex is a Float only when it has no imaginary part.
+        if let Some((real, imaginary)) = super::rational_methods::complex_parts(value) {
+            if !super::rational_methods::is_zero(&imaginary) {
+                let rendered = super::rational_methods::format_complex(&real, &imaginary);
+                return refuse(
+                    self,
+                    "RangeError",
+                    format!("can't convert {} into Float", rendered),
+                );
+            }
+            return self.kernel_float(&[real], position);
+        }
+        if super::rational_methods::rational_parts(value).is_some() {
+            let converted = self.invoke_conversion(value, "to_f", position)?;
+            return Ok(converted);
+        }
+        let source = self.conversion_class_name(value, position);
+        if !self.responds_to(value, "to_f") {
+            return refuse(
+                self,
+                "TypeError",
+                format!("can't convert {} into Float", source),
+            );
+        }
+        let converted = self.invoke_conversion(value, "to_f", position)?;
+        match converted {
+            Object::Float(_) => Ok(converted),
+            other => {
+                let produced = self.conversion_class_name(&other, position);
+                refuse(
+                    self,
+                    "TypeError",
+                    format!(
+                        "can't convert {} to Float ({}#to_f gives {})",
+                        source, source, produced
+                    ),
+                )
+            }
+        }
+    }
+
+    /// Call a conversion method on a value.
+    fn invoke_conversion(
+        &mut self,
+        value: &Object,
+        method_name: &str,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Some((class, method)) = self.lookup_method(value, method_name) else {
+            return Ok(Object::Nil);
+        };
+        self.invoke_method(class, method, value.clone(), Vec::new(), position)
+    }
+
     fn kernel_hash(
         &mut self,
         arguments: &[Object],
@@ -671,4 +843,129 @@ fn parse_integer_literal(
     let magnitude = num_bigint::BigInt::parse_bytes(digits.as_bytes(), radix as u32)
         .ok_or(ParseFailure::Malformed)?;
     Ok(if negative { -magnitude } else { magnitude })
+}
+
+/// Read a Float the way `Float("...")` does: strict, with `_` allowed only
+/// between digits, whitespace allowed only at the ends, and both decimal and
+/// `0x` hexadecimal forms accepted. Text that is not wholly a number, or that
+/// holds a null byte, answers None.
+pub(crate) fn parse_strict_float_text(text: &str) -> Option<f64> {
+    if text.contains('\0') {
+        return None;
+    }
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (sign, digits) = match trimmed.strip_prefix('-') {
+        Some(rest) => (-1.0, rest),
+        None => (1.0, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    let magnitude = if let Some(hex) = digits
+        .strip_prefix("0x")
+        .or_else(|| digits.strip_prefix("0X"))
+    {
+        parse_hexadecimal_float(hex)?
+    } else {
+        parse_decimal_float(digits)?
+    };
+    Some(sign * magnitude)
+}
+
+/// Strip the `_` separators from a run of digits, refusing one that is not
+/// between two digits the predicate accepts.
+fn strip_separators(text: &str, is_digit: fn(char) -> bool) -> Option<String> {
+    let characters: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    for (index, character) in characters.iter().enumerate() {
+        if *character != '_' {
+            out.push(*character);
+            continue;
+        }
+        let before = index.checked_sub(1).and_then(|i| characters.get(i));
+        let after = characters.get(index + 1);
+        if !before.copied().is_some_and(is_digit) || !after.copied().is_some_and(is_digit) {
+            return None;
+        }
+    }
+    Some(out)
+}
+
+/// The unsigned decimal form: digits, an optional fraction, an optional
+/// `e` exponent. Ruby allows a trailing `.` and a missing fractional part.
+fn parse_decimal_float(text: &str) -> Option<f64> {
+    let (mantissa, exponent) = match text.find(['e', 'E']) {
+        Some(index) => {
+            let (mantissa, rest) = text.split_at(index);
+            (mantissa, Some(&rest[1..]))
+        }
+        None => (text, None),
+    };
+    let mantissa = strip_separators(mantissa, |c| c.is_ascii_digit())?;
+    let mantissa = mantissa.strip_suffix('.').unwrap_or(&mantissa);
+    if mantissa.is_empty() || !mantissa.chars().all(|c| c.is_ascii_digit() || c == '.') {
+        return None;
+    }
+    if mantissa.matches('.').count() > 1 || mantissa.starts_with('.') {
+        return None;
+    }
+    let mantissa: f64 = mantissa.parse().ok()?;
+    let Some(exponent) = exponent else {
+        return Some(mantissa);
+    };
+    let exponent = strip_separators(exponent, |c| c.is_ascii_digit())?;
+    let (exponent_sign, exponent_digits) = match exponent.strip_prefix('-') {
+        Some(rest) => (-1.0_f64, rest),
+        None => (1.0_f64, exponent.strip_prefix('+').unwrap_or(&exponent)),
+    };
+    if exponent_digits.is_empty() || !exponent_digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let exponent: f64 = exponent_digits.parse().ok()?;
+    Some(mantissa * 10.0_f64.powf(exponent_sign * exponent))
+}
+
+/// The unsigned `0x` form: hex digits, an optional hex fraction, an optional
+/// `p` binary exponent written in decimal.
+fn parse_hexadecimal_float(text: &str) -> Option<f64> {
+    let (mantissa, exponent) = match text.find(['p', 'P']) {
+        Some(index) => {
+            let (mantissa, rest) = text.split_at(index);
+            (mantissa, Some(&rest[1..]))
+        }
+        None => (text, None),
+    };
+    let mantissa = strip_separators(mantissa, |c| c.is_ascii_hexdigit())?;
+    let (whole, fraction) = match mantissa.split_once('.') {
+        Some((whole, fraction)) => (whole, fraction),
+        None => (mantissa.as_str(), ""),
+    };
+    if whole.is_empty() || !whole.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    if !fraction.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let mut value = 0.0_f64;
+    for digit in whole.chars() {
+        value = value * 16.0 + digit.to_digit(16)? as f64;
+    }
+    let mut place = 1.0 / 16.0;
+    for digit in fraction.chars() {
+        value += digit.to_digit(16)? as f64 * place;
+        place /= 16.0;
+    }
+    let Some(exponent) = exponent else {
+        return Some(value);
+    };
+    let exponent = strip_separators(exponent, |c| c.is_ascii_digit())?;
+    let (exponent_sign, exponent_digits) = match exponent.strip_prefix('-') {
+        Some(rest) => (-1.0_f64, rest),
+        None => (1.0_f64, exponent.strip_prefix('+').unwrap_or(&exponent)),
+    };
+    if exponent_digits.is_empty() || !exponent_digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    let exponent: f64 = exponent_digits.parse().ok()?;
+    Some(value * 2.0_f64.powf(exponent_sign * exponent))
 }

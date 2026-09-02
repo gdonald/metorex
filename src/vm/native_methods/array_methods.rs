@@ -100,8 +100,14 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let arr = array_rc.borrow();
-                Ok(Some(Object::string(inspect_elements(&arr))))
+                let elements = array_rc.borrow().clone();
+                // Each element renders through its own `inspect`, so an
+                // object that defines one is shown the way it asks to be.
+                let mut parts = Vec::with_capacity(elements.len());
+                for element in &elements {
+                    parts.push(self.get_inspect_representation(element, position)?);
+                }
+                Ok(Some(Object::string(format!("[{}]", parts.join(", ")))))
             }
             "clear" => {
                 array_rc.borrow_mut().clear();
@@ -935,6 +941,43 @@ impl VirtualMachine {
                 Ok(Some(
                     array_rc.borrow().first().cloned().unwrap_or(Object::Nil),
                 ))
+            }
+            // `take(n)` answers the first n elements, and `drop(n)` the rest.
+            // A negative count raises, as Ruby does.
+            "take" | "drop" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::Int(count) = &arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "Integer",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                if *count < 0 {
+                    let message = format!("attempt to {} negative size", method_name);
+                    let exception = Object::exception("ArgumentError", message.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception,
+                        location: position_to_location(position),
+                        message,
+                    });
+                }
+                let borrowed = array_rc.borrow();
+                let count = (*count as usize).min(borrowed.len());
+                let taken = if method_name == "take" {
+                    borrowed[..count].to_vec()
+                } else {
+                    borrowed[count..].to_vec()
+                };
+                Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(taken)))))
             }
             "last" => {
                 if !arguments.is_empty() {

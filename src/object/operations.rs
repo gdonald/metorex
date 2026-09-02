@@ -29,8 +29,24 @@ impl Object {
             // two variants can only be equal through a Float.
             (Object::Int(_), Object::BigInt(_)) | (Object::BigInt(_), Object::Int(_)) => false,
             (Object::Float(a), Object::Float(b)) => {
-                // Float comparison with epsilon for floating point precision
-                (a - b).abs() < 1e-9
+                // NaN equals nothing, and two infinities of the same sign are
+                // equal even though subtracting them is not a number.
+                if a.is_nan() || b.is_nan() {
+                    false
+                } else if a.is_infinite() || b.is_infinite() {
+                    a == b
+                } else {
+                    // Float comparison with epsilon for floating point precision
+                    (a - b).abs() < 1e-9
+                }
+            }
+            // A Float equals the Integer it holds exactly, which is how Ruby
+            // compares numbers of different kinds.
+            (Object::Int(a), Object::Float(b)) | (Object::Float(b), Object::Int(a)) => {
+                *a as f64 == *b
+            }
+            (Object::BigInt(a), Object::Float(b)) | (Object::Float(b), Object::BigInt(a)) => {
+                a.to_string().parse::<f64>().is_ok_and(|value| value == *b)
             }
             (Object::String(a), Object::String(b)) => a == b,
             (Object::Symbol(a), Object::Symbol(b)) => a == b,

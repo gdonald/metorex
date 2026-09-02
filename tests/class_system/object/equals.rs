@@ -25,7 +25,9 @@ fn test_equals_bool() {
 fn test_equals_int() {
     assert!(Object::Int(42).equals(&Object::Int(42)));
     assert!(!Object::Int(42).equals(&Object::Int(43)));
-    assert!(!Object::Int(42).equals(&Object::Float(42.0)));
+    // Ruby compares numbers across kinds: 42 == 42.0
+    assert!(Object::Int(42).equals(&Object::Float(42.0)));
+    assert!(!Object::Int(42).equals(&Object::Float(42.5)));
 }
 
 #[test]
@@ -33,7 +35,8 @@ fn test_equals_float() {
     assert!(Object::Float(3.14).equals(&Object::Float(3.14)));
     assert!(Object::Float(1.0).equals(&Object::Float(1.0 + 1e-10))); // Within epsilon
     assert!(!Object::Float(3.14).equals(&Object::Float(2.71)));
-    assert!(!Object::Float(1.0).equals(&Object::Int(1)));
+    assert!(Object::Float(1.0).equals(&Object::Int(1)));
+    assert!(!Object::Float(1.5).equals(&Object::Int(1)));
 }
 
 #[test]
@@ -242,6 +245,7 @@ fn test_equals_block() {
         captured_def_scope: vec![],
         defining_method: None,
         is_lambda: false,
+        source_file: None,
     });
     let block2 = Rc::clone(&block1);
     let block3 = Rc::new(BlockStatement {
@@ -252,6 +256,7 @@ fn test_equals_block() {
         captured_def_scope: vec![],
         defining_method: None,
         is_lambda: false,
+        source_file: None,
     });
 
     let obj1 = Object::Block(block1);
@@ -336,7 +341,7 @@ fn test_equals_different_types() {
     let nil_obj = Object::Nil;
     let bool_obj = Object::Bool(false);
 
-    assert!(!int_obj.equals(&float_obj));
+    assert!(int_obj.equals(&float_obj));
     assert!(!int_obj.equals(&string_obj));
     assert!(!int_obj.equals(&nil_obj));
     assert!(!int_obj.equals(&bool_obj));

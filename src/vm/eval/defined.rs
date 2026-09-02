@@ -100,12 +100,19 @@ impl VirtualMachine {
                     _ => None,
                 }
             }
-            Expression::MethodCall { receiver, .. } => {
-                // Only "defined" if the receiver can be evaluated without error.
-                if self.evaluate_expression(receiver).is_ok() {
-                    Some("method")
-                } else {
-                    None
+            Expression::MethodCall {
+                receiver, method, ..
+            } => {
+                // The receiver has to evaluate, and it has to answer to the
+                // method: `defined?(Math.rsqrt)` is nil, not "method".
+                match self.evaluate_expression(receiver) {
+                    Ok(receiver)
+                        if self.responds_to(&receiver, method)
+                            || self.method_is_restricted(&receiver, method) =>
+                    {
+                        Some("method")
+                    }
+                    _ => None,
                 }
             }
             Expression::Call { .. } => {

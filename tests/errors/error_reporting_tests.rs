@@ -491,10 +491,10 @@ fn test_callable_not_callable_error() {
 }
 
 #[test]
-fn test_self_outside_method_context_error() {
+fn test_self_outside_method_context_answers_main() {
     let mut vm = VirtualMachine::new();
 
-    // Reference 'self' outside a method
+    // Reference 'self' outside a method, where Ruby answers `main`.
     let stmt = Statement::Expression {
         expression: Expression::SelfExpr {
             position: pos_at(40, 1),
@@ -502,12 +502,8 @@ fn test_self_outside_method_context_error() {
         position: pos_at(40, 1),
     };
 
-    let result = vm.execute_program(&[stmt]);
-    assert!(result.is_err());
-
-    let error = result.unwrap_err();
-    assert!(error.to_string().contains("Undefined self"));
-    assert!(error.to_string().contains("40:1"));
+    let result = vm.execute_program(&[stmt]).expect("self answers main");
+    assert!(matches!(result, Some(metorex::object::Object::Class(_))));
 }
 
 #[test]

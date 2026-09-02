@@ -4,7 +4,9 @@
 mod error;
 mod expressions;
 mod statements;
-pub(crate) use statements::function::{ANONYMOUS_BLOCK, SOLE_INSTANCE_RECEIVER};
+pub(crate) use statements::function::{
+    ANONYMOUS_BLOCK, ANONYMOUS_KWREST, ANONYMOUS_SPLAT, SOLE_INSTANCE_RECEIVER,
+};
 mod token_stream;
 
 use crate::ast::Statement;

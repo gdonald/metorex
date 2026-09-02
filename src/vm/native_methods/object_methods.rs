@@ -163,6 +163,13 @@ impl VirtualMachine {
         {
             return Some((std::rc::Rc::clone(&singleton), found));
         }
+        for prepended in singleton.prepend_chain() {
+            if let Some(found) = prepended.find_method(name)
+                && !found.is_undefined
+            {
+                return Some((prepended, found));
+            }
+        }
         for mixin in singleton.transitive_mixins() {
             if let Some(found) = mixin.find_own_method(name)
                 && !found.is_undefined
@@ -472,9 +479,10 @@ impl VirtualMachine {
             name if super::kernel_conversion::is_kernel_conversion(name) => {
                 self.call_kernel_conversion(name, arguments, position)
             }
-            // `abort` is a private instance method on Kernel, so every
-            // object reaches it — the fixture classes make it public.
-            "abort" => self
+            // `abort`, `exit`, and `exit!` are private instance methods on
+            // Kernel, so every object reaches them. A class can make one
+            // public, which is how a spec calls it with a receiver.
+            "abort" | "exit" | "exit!" | "fork" => self
                 .call_native_function(method_name, arguments.to_vec(), position)
                 .map(Some),
             // `send(:block_given?)` reports on the frame that sent it, the
@@ -840,6 +848,11 @@ impl VirtualMachine {
                     } else {
                         format!(":{}", s)
                     })));
+                }
+                if method_name == "inspect"
+                    && let Object::Instance(_) = receiver
+                {
+                    return self.default_instance_inspect(receiver, position).map(Some);
                 }
                 Ok(Some(Object::string(receiver.to_string())))
             }
@@ -1569,13 +1582,22 @@ impl VirtualMachine {
                     // structurally would never terminate. Ruby's identity
                     // check is the address anyway.
                     (Object::Block(a), Object::Block(b)) => std::rc::Rc::ptr_eq(a, b),
+                    // A Float is a value, so two of the same bits are the same
+                    // object. That covers NaN, which is never `==` itself but
+                    // is identical to itself.
+                    (Object::Float(a), Object::Float(b)) => a.to_bits() == b.to_bits(),
                     // For value types, equal? is the same as ==
                     (a, b) => a == b,
                 };
                 Ok(Some(Object::Bool(identity)))
             }
             "dup" | "clone" => {
-                if !arguments.is_empty() {
+                // `clone` takes a `freeze:` keyword naming what the copy's
+                // frozen state should be; `dup` takes nothing at all.
+                let mut freeze = None;
+                if method_name == "clone" {
+                    freeze = self.clone_freeze_argument(arguments, position)?;
+                } else if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
                         0,
@@ -1583,96 +1605,13 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                match receiver {
-                    // Complex and Rational are value objects: there is nothing
-                    // to copy, so Ruby answers the receiver itself.
-                    Object::Instance(inst_rc)
-                        if matches!(inst_rc.borrow().class.name(), "Complex" | "Rational") =>
-                    {
-                        Ok(Some(receiver.clone()))
-                    }
-                    Object::Instance(inst_rc) => {
-                        let copy = {
-                            let inst = inst_rc.borrow();
-                            let mut new_inst =
-                                crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
-                            for (k, v) in &inst.instance_vars {
-                                new_inst.set_var(k.clone(), v.clone());
-                            }
-                            Object::Instance(std::rc::Rc::new(std::cell::RefCell::new(new_inst)))
-                        };
-                        // The copy gets `initialize_copy` with the original, so
-                        // a class can deep-copy what the shallow copy shared.
-                        if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
-                            && !method.is_undefined
-                        {
-                            self.invoke_method(
-                                class,
-                                method,
-                                copy.clone(),
-                                vec![receiver.clone()],
-                                position,
-                            )?;
-                        }
-                        Ok(Some(copy))
-                    }
-                    // An exception copies its message, backtrace, cause, and
-                    // instance variables. `dup` leaves the singleton class
-                    // behind, so a method defined on the original is not on
-                    // the copy.
-                    Object::Exception(details) => {
-                        let copy = {
-                            // The backtrace Array is shared with the original,
-                            // the way Ruby's copy shares it.
-                            let copied = details.borrow().clone();
-                            Object::Exception(std::rc::Rc::new(std::cell::RefCell::new(copied)))
-                        };
-                        if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
-                            && !method.is_undefined
-                            && !method.body.is_empty()
-                        {
-                            self.invoke_method(
-                                class,
-                                method,
-                                copy.clone(),
-                                vec![receiver.clone()],
-                                position,
-                            )?;
-                        }
-                        Ok(Some(copy))
-                    }
-                    Object::Array(arr_rc) => {
-                        let arr = arr_rc.borrow().clone();
-                        Ok(Some(Object::Array(std::rc::Rc::new(
-                            std::cell::RefCell::new(arr),
-                        ))))
-                    }
-                    Object::Dict(dict_rc) => {
-                        let dict = dict_rc.borrow().clone();
-                        Ok(Some(Object::Dict(std::rc::Rc::new(
-                            std::cell::RefCell::new(dict),
-                        ))))
-                    }
-                    Object::Class(class_rc) => {
-                        if class_rc.name() == "BasicObject" {
-                            let msg = "can't copy the root class".to_string();
-                            let exc = Object::exception("TypeError", msg.clone());
-                            return Err(MetorexError::UncaughtException {
-                                exception: exc,
-                                location: position_to_location(position),
-                                message: msg,
-                            });
-                        }
-                        let copy = crate::class::Class::duplicate(class_rc);
-                        Ok(Some(Object::Class(std::rc::Rc::new(copy))))
-                    }
-                    Object::Module(mod_rc) => {
-                        let copy = crate::class::Class::duplicate(mod_rc);
-                        Ok(Some(Object::Module(std::rc::Rc::new(copy))))
-                    }
-                    // Immutable types return themselves
-                    _ => Ok(Some(receiver.clone())),
+                let copy = self.copy_for(receiver, position)?;
+                if let Some(copy) = &copy
+                    && method_name == "clone"
+                {
+                    self.finish_clone(receiver, copy, freeze, arguments, position)?;
                 }
+                Ok(copy)
             }
             "=~" => {
                 // Regex match: string =~ regex or regex =~ string
@@ -2045,6 +1984,289 @@ impl VirtualMachine {
             .map(|n| Object::Symbol(std::rc::Rc::new(n)))
             .collect();
         Object::Array(std::rc::Rc::new(std::cell::RefCell::new(symbols)))
+    }
+    /// `Object#inspect` for an instance with no `inspect` of its own: the
+    /// class and address, then the instance variables and their values. A
+    /// private `instance_variables_to_inspect` chooses which to show, and nil
+    /// from it means all of them.
+    fn default_instance_inspect(
+        &mut self,
+        receiver: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Object::Instance(instance) = receiver else {
+            return Ok(Object::string(receiver.to_string()));
+        };
+        let header = receiver.to_string();
+        let chosen = match self.lookup_method(receiver, "instance_variables_to_inspect") {
+            Some((class, method)) if !method.is_undefined => {
+                let answer =
+                    self.invoke_method(class, method, receiver.clone(), Vec::new(), position)?;
+                match answer {
+                    Object::Nil => None,
+                    Object::Array(names) => Some(
+                        names
+                            .borrow()
+                            .iter()
+                            .map(|name| match name {
+                                Object::Symbol(text) | Object::String(text) => (**text).clone(),
+                                other => other.to_string(),
+                            })
+                            .collect::<Vec<_>>(),
+                    ),
+                    other => {
+                        let message = format!(
+                            "Expected #instance_variables_to_inspect to return an Array or nil, but it returned {}",
+                            self.builtins().class_of(&other).name()
+                        );
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("TypeError", message.clone()),
+                            location: position_to_location(position),
+                            message,
+                        });
+                    }
+                }
+            }
+            _ => None,
+        };
+        let variables: Vec<(String, Object)> = {
+            let borrowed = instance.borrow();
+            let names: Vec<String> = match &chosen {
+                Some(chosen) => chosen.clone(),
+                None => borrowed.instance_vars.keys().cloned().collect(),
+            };
+            names
+                .into_iter()
+                .filter(|name| !name.starts_with("__"))
+                .filter_map(|name| {
+                    let key = name.trim_start_matches('@').to_string();
+                    borrowed
+                        .instance_vars
+                        .get(&key)
+                        .map(|value| (format!("@{}", key), value.clone()))
+                })
+                .collect()
+        };
+        if variables.is_empty() {
+            return Ok(Object::string(header));
+        }
+        let mut rendered = Vec::with_capacity(variables.len());
+        for (name, value) in variables {
+            let shown = self.inspect_value(&value, position)?;
+            rendered.push(format!("{}={}", name, shown));
+        }
+        let trimmed = header.trim_end_matches('>').to_string();
+        Ok(Object::string(format!(
+            "{} {}>",
+            trimmed,
+            rendered.join(", ")
+        )))
+    }
+
+    /// A value as `inspect` renders it.
+    fn inspect_value(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        // A user-defined `inspect` wins; otherwise the value's own class
+        // renders it, which is what quotes a String and shows a nil.
+        if let Some((class, method)) = self.lookup_method(value, "inspect")
+            && !method.body.is_empty()
+        {
+            let shown = self.invoke_method(class, method, value.clone(), Vec::new(), position)?;
+            return Ok(shown.to_string());
+        }
+        let class = self.builtins().class_of(value);
+        match self.call_native_method(&class, value, "inspect", &[], position)? {
+            Some(shown) => Ok(shown.to_string()),
+            None => Ok(value.to_string()),
+        }
+    }
+
+    /// The copy `dup` and `clone` hand back, before any frozen state or
+    /// singleton class is carried over.
+    fn copy_for(
+        &mut self,
+        receiver: &Object,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        match receiver {
+            // Complex and Rational are value objects: there is nothing
+            // to copy, so Ruby answers the receiver itself.
+            Object::Instance(inst_rc)
+                if matches!(inst_rc.borrow().class.name(), "Complex" | "Rational") =>
+            {
+                Ok(Some(receiver.clone()))
+            }
+            Object::Instance(inst_rc) => {
+                let copy = {
+                    let inst = inst_rc.borrow();
+                    let mut new_inst =
+                        crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
+                    for (k, v) in &inst.instance_vars {
+                        new_inst.set_var(k.clone(), v.clone());
+                    }
+                    Object::Instance(std::rc::Rc::new(std::cell::RefCell::new(new_inst)))
+                };
+                // The copy gets `initialize_copy` with the original, so
+                // a class can deep-copy what the shallow copy shared.
+                if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
+                    && !method.is_undefined
+                {
+                    self.invoke_method(
+                        class,
+                        method,
+                        copy.clone(),
+                        vec![receiver.clone()],
+                        position,
+                    )?;
+                }
+                Ok(Some(copy))
+            }
+            // An exception copies its message, backtrace, cause, and
+            // instance variables. `dup` leaves the singleton class
+            // behind, so a method defined on the original is not on
+            // the copy.
+            Object::Exception(details) => {
+                let copy = {
+                    // The backtrace Array is shared with the original,
+                    // the way Ruby's copy shares it.
+                    let copied = details.borrow().clone();
+                    Object::Exception(std::rc::Rc::new(std::cell::RefCell::new(copied)))
+                };
+                if let Some((class, method)) = self.lookup_method(&copy, "initialize_copy")
+                    && !method.is_undefined
+                    && !method.body.is_empty()
+                {
+                    self.invoke_method(
+                        class,
+                        method,
+                        copy.clone(),
+                        vec![receiver.clone()],
+                        position,
+                    )?;
+                }
+                Ok(Some(copy))
+            }
+            Object::Array(arr_rc) => {
+                let arr = arr_rc.borrow().clone();
+                Ok(Some(Object::Array(std::rc::Rc::new(
+                    std::cell::RefCell::new(arr),
+                ))))
+            }
+            Object::Dict(dict_rc) => {
+                let dict = dict_rc.borrow().clone();
+                Ok(Some(Object::Dict(std::rc::Rc::new(
+                    std::cell::RefCell::new(dict),
+                ))))
+            }
+            Object::Class(class_rc) => {
+                if class_rc.name() == "BasicObject" {
+                    let msg = "can't copy the root class".to_string();
+                    let exc = Object::exception("TypeError", msg.clone());
+                    return Err(MetorexError::UncaughtException {
+                        exception: exc,
+                        location: position_to_location(position),
+                        message: msg,
+                    });
+                }
+                let copy = crate::class::Class::duplicate(class_rc);
+                Ok(Some(Object::Class(std::rc::Rc::new(copy))))
+            }
+            Object::Module(mod_rc) => {
+                let copy = crate::class::Class::duplicate(mod_rc);
+                Ok(Some(Object::Module(std::rc::Rc::new(copy))))
+            }
+            // Immutable types return themselves
+            _ => Ok(Some(receiver.clone())),
+        }
+    }
+
+    /// The `freeze:` keyword `clone` was given: Some(true), Some(false), or
+    /// None for `freeze: nil` and for no keyword at all.
+    fn clone_freeze_argument(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Option<bool>, MetorexError> {
+        let Some(Object::Dict(entries)) = arguments.first() else {
+            if arguments.is_empty() {
+                return Ok(None);
+            }
+            return Err(method_argument_error("clone", 0, arguments.len(), position));
+        };
+        let value = entries.borrow().get(":freeze").cloned();
+        match value {
+            None | Some(Object::Nil) => Ok(None),
+            Some(Object::Bool(freeze)) => Ok(Some(freeze)),
+            Some(other) => {
+                let message = format!(
+                    "unexpected value for freeze: {}",
+                    self.builtins().class_of(&other).name()
+                );
+                Err(MetorexError::UncaughtException {
+                    exception: Object::exception("ArgumentError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                })
+            }
+        }
+    }
+
+    /// Carry over what `clone` copies beyond the instance variables: the
+    /// singleton class, the frozen state, and the `initialize_clone` call.
+    fn finish_clone(
+        &mut self,
+        receiver: &Object,
+        copy: &Object,
+        freeze: Option<bool>,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        // A singleton class travels with a clone, so a method defined on the
+        // original answers on the copy too.
+        if let (Object::Instance(original), Object::Instance(copied)) = (receiver, copy) {
+            let singleton = original.borrow().singleton_class.borrow().clone();
+            if let Some(singleton) = singleton {
+                let copied_singleton = crate::class::Class::duplicate(&singleton);
+                *copied.borrow().singleton_class.borrow_mut() =
+                    Some(std::rc::Rc::new(copied_singleton));
+            }
+            let methods = original.borrow().singleton_methods.borrow().clone();
+            for (name, method) in methods {
+                copied
+                    .borrow_mut()
+                    .singleton_methods
+                    .borrow_mut()
+                    .insert(name, method);
+            }
+        }
+        if let Some((class, method)) = self.lookup_method(copy, "initialize_clone")
+            && !method.is_undefined
+            && !method.body.is_empty()
+        {
+            let mut call_arguments = vec![receiver.clone()];
+            call_arguments.extend(arguments.iter().cloned());
+            self.invoke_method(class, method, copy.clone(), call_arguments, position)?;
+        }
+        let frozen = match freeze {
+            Some(freeze) => freeze,
+            None => self.object_is_frozen(receiver),
+        };
+        if frozen {
+            match copy {
+                Object::Class(class) | Object::Module(class) => class.freeze(),
+                Object::Instance(instance) => instance.borrow_mut().frozen = true,
+                Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                    if let Some(address) = Self::collection_address(copy) {
+                        self.frozen_collections.insert(address, copy.clone());
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(())
     }
 }
 

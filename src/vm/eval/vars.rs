@@ -11,9 +11,18 @@ use crate::vm::utils::position_to_location;
 impl VirtualMachine {
     /// Evaluate a bare `self` expression.
     pub(super) fn eval_self(&self, position: Position) -> Result<Object, MetorexError> {
-        self.environment()
-            .get("self")
-            .ok_or_else(|| undefined_self_error(position))
+        if let Some(receiver) = self.environment().get("self") {
+            return Ok(receiver);
+        }
+        // At the top level `self` is `main`, which is what TOPLEVEL_BINDING
+        // was built around.
+        match self.globals().get("TOPLEVEL_BINDING") {
+            Some(Object::Binding(binding)) => binding
+                .receiver
+                .clone()
+                .ok_or_else(|| undefined_self_error(position)),
+            _ => Err(undefined_self_error(position)),
+        }
     }
 
     /// Evaluate an instance variable read (`@name`). Falls back to nil for

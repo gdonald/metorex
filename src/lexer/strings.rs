@@ -22,9 +22,27 @@ impl<'a> Lexer<'a> {
 
     /// Read a string literal (single or double quoted)
     pub(super) fn read_string(&mut self, quote: char) -> Result<TokenKind, String> {
+        self.read_quoted(quote, false)
+    }
+
+    /// Read a backtick command literal, which interpolates the way a
+    /// double-quoted string does and carries its parts for the parser to turn
+    /// into a call.
+    pub(super) fn read_command_string(&mut self) -> Result<TokenKind, String> {
+        match self.read_quoted('`', true)? {
+            TokenKind::String(text) => Ok(TokenKind::CommandString(vec![InterpolationPart::Text(
+                text,
+            )])),
+            TokenKind::InterpolatedString(parts) => Ok(TokenKind::CommandString(parts)),
+            other => Ok(other),
+        }
+    }
+
+    fn read_quoted(&mut self, quote: char, command: bool) -> Result<TokenKind, String> {
         let mut parts = Vec::new();
         let mut current_text = String::new();
-        let has_interpolation = quote == '"'; // Only double-quoted strings support interpolation
+        // Only double-quoted strings and backticks support interpolation.
+        let has_interpolation = quote == '"' || command;
 
         // Skip the opening quote
         self.advance();

@@ -19,6 +19,11 @@ impl fmt::Display for Object {
             Object::Float(fl) if fl.is_infinite() => {
                 write!(f, "{}Infinity", if *fl < 0.0 { "-" } else { "" })
             }
+            // Ruby always shows a Float with a fractional part, so 1.0 reads
+            // as "1.0" rather than "1".
+            Object::Float(fl) if fl.fract() == 0.0 && fl.abs() < 1e16 => {
+                write!(f, "{:.1}", fl)
+            }
             Object::Float(fl) => write!(f, "{}", fl),
             Object::String(s) => write!(f, "{}", s),
             Object::Symbol(s) => write!(f, ":{}", s),
@@ -36,11 +41,31 @@ impl fmt::Display for Object {
             Object::Dict(dict) => {
                 write!(f, "{{")?;
                 let map = dict.borrow();
-                for (i, (key, value)) in map.iter().enumerate() {
-                    if i > 0 {
+                let mut written = 0;
+                for (key, value) in map.iter() {
+                    // The sentinel entries a Hash keeps for its default proc
+                    // and non-primitive keys are bookkeeping, not contents.
+                    if key.starts_with("__MX_") {
+                        continue;
+                    }
+                    if written > 0 {
                         write!(f, ", ")?;
                     }
-                    write!(f, "{}: {}", key, value)?;
+                    written += 1;
+                    // A Symbol key reads as `name: value`, and every other
+                    // kind as `key => value`, the way Ruby shows them. A key
+                    // that is not a String keeps its own rendering.
+                    match key.strip_prefix(':') {
+                        Some(name) => write!(f, "{}: {}", name, value)?,
+                        None if key.parse::<f64>().is_ok()
+                            || key == "true"
+                            || key == "false"
+                            || key == "nil" =>
+                        {
+                            write!(f, "{} => {}", key, value)?
+                        }
+                        None => write!(f, "{:?} => {}", key, value)?,
+                    }
                 }
                 write!(f, "}}")
             }

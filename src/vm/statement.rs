@@ -347,19 +347,31 @@ impl VirtualMachine {
                 // file's local environment ending. Both record the
                 // assignment site for `Module#const_source_location`.
                 let assign_file = self
-                    .get_current_file()
+                    .reported_current_file()
                     .map(|p| p.display().to_string())
                     .unwrap_or_default();
                 if is_const && let Some(enclosing) = self.def_scope_stack.last().cloned() {
+                    let is_new = enclosing.get_class_var(name).is_none();
                     enclosing.set_class_var(name, value);
                     enclosing.set_const_location(name, assign_file, position.line as i64);
+                    if is_new {
+                        let owner = Object::Class(Rc::clone(&enclosing));
+                        self.trigger_const_added_hook(owner, name, *position)?;
+                    }
                     return Ok(());
                 }
                 if is_const {
                     self.globals_mut().set(name.clone(), value.clone());
+                    let mut owner = None;
                     if let Some(Object::Class(object_class)) = self.globals().get("Object") {
+                        if object_class.get_class_var(name).is_none() {
+                            owner = Some(Object::Class(Rc::clone(&object_class)));
+                        }
                         object_class.set_class_var(name, value);
                         object_class.set_const_location(name, assign_file, position.line as i64);
+                    }
+                    if let Some(owner) = owner {
+                        self.trigger_const_added_hook(owner, name, *position)?;
                     }
                     return Ok(());
                 }
@@ -375,7 +387,7 @@ impl VirtualMachine {
                     bound.set_assigned_name_if_anonymous(name);
                 }
                 let assign_file = self
-                    .get_current_file()
+                    .reported_current_file()
                     .map(|path| path.display().to_string())
                     .unwrap_or_default();
                 self.globals_mut().set(name.clone(), value.clone());
@@ -838,7 +850,7 @@ impl VirtualMachine {
                         }
                         c.set_class_var(name, value);
                         let assign_file = self
-                            .get_current_file()
+                            .reported_current_file()
                             .map(|p| p.display().to_string())
                             .unwrap_or_default();
                         c.set_const_location(name, assign_file, position.line as i64);

@@ -168,3 +168,91 @@ fn test_require_autoload_reload_warning_parens_execution() {
     let output = run_example("require/autoload_reload_warning_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_require_kernel_autoload_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "nil\n",
+        "true\n",
+        "from_autoload\n",
+        "nil\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("require/kernel_autoload.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_kernel_autoload_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "nil\n",
+        "true\n",
+        "from_autoload\n",
+        "nil\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("require/kernel_autoload_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_load_top_level_def_execution() {
+    let expected = "[]\ntop_level\n";
+    let output = run_example("require/load_top_level_def.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_load_top_level_def_parens_execution() {
+    let expected = "[]\ntop_level\n";
+    let output = run_example("require/load_top_level_def_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_load_semantics_execution() {
+    let expected = concat!(
+        "2\n",
+        "false\n",
+        "3\n",
+        "3\n",
+        "4\n",
+        "cannot load such file -- ./does_not_exist_here.rb\n",
+        "no implicit conversion of Integer into String\n",
+        "/\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "wrapped\n",
+        "true\n"
+    );
+    let output = run_example("require/load_semantics.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_load_semantics_parens_execution() {
+    let expected = concat!(
+        "2\n",
+        "false\n",
+        "3\n",
+        "3\n",
+        "4\n",
+        "cannot load such file -- ./does_not_exist_here.rb\n",
+        "no implicit conversion of Integer into String\n",
+        "/\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "wrapped\n",
+        "true\n"
+    );
+    let output = run_example("require/load_semantics_parens.rb");
+    assert_eq!(output, expected);
+}

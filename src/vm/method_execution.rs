@@ -16,7 +16,7 @@ use crate::object::{Method, Object};
 use indexmap::IndexMap;
 use std::rc::Rc;
 
-use super::param_binding::{bind_params, positional_arg_count, split_keyword_args};
+use super::param_binding::{bind_params, positional_arg_count_for, split_keyword_args};
 
 impl VirtualMachine {
     /// Invoke a resolved method with evaluated arguments.
@@ -76,7 +76,9 @@ impl VirtualMachine {
         }
 
         let expected = method.parameters.len();
-        let mut positional_count = positional_arg_count(&arguments);
+        let takes_keywords =
+            !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some();
+        let mut positional_count = positional_arg_count_for(&arguments, takes_keywords);
         // If a trailing &block argument is passed and the method accepts a block parameter,
         // extract it as pending_block and don't count it as positional.
         if method.block_parameter.is_some()
@@ -85,7 +87,7 @@ impl VirtualMachine {
         {
             self.pending_block = arguments.pop();
             self.pending_block_from_ampersand = false;
-            positional_count = positional_arg_count(&arguments);
+            positional_count = positional_arg_count_for(&arguments, takes_keywords);
         }
         let has_variadic = method.variadic_param.is_some();
         let required =
@@ -141,14 +143,32 @@ impl VirtualMachine {
         // A method body sees the refinements that were active where it was
         // defined, and only those: the caller's activations are not lexically
         // in scope for it.
-        let captured_scope: Vec<crate::vm::core::RefinementEntry> = method
-            .captured_refinements
-            .iter()
-            .map(|(m, cs)| crate::vm::core::RefinementEntry {
-                module: Rc::clone(m),
-                classes: cs.iter().cloned().collect(),
-            })
-            .collect();
+        // A method defined inside a `refine` block reads its module's
+        // refinements as they stand when it runs, so a sibling refinement
+        // declared after it is still in force. Every other method sees the
+        // snapshot taken where it was defined, so a refinement added to an
+        // already-activated module does not reach it.
+        let defined_in_refinement = method.owner_class.as_ref().is_some_and(|owner| {
+            owner
+                .get_class_var(crate::vm::REFINEMENT_LABEL_KEY)
+                .is_some()
+        });
+        let captured_scope: Vec<crate::vm::core::RefinementEntry> = if defined_in_refinement {
+            method
+                .captured_refinements
+                .iter()
+                .flat_map(|(module, _)| Self::refinement_entries_for(module))
+                .collect()
+        } else {
+            method
+                .captured_refinements
+                .iter()
+                .map(|(module, classes)| crate::vm::core::RefinementEntry {
+                    module: Rc::clone(module),
+                    classes: classes.iter().cloned().collect(),
+                })
+                .collect()
+        };
         let caller_scopes = std::mem::replace(&mut self.refinement_scopes, vec![captured_scope]);
         // Snapshot the positional args so `super` (bare form, inside the
         // body) can forward them to the parent method.

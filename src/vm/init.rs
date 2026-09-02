@@ -273,13 +273,61 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // Encoding — metorex strings are UTF-8, so the named encodings exist as
     // distinct objects but every string reports UTF-8.
     let encoding = Rc::new(Class::new("Encoding", None));
-    for name in ["UTF_8", "US_ASCII", "BINARY", "ASCII_8BIT"] {
+    for name in ["UTF_8", "US_ASCII", "BINARY", "ASCII_8BIT", "SHIFT_JIS"] {
         let display = name.replace('_', "-");
         let constant = Rc::new(Class::new(display, Some(Rc::clone(&encoding))));
         encoding.set_class_var(name, Object::Class(Rc::clone(&constant)));
         globals.set(format!("Encoding::{}", name), Object::Class(constant));
     }
+    // The errors Encoding raises are constants on it, and descend from
+    // StandardError the way every other one does.
+    if let Some(Object::Class(standard_error)) = globals.get("StandardError") {
+        for name in [
+            "CompatibilityError",
+            "UndefinedConversionError",
+            "InvalidByteSequenceError",
+        ] {
+            let error = Rc::new(Class::new(
+                format!("Encoding::{}", name),
+                Some(Rc::clone(&standard_error)),
+            ));
+            encoding.set_class_var(name, Object::Class(Rc::clone(&error)));
+            globals.set(format!("Encoding::{}", name), Object::Class(error));
+        }
+    }
     globals.set("Encoding", Object::Class(encoding));
+
+    // The open flags `File.open` and `Kernel#open` accept in `flags:`.
+    if let Some(Object::Class(file_class)) = globals.get("File") {
+        for (name, value) in [
+            ("RDONLY", 0),
+            ("WRONLY", 1),
+            ("RDWR", 2),
+            ("CREAT", 0o100),
+            ("EXCL", 0o200),
+            ("TRUNC", 0o1000),
+            ("APPEND", 0o2000),
+            ("NONBLOCK", 0o4000),
+        ] {
+            file_class.set_class_var(name, Object::Int(value));
+            globals.set(format!("File::{}", name), Object::Int(value));
+        }
+    }
+
+    // File::Separator and its aliases, which a path built by hand uses.
+    if let Some(Object::Class(file_class)) = globals.get("File") {
+        for name in ["Separator", "SEPARATOR"] {
+            let separator = Object::string("/");
+            file_class.set_class_var(name, separator.clone());
+            globals.set(format!("File::{}", name), separator);
+        }
+        let alt = Object::Nil;
+        file_class.set_class_var("ALT_SEPARATOR", alt.clone());
+        globals.set("File::ALT_SEPARATOR", alt);
+        let path_separator = Object::string(":");
+        file_class.set_class_var("PATH_SEPARATOR", path_separator.clone());
+        globals.set("File::PATH_SEPARATOR", path_separator);
+    }
 
     // Signal — stub module (trap is a no-op)
     let signal = Rc::new(Class::new("Signal", None));
@@ -287,6 +335,12 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
 
     // Process — stub module (pid is a no-op)
     let process = Rc::new(Class::new("Process", None));
+    // `Process::Status` describes how a child ended. The instances come from
+    // whatever waits for one, and this is the class they share.
+    let process_status = Rc::new(Class::new("Process::Status", None));
+    process.set_class_var("Status", Object::Class(Rc::clone(&process_status)));
+    globals.set("Process::Status", Object::Class(Rc::clone(&process_status)));
+    globals.set("__Process_Status_class", Object::Class(process_status));
     globals.set("Process", Object::Module(process));
 
     // Math — stub module (constants will be added later if needed)
@@ -443,6 +497,20 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     );
     globals.set("proc", Object::NativeFunction("proc".to_string()));
     globals.set("require", Object::NativeFunction("require".to_string()));
+    // `autoload` and `autoload?` named bare register on Object, the home of
+    // top-level constants.
+    globals.set("`", Object::NativeFunction("`".to_string()));
+    globals.set("exec", Object::NativeFunction("exec".to_string()));
+    globals.set("exit!", Object::NativeFunction("exit!".to_string()));
+    globals.set("fork", Object::NativeFunction("fork".to_string()));
+    globals.set("open", Object::NativeFunction("open".to_string()));
+    globals.set("pp", Object::NativeFunction("pp".to_string()));
+    globals.set("printf", Object::NativeFunction("printf".to_string()));
+    // `chomp` and `chop` without a receiver work on `$_`, the line `-n` read.
+    globals.set("chomp", Object::NativeFunction("chomp".to_string()));
+    globals.set("chop", Object::NativeFunction("chop".to_string()));
+    globals.set("autoload", Object::NativeFunction("autoload".to_string()));
+    globals.set("autoload?", Object::NativeFunction("autoload?".to_string()));
     globals.set(
         "require_relative",
         Object::NativeFunction("require_relative".to_string()),

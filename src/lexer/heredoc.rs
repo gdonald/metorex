@@ -24,8 +24,22 @@ impl<'a> Lexer<'a> {
         let (allow_indented_terminator, strip_indent) = match self.peek() {
             Some('-') => (true, false),
             Some('~') => (true, true),
+            // A bare `<<TERMINATOR` is a heredoc only where a value is
+            // expected: after an operand `<<` is the shovel operator. The
+            // terminator has to follow immediately and start with an
+            // uppercase letter, an underscore, or a quote.
+            Some(character)
+                if self.slash_is_regex()
+                    && (character.is_ascii_uppercase()
+                        || character == '_'
+                        || character == '"'
+                        || character == '\'') =>
+            {
+                (false, false)
+            }
             _ => return None,
         };
+        let bare = !matches!(self.peek(), Some('-') | Some('~'));
         // Save state so we can roll back if the next characters don't form
         // a valid heredoc terminator.
         let saved_chars = self.chars.clone();
@@ -34,7 +48,9 @@ impl<'a> Lexer<'a> {
         let saved_column = self.column;
         let saved_offset = self.offset;
 
-        self.advance(); // consume `-` or `~`
+        if !bare {
+            self.advance(); // consume `-` or `~`
+        }
 
         // Optional quote around the terminator (`<<-"FOO"` / `<<-'FOO'`).
         // The quote choice controls interpolation: bare and double-quoted

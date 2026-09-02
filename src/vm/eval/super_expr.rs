@@ -171,7 +171,18 @@ impl VirtualMachine {
         // via `include` are reachable as the defining class.
         fn walk_ancestors(class: &Rc<Class>) -> Vec<Rc<Class>> {
             let mut out = Vec::new();
-            out.push(Rc::clone(class));
+            // A prepended module sits ahead of the class, so `super` from it
+            // reaches the class's own copy of the method.
+            for prepended in class.prepend_chain() {
+                for anc in walk_ancestors(&prepended) {
+                    if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
+                        out.push(anc);
+                    }
+                }
+            }
+            if !out.iter().any(|c| Rc::ptr_eq(c, class)) {
+                out.push(Rc::clone(class));
+            }
             for mixin in class.mixin_chain() {
                 // Include the mixin itself AND any modules it transitively
                 // includes, so e.g. Target→Child→Parent is visited when only
@@ -192,7 +203,17 @@ impl VirtualMachine {
             out
         }
         use crate::class::Class;
-        let chain = walk_ancestors(instance_class);
+        // A singleton method's `super` reaches the class's own copy, so the
+        // receiver's singleton class comes ahead of its class in the chain.
+        let mut chain = Vec::new();
+        if let Some(singleton) = instance_borrowed.singleton_class.borrow().clone() {
+            chain.push(singleton);
+        }
+        for ancestor in walk_ancestors(instance_class) {
+            if !chain.iter().any(|c| Rc::ptr_eq(c, &ancestor)) {
+                chain.push(ancestor);
+            }
+        }
         // The running method records the module it was defined in, which is
         // the only way to place a method from an anonymous module or from one
         // of two modules that share a name. Matching the frame's class name
@@ -224,8 +245,11 @@ impl VirtualMachine {
             // Position in the overall chain where defining_class sits.
             let start_idx = chain.iter().position(|c| Rc::ptr_eq(c, &defining_class));
             if let Some(idx) = start_idx {
+                // The chain is already linearized, so each ancestor is asked
+                // only for its own method. Walking its mixins and prepends
+                // again would hand back the method `super` was called from.
                 for anc in chain.iter().skip(idx + 1) {
-                    if let Some(method) = anc.find_method(&method_name) {
+                    if let Some(method) = anc.find_own_method(&method_name) {
                         found = Some((Rc::clone(anc), method));
                         break;
                     }
@@ -275,10 +299,25 @@ impl VirtualMachine {
                     }
                     return Ok(Object::Nil);
                 }
-                return Err(MetorexError::runtime_error(
-                    format!("Class {} has no superclass", class_name),
-                    position_to_location(position),
-                ));
+                // A prepended module whose class does not define the method
+                // has nothing left above it, which Ruby reports as a
+                // NoMethodError naming the method.
+                let self_val = self.environment().get("self").unwrap_or(Object::Nil);
+                let message = format!(
+                    "super: no superclass method '{}' for an instance of {}",
+                    method_name,
+                    self.builtins().class_of(&self_val).name()
+                );
+                return Err(MetorexError::UncaughtException {
+                    exception: crate::vm::errors::no_method_error(
+                        &message,
+                        &method_name,
+                        &self_val,
+                        &[],
+                    ),
+                    location: position_to_location(position),
+                    message,
+                });
             }
         };
 
@@ -356,14 +395,23 @@ impl VirtualMachine {
                         message,
                     });
                 }
-                return Err(MetorexError::runtime_error(
-                    format!(
-                        "Superclass {} does not define method '{}'",
-                        parent_class.name(),
-                        method_name
+                // Nothing above the defining class answers the call, which
+                // Ruby reports as a NoMethodError naming the method.
+                let message = format!(
+                    "super: no superclass method '{}' for an instance of {}",
+                    method_name,
+                    self.builtins().class_of(&self_val).name()
+                );
+                return Err(MetorexError::UncaughtException {
+                    exception: crate::vm::errors::no_method_error(
+                        &message,
+                        &method_name,
+                        &self_val,
+                        &evaluated_args,
                     ),
-                    position_to_location(position),
-                ));
+                    location: position_to_location(position),
+                    message,
+                });
             }
         };
 

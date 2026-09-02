@@ -192,21 +192,23 @@ t.join
 // ── Thread lifecycle predicates (line 221-222) ──
 
 #[test]
-fn thread_alive_returns_false() {
+fn thread_alive_until_it_has_run() {
     let result = run(r#"
 t = Thread.new { 1 }
+t.join
 t.alive?
 "#);
     assert_eq!(result, Some(Object::Bool(false)));
 }
 
 #[test]
-fn thread_stop_predicate_returns_false() {
+fn thread_stop_predicate_is_true_until_it_runs() {
+    // A thread runs when it is joined, so one that has not been is stopped.
     let result = run(r#"
 t = Thread.new { 1 }
 t.stop?
 "#);
-    assert_eq!(result, Some(Object::Bool(false)));
+    assert_eq!(result, Some(Object::Bool(true)));
 }
 
 #[test]

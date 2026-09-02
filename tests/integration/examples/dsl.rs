@@ -9,7 +9,7 @@ fn test_dsl_test_framework_execution() {
 
 #[test]
 fn test_dsl_html_builder_execution() {
-    let expected = "<h1>Welcome to Metorex</h1>\n<p class=\"intro\">A meta-object programming language.</p>\n<span class=\"highlight\" id=\"main\">Highlighted text</span>\n\n";
+    let expected = "<h1>Welcome to Metorex</h1>\n<p class=\"intro\">A meta-object programming language.</p>\n<span class=\"highlight\" id=\"main\">Highlighted text</span>\n";
     let output = run_example("dsl/html_builder.rb");
     assert_eq!(output, expected);
 }

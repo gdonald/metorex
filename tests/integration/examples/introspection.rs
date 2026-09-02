@@ -65,15 +65,7 @@ no_annotations.parameters = [a, b]
 
 #[test]
 fn test_introspection_default_parameters_execution() {
-    let expected = r#"no_defaults
-[a, b]
-with_defaults
-[a, b, c]
-all_defaults
-[x, y, z]
-greet
-[name, greeting, punctuation]
-"#;
+    let expected = "no_defaults\na\nb\nwith_defaults\na\nb\nc\nall_defaults\nx\ny\nz\ngreet\nname\ngreeting\npunctuation\n";
     let output = run_example("introspection/default_parameters.rb");
     assert_eq!(output, expected);
 }
@@ -292,24 +284,14 @@ fn test_introspection_method_via_respond_to_missing_no_parens() {
 
 #[test]
 fn test_introspection_methods_listing() {
-    let expected = concat!(
-        "[]\n[:polish]\n[:polish]\ntrue\ntrue\n",
-        "[:buff, :polish]\n[:buff]\n",
-        "false\ntrue\nSymbol\nfalse\n6\n",
-        "[2, 3]\n[1, 2, 3, 4]\n"
-    );
+    let expected = "[]\n[:polish]\n[:polish]\ntrue\ntrue\n[:buff, :polish]\n[:buff]\nfalse\ntrue\nSymbol\nfalse\n6\n2\n3\n1\n2\n3\n4\n";
     let output = run_example("introspection/methods_listing.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_introspection_methods_listing_no_parens() {
-    let expected = concat!(
-        "[]\n[:polish]\n[:polish]\ntrue\ntrue\n",
-        "[:buff, :polish]\n[:buff]\n",
-        "false\ntrue\nSymbol\nfalse\n6\n",
-        "[2, 3]\n[1, 2, 3, 4]\n"
-    );
+    let expected = "[]\n[:polish]\n[:polish]\ntrue\ntrue\n[:buff, :polish]\n[:buff]\nfalse\ntrue\nSymbol\nfalse\n6\n2\n3\n1\n2\n3\n4\n";
     let output = run_example("introspection/methods_listing_no_parens.rb");
     assert_eq!(output, expected);
 }

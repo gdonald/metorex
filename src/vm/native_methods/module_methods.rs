@@ -77,12 +77,20 @@ impl VirtualMachine {
                     position,
                 ));
             }
+            // Ruby refines a module as readily as a class, and reports
+            // anything else with its own wording.
             let target = match &arguments[0] {
-                Object::Class(c) => Rc::clone(c),
+                Object::Class(target) | Object::Module(target) => Rc::clone(target),
                 other => {
-                    return Err(method_argument_type_error(
-                        "refine", "Class", other, position,
-                    ));
+                    let message = format!(
+                        "wrong argument type {} (expected Class or Module)",
+                        self.builtins().class_of(other).name()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", message.clone()),
+                        location: position_to_location(position),
+                        message,
+                    });
                 }
             };
             let refinement_key = format!(
@@ -109,27 +117,24 @@ impl VirtualMachine {
                     holder
                 }
             };
-            if let Some(Object::Block(block)) = self.pending_block.take() {
-                self.apply_block_as_class_body(&holder, &block, position)?;
-            }
-            module_rc.set_class_var(&refinement_key, Object::Module(Rc::clone(&holder)));
-            return Ok(Some(Object::Module(holder)));
-        }
-
-        if module_rc.name() == "Kernel" && method_name == "load" {
-            if arguments.len() != 1 {
-                return Err(method_argument_error("load", 1, arguments.len(), position));
-            }
-            let path = match &arguments[0] {
-                Object::String(s) => s.as_str().to_string(),
-                other => {
-                    return Err(method_argument_type_error(
-                        "load", "String", other, position,
-                    ));
-                }
+            let Some(Object::Block(block)) = self.pending_block.take() else {
+                let message = "no block given".to_string();
+                return Err(MetorexError::UncaughtException {
+                    exception: Object::exception("ArgumentError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                });
             };
-            self.execute_file(std::path::Path::new(&path))?;
-            return Ok(Some(Object::Bool(true)));
+            // The refinement is registered before its body runs, so calls
+            // inside the block see it, along with every sibling refinement
+            // the same module has declared so far.
+            module_rc.set_class_var(&refinement_key, Object::Module(Rc::clone(&holder)));
+            self.push_refinement_scope();
+            self.activate_refinement(Rc::clone(module_rc));
+            let body = self.apply_block_as_class_body(&holder, &block, position);
+            self.pop_refinement_scope();
+            body?;
+            return Ok(Some(Object::Module(holder)));
         }
 
         // `Kernel.require(path)` — module-level dispatch that delegates to
@@ -156,6 +161,41 @@ impl VirtualMachine {
                 .map(Some);
         }
 
+        // `Kernel.\`` reaches the same command runner the bare form does.
+        // `Kernel.chomp` and `Kernel.chop` reach the same `$_` rewriters the
+        // bare forms do.
+        if module_rc.name() == "Kernel"
+            && matches!(
+                method_name,
+                "chomp"
+                    | "chop"
+                    | "exec"
+                    | "exit"
+                    | "exit!"
+                    | "fork"
+                    | "load"
+                    | "open"
+                    | "p"
+                    | "pp"
+                    | "printf"
+                    | "sprintf"
+            )
+        {
+            return self
+                .call_native_function(method_name, arguments.to_vec(), position)
+                .map(Some);
+        }
+        // `Kernel.format` is `sprintf` under its other name.
+        if module_rc.name() == "Kernel" && method_name == "format" {
+            return self
+                .call_native_function("sprintf", arguments.to_vec(), position)
+                .map(Some);
+        }
+        if module_rc.name() == "Kernel" && method_name == "`" {
+            return self
+                .call_native_function("`", arguments.to_vec(), position)
+                .map(Some);
+        }
         if module_rc.name() == "Signal" {
             match method_name {
                 "list" => return Ok(Some(self.signal_list())),
@@ -169,8 +209,46 @@ impl VirtualMachine {
                 "pid" => return Ok(Some(Object::Int(std::process::id() as i64))),
                 "ppid" => return Ok(Some(Object::Int(0))),
                 "kill" => return self.send_signal(arguments, position).map(Some),
-                "wait" | "waitall" | "exit" | "exit!" | "abort" => {
-                    return Ok(Some(Object::Nil));
+                // SAFETY: `geteuid` and `getuid` read process ids and touch
+                // nothing else.
+                "euid" => return Ok(Some(Object::Int(unsafe { libc::geteuid() } as i64))),
+                "uid" => return Ok(Some(Object::Int(unsafe { libc::getuid() } as i64))),
+                "last_status" => return Ok(Some(self.process_last_status())),
+                // `Process.exit`, `.exit!`, and `.abort` end this process the
+                // way the bare forms do.
+                "exit" | "exit!" | "abort" => {
+                    return self
+                        .call_native_function(method_name, arguments.to_vec(), position)
+                        .map(Some);
+                }
+                // `wait` and `waitpid` answer the child's process id, and
+                // `wait2` pairs it with the status. All three record `$?`.
+                "wait" | "waitpid" | "wait2" | "waitpid2" => {
+                    let requested = match arguments.first() {
+                        Some(Object::Int(pid)) => *pid as i32,
+                        _ => -1,
+                    };
+                    let (pid, status) = self.wait_for_child(requested, position)?;
+                    if matches!(method_name, "wait2" | "waitpid2") {
+                        let pair = vec![Object::Int(pid as i64), status];
+                        return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(pair)))));
+                    }
+                    return Ok(Some(Object::Int(pid as i64)));
+                }
+                "waitall" => {
+                    let mut results = Vec::new();
+                    while let Ok((pid, status)) = self.wait_for_child(-1, position) {
+                        if pid <= 0 {
+                            break;
+                        }
+                        results.push(Object::Array(Rc::new(std::cell::RefCell::new(vec![
+                            Object::Int(pid as i64),
+                            status,
+                        ]))));
+                    }
+                    return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                        results,
+                    )))));
                 }
                 _ => {}
             }

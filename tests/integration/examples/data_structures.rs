@@ -3,8 +3,8 @@ use super::run_example;
 #[test]
 fn test_data_structures_simple_dict_execution() {
     let output = run_example("data_structures/simple_dict.rb");
-    let valid_output1 = "{bob: 25, alice: 30}\n30\n";
-    let valid_output2 = "{alice: 30, bob: 25}\n30\n";
+    let valid_output1 = "{\"bob\" => 25, \"alice\" => 30}\n30\n";
+    let valid_output2 = "{\"alice\" => 30, \"bob\" => 25}\n30\n";
     assert!(
         output == valid_output1 || output == valid_output2,
         "Expected either '{}' or '{}', but got '{}'",
@@ -126,5 +126,59 @@ fn test_data_structures_array_splat_literals_no_parens_execution() {
         "[[1, 2], [3]]\n"
     );
     let output = run_example("data_structures/array_splat/literals_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_data_structures_array_take_drop_execution() {
+    let expected = concat!(
+        "[1, 2]\n",
+        "[3, 4]\n",
+        "[]\n",
+        "[]\n",
+        "[1, 2, 3, 4]\n",
+        "attempt to take negative size\n",
+        "attempt to drop negative size\n",
+    );
+    let output = run_example("data_structures/array_take_drop.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_data_structures_array_take_drop_parens_execution() {
+    let expected = concat!(
+        "[1, 2]\n",
+        "[3, 4]\n",
+        "[]\n",
+        "[]\n",
+        "[1, 2, 3, 4]\n",
+        "attempt to take negative size\n",
+        "attempt to drop negative size\n",
+    );
+    let output = run_example("data_structures/array_take_drop_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_data_structures_hash_map_execution() {
+    let expected = concat!(
+        "[\"apple:2\", \"pear:3\"]\n",
+        "[4, 6]\n",
+        "[]\n",
+        "map requires a block\n",
+    );
+    let output = run_example("data_structures/hash_map.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_data_structures_hash_map_parens_execution() {
+    let expected = concat!(
+        "[\"apple:2\", \"pear:3\"]\n",
+        "[4, 6]\n",
+        "[]\n",
+        "map requires a block\n",
+    );
+    let output = run_example("data_structures/hash_map_parens.rb");
     assert_eq!(output, expected);
 }

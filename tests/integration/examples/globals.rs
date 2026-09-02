@@ -16,7 +16,7 @@ fn test_toplevel_binding_receiver_execution() {
 
 #[test]
 fn test_special_globals_execution() {
-    let expected = "Array\n0\n1\n1\nString\n\n\nNilClass\nFalseClass\n";
+    let expected = "Array\n0\n1\n1\nString\n\nNilClass\nFalseClass\n";
     let output = run_example("globals/special_globals.rb");
     assert_eq!(output, expected);
 }

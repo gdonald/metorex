@@ -28,6 +28,18 @@ pub struct VirtualMachine {
     pub(crate) heap: Rc<RefCell<Heap>>,
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
+    /// The main script's canonical path paired with the path it was named by,
+    /// which is what `__FILE__` reports while it is the file running.
+    pub(crate) script_path: Option<(PathBuf, PathBuf)>,
+    /// Blocks registered by `at_exit`, run in reverse order once the program
+    /// is over. One registered while they run goes to the end, so it runs
+    /// right after the handler that registered it.
+    pub(crate) at_exit_handlers: Vec<Object>,
+    /// Children spawned by `IO.popen` that have not been waited for, keyed by
+    /// the id their handle carries.
+    pub(crate) popen_children: HashMap<u64, std::process::Child>,
+    /// The id the next `IO.popen` handle takes.
+    pub(crate) next_popen_id: u64,
     /// The file whose code is running right now, which differs from
     /// `current_file` inside a method defined in another file.
     pub(crate) current_source_file: Option<String>,
@@ -96,6 +108,9 @@ pub struct VirtualMachine {
     /// `include` is suppressed (Ruby wraps the loaded scope in an anonymous
     /// module so includes don't pollute Object).
     pub(crate) load_wrap_depth: u32,
+    /// The module a wrapped `load` runs its file inside, which its constants
+    /// and top-level methods land on instead of Object.
+    pub(crate) load_wrap_module: Option<Rc<crate::class::Class>>,
     /// Depth of user-defined method bodies we're currently inside (lexical
     /// nesting). Reset to 0 when executing a file top-level via load/require.
     pub(crate) user_def_nesting: u32,
@@ -172,6 +187,10 @@ impl VirtualMachine {
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
             current_file: None,
+            script_path: None,
+            at_exit_handlers: Vec::new(),
+            popen_children: HashMap::new(),
+            next_popen_id: 0,
             current_source_file: None,
             loaded_files: HashSet::new(),
             autoload_const_access_depth: 0,
@@ -189,6 +208,7 @@ impl VirtualMachine {
             traced_globals: HashMap::new(),
             seeded_global_names,
             load_wrap_depth: 0,
+            load_wrap_module: None,
             user_def_nesting: 0,
             refinement_scopes: vec![Vec::new()],
             def_scope_stack: Vec::new(),
@@ -272,10 +292,19 @@ impl VirtualMachine {
 
     /// Activate a refinement module in the innermost scope.
     pub(crate) fn activate_refinement(&mut self, module: Rc<crate::class::Class>) {
-        // Snapshot the keyed targets refined at activation time, including
-        // those the module picks up from the modules it includes.
+        let entries = Self::refinement_entries_for(&module);
+        if let Some(top) = self.refinement_scopes.last_mut() {
+            top.extend(entries);
+        }
+    }
+
+    /// The refinement entries a module carries right now, including those it
+    /// picks up from the modules it includes. Read at activation rather than
+    /// held from an earlier point, so every refinement in a module is visible
+    /// to the others no matter which was declared first.
+    pub(crate) fn refinement_entries_for(module: &Rc<crate::class::Class>) -> Vec<RefinementEntry> {
         let mut entries = Vec::new();
-        let mut sources = vec![Rc::clone(&module)];
+        let mut sources = vec![Rc::clone(module)];
         sources.extend(module.transitive_mixins());
         for source in sources {
             let classes: std::collections::HashSet<String> = source
@@ -290,9 +319,7 @@ impl VirtualMachine {
                 });
             }
         }
-        if let Some(top) = self.refinement_scopes.last_mut() {
-            top.extend(entries);
-        }
+        entries
     }
 
     /// The refinement modules active in the innermost scope, which is what

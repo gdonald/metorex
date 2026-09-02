@@ -52,6 +52,24 @@ impl Parser {
             TokenKind::InterpolatedString(parts) => {
                 self.primary_interpolated_string(parts, position)
             }
+            TokenKind::CommandSymbol => Ok(Expression::Symbol {
+                value: "`".to_string(),
+                position,
+            }),
+            // A backtick literal is a call to Kernel#` with the command it
+            // spells out, interpolation and all.
+            TokenKind::CommandString(parts) => {
+                let command = self.primary_interpolated_string(parts, position)?;
+                Ok(Expression::Call {
+                    callee: Box::new(Expression::Identifier {
+                        name: "`".to_string(),
+                        position,
+                    }),
+                    arguments: vec![command],
+                    trailing_block: None,
+                    position,
+                })
+            }
             TokenKind::True => Ok(literals::bool_literal(true, position)),
             TokenKind::False => Ok(literals::bool_literal(false, position)),
             TokenKind::Nil => Ok(literals::nil_literal(position)),

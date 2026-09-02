@@ -187,8 +187,14 @@ impl Parser {
         // Check for variable binding (=> var)
         if self.match_token(&[TokenKind::FatArrow]) {
             self.skip_whitespace();
+            // The target may be a local, or a global such as
+            // `rescue => $exception`, which binds the global instead.
             if let TokenKind::Ident(name) = &self.peek().kind {
                 variable_name = Some(name.clone());
+                self.advance();
+                self.skip_whitespace();
+            } else if let TokenKind::GlobalVar(name) = &self.peek().kind {
+                variable_name = Some(format!("${}", name));
                 self.advance();
                 self.skip_whitespace();
             } else {

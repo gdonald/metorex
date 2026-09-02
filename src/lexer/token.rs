@@ -78,9 +78,14 @@ pub enum TokenKind {
     Imaginary(f64),     // the `i` literal suffix, as in `1.3i`
     String(String),
     InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
-    Regex(String, String),                      // pattern, flags
-    PercentW(String),                           // %w[...] array of whitespace-split words
-    PercentI(String),                           // %i[...] array of whitespace-split symbols
+    /// A backtick command literal, `` `echo hi` ``, whose parts interpolate
+    /// the same way a double-quoted string's do.
+    CommandString(Vec<InterpolationPart>),
+    /// `:` followed by a backtick, which names the command method.
+    CommandSymbol,
+    Regex(String, String), // pattern, flags
+    PercentW(String),      // %w[...] array of whitespace-split words
+    PercentI(String),      // %i[...] array of whitespace-split symbols
     True,
     False,
     Nil,
@@ -231,6 +236,17 @@ impl fmt::Display for TokenKind {
             TokenKind::String(s) => write!(f, "\"{}\"", s),
             TokenKind::PercentW(s) => write!(f, "%w[{}]", s),
             TokenKind::PercentI(s) => write!(f, "%i[{}]", s),
+            TokenKind::CommandSymbol => write!(f, ":`"),
+            TokenKind::CommandString(parts) => {
+                write!(f, "`")?;
+                for part in parts {
+                    match part {
+                        InterpolationPart::Text(s) => write!(f, "{}", s)?,
+                        InterpolationPart::Expression(e) => write!(f, "#{{{}}}", e)?,
+                    }
+                }
+                write!(f, "`")
+            }
             TokenKind::InterpolatedString(parts) => {
                 write!(f, "\"")?;
                 for part in parts {

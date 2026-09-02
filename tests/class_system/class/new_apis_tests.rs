@@ -104,7 +104,7 @@ fn has_public_override_false_by_default() {
 
 #[test]
 fn alias_preserves_private_visibility() {
-    let c = Class::new("Foo", None);
+    let c = Rc::new(Class::new("Foo", None));
     let m = Rc::new(Method::new("secret".to_string(), vec![], vec![]));
     c.define_method("secret", m);
     c.set_method_private("secret");
@@ -140,7 +140,7 @@ fn alias_does_not_copy_private_when_public_override_shadows() {
 
 #[test]
 fn alias_method_returns_false_when_source_missing() {
-    let c = Class::new("Foo", None);
+    let c = Rc::new(Class::new("Foo", None));
     assert!(!c.alias_method("new", "missing"));
 }
 
@@ -291,7 +291,7 @@ fn alias_method_honors_mixin_public_override() {
     mixin.set_method_private("m");
     mixin.set_method_public("m");
 
-    let host = Class::new("HostPub", None);
+    let host = Rc::new(Class::new("HostPub", None));
     host.add_mixin(Rc::clone(&mixin));
     assert!(host.alias_method("m_alias", "m"));
     assert!(
@@ -312,7 +312,7 @@ fn alias_method_inherits_mixin_private_flag() {
     );
     mixin.set_method_private("hidden");
 
-    let host = Class::new("HostPriv", None);
+    let host = Rc::new(Class::new("HostPriv", None));
     host.add_mixin(Rc::clone(&mixin));
     assert!(host.alias_method("hidden_alias", "hidden"));
     assert!(

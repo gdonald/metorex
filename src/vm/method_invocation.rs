@@ -199,9 +199,9 @@ impl VirtualMachine {
                         method
                             .captured_refinements
                             .iter()
-                            .map(|(m, cs)| crate::vm::core::RefinementEntry {
-                                module: Rc::clone(m),
-                                classes: cs.iter().cloned().collect(),
+                            .map(|(module, classes)| crate::vm::core::RefinementEntry {
+                                module: Rc::clone(module),
+                                classes: classes.iter().cloned().collect(),
                             })
                             .collect(),
                     );
@@ -273,11 +273,11 @@ impl VirtualMachine {
                     return Ok(Object::String(Rc::new(format!("{}", arguments[0]))));
                 }
                 "Array" => {
-                    return match &arguments[0] {
-                        Object::Array(_) => Ok(arguments[0].clone()),
-                        Object::Nil => Ok(Object::Array(Rc::new(RefCell::new(vec![])))),
-                        other => Ok(Object::Array(Rc::new(RefCell::new(vec![other.clone()])))),
-                    };
+                    if let Some(converted) =
+                        self.call_kernel_conversion("Array", &arguments, position)?
+                    {
+                        return Ok(converted);
+                    }
                 }
                 _ => {}
             }
@@ -292,13 +292,10 @@ impl VirtualMachine {
             inst.set_var("denominator".to_string(), den);
             return Ok(Object::Instance(Rc::new(RefCell::new(inst))));
         }
-        if class.name() == "Complex" && arguments.len() <= 2 {
-            let real = arguments.first().cloned().unwrap_or(Object::Int(0));
-            let imag = arguments.get(1).cloned().unwrap_or(Object::Int(0));
-            let mut inst = crate::object::Instance::new(Rc::clone(&class));
-            inst.set_var("real".to_string(), real);
-            inst.set_var("imaginary".to_string(), imag);
-            return Ok(Object::Instance(Rc::new(RefCell::new(inst))));
+        if class.name() == "Complex"
+            && let Some(converted) = self.call_kernel_conversion("Complex", &arguments, position)?
+        {
+            return Ok(converted);
         }
 
         // A subclass of String holds its characters in an instance variable,

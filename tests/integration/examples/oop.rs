@@ -360,16 +360,7 @@ fn test_oop_ancestors_basics() {
 
 #[test]
 fn test_oop_ancestors_module_include() {
-    let expected = concat!(
-        "[Basic]\n",
-        "[Sup, Basic]\n",
-        "---\n",
-        "true\n",
-        "true\n",
-        "true\n",
-        "---\n",
-        "[Sup, Basic]\n",
-    );
+    let expected = "[Basic]\n[Sup, Basic]\n---\ntrue\ntrue\ntrue\n---\nSup\nBasic\n";
     let output = run_example("oop/ancestors_module_include.rb");
     assert_eq!(output, expected);
 }
@@ -390,16 +381,7 @@ fn test_oop_ancestors_nested_include() {
 
 #[test]
 fn test_oop_ancestors_parent_class() {
-    let expected = concat!(
-        "[AParent, Object, Kernel, BasicObject]\n",
-        "[AParent, Object, Kernel, BasicObject]\n",
-        "true\n",
-        "---\n",
-        "true\n",
-        "true\n",
-        "true\n",
-        "true\n",
-    );
+    let expected = "[AParent, Object, Kernel, BasicObject]\nAParent\nObject\nKernel\nBasicObject\ntrue\n---\ntrue\ntrue\ntrue\ntrue\n";
     let output = run_example("oop/ancestors_parent_class.rb");
     assert_eq!(output, expected);
 }
@@ -1009,7 +991,7 @@ fn test_oop_copy_hooks_execution() {
 fn test_oop_super_reaches_kernel() {
     let expected = concat!(
         "false\n:ready\ntrue\ntrue\n",
-        "Superclass Object does not define method 'no_such_kernel_method'\n"
+        "super: no superclass method 'no_such_kernel_method' for an instance of Missing\n"
     );
     let output = run_example("oop/super_reaches_kernel.rb");
     assert_eq!(output, expected);
@@ -1019,7 +1001,7 @@ fn test_oop_super_reaches_kernel() {
 fn test_oop_super_reaches_kernel_no_parens() {
     let expected = concat!(
         "false\n:ready\ntrue\ntrue\n",
-        "Superclass Object does not define method 'no_such_kernel_method'\n"
+        "super: no superclass method 'no_such_kernel_method' for an instance of Missing\n"
     );
     let output = run_example("oop/super_reaches_kernel_no_parens.rb");
     assert_eq!(output, expected);
@@ -1194,5 +1176,151 @@ fn test_oop_equality_not_equal_execution() {
 fn test_oop_equality_not_equal_parens_execution() {
     let expected = "true\nfalse\ntrue\nfalse\ntrue\nfalse\nfalse\nfalse\ntrue\n";
     let output = run_example("oop/equality/not_equal_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_reopen_instance_methods_execution() {
+    let expected = concat!(
+        "module method on Mixin\n",
+        "module method on Widget\n",
+        "class method on Widget\n",
+        "true\n",
+    );
+    let output = run_example("oop/module_reopen_instance_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_module_reopen_instance_methods_parens_execution() {
+    let expected = concat!(
+        "module method on Mixin\n",
+        "module method on Widget\n",
+        "class method on Widget\n",
+        "true\n",
+    );
+    let output = run_example("oop/module_reopen_instance_methods_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_prepend_ancestry_execution() {
+    let expected = concat!(
+        "logged: report\n",
+        "Logging\n",
+        "Report\n",
+        "true\n",
+        "logging\n",
+        "true\n",
+        "detailed: logged: report\n",
+        "2\n",
+        "ArgumentError\n",
+        "super: no superclass method 'describe' for an instance of Alone\n",
+    );
+    let output = run_example("oop/prepend_ancestry.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_prepend_ancestry_parens_execution() {
+    let expected = concat!(
+        "logged: report\n",
+        "Logging\n",
+        "Report\n",
+        "true\n",
+        "logging\n",
+        "true\n",
+        "detailed: logged: report\n",
+        "2\n",
+        "ArgumentError\n",
+        "super: no superclass method 'describe' for an instance of Alone\n",
+    );
+    let output = run_example("oop/prepend_ancestry_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_prepend_private_visibility_execution() {
+    let expected = concat!(
+        "2\n",
+        "private method 'hidden' called for an instance of Vault\n",
+    );
+    let output = run_example("oop/prepend_private_visibility.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_prepend_private_visibility_parens_execution() {
+    let expected = concat!(
+        "2\n",
+        "private method 'hidden' called for an instance of Vault\n",
+    );
+    let output = run_example("oop/prepend_private_visibility_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_clone_semantics_execution() {
+    let expected = concat!(
+        "the_one\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "unexpected value for freeze: Integer\n",
+        "true\n",
+        "wrong number of arguments (given 2, expected 1)\n",
+        "[\"singleton\", \"base\"]\n",
+        "[\"singleton\", \"base\"]\n",
+    );
+    let output = run_example("oop/clone_semantics.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_clone_semantics_parens_execution() {
+    let expected = concat!(
+        "the_one\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "unexpected value for freeze: Integer\n",
+        "true\n",
+        "wrong number of arguments (given 2, expected 1)\n",
+        "[\"singleton\", \"base\"]\n",
+        "[\"singleton\", \"base\"]\n",
+    );
+    let output = run_example("oop/clone_semantics_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_inspect_instance_variables_execution() {
+    let expected = concat!(
+        "#<Connection:0x @host=\"localhost\", @port=5432, @open=true>\n",
+        "#<Connection:0x>\n",
+        "#<Bare:0x>\n",
+        "#<Chosen:0x @shown=\"yes\">\n",
+        "#<NoneChosen:0x>\n",
+        "Expected #instance_variables_to_inspect to return an Array or nil, but it returned Hash\n",
+    );
+    let output = run_example("oop/inspect_instance_variables.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_inspect_instance_variables_parens_execution() {
+    let expected = concat!(
+        "#<Connection:0x @host=\"localhost\", @port=5432, @open=true>\n",
+        "#<Connection:0x>\n",
+        "#<Bare:0x>\n",
+        "#<Chosen:0x @shown=\"yes\">\n",
+        "#<NoneChosen:0x>\n",
+        "Expected #instance_variables_to_inspect to return an Array or nil, but it returned Hash\n",
+    );
+    let output = run_example("oop/inspect_instance_variables_parens.rb");
     assert_eq!(output, expected);
 }

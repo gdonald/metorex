@@ -142,15 +142,23 @@ impl VirtualMachine {
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
 
-        let execution_result = self.with_call_frame(
-            match block.defining_method.clone() {
-                Some((callee, defined)) => {
-                    CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
-                }
-                None => CallFrame::boundary(frame_name.clone()),
-            },
-            move |vm| vm.execute_block_body(block, arguments),
-        );
+        let frame = match block.defining_method.clone() {
+            Some((callee, defined)) => {
+                CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
+            }
+            None => CallFrame::boundary(frame_name.clone()),
+        }
+        .with_source_file(self.current_source_file.clone());
+        // The body runs in the file the block was written in, which is what a
+        // backtrace entry for a call made from here has to name.
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        let execution_result =
+            self.with_call_frame(frame, move |vm| vm.execute_block_body(block, arguments));
+        self.current_source_file = saved_source_file;
 
         match execution_result {
             Ok(value) => Ok(value),
@@ -219,81 +227,86 @@ impl VirtualMachine {
         let frame_name = block.name().to_string();
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
-        let execution_result = self.with_call_frame(
-            match block.defining_method.clone() {
-                Some((callee, defined)) => {
-                    CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
+        let frame = match block.defining_method.clone() {
+            Some((callee, defined)) => {
+                CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
+            }
+            None => CallFrame::boundary(frame_name.clone()),
+        }
+        .with_source_file(self.current_source_file.clone());
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        let execution_result = self.with_call_frame(frame, move |vm| {
+            vm.environment_mut().push_isolated_scope();
+            let result = (|| -> Result<Object, MetorexError> {
+                for (name, value_ref) in block.captured_vars() {
+                    vm.environment_mut()
+                        .define_captured(name.clone(), value_ref.clone());
                 }
-                None => CallFrame::boundary(frame_name.clone()),
-            },
-            move |vm| {
-                vm.environment_mut().push_isolated_scope();
-                let result = (|| -> Result<Object, MetorexError> {
-                    for (name, value_ref) in block.captured_vars() {
-                        vm.environment_mut()
-                            .define_captured(name.clone(), value_ref.clone());
+                // Override `self` with the instance_exec receiver
+                vm.environment_mut().define("self".to_string(), receiver);
+
+                bind_block_params(vm, block.parameters(), &block.parameter_defaults, arguments);
+
+                // Pre-bind syntactically assigned locals to nil (Ruby's
+                // parser-level local hoisting) so an `ensure`/`rescue`
+                // clause that reads a variable defined later in the body
+                // returns nil instead of NameError when execution
+                // short-circuits via raise.
+                for name in collect_assigned_locals(block.body()) {
+                    if vm.environment().get(&name).is_none() {
+                        vm.environment_mut().define(name, Object::Nil);
                     }
-                    // Override `self` with the instance_exec receiver
-                    vm.environment_mut().define("self".to_string(), receiver);
+                }
 
-                    bind_block_params(vm, block.parameters(), &block.parameter_defaults, arguments);
-
-                    // Pre-bind syntactically assigned locals to nil (Ruby's
-                    // parser-level local hoisting) so an `ensure`/`rescue`
-                    // clause that reads a variable defined later in the body
-                    // returns nil instead of NameError when execution
-                    // short-circuits via raise.
-                    for name in collect_assigned_locals(block.body()) {
-                        if vm.environment().get(&name).is_none() {
-                            vm.environment_mut().define(name, Object::Nil);
+                let mut last_value = Object::Nil;
+                for statement in block.body() {
+                    if let Statement::Expression { expression, .. } = statement {
+                        last_value = vm.evaluate_expression(expression)?;
+                        continue;
+                    }
+                    match vm.execute_statement(statement)? {
+                        ControlFlow::Next => {}
+                        ControlFlow::Value(value) => {
+                            last_value = value;
+                        }
+                        ControlFlow::Return { value, .. } => {
+                            last_value = value;
+                            break;
+                        }
+                        ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: position_to_location(position),
+                                message: format_exception(&exception),
+                            });
+                        }
+                        ControlFlow::Break { value, position } => {
+                            return Err(MetorexError::BlockBreak {
+                                value,
+                                location: position_to_location(position),
+                            });
+                        }
+                        ControlFlow::Redo { position } => {
+                            return Err(loop_control_error("redo", position));
+                        }
+                        ControlFlow::Continue { position, .. } => {
+                            return Err(loop_control_error("continue", position));
                         }
                     }
-
-                    let mut last_value = Object::Nil;
-                    for statement in block.body() {
-                        if let Statement::Expression { expression, .. } = statement {
-                            last_value = vm.evaluate_expression(expression)?;
-                            continue;
-                        }
-                        match vm.execute_statement(statement)? {
-                            ControlFlow::Next => {}
-                            ControlFlow::Value(value) => {
-                                last_value = value;
-                            }
-                            ControlFlow::Return { value, .. } => {
-                                last_value = value;
-                                break;
-                            }
-                            ControlFlow::Exception {
-                                exception,
-                                position,
-                            } => {
-                                return Err(MetorexError::UncaughtException {
-                                    exception: exception.clone(),
-                                    location: position_to_location(position),
-                                    message: format_exception(&exception),
-                                });
-                            }
-                            ControlFlow::Break { value, position } => {
-                                return Err(MetorexError::BlockBreak {
-                                    value,
-                                    location: position_to_location(position),
-                                });
-                            }
-                            ControlFlow::Redo { position } => {
-                                return Err(loop_control_error("redo", position));
-                            }
-                            ControlFlow::Continue { position, .. } => {
-                                return Err(loop_control_error("continue", position));
-                            }
-                        }
-                    }
-                    Ok(last_value)
-                })();
-                vm.environment_mut().pop_scope();
-                result
-            },
-        );
+                }
+                Ok(last_value)
+            })();
+            vm.environment_mut().pop_scope();
+            result
+        });
+        self.current_source_file = saved_source_file;
 
         match execution_result {
             Ok(value) => Ok(value),
@@ -419,6 +432,12 @@ impl VirtualMachine {
         arguments: Vec<Object>,
     ) -> Result<ControlFlow, MetorexError> {
         self.environment_mut().push_isolated_scope();
+        // The body belongs to the file the block was written in.
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
 
         let result = (|| -> Result<ControlFlow, MetorexError> {
             // Define captured variables using shared references
@@ -459,6 +478,7 @@ impl VirtualMachine {
             Ok(ControlFlow::Next)
         })();
 
+        self.current_source_file = saved_source_file;
         self.environment_mut().pop_scope();
         result
     }

@@ -98,9 +98,9 @@ impl VirtualMachine {
             }
             // A few natives are always a call rather than a reference when
             // named bare: top-level `to_s` (Ruby's "main"), `using` (whose
-            // 0-arg form raises ArgumentError), `abort` (whose 0-arg form
-            // raises SystemExit), and the visibility modifiers, whose 0-arg
-            // form is a toggle on the enclosing class or module.
+            // 0-arg form raises ArgumentError), `abort` and `exit` (whose
+            // 0-arg forms raise SystemExit), and the visibility modifiers,
+            // whose 0-arg form is a toggle on the enclosing class or module.
             if let Object::NativeFunction(fn_name) = &val
                 && (matches!(
                     fn_name.as_str(),
@@ -109,6 +109,16 @@ impl VirtualMachine {
                         | "__method__"
                         | "__callee__"
                         | "abort"
+                        | "at_exit"
+                        | "caller"
+                        | "caller_locations"
+                        | "chomp"
+                        | "chop"
+                        | "fork"
+                        | "loop"
+                        | "open"
+                        | "exit"
+                        | "exit!"
                         | "fail"
                         | "gets"
                         | "global_variables"
@@ -191,6 +201,15 @@ impl VirtualMachine {
         let receiver = if let Some(r) = self.environment().get("self") {
             r
         } else {
+            // At the top level `self` is `main`, the object TOPLEVEL_BINDING
+            // was built around. Nothing binds it there, so it is answered
+            // here rather than reported as an undefined name.
+            if name == "self"
+                && let Some(Object::Binding(binding)) = self.globals().get("TOPLEVEL_BINDING")
+                && let Some(main) = binding.receiver.clone()
+            {
+                return Ok(main);
+            }
             // Check global Object class for injected methods (mspec describe/it)
             if let Some(Object::Class(object_class)) = self.globals().get("Object")
                 && let Some(method) = object_class.find_method(name)
@@ -231,12 +250,19 @@ impl VirtualMachine {
             if let Some(class) = class_opt {
                 let mut current = Some(class);
                 while let Some(cls) = current {
+                    // A prepended module sits ahead of the class, so its
+                    // constants shadow the class's own.
+                    for prepended in cls.transitive_prepends() {
+                        if let Some(val) = prepended.get_class_var(name) {
+                            return Ok(val);
+                        }
+                    }
                     if let Some(val) = cls.get_class_var(name) {
                         return Ok(val);
                     }
-                    // Constants defined in included/prepended modules are
-                    // visible at the including class — walk the mixin
-                    // chain at each ancestor level too.
+                    // Constants defined in included modules are visible at
+                    // the including class — walk the mixin chain at each
+                    // ancestor level too.
                     for mixin in cls.transitive_mixins() {
                         if let Some(val) = mixin.get_class_var(name) {
                             return Ok(val);
@@ -358,6 +384,22 @@ impl VirtualMachine {
                 bound.receiver = Some(Box::new(receiver));
                 return Ok(Object::Method(Rc::new(bound)));
             }
+        }
+
+        // Bare `include` / `prepend` in a class or module body is a call with
+        // no arguments, so Ruby reports the missing module rather than a
+        // missing name.
+        if matches!(name, "include" | "prepend")
+            && let Some(receiver @ (Object::Class(_) | Object::Module(_))) =
+                self.environment().get("self")
+        {
+            let (Object::Class(class_rc) | Object::Module(class_rc)) = &receiver else {
+                unreachable!("the match above admits only classes and modules")
+            };
+            let class_rc = Rc::clone(class_rc);
+            return self
+                .call_native_method(&class_rc, &receiver, name, &[], position)
+                .map(|result| result.unwrap_or(Object::Nil));
         }
 
         Err(undefined_variable_error(

@@ -33,6 +33,54 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(string_value.chars().count() as i64)))
             }
+            // `dump` renders the string as source that reads back as itself.
+            // It escapes what `inspect` does, plus every non-printable and
+            // non-ASCII character, and the `#` that would start an
+            // interpolation.
+            "dump" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let mut out = String::with_capacity(string_value.len() + 2);
+                out.push('"');
+                let mut characters = string_value.chars().peekable();
+                while let Some(character) = characters.next() {
+                    match character {
+                        '"' => out.push_str("\\\""),
+                        '\\' => out.push_str("\\\\"),
+                        '\n' => out.push_str("\\n"),
+                        '\r' => out.push_str("\\r"),
+                        '\t' => out.push_str("\\t"),
+                        '#' if matches!(characters.peek(), Some('{' | '$' | '@')) => {
+                            out.push_str("\\#")
+                        }
+                        character if character.is_control() || !character.is_ascii() => {
+                            out.push_str(&format!("\\u{{{:x}}}", character as u32))
+                        }
+                        character => out.push(character),
+                    }
+                }
+                out.push('"');
+                Ok(Some(Object::string(out)))
+            }
+            // `b` answers a binary copy. Every metorex string is UTF-8 and
+            // carries no encoding of its own, so the copy is the same bytes.
+            "b" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::String(Rc::clone(string_value))))
+            }
             "inspect" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

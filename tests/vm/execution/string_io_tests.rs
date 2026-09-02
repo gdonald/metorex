@@ -141,7 +141,7 @@ count
 // ── dispatch.rs: __dir__ ─────────────────────────────────────────────────────
 
 #[test]
-fn magic_dir_without_file_context_returns_dot() {
+fn magic_dir_without_file_context_returns_nil() {
     let result = run("__dir__");
-    assert!(matches!(result, Some(Object::String(_))));
+    assert_eq!(result, Some(Object::Nil));
 }

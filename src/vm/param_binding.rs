@@ -18,7 +18,14 @@ pub(crate) const KWARGS_MARKER: &str = "__MX_KWARGS__";
 
 /// Count the number of positional arguments, excluding a trailing kwargs dict.
 pub(crate) fn positional_arg_count(arguments: &[Object]) -> usize {
-    if let Some(Object::Dict(dict_rc)) = arguments.last() {
+    positional_arg_count_for(arguments, true)
+}
+
+/// The positional count, given whether the callee declares any keyword
+/// parameters. A callee that declares none takes a trailing keyword hash as an
+/// ordinary positional argument, which is what Ruby counts it as.
+pub(crate) fn positional_arg_count_for(arguments: &[Object], takes_keywords: bool) -> usize {
+    if takes_keywords && let Some(Object::Dict(dict_rc)) = arguments.last() {
         let dict = dict_rc.borrow();
         if dict.contains_key(KWARGS_MARKER) {
             return arguments.len() - 1;

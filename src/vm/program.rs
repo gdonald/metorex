@@ -82,10 +82,13 @@ impl VirtualMachine {
                         exception,
                         position,
                     } => {
-                        return Err(MetorexError::runtime_error(
-                            format!("Uncaught exception: {}", format_exception(&exception)),
-                            position_to_location(position),
-                        ));
+                        // Carrying the exception keeps it reachable as `$!`
+                        // for the `at_exit` handlers that run next.
+                        return Err(MetorexError::UncaughtException {
+                            message: format_exception(&exception),
+                            exception,
+                            location: position_to_location(position),
+                        });
                     }
                     ControlFlow::Break { position, .. } => {
                         return Err(loop_control_error("break", position));
@@ -111,10 +114,11 @@ impl VirtualMachine {
                     exception,
                     position,
                 } => {
-                    return Err(MetorexError::runtime_error(
-                        format!("Uncaught exception: {}", format_exception(&exception)),
-                        position_to_location(position),
-                    ));
+                    return Err(MetorexError::UncaughtException {
+                        message: format_exception(&exception),
+                        exception,
+                        location: position_to_location(position),
+                    });
                 }
                 ControlFlow::Break { position, .. } => {
                     return Err(loop_control_error("break", position));
@@ -224,5 +228,59 @@ impl VirtualMachine {
         let result = self.evaluate_expression_inner(expression);
         DEPTH.fetch_sub(1, Ordering::Relaxed);
         result
+    }
+}
+
+impl VirtualMachine {
+    /// Run the `at_exit` handlers, last registered first, once the program is
+    /// over. Each one runs even if an earlier raised, and a handler that calls
+    /// `exit` decides the status over the one the script was ending with.
+    ///
+    /// Answers the exit status to end with, and whether anything reported an
+    /// error, given the status the program had reached and the exception that
+    /// ended it, if any.
+    pub fn run_at_exit_handlers(&mut self, status: i32, ending: Option<Object>) -> i32 {
+        if let Some(exception) = ending {
+            self.set_current_exception(exception);
+        }
+        let mut status = status;
+        while let Some(handler) = self.at_exit_handlers.pop() {
+            let Object::Block(block) = handler else {
+                continue;
+            };
+            let position = crate::lexer::Position {
+                line: 0,
+                column: 0,
+                offset: 0,
+            };
+            let outcome = self.execute_block_callable(&block, Vec::new(), position);
+            // What a handler printed belongs before whatever the next one
+            // reports, and stdout would otherwise hold it until exit.
+            use std::io::Write as _;
+            let _ = std::io::stdout().flush();
+            match outcome {
+                Ok(_) => {}
+                Err(crate::error::MetorexError::UncaughtException {
+                    exception: Object::Exception(details),
+                    ..
+                }) if details.borrow().exception_type == "SystemExit" => {
+                    // `exit` inside a handler ends that handler and settles
+                    // the status the program leaves with.
+                    if let Some(carried) = details.borrow().status {
+                        status = carried as i32;
+                    }
+                    self.set_current_exception(Object::Exception(std::rc::Rc::clone(&details)));
+                }
+                Err(error) => {
+                    eprintln!("{}", error);
+                    if let crate::error::MetorexError::UncaughtException { exception, .. } = &error
+                    {
+                        self.set_current_exception(exception.clone());
+                    }
+                    status = 1;
+                }
+            }
+        }
+        status
     }
 }

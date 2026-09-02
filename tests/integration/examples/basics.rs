@@ -42,7 +42,7 @@ i
 
 #[test]
 fn test_basics_simple_range_execution() {
-    let expected = "1..5\n1...5\n[1, 2, 3, 4, 5]\n[1, 2, 3, 4]\n";
+    let expected = "1..5\n1...5\n1\n2\n3\n4\n5\n1\n2\n3\n4\n";
     let output = run_example("basics/simple_range.rb");
     assert_eq!(output, expected);
 }
@@ -119,14 +119,14 @@ fn test_spaceship_operator_parens_execution() {
 
 #[test]
 fn test_power_operator_execution() {
-    let expected = "1024\n27\n1\n0.1\n2\n25\n256\n";
+    let expected = "1024\n27\n1\n0.1\n2.0\n25\n256\n";
     let output = run_example("basics/power_operator.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_power_operator_parens_execution() {
-    let expected = "1024\n27\n1\n0.1\n2\n25\n256\n";
+    let expected = "1024\n27\n1\n0.1\n2.0\n25\n256\n";
     let output = run_example("basics/power_operator_parens.rb");
     assert_eq!(output, expected);
 }
@@ -147,14 +147,14 @@ fn test_bitwise_ops_parens_execution() {
 
 #[test]
 fn test_heredoc_execution() {
-    let expected = "Hello, World!\nThis is a heredoc.\n\nGood morning!\n";
+    let expected = "Hello, World!\nThis is a heredoc.\nGood morning!\n";
     let output = run_example("basics/heredoc.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_heredoc_parens_execution() {
-    let expected = "Hello, World!\nThis is a heredoc.\n\nGood morning!\n";
+    let expected = "Hello, World!\nThis is a heredoc.\nGood morning!\n";
     let output = run_example("basics/heredoc_parens.rb");
     assert_eq!(output, expected);
 }
@@ -162,8 +162,8 @@ fn test_heredoc_parens_execution() {
 #[test]
 fn test_type_annotations_collection_types_execution() {
     let output = run_example("type_annotations/collection_types.rb");
-    let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {Bob: 85, Alice: 90}\nlength of numbers: 5\nAlice's score: 90\n";
-    let valid_output2 = "numbers = [1, 2, 3, 4, 5]\nscores = {Alice: 90, Bob: 85}\nlength of numbers: 5\nAlice's score: 90\n";
+    let valid_output1 = "numbers = [1, 2, 3, 4, 5]\nscores = {\"Bob\" => 85, \"Alice\" => 90}\nlength of numbers: 5\nAlice's score: 90\n";
+    let valid_output2 = "numbers = [1, 2, 3, 4, 5]\nscores = {\"Alice\" => 90, \"Bob\" => 85}\nlength of numbers: 5\nAlice's score: 90\n";
     assert!(
         output == valid_output1 || output == valid_output2,
         "Expected either '{}' or '{}', but got '{}'",
@@ -175,7 +175,7 @@ fn test_type_annotations_collection_types_execution() {
 
 #[test]
 fn test_scientific_notation_execution() {
-    let expected = "2000\n2000\n2000\n0.0015\nFloat\n2001\n-2000\n10\n";
+    let expected = "2000.0\n2000.0\n2000.0\n0.0015\nFloat\n2001.0\n-2000.0\n10\n";
     let output = run_example("basics/scientific_notation.rb");
     assert_eq!(output, expected);
 }
@@ -189,7 +189,7 @@ fn test_radix_literals_execution() {
 
 #[test]
 fn test_float_division_execution() {
-    let expected = "Infinity\n-Infinity\nNaN\nInfinity\nInfinity\n2\ninteger division raises\n";
+    let expected = "Infinity\n-Infinity\nNaN\nInfinity\nInfinity\n2.0\ninteger division raises\n";
     let output = run_example("basics/float_division.rb");
     assert_eq!(output, expected);
 }
@@ -333,5 +333,83 @@ fn test_basics_warn_messages_parens_execution() {
         "TypeError for a non-Integer uplevel\n"
     );
     let output = run_example("basics/warn/messages_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_numeric_equality_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "\"method\"\n",
+        "nil\n",
+        "\"method\"\n",
+        "nil\n",
+    );
+    let output = run_example("basics/numeric_equality.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_numeric_equality_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "\"method\"\n",
+        "nil\n",
+        "\"method\"\n",
+        "nil\n",
+    );
+    let output = run_example("basics/numeric_equality_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_puts_array_execution() {
+    let expected = "a\nb\n1\n2\n3\n\nwith newline\nplain\n1\na\nb\n";
+    let output = run_example("basics/puts_array.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_puts_array_parens_execution() {
+    let expected = "a\nb\n1\n2\n3\n\nwith newline\nplain\n1\na\nb\n";
+    let output = run_example("basics/puts_array_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_heredoc_bare_execution() {
+    let expected = concat!(
+        "\"first line\\nsecond line\\n\"\n",
+        "\"SHOUT\\n\"\n",
+        "\"hello world\\n\"\n",
+        "\"no #{interpolation}\\n\"\n",
+        "[\"shovel still works\"]\n",
+        "8\n",
+    );
+    let output = run_example("basics/heredoc_bare.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_heredoc_bare_parens_execution() {
+    let expected = concat!(
+        "\"first line\\nsecond line\\n\"\n",
+        "\"SHOUT\\n\"\n",
+        "\"hello world\\n\"\n",
+        "\"no #{interpolation}\\n\"\n",
+        "[\"shovel still works\"]\n",
+        "8\n",
+    );
+    let output = run_example("basics/heredoc_bare_parens.rb");
     assert_eq!(output, expected);
 }

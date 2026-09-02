@@ -16,7 +16,7 @@ fn test_functions_nonlocal_counter_execution() {
 
 #[test]
 fn test_functions_locals_scope_execution() {
-    let expected = "20\n[0, 2, 4, 6, 8]\n";
+    let expected = "20\n0\n2\n4\n6\n8\n";
     let output = run_example("functions/locals_scope.rb");
     assert_eq!(output, expected);
 }
@@ -100,14 +100,14 @@ fn test_yield_basic_parens_execution() {
 
 #[test]
 fn test_yield_class_execution() {
-    let expected = "10\n20\n30\n[20, 40, 60]\n";
+    let expected = "10\n20\n30\n20\n40\n60\n";
     let output = run_example("functions/yield_class.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_yield_class_parens_execution() {
-    let expected = "10\n20\n30\n[20, 40, 60]\n";
+    let expected = "10\n20\n30\n20\n40\n60\n";
     let output = run_example("functions/yield_class_parens.rb");
     assert_eq!(output, expected);
 }
@@ -243,5 +243,33 @@ fn test_kernel_proc_no_parens_execution() {
         "true\nfalse\ntrue\n"
     );
     let output = run_example("procs/kernel_proc_no_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_procs_lambda_literal_chaining_execution() {
+    let expected = "6\n8\n10\n7\n16\n9\n11\ntrue\n2\n";
+    let output = run_example("procs/lambda_literal_chaining.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_procs_lambda_literal_chaining_parens_execution() {
+    let expected = "6\n8\n10\n7\n16\n9\n11\ntrue\n2\n";
+    let output = run_example("procs/lambda_literal_chaining_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_procs_lambda_chained_comparison_execution() {
+    let expected = "true\ntrue\ntrue\ntrue\n";
+    let output = run_example("procs/lambda_chained_comparison.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_procs_lambda_chained_comparison_parens_execution() {
+    let expected = "true\ntrue\ntrue\ntrue\n";
+    let output = run_example("procs/lambda_chained_comparison_parens.rb");
     assert_eq!(output, expected);
 }

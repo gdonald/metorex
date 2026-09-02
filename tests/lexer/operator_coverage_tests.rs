@@ -1,7 +1,7 @@
 // Operator coverage tests — compound assignment coverage, comparison,
 // delimiter coverage, and new token types.
 
-use metorex::lexer::{Lexer, TokenKind};
+use metorex::lexer::{InterpolationPart, Lexer, TokenKind};
 
 #[test]
 fn test_lexer_all_comparison_operators() {
@@ -333,21 +333,21 @@ fn test_lexer_ampersand_alone() {
 #[test]
 fn test_lexer_backtick_command() {
     let tokens = Lexer::new("`ls -la`").tokenize();
-    assert!(
-        tokens
-            .iter()
-            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "ls -la"))
-    );
+    assert!(tokens.iter().any(|t| matches!(
+        &t.kind,
+        TokenKind::CommandString(parts)
+            if matches!(parts.as_slice(), [InterpolationPart::Text(text)] if text == "ls -la")
+    )));
 }
 
 #[test]
 fn test_lexer_backtick_empty() {
     let tokens = Lexer::new("``").tokenize();
-    assert!(
-        tokens
-            .iter()
-            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.is_empty()))
-    );
+    assert!(tokens.iter().any(|t| matches!(
+        &t.kind,
+        TokenKind::CommandString(parts)
+            if matches!(parts.as_slice(), [InterpolationPart::Text(text)] if text.is_empty())
+    )));
 }
 
 // ── Character literal: ?x ─────────────────────────────────────────────────

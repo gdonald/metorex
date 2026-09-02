@@ -143,3 +143,55 @@ fn test_methods_scope_locals_stay_local_parens_execution() {
     let output = run_example("methods/scope/locals_stay_local_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_methods_ruby2_keywords_flag_execution() {
+    let expected = concat!(
+        "2\n",
+        "2\n",
+        "undefined method 'missing' for class 'Forwarder'\n",
+        "warned and carried on\n",
+    );
+    let output = run_example("methods/ruby2_keywords_flag.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_ruby2_keywords_flag_parens_execution() {
+    let expected = concat!(
+        "2\n",
+        "2\n",
+        "undefined method 'missing' for class 'Forwarder'\n",
+        "warned and carried on\n",
+    );
+    let output = run_example("methods/ruby2_keywords_flag_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_argument_forwarding_execution() {
+    let expected = "[1, 2, 3]\n[1, 2, 3]\n[1, 2]\n:done\n5\n";
+    let output = run_example("methods/argument_forwarding.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_argument_forwarding_parens_execution() {
+    let expected = "[1, 2, 3]\n[1, 2, 3]\n[1, 2]\n:done\n5\n";
+    let output = run_example("methods/argument_forwarding_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_endless_definitions_execution() {
+    let expected = "42\n0\n42\n3\n43\nnamed\n";
+    let output = run_example("methods/endless_definitions.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_methods_endless_definitions_parens_execution() {
+    let expected = "42\n0\n42\n3\n43\nnamed\n";
+    let output = run_example("methods/endless_definitions_parens.rb");
+    assert_eq!(output, expected);
+}

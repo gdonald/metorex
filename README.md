@@ -324,6 +324,89 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `Thread::Backtrace::Location` answers `label`, `base_label`, and `absolute_path` alongside `path` and `lineno`, and renders as `path:lineno:in 'label'`
 - `SignalException.new` is named by the signal it stands for, taking a number, a name, or a symbol with or without the `SIG` prefix, with a second argument replacing the name. An argument that names no signal raises ArgumentError
 - A bare `rescue` catches StandardError rather than everything, so an Exception outside that family goes past it
+- `StringIO` collects what is written to it and hands back the string, and reads through it a line or a length at a time
+- `printf` writes a formatted string to `$stdout`, or to an IO given as its first argument
+- `require` of a library metorex provides itself, such as `stringio`, answers without looking for a file
+- `File.new` opens a file the way `File.open` does when given no block
+- `pp` prints the same inspect form `p` does and answers its argument the same way
+- A Hash renders the way Ruby shows one: a Symbol key as `name: value` and every other kind as `key => value`, with the bookkeeping entries left out
+- Reassigning `$stdout` to a File handle sends `p`, `puts`, and `print` there
+- `Array#inspect` renders each element through its own `inspect`, so an object that defines one is shown the way it asks to be
+- `File#read` takes a length and leaves the rest for the next read
+- `Kernel#open` opens a file by path, taking one from anything answering `to_path` or `to_str`, and hands it to a block when given one. An argument answering `to_open` is asked to open itself and its answer is what comes back
+- `File#gets` and `#readline` read a line at a time, and `#read` picks up where they left off
+- The `File::CREAT` family of open flags
+- `Enumerator.new { |yielder| ... }` builds an enumerator from a generator block, with `yielder <<` and `yielder.yield` collecting what it produces
+- `loop` without a block answers an enumerator that yields forever and reports `Float::INFINITY` for its size. With a block, a StopIteration ends it and the loop answers the result the finished iterator carried
+- `load` runs the file every time and leaves `$LOADED_FEATURES` alone, while `require` answers false only for a file that list still names. Both take a path from anything answering `to_path` or `to_str`, expand a leading `~` against `ENV["HOME"]`, and name an absolute or `./`-relative path outright rather than searching `$LOAD_PATH`. A file that does not exist or cannot be read raises LoadError
+- `load(path, true)` runs the file inside a fresh anonymous module and `load(path, SomeModule)` inside that one, so its constants and top-level methods land there rather than on Object
+- `$LOAD_PATH` entries may be objects answering `to_path`
+- `File::Separator` and its siblings, `File.chmod`, and `Process.euid` / `Process.uid`
+- An endless definition, `def name = expression`, defines a method whose body is that expression, with or without parameters and for a class method as readily as an instance one
+- `Object#inspect` shows the instance variables alongside the class and address, each rendered as `inspect` would. An `instance_variables_to_inspect` method chooses which to show, nil from it means all of them, and anything else raises TypeError
+- A format string reads `%{name}` and `%<name>` from the Hash it was given, raising KeyError for a name that Hash does not carry. With `$VERBOSE` on, arguments the format never reached are pointed out, and a keyword Hash is not counted among them
+- `format` and `sprintf` are private instance methods of Kernel, and `Kernel.format` names the same one
+- `fork` splits the process: the child answers nil, or runs the block and exits with its status, while the parent answers the child's process id. Every thread from the parent is marked finished in the child
+- `Process.wait`, `.waitpid`, `.wait2`, `.waitpid2`, and `.waitall` wait for a child and record `$?`. `Process.exit`, `.exit!`, and `.abort` end the process the way the bare forms do
+- `Thread.current` answers the main thread outside any thread block, and `Thread#kill` marks a thread finished so `alive?` reports false
+- `exit` reads its status from an Integer, a boolean, a truncated Float, or anything answering `to_int`, and refuses the rest with TypeError. `exit!` skips the `at_exit` handlers and any `ensure` clause
+- `at_exit` handlers run before an uncaught exception is reported, so a handler calling `exit!` replaces both the report and the status
+- `abort`, `exit`, and `exit!` are reachable with an explicit receiver on any object, which is what a class makes public with `public :exit`
+- `self` at the top level is `main`, rather than an undefined name
+- `exec` replaces the process with the command, so nothing after it runs. A command with nothing for the shell to do is run directly, so a missing program raises `Errno::ENOENT` rather than becoming the shell's own exit status. `Kernel.exec` names the same method, and it is one of Kernel's private instance methods
+- `def foo(...)` collects every argument and `foo(...)` passes them all on, alongside the bare `*`, `**`, and `&` forwarding forms. A `...` with an operand after it is still a beginless range
+- A heredoc opens with a bare `<<TERMINATOR` as well as `<<-` and `<<~`, wherever a value is expected, so `<<TEXT.upcase` reads the heredoc and calls on it while `array << value` stays the shovel operator
+- A lambda literal takes part in the expression around it, so `-> { 5 }.call == 5` compares rather than stopping at the call
+- `clone` copies the singleton class along with the object, so a method defined on the original answers on the copy. It carries the original's frozen state, or whatever `freeze:` names, and refuses any other value for it with ArgumentError. `initialize_clone` is called with the keyword it was given
+- A method that declares no keyword parameters counts a trailing keyword hash as an ordinary positional argument, so passing one to a single-parameter method raises ArgumentError
+- `super` inside a singleton method reaches the class's own copy of that method
+- `IO.popen` takes an argv Array as readily as a command String, and its handle can be written to as well as read: what is written reaches the child when the input is closed, and the child is waited for once the block returns
+- The `-n` flag runs the program once for each line of standard input, with the line in `$_`
+- `chomp` and `chop` with no receiver rewrite `$_` in place, `chomp` taking its separator from `$/`. `Kernel.chomp` and `Kernel.chop` do the same, and both are private methods of Kernel
+- `Kernel.private_method_defined?` reports the Kernel methods that live in the native dispatch tables rather than in a method map
+- `caller` reports each frame as `file:line:in 'label'`, taking the same start and length or Range that `caller_locations` does. A block is named by the scope holding it, so a block written at top level reads `block in <main>`
+- `puts` writes an Array a line per element, however deeply nested, and a line of its own for an empty one. A string already ending in a newline is not given a second
+- A block's body belongs to the file it was written in, so a backtrace entry for a call made from it names that file wherever the block is called from
+- `caller_locations` takes a start and length or a Range, including endless, beginless, and negative-ended ones. Omitting more locations than there are answers nil and omitting exactly as many answers an empty Array. Level 0 is the line the call sits on, each location names the file its frame was called from, and `caller_locations` is one of Kernel's private instance methods
+- A backtick literal runs its command through the shell and answers what it wrote to stdout, interpolating the way a double-quoted string does. The command's stderr passes through, `$?` reports how it ended, and a command the shell cannot find raises `Errno::ENOENT`. `Kernel.\`` and the `:\`` symbol name the same method
+- `Process::Status` is a constant on Process, answering `stopped?`, `stopsig`, and `pid` alongside its other readers
+- `Encoding.default_external` is remembered and reported, and `Encoding::SHIFT_JIS` is defined
+- `String#b`
+- `autoload` and `autoload?` are reachable by name, registering on Object where top-level constants live, and are listed among Kernel's private instance methods
+- A file reached by `load` runs at top level, so a `def` in it belongs to Object rather than to whatever class or module body called the load
+- `at_exit` registers a handler and answers it, raising ArgumentError when given no block. Handlers run in reverse order of registration once the program is over, however it ends, and one registered inside a handler runs right after it. A handler still runs when an earlier one raised, `exit` inside one settles the status, and `$!` there is the exception that ended the program
+- `rescue => $global` binds the rescued exception to a global variable
+- `$?` answers the status of the last child process waited for
+- `-r` and `-I` accept their value attached, as `-rfoo`, and `-r` takes an absolute or `./`-relative path outright
+- `__dir__` answers the real directory holding the running file, expanding a relative script path, and nil where no file stands behind the code. `eval` with a filename reports that file's directory, and eval through a binding reports nil
+- `Dir.chdir` changes the working directory, restoring the previous one after a block and answering what the block returned
+- `__FILE__` reports the path the main script was named by on the command line, and constant source locations record the same spelling
+- `File.expand_path` expands a relative base against the working directory, so its answer is always absolute
+- `Kernel#Float` reads a String strictly: a sign, `_` only between digits, an optional fraction and `e` exponent, and the `0x` hexadecimal form with a `p` binary exponent. Bad text raises ArgumentError, nil raises TypeError, a Complex with an imaginary part raises RangeError, and `exception: false` answers nil
+- `Float#nan?`, `#finite?`, and `#infinite?`, which answers the sign of an infinity and nil otherwise
+- A Float renders with its fractional part, so `1.0` reads as "1.0" rather than "1"
+- Two infinities of the same sign are equal, and a NaN is identical to itself through `equal?` while equal to nothing through `==`
+- `Complex` answers `real`, `imaginary`, `to_s`, `inspect`, and `==`, where a complex with no imaginary part equals the plain number it holds. `Complex.polar` and `Complex.rectangular` build one from either pair of components
+- `Kernel#Complex` reads a String literal in every form Ruby accepts: integers, fractions, floats, scientific notation, the `i`/`I`/`j`/`J` units, `a+bi`, `m@a` polar form, and `_` digit separators. Bad text raises ArgumentError, a non-number raises TypeError, and `exception: false` answers nil instead
+- An Integer equals the Float holding the same value, so `1 == 1.0` is true, in an Array or Hash comparison as much as on its own
+- `defined?` on a method call answers nil when the receiver does not answer to that method, rather than reporting every call as a method
+- `Encoding::CompatibilityError`, `Encoding::UndefinedConversionError`, and `Encoding::InvalidByteSequenceError` are defined, under StandardError
+- `Kernel#Array` puts its argument through `to_ary` and then `to_a`, either of which may be private. One answering nil moves on to the next, one answering a non-Array raises TypeError, and an argument with neither is wrapped in a one-element Array
+- A lambda literal is a receiver like any other, so `-> value { value * 2 }.call(3)` chains onto it, with or without parentheses around the parameters and in the `do` form
+- `ruby2_keywords` raises NameError for a name no method answers to, and warns rather than applying when the method takes keywords or has no bare `*args` splat
+- `refine` takes a module as readily as a class, requires a block, and registers the refinement before the block runs, so calls inside it and every sibling refinement in the same module are already in force
+- `Hash#map` and `#collect` yield each key and value and answer an Array of what the block returned
+- `String#dump` renders a string as source that reads back as itself, escaping control and non-ASCII characters and the `#` that would start an interpolation
+- A prepended module's visibility is the one in force for the methods it supplies, so `private :name` on the class does not restrict a public method the prepended module defines under that name
+- `prepend` puts a module ahead of the class in the ancestry, so its methods shadow the class's own and `super` from one reaches the class's copy. Constants, `ancestors`, `is_a?`, `constants`, and `singleton_method` all read the prepended module in that position, and a module prepended in one place still appears again where a superclass or an include already carried it
+- `alias_method` records the aliasing class as the alias's owner, even when the method it copies came from a prepended or included module
+- `super` with nothing above the defining class raises NoMethodError rather than a plain error
+- `Array#take` and `Array#drop` split an array at a count, raising ArgumentError on a negative one
+- `IO.popen` runs a command through the shell and hands back a handle answering `read`, `pid`, `close`, and `closed?`, in the block form too. `err: [:child, :out]` folds the child's stderr into what `read` returns
+- `Process.last_status` answers a `Process::Status` for the last child waited for, reading back through `exited?`, `exitstatus`, `signaled?`, `termsig`, `success?`, and `to_i`
+- Reopening `Module` or `Class` adds a method every class and module answers, which `respond_to?` reports too. A `const_added` defined that way is the hook for each of them
+- `const_added` fires for a top-level class, module, or constant, with Object as the receiver, and only the first time the constant is defined
+- `exit` raises SystemExit rather than ending the process outright, so an `ensure` block runs and a `rescue SystemExit` sees it, reading the code through `#status` and `#success?`. `exit!` ends the process immediately. An uncaught SystemExit exits with the status it carries
 - A rescue clause places an exception by its class chain, which reaches a namespaced or anonymous subclass that has no name to look up
 - `expr; rescue` inside `begin ... end` opens a rescue clause. Only a `rescue` directly following an expression is the modifier form
 - `eval` and `parse` for runtime code execution and AST inspection

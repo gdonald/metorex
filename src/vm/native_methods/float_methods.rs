@@ -55,6 +55,44 @@ impl VirtualMachine {
                 let rounded = (f * multiplier).round() / multiplier;
                 Ok(Some(Object::Float(rounded)))
             }
+            "nan?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(f.is_nan())))
+            }
+            "finite?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(f.is_finite())))
+            }
+            // `infinite?` answers the sign of an infinity, and nil otherwise.
+            "infinite?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(if f.is_infinite() {
+                    Object::Int(if f.is_sign_negative() { -1 } else { 1 })
+                } else {
+                    Object::Nil
+                }))
+            }
             "abs" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

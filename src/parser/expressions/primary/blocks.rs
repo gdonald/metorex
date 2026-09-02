@@ -110,7 +110,7 @@ impl Parser {
                     self.parse_block()?
                 };
                 if let Expression::Lambda { body, position, .. } = block {
-                    return Ok(Expression::Lambda {
+                    return self.parse_postfix_calls(Expression::Lambda {
                         parameters: params,
                         parameter_defaults: Vec::new(),
                         body,
@@ -221,10 +221,16 @@ impl Parser {
         self.expect(TokenKind::RParen, "Expected ')'")?;
         self.skip_whitespace();
 
-        if self.check(&[TokenKind::LBrace]) {
-            let block = self.parse_brace_block()?;
+        if self.check(&[TokenKind::LBrace, TokenKind::Do]) {
+            let block = if self.check(&[TokenKind::LBrace]) {
+                self.parse_brace_block()?
+            } else {
+                self.parse_block()?
+            };
             if let Expression::Lambda { body, position, .. } = block {
-                return Ok(Expression::Lambda {
+                // A lambda literal is a receiver like any other, so
+                // `-> (a) { a }.call(1)` chains onto it.
+                return self.parse_postfix_calls(Expression::Lambda {
                     parameters: params,
                     parameter_defaults: Vec::new(),
                     body,

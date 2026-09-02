@@ -161,8 +161,18 @@ impl VirtualMachine {
                 // allowed regardless of visibility.
                 let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
                 let mut is_private = self.method_is_restricted(&receiver, method_name);
+                // A prepended module sits ahead of the class, so when one of
+                // them supplies the method its visibility is the one in force
+                // and the class's own marking does not apply.
+                let prepended_owner = class
+                    .transitive_prepends()
+                    .into_iter()
+                    .find(|prepended| prepended.find_own_method(method_name).is_some());
                 if class.has_public_override(method_name) {
                     is_private = false;
+                } else if let Some(owner) = prepended_owner {
+                    is_private = !owner.has_public_override(method_name)
+                        && owner.is_method_restricted(method_name);
                 } else if class.is_method_restricted(method_name) {
                     is_private = true;
                 } else if !is_private {
@@ -397,6 +407,15 @@ impl VirtualMachine {
         {
             return true;
         }
+        // Reopening `Class` or `Module` adds a method every class and module
+        // answers to, the same chain `lookup_method` walks for the call.
+        for global_name in ["Class", "Module"] {
+            if let Some(Object::Class(global_class)) = self.globals().get(global_name)
+                && let Some(method) = global_class.find_method(name)
+            {
+                return !method.is_undefined;
+            }
+        }
         crate::vm::native_methods::native_module_method_stub(name).is_some()
     }
 
@@ -565,9 +584,20 @@ impl VirtualMachine {
                     }
                     cursor = current.superclass();
                 }
-                class_rc
-                    .find_method(method_name)
-                    .map(|method| (Rc::clone(class_rc), method))
+                if let Some(method) = class_rc.find_method(method_name) {
+                    return Some((Rc::clone(class_rc), method));
+                }
+                // Every class is an instance of `Class`, which descends from
+                // `Module`, so reopening either (`class Module; def
+                // const_added(name); ...`) adds a method every class answers.
+                for global_name in ["Class", "Module"] {
+                    if let Some(Object::Class(global_class)) = self.globals().get(global_name)
+                        && let Some(method) = global_class.find_method(method_name)
+                    {
+                        return Some((global_class, method));
+                    }
+                }
+                None
             }
             Object::Module(module_rc) => {
                 if let Some(method) = module_level_method(module_rc, method_name) {

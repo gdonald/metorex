@@ -119,6 +119,7 @@ fn class_of_block() {
         captured_def_scope: vec![],
         defining_method: None,
         is_lambda: false,
+        source_file: None,
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");

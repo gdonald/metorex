@@ -10,6 +10,7 @@ pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
 pub(crate) use class_methods::is_native_kernel_method;
 pub(crate) use class_methods::native_module_method_stub;
 pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
+mod complex_methods;
 mod constant_visibility;
 pub(crate) mod define_method;
 mod exception_methods;
@@ -17,6 +18,7 @@ mod file_methods;
 mod float_methods;
 mod hash_methods;
 mod int_methods;
+mod io_methods;
 pub(crate) mod kernel_conversion;
 mod method_object_methods;
 mod module_methods;
@@ -144,6 +146,16 @@ impl VirtualMachine {
                 return Ok(Some(result));
             }
             if let Some(result) =
+                self.call_io_class_method(class_rc, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+            if let Some(result) =
+                self.call_complex_class_method(class_rc, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+            if let Some(result) =
                 self.call_class_methods(class_rc, method_name, arguments, position)?
             {
                 return Ok(Some(result));
@@ -233,6 +245,7 @@ impl VirtualMachine {
             "Float" => self.call_float_method(receiver, method_name, arguments, position),
             "Range" => self.call_range_method(receiver, method_name, arguments, position),
             "Rational" => self.call_rational_method(receiver, method_name, arguments, position),
+            "Complex" => self.call_complex_method(receiver, method_name, arguments, position),
             "Set" => self.call_set_method(receiver, method_name, arguments, position),
             "Exception" => self.call_exception_method(receiver, method_name, arguments, position),
             "Thread" => self.call_thread_method(receiver, method_name, arguments, position),
@@ -244,6 +257,10 @@ impl VirtualMachine {
                 self.call_condition_variable_method(receiver, method_name, arguments, position)
             }
             "File" => self.call_file_handle_method(receiver, method_name, arguments, position),
+            "IO" => self.call_io_handle_method(receiver, method_name, arguments, position),
+            "Process::Status" => {
+                self.call_process_status_method(receiver, method_name, arguments, position)
+            }
             _ => Ok(None),
         }
     }
@@ -444,7 +461,28 @@ impl VirtualMachine {
                 dict.borrow_mut().insert(key_str, arguments[1].clone());
                 Ok(Some(arguments[1].clone()))
             }
-            "alive?" | "stop?" => Ok(Some(Object::Bool(false))),
+            // A thread runs when it is joined, so one that has not been is
+            // still alive. `kill` marks it finished without running it.
+            "alive?" => Ok(Some(Object::Bool(
+                inst.borrow().get_var("__thread_value").is_none(),
+            ))),
+            "kill" | "exit" | "terminate" => {
+                self.pending_threads.retain(|thread| {
+                    if let (Object::Instance(pending), Object::Instance(target)) =
+                        (thread, receiver)
+                    {
+                        !Rc::ptr_eq(pending, target)
+                    } else {
+                        true
+                    }
+                });
+                inst.borrow_mut()
+                    .set_var("__thread_value".to_string(), Object::Nil);
+                Ok(Some(receiver.clone()))
+            }
+            // A thread runs when it is joined, so one that has not been is
+            // not running: `stop?` is true until it does.
+            "stop?" => Ok(Some(Object::Bool(true))),
             "status" => Ok(Some(Object::Bool(false))),
             _ => Ok(None),
         }
@@ -552,7 +590,51 @@ impl VirtualMachine {
                         crate::error::SourceLocation::new(0, 0, 0),
                     )
                 })?;
-                Ok(Some(Object::String(Rc::new(contents))))
+                // Reading picks up where the last `gets` left off and drains
+                // the handle, so a second read answers an empty string.
+                let offset = match inst.borrow().get_var("__file_offset") {
+                    Some(Object::Int(offset)) => *offset as usize,
+                    _ => 0,
+                };
+                let remaining = contents.get(offset..).unwrap_or("").to_string();
+                // `read(length)` takes that many characters and leaves the rest.
+                let taken = match arguments.first() {
+                    Some(Object::Int(length)) => {
+                        let length = (*length).max(0) as usize;
+                        remaining.chars().take(length).collect::<String>()
+                    }
+                    _ => remaining,
+                };
+                inst.borrow_mut().set_var(
+                    "__file_offset".to_string(),
+                    Object::Int((offset + taken.len()) as i64),
+                );
+                Ok(Some(Object::String(Rc::new(taken))))
+            }
+            // One line with its terminator, or nil once the file is drained.
+            "gets" | "readline" => {
+                let contents = std::fs::read_to_string(&path).map_err(|error| {
+                    MetorexError::runtime_error(
+                        format!("Failed to read '{}': {}", path, error),
+                        crate::error::SourceLocation::new(0, 0, 0),
+                    )
+                })?;
+                let offset = match inst.borrow().get_var("__file_offset") {
+                    Some(Object::Int(offset)) => *offset as usize,
+                    _ => 0,
+                };
+                let Some(rest) = contents.get(offset..).filter(|rest| !rest.is_empty()) else {
+                    return Ok(Some(Object::Nil));
+                };
+                let line = match rest.find('\n') {
+                    Some(end) => &rest[..=end],
+                    None => rest,
+                };
+                inst.borrow_mut().set_var(
+                    "__file_offset".to_string(),
+                    Object::Int((offset + line.len()) as i64),
+                );
+                Ok(Some(Object::String(Rc::new(line.to_string()))))
             }
             "close" => Ok(Some(Object::Nil)),
             "closed?" => Ok(Some(Object::Bool(false))),

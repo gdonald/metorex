@@ -18,7 +18,7 @@ use super::Object;
 pub const TRAILING_COMMA_PARAM: &str = ",";
 
 /// Block/lambda/closure with captured variables
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct BlockStatement {
     /// Parameter names
     pub parameters: Vec<String>,
@@ -42,6 +42,22 @@ pub struct BlockStatement {
     /// ordinary block. Lambdas check arity strictly; procs pad missing
     /// arguments with nil and drop extras.
     pub is_lambda: bool,
+    /// The file the block was written in, which a backtrace entry for a call
+    /// made from its body has to name.
+    pub source_file: Option<String>,
+}
+
+/// Two blocks are the same when they were written the same way. The captured
+/// variables are left out: a block can close over itself, so comparing them
+/// would not terminate.
+impl PartialEq for BlockStatement {
+    fn eq(&self, other: &Self) -> bool {
+        self.parameters == other.parameters
+            && self.parameter_defaults == other.parameter_defaults
+            && self.body == other.body
+            && self.defining_method == other.defining_method
+            && self.is_lambda == other.is_lambda
+    }
 }
 
 impl BlockStatement {
@@ -59,6 +75,7 @@ impl BlockStatement {
             captured_def_scope: Vec::new(),
             defining_method: None,
             is_lambda: false,
+            source_file: None,
         }
     }
 
@@ -82,6 +99,7 @@ impl BlockStatement {
             captured_def_scope,
             defining_method,
             is_lambda,
+            source_file: None,
         }
     }
 

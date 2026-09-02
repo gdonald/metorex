@@ -41,6 +41,6 @@ end
 
 begin
   Missing.new.no_such_kernel_method
-rescue RuntimeError => error
+rescue NoMethodError => error
   puts error.message
 end

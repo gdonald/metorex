@@ -270,6 +270,38 @@ impl VirtualMachine {
                 Ok(Some(Object::Dict(Rc::new(RefCell::new(merged)))))
             }
             // `each_pair` is Ruby's alias for `each`.
+            // `map` yields each pair and collects what the block answers,
+            // which is an Array rather than a Hash.
+            "map" | "collect" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return Err(MetorexError::runtime_error(
+                        format!("{} requires a block", method_name),
+                        position_to_location(position),
+                    ));
+                };
+                let dict = dict_rc.borrow();
+                let entries: Vec<(Object, Object)> = dict
+                    .iter()
+                    .filter(|(key, _)| !is_internal_key(key))
+                    .map(|(key, value)| (reconstruct_key(&dict, key), value.clone()))
+                    .collect();
+                drop(dict);
+                let mut mapped = Vec::with_capacity(entries.len());
+                for (key, value) in entries {
+                    mapped.push(self.execute_block_callable(&block, vec![key, value], position)?);
+                }
+                Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
+                    mapped,
+                )))))
+            }
             "each" | "each_pair" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

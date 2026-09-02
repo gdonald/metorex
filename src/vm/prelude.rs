@@ -62,15 +62,124 @@ class Thread
   end
 end
 
+# An in-memory IO. `StringIO.new` starts from the string it is given, and
+# everything written is appended to it.
+class StringIO
+  attr_reader :string
+
+  def initialize(string = "")
+    @string = string
+    @position = 0
+  end
+
+  def write(*values)
+    written = 0
+    values.each do |value|
+      text = value.to_s
+      @string = @string + text
+      written = written + text.length
+    end
+    written
+  end
+
+  def <<(value)
+    write value
+    self
+  end
+
+  def print(*values)
+    values.each { |value| write value }
+    nil
+  end
+
+  def printf(format, *values)
+    write format % values
+    nil
+  end
+
+  def puts(*values)
+    if values.empty?
+      write "\n"
+      return nil
+    end
+    values.each do |value|
+      text = value.to_s
+      write text
+      write "\n" unless text.end_with? "\n"
+    end
+    nil
+  end
+
+  def read(length = nil)
+    remaining = @string[@position..-1] || ""
+    taken = length.nil? ? remaining : remaining[0, length]
+    @position = @position + taken.length
+    taken
+  end
+
+  def gets
+    remaining = @string[@position..-1] || ""
+    return nil if remaining.empty?
+    break_at = nil
+    position = 0
+    while position < remaining.length
+      if remaining[position] == "\n"
+        break_at = position
+        break
+      end
+      position = position + 1
+    end
+    line = break_at.nil? ? remaining : remaining[0, break_at + 1]
+    @position = @position + line.length
+    line
+  end
+
+  def rewind
+    @position = 0
+    0
+  end
+
+  def close
+    nil
+  end
+
+  def closed?
+    false
+  end
+
+  def to_s
+    @string
+  end
+end
+
 class Enumerator
   include Enumerable
 
-  def initialize(receiver, method_name, arguments = [], size = nil)
+  # Collects what a generator block hands it, so `Enumerator.new { |y| y << 1 }`
+  # reads the same way as one built over a method that yields.
+  class Yielder
+    def initialize(collected)
+      @collected = collected
+    end
+
+    def <<(value)
+      @collected.push(value)
+      self
+    end
+
+    def yield(*values)
+      @collected.push(values.size == 1 ? values[0] : values)
+      nil
+    end
+  end
+
+  def initialize(receiver = nil, method_name = nil, arguments = [], size = nil, &generator)
     @receiver = receiver
     @method_name = method_name
     @arguments = arguments
     @size = size
     @position = 0
+    @generator = generator
   end
 
   def size
@@ -80,8 +189,12 @@ class Enumerator
   def to_a
     if @values.nil?
       collected = []
-      @result = @receiver.send(@method_name, *@arguments) do |*yielded|
-        collected.push(yielded.size == 1 ? yielded[0] : yielded)
+      if @generator.nil?
+        @result = @receiver.send(@method_name, *@arguments) do |*yielded|
+          collected.push(yielded.size == 1 ? yielded[0] : yielded)
+        end
+      else
+        @result = @generator.call(Yielder.new(collected))
       end
       @values = collected
     end
@@ -109,8 +222,25 @@ class Enumerator
     self
   end
 
+  # The enumerator `loop` answers when called without a block: it yields
+  # forever and reports an endless size.
+  def self.endless
+    enumerator = new(nil, nil, [], Float::INFINITY)
+    enumerator.mark_endless
+  end
+
+  def mark_endless
+    @endless = true
+    self
+  end
+
   def each(&block)
     return self if block.nil?
+    if @endless
+      while true
+        block.call
+      end
+    end
     to_a.each { |value| block.call(value) }
     @receiver
   end

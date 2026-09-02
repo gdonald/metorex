@@ -73,7 +73,8 @@ fn test_dict_object() {
     assert_eq!(obj.type_name(), "Dict");
     assert!(obj.is_truthy());
     let output = format!("{}", obj);
-    assert!(output.contains("x: 1") || output.contains("y: 2"));
+    // A String key renders as `"x" => 1`, the way Ruby shows one.
+    assert!(output.contains("\"x\" => 1") || output.contains("\"y\" => 2"));
 }
 
 #[test]

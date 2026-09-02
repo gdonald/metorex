@@ -573,15 +573,15 @@ B.new.secret
 // ── Thread stub methods (class-level) ───────────────────────────────────
 
 #[test]
-fn thread_current_returns_nil_stub() {
-    let result = run("Thread.current");
-    assert_eq!(result, Some(Object::Nil));
+fn thread_current_answers_a_thread() {
+    let result = run("Thread.current.class.name");
+    assert_eq!(result, Some(Object::string("Thread")));
 }
 
 #[test]
-fn thread_main_returns_nil_stub() {
-    let result = run("Thread.main");
-    assert_eq!(result, Some(Object::Nil));
+fn thread_main_answers_a_thread() {
+    let result = run("Thread.main.class.name");
+    assert_eq!(result, Some(Object::string("Thread")));
 }
 
 #[test]
@@ -616,12 +616,19 @@ t.value
 }
 
 #[test]
-fn thread_alive_returns_false_stub() {
+fn thread_alive_until_it_has_run() {
     let result = run(r#"
 t = Thread.new { :done }
-t.alive?
+before = t.alive?
+t.join
+[before, t.alive?]
 "#);
-    assert_eq!(result, Some(Object::Bool(false)));
+    assert_eq!(
+        result,
+        Some(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
+            vec![Object::Bool(true), Object::Bool(false)]
+        ))))
+    );
 }
 
 #[test]

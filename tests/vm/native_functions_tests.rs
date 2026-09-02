@@ -439,9 +439,9 @@ try_load
 // ── at_exit ──────────────────────────────────────────────────────────────────
 
 #[test]
-fn at_exit_returns_nil() {
+fn at_exit_returns_the_handler() {
     let result = run("at_exit { puts 'bye' }");
-    assert_eq!(result, Some(Object::Nil));
+    assert!(matches!(result, Some(Object::Block(_))));
 }
 
 // ── warn ─────────────────────────────────────────────────────────────────────

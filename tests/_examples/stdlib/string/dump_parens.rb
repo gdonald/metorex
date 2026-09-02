@@ -1,0 +1,7 @@
+puts("plain".dump)
+puts("with \"quotes\"".dump)
+puts("tab\there".dump)
+puts("line\nbreak".dump)
+puts("back\\slash".dump)
+puts('interp #{x} and #@ivar'.dump)
+puts("café".dump)

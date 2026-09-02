@@ -75,7 +75,7 @@ impl VirtualMachine {
             return self.call_native_function("using", evaluated_args, position);
         }
 
-        // `__method__()`, `__callee__()`, `abort` and `binding` are
+        // `__method__()`, `__callee__()`, `abort`, `exit` and `binding` are
         // auto-invoked when named bare, so a call form has to reach the native
         // function rather than calling whatever the bare name evaluated to.
         if let Expression::Identifier { name, .. } = callee
@@ -84,6 +84,16 @@ impl VirtualMachine {
                 "__method__"
                     | "__callee__"
                     | "abort"
+                    | "at_exit"
+                    | "caller"
+                    | "caller_locations"
+                    | "chomp"
+                    | "chop"
+                    | "fork"
+                    | "loop"
+                    | "open"
+                    | "exit"
+                    | "exit!"
                     | "fail"
                     | "gets"
                     | "global_variables"

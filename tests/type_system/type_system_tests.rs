@@ -107,7 +107,8 @@ fn test_cross_type_inequality() {
     assert!(!nil.equals(&bool_obj));
     assert!(!nil.equals(&int_obj));
     assert!(!bool_obj.equals(&int_obj));
-    assert!(!int_obj.equals(&float_obj));
+    // An Integer does equal the Float holding the same value, as in Ruby.
+    assert!(int_obj.equals(&float_obj));
     assert!(!int_obj.equals(&string_obj));
 }
 
@@ -450,7 +451,7 @@ fn test_to_string_dict() {
     // Dict output order is not guaranteed
     assert!(s.starts_with('{'));
     assert!(s.ends_with('}'));
-    assert!(s.contains("x: 10"));
+    assert!(s.contains("\"x\" => 10"));
 
     // Empty dict
     let empty_dict = Object::empty_dict();
@@ -497,9 +498,11 @@ fn test_mixed_type_collections() {
     let mixed_dict = Object::Dict(Rc::new(RefCell::new(mixed_map)));
 
     let s = mixed_dict.to_string();
-    assert!(s.contains("nil: nil"));
-    assert!(s.contains("bool: true"));
-    assert!(s.contains("int: 42"));
+    // These keys are stored the way metorex encodes nil, true, and an
+    // Integer, so they render as those rather than as Strings.
+    assert!(s.contains("nil => nil"));
+    assert!(s.contains("\"bool\" => true"));
+    assert!(s.contains("\"int\" => 42"));
 }
 
 #[test]

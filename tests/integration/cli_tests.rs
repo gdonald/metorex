@@ -113,7 +113,7 @@ fn cli_file_with_syntax_error_exits_with_error() {
         .expect("failed to execute");
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).unwrap();
-    assert!(stderr.contains("Parse error"));
+    assert!(stderr.contains("SyntaxError"));
 }
 
 // ============================================================================

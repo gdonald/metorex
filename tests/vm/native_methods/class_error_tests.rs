@@ -409,9 +409,11 @@ fn process_kill_without_a_signal_errors() {
 }
 
 #[test]
-fn process_exit_returns_nil() {
-    let result = run("Process.exit");
-    assert_eq!(result, Some(Object::Nil));
+fn process_exit_raises_system_exit() {
+    // `Process.exit` ends the program the way the bare form does, which is a
+    // rescuable SystemExit rather than a nil answer.
+    let error = run_err("Process.exit");
+    assert!(error.contains("Uncaught exception: exit"), "{}", error);
 }
 
 // ── GC / ObjectSpace stubs (mod.rs lines 681-683) ────────────────────────

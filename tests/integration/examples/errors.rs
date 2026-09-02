@@ -156,7 +156,7 @@ fn test_errors_abort_uncaught_execution() {
     let output = command.output().expect("failed to execute example");
     let stdout = String::from_utf8(output.stdout).expect("stdout was not utf8");
 
-    assert_eq!(stdout, "captured: redirected message\n\n");
+    assert_eq!(stdout, "captured: redirected message\n");
     assert_eq!(output.status.code(), Some(1));
 }
 
@@ -399,34 +399,14 @@ fn test_errors_cause_chain_parens_execution() {
 
 #[test]
 fn test_errors_message_detailed_execution() {
-    let expected = concat!(
-        "new error (RuntimeError)\n",
-        "unhandled exception\n",
-        "StandardError\n",
-        "new error (RuntimeError)\n",
-        "message\ntrue\ntrue\n",
-        "a.rb:1: Some runtime error (RuntimeError)\n\tfrom b.rb:2\n\n",
-        "Traceback (most recent call last):\n\tfrom b.rb:2\na.rb:1: Some runtime error (RuntimeError)\n\n",
-        "<prefix>new error<suffix>\n",
-        "true\n"
-    );
+    let expected = "new error (RuntimeError)\nunhandled exception\nStandardError\nnew error (RuntimeError)\nmessage\ntrue\ntrue\na.rb:1: Some runtime error (RuntimeError)\n	from b.rb:2\nTraceback (most recent call last):\n	from b.rb:2\na.rb:1: Some runtime error (RuntimeError)\n<prefix>new error<suffix>\ntrue\n";
     let output = run_example("errors/message/detailed.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_errors_message_detailed_parens_execution() {
-    let expected = concat!(
-        "new error (RuntimeError)\n",
-        "unhandled exception\n",
-        "StandardError\n",
-        "new error (RuntimeError)\n",
-        "message\ntrue\ntrue\n",
-        "a.rb:1: Some runtime error (RuntimeError)\n\tfrom b.rb:2\n\n",
-        "Traceback (most recent call last):\n\tfrom b.rb:2\na.rb:1: Some runtime error (RuntimeError)\n\n",
-        "<prefix>new error<suffix>\n",
-        "true\n"
-    );
+    let expected = "new error (RuntimeError)\nunhandled exception\nStandardError\nnew error (RuntimeError)\nmessage\ntrue\ntrue\na.rb:1: Some runtime error (RuntimeError)\n	from b.rb:2\nTraceback (most recent call last):\n	from b.rb:2\na.rb:1: Some runtime error (RuntimeError)\n<prefix>new error<suffix>\ntrue\n";
     let output = run_example("errors/message/detailed_parens.rb");
     assert_eq!(output, expected);
 }
@@ -527,28 +507,14 @@ fn test_errors_frozen_modification_parens_execution() {
 
 #[test]
 fn test_errors_full_message_rendering_execution() {
-    let expected = concat!(
-        "true\ntrue\ntrue\ntrue\n",
-        "a.rb:1: Some runtime error (RuntimeError)\n\n",
-        "Traceback (most recent call last):\n\n",
-        "true\ntrue\n",
-        "keywords ignored\npositionals ignored\n",
-        "second\nfirst\nnil\nnil\n"
-    );
+    let expected = "true\ntrue\ntrue\ntrue\na.rb:1: Some runtime error (RuntimeError)\nTraceback (most recent call last):\ntrue\ntrue\nkeywords ignored\npositionals ignored\nsecond\nfirst\nnil\nnil\n";
     let output = run_example("errors/full_message/rendering.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_errors_full_message_rendering_parens_execution() {
-    let expected = concat!(
-        "true\ntrue\ntrue\ntrue\n",
-        "a.rb:1: Some runtime error (RuntimeError)\n\n",
-        "Traceback (most recent call last):\n\n",
-        "true\ntrue\n",
-        "keywords ignored\npositionals ignored\n",
-        "second\nfirst\nnil\nnil\n"
-    );
+    let expected = "true\ntrue\ntrue\ntrue\na.rb:1: Some runtime error (RuntimeError)\nTraceback (most recent call last):\ntrue\ntrue\nkeywords ignored\npositionals ignored\nsecond\nfirst\nnil\nnil\n";
     let output = run_example("errors/full_message/rendering_parens.rb");
     assert_eq!(output, expected);
 }
@@ -766,5 +732,98 @@ fn test_errors_rescue_scope_bare_rescue_parens_execution() {
     let expected =
         "caught\ncaught\ncaught\ncaught\ncaught\ncaught\nException\npassed the bare rescue\n";
     let output = run_example("errors/rescue_scope/bare_rescue_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exit_rescued_execution() {
+    let expected = concat!(
+        "exit\n0\ntrue\n",
+        "42\nfalse\n",
+        "-1\nfalse\n",
+        "1\nfalse\n",
+        "0\ntrue\n",
+        "ensure ran\n7\n",
+        "SystemExit is not a StandardError\nSystemExit\n",
+    );
+    let output = run_example("errors/exit_rescued.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exit_uncaught_execution() {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let full_path = format!("{}/errors/exit_uncaught.rb", EXAMPLES_DIR);
+    let mut command = Command::new(binary);
+    command.current_dir(manifest_dir).arg(&full_path);
+
+    let output = command.output().expect("failed to execute example");
+    let stdout = String::from_utf8(output.stdout).expect("stdout was not utf8");
+
+    assert_eq!(stdout, "before exit\n");
+    assert_eq!(output.status.code(), Some(5));
+}
+
+#[test]
+fn test_errors_exit_bang_execution() {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let full_path = format!("{}/errors/exit_bang.rb", EXAMPLES_DIR);
+    let mut command = Command::new(binary);
+    command.current_dir(manifest_dir).arg(&full_path);
+
+    let output = command.output().expect("failed to execute example");
+    let stdout = String::from_utf8(output.stdout).expect("stdout was not utf8");
+
+    assert_eq!(stdout, "before exit!\n");
+    assert_eq!(output.status.code(), Some(9));
+}
+
+#[test]
+fn test_errors_exit_status_coercion_execution() {
+    let expected = concat!(
+        "0\n",
+        "8\n",
+        "-1\n",
+        "0\n",
+        "1\n",
+        "5\n",
+        "-2\n",
+        "5\n",
+        "no implicit conversion of String into Integer\n",
+        "no implicit conversion from nil to integer\n",
+        "no implicit conversion of Array into Integer\n",
+        "no implicit conversion of Object into Integer\n",
+        "3\n",
+        "4\n",
+        "true\n",
+        "true\n"
+    );
+    let output = run_example("errors/exit_status_coercion.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_exit_status_coercion_parens_execution() {
+    let expected = concat!(
+        "0\n",
+        "8\n",
+        "-1\n",
+        "0\n",
+        "1\n",
+        "5\n",
+        "-2\n",
+        "5\n",
+        "no implicit conversion of String into Integer\n",
+        "no implicit conversion from nil to integer\n",
+        "no implicit conversion of Array into Integer\n",
+        "no implicit conversion of Object into Integer\n",
+        "3\n",
+        "4\n",
+        "true\n",
+        "true\n"
+    );
+    let output = run_example("errors/exit_status_coercion_parens.rb");
     assert_eq!(output, expected);
 }

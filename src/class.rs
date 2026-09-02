@@ -26,6 +26,10 @@ pub struct Class {
     class_variables: RefCell<IndexMap<String, crate::object::Object>>,
     /// Included modules, in reverse inclusion order (last included = first searched).
     mixins: RefCell<Vec<Rc<Class>>>,
+    /// Prepended modules, in reverse prepend order. These sit ahead of the
+    /// class's own methods, so one of them shadows a same-named method here
+    /// and the class's copy is what `super` reaches from it.
+    prepends: RefCell<Vec<Rc<Class>>>,
     /// Names of methods whose visibility has been set to private.
     private_method_names: RefCell<HashSet<String>>,
     /// Names of methods whose visibility has been set to protected. Like
@@ -95,6 +99,7 @@ impl Class {
             instance_variables: RefCell::new(HashSet::new()),
             class_variables: RefCell::new(IndexMap::new()),
             mixins: RefCell::new(Vec::new()),
+            prepends: RefCell::new(Vec::new()),
             private_method_names: RefCell::new(HashSet::new()),
             protected_method_names: RefCell::new(HashSet::new()),
             public_overrides: RefCell::new(HashSet::new()),
@@ -575,6 +580,54 @@ impl Class {
         self.mixins.borrow().clone()
     }
 
+    /// Add a prepended module, ahead of the class's own method table.
+    pub fn add_prepend(&self, module: Rc<Class>) {
+        self.prepends.borrow_mut().insert(0, module);
+    }
+
+    /// Snapshot of the prepend chain (most-recently-prepended first).
+    pub fn prepend_chain(&self) -> Vec<Rc<Class>> {
+        self.prepends.borrow().clone()
+    }
+
+    /// The prepend chain expanded through each prepended module's own
+    /// prepends and includes, in lookup order.
+    pub fn transitive_prepends(&self) -> Vec<Rc<Class>> {
+        let mut chain = Vec::new();
+        let mut seen: Vec<*const Class> = Vec::new();
+        for prepended in self.prepend_chain() {
+            let ptr = Rc::as_ptr(&prepended);
+            if seen.contains(&ptr) {
+                continue;
+            }
+            seen.push(ptr);
+            for nested in prepended.transitive_prepends() {
+                let nested_ptr = Rc::as_ptr(&nested);
+                if !seen.contains(&nested_ptr) {
+                    seen.push(nested_ptr);
+                    chain.push(nested);
+                }
+            }
+            chain.push(Rc::clone(&prepended));
+            for mixin in prepended.transitive_mixins() {
+                let mixin_ptr = Rc::as_ptr(&mixin);
+                if !seen.contains(&mixin_ptr) {
+                    seen.push(mixin_ptr);
+                    chain.push(mixin);
+                }
+            }
+        }
+        chain
+    }
+
+    /// True when `module` has already been prepended here.
+    pub fn has_prepend(&self, module: &Rc<Class>) -> bool {
+        self.prepends
+            .borrow()
+            .iter()
+            .any(|prepended| Rc::ptr_eq(prepended, module))
+    }
+
     /// The mixin chain expanded through each module's own mixins, in method
     /// and constant lookup order. A module included into an already-included
     /// module shows up here without the outer class being touched.
@@ -604,6 +657,11 @@ impl Class {
 
     /// Look up a method by walking the inheritance chain (own → mixins → superclass).
     pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
+        for prepended in self.prepends.borrow().iter() {
+            if let Some(method) = prepended.find_method(name) {
+                return Some(method);
+            }
+        }
         if let Some(method) = self.methods.borrow().get(name) {
             return Some(Rc::clone(method));
         }
@@ -622,6 +680,11 @@ impl Class {
     /// Look up a method the same way `find_method` does, returning the module
     /// that actually defines it alongside the method itself.
     pub fn find_method_with_owner(self: &Rc<Class>, name: &str) -> Option<(Rc<Class>, Rc<Method>)> {
+        for prepended in self.prepends.borrow().iter() {
+            if let Some(found) = prepended.find_method_with_owner(name) {
+                return Some(found);
+            }
+        }
         if let Some(method) = self.methods.borrow().get(name) {
             return Some((Rc::clone(self), Rc::clone(method)));
         }
@@ -649,6 +712,11 @@ impl Class {
         if Rc::ptr_eq(self, other) {
             return true;
         }
+        for prepended in self.prepends.borrow().iter() {
+            if prepended.has_ancestor(other) {
+                return true;
+            }
+        }
         for mixin in self.mixins.borrow().iter() {
             if mixin.has_ancestor(other) {
                 return true;
@@ -670,7 +738,7 @@ impl Class {
     /// The alias inherits the original method's visibility — if `old_name` is
     /// private anywhere in the lookup chain, `new_name` is marked private on
     /// `self` too (matching MRI's behavior for `alias_method`).
-    pub fn alias_method(&self, new_name: &str, old_name: &str) -> bool {
+    pub fn alias_method(self: &Rc<Class>, new_name: &str, old_name: &str) -> bool {
         if let Some(method) = self.find_method(old_name) {
             let mut aliased = (*method).clone();
             aliased.original_name = Some(
@@ -680,6 +748,10 @@ impl Class {
                     .unwrap_or_else(|| method.name.clone()),
             );
             aliased.name = new_name.to_string();
+            // The alias belongs to the class that made it, even when the
+            // method it copies came from a prepended or included module.
+            aliased.owner_class = Some(Rc::clone(self));
+            aliased.owner = Some(self.ruby_name());
             self.methods
                 .borrow_mut()
                 .insert(new_name.to_string(), std::rc::Rc::new(aliased));
@@ -881,6 +953,7 @@ impl Class {
                     .collect(),
             ),
             mixins: RefCell::new(source.mixins.borrow().clone()),
+            prepends: RefCell::new(source.prepends.borrow().clone()),
             module_flag: std::cell::Cell::new(source.module_flag.get()),
             private_method_names: RefCell::new(source.private_method_names.borrow().clone()),
             protected_method_names: RefCell::new(source.protected_method_names.borrow().clone()),
@@ -914,6 +987,7 @@ impl Class {
                         .collect(),
                 ),
                 mixins: RefCell::new(src_sc.mixins.borrow().clone()),
+                prepends: RefCell::new(src_sc.prepends.borrow().clone()),
                 module_flag: std::cell::Cell::new(src_sc.module_flag.get()),
                 private_method_names: RefCell::new(src_sc.private_method_names.borrow().clone()),
                 protected_method_names: RefCell::new(
@@ -948,6 +1022,7 @@ impl Clone for Class {
             instance_variables: RefCell::new(self.instance_variables.borrow().clone()),
             class_variables: RefCell::new(self.class_variables.borrow().clone()),
             mixins: RefCell::new(self.mixins.borrow().clone()),
+            prepends: RefCell::new(self.prepends.borrow().clone()),
             module_flag: std::cell::Cell::new(self.module_flag.get()),
             private_method_names: RefCell::new(self.private_method_names.borrow().clone()),
             protected_method_names: RefCell::new(self.protected_method_names.borrow().clone()),

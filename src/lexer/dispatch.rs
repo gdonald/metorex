@@ -226,6 +226,11 @@ impl<'a> Lexer<'a> {
                 if self.peek() == Some(':') {
                     self.advance();
                     Token::new(TokenKind::ColonColon, position)
+                } else if self.peek() == Some('`') {
+                    // A backtick after a colon names the command method
+                    // rather than opening a command literal.
+                    self.advance();
+                    Token::new(TokenKind::CommandSymbol, position)
                 } else {
                     Token::new(TokenKind::Colon, position)
                 }
@@ -274,19 +279,20 @@ impl<'a> Lexer<'a> {
                     _ => Token::new(TokenKind::Question, position),
                 }
             }
-            '`' => {
-                self.advance(); // consume opening `
-                let mut content = String::new();
-                while let Some(ch) = self.peek() {
-                    if ch == '`' {
-                        self.advance();
-                        break;
-                    }
-                    content.push(ch);
-                    self.advance();
-                }
-                Token::new(TokenKind::String(content), position)
+            // A backtick right after `.` or `def` names the command method
+            // rather than opening a command literal.
+            '`' if matches!(
+                self.prev_significant,
+                Some(TokenKind::Dot) | Some(TokenKind::Def)
+            ) =>
+            {
+                self.advance();
+                Token::new(TokenKind::Ident("`".to_string()), position)
             }
+            '`' => match self.read_command_string() {
+                Ok(kind) => Token::new(kind, position),
+                Err(_) => Token::new(TokenKind::EOF, position),
+            },
             _ => {
                 // Unknown character, consume and return EOF
                 self.advance();

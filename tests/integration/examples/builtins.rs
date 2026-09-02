@@ -25,14 +25,14 @@ fn test_defined_keyword_parens_execution() {
 
 #[test]
 fn test_kernel_conversion_execution() {
-    let expected = "42\n3\n42\n\n[]\n[1, 2]\n[hi]\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
+    let expected = "42\n3\n42\n\n\n1\n2\nhi\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
     let output = run_example("builtins/kernel_conversion.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_kernel_conversion_parens_execution() {
-    let expected = "42\n3\n42\n\n[]\n[1, 2]\n[hi]\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
+    let expected = "42\n3\n42\n\n\n1\n2\nhi\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
     let output = run_example("builtins/kernel_conversion_parens.rb");
     assert_eq!(output, expected);
 }
@@ -346,5 +346,311 @@ fn test_builtins_big_integers_parens_execution() {
         "true\n"
     );
     let output = run_example("builtins/big_integers/arithmetic_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_array_execution() {
+    let expected = concat!(
+        "[]\n",
+        "[1, 2]\n",
+        "[3]\n",
+        "[[:a, 1]]\n",
+        "[1, 2]\n",
+        "[3, 4]\n",
+        "[5, 6]\n",
+        "[7, 8]\n",
+        "can't convert BadAry to Array (BadAry#to_ary gives String)\n",
+        "can't convert BadToA to Array (BadToA#to_a gives String)\n",
+        "true\n",
+    );
+    let output = run_example("builtins/kernel_array.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_array_parens_execution() {
+    let expected = concat!(
+        "[]\n",
+        "[1, 2]\n",
+        "[3]\n",
+        "[[:a, 1]]\n",
+        "[1, 2]\n",
+        "[3, 4]\n",
+        "[5, 6]\n",
+        "[7, 8]\n",
+        "can't convert BadAry to Array (BadAry#to_ary gives String)\n",
+        "can't convert BadToA to Array (BadToA#to_a gives String)\n",
+        "true\n",
+    );
+    let output = run_example("builtins/kernel_array_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_complex_execution() {
+    let expected = concat!(
+        "3\n",
+        "4\n",
+        "3+4i\n",
+        "(3+4i)\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "invalid value for convert(): \"ruby\"\n",
+        "can't convert nil into Complex\n",
+        "nil\n",
+        "true\n"
+    );
+    let output = run_example("builtins/kernel_complex.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_complex_parens_execution() {
+    let expected = concat!(
+        "3\n",
+        "4\n",
+        "3+4i\n",
+        "(3+4i)\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "invalid value for convert(): \"ruby\"\n",
+        "can't convert nil into Complex\n",
+        "nil\n",
+        "true\n"
+    );
+    let output = run_example("builtins/kernel_complex_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_float_execution() {
+    let expected = concat!(
+        "1.0\n",
+        "1.5\n",
+        "10.0\n",
+        "10.0\n",
+        "10.0\n",
+        "-10.0\n",
+        "1000.0\n",
+        "1.0\n",
+        "2000.0\n",
+        "0.002\n",
+        "16.0\n",
+        "-123.0\n",
+        "0.5\n",
+        "1024.0\n",
+        "1.0\n",
+        "Infinity\n",
+        "0.0\n",
+        "true\n",
+        "true\n",
+        "1\n",
+        "true\n",
+        "1.25\n",
+        "invalid value for Float(): \"float\"\n",
+        "invalid value for Float(): \"10.0.0\"\n",
+        "invalid value for Float(): \"10D\"\n",
+        "invalid value for Float(): \"1+1\"\n",
+        "invalid value for Float(): \"_1\"\n",
+        "invalid value for Float(): \"10_\"\n",
+        "invalid value for Float(): \" \"\n",
+        "invalid value for Float(): \"1 2\"\n",
+        "invalid value for Float(): \"2e\"\n",
+        "invalid value for Float(): \"e2\"\n",
+        "invalid value for Float(): \"0x_10\"\n",
+        "can't convert nil into Float\n",
+        "can't convert 2+3i into Float\n",
+        "nil\n",
+        "nil\n",
+        "true\n"
+    );
+    let output = run_example("builtins/kernel_float.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_float_parens_execution() {
+    let expected = concat!(
+        "1.0\n",
+        "1.5\n",
+        "10.0\n",
+        "10.0\n",
+        "10.0\n",
+        "-10.0\n",
+        "1000.0\n",
+        "1.0\n",
+        "2000.0\n",
+        "0.002\n",
+        "16.0\n",
+        "-123.0\n",
+        "0.5\n",
+        "1024.0\n",
+        "1.0\n",
+        "Infinity\n",
+        "0.0\n",
+        "true\n",
+        "true\n",
+        "1\n",
+        "true\n",
+        "1.25\n",
+        "invalid value for Float(): \"float\"\n",
+        "invalid value for Float(): \"10.0.0\"\n",
+        "invalid value for Float(): \"10D\"\n",
+        "invalid value for Float(): \"1+1\"\n",
+        "invalid value for Float(): \"_1\"\n",
+        "invalid value for Float(): \"10_\"\n",
+        "invalid value for Float(): \" \"\n",
+        "invalid value for Float(): \"1 2\"\n",
+        "invalid value for Float(): \"2e\"\n",
+        "invalid value for Float(): \"e2\"\n",
+        "invalid value for Float(): \"0x_10\"\n",
+        "can't convert nil into Float\n",
+        "can't convert 2+3i into Float\n",
+        "nil\n",
+        "nil\n",
+        "true\n"
+    );
+    let output = run_example("builtins/kernel_float_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_loop_enumerator_execution() {
+    let expected = concat!(
+        "3\n",
+        "1\n",
+        "2\n",
+        "finished\n",
+        "nil\n",
+        "true\n",
+        "Infinity\n",
+        "4\n",
+        "[[1, 2], [3, 4]]\n",
+    );
+    let output = run_example("builtins/loop_enumerator.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_loop_enumerator_parens_execution() {
+    let expected = concat!(
+        "3\n",
+        "1\n",
+        "2\n",
+        "finished\n",
+        "nil\n",
+        "true\n",
+        "Infinity\n",
+        "4\n",
+        "[[1, 2], [3, 4]]\n",
+    );
+    let output = run_example("builtins/loop_enumerator_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_open_execution() {
+    let expected = concat!(
+        "File\n",
+        "first line\n",
+        "second line\n",
+        "nil\n",
+        "first line\n",
+        "first line\n",
+        "[1, 2, 3]\n",
+        "[]\n",
+        "wrong number of arguments (given 0, expected 1..3)\n",
+        "wrong number of arguments (given 4, expected 1..3)\n",
+        "64\n",
+        "true\n"
+    );
+    let output = run_example("builtins/kernel_open.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_open_parens_execution() {
+    let expected = concat!(
+        "File\n",
+        "first line\n",
+        "second line\n",
+        "nil\n",
+        "first line\n",
+        "first line\n",
+        "[1, 2, 3]\n",
+        "[]\n",
+        "wrong number of arguments (given 0, expected 1..3)\n",
+        "wrong number of arguments (given 4, expected 1..3)\n",
+        "64\n",
+        "true\n"
+    );
+    let output = run_example("builtins/kernel_open_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_pp_execution() {
+    let expected = concat!(
+        "[1, 2, 3]\n",
+        "{a: 1, \"b\" => 2}\n",
+        "\"text\"\n",
+        ":symbol\n",
+        ":symbol\n",
+        "1\n",
+        "2\n",
+        "[1, 2]\n",
+        "nil\n",
+        "true\n",
+    );
+    let output = run_example("builtins/kernel_pp.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_kernel_pp_parens_execution() {
+    let expected = concat!(
+        "[1, 2, 3]\n",
+        "{a: 1, \"b\" => 2}\n",
+        "\"text\"\n",
+        ":symbol\n",
+        ":symbol\n",
+        "1\n",
+        "2\n",
+        "[1, 2]\n",
+        "nil\n",
+        "true\n",
+    );
+    let output = run_example("builtins/kernel_pp_parens.rb");
     assert_eq!(output, expected);
 }

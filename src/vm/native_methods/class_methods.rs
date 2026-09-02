@@ -159,7 +159,8 @@ impl VirtualMachine {
                 }
             }
             if inherit {
-                let mut queue: Vec<Rc<Class>> = class_rc.mixin_chain();
+                let mut queue: Vec<Rc<Class>> = class_rc.prepend_chain();
+                queue.extend(class_rc.mixin_chain());
                 let mut cursor = class_rc.superclass();
                 while let Some(sc) = cursor {
                     if matches!(sc.name(), "Object" | "BasicObject") {
@@ -179,6 +180,9 @@ impl VirtualMachine {
                     }
                     seen.push(ptr);
                     collect_from(&current, &mut names);
+                    for prepended in current.prepend_chain() {
+                        queue.push(prepended);
+                    }
                     for mixin in current.mixin_chain() {
                         queue.push(mixin);
                     }
@@ -402,6 +406,27 @@ impl VirtualMachine {
             )?;
             return Ok(Some(Object::Nil));
         }
+        // `Encoding.default_external` names the encoding metorex reads and
+        // writes with. Every string is UTF-8, so the setting is remembered and
+        // reported without changing how one is stored.
+        if class_rc.name() == "Encoding"
+            && matches!(method_name, "default_external" | "default_external=")
+        {
+            if method_name == "default_external=" {
+                let Some(value) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                self.globals_mut()
+                    .set("__Encoding_default_external", value.clone());
+                return Ok(Some(value.clone()));
+            }
+            return Ok(Some(
+                self.globals()
+                    .get("__Encoding_default_external")
+                    .or_else(|| self.globals().get("Encoding::UTF_8"))
+                    .unwrap_or(Object::Nil),
+            ));
+        }
         if method_name == "autoload?" {
             let const_name = match arguments.first() {
                 Some(Object::Symbol(s)) => (**s).clone(),
@@ -508,7 +533,11 @@ impl VirtualMachine {
             for arg in arguments {
                 match arg {
                     Object::Module(t) | Object::Class(t) => {
-                        self.default_append_features(t, class_rc, position)?;
+                        if method_name == "prepend_features" {
+                            self.default_prepend_features(t, class_rc, position)?;
+                        } else {
+                            self.default_append_features(t, class_rc, position)?;
+                        }
                     }
                     other => {
                         return Err(method_argument_type_error(
@@ -697,13 +726,19 @@ impl VirtualMachine {
                 // instance after `.value`/`.join`. `Thread.main` is the same
                 // shape but conceptually the program's root thread; we don't
                 // distinguish, so it returns the same value.
+                // Outside any thread block the running thread is the main
+                // one, which is a Thread like any other.
                 "current" | "main" => {
-                    return Ok(Some(
-                        self.thread_current_stack
-                            .last()
-                            .cloned()
-                            .unwrap_or(Object::Nil),
-                    ));
+                    if let Some(current) = self.thread_current_stack.last() {
+                        return Ok(Some(current.clone()));
+                    }
+                    if let Some(main) = self.globals().get("__Thread_main") {
+                        return Ok(Some(main));
+                    }
+                    let instance = crate::object::Instance::new(Rc::clone(class_rc));
+                    let main = Object::Instance(Rc::new(std::cell::RefCell::new(instance)));
+                    self.globals_mut().set("__Thread_main", main.clone());
+                    return Ok(Some(main));
                 }
                 "report_on_exception" | "report_on_exception=" => {
                     return Ok(Some(Object::Bool(true)));
@@ -1244,6 +1279,15 @@ impl VirtualMachine {
                         .find_own_method(&name)
                         .map(|method| (Rc::clone(class_rc), method))
                 };
+                // Kernel's own methods live in the native dispatch tables
+                // rather than in its method map, so the private ones are
+                // listed rather than looked up.
+                if class_rc.name() == "Kernel"
+                    && found.is_none()
+                    && KERNEL_PRIVATE_FUNCTIONS.contains(&name.as_str())
+                {
+                    return Ok(Some(Object::Bool(method_name == "private_method_defined?")));
+                }
                 let answer = match found {
                     // A tombstone left by `undef_method` is not a definition.
                     Some((_, method)) if method.is_undefined => false,
@@ -1828,6 +1872,11 @@ impl VirtualMachine {
                     }
                     cursor = current.superclass();
                 }
+                // A reopened `Module` or `Class` gives every class the hook as
+                // an instance method, and that user body wins over this one.
+                if self.user_const_added_hook_defined() {
+                    return Ok(None);
+                }
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         "const_added",
@@ -1928,7 +1977,7 @@ impl VirtualMachine {
                 class_rc.clear_unrealized_autoload(&const_name);
                 class_rc.set_class_var(&const_name, arguments[1].clone());
                 let assign_file = self
-                    .get_current_file()
+                    .reported_current_file()
                     .map(|p| p.display().to_string())
                     .unwrap_or_default();
                 class_rc.set_const_location(&const_name, assign_file, position.line as i64);
@@ -2356,7 +2405,43 @@ impl VirtualMachine {
             }
             // Module methods we treat as no-ops (Metorex doesn't track these
             // concepts, but class bodies that use them still need to load).
-            "deprecate_constant" | "ruby2_keywords" => {
+            "deprecate_constant" => {
+                return Ok(Some(Object::Nil));
+            }
+            // `ruby2_keywords :name` only applies to a method whose last
+            // parameter is a bare `*args` splat. Anything else keeps its
+            // signature and gets a warning; a name with no method raises.
+            "ruby2_keywords" => {
+                for argument in arguments {
+                    let name = self.coerce_name_argument(argument, position)?;
+                    let Some(method) = class_rc.find_method(&name) else {
+                        let message = format!(
+                            "undefined method '{}' for class '{}'",
+                            name,
+                            class_rc.ruby_name()
+                        );
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("NameError", message.clone()),
+                            location: position_to_location(position),
+                            message,
+                        });
+                    };
+                    let takes_bare_splat = method
+                        .variadic_param
+                        .as_ref()
+                        .is_some_and(|(index, _)| *index + 1 == method.parameters.len());
+                    let takes_keywords = !method.keyword_parameters.is_empty()
+                        || method.keyword_rest_parameter.is_some();
+                    if !takes_bare_splat || takes_keywords {
+                        self.emit_warning_to_stderr(
+                            &format!(
+                                "Skipping set of ruby2_keywords flag for {} (method accepts keywords or method does not accept argument splat)",
+                                name
+                            ),
+                            position,
+                        );
+                    }
+                }
                 return Ok(Some(Object::Nil));
             }
             _ => {}
@@ -2845,7 +2930,23 @@ pub(super) const BASIC_OBJECT_PRIVATE_METHODS: &[&str] = &[
 ];
 
 pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
+    "`",
     "abort",
+    "caller",
+    "caller_locations",
+    "chomp",
+    "chop",
+    "exec",
+    "exit",
+    "exit!",
+    "fork",
+    "format",
+    "load",
+    "open",
+    "sprintf",
+    "at_exit",
+    "autoload",
+    "autoload?",
     "binding",
     "block_given?",
     "catch",
@@ -3075,6 +3176,17 @@ fn has_user_defined_method(class_rc: &Rc<Class>, name: &str) -> bool {
 /// modules it mixes in, recursively) onto `chain`. Uses pointer identity in
 /// `seen` to skip modules that have already been added, matching Ruby's
 /// dedup-on-first-sighting semantics.
+/// Append the modules prepended to `owner`, ahead of `owner` itself. Each one
+/// gets a fresh visited set: Ruby lists a module once per place it was mixed
+/// in, so a module prepended here still appears again where a superclass or an
+/// include already carried it.
+fn push_prepend_ancestors(owner: &Rc<Class>, chain: &mut Vec<Object>) {
+    for prepended in owner.prepend_chain() {
+        let mut prepend_seen: Vec<*const Class> = Vec::new();
+        push_module_ancestors(&prepended, chain, &mut prepend_seen);
+    }
+}
+
 pub(super) fn push_module_ancestors(
     module: &Rc<Class>,
     chain: &mut Vec<Object>,
@@ -3085,6 +3197,7 @@ pub(super) fn push_module_ancestors(
         return;
     }
     seen.push(ptr);
+    push_prepend_ancestors(module, chain);
     chain.push(Object::Module(Rc::clone(module)));
     for mixin in module.mixin_chain() {
         push_module_ancestors(&mixin, chain, seen);
@@ -3101,6 +3214,7 @@ pub(super) fn push_class_ancestors(
     let ptr = Rc::as_ptr(class);
     if !seen.contains(&ptr) {
         seen.push(ptr);
+        push_prepend_ancestors(class, chain);
         chain.push(Object::Class(Rc::clone(class)));
     }
     for mixin in class.mixin_chain() {
@@ -3111,6 +3225,7 @@ pub(super) fn push_class_ancestors(
         let pptr = Rc::as_ptr(&parent);
         if !seen.contains(&pptr) {
             seen.push(pptr);
+            push_prepend_ancestors(&parent, chain);
             chain.push(Object::Class(Rc::clone(&parent)));
         }
         for mixin in parent.mixin_chain() {
@@ -3135,6 +3250,11 @@ fn is_valid_class_variable_ident(name: &str) -> bool {
 /// Kernel methods that `call_object_method` implements natively, so a
 /// body-less stub can stand in for them in `Object.instance_method`.
 pub(crate) fn is_native_kernel_method(name: &str) -> bool {
+    // Kernel's private functions are native too, so an UnboundMethod for one
+    // is available the same way.
+    if KERNEL_PRIVATE_FUNCTIONS.contains(&name) {
+        return true;
+    }
     matches!(
         name,
         "class"

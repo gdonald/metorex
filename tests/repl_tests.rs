@@ -389,6 +389,7 @@ fn format_object_block() {
         captured_def_scope: vec![],
         defining_method: None,
         is_lambda: false,
+        source_file: None,
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }

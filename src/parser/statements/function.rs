@@ -201,6 +201,38 @@ impl Parser {
             Vec::new()
         };
 
+        // An endless definition, `def name = expression`, has its body on the
+        // same line and no `end`.
+        if self.check(&[TokenKind::Equal]) {
+            self.advance();
+            self.skip_whitespace();
+            let value_position = self.peek().position;
+            let value = self.parse_expression()?;
+            let body = vec![Statement::Expression {
+                expression: value,
+                position: value_position,
+            }];
+            let variable_receiver = _singleton_receiver
+                .as_deref()
+                .is_some_and(|receiver| receiver.starts_with('@') || receiver.starts_with('$'));
+            if self.in_class_body && !variable_receiver {
+                return Ok(Statement::MethodDef {
+                    name,
+                    parameters,
+                    body,
+                    is_class_method: _singleton_receiver.is_some(),
+                    position: start_pos,
+                });
+            }
+            return Ok(Statement::FunctionDef {
+                name,
+                parameters,
+                body,
+                position: start_pos,
+                singleton_class: _singleton_receiver,
+            });
+        }
+
         self.skip_whitespace();
 
         // Parse function body
@@ -399,6 +431,18 @@ impl Parser {
 
             let param_pos = self.peek().position;
 
+            // `def foo(...)` forwards every argument, which is the three
+            // anonymous parameters taken together.
+            if self.match_token(&[TokenKind::DotDotDot]) {
+                params.push(Parameter::variadic(ANONYMOUS_SPLAT.to_string(), param_pos));
+                params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
+                params.push(Parameter::block(ANONYMOUS_BLOCK.to_string(), param_pos));
+                self.skip_whitespace();
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+                continue;
+            }
             // Check for block parameter (&block). A bare `&` with no name is
             // an anonymous block parameter, forwarded on by a bare `&`.
             if self.match_token(&[TokenKind::Ampersand]) {

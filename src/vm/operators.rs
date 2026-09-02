@@ -90,6 +90,21 @@ impl VirtualMachine {
                         )?;
                         return Ok(Object::Bool(result.is_truthy()));
                     }
+                    // Rational and Complex answer `==` from their native
+                    // tables rather than a method map, and a Complex with no
+                    // imaginary part equals the plain number it holds.
+                    let instance_class = Rc::clone(&inst_rc.borrow().class);
+                    if matches!(instance_class.name(), "Rational" | "Complex")
+                        && let Some(result) = self.call_native_method(
+                            &instance_class,
+                            &left,
+                            "==",
+                            std::slice::from_ref(&right),
+                            position,
+                        )?
+                    {
+                        return Ok(Object::Bool(result.is_truthy()));
+                    }
                     // Comparable protocol: if <=> is defined, use it for ==
                     if let Some((cmp_class, cmp_method)) = self.lookup_method(&left, "<=>") {
                         let cmp_obj = self.invoke_method(
@@ -650,6 +665,27 @@ impl VirtualMachine {
     /// When the right operand is an Array, each element is consumed in order by
     /// successive format specifiers. Otherwise the single value is used for the
     /// first (and only expected) specifier.
+    /// The value a `%{name}` or `%<name>` reference names, which must be a
+    /// key of the Hash the format was given.
+    fn format_keyword_value(
+        &self,
+        right: &Object,
+        name: &str,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if let Object::Dict(entries) = right
+            && let Some(value) = entries.borrow().get(&format!(":{}", name))
+        {
+            return Ok(value.clone());
+        }
+        let message = format!("key<{}> not found", name);
+        Err(MetorexError::UncaughtException {
+            exception: Object::exception("KeyError", message.clone()),
+            location: position_to_location(position),
+            message,
+        })
+    }
+
     pub(crate) fn evaluate_string_format(
         &self,
         left: Object,
@@ -666,13 +702,16 @@ impl VirtualMachine {
         };
         let fmt_str = format.as_ref().clone();
 
-        let args: Vec<Object> = match right {
+        let args: Vec<Object> = match &right {
             Object::Array(arr) => arr.borrow().clone(),
-            other => vec![other],
+            // A keyword Hash names its values rather than filling positions.
+            Object::Dict(_) => Vec::new(),
+            other => vec![(*other).clone()],
         };
 
         let mut result = String::new();
         let mut arg_idx = 0;
+        let mut named: Option<Object> = None;
         let chars: Vec<char> = fmt_str.chars().collect();
         let mut i = 0;
 
@@ -689,6 +728,29 @@ impl VirtualMachine {
                     result.push('%');
                     i += 1;
                     continue;
+                }
+
+                // `%{name}` and `%<name>s` read a keyword from the Hash on
+                // the right rather than taking the next positional argument.
+                if chars[i] == '{' || chars[i] == '<' {
+                    let closing = if chars[i] == '{' { '}' } else { '>' };
+                    let mut name = String::new();
+                    i += 1;
+                    while i < chars.len() && chars[i] != closing {
+                        name.push(chars[i]);
+                        i += 1;
+                    }
+                    if i < chars.len() {
+                        i += 1;
+                    }
+                    let value = self.format_keyword_value(&right, &name, position)?;
+                    if closing == '}' {
+                        result.push_str(&format!("{}", value));
+                        continue;
+                    }
+                    // `%<name>` carries on into the specifier that follows,
+                    // formatting the value it named.
+                    named = Some(value);
                 }
 
                 // Parse optional flags: -, +, 0, space
@@ -764,15 +826,23 @@ impl VirtualMachine {
                 let specifier = chars[i];
                 i += 1;
 
-                if arg_idx >= args.len() {
+                // A `%<name>` prefix already chose the value; otherwise the
+                // next positional argument fills the specifier.
+                let taken = named.take();
+                if taken.is_none() && arg_idx >= args.len() {
                     return Err(MetorexError::runtime_error(
                         "too few arguments for format string".to_string(),
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
-
-                let arg = &args[arg_idx];
-                arg_idx += 1;
+                let arg = match &taken {
+                    Some(value) => value,
+                    None => {
+                        let value = &args[arg_idx];
+                        arg_idx += 1;
+                        value
+                    }
+                };
 
                 let formatted = match specifier {
                     's' => {
@@ -895,6 +965,13 @@ impl VirtualMachine {
             }
         }
 
+        // With `$VERBOSE` on, Ruby points out arguments the format never
+        // reached. A keyword Hash names its values, so leaving one of those
+        // unused is not a mistake and is not counted here.
+        if arg_idx < args.len() && matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true)))
+        {
+            eprintln!("warning: too many arguments for format string");
+        }
         Ok(Object::String(Rc::new(result)))
     }
 

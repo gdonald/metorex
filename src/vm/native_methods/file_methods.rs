@@ -22,6 +22,66 @@ impl VirtualMachine {
                 .unwrap_or_default();
             return Ok(Some(Object::string(cwd)));
         }
+        // `Dir.chdir(path)` changes the working directory. The block form
+        // restores the previous one afterwards and answers the block's value.
+        // `File.chmod(mode, *paths)` answers how many it changed.
+        if class_rc.name() == "File" && method_name == "chmod" {
+            let Some(Object::Int(mode)) = arguments.first() else {
+                return Err(method_argument_error(
+                    method_name,
+                    2,
+                    arguments.len(),
+                    position,
+                ));
+            };
+            let mut changed = 0;
+            for path in arguments.iter().skip(1) {
+                let Object::String(path) = path else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        path,
+                        position,
+                    ));
+                };
+                use std::os::unix::fs::PermissionsExt as _;
+                let permissions = std::fs::Permissions::from_mode(*mode as u32);
+                if std::fs::set_permissions(path.as_str(), permissions).is_ok() {
+                    changed += 1;
+                }
+            }
+            return Ok(Some(Object::Int(changed)));
+        }
+        if class_rc.name() == "Dir" && method_name == "chdir" {
+            let target = match arguments.first() {
+                Some(Object::String(path)) => path.as_str().to_string(),
+                Some(other) => {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        other,
+                        position,
+                    ));
+                }
+                None => std::env::var("HOME").unwrap_or_else(|_| "/".to_string()),
+            };
+            let previous = std::env::current_dir().ok();
+            std::env::set_current_dir(&target).map_err(|error| {
+                MetorexError::runtime_error(
+                    format!("No such file or directory - {} ({})", target, error),
+                    position_to_location(position),
+                )
+            })?;
+            let Some(Object::Block(block)) = self.pending_block.take() else {
+                return Ok(Some(Object::Int(0)));
+            };
+            let result =
+                self.execute_block_callable(&block, vec![Object::string(target)], position);
+            if let Some(previous) = previous {
+                let _ = std::env::set_current_dir(previous);
+            }
+            return result.map(Some);
+        }
         if class_rc.name() == "Dir" && (method_name == "exist?" || method_name == "exists?") {
             if arguments.len() != 1 {
                 return Err(method_argument_error(
@@ -195,7 +255,9 @@ impl VirtualMachine {
             // block's result. Without a block, returns the handle (caller
             // is responsible for `close`). Used by spec helpers that
             // populate temp files via `touch(path) { |f| f.puts ... }`.
-            "open" => {
+            // `File.new` opens without a block, the way `File.open` does
+            // when given none.
+            "new" | "open" => {
                 use crate::object::{Instance, Method};
                 if arguments.is_empty() {
                     return Err(method_argument_error("open", 1, 0, position));
@@ -349,7 +411,14 @@ impl VirtualMachine {
                         .to_string_lossy()
                         .to_string()
                 };
+                // A relative base expands against the working directory, so
+                // the answer is always an absolute path, as Ruby's is.
                 let base_path = std::path::PathBuf::from(&base);
+                let base_path = if base_path.is_absolute() {
+                    base_path
+                } else {
+                    std::env::current_dir().unwrap_or_default().join(base_path)
+                };
                 let expanded = base_path.join(&path_str);
                 match expanded.canonicalize() {
                     Ok(p) => Ok(Some(Object::string(p.to_string_lossy().to_string()))),
@@ -478,7 +547,14 @@ impl VirtualMachine {
                         .to_string_lossy()
                         .to_string()
                 };
+                // A relative base expands against the working directory, so
+                // the answer is always an absolute path, as Ruby's is.
                 let base_path = std::path::PathBuf::from(&base);
+                let base_path = if base_path.is_absolute() {
+                    base_path
+                } else {
+                    std::env::current_dir().unwrap_or_default().join(base_path)
+                };
                 let expanded = base_path.join(&path_str);
                 let result = match expanded.canonicalize() {
                     Ok(p) => p.to_string_lossy().to_string(),

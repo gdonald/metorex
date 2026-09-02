@@ -199,7 +199,7 @@ fn display_dict_elements() {
     m.insert("a".to_string(), Object::Int(1));
     let d = Object::dict(m);
     let s = format!("{}", d);
-    assert!(s.contains("a: 1"));
+    assert!(s.contains("\"a\" => 1"));
 }
 
 #[test]

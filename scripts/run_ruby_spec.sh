@@ -130,17 +130,17 @@ run_spec "$SPEC_DIR/core/module/method_undefined_spec.rb"
 run_spec "$SPEC_DIR/core/module/module_eval_spec.rb"
 run_spec "$SPEC_DIR/core/module/module_exec_spec.rb"
 run_spec "$SPEC_DIR/core/module/module_function_spec.rb"
-# run_spec "$SPEC_DIR/core/module/name_spec.rb"  # ruby_exe example still failing
+run_spec "$SPEC_DIR/core/module/name_spec.rb"
 run_spec "$SPEC_DIR/core/module/nesting_spec.rb"
 run_spec "$SPEC_DIR/core/module/new_spec.rb"
 run_spec "$SPEC_DIR/core/module/prepend_features_spec.rb"
-# run_spec "$SPEC_DIR/core/module/prepend_spec.rb"  # needs real prepend ancestry, not include
+# run_spec "$SPEC_DIR/core/module/prepend_spec.rb"  # 54 of its 55 examples pass; the last needs `1 + 2` to dispatch to a user-defined Integer#+ and `super` from it to reach the native operator
 run_spec "$SPEC_DIR/core/module/prepended_spec.rb"
 run_spec "$SPEC_DIR/core/module/private_class_method_spec.rb"
 run_spec "$SPEC_DIR/core/module/private_constant_spec.rb"
 run_spec "$SPEC_DIR/core/module/private_instance_methods_spec.rb"
 run_spec "$SPEC_DIR/core/module/private_method_defined_spec.rb"
-# run_spec "$SPEC_DIR/core/module/private_spec.rb"  # needs real prepend ancestry
+run_spec "$SPEC_DIR/core/module/private_spec.rb"
 run_spec "$SPEC_DIR/core/module/protected_instance_methods_spec.rb"
 run_spec "$SPEC_DIR/core/module/protected_method_defined_spec.rb"
 run_spec "$SPEC_DIR/core/module/protected_spec.rb"
@@ -150,12 +150,12 @@ run_spec "$SPEC_DIR/core/module/public_instance_method_spec.rb"
 run_spec "$SPEC_DIR/core/module/public_instance_methods_spec.rb"
 run_spec "$SPEC_DIR/core/module/public_method_defined_spec.rb"
 run_spec "$SPEC_DIR/core/module/public_spec.rb"
-# run_spec "$SPEC_DIR/core/module/refine_spec.rb"  # refinements are only partly implemented
+# run_spec "$SPEC_DIR/core/module/refine_spec.rb"  # 21 of its 38 examples pass; the rest need refinement-aware dispatch through send, Symbol#to_proc, interpolation, method objects, respond_to?, and refining a module a class includes
 run_spec "$SPEC_DIR/core/module/refinements_spec.rb"
 run_spec "$SPEC_DIR/core/module/remove_class_variable_spec.rb"
 run_spec "$SPEC_DIR/core/module/remove_const_spec.rb"
 run_spec "$SPEC_DIR/core/module/remove_method_spec.rb"
-# run_spec "$SPEC_DIR/core/module/ruby2_keywords_spec.rb"  # needs **kwargs parameters and keyword-hash flagging
+# run_spec "$SPEC_DIR/core/module/ruby2_keywords_spec.rb"  # 6 of its 14 examples pass; the other 8 need a keyword-hash flag on Hash that survives a splat, with Hash.ruby2_keywords_hash and .ruby2_keywords_hash?
 run_spec "$SPEC_DIR/core/module/set_temporary_name_spec.rb"
 run_spec "$SPEC_DIR/core/module/singleton_class_spec.rb"
 run_spec "$SPEC_DIR/core/module/to_s_spec.rb"
@@ -163,31 +163,31 @@ run_spec "$SPEC_DIR/core/module/undef_method_spec.rb"
 run_spec "$SPEC_DIR/core/module/undefined_instance_methods_spec.rb"
 run_spec "$SPEC_DIR/core/module/used_refinements_spec.rb"
 run_spec "$SPEC_DIR/core/module/using_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Array_spec.rb"  # needs Kernel#Array to_ary/to_a coercion
-# run_spec "$SPEC_DIR/core/kernel/Complex_spec.rb"  # Complex is a stub class with no arithmetic
-# run_spec "$SPEC_DIR/core/kernel/Float_spec.rb"  # needs Kernel#Float string parsing and coercion
+run_spec "$SPEC_DIR/core/kernel/Array_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/Complex_spec.rb"  # 64 of its 66 examples pass; the last two need String to carry an encoding so a UTF-16 argument is refused
+run_spec "$SPEC_DIR/core/kernel/Float_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/Hash_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/Integer_spec.rb"  # its 2 remaining examples need Integer == Float to compare numerically
+run_spec "$SPEC_DIR/core/kernel/Integer_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/Rational_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/String_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/__callee___spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/__dir___spec.rb"  # needs Dir.chdir + ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/__dir___spec.rb"
 run_spec "$SPEC_DIR/core/kernel/__method___spec.rb"
 run_spec "$SPEC_DIR/core/kernel/abort_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/at_exit_spec.rb"  # 10 examples need ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/kernel/at_exit_spec.rb"  # 10 of its 12 examples pass; the other two need Ruby's uncaught-exception report format and a lexical __FILE__ inside a block
 run_spec "$SPEC_DIR/core/kernel/autoload_relative_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/autoload_spec.rb"  # frozen-Object example needs ruby_exe subprocess support
-# run_spec "$SPEC_DIR/core/kernel/backtick_spec.rb"  # needs backtick literals, subprocess execution, Process::Status, and external encodings
+# run_spec "$SPEC_DIR/core/kernel/autoload_spec.rb"  # 19 of its 23 examples pass; the other four need `autoload` inside a module's instance method to register on that module
+# run_spec "$SPEC_DIR/core/kernel/backtick_spec.rb"  # 5 of its 8 examples pass; the rest need String to carry an encoding and mspec's stderr-fd capture
 run_spec "$SPEC_DIR/core/kernel/binding_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/block_given_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/caller_locations_spec.rb"  # needs a real backtrace model, Thread::Backtrace::Location, and Array#[] with ranges
-# run_spec "$SPEC_DIR/core/kernel/caller_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/caller_locations_spec.rb"  # 11 of its 12 examples pass; the custom-offset one needs the call stack to hold the same frames MRI does
+run_spec "$SPEC_DIR/core/kernel/caller_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/case_compare_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/catch_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/chomp_spec.rb"  # every example needs ruby_exe subprocess support
-# run_spec "$SPEC_DIR/core/kernel/chop_spec.rb"  # every example needs ruby_exe subprocess support
+run_spec "$SPEC_DIR/core/kernel/chomp_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/chop_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/class_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/clone_spec.rb"  # needs singleton-class copying, clone(freeze:), and Complex/Rational identity
+run_spec "$SPEC_DIR/core/kernel/clone_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/comparison_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/define_singleton_method_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/display_spec.rb"
@@ -195,13 +195,13 @@ run_spec "$SPEC_DIR/core/kernel/dup_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/enum_for_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/eql_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/equal_value_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/eval_spec.rb"  # needs ** and ... argument forwarding
-# run_spec "$SPEC_DIR/core/kernel/exec_spec.rb"  # both behavior examples need ruby_exe subprocess support
-# run_spec "$SPEC_DIR/core/kernel/exit_spec.rb"  # the exit! examples need ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/kernel/eval_spec.rb"  # 23 of its 56 examples pass; the rest need per-string encodings with magic comments, binding and default-definee semantics, and flip-flop
+run_spec "$SPEC_DIR/core/kernel/exec_spec.rb"
+# run_spec "$SPEC_DIR/core/kernel/exit_spec.rb"  # 26 of its 30 examples pass; the rest need real Thread semantics and a Fiber class
 run_spec "$SPEC_DIR/core/kernel/extend_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/fail_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/fork_spec.rb"  # needs real process forking and Process.wait2
-# run_spec "$SPEC_DIR/core/kernel/format_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/fork_spec.rb"
+run_spec "$SPEC_DIR/core/kernel/format_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/freeze_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/frozen_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/gets_spec.rb"
@@ -210,7 +210,7 @@ run_spec "$SPEC_DIR/core/kernel/gsub_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/initialize_clone_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/initialize_copy_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/initialize_dup_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/inspect_spec.rb"  # needs endless method definitions, %i literals, and the instance_variables_to_inspect protocol
+run_spec "$SPEC_DIR/core/kernel/inspect_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/instance_of_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/instance_variable_defined_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/instance_variable_get_spec.rb"
@@ -220,20 +220,20 @@ run_spec "$SPEC_DIR/core/kernel/is_a_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/itself_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/kind_of_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/lambda_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/load_spec.rb"  # needs Process.euid, Dir.chdir, LoadError, $LOADED_FEATURES semantics, and load(path, wrap) scoping
+# run_spec "$SPEC_DIR/core/kernel/load_spec.rb"  # 97 of its 103 examples pass; the rest need main modelled as its own object and the circular-require warning
 run_spec "$SPEC_DIR/core/kernel/local_variables_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/loop_spec.rb"  # 3 examples need an Enumerator class: loop without a block, Enumerator#next, and Enumerator#size
+run_spec "$SPEC_DIR/core/kernel/loop_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/match_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/method_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/methods_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/nil_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/not_match_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/object_id_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/open_spec.rb"  # needs Kernel#open, File::CREAT, IO.popen, and ruby_exe subprocess support
-# run_spec "$SPEC_DIR/core/kernel/p_spec.rb"  # needs a File IO object for `$stdout = file` and fd-level redirection
-# run_spec "$SPEC_DIR/core/kernel/pp_spec.rb"  # its one example needs ruby_exe subprocess support
+# run_spec "$SPEC_DIR/core/kernel/open_spec.rb"  # 14 of its 15 examples pass; the last needs the open-uri standard library
+# run_spec "$SPEC_DIR/core/kernel/p_spec.rb"  # 5 of its 6 examples pass; the last needs STDOUT and STDERR as IO objects for mspec's output_to_fd
+run_spec "$SPEC_DIR/core/kernel/pp_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/print_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/printf_spec.rb"  # 204 of its examples need a StringIO class, and the rest need a File IO object
+# run_spec "$SPEC_DIR/core/kernel/printf_spec.rb"  # 44 of its 286 examples pass; the rest exercise the shared sprintf suite, whose width, precision, and coercion rules are its own piece of work
 run_spec "$SPEC_DIR/core/kernel/private_methods_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/proc_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/protected_methods_spec.rb"
@@ -328,8 +328,8 @@ run_spec "$SPEC_DIR/core/exception/set_backtrace_spec.rb"
 run_spec "$SPEC_DIR/core/exception/signm_spec.rb"
 run_spec "$SPEC_DIR/core/exception/signo_spec.rb"
 run_spec "$SPEC_DIR/core/exception/standard_error_spec.rb"
-# run_spec "$SPEC_DIR/core/exception/status_spec.rb"  # exits the process; needs SystemExit#status without terminating the run
-# run_spec "$SPEC_DIR/core/exception/success_spec.rb"  # exits the process; needs SystemExit#success? without terminating the run
+run_spec "$SPEC_DIR/core/exception/status_spec.rb"
+run_spec "$SPEC_DIR/core/exception/success_spec.rb"
 # run_spec "$SPEC_DIR/core/exception/syntax_error_spec.rb"  # 3 errors; needs SyntaxError#path
 # run_spec "$SPEC_DIR/core/exception/system_call_error_spec.rb"  # 9 failures and 7 errors; needs SystemCallError.new to map an errno with no custom message
 # run_spec "$SPEC_DIR/core/exception/system_exit_spec.rb"  # 2 failures and 3 errors; needs SystemExit status handling

@@ -195,7 +195,7 @@ impl VirtualMachine {
         // `Module#const_source_location`. Done here (alongside the
         // eager bind) so the location is available even mid-load.
         let class_def_file = self
-            .get_current_file()
+            .reported_current_file()
             .map(|p| p.display().to_string())
             .unwrap_or_default();
         if let Some(parent) = parent_scope.as_ref() {
@@ -222,8 +222,16 @@ impl VirtualMachine {
         // `const_added` fires when the constant first becomes defined —
         // before the body runs and before `inherited` (which fires after
         // the body). Reopening does not retrigger it.
-        if is_new && let Some(parent) = parent_scope.as_ref() {
-            self.trigger_const_added_hook(Object::Class(Rc::clone(parent)), name, position)?;
+        if is_new {
+            // A top-level class or module is a constant on Object, which is
+            // the hook's receiver there.
+            let owner = match parent_scope.as_ref() {
+                Some(parent) => Some(Object::Class(Rc::clone(parent))),
+                None => self.globals().get("Object"),
+            };
+            if let Some(owner) = owner {
+                self.trigger_const_added_hook(owner, name, position)?;
+            }
         }
         // Keyword class bodies get a fresh local scope — `class` is a scope
         // gate in Ruby, so enclosing locals are not visible inside the body.
@@ -317,6 +325,14 @@ impl VirtualMachine {
                 cursor = current.superclass();
             }
         }
+        // A reopened `Module` or `Class` carries the hook as an instance
+        // method, which is how every module reaches it: `class Module; def
+        // const_added(name); end; end` fires for each one. Ordinary method
+        // lookup on the owner finds that and skips a class's own instance
+        // methods, which are for its includers rather than the hook.
+        if found.is_none() {
+            found = self.lookup_method(&owner, "const_added");
+        }
         if let Some((holder, method)) = found
             && !method.is_undefined
         {
@@ -329,6 +345,17 @@ impl VirtualMachine {
             )?;
         }
         Ok(())
+    }
+
+    /// True when `Module` or `Class` has been reopened with an instance
+    /// method named `const_added`, which every class and module then answers.
+    pub(crate) fn user_const_added_hook_defined(&self) -> bool {
+        ["Class", "Module"].iter().any(|global_name| {
+            matches!(
+                self.globals().get(global_name),
+                Some(Object::Class(global_class)) if global_class.find_method("const_added").is_some()
+            )
+        })
     }
 
     /// Evaluate a block with `self` bound to the given class/module, executing
@@ -508,7 +535,7 @@ impl VirtualMachine {
             Some(obj) => self.coerce_eval_string(obj, position)?,
             None => {
                 let caller = self
-                    .get_current_file()
+                    .reported_current_file()
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "(eval)".to_string());
                 format!("(eval at {}:{})", caller, position.line)
@@ -981,7 +1008,7 @@ impl VirtualMachine {
                     }
                     class.set_class_var(const_name, const_value.clone());
                     let assign_file = self
-                        .get_current_file()
+                        .reported_current_file()
                         .map(|p| p.display().to_string())
                         .unwrap_or_default();
                     class.set_const_location(const_name, assign_file, assign_pos.line as i64);
@@ -1537,7 +1564,7 @@ impl VirtualMachine {
         // Object, the home of top-level constants.
         if is_new {
             let module_def_file = self
-                .get_current_file()
+                .reported_current_file()
                 .map(|p| p.display().to_string())
                 .unwrap_or_default();
             if let Some(parent) = parent_scope.as_ref() {
@@ -1548,8 +1575,14 @@ impl VirtualMachine {
         }
         // `const_added` fires when the constant first becomes defined —
         // before the body runs. Reopening does not retrigger it.
-        if is_new && let Some(parent) = parent_scope.as_ref() {
-            self.trigger_const_added_hook(Object::Module(Rc::clone(parent)), name, position)?;
+        if is_new {
+            let owner = match parent_scope.as_ref() {
+                Some(parent) => Some(Object::Module(Rc::clone(parent))),
+                None => self.globals().get("Object"),
+            };
+            if let Some(owner) = owner {
+                self.trigger_const_added_hook(owner, name, position)?;
+            }
         }
 
         // Keyword module bodies get a fresh local scope — `module` is a
@@ -1715,7 +1748,7 @@ impl VirtualMachine {
                     crate::vm::statement::name_constant_value(module, const_name, &const_value);
                     module.set_class_var(const_name, const_value);
                     let assign_file = self
-                        .get_current_file()
+                        .reported_current_file()
                         .map(|p| p.display().to_string())
                         .unwrap_or_default();
                     module.set_const_location(const_name, assign_file, assign_pos.line as i64);
@@ -2085,7 +2118,7 @@ impl VirtualMachine {
                 .get_class_var(crate::vm::REFINEMENT_LABEL_KEY)
                 .is_some()
         {
-            let msg = "Cannot include refinement".to_string();
+            let msg = format!("Cannot {} refinement", method_name);
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("TypeError", msg.clone()),
                 location: position_to_location(position),
@@ -2126,8 +2159,7 @@ impl VirtualMachine {
         self.apply_module_mixin(target, module_rc, "append_features", "included", position)
     }
 
-    /// Prepend `module_rc` to `target`. Metorex models the ancestry the same
-    /// way it models an include; what differs is the pair of hooks that fire.
+    /// Prepend `module_rc` to `target`, ahead of the target's own methods.
     pub(crate) fn apply_module_prepend(
         &mut self,
         target: &Rc<Class>,
@@ -2153,7 +2185,11 @@ impl VirtualMachine {
         // or not the module overrode the first one.
         let target_argument = Object::Class(Rc::clone(target));
         if !self.invoke_module_hook(module_rc, features_hook, &target_argument, position)? {
-            self.default_append_features(target, module_rc, position)?;
+            if features_hook == "prepend_features" {
+                self.default_prepend_features(target, module_rc, position)?;
+            } else {
+                self.default_append_features(target, module_rc, position)?;
+            }
         }
         self.invoke_module_hook(module_rc, notify_hook, &target_argument, position)?;
         Ok(())
@@ -2222,6 +2258,41 @@ impl VirtualMachine {
             return Ok(());
         }
         target.add_mixin(Rc::clone(module_rc));
+        Ok(())
+    }
+
+    /// `prepend`'s counterpart to `default_append_features`. The module lands
+    /// ahead of the target's own methods. Unlike `include`, a module the
+    /// target merely inherits is still prepended here, since the front of the
+    /// chain is a different place from where it already sits.
+    pub(crate) fn default_prepend_features(
+        &mut self,
+        target: &Rc<Class>,
+        module_rc: &Rc<Class>,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if target.is_frozen() {
+            let msg = format!("can't modify frozen Module: {}", target.name());
+            let exc = Object::exception("FrozenError", msg.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        if Rc::ptr_eq(target, module_rc) || module_includes(module_rc, target) {
+            let msg = "cyclic prepend detected".to_string();
+            let exc = Object::exception("ArgumentError", msg.clone());
+            return Err(MetorexError::UncaughtException {
+                exception: exc,
+                location: position_to_location(position),
+                message: msg,
+            });
+        }
+        if target.has_prepend(module_rc) {
+            return Ok(());
+        }
+        target.add_prepend(Rc::clone(module_rc));
         Ok(())
     }
 

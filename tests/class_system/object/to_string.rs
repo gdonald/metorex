@@ -32,7 +32,7 @@ fn test_to_string_dict() {
     let dict = Object::Dict(Rc::new(RefCell::new(map)));
     let s = dict.to_string();
     assert!(s.starts_with('{') && s.ends_with('}'));
-    assert!(s.contains("x: 10"));
+    assert!(s.contains("\"x\" => 10"));
 }
 
 #[test]

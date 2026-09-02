@@ -301,8 +301,15 @@ impl VirtualMachine {
                 if self.exception_matches(exception, &rescue_clause.exception_types)? {
                     // Bind exception to variable if specified (=> e)
                     if let Some(var_name) = &rescue_clause.variable_name {
-                        self.environment_mut()
-                            .define(var_name.clone(), exception.clone());
+                        match var_name.strip_prefix('$') {
+                            Some(global) => {
+                                self.globals_mut().set(global, exception.clone());
+                            }
+                            None => {
+                                self.environment_mut()
+                                    .define(var_name.clone(), exception.clone());
+                            }
+                        }
                     }
 
                     // Execute the rescue block

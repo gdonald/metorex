@@ -45,22 +45,41 @@ impl VirtualMachine {
                 self.eval_class_var_read(name, *position)
             }
             Expression::GlobalVariable { name, .. } => {
+                // `$?` is the status of the last child waited for, which lives
+                // with the process rather than in the global table.
+                if name == "?" {
+                    return Ok(self.process_last_status());
+                }
                 Ok(self.globals().get(name).unwrap_or(Object::Nil))
             }
             Expression::MagicFile { .. } => {
                 let path = self
-                    .get_current_file()
+                    .reported_current_file()
                     .map(|p| p.display().to_string())
                     .unwrap_or_else(|| "(eval)".to_string());
                 Ok(Object::String(Rc::new(path)))
             }
             Expression::MagicLine { position, .. } => Ok(Object::Int(position.line as i64)),
             Expression::MagicDir { .. } => {
-                let dir = self
-                    .get_current_file()
-                    .and_then(|p| p.parent().map(|d| d.display().to_string()))
-                    .unwrap_or_else(|| ".".to_string());
-                Ok(Object::String(Rc::new(dir)))
+                // `__dir__` is nil where there is no file behind the code, and
+                // otherwise the directory holding it, which is "." for a bare
+                // filename the way `File.dirname` reports it.
+                let Some(file) = self.get_current_file() else {
+                    return Ok(Object::Nil);
+                };
+                // A relative path expands against the working directory, so
+                // running `metorex script.rb` still names the real directory.
+                let directory = match std::fs::canonicalize(file) {
+                    Ok(resolved) => match resolved.parent() {
+                        Some(parent) => parent.display().to_string(),
+                        None => ".".to_string(),
+                    },
+                    Err(_) => match file.parent().map(|d| d.display().to_string()) {
+                        Some(directory) if !directory.is_empty() => directory,
+                        _ => ".".to_string(),
+                    },
+                };
+                Ok(Object::String(Rc::new(directory)))
             }
 
             // ── Closures, grouping ──────────────────────────────────────────
@@ -93,7 +112,7 @@ impl VirtualMachine {
                 if captured.is_empty() && captured_vars.is_none() {
                     captured = self.environment().current_scope_var_refs();
                 }
-                let block = BlockStatement::with_def_scope(
+                let mut block = BlockStatement::with_def_scope(
                     parameters.clone(),
                     parameter_defaults.clone(),
                     body.clone(),
@@ -102,6 +121,12 @@ impl VirtualMachine {
                     self.enclosing_method_names(),
                     *is_lambda,
                 );
+                // The block's body belongs to the file it was written in,
+                // wherever it is later called from.
+                block.source_file = self
+                    .current_source_file
+                    .clone()
+                    .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()));
                 Ok(Object::Block(Rc::new(block)))
             }
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),

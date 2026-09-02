@@ -16,27 +16,7 @@ fn test_metaprogramming_anonymous_class_execution() {
 
 #[test]
 fn test_metaprogramming_implicit_blocks_execution() {
-    let expected = r#"Howdy, Alice!
-Hey, Bob!
-Hello, Charlie!
-Iteration: 0
-Iteration: 1
-Iteration: 2
-no block
-got a block
-10
-20
-1
-4
-9
-[1, 4, 9, 16]
-[2, 4, 6]
-1
-2
-3
-4
-5
-"#;
+    let expected = "Howdy, Alice!\nHey, Bob!\nHello, Charlie!\nIteration: 0\nIteration: 1\nIteration: 2\nno block\ngot a block\n10\n20\n1\n4\n9\n1\n4\n9\n16\n2\n4\n6\n1\n2\n3\n4\n5\n";
     let output = run_example("metaprogramming/implicit_blocks.rb");
     assert_eq!(output, expected);
 }
@@ -246,28 +226,7 @@ Cache size: 2
 
 #[test]
 fn test_metaprogramming_advanced_custom_iterators() {
-    let expected = r#"=== each_with_index ===
-0: apple
-1: banana
-2: cherry
-
-=== times ===
-Iteration 0
-Iteration 1
-Iteration 2
-Iteration 3
-Iteration 4
-
-=== reduce ===
-Sum: 15
-Product: 120
-
-=== flat_map ===
-[1, 2, 3, 4, 5, 6]
-
-=== take_while ===
-[2, 4, 6]
-"#;
+    let expected = "=== each_with_index ===\n0: apple\n1: banana\n2: cherry\n\n=== times ===\nIteration 0\nIteration 1\nIteration 2\nIteration 3\nIteration 4\n\n=== reduce ===\nSum: 15\nProduct: 120\n\n=== flat_map ===\n1\n2\n3\n4\n5\n6\n\n=== take_while ===\n2\n4\n6\n";
     let output = run_example("metaprogramming/advanced/custom_iterators.rb");
     assert_eq!(output, expected);
 }
@@ -1010,5 +969,121 @@ fn test_metaprogramming_singleton_hooks_undefined_parens_execution() {
         "NameError\n"
     );
     let output = run_example("metaprogramming/singleton_hooks/undefined_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_added_top_level_execution() {
+    let expected = concat!(
+        "added TopLevelModule to Object\n",
+        "added TopLevelClass to Object\n",
+        "added TopLevelConstant to Object\n",
+        "added Outer to Object\n",
+        "added Inner to Outer\n",
+        "added Nested to Outer\n",
+        "added AnonymousBound to Object\n",
+        "AnonymousBound\n",
+    );
+    let output = run_example("metaprogramming/const_added_top_level.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_const_added_top_level_parens_execution() {
+    let expected = concat!(
+        "added TopLevelModule to Object\n",
+        "added TopLevelClass to Object\n",
+        "added TopLevelConstant to Object\n",
+        "added Outer to Object\n",
+        "added Inner to Outer\n",
+        "added Nested to Outer\n",
+        "added AnonymousBound to Object\n",
+        "AnonymousBound\n",
+    );
+    let output = run_example("metaprogramming/const_added_top_level_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_refine_block_scope_execution() {
+    let expected = concat!(
+        "HELLO\n",
+        "int 1, int 2\n",
+        "no block given\n",
+        "wrong argument type String (expected Class or Module)\n",
+        "refined a module\n",
+    );
+    let output = run_example("metaprogramming/refine_block_scope.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_refine_block_scope_parens_execution() {
+    let expected = concat!(
+        "HELLO\n",
+        "int 1, int 2\n",
+        "no block given\n",
+        "wrong argument type String (expected Class or Module)\n",
+        "refined a module\n",
+    );
+    let output = run_example("metaprogramming/refine_block_scope_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_caller_locations_slicing_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "nil\n",
+        "[]\n",
+        "Thread::Backtrace::Location\n",
+        "true\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("metaprogramming/caller_locations_slicing.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_caller_locations_slicing_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "nil\n",
+        "[]\n",
+        "Thread::Backtrace::Location\n",
+        "true\n",
+        "true\n",
+        "true\n",
+    );
+    let output = run_example("metaprogramming/caller_locations_slicing_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_caller_entries_execution() {
+    let expected = concat!(
+        "true\n", "true\n", "true\n", "true\n", "true\n", "true\n", "nil\n", "[]\n", "true\n",
+        "true\n",
+    );
+    let output = run_example("metaprogramming/caller_entries.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_metaprogramming_caller_entries_parens_execution() {
+    let expected = concat!(
+        "true\n", "true\n", "true\n", "true\n", "true\n", "true\n", "nil\n", "[]\n", "true\n",
+        "true\n",
+    );
+    let output = run_example("metaprogramming/caller_entries_parens.rb");
     assert_eq!(output, expected);
 }

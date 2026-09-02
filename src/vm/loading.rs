@@ -17,6 +17,68 @@ impl VirtualMachine {
         self.current_file = Some(path);
     }
 
+    /// The directories `$LOAD_PATH` names. An entry that is not a String is
+    /// asked for its `to_path`, the way Ruby reads one.
+    pub(crate) fn load_path_directories(&mut self) -> Vec<String> {
+        let Some(Object::Array(entries)) = self.globals().get(":") else {
+            return Vec::new();
+        };
+        let entries = entries.borrow().clone();
+        let mut directories = Vec::with_capacity(entries.len());
+        for entry in entries {
+            match entry {
+                Object::String(directory) => directories.push((*directory).clone()),
+                other => {
+                    let position = crate::lexer::Position::new(0, 0, 0);
+                    if let Ok(path) = self.coerce_load_path(&other, position) {
+                        directories.push(path);
+                    }
+                }
+            }
+        }
+        directories
+    }
+
+    /// A path with a leading `~` expanded against HOME, which is read from
+    /// `ENV` so a program that sets it there is followed.
+    pub(crate) fn expand_home_path(&self, path: &str) -> String {
+        let Some(rest) = path.strip_prefix("~/") else {
+            return path.to_string();
+        };
+        let home = match self.globals().get("ENV") {
+            Some(Object::Dict(entries)) => match entries.borrow().get("HOME") {
+                Some(Object::String(home)) => Some((**home).clone()),
+                _ => None,
+            },
+            _ => None,
+        }
+        .or_else(|| std::env::var("HOME").ok());
+        match home {
+            Some(home) => format!("{}/{}", home.trim_end_matches('/'), rest),
+            None => path.to_string(),
+        }
+    }
+
+    /// Set `$_`, the line `-n` last read.
+    pub fn set_current_line(&mut self, line: String) {
+        self.globals_mut().set_variable("_", Object::string(line));
+    }
+
+    /// Record the main script's canonical path and the path it was named by.
+    pub fn set_script_path(&mut self, canonical: PathBuf, as_given: PathBuf) {
+        self.script_path = Some((canonical, as_given));
+    }
+
+    /// The path `__FILE__` reports for the file running now: the spelling the
+    /// main script was named by, and the current file for anything else.
+    pub(crate) fn reported_current_file(&self) -> Option<PathBuf> {
+        let current = self.current_file.as_ref()?;
+        match &self.script_path {
+            Some((canonical, as_given)) if canonical == current => Some(as_given.clone()),
+            _ => Some(current.clone()),
+        }
+    }
+
     /// Get the current file being executed.
     pub fn get_current_file(&self) -> Option<&PathBuf> {
         self.current_file.as_ref()
@@ -362,21 +424,26 @@ impl VirtualMachine {
 
     /// Require a library by name, searching `$LOAD_PATH` just like the `require` builtin.
     pub fn require_library(&mut self, name: &str) -> Result<(), MetorexError> {
-        let load_path = self.globals().get(":").unwrap_or(Object::Nil);
-        let search_dirs: Vec<String> = match &load_path {
-            Object::Array(arr) => arr
-                .borrow()
-                .iter()
-                .filter_map(|obj| match obj {
-                    Object::String(s) => Some(s.as_ref().clone()),
-                    _ => None,
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
+        let expanded = self.expand_home_path(name);
+        let name = expanded.as_str();
+        let search_dirs = self.load_path_directories();
 
+        // An absolute path, or one written relative to the working directory,
+        // names the file outright rather than being searched for.
         let mut found_path = None;
+        let direct = std::path::PathBuf::from(name);
+        if direct.is_absolute() || name.starts_with("./") || name.starts_with("../") {
+            for candidate in [direct.clone(), direct.with_extension("rb")] {
+                if candidate.is_file() {
+                    found_path = Some(candidate);
+                    break;
+                }
+            }
+        }
         for dir in &search_dirs {
+            if found_path.is_some() {
+                break;
+            }
             let base = std::path::PathBuf::from(dir);
             // Try `.rb` first so a matching .rb file wins over a sibling directory.
             let candidates = [base.join(format!("{}.rb", name)), base.join(name)];
@@ -419,6 +486,17 @@ impl VirtualMachine {
     /// - Automatic path canonicalization
     /// - Proper restoration of the previous current file
     pub fn execute_file(&mut self, path: &std::path::Path) -> Result<Object, MetorexError> {
+        self.execute_file_recording(path, true)
+    }
+
+    /// Run a file, recording it in `$LOADED_FEATURES` and skipping it when it
+    /// is already there. `load` passes false: it runs the file every time and
+    /// leaves the feature list alone.
+    pub fn execute_file_recording(
+        &mut self,
+        path: &std::path::Path,
+        record: bool,
+    ) -> Result<Object, MetorexError> {
         use crate::file_loader::{find_file_path, load_file_source, parse_file};
 
         // Find the actual file path (with extension auto-detection)
@@ -449,23 +527,35 @@ impl VirtualMachine {
         } else {
             false
         };
-        if already_in_features {
+        if record && already_in_features {
             // Keep loaded_files in sync — once $" lists the path, the
             // internal set should agree.
             self.mark_file_loaded(canonical_path.clone());
             return Ok(Object::Nil);
         }
+        // A file dropped from `$"` is loaded again, so the internal set is
+        // not allowed to keep saying otherwise.
+        if record {
+            self.loaded_files.remove(&canonical_path);
+        }
 
         // Mark eagerly in both stores BEFORE executing so a self-recursive
         // require during the file's own body short-circuits.
-        self.mark_file_loaded(canonical_path.clone());
-        if let Some(Object::Array(arr)) = self.globals().get("\"") {
-            arr.borrow_mut()
-                .push(Object::String(Rc::new(canonical_str.clone())));
+        if record {
+            self.mark_file_loaded(canonical_path.clone());
+            if let Some(Object::Array(arr)) = self.globals().get("\"") {
+                arr.borrow_mut()
+                    .push(Object::String(Rc::new(canonical_str.clone())));
+            }
         }
 
         // Save the current file path to restore later
         let previous_file = self.current_file.clone();
+        // Code in the file being executed belongs to that file, so a block
+        // written in it names it however far from the load it is called.
+        let previous_source_file = self
+            .current_source_file
+            .replace(canonical_path.display().to_string());
 
         // Load file source with error context
         let source = load_file_source(&canonical_path).map_err(|e| {
@@ -494,6 +584,25 @@ impl VirtualMachine {
         // load was called from, so `Module.nesting` inside it follows the
         // file's own class and module bodies rather than the caller's frame.
         let caller_nesting = std::mem::take(&mut self.method_nesting_stack);
+        // A `def` in the loaded file belongs to Object, not to whatever class
+        // or module body the load was called from. A wrapped load names a
+        // module for them to land on instead.
+        let caller_def_scope = std::mem::take(&mut self.def_scope_stack);
+        let wrapped = self.load_wrap_module.take();
+        if let Some(wrapper) = &wrapped {
+            self.def_scope_stack.push(Rc::clone(wrapper));
+        }
+        // A wrapped load runs with a copy of the top-level main as `self`,
+        // which is what the file sees and what its `to_s` reports.
+        let previous_self = wrapped.as_ref().and_then(|_| {
+            let main = match self.globals().get("TOPLEVEL_BINDING") {
+                Some(Object::Binding(binding)) => binding.receiver.clone(),
+                _ => None,
+            }?;
+            let saved = self.environment().get("self");
+            self.environment_mut().define("self".to_string(), main);
+            Some(saved)
+        });
         // The same goes for `__callee__` and `__method__`: a loaded file runs
         // at top level, so neither reports the method that ran the load.
         self.call_stack_push(crate::vm::CallFrame::boundary(format!(
@@ -504,6 +613,16 @@ impl VirtualMachine {
         let result = self.execute_program(&statements);
         self.call_stack_pop();
         self.method_nesting_stack = caller_nesting;
+        self.def_scope_stack = caller_def_scope;
+        if let Some(saved) = previous_self {
+            match saved {
+                Some(receiver) => self.environment_mut().define("self".to_string(), receiver),
+                None => self
+                    .environment_mut()
+                    .define("self".to_string(), Object::Nil),
+            }
+        }
+        self.current_source_file = previous_source_file;
         self.loading_paths.pop();
         self.current_file = previous_file;
         let value = result.map_err(|e| {
