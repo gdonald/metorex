@@ -926,8 +926,24 @@ fn register_errno_classes(errno_module: &Rc<Class>, system_call_error: &Rc<Class
         );
         errno_module.set_class_var(*name, Object::Class(class));
     }
+    // `Errno::NOERROR` stands for a successful call, which Ruby defines
+    // alongside the numbered errors.
+    let no_error = Rc::new(Class::new(
+        "Errno::NOERROR",
+        Some(Rc::clone(system_call_error)),
+    ));
+    no_error.set_class_var("Errno", Object::Int(0));
+    no_error.set_class_var(
+        ERRNO_MESSAGE_KEY,
+        Object::String(Rc::new("Success".to_string())),
+    );
+    errno_module.set_class_var("NOERROR", Object::Class(no_error));
     // Ruby aliases these where the platform gives them the same number.
-    for (alias, canonical) in [("EWOULDBLOCK", "EAGAIN"), ("ENOTSUP", "EOPNOTSUPP")] {
+    for (alias, canonical) in [
+        ("EWOULDBLOCK", "EAGAIN"),
+        ("ENOTSUP", "EOPNOTSUPP"),
+        ("EDEADLOCK", "EDEADLK"),
+    ] {
         if errno_module.get_class_var(alias).is_none()
             && let Some(existing) = errno_module.get_class_var(canonical)
         {
