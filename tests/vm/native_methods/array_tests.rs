@@ -44,37 +44,33 @@ arr.sort
 // ── Array each without block ───────────────────────────────────────────────────
 
 #[test]
-fn array_each_without_block_error() {
-    let err = run_err(
-        r#"
-[1, 2, 3].each
-"#,
-    );
-    assert!(err.contains("block") || err.contains("each") || err.contains("requires"));
+fn array_each_without_block_answers_an_enumerator() {
+    // Without a block it answers an Enumerator over the array, the way Ruby
+    // does, rather than raising.
+    let class_name = run(r#"
+[1, 2, 3].each.class.to_s
+"#);
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Array map without block ────────────────────────────────────────────────────
 
 #[test]
-fn array_map_without_block_error() {
-    let err = run_err(
-        r#"
-[1, 2, 3].map
-"#,
-    );
-    assert!(err.contains("block") || err.contains("map") || err.contains("requires"));
+fn array_map_without_block_answers_an_enumerator() {
+    let class_name = run(r#"
+[1, 2, 3].map.class.to_s
+"#);
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Array select without block ─────────────────────────────────────────────────
 
 #[test]
-fn array_select_without_block_error() {
-    let err = run_err(
-        r#"
-[1, 2, 3].select
-"#,
-    );
-    assert!(err.contains("block") || err.contains("select") || err.contains("requires"));
+fn array_select_without_block_answers_an_enumerator() {
+    let class_name = run(r#"
+[1, 2, 3].select.class.to_s
+"#);
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Array reduce without block ─────────────────────────────────────────────────
@@ -356,20 +352,19 @@ fn array_reduce_too_many_args_error() {
 // ── array_methods.rs: min with mixed types keeps first (line 703) ─────────────
 
 #[test]
-fn array_min_with_mixed_types_keeps_current() {
-    // When comparing Int and String, the fallback keeps 'current' (first element wins)
-    let result = run(r#"[1, "a", 2].min"#);
-    assert_eq!(result, Some(Object::Int(1)));
+fn array_min_with_mixed_types_raises() {
+    // Ruby orders with `<=>`, and an Integer and a String cannot be compared,
+    // so the comparison raises rather than picking one.
+    let err = run_err(r#"[1, "a", 2].min"#);
+    assert!(err.contains("comparison of String with Integer failed"));
 }
 
 // ── array_methods.rs: max with mixed types falls back to current (line 737) ───
 
 #[test]
-fn array_max_with_mixed_types_fallback() {
-    // When comparing Int and String, the fallback keeps 'current' (the Int candidate)
-    // For [1, "a"]: "a" vs Int(1) → keeps Int(1); result is Int(1)
-    let result = run(r#"[1, "a"].max"#);
-    assert_eq!(result, Some(Object::Int(1)));
+fn array_max_with_mixed_types_raises() {
+    let err = run_err(r#"[1, "a"].max"#);
+    assert!(err.contains("comparison of String with Integer failed"));
 }
 
 // ── array_methods.rs: any?/all?/none? with positional args error (lines 765-769) ─

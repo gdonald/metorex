@@ -9,6 +9,62 @@ use crate::vm::utils::{is_truthy, position_to_location};
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// The elements `Array.new` builds from its arguments and block, which is
+    /// also what a subclass of Array starts out holding.
+    pub(crate) fn build_array_elements(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        let size = match arguments.first() {
+            None => 0_i64,
+            Some(Object::Int(n)) => *n,
+            Some(other) => {
+                return Err(method_argument_type_error(
+                    "Array.new",
+                    "Integer",
+                    other,
+                    position,
+                ));
+            }
+        };
+        if size < 0 {
+            let message = "negative array size".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("ArgumentError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
+        }
+        let block = self.pending_block.take();
+        let mut elements: Vec<Object> = Vec::with_capacity(size as usize);
+        if let Some(Object::Block(body)) = block {
+            // The block may take 0 args (`Array.new(10) { rand }`) or 1
+            // (`Array.new(10) { |i| ... }`). Match metorex's strict arity
+            // check by only passing the index when the block declares a
+            // positional parameter for it.
+            let pass_index = body
+                .parameters
+                .iter()
+                .any(|name| !name.starts_with('&') && !name.starts_with('*'));
+            for index in 0..size {
+                let block_arguments = if pass_index {
+                    vec![Object::Int(index)]
+                } else {
+                    vec![]
+                };
+                let value = self.execute_block_callable(&body, block_arguments, position)?;
+                elements.push(value);
+            }
+        } else {
+            let default = arguments.get(1).cloned().unwrap_or(Object::Nil);
+            for _ in 0..size {
+                elements.push(default.clone());
+            }
+        }
+        Ok(elements)
+    }
+
     pub(crate) fn call_class_methods(
         &mut self,
         class_rc: &Rc<Class>,
@@ -829,56 +885,25 @@ impl VirtualMachine {
             }
         }
         // Array.new — `new(size)`, `new(size, default)`, `new(size) { |i| ... }`.
-        // Without arguments, returns an empty array. The block form invokes
-        // the block with each index 0..size-1 and uses the result.
+        // Without arguments, returns an empty array.
+        // `Array[1, 2, 3]` and the same form on a subclass build a value from
+        // the arguments directly, without running `initialize`.
+        if method_name == "[]" && crate::vm::method_invocation::descends_from(class_rc, "Array") {
+            let elements = arguments.to_vec();
+            if class_rc.name() == "Array" {
+                return Ok(Some(Object::array(elements)));
+            }
+            let mut instance = crate::object::Instance::new(Rc::clone(class_rc));
+            instance.set_var(
+                crate::vm::native_methods::ARRAY_SUBCLASS_VAR.to_string(),
+                Object::array(elements),
+            );
+            return Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
+                instance,
+            )))));
+        }
         if method_name == "new" && class_rc.name() == "Array" {
-            let size = match arguments.first() {
-                None => 0_i64,
-                Some(Object::Int(n)) => *n,
-                Some(other) => {
-                    return Err(method_argument_type_error(
-                        "Array.new",
-                        "Integer",
-                        other,
-                        position,
-                    ));
-                }
-            };
-            if size < 0 {
-                let msg = "negative array size".to_string();
-                let exc = Object::exception("ArgumentError", msg.clone());
-                return Err(MetorexError::UncaughtException {
-                    exception: exc,
-                    location: position_to_location(position),
-                    message: msg,
-                });
-            }
-            let block = self.pending_block.take();
-            let mut elements: Vec<Object> = Vec::with_capacity(size as usize);
-            if let Some(Object::Block(b)) = block {
-                // The block may take 0 args (`Array.new(10) { rand }`) or 1
-                // (`Array.new(10) { |i| ... }`). Match metorex's strict
-                // arity check by only passing the index when the block
-                // declares a positional parameter for it.
-                let pass_index = b
-                    .parameters
-                    .iter()
-                    .any(|p| !p.starts_with('&') && !p.starts_with('*'));
-                for i in 0..size {
-                    let args = if pass_index {
-                        vec![Object::Int(i)]
-                    } else {
-                        vec![]
-                    };
-                    let v = self.execute_block_callable(&b, args, position)?;
-                    elements.push(v);
-                }
-            } else {
-                let default = arguments.get(1).cloned().unwrap_or(Object::Nil);
-                for _ in 0..size {
-                    elements.push(default.clone());
-                }
-            }
+            let elements = self.build_array_elements(arguments, position)?;
             return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                 elements,
             )))));

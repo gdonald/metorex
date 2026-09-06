@@ -33,6 +33,9 @@ pub(crate) use struct_methods::struct_members;
 
 /// Instance variable a String subclass keeps its characters in.
 pub(crate) const STRING_SUBCLASS_VAR: &str = "__string__";
+/// Instance variable an instance of an Array subclass stores its elements in,
+/// since a plain Array is a primitive rather than an instance.
+pub(crate) const ARRAY_SUBCLASS_VAR: &str = "__array__";
 
 /// The characters behind an instance of a String subclass.
 pub(crate) fn string_subclass_value(receiver: &Object) -> Option<Object> {
@@ -43,6 +46,19 @@ pub(crate) fn string_subclass_value(receiver: &Object) -> Option<Object> {
         .borrow()
         .instance_vars
         .get(STRING_SUBCLASS_VAR)
+        .cloned()
+}
+/// The backing array an instance of an Array subclass holds, or None when
+/// `receiver` is not one. The Rc is shared, so a mutation through it is
+/// visible to the instance.
+pub(crate) fn array_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(ARRAY_SUBCLASS_VAR)
         .cloned()
 }
 mod visibility;
@@ -194,6 +210,30 @@ impl VirtualMachine {
             }
             if let Some(result) =
                 self.call_string_method(&text, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+        }
+
+        // An instance of an Array subclass answers Array's methods, backed
+        // by the elements it holds.
+        if let Some(elements) = array_subclass_value(receiver) {
+            // Array implements neither `to_a` nor `to_ary` natively, because
+            // an Array already is one. From a subclass they answer a plain
+            // Array and the instance itself.
+            match method_name {
+                "to_a" | "entries" => {
+                    let Object::Array(storage) = &elements else {
+                        return Ok(None);
+                    };
+                    let copied = storage.borrow().clone();
+                    return Ok(Some(Object::array(copied)));
+                }
+                "to_ary" => return Ok(Some(receiver.clone())),
+                _ => {}
+            }
+            if let Some(result) =
+                self.call_array_method(&elements, method_name, arguments, position)?
             {
                 return Ok(Some(result));
             }

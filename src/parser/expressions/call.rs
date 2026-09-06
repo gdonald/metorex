@@ -141,7 +141,10 @@ impl Parser {
                     trailing_block,
                     position,
                 };
-            } else if self.match_token(&[TokenKind::LBracket]) {
+            } else if self.check(&[TokenKind::LBracket])
+                && !self.bracket_starts_array_argument(&expr)
+            {
+                self.advance();
                 // Array indexing or [] method call
                 if self.match_token(&[TokenKind::RBracket]) {
                     // Empty brackets: obj[] — call with no args
@@ -561,6 +564,16 @@ impl Parser {
             || (symbols::starts_operator_symbol(&next.kind) && !next.had_leading_space)
     }
 
+    /// `p [1, 2]` passes an array while `values[0]` indexes one. Ruby tells
+    /// them apart by the space before the bracket and by whether the name is
+    /// bound as a variable, which is what this repeats.
+    fn bracket_starts_array_argument(&self, callee: &Expression) -> bool {
+        let Expression::Identifier { name, .. } = callee else {
+            return false;
+        };
+        self.peek().had_leading_space && !self.bound_names.contains(name)
+    }
+
     fn can_start_argument_for_call(&mut self, _callee: &Expression) -> bool {
         // Don't skip whitespace yet - we need to check if there's a statement
         // terminator first. Newlines, comments, and semicolons all end a
@@ -663,9 +676,11 @@ impl Parser {
         }
 
         // Pattern 1: <ident> ':' is a keyword argument (name: value), allow it
-        // but only for Ident — not Int/Float/String followed by colon (those are dict-like)
+        // but only for Ident — not Int/Float/String followed by colon (those are dict-like).
+        // A `[` is the exception: `p [:only]` opens an array whose first
+        // element is a symbol, not a key.
         if matches!(self.peek_ahead(1).kind, TokenKind::Colon)
-            && !matches!(self.peek().kind, TokenKind::Ident(_))
+            && !matches!(self.peek().kind, TokenKind::Ident(_) | TokenKind::LBracket)
         {
             return false;
         }

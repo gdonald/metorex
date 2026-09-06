@@ -2323,7 +2323,7 @@ impl VirtualMachine {
     }
 
     /// The next draw as an Integer in [0, bound).
-    fn next_random_int(&mut self, bound: i64) -> i64 {
+    pub(crate) fn next_random_int(&mut self, bound: i64) -> i64 {
         if bound <= 0 {
             return 0;
         }

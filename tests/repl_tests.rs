@@ -127,12 +127,13 @@ fn process_line_simple_expression() {
 }
 
 #[test]
-fn process_line_assignment_returns_continue() {
+fn process_line_assignment_shows_the_assigned_value() {
     let mut core = ReplCore::new();
-    // Assignments produce nil, which is suppressed
+    // An assignment answers what it assigned, which the REPL displays the way
+    // irb does.
     match core.process_line("x = 42") {
-        LineResult::Continue => {}
-        other => panic!("Expected Continue for assignment, got {:?}", other),
+        LineResult::Value(shown) => assert_eq!(shown, "=> 42"),
+        other => panic!("Expected the assigned value, got {:?}", other),
     }
     assert_eq!(core.vm().environment().get("x"), Some(Object::Int(42)));
 }

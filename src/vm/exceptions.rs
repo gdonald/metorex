@@ -358,8 +358,9 @@ impl VirtualMachine {
                 Ok(ControlFlow::Exception { .. }) => {
                     final_result = ensure_result;
                 }
-                Ok(ControlFlow::Next) => {
-                    // Ensure completed normally, don't override final_result
+                Ok(ControlFlow::Next) | Ok(ControlFlow::Value(_)) => {
+                    // Ensure completed normally. Its value is discarded, since
+                    // the begin body decides what the whole form answers.
                 }
                 Ok(_) => {
                     // Other control flow (return, break, continue)

@@ -431,6 +431,14 @@ impl VirtualMachine {
         block: &BlockStatement,
         arguments: Vec<Object>,
     ) -> Result<ControlFlow, MetorexError> {
+        // `{ |x, y| }` handed a single array spreads it across the parameters,
+        // which is how `[[1, 2]].each { |x, y| }` binds x and y.
+        let arguments = match (block.destructures_single_array(), arguments.first()) {
+            (true, Some(Object::Array(elements))) if arguments.len() == 1 => {
+                elements.borrow().clone()
+            }
+            _ => arguments,
+        };
         self.environment_mut().push_isolated_scope();
         // The body belongs to the file the block was written in.
         let body_source_file = block

@@ -1089,7 +1089,10 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<bool, MetorexError> {
         if let Object::Float(number) = value {
-            return Ok(number.is_sign_negative());
+            // NaN carries a sign bit that varies by platform, and Ruby prints
+            // it with a `+` either way, so only a real negative counts. A
+            // negative zero keeps its sign, which `-0.0 < 0` would miss.
+            return Ok(!number.is_nan() && number.is_sign_negative());
         }
         let answer = self.send_to_object(value.clone(), "<", vec![Object::Int(0)], position)?;
         Ok(answer.is_truthy())

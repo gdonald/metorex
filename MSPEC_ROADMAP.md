@@ -773,25 +773,25 @@ Parser fixes during Phase 4 work:
 
 ### Collections
 
-- [ ] 4.20. core/array - 102 files; 18 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.20. core/array - 102 files; 41 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.20.1. core/array/all_spec
   - [ ] 4.20.2. core/array/allocate_spec
   - [ ] 4.20.3. core/array/any_spec
   - [x] 4.20.4. core/array/append_spec - 1 file, 8 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.20.5. core/array/array_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.20.6. core/array/assoc_spec
-  - [ ] 4.20.7. core/array/at_spec
+  - [x] 4.20.7. core/array/at_spec - 1 file, 8 examples, 18 expectations, 0 failures, 0 errors
   - [ ] 4.20.8. core/array/bsearch_index_spec
   - [ ] 4.20.9. core/array/bsearch_spec
   - [x] 4.20.10. core/array/clear_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.20.11. core/array/clone_spec
   - [ ] 4.20.12. core/array/collect_spec
   - [ ] 4.20.13. core/array/combination_spec
-  - [ ] 4.20.14. core/array/compact_spec
+  - [x] 4.20.14. core/array/compact_spec - 1 file, 7 examples, 15 expectations, 0 failures, 0 errors
   - [ ] 4.20.15. core/array/comparison_spec
-  - [ ] 4.20.16. core/array/concat_spec
-  - [ ] 4.20.17. core/array/constructor_spec
-  - [ ] 4.20.18. core/array/count_spec
+  - [x] 4.20.16. core/array/concat_spec - 1 file, 12 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.20.17. core/array/constructor_spec - 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.20.18. core/array/count_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.20.19. core/array/cycle_spec
   - [x] 4.20.20. core/array/deconstruct_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.20.21. core/array/delete_at_spec - 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
@@ -799,20 +799,20 @@ Parser fixes during Phase 4 work:
   - [x] 4.20.23. core/array/delete_spec - 1 file, 7 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.20.24. core/array/difference_spec
   - [ ] 4.20.25. core/array/dig_spec
-  - [ ] 4.20.26. core/array/drop_spec
-  - [ ] 4.20.27. core/array/drop_while_spec
+  - [x] 4.20.26. core/array/drop_spec - 1 file, 11 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.20.27. core/array/drop_while_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.20.28. core/array/dup_spec
   - [x] 4.20.29. core/array/each_index_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
-  - [ ] 4.20.30. core/array/each_spec
+  - [x] 4.20.30. core/array/each_spec - 1 file, 11 examples, 13 expectations, 0 failures, 0 errors
   - [ ] 4.20.31. core/array/element_reference_spec
   - [ ] 4.20.32. core/array/element_set_spec
   - [x] 4.20.33. core/array/empty_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.20.34. core/array/eql_spec
+  - [x] 4.20.34. core/array/eql_spec - 1 file, 11 examples, 40 expectations, 0 failures, 0 errors
   - [ ] 4.20.35. core/array/equal_value_spec
   - [ ] 4.20.36. core/array/fetch_spec
   - [ ] 4.20.37. core/array/fetch_values_spec
   - [ ] 4.20.38. core/array/fill_spec
-  - [ ] 4.20.39. core/array/filter_spec
+  - [x] 4.20.39. core/array/filter_spec - 1 file, 20 examples, 29 expectations, 0 failures, 0 errors
   - [x] 4.20.40. core/array/find_index_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.20.41. core/array/first_spec
   - [ ] 4.20.42. core/array/flatten_spec
@@ -823,11 +823,11 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.47. core/array/initialize_spec
   - [ ] 4.20.48. core/array/insert_spec
   - [ ] 4.20.49. core/array/inspect_spec
-  - [ ] 4.20.50. core/array/intersect_spec
+  - [x] 4.20.50. core/array/intersect_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.20.51. core/array/intersection_spec
   - [ ] 4.20.52. core/array/join_spec
   - [x] 4.20.53. core/array/keep_if_spec - 1 file, 14 examples, 20 expectations, 0 failures, 0 errors
-  - [ ] 4.20.54. core/array/last_spec
+  - [x] 4.20.54. core/array/last_spec - 1 file, 14 examples, 27 expectations, 0 failures, 0 errors
   - [x] 4.20.55. core/array/length_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.20.56. core/array/map_spec
   - [ ] 4.20.57. core/array/max_spec
@@ -865,11 +865,11 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.89. core/array/pack/w_spec
   - [ ] 4.20.90. core/array/pack/x_spec
   - [ ] 4.20.91. core/array/pack/z_spec
-  - [ ] 4.20.92. core/array/partition_spec
+  - [x] 4.20.92. core/array/partition_spec - 1 file, 4 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.20.93. core/array/permutation_spec
   - [ ] 4.20.94. core/array/plus_spec
   - [ ] 4.20.95. core/array/pop_spec
-  - [ ] 4.20.96. core/array/prepend_spec
+  - [x] 4.20.96. core/array/prepend_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.20.97. core/array/product_spec
   - [x] 4.20.98. core/array/push_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.20.99. core/array/rassoc_spec
@@ -878,29 +878,29 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.102. core/array/repeated_permutation_spec
   - [ ] 4.20.103. core/array/replace_spec
   - [x] 4.20.104. core/array/reverse_each_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
-  - [ ] 4.20.105. core/array/reverse_spec
+  - [x] 4.20.105. core/array/reverse_spec - 1 file, 6 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.20.106. core/array/rindex_spec
-  - [ ] 4.20.107. core/array/rotate_spec
+  - [x] 4.20.107. core/array/rotate_spec - 1 file, 14 examples, 49 expectations, 0 failures, 0 errors
   - [ ] 4.20.108. core/array/sample_spec
-  - [ ] 4.20.109. core/array/select_spec
+  - [x] 4.20.109. core/array/select_spec - 1 file, 20 examples, 29 expectations, 0 failures, 0 errors
   - [ ] 4.20.110. core/array/shift_spec
   - [ ] 4.20.111. core/array/shuffle_spec
   - [x] 4.20.112. core/array/size_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.20.113. core/array/slice_spec
-  - [ ] 4.20.114. core/array/sort_by_spec
+  - [x] 4.20.114. core/array/sort_by_spec - 1 file, 13 examples, 15 expectations, 0 failures, 0 errors
   - [ ] 4.20.115. core/array/sort_spec
   - [ ] 4.20.116. core/array/sum_spec
-  - [ ] 4.20.117. core/array/take_spec
-  - [ ] 4.20.118. core/array/take_while_spec
-  - [ ] 4.20.119. core/array/to_a_spec
-  - [ ] 4.20.120. core/array/to_ary_spec
+  - [x] 4.20.117. core/array/take_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.20.118. core/array/take_while_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.20.119. core/array/to_a_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.20.120. core/array/to_ary_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.20.121. core/array/to_h_spec
   - [ ] 4.20.122. core/array/to_s_spec
   - [ ] 4.20.123. core/array/transpose_spec
   - [ ] 4.20.124. core/array/try_convert_spec
   - [ ] 4.20.125. core/array/union_spec
   - [ ] 4.20.126. core/array/uniq_spec
-  - [ ] 4.20.127. core/array/unshift_spec
+  - [x] 4.20.127. core/array/unshift_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.20.128. core/array/values_at_spec
   - [ ] 4.20.129. core/array/zip_spec
 - [ ] 4.21. core/hash - 69 files; 1 pass, and the rest are enabled in the runner one file at a time

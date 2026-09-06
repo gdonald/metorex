@@ -30,11 +30,13 @@ impl VirtualMachine {
                 if matches!(expression, Expression::Identifier { .. })
                     && matches!(result, Object::Method(_))
                 {
-                    self.invoke_callable(result, vec![], *position)?;
-                    return Ok(ControlFlow::Next);
+                    let called = self.invoke_callable(result, vec![], *position)?;
+                    return Ok(ControlFlow::Value(called));
                 }
 
-                Ok(ControlFlow::Next)
+                // The value travels with the flow, so the last expression in
+                // an `if` branch is what the `if` answers.
+                Ok(ControlFlow::Value(result))
             }
             Statement::Assignment {
                 target,
@@ -48,8 +50,10 @@ impl VirtualMachine {
                     Some(right) => self.evaluate_expression(right)?,
                     None => self.evaluate_expression(value)?,
                 };
-                self.assign_value(target, evaluated)?;
-                Ok(ControlFlow::Next)
+                self.assign_value(target, evaluated.clone())?;
+                // An assignment answers the value it assigned, so a block or
+                // an `if` branch ending in one has that as its value.
+                Ok(ControlFlow::Value(evaluated))
             }
             Statement::MultipleAssignment {
                 targets,
@@ -272,13 +276,17 @@ impl VirtualMachine {
         &mut self,
         statements: &[Statement],
     ) -> Result<ControlFlow, MetorexError> {
+        let mut last = ControlFlow::Next;
         for statement in statements {
             match self.execute_statement(statement)? {
-                ControlFlow::Next => continue,
+                ControlFlow::Next => last = ControlFlow::Next,
+                // A statement that produced a value does not end the run; the
+                // last one to produce one is what the group answers.
+                ControlFlow::Value(value) => last = ControlFlow::Value(value),
                 flow => return Ok(flow),
             }
         }
-        Ok(ControlFlow::Next)
+        Ok(last)
     }
 
     /// Evaluate the value of a constant assignment inside a class or module

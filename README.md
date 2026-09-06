@@ -248,6 +248,8 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - An Integer and a Float compare against each other, so `(0...1).include?(0.38)` and `0.38 <=> 0` answer correctly
 - `class << target = value` assigns first, then opens the singleton class of what was assigned
 - `%i[a b c]` and `%i(a b c)` build an Array of Symbols, alongside `%w` for Strings
+- `puts [1, 2].inspect` passes the array with its trailing method call, the way Ruby reads a paren-less argument that starts with `[`, while `values[0]` on a bound name still indexes
+- An `if`, `unless`, or assignment as the last statement of a block or branch is that block's value
 - `Kernel#raise` is a method as well as a keyword, so `send(:raise, ...)`, `Kernel.raise`, `method(:raise)`, and a singleton that makes it public all reach it. A bare `raise` with nothing to re-raise gives `RuntimeError: unhandled exception`
 - `=~` and `!~` match a Symbol against a Regexp on the characters it is named with
 - `Kernel#proc` is reachable through `send` and hands back an existing Proc unchanged, keeping a lambda a lambda. Without a literal block it raises `ArgumentError`
@@ -364,6 +366,14 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - A compound assignment is an expression, so `(count += 1)` answers what it assigned
 - Comparing two collections remembers the pairs already in flight, so an array that holds itself compares without following the cycle forever
 - `Array#rindex`, `#concat`, `#delete_at`, `#delete_if`, `#keep_if`, `#each_index`, `#reverse_each`, `#values_at`, `#intersect?`, `#assoc`, `#rassoc`, `#to_ary` and `#deconstruct`, with `#first` and `#last` taking a count
+- Array's in-place methods: `#compact!`, `#reverse!`, `#sort!`, `#sort_by!`, `#map!`/`#collect!`, `#reject!`, `#select!`/`#filter!`, `#uniq!`, `#rotate!`, `#shuffle!` and `#flatten!`, each answering nil when nothing changed where Ruby does
+- `Array#at`, `#count`, `#take_while`, `#drop_while`, `#rotate`, `#shuffle`, `#sample`, `#to_a`, `#entries`, and `#uniq` with a block that names the key
+- `Array#min`, `#max`, and `#minmax` order with `<=>` or a block, and raise ArgumentError when two elements cannot be compared
+- `Array#flatten` descends all the way down, or as many levels as its argument names, and raises ArgumentError on an array that contains itself
+- A subclass of Array holds real elements: `Sub.new` runs the subclass's own `initialize` against storage that is already in place, `Sub[1, 2]` fills it without calling `initialize`, and an instance answers Array's methods and compares equal to a plain Array with the same contents
+- `each`, `map`, `select`, `filter`, `reject`, `map!`, `select!`, `reject!`, `sort_by!`, `take_while`, and `drop_while` answer an Enumerator without a block, and a walk may append to the array it is walking
+- An array or hash that contains itself inspects as `[...]` or `{...}` rather than recursing, and comparing two of them answers rather than running forever
+- `Array#eql?` compares element by element with `eql?` semantics, so `[1]` and `[1.0]` differ
 - The search methods ask each element whether it is `==` to what they were given, so an object that defines `==` decides for itself, and `#delete` runs its block when nothing matched
 - A method called without the block it would have yielded to answers an Enumerator over the same walk, reporting the collection's size ahead of time where the walk covers all of it
 - `#delete_if` and `#keep_if` move the survivors forward and cut the array at the end, so it keeps its length while the block runs and holds what was already decided if the block raises

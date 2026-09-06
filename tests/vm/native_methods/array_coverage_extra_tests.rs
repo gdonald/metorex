@@ -43,40 +43,30 @@ fn sort_by_without_block_errors() {
     );
 }
 
-// ── each without block errors ──────────────────────────────────────────────
+// ── each without block answers an Enumerator ───────────────────────────────
 
 #[test]
-fn each_without_block_errors() {
-    let err = run_err("[1, 2, 3].each");
-    assert!(
-        err.contains("block") || err.contains("each"),
-        "unexpected: {}",
-        err
-    );
+fn each_without_block_answers_an_enumerator() {
+    // Without a block it answers an Enumerator over the array, the way Ruby
+    // does, rather than raising.
+    let class_name = run("[1, 2, 3].each.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
-// ── map without block errors ───────────────────────────────────────────────
+// ── map without block answers an Enumerator ────────────────────────────────
 
 #[test]
-fn map_without_block_errors() {
-    let err = run_err("[1, 2, 3].map");
-    assert!(
-        err.contains("block") || err.contains("map"),
-        "unexpected: {}",
-        err
-    );
+fn map_without_block_answers_an_enumerator() {
+    let class_name = run("[1, 2, 3].map.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
-// ── select without block errors ────────────────────────────────────────────
+// ── select without block answers an Enumerator ─────────────────────────────
 
 #[test]
-fn select_without_block_errors() {
-    let err = run_err("[1, 2, 3].select");
-    assert!(
-        err.contains("block") || err.contains("select"),
-        "unexpected: {}",
-        err
-    );
+fn select_without_block_answers_an_enumerator() {
+    let class_name = run("[1, 2, 3].select.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── partition without block errors ─────────────────────────────────────────

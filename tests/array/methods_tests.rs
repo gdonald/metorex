@@ -268,9 +268,11 @@ sum
 }
 
 #[test]
-fn array_each_error_no_block() {
-    let err = run_err("[1, 2, 3].each");
-    assert!(err.contains("block"));
+fn array_each_enumerator_no_block() {
+    // Without a block it answers an Enumerator over the array, the way Ruby
+    // does, rather than raising.
+    let class_name = run("[1, 2, 3].each.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 #[test]
@@ -282,9 +284,9 @@ fn array_each_error_with_args() {
 // ── map error paths ──────────────────────────────────────────────────────────
 
 #[test]
-fn array_map_error_no_block() {
-    let err = run_err("[1, 2, 3].map");
-    assert!(err.contains("block"));
+fn array_map_enumerator_no_block() {
+    let class_name = run("[1, 2, 3].map.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 #[test]
@@ -296,9 +298,9 @@ fn array_map_error_with_args() {
 // ── select/filter error paths ─────────────────────────────────────────────────
 
 #[test]
-fn array_select_error_no_block() {
-    let err = run_err("[1, 2, 3].select");
-    assert!(err.contains("block"));
+fn array_select_enumerator_no_block() {
+    let class_name = run("[1, 2, 3].select.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 #[test]
@@ -308,9 +310,9 @@ fn array_select_error_with_args() {
 }
 
 #[test]
-fn array_filter_error_no_block() {
-    let err = run_err("[1, 2, 3].filter");
-    assert!(err.contains("block"));
+fn array_filter_enumerator_no_block() {
+    let class_name = run("[1, 2, 3].filter.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── reduce error paths ───────────────────────────────────────────────────────
@@ -500,8 +502,16 @@ fn array_flatten_basic() {
 }
 
 #[test]
-fn array_flatten_error_with_args() {
-    let err = run_err("[1].flatten(1)");
+fn array_flatten_takes_a_depth() {
+    // The argument names how many levels to unwrap, so one level of a flat
+    // array leaves it as it was.
+    let result = run("[1].flatten(1)");
+    assert_eq!(result, Some(Object::array(vec![Object::Int(1)])));
+}
+
+#[test]
+fn array_flatten_error_with_too_many_args() {
+    let err = run_err("[1].flatten(1, 2)");
     assert!(err.contains("argument"));
 }
 

@@ -1134,15 +1134,13 @@ impl VirtualMachine {
             // Module#<=> against a non-module argument returns nil rather than
             // raising.
             (Object::Class(_) | Object::Module(_), _) => Ok(Object::Nil),
-            // A number has no ordering against something that is not one, and
-            // Ruby reports that as nil rather than as an error.
-            (Object::Int(_) | Object::BigInt(_) | Object::Float(_), _) => Ok(Object::Nil),
-            _ => Err(binary_type_error(
-                BinaryOp::Spaceship,
-                &left,
-                &right,
-                position,
-            )),
+            // Two values of unrelated kinds have no ordering, and Ruby reports
+            // that as nil rather than as an error. `sort` and friends turn it
+            // into the ArgumentError a caller sees.
+            _ => {
+                let _ = position;
+                Ok(Object::Nil)
+            }
         }
     }
 

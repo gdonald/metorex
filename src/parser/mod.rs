@@ -35,11 +35,57 @@ pub struct Parser {
     /// to disambiguate `{x 1}` (dict-with-missing-colon, not a paren-less call)
     /// from `Class.new { attr o }` (brace block where `attr o` is a method call).
     pub(crate) dict_literal_depth: usize,
+    /// Names the file binds somewhere: assignment targets, method parameters,
+    /// and block parameters. `foo [1]` indexes a name in this set and passes
+    /// an array to a name that is not, which is the rule Ruby applies.
+    pub(crate) bound_names: std::collections::HashSet<String>,
+}
+
+/// Every name the token stream binds. Over-approximate on purpose: a name
+/// counted here is treated as a variable, which is the reading metorex
+/// already gave every name.
+fn collect_bound_names(tokens: &[Token]) -> std::collections::HashSet<String> {
+    use crate::lexer::TokenKind;
+    let mut names = std::collections::HashSet::new();
+    let mut in_parameters = false;
+    let mut in_block_parameters = false;
+    for (index, token) in tokens.iter().enumerate() {
+        match &token.kind {
+            TokenKind::Def => in_parameters = true,
+            TokenKind::Newline | TokenKind::Semicolon => {
+                in_parameters = false;
+                in_block_parameters = false;
+            }
+            TokenKind::Pipe => in_block_parameters = !in_block_parameters,
+            TokenKind::Ident(name) => {
+                let assigned = matches!(
+                    tokens.get(index + 1).map(|next| &next.kind),
+                    Some(
+                        TokenKind::Equal
+                            | TokenKind::PlusEqual
+                            | TokenKind::MinusEqual
+                            | TokenKind::StarEqual
+                            | TokenKind::SlashEqual
+                            | TokenKind::LogicalOrAssign
+                            | TokenKind::LogicalAndAssign
+                    )
+                );
+                let after_fat_arrow = index > 0
+                    && matches!(tokens[index - 1].kind, TokenKind::FatArrow | TokenKind::In);
+                if assigned || after_fat_arrow || in_parameters || in_block_parameters {
+                    names.insert(name.clone());
+                }
+            }
+            _ => {}
+        }
+    }
+    names
 }
 
 impl Parser {
     /// Create a new parser from a vector of tokens
     pub fn new(tokens: Vec<Token>) -> Self {
+        let tokens_for_names = tokens.clone();
         Self {
             stream: TokenStream::new(tokens),
             error_handler: ErrorHandler::new(),
@@ -47,6 +93,7 @@ impl Parser {
             ternary_depth: 0,
             paren_less_arg_depth: 0,
             dict_literal_depth: 0,
+            bound_names: collect_bound_names(&tokens_for_names),
         }
     }
 

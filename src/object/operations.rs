@@ -52,6 +52,14 @@ impl Object {
     }
 
     fn equals_inner(&self, other: &Object, in_flight: &mut Vec<(usize, usize)>) -> bool {
+        // An instance of an Array subclass compares by the elements it holds,
+        // so it equals a plain Array with the same contents.
+        match (backing_array(self), backing_array(other)) {
+            (Some(left), None) => return left.equals_within(other, in_flight),
+            (None, Some(right)) => return self.equals_within(&right, in_flight),
+            (Some(left), Some(right)) => return left.equals_within(&right, in_flight),
+            (None, None) => {}
+        }
         match (self, other) {
             (Object::Nil, Object::Nil) => true,
             (Object::Bool(a), Object::Bool(b)) => a == b,
@@ -234,4 +242,14 @@ fn subclass_string(value: &Object) -> Option<Object> {
         return None;
     };
     instance.borrow().instance_vars.get("__string__").cloned()
+}
+
+/// The elements an instance of an Array subclass holds, or None for anything
+/// else. Kept here so equality can compare such an instance to a plain Array
+/// without reaching into the VM.
+fn backing_array(value: &Object) -> Option<Object> {
+    let Object::Instance(instance) = value else {
+        return None;
+    };
+    instance.borrow().instance_vars.get("__array__").cloned()
 }

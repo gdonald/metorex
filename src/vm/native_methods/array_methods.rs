@@ -73,7 +73,22 @@ impl VirtualMachine {
             "uniq!",
             "[]=",
         ];
-        if MUTATORS.contains(&method_name) && self.object_is_frozen(receiver) {
+        // A method that would modify the array refuses on a frozen one. The
+        // block-taking ones answer an Enumerator first when no block is given,
+        // which Ruby allows even on a frozen array.
+        let answers_enumerator = matches!(
+            method_name,
+            "map!"
+                | "collect!"
+                | "reject!"
+                | "select!"
+                | "filter!"
+                | "keep_if"
+                | "delete_if"
+                | "sort_by!"
+        ) && !matches!(self.pending_block, Some(Object::Block(_)));
+        if MUTATORS.contains(&method_name) && !answers_enumerator && self.object_is_frozen(receiver)
+        {
             return Err(self.frozen_modification_error(receiver, position));
         }
         match method_name {
@@ -98,12 +113,27 @@ impl VirtualMachine {
                     ));
                 }
                 let elements = array_rc.borrow().clone();
+                let address = Rc::as_ptr(array_rc) as usize;
+                // An array that reaches itself prints `[...]` rather than
+                // recursing forever, which is what Ruby shows.
+                if crate::object::rendering_in_progress(address) {
+                    return Ok(Some(Object::string("[...]")));
+                }
+                crate::object::begin_rendering(address);
                 // Each element renders through its own `inspect`, so an
                 // object that defines one is shown the way it asks to be.
                 let mut parts = Vec::with_capacity(elements.len());
                 for element in &elements {
-                    parts.push(self.get_inspect_representation(element, position)?);
+                    let rendered = self.get_inspect_representation(element, position);
+                    match rendered {
+                        Ok(rendered) => parts.push(rendered),
+                        Err(error) => {
+                            crate::object::end_rendering();
+                            return Err(error);
+                        }
+                    }
                 }
+                crate::object::end_rendering();
                 Ok(Some(Object::string(format!("[{}]", parts.join(", ")))))
             }
             "clear" => {
@@ -340,16 +370,19 @@ impl VirtualMachine {
                         ));
                     }
                     None => {
-                        return Err(MetorexError::runtime_error(
-                            "each requires a block",
-                            position_to_location(position),
-                        ));
+                        return self
+                            .make_enumerator(receiver, method_name, arguments, position)
+                            .map(Some);
                     }
                 };
-                let array = array_rc.borrow();
                 let mut break_value: Option<Object> = None;
-                for element in array.iter() {
-                    let args = vec![element.clone()];
+                // Read one element at a time rather than holding a borrow, so
+                // the block may append to the array it is walking, which Ruby
+                // allows and the walk then visits.
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    index += 1;
+                    let args = vec![element];
                     match self.execute_block_with_control_flow(&block, args)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
@@ -384,7 +417,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(break_value.unwrap_or_else(|| receiver.clone())))
             }
-            "map" => {
+            "map" | "collect" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -404,17 +437,16 @@ impl VirtualMachine {
                         ));
                     }
                     None => {
-                        return Err(MetorexError::runtime_error(
-                            "map requires a block",
-                            position_to_location(position),
-                        ));
+                        return self
+                            .make_enumerator(receiver, method_name, arguments, position)
+                            .map(Some);
                     }
                 };
-                let array = array_rc.borrow();
                 let mut results = Vec::new();
-                for element in array.iter() {
-                    let args = vec![element.clone()];
-                    let value = self.execute_block_body(&block, args)?;
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    index += 1;
+                    let value = self.execute_block_body(&block, vec![element])?;
                     results.push(value);
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
@@ -439,21 +471,20 @@ impl VirtualMachine {
                         ));
                     }
                     None => {
-                        return Err(MetorexError::runtime_error(
-                            format!("{} requires a block", method_name),
-                            position_to_location(position),
-                        ));
+                        return self
+                            .make_enumerator(receiver, method_name, arguments, position)
+                            .map(Some);
                     }
                 };
                 let reject = method_name == "reject";
-                let array = array_rc.borrow();
                 let mut results = Vec::new();
-                for element in array.iter() {
-                    let args = vec![element.clone()];
-                    let value = self.execute_block_body(&block, args)?;
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    index += 1;
+                    let value = self.execute_block_body(&block, vec![element.clone()])?;
                     let is_truthy = !matches!(value, Object::Bool(false) | Object::Nil);
                     if is_truthy != reject {
-                        results.push(element.clone());
+                        results.push(element);
                     }
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
@@ -917,25 +948,43 @@ impl VirtualMachine {
                 let array = array_rc.borrow();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(array.clone())))))
             }
-            "flatten" => {
-                if !arguments.is_empty() {
+            // `flatten` walks all the way down by default, or as many levels
+            // as the argument names. `flatten!` writes the result back and
+            // answers nil when there was nothing nested to flatten.
+            "flatten" | "flatten!" => {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        1,
                         arguments.len(),
                         position,
                     ));
                 }
-                let array = array_rc.borrow();
+                let depth = match arguments.first() {
+                    None | Some(Object::Nil) => -1,
+                    Some(Object::Int(level)) => *level,
+                    Some(other) => self
+                        .coerce_integer_argument(other, position)?
+                        .try_into()
+                        .unwrap_or(-1),
+                };
+                let elements = array_rc.borrow().clone();
                 let mut flat = Vec::new();
-                for item in array.iter() {
-                    if let Object::Array(inner) = item {
-                        flat.extend(inner.borrow().iter().cloned());
-                    } else {
-                        flat.push(item.clone());
-                    }
+                let mut in_flight = vec![Rc::as_ptr(array_rc) as usize];
+                flatten_into(&elements, depth, &mut in_flight, &mut flat, position)?;
+                if method_name == "flatten" {
+                    return Ok(Some(Object::array(flat)));
                 }
-                Ok(Some(Object::Array(Rc::new(RefCell::new(flat)))))
+                let changed = flat.len() != elements.len()
+                    || elements
+                        .iter()
+                        .any(|element| matches!(element, Object::Array(_)));
+                *array_rc.borrow_mut() = flat;
+                Ok(Some(if changed {
+                    receiver.clone()
+                } else {
+                    Object::Nil
+                }))
             }
             "compact" => {
                 if !arguments.is_empty() {
@@ -1209,10 +1258,22 @@ impl VirtualMachine {
                     ));
                 }
                 let other = self.coerce_to_array(&arguments[0], position)?;
-                let shared = array_rc
-                    .borrow()
-                    .iter()
-                    .any(|element| other.iter().any(|candidate| candidate.equals(element)));
+                // Ruby matches on `hash` and `eql?`, so an object that
+                // answers `eql?` decides for itself.
+                let elements = array_rc.borrow().clone();
+                let mut shared = false;
+                'outer: for element in &elements {
+                    for candidate in &other {
+                        // The same object is shared whatever its `eql?` says,
+                        // which is what Ruby's hash lookup amounts to.
+                        if identical(element, candidate)
+                            || self.values_eql(element, candidate, position)?
+                        {
+                            shared = true;
+                            break 'outer;
+                        }
+                    }
+                }
                 Ok(Some(Object::Bool(shared)))
             }
             // `assoc` and `rassoc` look through an array of arrays, matching
@@ -1301,74 +1362,6 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Bool(false)))
             }
-            "min" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let array = array_rc.borrow();
-                let min = array
-                    .iter()
-                    .fold(None, |acc: Option<&Object>, item| match acc {
-                        None => Some(item),
-                        Some(current) => match (current, item) {
-                            (Object::Int(a), Object::Int(b)) => {
-                                if b < a {
-                                    Some(item)
-                                } else {
-                                    Some(current)
-                                }
-                            }
-                            (Object::Float(a), Object::Float(b)) => {
-                                if b < a {
-                                    Some(item)
-                                } else {
-                                    Some(current)
-                                }
-                            }
-                            _ => Some(current),
-                        },
-                    });
-                Ok(Some(min.cloned().unwrap_or(Object::Nil)))
-            }
-            "max" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let array = array_rc.borrow();
-                let max = array
-                    .iter()
-                    .fold(None, |acc: Option<&Object>, item| match acc {
-                        None => Some(item),
-                        Some(current) => match (current, item) {
-                            (Object::Int(a), Object::Int(b)) => {
-                                if b > a {
-                                    Some(item)
-                                } else {
-                                    Some(current)
-                                }
-                            }
-                            (Object::Float(a), Object::Float(b)) => {
-                                if b > a {
-                                    Some(item)
-                                } else {
-                                    Some(current)
-                                }
-                            }
-                            _ => Some(current),
-                        },
-                    });
-                Ok(Some(max.cloned().unwrap_or(Object::Nil)))
-            }
             "uniq" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -1378,17 +1371,146 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let array = array_rc.borrow();
-                let mut seen = Vec::new();
-                let mut unique = Vec::new();
-                for item in array.iter() {
-                    let repr = format!("{}", item);
-                    if !seen.contains(&repr) {
-                        seen.push(repr);
-                        unique.push(item.clone());
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let elements = array_rc.borrow().clone();
+                let unique = self.unique_elements(&elements, block, position)?;
+                Ok(Some(Object::array(unique)))
+            }
+            // `min`, `max`, and `minmax` order with `<=>`, or with the block
+            // when one is given.
+            "min" | "max" | "minmax" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let elements = array_rc.borrow().clone();
+                if elements.is_empty() {
+                    return Ok(Some(match method_name {
+                        "minmax" => Object::array(vec![Object::Nil, Object::Nil]),
+                        _ => Object::Nil,
+                    }));
+                }
+                let mut smallest = elements[0].clone();
+                let mut largest = elements[0].clone();
+                for element in &elements[1..] {
+                    if self.compare_elements(element, &smallest, &block, position)? < 0 {
+                        smallest = element.clone();
+                    }
+                    if self.compare_elements(element, &largest, &block, position)? > 0 {
+                        largest = element.clone();
                     }
                 }
-                Ok(Some(Object::Array(Rc::new(RefCell::new(unique)))))
+                Ok(Some(match method_name {
+                    "min" => smallest,
+                    "max" => largest,
+                    _ => Object::array(vec![smallest, largest]),
+                }))
+            }
+            // `count` answers how many elements there are, how many equal the
+            // argument, or how many the block answers for.
+            "count" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if let Some(wanted) = arguments.first() {
+                    self.warn_unused_block(position)?;
+                    let elements = array_rc.borrow().clone();
+                    let mut counted = 0;
+                    for element in &elements {
+                        if self.elements_equal(element, wanted, position)? {
+                            counted += 1;
+                        }
+                    }
+                    return Ok(Some(Object::Int(counted)));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return Ok(Some(Object::Int(array_rc.borrow().len() as i64)));
+                };
+                let mut counted = 0;
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    index += 1;
+                    let verdict = self.execute_block_callable(&block, vec![element], position)?;
+                    if verdict.is_truthy() {
+                        counted += 1;
+                    }
+                }
+                Ok(Some(Object::Int(counted)))
+            }
+            // `take_while` keeps the leading run the block answers for, and
+            // `drop_while` answers what is left after it.
+            "take_while" | "drop_while" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .make_enumerator(receiver, method_name, arguments, position)
+                        .map(Some);
+                };
+                let mut taken = Vec::new();
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    let verdict =
+                        self.execute_block_callable(&block, vec![element.clone()], position)?;
+                    if !verdict.is_truthy() {
+                        break;
+                    }
+                    taken.push(element);
+                    index += 1;
+                }
+                if method_name == "take_while" {
+                    return Ok(Some(Object::array(taken)));
+                }
+                let rest = array_rc.borrow()[index.min(array_rc.borrow().len())..].to_vec();
+                Ok(Some(Object::array(rest)))
+            }
+            // `at` is `[]` with a single index, and nothing else.
+            "at" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let index: i64 = match &arguments[0] {
+                    Object::Int(index) => *index,
+                    Object::Float(index) => *index as i64,
+                    other => self
+                        .coerce_integer_argument(other, position)?
+                        .try_into()
+                        .unwrap_or(i64::MAX),
+                };
+                let array = array_rc.borrow();
+                let length = array.len() as i64;
+                let resolved = if index < 0 { index + length } else { index };
+                if resolved < 0 || resolved >= length {
+                    return Ok(Some(Object::Nil));
+                }
+                Ok(Some(array[resolved as usize].clone()))
             }
             "any?" | "all?" | "none?" | "one?" => {
                 if arguments.len() > 1 {
@@ -1519,6 +1641,236 @@ impl VirtualMachine {
                 let _ = idx;
                 Ok(Some(Object::String(Rc::new(s))))
             }
+            // `to_a` and `entries` answer the array itself, which is what
+            // Ruby returns for an Array that is not a subclass instance.
+            "to_a" | "entries" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(receiver.clone()))
+            }
+            // The in-place variants. Each writes the new elements back into
+            // the receiver; the ones Ruby documents as answering nil when
+            // nothing changed do so here too.
+            "compact!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let kept: Vec<Object> = array_rc
+                    .borrow()
+                    .iter()
+                    .filter(|element| !matches!(element, Object::Nil))
+                    .cloned()
+                    .collect();
+                let changed = kept.len() != array_rc.borrow().len();
+                *array_rc.borrow_mut() = kept;
+                Ok(Some(if changed {
+                    receiver.clone()
+                } else {
+                    Object::Nil
+                }))
+            }
+            "reverse!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                array_rc.borrow_mut().reverse();
+                Ok(Some(receiver.clone()))
+            }
+            "sort!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let mut sorted = array_rc.borrow().clone();
+                match block {
+                    None => sorted.sort_by(compare_for_sort),
+                    Some(block) => sorted = self.sort_with_block(sorted, &block, position)?,
+                }
+                *array_rc.borrow_mut() = sorted;
+                Ok(Some(receiver.clone()))
+            }
+            "sort_by!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .make_enumerator(receiver, method_name, arguments, position)
+                        .map(Some);
+                };
+                let mut keyed: Vec<(Object, Object)> = Vec::new();
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    index += 1;
+                    let key =
+                        self.execute_block_callable(&block, vec![element.clone()], position)?;
+                    keyed.push((key, element));
+                }
+                keyed.sort_by(|left, right| compare_for_sort(&left.0, &right.0));
+                *array_rc.borrow_mut() = keyed.into_iter().map(|(_, element)| element).collect();
+                Ok(Some(receiver.clone()))
+            }
+            "map!" | "collect!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .make_enumerator(receiver, method_name, arguments, position)
+                        .map(Some);
+                };
+                // Each element is replaced as the block answers for it, so an
+                // array left behind by a break or an exception holds the
+                // results so far and the originals after them.
+                let mut index = 0;
+                while let Some(element) = element_at(array_rc, index) {
+                    let value = self.execute_block_body(&block, vec![element])?;
+                    array_rc.borrow_mut()[index] = value;
+                    index += 1;
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "reject!" | "select!" | "filter!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .make_enumerator(receiver, method_name, arguments, position)
+                        .map(Some);
+                };
+                let rejecting = method_name == "reject!";
+                let before = array_rc.borrow().len();
+                let kept = self.filter_in_place(array_rc, &block, rejecting, position)?;
+                Ok(Some(if kept != before {
+                    receiver.clone()
+                } else {
+                    Object::Nil
+                }))
+            }
+            "uniq!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let elements = array_rc.borrow().clone();
+                let unique = self.unique_elements(&elements, block, position)?;
+                let changed = unique.len() != elements.len();
+                *array_rc.borrow_mut() = unique;
+                Ok(Some(if changed {
+                    receiver.clone()
+                } else {
+                    Object::Nil
+                }))
+            }
+            "rotate" | "rotate!" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let by = match arguments.first() {
+                    None => 1,
+                    Some(Object::Int(count)) => *count,
+                    Some(other) => {
+                        let coerced = self.coerce_integer_argument(other, position)?;
+                        coerced.try_into().unwrap_or(0)
+                    }
+                };
+                let elements = array_rc.borrow().clone();
+                let rotated = rotate_elements(&elements, by);
+                if method_name == "rotate!" {
+                    *array_rc.borrow_mut() = rotated;
+                    return Ok(Some(receiver.clone()));
+                }
+                Ok(Some(Object::array(rotated)))
+            }
+            "shuffle" | "shuffle!" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let mut elements = array_rc.borrow().clone();
+                for index in (1..elements.len()).rev() {
+                    let swap = self.next_random_int(index as i64 + 1) as usize;
+                    elements.swap(index, swap);
+                }
+                if method_name == "shuffle!" {
+                    *array_rc.borrow_mut() = elements;
+                    return Ok(Some(receiver.clone()));
+                }
+                Ok(Some(Object::array(elements)))
+            }
+            "sample" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let elements = array_rc.borrow().clone();
+                if elements.is_empty() {
+                    return Ok(Some(Object::Nil));
+                }
+                let index = self.next_random_int(elements.len() as i64) as usize;
+                Ok(Some(elements[index].clone()))
+            }
             _ => Ok(None),
         }
     }
@@ -1531,12 +1883,20 @@ fn inspect_elements(elements: &[Object]) -> String {
     format!("[{}]", parts.join(", "))
 }
 
+/// `inspect` for a nested array, which prints `[...]` when the array reaches
+/// itself rather than recursing forever.
+fn inspect_nested(nested: &Rc<RefCell<Vec<Object>>>) -> String {
+    let elements = nested.borrow().clone();
+    crate::object::render_guarded(Rc::as_ptr(nested) as usize, || inspect_elements(&elements))
+        .unwrap_or_else(|| "[...]".to_string())
+}
+
 pub(crate) fn inspect_element(element: &Object) -> String {
     match element {
         Object::String(s) => format!("{:?}", s.as_str()),
         Object::Symbol(s) => format!(":{}", s.as_str()),
         Object::Nil => "nil".to_string(),
-        Object::Array(nested) => inspect_elements(&nested.borrow()),
+        Object::Array(nested) => inspect_nested(nested),
         other => other.to_string(),
     }
 }
@@ -1557,6 +1917,182 @@ fn normalize_index(value: &Object, length: i64) -> Option<usize> {
 }
 
 impl VirtualMachine {
+    /// Walk `array_rc` and keep the elements the block answers for, writing
+    /// the result back as it goes. An element the block raises on is kept,
+    /// along with everything it has not reached yet, which is what Ruby
+    /// leaves behind. Answers how many elements survived.
+    fn filter_in_place(
+        &mut self,
+        array_rc: &Rc<RefCell<Vec<Object>>>,
+        block: &Rc<crate::object::BlockStatement>,
+        rejecting: bool,
+        position: Position,
+    ) -> Result<usize, MetorexError> {
+        let mut kept: Vec<Object> = Vec::new();
+        let mut index = 0;
+        while let Some(element) = element_at(array_rc, index) {
+            index += 1;
+            let verdict = match self.execute_block_callable(block, vec![element.clone()], position)
+            {
+                Ok(verdict) => verdict,
+                Err(error) => {
+                    let mut remaining = kept;
+                    remaining.push(element);
+                    let tail = array_rc.borrow()[index..].to_vec();
+                    remaining.extend(tail);
+                    *array_rc.borrow_mut() = remaining;
+                    return Err(error);
+                }
+            };
+            if verdict.is_truthy() != rejecting {
+                kept.push(element);
+            }
+        }
+        let survived = kept.len();
+        *array_rc.borrow_mut() = kept;
+        Ok(survived)
+    }
+
+    /// Order two elements with `<=>`, or with the block when one is given.
+    /// A comparison that answers nil is an ArgumentError, which is what Ruby
+    /// raises when the two cannot be ordered.
+    fn compare_elements(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        block: &Option<Rc<crate::object::BlockStatement>>,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let answer = match block {
+            Some(block) => {
+                self.execute_block_callable(block, vec![left.clone(), right.clone()], position)?
+            }
+            None => self.send_to_object(left.clone(), "<=>", vec![right.clone()], position)?,
+        };
+        match answer {
+            Object::Int(order) => Ok(order),
+            Object::Float(order) => Ok(order as i64),
+            _ => {
+                let message = format!(
+                    "comparison of {} with {} failed",
+                    self.builtins().class_of(left).ruby_name(),
+                    self.builtins().class_of(right).ruby_name()
+                );
+                Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    &message,
+                    position,
+                ))
+            }
+        }
+    }
+
+    /// The elements of `elements` with later duplicates dropped. A block
+    /// decides what counts as a duplicate by naming a key for each element.
+    pub(crate) fn unique_elements(
+        &mut self,
+        elements: &[Object],
+        block: Option<Rc<crate::object::BlockStatement>>,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        let mut seen: Vec<String> = Vec::new();
+        let mut unique = Vec::new();
+        for element in elements {
+            let key = match &block {
+                None => element.clone(),
+                Some(block) => {
+                    self.execute_block_callable(block, vec![element.clone()], position)?
+                }
+            };
+            let rendered = format!("{}", key);
+            if !seen.contains(&rendered) {
+                seen.push(rendered);
+                unique.push(element.clone());
+            }
+        }
+        Ok(unique)
+    }
+
+    /// Whether two values are `eql?`, which is stricter than `==`: 1 and 1.0
+    /// are equal but not eql, and an object of its own decides by answering
+    /// `eql?` itself.
+    pub(crate) fn values_eql(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let mut in_flight = Vec::new();
+        self.values_eql_within(left, right, &mut in_flight, position)
+    }
+
+    /// `values_eql` with the pairs already being compared, so a pair of arrays
+    /// that reach themselves is taken as equal rather than recursing forever.
+    fn values_eql_within(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        in_flight: &mut Vec<(usize, usize)>,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        // An object of the program's own making answers `eql?` itself. Only
+        // the receiver decides, so a mock on the right of an Array is never
+        // asked, which is what Ruby does.
+        if matches!(left, Object::Instance(_))
+            && crate::vm::native_methods::array_subclass_value(left).is_none()
+        {
+            if let Some((class, method)) = self.lookup_method(left, "eql?")
+                && !method.is_undefined
+                && !method.body.is_empty()
+            {
+                let answer =
+                    self.invoke_method(class, method, left.clone(), vec![right.clone()], position)?;
+                return Ok(answer.is_truthy());
+            }
+            // Object's own `eql?` is identity, which is where a class that
+            // defines none lands.
+            return Ok(identical(left, right));
+        }
+        let left = &elements_of(left).unwrap_or_else(|| left.clone());
+        let right = &elements_of(right).unwrap_or_else(|| right.clone());
+        match (left, right) {
+            (Object::Array(_), Object::Array(_)) => {}
+            (Object::Array(_), _) | (_, Object::Array(_)) => return Ok(false),
+            _ => {}
+        }
+        if let (Object::Array(left_elements), Object::Array(right_elements)) = (left, right) {
+            let pair = (
+                Rc::as_ptr(left_elements) as usize,
+                Rc::as_ptr(right_elements) as usize,
+            );
+            if pair.0 == pair.1 || in_flight.contains(&pair) {
+                return Ok(true);
+            }
+            let left_elements = left_elements.borrow().clone();
+            let right_elements = right_elements.borrow().clone();
+            if left_elements.len() != right_elements.len() {
+                return Ok(false);
+            }
+            in_flight.push(pair);
+            for (one, other) in left_elements.iter().zip(right_elements.iter()) {
+                if !self.values_eql_within(one, other, in_flight, position)? {
+                    in_flight.pop();
+                    return Ok(false);
+                }
+            }
+            in_flight.pop();
+            return Ok(true);
+        }
+        let same_kind = match (left, right) {
+            (Object::Float(_), other) => matches!(other, Object::Float(_)),
+            (Object::Int(_) | Object::BigInt(_), other) => {
+                matches!(other, Object::Int(_) | Object::BigInt(_))
+            }
+            _ => true,
+        };
+        Ok(same_kind && left.equals(right))
+    }
+
     /// Whether an element equals what a search was given. Ruby sends `==` to
     /// the element, so an object of the program's own making answers.
     pub(crate) fn elements_equal(
@@ -1651,6 +2187,13 @@ impl VirtualMachine {
         if let Object::Array(elements) = value {
             return Ok(elements.borrow().clone());
         }
+        // An instance of an Array subclass already is an Array, so its
+        // elements are taken directly rather than through `to_ary`.
+        if let Some(Object::Array(elements)) =
+            crate::vm::native_methods::array_subclass_value(value)
+        {
+            return Ok(elements.borrow().clone());
+        }
         let refuse = |vm: &mut Self| {
             let message = format!(
                 "no implicit conversion of {} into Array",
@@ -1665,5 +2208,73 @@ impl VirtualMachine {
             Object::Array(elements) => Ok(elements.borrow().clone()),
             _ => Err(refuse(self)),
         }
+    }
+}
+
+/// Copy `elements` into `flat`, descending into nested arrays until `depth`
+/// levels have been unwrapped. A negative depth descends all the way.
+/// `in_flight` holds the arrays being walked, so an array that contains
+/// itself raises rather than recursing forever.
+fn flatten_into(
+    elements: &[Object],
+    depth: i64,
+    in_flight: &mut Vec<usize>,
+    flat: &mut Vec<Object>,
+    position: Position,
+) -> Result<(), MetorexError> {
+    for element in elements {
+        match element {
+            Object::Array(nested) if depth != 0 => {
+                let address = Rc::as_ptr(nested) as usize;
+                if in_flight.contains(&address) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "tries to flatten self",
+                        position,
+                    ));
+                }
+                let inner = nested.borrow().clone();
+                in_flight.push(address);
+                flatten_into(&inner, depth - 1, in_flight, flat, position)?;
+                in_flight.pop();
+            }
+            other => flat.push(other.clone()),
+        }
+    }
+    Ok(())
+}
+
+/// `rotate` moves the first `by` elements to the end, counting from the end
+/// when negative. An empty array rotates to itself.
+fn rotate_elements(elements: &[Object], by: i64) -> Vec<Object> {
+    if elements.is_empty() {
+        return Vec::new();
+    }
+    let length = elements.len() as i64;
+    let offset = by.rem_euclid(length) as usize;
+    let mut rotated = elements[offset..].to_vec();
+    rotated.extend_from_slice(&elements[..offset]);
+    rotated
+}
+
+/// One element of an array, read without holding a borrow, so the block a
+/// walk is running may modify the array it is walking.
+fn element_at(array_rc: &Rc<RefCell<Vec<Object>>>, index: usize) -> Option<Object> {
+    array_rc.borrow().get(index).cloned()
+}
+
+/// The backing array of an instance of an Array subclass, so it compares the
+/// way the Array it stands for does.
+fn elements_of(value: &Object) -> Option<Object> {
+    crate::vm::native_methods::array_subclass_value(value)
+}
+
+/// Whether two values are the same object, which is what `equal?` reports.
+fn identical(left: &Object, right: &Object) -> bool {
+    match (left, right) {
+        (Object::Instance(one), Object::Instance(other)) => Rc::ptr_eq(one, other),
+        (Object::Array(one), Object::Array(other)) => Rc::ptr_eq(one, other),
+        (Object::Dict(one), Object::Dict(other)) => Rc::ptr_eq(one, other),
+        _ => false,
     }
 }

@@ -1561,16 +1561,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let same_kind = match (receiver, &arguments[0]) {
-                    (Object::Float(_), other) => matches!(other, Object::Float(_)),
-                    (Object::Int(_) | Object::BigInt(_), other) => {
-                        matches!(other, Object::Int(_) | Object::BigInt(_))
-                    }
-                    _ => true,
-                };
-                Ok(Some(Object::Bool(
-                    same_kind && receiver.equals(&arguments[0]),
-                )))
+                Ok(Some(Object::Bool(self.values_eql(
+                    receiver,
+                    &arguments[0],
+                    position,
+                )?)))
             }
             "equal?" => {
                 if arguments.len() != 1 {

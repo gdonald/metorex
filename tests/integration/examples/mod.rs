@@ -1,5 +1,6 @@
 mod advanced;
 mod algorithms;
+mod array_methods;
 mod basics;
 mod builtins;
 mod control_flow;

@@ -1,9 +1,38 @@
 // Display trait implementation for Object
 
+use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
 use super::Object;
+
+thread_local! {
+    /// The collections currently being rendered. A collection that reaches
+    /// itself prints `[...]` or `{...}` rather than recursing forever, which
+    /// is what Ruby shows.
+    static RENDERING: RefCell<Vec<usize>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Run `render` with `address` marked as being rendered, answering None when
+/// it already was.
+pub(crate) fn render_guarded<T>(address: usize, render: impl FnOnce() -> T) -> Option<T> {
+    let entered = RENDERING.with(|active| {
+        let mut active = active.borrow_mut();
+        if active.contains(&address) {
+            return false;
+        }
+        active.push(address);
+        true
+    });
+    if !entered {
+        return None;
+    }
+    let rendered = render();
+    RENDERING.with(|active| {
+        active.borrow_mut().pop();
+    });
+    Some(rendered)
+}
 
 // Implement Display for Object to provide string representation
 impl fmt::Display for Object {
@@ -28,46 +57,70 @@ impl fmt::Display for Object {
             Object::String(s) => write!(f, "{}", s),
             Object::Symbol(s) => write!(f, ":{}", s),
             Object::Array(arr) => {
-                write!(f, "[")?;
-                let elements = arr.borrow();
-                for (i, elem) in elements.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
+                let elements = arr.borrow().clone();
+                let rendered = render_guarded(Rc::as_ptr(arr) as usize, || {
+                    let mut body = String::new();
+                    for (index, element) in elements.iter().enumerate() {
+                        if index > 0 {
+                            body.push_str(", ");
+                        }
+                        body.push_str(&format!("{}", element));
                     }
-                    write!(f, "{}", elem)?;
+                    body
+                });
+                match rendered {
+                    Some(body) => write!(f, "[{}]", body),
+                    None => write!(f, "[...]"),
                 }
-                write!(f, "]")
             }
             Object::Dict(dict) => {
-                write!(f, "{{")?;
-                let map = dict.borrow();
-                let mut written = 0;
-                for (key, value) in map.iter() {
-                    // The sentinel entries a Hash keeps for its default proc
-                    // and non-primitive keys are bookkeeping, not contents.
-                    if key.starts_with("__MX_") {
-                        continue;
+                let address = Rc::as_ptr(dict) as usize;
+                let entered = RENDERING.with(|active| {
+                    let mut active = active.borrow_mut();
+                    if active.contains(&address) {
+                        return false;
                     }
-                    if written > 0 {
-                        write!(f, ", ")?;
-                    }
-                    written += 1;
-                    // A Symbol key reads as `name: value`, and every other
-                    // kind as `key => value`, the way Ruby shows them. A key
-                    // that is not a String keeps its own rendering.
-                    match key.strip_prefix(':') {
-                        Some(name) => write!(f, "{}: {}", name, value)?,
-                        None if key.parse::<f64>().is_ok()
-                            || key == "true"
-                            || key == "false"
-                            || key == "nil" =>
-                        {
-                            write!(f, "{} => {}", key, value)?
-                        }
-                        None => write!(f, "{:?} => {}", key, value)?,
-                    }
+                    active.push(address);
+                    true
+                });
+                if !entered {
+                    return write!(f, "{{...}}");
                 }
-                write!(f, "}}")
+                let outcome = (|| {
+                    write!(f, "{{")?;
+                    let map = dict.borrow();
+                    let mut written = 0;
+                    for (key, value) in map.iter() {
+                        // The sentinel entries a Hash keeps for its default proc
+                        // and non-primitive keys are bookkeeping, not contents.
+                        if key.starts_with("__MX_") {
+                            continue;
+                        }
+                        if written > 0 {
+                            write!(f, ", ")?;
+                        }
+                        written += 1;
+                        // A Symbol key reads as `name: value`, and every other
+                        // kind as `key => value`, the way Ruby shows them. A key
+                        // that is not a String keeps its own rendering.
+                        match key.strip_prefix(':') {
+                            Some(name) => write!(f, "{}: {}", name, value)?,
+                            None if key.parse::<f64>().is_ok()
+                                || key == "true"
+                                || key == "false"
+                                || key == "nil" =>
+                            {
+                                write!(f, "{} => {}", key, value)?
+                            }
+                            None => write!(f, "{:?} => {}", key, value)?,
+                        }
+                    }
+                    write!(f, "}}")
+                })();
+                RENDERING.with(|active| {
+                    active.borrow_mut().pop();
+                });
+                outcome
             }
             // Ruby's default `to_s` for an object: its class and address.
             Object::Instance(inst) => {
@@ -125,4 +178,22 @@ impl fmt::Display for Object {
             }
         }
     }
+}
+
+/// Whether `address` is already being rendered further up the stack.
+pub(crate) fn rendering_in_progress(address: usize) -> bool {
+    RENDERING.with(|active| active.borrow().contains(&address))
+}
+
+/// Mark `address` as being rendered. Every call is paired with one to
+/// `end_rendering`.
+pub(crate) fn begin_rendering(address: usize) {
+    RENDERING.with(|active| active.borrow_mut().push(address));
+}
+
+/// Drop the innermost mark `begin_rendering` made.
+pub(crate) fn end_rendering() {
+    RENDERING.with(|active| {
+        active.borrow_mut().pop();
+    });
 }

@@ -323,6 +323,39 @@ impl VirtualMachine {
             return Ok(Object::Instance(Rc::new(RefCell::new(instance))));
         }
 
+        // A subclass of Array holds its elements in an instance variable,
+        // since a plain Array is a primitive rather than an instance. The
+        // storage is in place before `initialize` runs, so `self << x` inside
+        // it appends to the array the instance is backed by.
+        if descends_from(&class, "Array") {
+            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.set_var(
+                crate::vm::native_methods::ARRAY_SUBCLASS_VAR.to_string(),
+                Object::array(Vec::new()),
+            );
+            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            match class.find_method("initialize") {
+                Some(initialize) if !initialize.is_undefined && !initialize.body.is_empty() => {
+                    self.invoke_method(
+                        Rc::clone(&class),
+                        initialize,
+                        object.clone(),
+                        arguments,
+                        position,
+                    )?;
+                }
+                _ => {
+                    let elements = self.build_array_elements(&arguments, position)?;
+                    if let Some(Object::Array(storage)) =
+                        crate::vm::native_methods::array_subclass_value(&object)
+                    {
+                        *storage.borrow_mut() = elements;
+                    }
+                }
+            }
+            return Ok(object);
+        }
+
         // Check if this is an exception class
         if self.is_exception_class(&class) {
             // A SignalException is named by the signal it stands for, which

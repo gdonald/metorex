@@ -7,6 +7,7 @@ mod block;
 mod compiled_function;
 mod constructors;
 mod display;
+pub(crate) use display::{begin_rendering, end_rendering, render_guarded, rendering_in_progress};
 mod exception;
 mod hash;
 mod instance;

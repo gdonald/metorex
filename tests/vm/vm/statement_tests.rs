@@ -44,8 +44,10 @@ fn assignment_creates_variable_in_environment() {
         position: stmt_position,
     };
 
+    // An assignment answers the value it assigned, so a program ending in one
+    // produces that value.
     let result = vm.execute_program(&[assignment]);
-    assert!(matches!(result, Ok(None)));
+    assert_eq!(result.ok().flatten(), Some(Object::Int(42)));
     assert_eq!(vm.environment().get("x"), Some(Object::Int(42)));
 }
 
@@ -69,7 +71,7 @@ fn assignment_updates_existing_variable() {
     };
 
     let result = vm.execute_program(&[assignment]);
-    assert!(matches!(result, Ok(None)));
+    assert_eq!(result.ok().flatten(), Some(Object::Int(2)));
     assert_eq!(vm.environment().get("counter"), Some(Object::Int(2)));
 }
 

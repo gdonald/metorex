@@ -61,24 +61,26 @@ fn array_index_wrong_arg_count() {
 
 #[test]
 fn array_each_without_block() {
-    let err = run_err("[1, 2, 3].each");
-    assert!(err.contains("block") || err.contains("requires"));
+    // Without a block it answers an Enumerator over the array, the way Ruby
+    // does, rather than raising.
+    let class_name = run("[1, 2, 3].each.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Array#map without block ──────────────────────────────────────────────────
 
 #[test]
 fn array_map_without_block() {
-    let err = run_err("[1, 2, 3].map");
-    assert!(err.contains("block") || err.contains("requires"));
+    let class_name = run("[1, 2, 3].map.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Array#select without block ───────────────────────────────────────────────
 
 #[test]
 fn array_select_without_block() {
-    let err = run_err("[1, 2, 3].select");
-    assert!(err.contains("block") || err.contains("requires"));
+    let class_name = run("[1, 2, 3].select.class.to_s");
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Array#partition without block ────────────────────────────────────────────

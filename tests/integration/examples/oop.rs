@@ -360,7 +360,7 @@ fn test_oop_ancestors_basics() {
 
 #[test]
 fn test_oop_ancestors_module_include() {
-    let expected = "[Basic]\n[Sup, Basic]\n---\ntrue\ntrue\ntrue\n---\nSup\nBasic\n";
+    let expected = "[Basic]\n[Sup, Basic]\n---\ntrue\ntrue\ntrue\n---\n[Sup, Basic]\n";
     let output = run_example("oop/ancestors_module_include.rb");
     assert_eq!(output, expected);
 }
@@ -381,7 +381,9 @@ fn test_oop_ancestors_nested_include() {
 
 #[test]
 fn test_oop_ancestors_parent_class() {
-    let expected = "[AParent, Object, Kernel, BasicObject]\nAParent\nObject\nKernel\nBasicObject\ntrue\n---\ntrue\ntrue\ntrue\ntrue\n";
+    // `puts [a, b].inspect` inspects the array and prints one line, since the
+    // paren-less argument carries its trailing method call.
+    let expected = "[AParent, Object, Kernel, BasicObject]\n[AParent, Object, Kernel, BasicObject]\ntrue\n---\ntrue\ntrue\ntrue\ntrue\n";
     let output = run_example("oop/ancestors_parent_class.rb");
     assert_eq!(output, expected);
 }

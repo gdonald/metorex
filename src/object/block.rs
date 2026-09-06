@@ -108,10 +108,22 @@ impl BlockStatement {
         &self.captured_vars
     }
 
-    /// True when the parameter list ended in a comma, which makes a single
-    /// array argument destructure across the declared parameters.
+    /// True when a single array argument spreads across the parameters, which
+    /// a block does when it declares more than one of them or when its
+    /// parameter list ended in a comma.
     pub fn destructures_single_array(&self) -> bool {
-        self.parameters.iter().any(|p| p == TRAILING_COMMA_PARAM)
+        if self
+            .parameters
+            .iter()
+            .any(|name| name == TRAILING_COMMA_PARAM)
+        {
+            return true;
+        }
+        self.parameters
+            .iter()
+            .filter(|name| !name.starts_with('&'))
+            .count()
+            > 1
     }
 
     /// Parameters that actually bind a name, excluding the trailing-comma marker.
