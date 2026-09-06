@@ -77,26 +77,38 @@ impl Parser {
         // Check for superclass — allow an arbitrary primary expression (e.g.
         // a local variable) so `class parent::C < parent` works, plus
         // `::`-qualified names like `Outer::Inner`.
+        let mut superclass_expression = None;
         let superclass = if self.match_token(&[TokenKind::Less]) {
             self.skip_whitespace();
-            let mut parent = match self.advance().kind {
-                TokenKind::Ident(parent) => parent,
-                _ => return Err(self.error_at_previous("Expected superclass name")),
-            };
-            while self.check(&[TokenKind::ColonColon]) {
-                self.advance();
-                match self.advance().kind {
-                    TokenKind::Ident(segment) => {
-                        parent.push_str("::");
-                        parent.push_str(&segment);
-                    }
-                    _ => {
-                        return Err(self
-                            .error_at_previous("Expected constant name after '::' in superclass"));
+            // A superclass written as a call rather than a name, such as
+            // `class Point < Struct.new(:x)`, is kept as an expression and
+            // evaluated when the class is defined.
+            let call_form = matches!(self.peek().kind, TokenKind::Ident(_))
+                && matches!(self.peek_ahead(1).kind, TokenKind::Dot | TokenKind::LParen);
+            if call_form {
+                superclass_expression = Some(Box::new(self.parse_expression()?));
+                None
+            } else {
+                let mut parent = match self.advance().kind {
+                    TokenKind::Ident(parent) => parent,
+                    _ => return Err(self.error_at_previous("Expected superclass name")),
+                };
+                while self.check(&[TokenKind::ColonColon]) {
+                    self.advance();
+                    match self.advance().kind {
+                        TokenKind::Ident(segment) => {
+                            parent.push_str("::");
+                            parent.push_str(&segment);
+                        }
+                        _ => {
+                            return Err(self.error_at_previous(
+                                "Expected constant name after '::' in superclass",
+                            ));
+                        }
                     }
                 }
+                Some(parent)
             }
-            Some(parent)
         } else {
             None
         };
@@ -127,6 +139,7 @@ impl Parser {
         }
 
         Ok(Statement::ClassDef {
+            superclass_expression,
             name,
             namespace: namespace_expr,
             superclass,
@@ -485,6 +498,38 @@ impl Parser {
             TokenKind::If => Ok("if".to_string()),
             TokenKind::Else => Ok("else".to_string()),
             TokenKind::Do => Ok("do".to_string()),
+            // An operator is a method name too, so `alias old <=>` names one.
+            TokenKind::Plus => Ok("+".to_string()),
+            TokenKind::Minus => Ok("-".to_string()),
+            TokenKind::Star => Ok("*".to_string()),
+            TokenKind::StarStar => Ok("**".to_string()),
+            TokenKind::Slash => Ok("/".to_string()),
+            TokenKind::Percent => Ok("%".to_string()),
+            TokenKind::EqualEqual => Ok("==".to_string()),
+            TokenKind::TripleEqual => Ok("===".to_string()),
+            TokenKind::BangEqual => Ok("!=".to_string()),
+            TokenKind::Less => Ok("<".to_string()),
+            TokenKind::Greater => Ok(">".to_string()),
+            TokenKind::LessEqual => Ok("<=".to_string()),
+            TokenKind::GreaterEqual => Ok(">=".to_string()),
+            TokenKind::Spaceship => Ok("<=>".to_string()),
+            TokenKind::Shovel => Ok("<<".to_string()),
+            TokenKind::RightShift => Ok(">>".to_string()),
+            TokenKind::Tilde => Ok("~".to_string()),
+            TokenKind::Caret => Ok("^".to_string()),
+            TokenKind::Ampersand => Ok("&".to_string()),
+            TokenKind::Pipe => Ok("|".to_string()),
+            TokenKind::Bang => Ok("!".to_string()),
+            TokenKind::Match => Ok("=~".to_string()),
+            TokenKind::NotMatch => Ok("!~".to_string()),
+            TokenKind::LBracket => {
+                self.expect(TokenKind::RBracket, "Expected ']' after '[' in method name")?;
+                if self.match_token(&[TokenKind::Equal]) {
+                    Ok("[]=".to_string())
+                } else {
+                    Ok("[]".to_string())
+                }
+            }
             _ => Err(self.error_at_previous("Expected method name after 'alias'")),
         }
     }

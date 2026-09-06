@@ -39,6 +39,10 @@ pub struct Lexer<'a> {
     pub(super) offset: usize,
     /// Last significant token kind (for regex vs division disambiguation)
     pub(super) prev_significant: Option<TokenKind>,
+    /// Source offset just past the last significant token, which tells a
+    /// symbol naming an operator (`:/`) from a colon that happens to be
+    /// followed by one (`condition ? a : /re/`).
+    pub(super) prev_significant_end: usize,
     /// Line number to restore once `prepend` drains. Heredoc lexing rewinds
     /// `line` to the opener's line while the rest of that line is re-lexed
     /// from `prepend`; this puts the counter back at the line following the
@@ -63,6 +67,7 @@ impl<'a> Lexer<'a> {
             column: 1,
             offset: 0,
             prev_significant: None,
+            prev_significant_end: 0,
             restore_line: None,
         }
     }
@@ -76,6 +81,7 @@ impl<'a> Lexer<'a> {
         let saved_column = self.column;
         let saved_offset = self.offset;
         let saved_prev = self.prev_significant.clone();
+        let saved_prev_end = self.prev_significant_end;
         let saved_restore_line = self.restore_line;
 
         // Get the next token
@@ -88,6 +94,7 @@ impl<'a> Lexer<'a> {
         self.column = saved_column;
         self.offset = saved_offset;
         self.prev_significant = saved_prev;
+        self.prev_significant_end = saved_prev_end;
         self.restore_line = saved_restore_line;
 
         token
@@ -121,6 +128,7 @@ impl<'a> Lexer<'a> {
             TokenKind::Comment(_) | TokenKind::EOF => {}
             other => {
                 self.prev_significant = Some(other.clone());
+                self.prev_significant_end = self.offset;
             }
         }
         token

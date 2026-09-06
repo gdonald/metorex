@@ -9,7 +9,17 @@ use crate::parser::Parser;
 impl Parser {
     /// Parse function calls and method calls
     pub(crate) fn parse_call(&mut self) -> Result<Expression, MetorexError> {
-        let mut expr = self.parse_primary()?;
+        let primary = self.parse_primary()?;
+        self.parse_call_from(primary)
+    }
+
+    /// Continue a call chain from an expression already parsed, which is how a
+    /// negative numeric literal takes the method calls that follow it.
+    pub(crate) fn parse_call_from(
+        &mut self,
+        primary: Expression,
+    ) -> Result<Expression, MetorexError> {
+        let mut expr = primary;
 
         loop {
             if self.match_token(&[TokenKind::LParen]) {
@@ -144,7 +154,9 @@ impl Parser {
                         position,
                     };
                 } else {
-                    let first_arg = self.parse_expression()?;
+                    // An index may be written as an assignment, which answers
+                    // what it assigned: `array[i += 1]`.
+                    let first_arg = self.parse_expression_with_assignment()?;
                     if self.match_token(&[TokenKind::Comma]) {
                         // Multi-arg bracket: obj[a, b] — method call to []
                         self.skip_whitespace();
@@ -181,6 +193,32 @@ impl Parser {
                     TokenKind::Ident(name) => name,
                     _ => return Err(self.error_at_previous("Expected constant name after '::'")),
                 };
+                // A constant is capitalized, so a lowercase name after `::`
+                // names a method rather than something in the namespace.
+                if name.starts_with(|first: char| first.is_lowercase() || first == '_') {
+                    let arguments = if self.match_token(&[TokenKind::LParen]) {
+                        self.parse_arguments()?
+                    } else if self.can_start_argument_for_method_call(&name) {
+                        self.parse_arguments_without_parens()?
+                    } else {
+                        Vec::new()
+                    };
+                    let trailing_block = if self.check(&[TokenKind::Do]) {
+                        Some(Box::new(self.parse_block()?))
+                    } else if self.check(&[TokenKind::LBrace]) {
+                        Some(Box::new(self.parse_brace_block()?))
+                    } else {
+                        None
+                    };
+                    expr = Expression::MethodCall {
+                        receiver: Box::new(expr),
+                        method: name,
+                        arguments,
+                        trailing_block,
+                        position,
+                    };
+                    continue;
+                }
                 expr = Expression::ScopeResolution {
                     namespace: Box::new(expr),
                     name,
@@ -332,6 +370,10 @@ impl Parser {
 
         // Collect any keyword args (ident: value) to build a hash at the end
         let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
+        // `foo(key => value)` with a key that is not a literal symbol, which
+        // is the implicit-hash form `Struct.new(name, keyword_init: true)`
+        // takes in `struct_class.new(key => 1)`.
+        let mut rocket_pairs: Vec<(Expression, Expression)> = Vec::new();
 
         loop {
             self.skip_whitespace();
@@ -434,7 +476,15 @@ impl Parser {
                     position,
                 });
             } else {
-                arguments.push(self.parse_expression()?);
+                let expression = self.parse_expression()?;
+                self.skip_whitespace();
+                if self.match_token(&[TokenKind::FatArrow]) {
+                    self.skip_whitespace();
+                    let value = self.parse_expression()?;
+                    rocket_pairs.push((expression, value));
+                } else {
+                    arguments.push(expression);
+                }
             }
 
             self.skip_whitespace();
@@ -452,7 +502,7 @@ impl Parser {
 
         // If there were keyword args, append them as a Dict with a sentinel marker
         // so the runtime can distinguish parser-synthesized kwargs from a user hash.
-        if !keyword_pairs.is_empty() {
+        if !keyword_pairs.is_empty() || !rocket_pairs.is_empty() {
             let position = self.peek().position;
             let mut entries: Vec<(Expression, Expression)> = keyword_pairs
                 .into_iter()
@@ -466,6 +516,7 @@ impl Parser {
                     )
                 })
                 .collect();
+            entries.extend(rocket_pairs);
             // Marker entry the runtime recognizes (see split_keyword_args).
             entries.push((
                 Expression::StringLiteral {
@@ -488,6 +539,28 @@ impl Parser {
 
     /// Check if the next token can start an argument in a parentheses-less call
     /// Also checks if this looks like a dictionary context (value followed by colon)
+    /// Whether the sign at the cursor opens a signed numeric argument rather
+    /// than continuing an arithmetic expression.
+    fn signed_literal_argument(&mut self) -> bool {
+        matches!(self.peek().kind, TokenKind::Minus | TokenKind::Plus)
+            && self.peek().had_leading_space
+            && !self.peek_ahead(1).had_leading_space
+            && matches!(
+                self.peek_ahead(1).kind,
+                TokenKind::Int(_) | TokenKind::Float(_) | TokenKind::BigInt(_)
+            )
+    }
+
+    /// Whether the `:` at the cursor opens a symbol argument. A name follows
+    /// it either way, but an operator name only counts when it is glued to the
+    /// colon, since `condition ? value : -1` puts one there too.
+    fn colon_starts_symbol_argument(&mut self) -> bool {
+        use crate::parser::expressions::primary::symbols;
+        let next = self.peek_ahead(1);
+        symbols::starts_symbol_literal(&next.kind)
+            || (symbols::starts_operator_symbol(&next.kind) && !next.had_leading_space)
+    }
+
     fn can_start_argument_for_call(&mut self, _callee: &Expression) -> bool {
         // Don't skip whitespace yet - we need to check if there's a statement
         // terminator first. Newlines, comments, and semicolons all end a
@@ -501,12 +574,14 @@ impl Parser {
 
         self.skip_whitespace();
 
-        if self.peek().kind == TokenKind::Colon
-            && !crate::parser::expressions::primary::symbols::starts_symbol_literal(
-                &self.peek_ahead(1).kind,
-            )
-        {
+        if self.peek().kind == TokenKind::Colon && !self.colon_starts_symbol_argument() {
             return false;
+        }
+        // `foo -1` passes a negative number while `foo - 1` subtracts one from
+        // what `foo` answers. Ruby tells them apart by the spacing: a sign with
+        // a space before it and none after belongs to the argument.
+        if self.signed_literal_argument() {
+            return true;
         }
 
         // Don't parse as function call if we see operators or punctuation that
@@ -623,12 +698,14 @@ impl Parser {
 
         self.skip_whitespace();
 
-        if self.peek().kind == TokenKind::Colon
-            && !crate::parser::expressions::primary::symbols::starts_symbol_literal(
-                &self.peek_ahead(1).kind,
-            )
-        {
+        if self.peek().kind == TokenKind::Colon && !self.colon_starts_symbol_argument() {
             return false;
+        }
+        // `foo -1` passes a negative number while `foo - 1` subtracts one from
+        // what `foo` answers. Ruby tells them apart by the spacing: a sign with
+        // a space before it and none after belongs to the argument.
+        if self.signed_literal_argument() {
+            return true;
         }
         if matches!(
             self.peek().kind,

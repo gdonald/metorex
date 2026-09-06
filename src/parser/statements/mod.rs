@@ -12,6 +12,23 @@ use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
 
+/// Whether an expression names something an assignment can write to. Ruby
+/// rejects anything else while parsing, so `1 + 1 = 2` never reaches the VM.
+fn is_assignable(expr: &Expression) -> bool {
+    matches!(
+        expr,
+        Expression::Identifier { .. }
+            | Expression::TopLevelConstant { .. }
+            | Expression::InstanceVariable { .. }
+            | Expression::ClassVariable { .. }
+            | Expression::GlobalVariable { .. }
+            | Expression::ScopeResolution { .. }
+            | Expression::Index { .. }
+            | Expression::MethodCall { .. }
+            | Expression::Splat { .. }
+    )
+}
+
 impl Parser {
     /// Parse a single statement
     pub(crate) fn parse_statement(&mut self) -> Result<Statement, MetorexError> {
@@ -122,6 +139,9 @@ impl Parser {
                     TokenKind::LogicalOrAssign,
                     TokenKind::LogicalAndAssign,
                 ]) {
+                    if !is_assignable(&expr) {
+                        return Err(self.error_at_current("Cannot assign to this expression"));
+                    }
                     let op_token = self.advance();
                     let value = self.parse_assignment_rhs()?;
 

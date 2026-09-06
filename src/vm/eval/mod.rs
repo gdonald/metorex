@@ -14,6 +14,7 @@
 mod calls;
 mod defined;
 mod dispatch;
+pub(crate) use dispatch::binary_op_method_name;
 mod identifier;
 mod singleton_class_expr;
 mod super_expr;

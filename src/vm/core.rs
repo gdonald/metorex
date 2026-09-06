@@ -149,6 +149,10 @@ pub struct VirtualMachine {
     /// constant assignment during one is repeating work Ruby would not have
     /// repeated, so its "already initialized" warning is an artifact.
     pub(crate) autoload_reload_depth: usize,
+    /// Hash literals already reported for a duplicated key, by source file and
+    /// position. Ruby names a duplicate once for the literal as written, so a
+    /// literal inside a loop is reported the once.
+    pub(crate) reported_duplicate_keys: std::collections::HashSet<(String, usize, usize)>,
 }
 
 /// A single activated refinement: the refinement module and the set of target
@@ -218,6 +222,7 @@ impl VirtualMachine {
             method_nesting_stack: Vec::new(),
             catch_tags: Vec::new(),
             autoload_reload_depth: 0,
+            reported_duplicate_keys: std::collections::HashSet::new(),
         };
         vm.load_prelude();
         // The prelude's own class and module names are part of the core

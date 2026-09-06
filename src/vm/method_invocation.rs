@@ -35,12 +35,20 @@ impl VirtualMachine {
         // there by `class << Mod`, or under the name-mangled key `def
         // self.name` uses. Neither is reachable by an instance-method lookup.
         if let Object::Class(class) | Object::Module(class) = &receiver {
-            let singleton_method = class
-                .singleton_class_slot()
-                .as_ref()
-                .and_then(|singleton| singleton.find_method(name));
-            if let Some(method) = singleton_method
-                .or_else(|| crate::vm::method_lookup::module_level_method(class, name))
+            // What the module itself defines comes first, whether written as
+            // `def self.name` or in a `class << self` body. A method it
+            // answers to only because it extended a module sits behind those,
+            // which is what lets `def Mod.name` override an extended one and
+            // reach it again through `super`.
+            let module_method = crate::vm::method_lookup::module_own_method(class, name)
+                .or_else(|| {
+                    class
+                        .singleton_class_slot()
+                        .as_ref()
+                        .and_then(|singleton| singleton.find_method(name))
+                })
+                .or_else(|| crate::vm::method_lookup::module_extended_method(class, name));
+            if let Some(method) = module_method
                 && !method.is_undefined
             {
                 let owner = Rc::clone(class);
@@ -323,29 +331,26 @@ impl VirtualMachine {
             if descends_from(&class, "SignalException") && !descends_from(&class, "Interrupt") {
                 return self.build_signal_exception(&class, &arguments, position);
             }
-            // An Errno class reports the message its number stands for, with
-            // any custom message and location appended the way Ruby does.
-            if let Some(default) = Self::errno_default_message(&class) {
-                let custom = match arguments.first() {
-                    None | Some(Object::Nil) => None,
-                    Some(value) => Some(self.coerce_name_argument(value, position)?),
-                };
-                let location = match arguments.get(1) {
-                    None | Some(Object::Nil) => None,
-                    Some(value) => Some(self.coerce_name_argument(value, position)?),
-                };
-                let message = match (custom, location) {
-                    (None, _) => default,
-                    (Some(custom), None) => format!("{} - {}", default, custom),
-                    (Some(custom), Some(location)) => {
-                        format!("{} @ {} - {}", default, location, custom)
-                    }
-                };
-                let exception = Object::exception(class.name(), message);
-                if let Object::Exception(details) = &exception {
-                    details.borrow_mut().class = Some(Rc::clone(&class));
-                }
-                return Ok(exception);
+            // SystemExit is named by the status it leaves with, which comes
+            // first and may be a boolean standing for success or failure. A
+            // subclass writing its own `initialize` takes over.
+            if descends_from(&class, "SystemExit")
+                && class
+                    .find_method("initialize")
+                    .is_none_or(|method| method.is_undefined || method.body.is_empty())
+            {
+                return self.build_system_exit(&class, &arguments, position);
+            }
+            // SystemCallError and the Errno classes under it are named by a
+            // number, which decides both the class that comes back and the
+            // message it reports. A subclass writing its own `initialize`
+            // takes over, so it is built like any other exception.
+            if Self::is_system_call_error(&class)
+                && class
+                    .find_method("initialize")
+                    .is_none_or(|method| method.is_undefined || method.body.is_empty())
+            {
+                return self.build_system_call_error(&class, &arguments, position);
             }
             // `FrozenError.new(message, receiver: obj)` records the object the
             // modification was attempted on, and `KeyError.new(receiver:, key:)`
@@ -392,23 +397,6 @@ impl VirtualMachine {
                     Object::String(text) => (**text).clone(),
                     other => self.coerce_name_argument(other, position)?,
                 }
-            } else if arguments.len() == 2 && Self::is_system_call_error(&class) {
-                // `SystemCallError.new(message, errno)` answers an instance of
-                // the Errno class that number names.
-                let text = match &arguments[0] {
-                    Object::String(text) => (**text).clone(),
-                    other => other.to_string(),
-                };
-                let Object::Int(number) = arguments[1] else {
-                    return Err(MetorexError::runtime_error(
-                        "SystemCallError.new expects an Integer errno".to_string(),
-                        position_to_location(position),
-                    ));
-                };
-                let named = self
-                    .errno_class_for(number)
-                    .unwrap_or_else(|| class.name().to_string());
-                return Ok(Object::exception(named, text));
             } else {
                 return Err(MetorexError::runtime_error(
                     format!(
@@ -501,21 +489,6 @@ impl VirtualMachine {
         Ok(instance_obj)
     }
 
-    /// Check if a class is an exception class (Exception or its subclasses)
-    /// The message an Errno class stands for, inherited by a subclass of one.
-    fn errno_default_message(class: &Rc<Class>) -> Option<String> {
-        let mut cursor = Some(Rc::clone(class));
-        while let Some(current) = cursor {
-            if let Some(Object::String(message)) =
-                current.get_class_var(crate::vm::init::ERRNO_MESSAGE_KEY)
-            {
-                return Some((*message).clone());
-            }
-            cursor = current.superclass();
-        }
-        None
-    }
-
     /// Whether `class` is SystemCallError or one of its Errno subclasses.
     fn is_system_call_error(class: &Rc<Class>) -> bool {
         let mut cursor = Some(Rc::clone(class));
@@ -528,22 +501,34 @@ impl VirtualMachine {
         false
     }
 
-    /// The name of the `Errno` class carrying `number`, when one does.
-    fn errno_class_for(&self, number: i64) -> Option<String> {
-        let Some(Object::Module(errno) | Object::Class(errno)) = self.globals().get("Errno") else {
-            return None;
+    /// `SystemExit.new(status = 0, message = nil)`. A leading Integer, true,
+    /// or false is the status Ruby leaves with, and anything else is the
+    /// message, which an exception built without one reports as its class
+    /// name.
+    fn build_system_exit(
+        &mut self,
+        class: &Rc<Class>,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (status, rest) = match arguments.first() {
+            Some(Object::Int(status)) => (*status, &arguments[1..]),
+            Some(Object::Bool(success)) => (i64::from(!*success), &arguments[1..]),
+            _ => (0, arguments),
         };
-        errno
-            .class_var_names()
-            .into_iter()
-            .find(|name| {
-                matches!(
-                    errno.get_class_var(name),
-                    Some(Object::Class(class))
-                        if class.get_class_var("Errno") == Some(Object::Int(number))
-                )
-            })
-            .map(|name| format!("Errno::{}", name))
+        let message = match rest.first() {
+            None | Some(Object::Nil) => None,
+            Some(Object::String(text)) => Some((**text).clone()),
+            Some(other) => Some(self.coerce_name_argument(other, position)?),
+        };
+        let exception = Object::exception(class.name(), message.clone().unwrap_or_default());
+        if let Object::Exception(details) = &exception {
+            let mut details = details.borrow_mut();
+            details.class = Some(Rc::clone(class));
+            details.status = Some(status);
+            details.message_given = message.is_some();
+        }
+        Ok(exception)
     }
 
     pub(crate) fn is_exception_class(&self, class: &Class) -> bool {

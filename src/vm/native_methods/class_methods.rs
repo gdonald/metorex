@@ -16,8 +16,76 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
-        if let Some(result) = self.call_warning_methods(class_rc, method_name, arguments) {
+        if let Some(result) =
+            self.call_warning_methods(class_rc, method_name, arguments, position)?
+        {
             return Ok(Some(result));
+        }
+        // `Integer.sqrt` and `Integer.try_convert` belong to the class rather
+        // than to a number.
+        if class_rc.name() == "Integer" && matches!(method_name, "sqrt" | "try_convert") {
+            if arguments.len() != 1 {
+                return Err(method_argument_error(
+                    method_name,
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            return self
+                .integer_class_method(method_name, &arguments[0], position)
+                .map(Some);
+        }
+        // The top-level `self` is Object, so a `using` sent to it is
+        // `main.using`. Ruby permits that only at the top level, which a
+        // class or module body is not.
+        if method_name == "using" && class_rc.name() == "Object" {
+            let inside_body = matches!(
+                self.environment().get("self"),
+                Some(Object::Class(current) | Object::Module(current)) if current.name() != "Object"
+            );
+            if inside_body {
+                let message = "main.using is permitted only at toplevel".to_string();
+                return Err(MetorexError::UncaughtException {
+                    exception: Object::exception("RuntimeError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                });
+            }
+            return self
+                .call_native_function("using", arguments.to_vec(), position)
+                .map(Some);
+        }
+        // A number is not built by hand: `Float.new`, `Rational.new` and
+        // `Complex.new` do not exist, and `allocate` has nothing to allocate.
+        if matches!(
+            class_rc.name(),
+            "Float" | "Rational" | "Complex" | "Integer"
+        ) && matches!(method_name, "new" | "allocate")
+        {
+            let message = format!(
+                "undefined method '{}' for class '{}'",
+                method_name,
+                class_rc.name()
+            );
+            let exception = if method_name == "allocate" {
+                Object::exception(
+                    "TypeError",
+                    format!("allocator undefined for {}", class_rc.name()),
+                )
+            } else {
+                crate::vm::errors::no_method_error(
+                    &message,
+                    method_name,
+                    &Object::Class(Rc::clone(class_rc)),
+                    arguments,
+                )
+            };
+            return Err(MetorexError::UncaughtException {
+                exception,
+                location: position_to_location(position),
+                message,
+            });
         }
         let non_instantiable = matches!(class_rc.name(), "TrueClass" | "FalseClass" | "NilClass");
         if non_instantiable && method_name == "allocate" {
@@ -945,6 +1013,21 @@ impl VirtualMachine {
                         vec!["args".to_string()],
                         vec![],
                         "Kernel".to_string(),
+                    );
+                    stub.variadic_param = Some((0, "args".to_string()));
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
+                // An exception class takes its message, and whatever else a
+                // subclass reads, through a native `initialize`. A body-less
+                // stub carries the variadic arity Ruby reports for it.
+                if name_str == "initialize"
+                    && crate::vm::method_invocation::descends_from(class_rc, "Exception")
+                {
+                    let mut stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                        class_rc.name().to_string(),
                     );
                     stub.variadic_param = Some((0, "args".to_string()));
                     return Ok(Some(Object::Method(Rc::new(stub))));

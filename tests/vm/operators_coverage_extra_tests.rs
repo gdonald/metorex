@@ -433,11 +433,9 @@ fn int_mod_zero_errors() {
 }
 
 #[test]
-fn float_mod_zero_is_nan() {
-    let Some(Object::Float(result)) = run("5.0 % 0.0") else {
-        panic!("expected a Float");
-    };
-    assert!(result.is_nan());
+fn float_mod_zero_raises() {
+    let error = run_err("5.0 % 0.0");
+    assert!(error.contains("divided by 0"));
 }
 
 #[test]

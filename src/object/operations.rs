@@ -20,6 +20,38 @@ impl Object {
 
     /// Deep equality comparison between objects
     pub fn equals(&self, other: &Object) -> bool {
+        self.equals_within(other, &mut Vec::new())
+    }
+
+    /// Compare two objects, remembering the pairs of collections already being
+    /// compared. An array that holds itself is equal to another built the same
+    /// way, and the record of what is in flight is what stops the comparison
+    /// from following the cycle forever.
+    fn equals_within(&self, other: &Object, in_flight: &mut Vec<(usize, usize)>) -> bool {
+        let pair = match (self, other) {
+            (Object::Array(a), Object::Array(b)) => Some((
+                std::rc::Rc::as_ptr(a) as usize,
+                std::rc::Rc::as_ptr(b) as usize,
+            )),
+            (Object::Dict(a), Object::Dict(b)) => Some((
+                std::rc::Rc::as_ptr(a) as usize,
+                std::rc::Rc::as_ptr(b) as usize,
+            )),
+            _ => None,
+        };
+        if let Some(pair) = pair {
+            if in_flight.contains(&pair) {
+                return true;
+            }
+            in_flight.push(pair);
+            let answer = self.equals_inner(other, in_flight);
+            in_flight.pop();
+            return answer;
+        }
+        self.equals_inner(other, in_flight)
+    }
+
+    fn equals_inner(&self, other: &Object, in_flight: &mut Vec<(usize, usize)>) -> bool {
         match (self, other) {
             (Object::Nil, Object::Nil) => true,
             (Object::Bool(a), Object::Bool(b)) => a == b,
@@ -28,18 +60,10 @@ impl Object {
             // A normalized BigInt never holds a value an Int could, so the
             // two variants can only be equal through a Float.
             (Object::Int(_), Object::BigInt(_)) | (Object::BigInt(_), Object::Int(_)) => false,
-            (Object::Float(a), Object::Float(b)) => {
-                // NaN equals nothing, and two infinities of the same sign are
-                // equal even though subtracting them is not a number.
-                if a.is_nan() || b.is_nan() {
-                    false
-                } else if a.is_infinite() || b.is_infinite() {
-                    a == b
-                } else {
-                    // Float comparison with epsilon for floating point precision
-                    (a - b).abs() < 1e-9
-                }
-            }
+            // Two Floats are equal when they are the same number, which is
+            // what Ruby compares: `0.1 + 0.2 == 0.3` is false, and a number as
+            // small as 1e-16 is not zero. NaN equals nothing, itself included.
+            (Object::Float(a), Object::Float(b)) => a == b,
             // A Float equals the Integer it holds exactly, which is how Ruby
             // compares numbers of different kinds.
             (Object::Int(a), Object::Float(b)) | (Object::Float(b), Object::Int(a)) => {
@@ -56,7 +80,10 @@ impl Object {
                 if arr_a.len() != arr_b.len() {
                     return false;
                 }
-                arr_a.iter().zip(arr_b.iter()).all(|(x, y)| x.equals(y))
+                arr_a
+                    .iter()
+                    .zip(arr_b.iter())
+                    .all(|(left, right)| left.equals_within(right, in_flight))
             }
             (Object::Dict(a), Object::Dict(b)) => {
                 let dict_a = a.borrow();
@@ -64,9 +91,11 @@ impl Object {
                 if dict_a.len() != dict_b.len() {
                     return false;
                 }
-                dict_a
-                    .iter()
-                    .all(|(key, val)| dict_b.get(key).is_some_and(|v| val.equals(v)))
+                dict_a.iter().all(|(key, val)| {
+                    dict_b
+                        .get(key)
+                        .is_some_and(|other| val.equals_within(other, in_flight))
+                })
             }
             (Object::Set(a), Object::Set(b)) => {
                 let set_a = a.borrow();

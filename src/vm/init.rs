@@ -105,13 +105,23 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     let nil_class = Rc::new(Class::new("NilClass", Some(Rc::clone(&object))));
     globals.set("NilClass", Object::Class(nil_class));
 
-    // Numeric types
-    let numeric = Rc::new(Class::new("Numeric", Some(Rc::clone(&object))));
-    globals.set("Numeric", Object::Class(Rc::clone(&numeric)));
+    // Numeric types. Integer and Float already descend from a Numeric that
+    // `register_builtin_classes` put here, and that is the one a program
+    // reopens, so it is kept rather than replaced.
+    let numeric = match globals.get("Numeric") {
+        Some(Object::Class(existing)) => existing,
+        _ => {
+            let numeric = Rc::new(Class::new("Numeric", Some(Rc::clone(&object))));
+            globals.set("Numeric", Object::Class(Rc::clone(&numeric)));
+            numeric
+        }
+    };
     let rational_class = Rc::new(Class::new("Rational", Some(Rc::clone(&numeric))));
     globals.set("Rational", Object::Class(rational_class));
     let complex_class = Rc::new(Class::new("Complex", Some(Rc::clone(&numeric))));
     globals.set("Complex", Object::Class(complex_class));
+    // `Complex::I` is the imaginary unit, which the class carries as a
+    // constant. It is built once the VM can make one, in the prelude.
 
     // Struct — the builder every `Struct.new(...)` class descends from.
     let object_class = match globals.get("Object") {
@@ -119,6 +129,11 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
         _ => None,
     };
     let struct_class = Rc::new(Class::new("Struct", object_class));
+    // Struct is created after the built-in modules are registered, so it takes
+    // the Enumerable mixin here rather than in the loop over the others.
+    if let Some(Object::Module(enumerable)) = globals.get("Enumerable") {
+        struct_class.add_mixin(enumerable);
+    }
     globals.set("Struct", Object::Class(struct_class));
 
     // Regexp — stub class so `case x; when Regexp; ...; end` and
@@ -191,7 +206,7 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
         "SystemCallError",
         Some(Rc::clone(&standard_error)),
     ));
-    let errno_module = Rc::new(Class::new("Errno", None));
+    let errno_module = Rc::new(Class::new_module("Errno"));
     let encoding_error = Rc::new(Class::new(
         "EncodingError",
         Some(Rc::clone(&standard_error)),
@@ -248,17 +263,38 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     globals.set("LocalJumpError", Object::Class(local_jump_error));
     globals.set("RegexpError", Object::Class(regexp_error));
     globals.set("UncaughtThrowError", Object::Class(uncaught_throw_error));
-    globals.set("Math::DomainError", Object::Class(math_domain_error));
+    globals.set(
+        "Math::DomainError",
+        Object::Class(Rc::clone(&math_domain_error)),
+    );
+    // The Math module holds it as a constant too, which is how the qualified
+    // name resolves. Math itself was registered with the other modules first.
+    if let Some(Object::Module(math) | Object::Class(math)) = globals.get("Math") {
+        math.set_class_var("DomainError", Object::Class(math_domain_error));
+    }
 }
 
 /// Register built-in modules (Comparable, Enumerable, Kernel, etc.).
 pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
-    // Comparable — stub module, methods will be added later
-    let comparable = Rc::new(Class::new("Comparable", None));
+    // Comparable — stub module, methods will be added later. Ruby mixes it
+    // into the classes whose values have an order, which is what
+    // `Integer.include?(Comparable)` reports.
+    let comparable = Rc::new(Class::new_module("Comparable"));
+    for name in ["Numeric", "Integer", "Float", "String"] {
+        if let Some(Object::Class(class)) = globals.get(name) {
+            class.add_mixin(Rc::clone(&comparable));
+        }
+    }
     globals.set("Comparable", Object::Module(comparable));
 
-    // Enumerable — stub module
-    let enumerable = Rc::new(Class::new("Enumerable", None));
+    // Enumerable — stub module, mixed into the classes whose values can be
+    // walked, which is what `Array.include?(Enumerable)` reports.
+    let enumerable = Rc::new(Class::new_module("Enumerable"));
+    for name in ["Array", "Hash", "Range", "Set", "Struct", "Enumerator"] {
+        if let Some(Object::Class(class)) = globals.get(name) {
+            class.add_mixin(Rc::clone(&enumerable));
+        }
+    }
     globals.set("Enumerable", Object::Module(enumerable));
 
     // Kernel — stub module mixed into Object so its instance methods are
@@ -267,7 +303,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // currently in globals at this point. Note that Object is replaced again
     // later in register_singletons, so `wire_kernel_into_object` is called
     // from VirtualMachine::new() after that step to re-establish the link.
-    let kernel = Rc::new(Class::new("Kernel", None));
+    let kernel = Rc::new(Class::new_module("Kernel"));
     globals.set("Kernel", Object::Module(kernel));
 
     // Encoding — metorex strings are UTF-8, so the named encodings exist as
@@ -330,11 +366,11 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     }
 
     // Signal — stub module (trap is a no-op)
-    let signal = Rc::new(Class::new("Signal", None));
+    let signal = Rc::new(Class::new_module("Signal"));
     globals.set("Signal", Object::Module(signal));
 
     // Process — stub module (pid is a no-op)
-    let process = Rc::new(Class::new("Process", None));
+    let process = Rc::new(Class::new_module("Process"));
     // `Process::Status` describes how a child ended. The instances come from
     // whatever waits for one, and this is the class they share.
     let process_status = Rc::new(Class::new("Process::Status", None));
@@ -344,22 +380,26 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     globals.set("Process", Object::Module(process));
 
     // Math — stub module (constants will be added later if needed)
-    let math = Rc::new(Class::new("Math", None));
+    let math = Rc::new(Class::new_module("Math"));
+    // The two constants Math carries, which every trigonometric answer is
+    // measured against.
+    math.set_class_var("PI", Object::Float(std::f64::consts::PI));
+    math.set_class_var("E", Object::Float(std::f64::consts::E));
     globals.set("Math", Object::Module(math));
 
     // GC — no-op stub
-    let gc = Rc::new(Class::new("GC", None));
+    let gc = Rc::new(Class::new_module("GC"));
     globals.set("GC", Object::Module(gc));
 
     // ObjectSpace — no-op stub
-    let object_space = Rc::new(Class::new("ObjectSpace", None));
+    let object_space = Rc::new(Class::new_module("ObjectSpace"));
     globals.set("ObjectSpace", Object::Module(object_space));
 
     // Warning — `Warning[:category]` reads and `Warning[:category] = bool`
     // writes the per-category warning switches. Categories are stored as
     // class variables on the module and start off, matching MRI's default
     // for `:deprecated`.
-    let warning = Rc::new(Class::new("Warning", None));
+    let warning = Rc::new(Class::new_module("Warning"));
     globals.set("Warning", Object::Module(warning));
 
     // Time / IO — placeholder stubs (used in mspec)
@@ -594,6 +634,12 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("rand", Object::NativeFunction("rand".to_string()));
     globals.set("srand", Object::NativeFunction("srand".to_string()));
     globals.set("sleep", Object::NativeFunction("sleep".to_string()));
+    // The one primitive behind the Math module, which the prelude wraps in a
+    // method per function.
+    globals.set(
+        "__math_function__",
+        Object::NativeFunction("__math_function__".to_string()),
+    );
     // Top-level `to_s` — Ruby's top-level self is "main", so bare to_s returns "main"
     globals.set("to_s", Object::NativeFunction("top_level_to_s".to_string()));
     // Top-level `define_method` — installs a method on Object (or current
@@ -617,71 +663,255 @@ pub(super) fn seed_environment_with_globals(
 /// Where an Errno class keeps the message its number stands for.
 pub(crate) const ERRNO_MESSAGE_KEY: &str = "__errno_message__";
 
-/// Every `Errno::EXXX` class, each a subclass of SystemCallError carrying the
-/// platform's own number in its `Errno` constant. The numbers come from libc
-/// rather than a table, since they differ between Linux and macOS.
+/// Every `Errno::EXXX` class the platform names, each a subclass of
+/// SystemCallError carrying its own number in an `Errno` constant. The numbers
+/// and the names come from libc rather than a table, since they differ between
+/// Linux and macOS.
 fn register_errno_classes(errno_module: &Rc<Class>, system_call_error: &Rc<Class>) {
-    const ERRNO_NUMBERS: &[(&str, i32, &str)] = &[
-        ("E2BIG", libc::E2BIG, "Argument list too long"),
-        ("EACCES", libc::EACCES, "Permission denied"),
-        ("EADDRINUSE", libc::EADDRINUSE, "Address already in use"),
-        (
-            "EADDRNOTAVAIL",
-            libc::EADDRNOTAVAIL,
-            "Cannot assign requested address",
-        ),
-        ("EAGAIN", libc::EAGAIN, "Resource temporarily unavailable"),
-        ("EBADF", libc::EBADF, "Bad file descriptor"),
-        ("EBUSY", libc::EBUSY, "Device or resource busy"),
-        ("ECHILD", libc::ECHILD, "No child processes"),
-        (
-            "ECONNABORTED",
-            libc::ECONNABORTED,
-            "Software caused connection abort",
-        ),
-        ("ECONNREFUSED", libc::ECONNREFUSED, "Connection refused"),
-        ("ECONNRESET", libc::ECONNRESET, "Connection reset by peer"),
-        ("EDEADLK", libc::EDEADLK, "Resource deadlock avoided"),
-        ("EDOM", libc::EDOM, "Numerical argument out of domain"),
-        ("EEXIST", libc::EEXIST, "File exists"),
-        ("EFAULT", libc::EFAULT, "Bad address"),
-        ("EFBIG", libc::EFBIG, "File too large"),
-        ("EHOSTUNREACH", libc::EHOSTUNREACH, "No route to host"),
-        (
-            "EINPROGRESS",
-            libc::EINPROGRESS,
-            "Operation now in progress",
-        ),
-        ("EINTR", libc::EINTR, "Interrupted system call"),
-        ("EINVAL", libc::EINVAL, "Invalid argument"),
-        ("EIO", libc::EIO, "Input/output error"),
-        ("EISDIR", libc::EISDIR, "Is a directory"),
-        ("ELOOP", libc::ELOOP, "Too many levels of symbolic links"),
-        ("EMFILE", libc::EMFILE, "Too many open files"),
-        ("EMLINK", libc::EMLINK, "Too many links"),
-        ("ENAMETOOLONG", libc::ENAMETOOLONG, "File name too long"),
-        ("ENFILE", libc::ENFILE, "Too many open files in system"),
-        ("ENODEV", libc::ENODEV, "No such device"),
-        ("ENOENT", libc::ENOENT, "No such file or directory"),
-        ("ENOEXEC", libc::ENOEXEC, "Exec format error"),
-        ("ENOMEM", libc::ENOMEM, "Cannot allocate memory"),
-        ("ENOSPC", libc::ENOSPC, "No space left on device"),
-        ("ENOTDIR", libc::ENOTDIR, "Not a directory"),
-        ("ENOTEMPTY", libc::ENOTEMPTY, "Directory not empty"),
-        ("ENOTSOCK", libc::ENOTSOCK, "Socket operation on non-socket"),
-        ("ENOTSUP", libc::ENOTSUP, "Operation not supported"),
-        ("ENOTTY", libc::ENOTTY, "Inappropriate ioctl for device"),
-        ("ENXIO", libc::ENXIO, "No such device or address"),
-        ("EPERM", libc::EPERM, "Operation not permitted"),
-        ("EPIPE", libc::EPIPE, "Broken pipe"),
-        ("ERANGE", libc::ERANGE, "Numerical result out of range"),
-        ("EROFS", libc::EROFS, "Read-only file system"),
-        ("ESPIPE", libc::ESPIPE, "Illegal seek"),
-        ("ESRCH", libc::ESRCH, "No such process"),
-        ("ETIMEDOUT", libc::ETIMEDOUT, "Operation timed out"),
-        ("EXDEV", libc::EXDEV, "Invalid cross-device link"),
+    #[cfg(target_os = "macos")]
+    const ERRNO_NUMBERS: &[(&str, i32)] = &[
+        ("EPERM", libc::EPERM),
+        ("ENOENT", libc::ENOENT),
+        ("ESRCH", libc::ESRCH),
+        ("EINTR", libc::EINTR),
+        ("EIO", libc::EIO),
+        ("ENXIO", libc::ENXIO),
+        ("E2BIG", libc::E2BIG),
+        ("ENOEXEC", libc::ENOEXEC),
+        ("EBADF", libc::EBADF),
+        ("ECHILD", libc::ECHILD),
+        ("EDEADLK", libc::EDEADLK),
+        ("ENOMEM", libc::ENOMEM),
+        ("EACCES", libc::EACCES),
+        ("EFAULT", libc::EFAULT),
+        ("ENOTBLK", libc::ENOTBLK),
+        ("EBUSY", libc::EBUSY),
+        ("EEXIST", libc::EEXIST),
+        ("EXDEV", libc::EXDEV),
+        ("ENODEV", libc::ENODEV),
+        ("ENOTDIR", libc::ENOTDIR),
+        ("EISDIR", libc::EISDIR),
+        ("EINVAL", libc::EINVAL),
+        ("ENFILE", libc::ENFILE),
+        ("EMFILE", libc::EMFILE),
+        ("ENOTTY", libc::ENOTTY),
+        ("ETXTBSY", libc::ETXTBSY),
+        ("EFBIG", libc::EFBIG),
+        ("ENOSPC", libc::ENOSPC),
+        ("ESPIPE", libc::ESPIPE),
+        ("EROFS", libc::EROFS),
+        ("EMLINK", libc::EMLINK),
+        ("EPIPE", libc::EPIPE),
+        ("EDOM", libc::EDOM),
+        ("ERANGE", libc::ERANGE),
+        ("EAGAIN", libc::EAGAIN),
+        ("EINPROGRESS", libc::EINPROGRESS),
+        ("EALREADY", libc::EALREADY),
+        ("ENOTSOCK", libc::ENOTSOCK),
+        ("EDESTADDRREQ", libc::EDESTADDRREQ),
+        ("EMSGSIZE", libc::EMSGSIZE),
+        ("EPROTOTYPE", libc::EPROTOTYPE),
+        ("ENOPROTOOPT", libc::ENOPROTOOPT),
+        ("EPROTONOSUPPORT", libc::EPROTONOSUPPORT),
+        ("ESOCKTNOSUPPORT", libc::ESOCKTNOSUPPORT),
+        ("ENOTSUP", libc::ENOTSUP),
+        ("EPFNOSUPPORT", libc::EPFNOSUPPORT),
+        ("EAFNOSUPPORT", libc::EAFNOSUPPORT),
+        ("EADDRINUSE", libc::EADDRINUSE),
+        ("EADDRNOTAVAIL", libc::EADDRNOTAVAIL),
+        ("ENETDOWN", libc::ENETDOWN),
+        ("ENETUNREACH", libc::ENETUNREACH),
+        ("ENETRESET", libc::ENETRESET),
+        ("ECONNABORTED", libc::ECONNABORTED),
+        ("ECONNRESET", libc::ECONNRESET),
+        ("ENOBUFS", libc::ENOBUFS),
+        ("EISCONN", libc::EISCONN),
+        ("ENOTCONN", libc::ENOTCONN),
+        ("ESHUTDOWN", libc::ESHUTDOWN),
+        ("ETOOMANYREFS", libc::ETOOMANYREFS),
+        ("ETIMEDOUT", libc::ETIMEDOUT),
+        ("ECONNREFUSED", libc::ECONNREFUSED),
+        ("ELOOP", libc::ELOOP),
+        ("ENAMETOOLONG", libc::ENAMETOOLONG),
+        ("EHOSTDOWN", libc::EHOSTDOWN),
+        ("EHOSTUNREACH", libc::EHOSTUNREACH),
+        ("ENOTEMPTY", libc::ENOTEMPTY),
+        ("EPROCLIM", libc::EPROCLIM),
+        ("EUSERS", libc::EUSERS),
+        ("EDQUOT", libc::EDQUOT),
+        ("ESTALE", libc::ESTALE),
+        ("EREMOTE", libc::EREMOTE),
+        ("EBADRPC", libc::EBADRPC),
+        ("ERPCMISMATCH", libc::ERPCMISMATCH),
+        ("EPROGUNAVAIL", libc::EPROGUNAVAIL),
+        ("EPROGMISMATCH", libc::EPROGMISMATCH),
+        ("EPROCUNAVAIL", libc::EPROCUNAVAIL),
+        ("ENOLCK", libc::ENOLCK),
+        ("ENOSYS", libc::ENOSYS),
+        ("EFTYPE", libc::EFTYPE),
+        ("EAUTH", libc::EAUTH),
+        ("ENEEDAUTH", libc::ENEEDAUTH),
+        ("EPWROFF", libc::EPWROFF),
+        ("EDEVERR", libc::EDEVERR),
+        ("EOVERFLOW", libc::EOVERFLOW),
+        ("EBADEXEC", libc::EBADEXEC),
+        ("EBADARCH", libc::EBADARCH),
+        ("ESHLIBVERS", libc::ESHLIBVERS),
+        ("EBADMACHO", libc::EBADMACHO),
+        ("ECANCELED", libc::ECANCELED),
+        ("EIDRM", libc::EIDRM),
+        ("ENOMSG", libc::ENOMSG),
+        ("EILSEQ", libc::EILSEQ),
+        ("ENOATTR", libc::ENOATTR),
+        ("EBADMSG", libc::EBADMSG),
+        ("EMULTIHOP", libc::EMULTIHOP),
+        ("ENODATA", libc::ENODATA),
+        ("ENOLINK", libc::ENOLINK),
+        ("ENOSR", libc::ENOSR),
+        ("ENOSTR", libc::ENOSTR),
+        ("EPROTO", libc::EPROTO),
+        ("ETIME", libc::ETIME),
+        ("EOPNOTSUPP", libc::EOPNOTSUPP),
+        ("ENOPOLICY", libc::ENOPOLICY),
+        ("ENOTRECOVERABLE", libc::ENOTRECOVERABLE),
+        ("EOWNERDEAD", libc::EOWNERDEAD),
+        ("EQFULL", libc::EQFULL),
     ];
-    for (name, number, message) in ERRNO_NUMBERS {
+    #[cfg(not(target_os = "macos"))]
+    const ERRNO_NUMBERS: &[(&str, i32)] = &[
+        ("EPERM", libc::EPERM),
+        ("ENOENT", libc::ENOENT),
+        ("ESRCH", libc::ESRCH),
+        ("EINTR", libc::EINTR),
+        ("EIO", libc::EIO),
+        ("ENXIO", libc::ENXIO),
+        ("E2BIG", libc::E2BIG),
+        ("ENOEXEC", libc::ENOEXEC),
+        ("EBADF", libc::EBADF),
+        ("ECHILD", libc::ECHILD),
+        ("EAGAIN", libc::EAGAIN),
+        ("ENOMEM", libc::ENOMEM),
+        ("EACCES", libc::EACCES),
+        ("EFAULT", libc::EFAULT),
+        ("ENOTBLK", libc::ENOTBLK),
+        ("EBUSY", libc::EBUSY),
+        ("EEXIST", libc::EEXIST),
+        ("EXDEV", libc::EXDEV),
+        ("ENODEV", libc::ENODEV),
+        ("ENOTDIR", libc::ENOTDIR),
+        ("EISDIR", libc::EISDIR),
+        ("EINVAL", libc::EINVAL),
+        ("ENFILE", libc::ENFILE),
+        ("EMFILE", libc::EMFILE),
+        ("ENOTTY", libc::ENOTTY),
+        ("ETXTBSY", libc::ETXTBSY),
+        ("EFBIG", libc::EFBIG),
+        ("ENOSPC", libc::ENOSPC),
+        ("ESPIPE", libc::ESPIPE),
+        ("EROFS", libc::EROFS),
+        ("EMLINK", libc::EMLINK),
+        ("EPIPE", libc::EPIPE),
+        ("EDOM", libc::EDOM),
+        ("ERANGE", libc::ERANGE),
+        ("EDEADLK", libc::EDEADLK),
+        ("ENAMETOOLONG", libc::ENAMETOOLONG),
+        ("ENOLCK", libc::ENOLCK),
+        ("ENOSYS", libc::ENOSYS),
+        ("ENOTEMPTY", libc::ENOTEMPTY),
+        ("ELOOP", libc::ELOOP),
+        ("ENOMSG", libc::ENOMSG),
+        ("EIDRM", libc::EIDRM),
+        ("ECHRNG", libc::ECHRNG),
+        ("EL2NSYNC", libc::EL2NSYNC),
+        ("EL3HLT", libc::EL3HLT),
+        ("EL3RST", libc::EL3RST),
+        ("ELNRNG", libc::ELNRNG),
+        ("EUNATCH", libc::EUNATCH),
+        ("ENOCSI", libc::ENOCSI),
+        ("EL2HLT", libc::EL2HLT),
+        ("EBADE", libc::EBADE),
+        ("EBADR", libc::EBADR),
+        ("EXFULL", libc::EXFULL),
+        ("ENOANO", libc::ENOANO),
+        ("EBADRQC", libc::EBADRQC),
+        ("EBADSLT", libc::EBADSLT),
+        ("EBFONT", libc::EBFONT),
+        ("ENOSTR", libc::ENOSTR),
+        ("ENODATA", libc::ENODATA),
+        ("ETIME", libc::ETIME),
+        ("ENOSR", libc::ENOSR),
+        ("ENONET", libc::ENONET),
+        ("ENOPKG", libc::ENOPKG),
+        ("EREMOTE", libc::EREMOTE),
+        ("ENOLINK", libc::ENOLINK),
+        ("EADV", libc::EADV),
+        ("ESRMNT", libc::ESRMNT),
+        ("ECOMM", libc::ECOMM),
+        ("EPROTO", libc::EPROTO),
+        ("EMULTIHOP", libc::EMULTIHOP),
+        ("EDOTDOT", libc::EDOTDOT),
+        ("EBADMSG", libc::EBADMSG),
+        ("EOVERFLOW", libc::EOVERFLOW),
+        ("ENOTUNIQ", libc::ENOTUNIQ),
+        ("EBADFD", libc::EBADFD),
+        ("EREMCHG", libc::EREMCHG),
+        ("ELIBACC", libc::ELIBACC),
+        ("ELIBBAD", libc::ELIBBAD),
+        ("ELIBSCN", libc::ELIBSCN),
+        ("ELIBMAX", libc::ELIBMAX),
+        ("ELIBEXEC", libc::ELIBEXEC),
+        ("EILSEQ", libc::EILSEQ),
+        ("ERESTART", libc::ERESTART),
+        ("ESTRPIPE", libc::ESTRPIPE),
+        ("EUSERS", libc::EUSERS),
+        ("ENOTSOCK", libc::ENOTSOCK),
+        ("EDESTADDRREQ", libc::EDESTADDRREQ),
+        ("EMSGSIZE", libc::EMSGSIZE),
+        ("EPROTOTYPE", libc::EPROTOTYPE),
+        ("ENOPROTOOPT", libc::ENOPROTOOPT),
+        ("EPROTONOSUPPORT", libc::EPROTONOSUPPORT),
+        ("ESOCKTNOSUPPORT", libc::ESOCKTNOSUPPORT),
+        ("EOPNOTSUPP", libc::EOPNOTSUPP),
+        ("EPFNOSUPPORT", libc::EPFNOSUPPORT),
+        ("EAFNOSUPPORT", libc::EAFNOSUPPORT),
+        ("EADDRINUSE", libc::EADDRINUSE),
+        ("EADDRNOTAVAIL", libc::EADDRNOTAVAIL),
+        ("ENETDOWN", libc::ENETDOWN),
+        ("ENETUNREACH", libc::ENETUNREACH),
+        ("ENETRESET", libc::ENETRESET),
+        ("ECONNABORTED", libc::ECONNABORTED),
+        ("ECONNRESET", libc::ECONNRESET),
+        ("ENOBUFS", libc::ENOBUFS),
+        ("EISCONN", libc::EISCONN),
+        ("ENOTCONN", libc::ENOTCONN),
+        ("ESHUTDOWN", libc::ESHUTDOWN),
+        ("ETOOMANYREFS", libc::ETOOMANYREFS),
+        ("ETIMEDOUT", libc::ETIMEDOUT),
+        ("ECONNREFUSED", libc::ECONNREFUSED),
+        ("EHOSTDOWN", libc::EHOSTDOWN),
+        ("EHOSTUNREACH", libc::EHOSTUNREACH),
+        ("EALREADY", libc::EALREADY),
+        ("EINPROGRESS", libc::EINPROGRESS),
+        ("ESTALE", libc::ESTALE),
+        ("EUCLEAN", libc::EUCLEAN),
+        ("ENOTNAM", libc::ENOTNAM),
+        ("ENAVAIL", libc::ENAVAIL),
+        ("EISNAM", libc::EISNAM),
+        ("EREMOTEIO", libc::EREMOTEIO),
+        ("EDQUOT", libc::EDQUOT),
+        ("ENOMEDIUM", libc::ENOMEDIUM),
+        ("EMEDIUMTYPE", libc::EMEDIUMTYPE),
+        ("ECANCELED", libc::ECANCELED),
+        ("ENOKEY", libc::ENOKEY),
+        ("EKEYEXPIRED", libc::EKEYEXPIRED),
+        ("EKEYREVOKED", libc::EKEYREVOKED),
+        ("EKEYREJECTED", libc::EKEYREJECTED),
+        ("EOWNERDEAD", libc::EOWNERDEAD),
+        ("ENOTRECOVERABLE", libc::ENOTRECOVERABLE),
+        ("ERFKILL", libc::ERFKILL),
+        ("EHWPOISON", libc::EHWPOISON),
+    ];
+    for (name, number) in ERRNO_NUMBERS {
         let class = Rc::new(Class::new(
             format!("Errno::{}", name),
             Some(Rc::clone(system_call_error)),
@@ -692,14 +922,27 @@ fn register_errno_classes(errno_module: &Rc<Class>, system_call_error: &Rc<Class
         // show up as a Ruby-visible constant.
         class.set_class_var(
             ERRNO_MESSAGE_KEY,
-            Object::String(Rc::new((*message).to_string())),
+            Object::String(Rc::new(errno_description(*number))),
         );
         errno_module.set_class_var(*name, Object::Class(class));
     }
     // Ruby aliases these where the platform gives them the same number.
-    for (alias, canonical) in [("EWOULDBLOCK", "EAGAIN"), ("EOPNOTSUPP", "ENOTSUP")] {
-        if let Some(existing) = errno_module.get_class_var(canonical) {
+    for (alias, canonical) in [("EWOULDBLOCK", "EAGAIN"), ("ENOTSUP", "EOPNOTSUPP")] {
+        if errno_module.get_class_var(alias).is_none()
+            && let Some(existing) = errno_module.get_class_var(canonical)
+        {
             errno_module.set_class_var(alias, existing);
         }
+    }
+}
+
+/// What the C library calls the number, which is the message Ruby reports for
+/// it. Rust renders an os error as "Invalid argument (os error 22)", and Ruby
+/// reports only the first half.
+pub(crate) fn errno_description(number: i32) -> String {
+    let rendered = std::io::Error::from_raw_os_error(number).to_string();
+    match rendered.rfind(" (os error ") {
+        Some(cut) => rendered[..cut].to_string(),
+        None => rendered,
     }
 }

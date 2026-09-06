@@ -20,6 +20,7 @@ fn test_simple_class_definition() {
         name: "Point".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     }];
@@ -45,6 +46,7 @@ fn test_class_with_initialize_method() {
         name: "Point".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "initialize".to_string(),
@@ -100,6 +102,7 @@ fn test_create_instance_without_initialize() {
             name: "Simple".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![],
             position: pos(1, 1),
         },
@@ -144,6 +147,7 @@ fn test_create_instance_with_initialize() {
             name: "Point".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
                 name: "initialize".to_string(),
@@ -232,6 +236,7 @@ fn test_instance_variable_access() {
             name: "Counter".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![
                 Statement::MethodDef {
                     is_class_method: false,
@@ -331,6 +336,7 @@ fn test_class_variable_access() {
             name: "Counter".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![
                 Statement::Assignment {
                     target: Expression::ClassVariable {
@@ -458,6 +464,7 @@ fn test_class_with_inheritance() {
             name: "Base".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
                 name: "initialize".to_string(),
@@ -481,6 +488,7 @@ fn test_class_with_inheritance() {
             name: "Derived".to_string(),
             namespace: None,
             superclass: Some("Base".to_string()),
+            superclass_expression: None,
             body: vec![],
             position: pos(6, 1),
         },
@@ -530,6 +538,7 @@ fn test_error_when_superclass_not_found() {
         name: "Child".to_string(),
         namespace: None,
         superclass: Some("NonExistent".to_string()),
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     }];
@@ -563,6 +572,7 @@ fn test_error_when_superclass_not_a_class() {
             name: "Child".to_string(),
             namespace: None,
             superclass: Some("x".to_string()),
+            superclass_expression: None,
             body: vec![],
             position: pos(2, 1),
         },
@@ -586,6 +596,7 @@ fn test_error_when_calling_class_with_wrong_argument_count() {
             name: "Simple".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![],
             position: pos(1, 1),
         },

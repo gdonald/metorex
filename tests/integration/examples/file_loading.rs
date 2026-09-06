@@ -256,3 +256,17 @@ fn test_require_load_semantics_parens_execution() {
     let output = run_example("require/load_semantics_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_require_relative_keeps_exception_class_execution() {
+    let expected = "ArgumentError\nloaded file said no\n";
+    let output = run_example("require/exception_class.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_require_relative_keeps_exception_class_parens_execution() {
+    let expected = "ArgumentError\nloaded file said no\n";
+    let output = run_example("require/exception_class_parens.rb");
+    assert_eq!(output, expected);
+}

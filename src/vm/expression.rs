@@ -35,6 +35,9 @@ impl VirtualMachine {
                     // as its bare name, not the `:name` inspect form.
                     match &value {
                         Object::Symbol(s) => buffer.push_str(s),
+                        // `nil.to_s` is the empty string, so `"#{nil}"` adds
+                        // nothing rather than the `nil` inspect form.
+                        Object::Nil => {}
                         _ => buffer.push_str(&value.to_string()),
                     }
                 }
@@ -82,6 +85,9 @@ impl VirtualMachine {
             }
 
             let value = self.evaluate_expression(value_expr)?;
+            if map.contains_key(&key_string) && is_literal_key(key_expr) {
+                self.warn_duplicated_key(&key_value, key_expr, value_expr)?;
+            }
             map.insert(key_string, value);
         }
 
@@ -93,6 +99,42 @@ impl VirtualMachine {
         }
 
         Ok(Object::Dict(Rc::new(RefCell::new(map))))
+    }
+
+    /// Ruby names a key written twice in the same literal, reporting the line
+    /// whose value wins. Only a literal key is reported, since two expressions
+    /// that happen to answer the same object are not a duplicate as written.
+    fn warn_duplicated_key(
+        &mut self,
+        key: &Object,
+        key_expr: &Expression,
+        value_expr: &Expression,
+    ) -> Result<(), MetorexError> {
+        let position = key_expr.position();
+        let file = self
+            .current_source_file
+            .clone()
+            .or_else(|| {
+                self.current_file
+                    .as_ref()
+                    .map(|path| path.display().to_string())
+            })
+            .unwrap_or_default();
+        if !self
+            .reported_duplicate_keys
+            .insert((file.clone(), position.line, position.column))
+        {
+            return Ok(());
+        }
+        let rendered = crate::vm::native_methods::array_methods::inspect_element(key);
+        let message = format!(
+            "{}:{}: warning: key {} is duplicated and overwritten on line {}\n",
+            file,
+            position.line,
+            rendered,
+            value_expr.position().line
+        );
+        self.warn_through_warning_module(message, position)
     }
 
     /// Evaluate indexing operations on arrays and dictionaries.
@@ -396,4 +438,18 @@ impl VirtualMachine {
         self.environment_mut().pop_scope();
         result
     }
+}
+
+/// Whether a key is written out in the literal itself, which is what Ruby
+/// checks for a duplicate rather than what the key evaluates to.
+fn is_literal_key(key: &Expression) -> bool {
+    matches!(
+        key,
+        Expression::Symbol { .. }
+            | Expression::IntLiteral { .. }
+            | Expression::FloatLiteral { .. }
+            | Expression::StringLiteral { .. }
+            | Expression::BoolLiteral { .. }
+            | Expression::NilLiteral { .. }
+    )
 }

@@ -21,16 +21,28 @@ impl VirtualMachine {
         match method_name {
             "real" => Ok(Some(real)),
             "imaginary" | "imag" => Ok(Some(imaginary)),
-            "to_s" => Ok(Some(Object::string(format_complex(&real, &imaginary)))),
-            "inspect" => Ok(Some(Object::string(format!(
-                "({})",
-                format_complex(&real, &imaginary)
-            )))),
+            // Ruby renders the two parts with the method it is asked for, so
+            // `inspect` shows what each part inspects as.
+            "to_s" | "inspect" => {
+                let name = if method_name == "to_s" {
+                    "to_s"
+                } else {
+                    "inspect"
+                };
+                let real = self.render_part(&real, name, position)?;
+                let imaginary_negative = self.part_is_negative(&imaginary, position)?;
+                let imaginary = self.render_part(&imaginary, name, position)?;
+                let rendered = format_complex_parts(&real, &imaginary, imaginary_negative);
+                Ok(Some(Object::string(match method_name {
+                    "to_s" => rendered,
+                    _ => format!("({})", rendered),
+                })))
+            }
             "real?" => Ok(Some(Object::Bool(false))),
             "zero?" => Ok(Some(Object::Bool(is_zero(&real) && is_zero(&imaginary)))),
             "frozen?" => Ok(Some(Object::Bool(true))),
             "hash" => Ok(Some(Object::string(format_complex(&real, &imaginary)))),
-            "==" | "eql?" | "!=" => {
+            "==" | "!=" => {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
@@ -48,6 +60,271 @@ impl VirtualMachine {
                 } else {
                     equal
                 })))
+            }
+            // `eql?` is equality without conversion, so only another Complex
+            // whose parts are the same kind and value counts.
+            "eql?" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                let Some((other_real, other_imaginary)) = complex_parts(other) else {
+                    return Ok(Some(Object::Bool(false)));
+                };
+                // The parts are compared by class and by value rather than
+                // asked `eql?` themselves, which is what Ruby does here.
+                let same_classes = self.builtins().class_of(&real).name()
+                    == self.builtins().class_of(&other_real).name()
+                    && self.builtins().class_of(&imaginary).name()
+                        == self.builtins().class_of(&other_imaginary).name();
+                let equal = self.numbers_equal(&real, &other_real, position)?
+                    && self.numbers_equal(&imaginary, &other_imaginary, position)?;
+                Ok(Some(Object::Bool(same_classes && equal)))
+            }
+            // The arithmetic, which composes the two parts of each operand.
+            "+" | "-" | "*" | "/" | "quo" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                // An operand that is neither a Complex nor a real number is
+                // asked to coerce, and the operator is applied to the pair it
+                // answers.
+                if complex_parts(other).is_none()
+                    && !self.is_real_operand(other)
+                    && self.responds_to(other, "coerce")
+                {
+                    let pair = self.send_to_object(
+                        other.clone(),
+                        "coerce",
+                        vec![receiver.clone()],
+                        position,
+                    )?;
+                    if let Object::Array(parts) = &pair {
+                        let parts = parts.borrow().clone();
+                        if parts.len() == 2 {
+                            return self
+                                .send_to_object(
+                                    parts[0].clone(),
+                                    method_name,
+                                    vec![parts[1].clone()],
+                                    position,
+                                )
+                                .map(Some);
+                        }
+                    }
+                }
+                self.complex_arithmetic(&real, &imaginary, method_name, other, position)
+                    .map(Some)
+            }
+            // `fdiv` divides with both parts as Floats.
+            "fdiv" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                let real = self.part_to_float(&real, position)?;
+                let imaginary = self.part_to_float(&imaginary, position)?;
+                let left = self.make_complex(real, imaginary, position)?;
+                let (other_real, other_imaginary) = self.complex_operand_parts(other, position)?;
+                let other_real = self.part_to_float(&other_real, position)?;
+                let other_imaginary = self.part_to_float(&other_imaginary, position)?;
+                let right = self.make_complex(other_real, other_imaginary, position)?;
+                self.send_to_object(left, "/", vec![right], position)
+                    .map(Some)
+            }
+            // `**` with a whole exponent multiplies the number out, which
+            // keeps exact parts exact.
+            "**" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                self.complex_power(&real, &imaginary, other, position)
+                    .map(Some)
+            }
+            // The magnitude and the square of it, which needs no square root.
+            "abs" | "magnitude" => {
+                let real = self.part_to_float(&real, position)?;
+                let imaginary = self.part_to_float(&imaginary, position)?;
+                let (Object::Float(real), Object::Float(imaginary)) = (real, imaginary) else {
+                    unreachable!("both parts were converted to Floats")
+                };
+                Ok(Some(Object::Float(real.hypot(imaginary))))
+            }
+            "abs2" => {
+                let real_square = self.multiply_parts(&real, &real, position)?;
+                let imaginary_square = self.multiply_parts(&imaginary, &imaginary, position)?;
+                self.add_parts(&real_square, &imaginary_square, position)
+                    .map(Some)
+            }
+            // The direction the number points, measured from the positive
+            // real axis.
+            "arg" | "angle" | "phase" => {
+                let real = self.part_to_float(&real, position)?;
+                let imaginary = self.part_to_float(&imaginary, position)?;
+                let (Object::Float(real), Object::Float(imaginary)) = (real, imaginary) else {
+                    unreachable!("both parts were converted to Floats")
+                };
+                Ok(Some(Object::Float(imaginary.atan2(real))))
+            }
+            // Two Complexes with nothing on the imaginary axis order by their
+            // real parts, and anything else has no order at all.
+            "<=>" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                if !is_zero(&imaginary) {
+                    return Ok(Some(Object::Nil));
+                }
+                let other_real = match complex_parts(other) {
+                    Some((other_real, other_imaginary)) => {
+                        if !is_zero(&other_imaginary) {
+                            return Ok(Some(Object::Nil));
+                        }
+                        other_real
+                    }
+                    None if self.is_real_operand(other) => other.clone(),
+                    None => return Ok(Some(Object::Nil)),
+                };
+                self.evaluate_binary_operation(
+                    &crate::ast::BinaryOp::Spaceship,
+                    real,
+                    other_real,
+                    position,
+                )
+                .map(Some)
+            }
+            "polar" => {
+                let magnitude = self.send_to_object(receiver.clone(), "abs", vec![], position)?;
+                let angle = self.send_to_object(receiver.clone(), "arg", vec![], position)?;
+                Ok(Some(Object::array(vec![magnitude, angle])))
+            }
+            "rect" | "rectangular" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::array(vec![real, imaginary])))
+            }
+            "conjugate" | "conj" => {
+                let negated = self.negate_part(&imaginary, position)?;
+                self.make_complex(real, negated, position).map(Some)
+            }
+            // Negating sends `-@` to each part, so a part of the program's own
+            // making decides what its negation is.
+            "-@" | "+@" => {
+                if method_name == "+@" {
+                    return Ok(Some(receiver.clone()));
+                }
+                let real = self.send_to_object(real, "-@", vec![], position)?;
+                let imaginary = self.send_to_object(imaginary, "-@", vec![], position)?;
+                self.make_complex(real, imaginary, position).map(Some)
+            }
+            "to_c" => Ok(Some(receiver.clone())),
+            // A Complex is only a real number when nothing is left on the
+            // imaginary axis, and Ruby refuses to drop what is there.
+            // The two parts share a denominator, which is the least common
+            // multiple of theirs, and the numerator is the pair scaled to it.
+            "denominator" | "numerator" => {
+                let real_denominator =
+                    self.send_to_object(real.clone(), "denominator", vec![], position)?;
+                let imaginary_denominator =
+                    self.send_to_object(imaginary.clone(), "denominator", vec![], position)?;
+                let common = self.send_to_object(
+                    real_denominator,
+                    "lcm",
+                    vec![imaginary_denominator],
+                    position,
+                )?;
+                if method_name == "denominator" {
+                    return Ok(Some(common));
+                }
+                let scale = |vm: &mut Self, part: &Object| -> Result<Object, MetorexError> {
+                    let scaled = vm.evaluate_binary_operation(
+                        &crate::ast::BinaryOp::Multiply,
+                        part.clone(),
+                        common.clone(),
+                        position,
+                    )?;
+                    vm.send_to_object(scaled, "to_i", vec![], position)
+                };
+                let real = scale(self, &real)?;
+                let imaginary = scale(self, &imaginary)?;
+                self.make_complex(real, imaginary, position).map(Some)
+            }
+            "to_f" | "to_i" | "to_int" | "to_r" | "rationalize" => {
+                // The imaginary part is asked whether it is zero, so a number
+                // of the program's own making answers for itself. A Float is
+                // not exact enough to drop for `to_f` and `to_i`, so
+                // `Complex(1, 0.0)` is refused where `Complex(1, 0)` converts.
+                // The fraction conversions take it either way.
+                let exact_only = matches!(method_name, "to_f" | "to_i" | "to_int" | "rationalize");
+
+                let empty = !(exact_only && matches!(imaginary, Object::Float(_)))
+                    && self
+                        .send_to_object(imaginary.clone(), "==", vec![Object::Int(0)], position)?
+                        .is_truthy();
+                if !empty {
+                    let message = format!(
+                        "can't convert {} into {}",
+                        format_complex(&real, &imaginary),
+                        match method_name {
+                            "to_f" => "Float",
+                            "to_i" | "to_int" => "Integer",
+                            _ => "Rational",
+                        }
+                    );
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        &message,
+                        position,
+                    ));
+                }
+                let name = match method_name {
+                    "to_int" => "to_i",
+                    other => other,
+                };
+                self.send_to_object(real, name, arguments.to_vec(), position)
+                    .map(Some)
+            }
+            "finite?" | "infinite?" => {
+                let real_answer = self.send_to_object(real, method_name, vec![], position)?;
+                let imaginary_answer =
+                    self.send_to_object(imaginary, method_name, vec![], position)?;
+                if method_name == "finite?" {
+                    return Ok(Some(Object::Bool(
+                        real_answer.is_truthy() && imaginary_answer.is_truthy(),
+                    )));
+                }
+                // `infinite?` answers 1 when either part runs off the end.
+                Ok(Some(match (&real_answer, &imaginary_answer) {
+                    (Object::Nil, Object::Nil) => Object::Nil,
+                    _ => Object::Int(1),
+                }))
+            }
+            // `coerce` answers two Complexes, since that is what the operators
+            // apply to.
+            "coerce" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                if complex_parts(other).is_some() {
+                    return Ok(Some(Object::array(vec![other.clone(), receiver.clone()])));
+                }
+                if !self.is_real_operand(other) {
+                    let message = format!(
+                        "{} can't be coerced into Complex",
+                        self.builtins().class_of(other).name()
+                    );
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &message,
+                        position,
+                    ));
+                }
+                let promoted = self.make_complex(other.clone(), Object::Int(0), position)?;
+                Ok(Some(Object::array(vec![promoted, receiver.clone()])))
             }
             _ => Ok(None),
         }
@@ -110,6 +387,15 @@ impl VirtualMachine {
             let scaled = self.invoke_named_method(&positional[1], "*", &[unit], position)?;
             return self.invoke_named_method(&positional[0], "+", &[scaled], position);
         }
+        // Two plain real numbers are the two parts as they stand, which keeps
+        // a signed zero the sign it was given.
+        if complex_parts(&positional[0]).is_none()
+            && complex_parts(&positional[1]).is_none()
+            && self.is_real_operand(&positional[0])
+            && self.is_real_operand(&positional[1])
+        {
+            return self.make_complex(positional[0].clone(), positional[1].clone(), position);
+        }
         let Some(real) = self.complex_operand(&positional[0], raise, position)? else {
             return Ok(Object::Nil);
         };
@@ -146,9 +432,40 @@ impl VirtualMachine {
         }
         let first = arguments[0].clone();
         let second = arguments.get(1).cloned().unwrap_or(Object::Int(0));
+        // `rect` names the two axes directly, so both parts have to be real
+        // numbers: a Numeric that reports itself as not real names no point on
+        // either one.
         if method_name != "polar" {
+            for argument in [&first, &second] {
+                if !self.is_real_operand(argument) || self.operand_is_unreal(argument, position)? {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "not a real",
+                        position,
+                    ));
+                }
+            }
             return self.make_complex(first, second, position).map(Some);
         }
+        // A polar pair is measured along the real line, and a Complex with
+        // nothing on the imaginary axis is the number its real part holds.
+        let flatten = |vm: &mut Self, value: Object| -> Result<Object, MetorexError> {
+            if let Some((real, imaginary)) = complex_parts(&value)
+                && is_zero(&imaginary)
+            {
+                return Ok(real);
+            }
+            if !vm.is_real_operand(&value) {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "not a real",
+                    position,
+                ));
+            }
+            Ok(value)
+        };
+        let first = flatten(self, first)?;
+        let second = flatten(self, second)?;
         let (real, imaginary) = self.polar_parts(first, second, position)?;
         self.make_complex(real, imaginary, position).map(Some)
     }
@@ -305,10 +622,13 @@ impl VirtualMachine {
         right: &Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        if is_zero(right) {
+        // A shortcut is only safe when it keeps the kind of number Ruby would
+        // have produced, and adding a Float zero answers a Float.
+        let exact_zero = |value: &Object| is_zero(value) && !matches!(value, Object::Float(_));
+        if exact_zero(right) && !matches!(left, Object::Float(_)) {
             return Ok(left.clone());
         }
-        if is_zero(left) && operator == "+" {
+        if exact_zero(left) && operator == "+" && !matches!(right, Object::Float(_)) {
             return Ok(right.clone());
         }
         let operation = match operator {
@@ -559,4 +879,231 @@ pub(crate) fn parse_complex_text(text: &str) -> Option<ParsedComplex> {
             })
         }
     }
+}
+
+impl VirtualMachine {
+    /// `+`, `-`, `*`, and `/` between a Complex and whatever it was handed,
+    /// composed from the four parts.
+    fn complex_arithmetic(
+        &mut self,
+        real: &Object,
+        imaginary: &Object,
+        method_name: &str,
+        other: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (other_real, other_imaginary) = self.complex_operand_parts(other, position)?;
+        match method_name {
+            "+" | "-" => {
+                let combine = |vm: &mut Self, left: &Object, right: &Object| {
+                    if method_name == "+" {
+                        vm.add_parts(left, right, position)
+                    } else {
+                        vm.subtract_parts(left, right, position)
+                    }
+                };
+                let new_real = combine(self, real, &other_real)?;
+                let new_imaginary = combine(self, imaginary, &other_imaginary)?;
+                self.make_complex(new_real, new_imaginary, position)
+            }
+            // (a + bi)(c + di) = (ac - bd) + (ad + bc)i
+            "*" => {
+                let ac = self.multiply_parts(real, &other_real, position)?;
+                let bd = self.multiply_parts(imaginary, &other_imaginary, position)?;
+                let ad = self.multiply_parts(real, &other_imaginary, position)?;
+                let bc = self.multiply_parts(imaginary, &other_real, position)?;
+                let new_real = self.subtract_parts(&ac, &bd, position)?;
+                let new_imaginary = self.add_parts(&ad, &bc, position)?;
+                self.make_complex(new_real, new_imaginary, position)
+            }
+            // Dividing multiplies by the conjugate of the divisor, which
+            // leaves a real denominator to divide each part by.
+            _ => {
+                let cc = self.multiply_parts(&other_real, &other_real, position)?;
+                let dd = self.multiply_parts(&other_imaginary, &other_imaginary, position)?;
+                let denominator = self.add_parts(&cc, &dd, position)?;
+                let ac = self.multiply_parts(real, &other_real, position)?;
+                let bd = self.multiply_parts(imaginary, &other_imaginary, position)?;
+                let bc = self.multiply_parts(imaginary, &other_real, position)?;
+                let ad = self.multiply_parts(real, &other_imaginary, position)?;
+                let real_top = self.add_parts(&ac, &bd, position)?;
+                let imaginary_top = self.subtract_parts(&bc, &ad, position)?;
+                let new_real = self.divide_parts(&real_top, &denominator, position)?;
+                let new_imaginary = self.divide_parts(&imaginary_top, &denominator, position)?;
+                self.make_complex(new_real, new_imaginary, position)
+            }
+        }
+    }
+
+    /// A Complex raised to a whole power, by multiplying it out. A negative
+    /// exponent divides one by the positive power instead.
+    fn complex_power(
+        &mut self,
+        real: &Object,
+        imaginary: &Object,
+        exponent: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Object::Int(exponent) = exponent else {
+            let message = format!(
+                "{} can't be raised to that power yet",
+                format_complex(real, imaginary)
+            );
+            return Err(MetorexError::runtime_error(
+                message,
+                crate::vm::utils::position_to_location(position),
+            ));
+        };
+        let mut answer = self.make_complex(Object::Int(1), Object::Int(0), position)?;
+        let base = self.make_complex(real.clone(), imaginary.clone(), position)?;
+        for _ in 0..exponent.unsigned_abs() {
+            answer = self.send_to_object(answer, "*", vec![base.clone()], position)?;
+        }
+        if *exponent < 0 {
+            let one = self.make_complex(Object::Int(1), Object::Int(0), position)?;
+            return self.send_to_object(one, "/", vec![answer], position);
+        }
+        Ok(answer)
+    }
+
+    /// The two parts of an operand: a Complex gives both, and a real number
+    /// gives itself with nothing on the imaginary axis.
+    fn complex_operand_parts(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<(Object, Object), MetorexError> {
+        if let Some(parts) = complex_parts(value) {
+            return Ok(parts);
+        }
+        if self.is_real_operand(value) {
+            return Ok((value.clone(), Object::Int(0)));
+        }
+        let message = format!(
+            "{} can't be coerced into Complex",
+            self.builtins().class_of(value).name()
+        );
+        Err(crate::vm::errors::simple_exception(
+            "TypeError",
+            &message,
+            position,
+        ))
+    }
+
+    fn add_parts(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::Add,
+            left.clone(),
+            right.clone(),
+            position,
+        )
+    }
+
+    fn subtract_parts(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::Subtract,
+            left.clone(),
+            right.clone(),
+            position,
+        )
+    }
+
+    fn multiply_parts(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::Multiply,
+            left.clone(),
+            right.clone(),
+            position,
+        )
+    }
+
+    /// Dividing two parts keeps them exact: two Integers answer the Rational
+    /// between them rather than the whole number the division would floor to.
+    fn divide_parts(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if matches!(left, Object::Int(_) | Object::BigInt(_))
+            && matches!(right, Object::Int(_) | Object::BigInt(_))
+        {
+            return self.send_to_object(left.clone(), "quo", vec![right.clone()], position);
+        }
+        self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::Divide,
+            left.clone(),
+            right.clone(),
+            position,
+        )
+    }
+
+    fn negate_part(&mut self, value: &Object, position: Position) -> Result<Object, MetorexError> {
+        self.subtract_parts(&Object::Int(0), value, position)
+    }
+
+    /// A part as a Float, which is what the magnitude and the angle measure.
+    fn part_to_float(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        self.send_to_object(value.clone(), "to_f", vec![], position)
+    }
+}
+
+impl VirtualMachine {
+    /// One part of a Complex as text, through the method the caller names.
+    fn render_part(
+        &mut self,
+        value: &Object,
+        method_name: &str,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match self.send_to_object(value.clone(), method_name, vec![], position)? {
+            Object::String(text) => Ok((*text).clone()),
+            other => Ok(other.to_string()),
+        }
+    }
+
+    /// Whether a part sits below zero, which decides the sign between the two
+    /// halves. A negative zero counts, since Ruby shows `1-0.0i`.
+    fn part_is_negative(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        if let Object::Float(number) = value {
+            return Ok(number.is_sign_negative());
+        }
+        let answer = self.send_to_object(value.clone(), "<", vec![Object::Int(0)], position)?;
+        Ok(answer.is_truthy())
+    }
+}
+
+/// Join the two rendered halves the way Ruby does: a sign between them, and a
+/// `*` before the `i` when the imaginary half does not end in a digit.
+fn format_complex_parts(real: &str, imaginary: &str, negative: bool) -> String {
+    let magnitude = imaginary.strip_prefix('-').unwrap_or(imaginary);
+    let separator = if negative { "-" } else { "+" };
+    let suffix = match magnitude.chars().last() {
+        Some(last) if last.is_ascii_digit() => "i",
+        _ => "*i",
+    };
+    format!("{}{}{}{}", real, separator, magnitude, suffix)
 }

@@ -441,7 +441,7 @@ Parser fixes during Phase 4 work:
 
 ### Exceptions and Signals
 
-- [ ] 4.10. core/exception - 39 files; 31 pass, the other 8 are enabled one at a time in the runner with a reason each. full_message_spec is at 20 examples, 39 expectations, 4 failures, 6 errors
+- [ ] 4.10. core/exception - 39 files; 35 pass, the other 4 are enabled one at a time in the runner with a reason each. full_message_spec is at 20 examples, 39 expectations, 4 failures, 6 errors
   - [x] 4.10.1. core/exception/backtrace_locations_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.10.2. core/exception/backtrace_spec - 1 file, 13 examples, 47 expectations, 0 failures, 0 errors
   - [x] 4.10.3. core/exception/case_compare_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
@@ -475,315 +475,315 @@ Parser fixes during Phase 4 work:
   - [x] 4.10.31. core/exception/standard_error_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.10.32. core/exception/status_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.10.33. core/exception/success_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
-  - [ ] 4.10.34. core/exception/syntax_error_spec
-  - [ ] 4.10.35. core/exception/system_call_error_spec
-  - [ ] 4.10.36. core/exception/system_exit_spec
+  - [x] 4.10.34. core/exception/syntax_error_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.10.35. core/exception/system_call_error_spec - 1 file, 25 examples, 46 expectations, 0 failures, 0 errors
+  - [x] 4.10.36. core/exception/system_exit_spec - 1 file, 6 examples, 20 expectations, 0 failures, 0 errors
   - [x] 4.10.37. core/exception/to_s_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.10.38. core/exception/top_level_spec
-  - [ ] 4.10.39. core/exception/uncaught_throw_error_spec
-- [ ] 4.11. core/systemexit
-  - [ ] 4.11.1. core/systemexit/initialize_spec
-  - [ ] 4.11.2. core/systemexit/success_spec
-- [ ] 4.12. core/signal
-  - [ ] 4.12.1. core/signal/list_spec
-  - [ ] 4.12.2. core/signal/signame_spec
+  - [x] 4.10.39. core/exception/uncaught_throw_error_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+- [x] 4.11. core/systemexit - 2 files, 6 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.11.1. core/systemexit/initialize_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.11.2. core/systemexit/success_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+- [ ] 4.12. core/signal - 3 files; 2 pass, and trap_spec is enabled in the runner once Thread#group and IO.pipe land
+  - [x] 4.12.1. core/signal/list_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.12.2. core/signal/signame_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.12.3. core/signal/trap_spec
-- [ ] 4.13. core/warning
-  - [ ] 4.13.1. core/warning/categories_spec
-  - [ ] 4.13.2. core/warning/element_reference_spec
-  - [ ] 4.13.3. core/warning/element_set_spec
+- [ ] 4.13. core/warning - 5 files; 4 pass, and performance_warning_spec is enabled in the runner once `1 + 2` dispatches to a user-defined Integer#+
+  - [x] 4.13.1. core/warning/categories_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.13.2. core/warning/element_reference_spec - 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.13.3. core/warning/element_set_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.13.4. core/warning/performance_warning_spec
-  - [ ] 4.13.5. core/warning/warn_spec
+  - [x] 4.13.5. core/warning/warn_spec - 1 file, 20 examples, 20 expectations, 0 failures, 0 errors
 
 ### Numeric Types
 
-- [ ] 4.14. core/integer
-  - [ ] 4.14.1. core/integer/abs_spec
-  - [ ] 4.14.2. core/integer/allbits_spec
-  - [ ] 4.14.3. core/integer/anybits_spec
-  - [ ] 4.14.4. core/integer/bit_and_spec
+- [ ] 4.14. core/integer - 67 files; 49 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.14.1. core/integer/abs_spec - 1 file, 2 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.14.2. core/integer/allbits_spec - 1 file, 4 examples, 19 expectations, 0 failures, 0 errors
+  - [x] 4.14.3. core/integer/anybits_spec - 1 file, 4 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.14.4. core/integer/bit_and_spec - 1 file, 13 examples, 36 expectations, 0 failures, 0 errors
   - [ ] 4.14.5. core/integer/bit_length_spec
-  - [ ] 4.14.6. core/integer/bit_or_spec
-  - [ ] 4.14.7. core/integer/bit_xor_spec
-  - [ ] 4.14.8. core/integer/case_compare_spec
-  - [ ] 4.14.9. core/integer/ceil_spec
-  - [ ] 4.14.10. core/integer/ceildiv_spec
+  - [x] 4.14.6. core/integer/bit_or_spec - 1 file, 12 examples, 32 expectations, 0 failures, 0 errors
+  - [x] 4.14.7. core/integer/bit_xor_spec - 1 file, 13 examples, 32 expectations, 0 failures, 0 errors
+  - [x] 4.14.8. core/integer/case_compare_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
+  - [x] 4.14.9. core/integer/ceil_spec - 1 file, 10 examples, 41 expectations, 0 failures, 0 errors
+  - [x] 4.14.10. core/integer/ceildiv_spec - 1 file, 1 example, 11 expectations, 0 failures, 0 errors
   - [ ] 4.14.11. core/integer/chr_spec
-  - [ ] 4.14.12. core/integer/coerce_spec
-  - [ ] 4.14.13. core/integer/comparison_spec
-  - [ ] 4.14.14. core/integer/complement_spec
-  - [ ] 4.14.15. core/integer/constants_spec
-  - [ ] 4.14.16. core/integer/denominator_spec
-  - [ ] 4.14.17. core/integer/digits_spec
+  - [x] 4.14.12. core/integer/coerce_spec - 1 file, 12 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 4.14.13. core/integer/comparison_spec - 1 file, 33 examples, 46 expectations, 0 failures, 0 errors
+  - [x] 4.14.14. core/integer/complement_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.14.15. core/integer/constants_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.14.16. core/integer/denominator_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 4.14.17. core/integer/digits_spec - 1 file, 9 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.14.18. core/integer/div_spec
-  - [ ] 4.14.19. core/integer/divide_spec
-  - [ ] 4.14.20. core/integer/divmod_spec
+  - [x] 4.14.19. core/integer/divide_spec - 1 file, 18 examples, 50 expectations, 0 failures, 0 errors
+  - [x] 4.14.20. core/integer/divmod_spec - 1 file, 13 examples, 39 expectations, 0 failures, 0 errors
   - [ ] 4.14.21. core/integer/downto_spec
-  - [ ] 4.14.22. core/integer/dup_spec
+  - [x] 4.14.22. core/integer/dup_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.14.23. core/integer/element_reference_spec
-  - [ ] 4.14.24. core/integer/equal_value_spec
-  - [ ] 4.14.25. core/integer/even_spec
+  - [x] 4.14.24. core/integer/equal_value_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
+  - [x] 4.14.25. core/integer/even_spec - 1 file, 6 examples, 13 expectations, 0 failures, 0 errors
   - [ ] 4.14.26. core/integer/exponent_spec
-  - [ ] 4.14.27. core/integer/fdiv_spec
-  - [ ] 4.14.28. core/integer/floor_spec
-  - [ ] 4.14.29. core/integer/gcd_spec
-  - [ ] 4.14.30. core/integer/gcdlcm_spec
-  - [ ] 4.14.31. core/integer/gt_spec
-  - [ ] 4.14.32. core/integer/gte_spec
-  - [ ] 4.14.33. core/integer/integer_spec
-  - [ ] 4.14.34. core/integer/lcm_spec
+  - [x] 4.14.27. core/integer/fdiv_spec - 1 file, 14 examples, 28 expectations, 0 failures, 0 errors
+  - [x] 4.14.28. core/integer/floor_spec - 1 file, 9 examples, 33 expectations, 0 failures, 0 errors
+  - [x] 4.14.29. core/integer/gcd_spec - 1 file, 12 examples, 44 expectations, 0 failures, 0 errors
+  - [x] 4.14.30. core/integer/gcdlcm_spec - 1 file, 10 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.14.31. core/integer/gt_spec - 1 file, 5 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.14.32. core/integer/gte_spec - 1 file, 5 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.14.33. core/integer/integer_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.14.34. core/integer/lcm_spec - 1 file, 11 examples, 20 expectations, 0 failures, 0 errors
   - [ ] 4.14.35. core/integer/left_shift_spec
-  - [ ] 4.14.36. core/integer/lt_spec
-  - [ ] 4.14.37. core/integer/lte_spec
-  - [ ] 4.14.38. core/integer/magnitude_spec
-  - [ ] 4.14.39. core/integer/minus_spec
-  - [ ] 4.14.40. core/integer/modulo_spec
-  - [ ] 4.14.41. core/integer/multiply_spec
+  - [x] 4.14.36. core/integer/lt_spec - 1 file, 5 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.14.37. core/integer/lte_spec - 1 file, 7 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 4.14.38. core/integer/magnitude_spec - 1 file, 2 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.14.39. core/integer/minus_spec - 1 file, 7 examples, 19 expectations, 0 failures, 0 errors
+  - [x] 4.14.40. core/integer/modulo_spec - 1 file, 16 examples, 110 expectations, 0 failures, 0 errors
+  - [x] 4.14.41. core/integer/multiply_spec - 1 file, 5 examples, 18 expectations, 0 failures, 0 errors
   - [ ] 4.14.42. core/integer/next_spec
-  - [ ] 4.14.43. core/integer/nobits_spec
-  - [ ] 4.14.44. core/integer/numerator_spec
-  - [ ] 4.14.45. core/integer/odd_spec
-  - [ ] 4.14.46. core/integer/ord_spec
+  - [x] 4.14.43. core/integer/nobits_spec - 1 file, 4 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.14.44. core/integer/numerator_spec - 1 file, 1 example, 8 expectations, 0 failures, 0 errors
+  - [x] 4.14.45. core/integer/odd_spec - 1 file, 5 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.14.46. core/integer/ord_spec - 1 file, 1 example, 8 expectations, 0 failures, 0 errors
   - [ ] 4.14.47. core/integer/plus_spec
   - [ ] 4.14.48. core/integer/pow_spec
   - [ ] 4.14.49. core/integer/pred_spec
-  - [ ] 4.14.50. core/integer/rationalize_spec
-  - [ ] 4.14.51. core/integer/remainder_spec
+  - [x] 4.14.50. core/integer/rationalize_spec - 1 file, 5 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.14.51. core/integer/remainder_spec - 1 file, 7 examples, 20 expectations, 0 failures, 0 errors
   - [ ] 4.14.52. core/integer/right_shift_spec
-  - [ ] 4.14.53. core/integer/round_spec
-  - [ ] 4.14.54. core/integer/size_spec
-  - [ ] 4.14.55. core/integer/sqrt_spec
+  - [x] 4.14.53. core/integer/round_spec - 1 file, 16 examples, 48 expectations, 0 failures, 0 errors
+  - [x] 4.14.54. core/integer/size_spec - 1 file, 2 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.14.55. core/integer/sqrt_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.14.56. core/integer/succ_spec
   - [ ] 4.14.57. core/integer/times_spec
-  - [ ] 4.14.58. core/integer/to_f_spec
-  - [ ] 4.14.59. core/integer/to_i_spec
-  - [ ] 4.14.60. core/integer/to_int_spec
-  - [ ] 4.14.61. core/integer/to_r_spec
+  - [x] 4.14.58. core/integer/to_f_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.14.59. core/integer/to_i_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.14.60. core/integer/to_int_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.14.61. core/integer/to_r_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.14.62. core/integer/to_s_spec
-  - [ ] 4.14.63. core/integer/truncate_spec
-  - [ ] 4.14.64. core/integer/try_convert_spec
+  - [x] 4.14.63. core/integer/truncate_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
+  - [x] 4.14.64. core/integer/try_convert_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
   - [ ] 4.14.65. core/integer/uminus_spec
   - [ ] 4.14.66. core/integer/upto_spec
   - [ ] 4.14.67. core/integer/zero_spec
-- [ ] 4.15. core/float
-  - [ ] 4.15.1. core/float/abs_spec
-  - [ ] 4.15.2. core/float/angle_spec
-  - [ ] 4.15.3. core/float/arg_spec
-  - [ ] 4.15.4. core/float/case_compare_spec
-  - [ ] 4.15.5. core/float/ceil_spec
-  - [ ] 4.15.6. core/float/coerce_spec
+- [ ] 4.15. core/float - 50 files; 43 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.15.1. core/float/abs_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.15.2. core/float/angle_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.15.3. core/float/arg_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.15.4. core/float/case_compare_spec - 1 file, 5 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 4.15.5. core/float/ceil_spec - 1 file, 8 examples, 39 expectations, 0 failures, 0 errors
+  - [x] 4.15.6. core/float/coerce_spec - 1 file, 1 example, 9 expectations, 0 failures, 0 errors
   - [ ] 4.15.7. core/float/comparison_spec
   - [ ] 4.15.8. core/float/constants_spec
-  - [ ] 4.15.9. core/float/denominator_spec
-  - [ ] 4.15.10. core/float/divide_spec
-  - [ ] 4.15.11. core/float/divmod_spec
-  - [ ] 4.15.12. core/float/dup_spec
-  - [ ] 4.15.13. core/float/eql_spec
-  - [ ] 4.15.14. core/float/equal_value_spec
+  - [x] 4.15.9. core/float/denominator_spec - 1 file, 3 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.15.10. core/float/divide_spec - 1 file, 8 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.15.11. core/float/divmod_spec - 1 file, 6 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 4.15.12. core/float/dup_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.15.13. core/float/eql_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.15.14. core/float/equal_value_spec - 1 file, 5 examples, 23 expectations, 0 failures, 0 errors
   - [ ] 4.15.15. core/float/exponent_spec
-  - [ ] 4.15.16. core/float/fdiv_spec
-  - [ ] 4.15.17. core/float/finite_spec
-  - [ ] 4.15.18. core/float/float_spec
-  - [ ] 4.15.19. core/float/floor_spec
-  - [ ] 4.15.20. core/float/gt_spec
-  - [ ] 4.15.21. core/float/gte_spec
-  - [ ] 4.15.22. core/float/hash_spec
-  - [ ] 4.15.23. core/float/infinite_spec
+  - [x] 4.15.16. core/float/fdiv_spec - 1 file, 14 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.15.17. core/float/finite_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.15.18. core/float/float_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.15.19. core/float/floor_spec - 1 file, 7 examples, 31 expectations, 0 failures, 0 errors
+  - [x] 4.15.20. core/float/gt_spec - 1 file, 6 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 4.15.21. core/float/gte_spec - 1 file, 6 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 4.15.22. core/float/hash_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.15.23. core/float/infinite_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.15.24. core/float/inspect_spec
-  - [ ] 4.15.25. core/float/lt_spec
-  - [ ] 4.15.26. core/float/lte_spec
-  - [ ] 4.15.27. core/float/magnitude_spec
-  - [ ] 4.15.28. core/float/minus_spec
-  - [ ] 4.15.29. core/float/modulo_spec
-  - [ ] 4.15.30. core/float/multiply_spec
-  - [ ] 4.15.31. core/float/nan_spec
-  - [ ] 4.15.32. core/float/negative_spec
-  - [ ] 4.15.33. core/float/next_float_spec
-  - [ ] 4.15.34. core/float/numerator_spec
-  - [ ] 4.15.35. core/float/phase_spec
-  - [ ] 4.15.36. core/float/plus_spec
-  - [ ] 4.15.37. core/float/positive_spec
-  - [ ] 4.15.38. core/float/prev_float_spec
-  - [ ] 4.15.39. core/float/quo_spec
+  - [x] 4.15.25. core/float/lt_spec - 1 file, 6 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 4.15.26. core/float/lte_spec - 1 file, 6 examples, 26 expectations, 0 failures, 0 errors
+  - [x] 4.15.27. core/float/magnitude_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.15.28. core/float/minus_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.15.29. core/float/modulo_spec - 1 file, 16 examples, 36 expectations, 0 failures, 0 errors
+  - [x] 4.15.30. core/float/multiply_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.15.31. core/float/nan_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.15.32. core/float/negative_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.15.33. core/float/next_float_spec - 1 file, 9 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.15.34. core/float/numerator_spec - 1 file, 5 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.15.35. core/float/phase_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.15.36. core/float/plus_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.15.37. core/float/positive_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.15.38. core/float/prev_float_spec - 1 file, 9 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.15.39. core/float/quo_spec - 1 file, 14 examples, 15 expectations, 0 failures, 0 errors
   - [ ] 4.15.40. core/float/rationalize_spec
   - [ ] 4.15.41. core/float/round_spec
-  - [ ] 4.15.42. core/float/to_f_spec
-  - [ ] 4.15.43. core/float/to_i_spec
-  - [ ] 4.15.44. core/float/to_int_spec
-  - [ ] 4.15.45. core/float/to_r_spec
+  - [x] 4.15.42. core/float/to_f_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.15.43. core/float/to_i_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.15.44. core/float/to_int_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.15.45. core/float/to_r_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.15.46. core/float/to_s_spec
-  - [ ] 4.15.47. core/float/truncate_spec
-  - [ ] 4.15.48. core/float/uminus_spec
-  - [ ] 4.15.49. core/float/uplus_spec
-  - [ ] 4.15.50. core/float/zero_spec
-- [ ] 4.16. core/numeric
+  - [x] 4.15.47. core/float/truncate_spec - 1 file, 3 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.15.48. core/float/uminus_spec - 1 file, 5 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.15.49. core/float/uplus_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.15.50. core/float/zero_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+- [ ] 4.16. core/numeric - 46 files; 32 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.16.1. core/numeric/abs2_spec
-  - [ ] 4.16.2. core/numeric/abs_spec
+  - [x] 4.16.2. core/numeric/abs_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.16.3. core/numeric/angle_spec
   - [ ] 4.16.4. core/numeric/arg_spec
-  - [ ] 4.16.5. core/numeric/ceil_spec
-  - [ ] 4.16.6. core/numeric/clone_spec
-  - [ ] 4.16.7. core/numeric/coerce_spec
-  - [ ] 4.16.8. core/numeric/comparison_spec
-  - [ ] 4.16.9. core/numeric/conj_spec
-  - [ ] 4.16.10. core/numeric/conjugate_spec
-  - [ ] 4.16.11. core/numeric/denominator_spec
-  - [ ] 4.16.12. core/numeric/div_spec
-  - [ ] 4.16.13. core/numeric/divmod_spec
-  - [ ] 4.16.14. core/numeric/dup_spec
-  - [ ] 4.16.15. core/numeric/eql_spec
-  - [ ] 4.16.16. core/numeric/fdiv_spec
-  - [ ] 4.16.17. core/numeric/finite_spec
-  - [ ] 4.16.18. core/numeric/floor_spec
+  - [x] 4.16.5. core/numeric/ceil_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.16.6. core/numeric/clone_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.16.7. core/numeric/coerce_spec - 1 file, 7 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.16.8. core/numeric/comparison_spec - 1 file, 6 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.16.9. core/numeric/conj_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 4.16.10. core/numeric/conjugate_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 4.16.11. core/numeric/denominator_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.16.12. core/numeric/div_spec - 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.16.13. core/numeric/divmod_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.16.14. core/numeric/dup_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.16.15. core/numeric/eql_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.16.16. core/numeric/fdiv_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.16.17. core/numeric/finite_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.16.18. core/numeric/floor_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [ ] 4.16.19. core/numeric/i_spec
-  - [ ] 4.16.20. core/numeric/imag_spec
-  - [ ] 4.16.21. core/numeric/imaginary_spec
-  - [ ] 4.16.22. core/numeric/infinite_spec
-  - [ ] 4.16.23. core/numeric/integer_spec
-  - [ ] 4.16.24. core/numeric/magnitude_spec
-  - [ ] 4.16.25. core/numeric/modulo_spec
-  - [ ] 4.16.26. core/numeric/negative_spec
-  - [ ] 4.16.27. core/numeric/nonzero_spec
-  - [ ] 4.16.28. core/numeric/numerator_spec
-  - [ ] 4.16.29. core/numeric/numeric_spec
+  - [x] 4.16.20. core/numeric/imag_spec - 1 file, 2 examples, 24 expectations, 0 failures, 0 errors
+  - [x] 4.16.21. core/numeric/imaginary_spec - 1 file, 2 examples, 24 expectations, 0 failures, 0 errors
+  - [x] 4.16.22. core/numeric/infinite_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.16.23. core/numeric/integer_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.16.24. core/numeric/magnitude_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.16.25. core/numeric/modulo_spec - 1 file, 2 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.16.26. core/numeric/negative_spec - 1 file, 5 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.16.27. core/numeric/nonzero_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.16.28. core/numeric/numerator_spec - 1 file, 2 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.16.29. core/numeric/numeric_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.16.30. core/numeric/phase_spec
   - [ ] 4.16.31. core/numeric/polar_spec
-  - [ ] 4.16.32. core/numeric/positive_spec
+  - [x] 4.16.32. core/numeric/positive_spec - 1 file, 5 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.16.33. core/numeric/quo_spec
-  - [ ] 4.16.34. core/numeric/real_spec
+  - [x] 4.16.34. core/numeric/real_spec - 1 file, 3 examples, 25 expectations, 0 failures, 0 errors
   - [ ] 4.16.35. core/numeric/rect_spec
   - [ ] 4.16.36. core/numeric/rectangular_spec
   - [ ] 4.16.37. core/numeric/remainder_spec
-  - [ ] 4.16.38. core/numeric/round_spec
+  - [x] 4.16.38. core/numeric/round_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [ ] 4.16.39. core/numeric/singleton_method_added_spec
   - [ ] 4.16.40. core/numeric/step_spec
   - [ ] 4.16.41. core/numeric/to_c_spec
-  - [ ] 4.16.42. core/numeric/to_int_spec
-  - [ ] 4.16.43. core/numeric/truncate_spec
+  - [x] 4.16.42. core/numeric/to_int_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 4.16.43. core/numeric/truncate_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [ ] 4.16.44. core/numeric/uminus_spec
-  - [ ] 4.16.45. core/numeric/uplus_spec
-  - [ ] 4.16.46. core/numeric/zero_spec
-- [ ] 4.17. core/complex
-  - [ ] 4.17.1. core/complex/abs2_spec
-  - [ ] 4.17.2. core/complex/abs_spec
-  - [ ] 4.17.3. core/complex/angle_spec
-  - [ ] 4.17.4. core/complex/arg_spec
+  - [x] 4.16.45. core/numeric/uplus_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.16.46. core/numeric/zero_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+- [ ] 4.17. core/complex - 43 files; 34 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.17.1. core/complex/abs2_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.17.2. core/complex/abs_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 4.17.3. core/complex/angle_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.17.4. core/complex/arg_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [ ] 4.17.5. core/complex/coerce_spec
-  - [ ] 4.17.6. core/complex/comparison_spec
-  - [ ] 4.17.7. core/complex/conj_spec
-  - [ ] 4.17.8. core/complex/conjugate_spec
-  - [ ] 4.17.9. core/complex/constants_spec
-  - [ ] 4.17.10. core/complex/denominator_spec
+  - [x] 4.17.6. core/complex/comparison_spec - 1 file, 3 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.17.7. core/complex/conj_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.17.8. core/complex/conjugate_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.17.9. core/complex/constants_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.17.10. core/complex/denominator_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [ ] 4.17.11. core/complex/divide_spec
-  - [ ] 4.17.12. core/complex/eql_spec
-  - [ ] 4.17.13. core/complex/equal_value_spec
+  - [x] 4.17.12. core/complex/eql_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.17.13. core/complex/equal_value_spec - 1 file, 6 examples, 39 expectations, 0 failures, 0 errors
   - [ ] 4.17.14. core/complex/exponent_spec
   - [ ] 4.17.15. core/complex/fdiv_spec
-  - [ ] 4.17.16. core/complex/finite_spec
-  - [ ] 4.17.17. core/complex/hash_spec
-  - [ ] 4.17.18. core/complex/imag_spec
-  - [ ] 4.17.19. core/complex/imaginary_spec
-  - [ ] 4.17.20. core/complex/infinite_spec
-  - [ ] 4.17.21. core/complex/inspect_spec
-  - [ ] 4.17.22. core/complex/integer_spec
-  - [ ] 4.17.23. core/complex/magnitude_spec
+  - [x] 4.17.16. core/complex/finite_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.17.17. core/complex/hash_spec - 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.17.18. core/complex/imag_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.17.19. core/complex/imaginary_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.17.20. core/complex/infinite_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.17.21. core/complex/inspect_spec - 1 file, 4 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.17.22. core/complex/integer_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.17.23. core/complex/magnitude_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
   - [ ] 4.17.24. core/complex/marshal_dump_spec
   - [ ] 4.17.25. core/complex/minus_spec
   - [ ] 4.17.26. core/complex/multiply_spec
-  - [ ] 4.17.27. core/complex/negative_spec
-  - [ ] 4.17.28. core/complex/numerator_spec
-  - [ ] 4.17.29. core/complex/phase_spec
+  - [x] 4.17.27. core/complex/negative_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 4.17.28. core/complex/numerator_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 4.17.29. core/complex/phase_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [ ] 4.17.30. core/complex/plus_spec
-  - [ ] 4.17.31. core/complex/polar_spec
-  - [ ] 4.17.32. core/complex/positive_spec
+  - [x] 4.17.31. core/complex/polar_spec - 1 file, 4 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.17.32. core/complex/positive_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [ ] 4.17.33. core/complex/quo_spec
-  - [ ] 4.17.34. core/complex/rationalize_spec
-  - [ ] 4.17.35. core/complex/real_spec
-  - [ ] 4.17.36. core/complex/rect_spec
-  - [ ] 4.17.37. core/complex/rectangular_spec
-  - [ ] 4.17.38. core/complex/to_c_spec
-  - [ ] 4.17.39. core/complex/to_f_spec
-  - [ ] 4.17.40. core/complex/to_i_spec
-  - [ ] 4.17.41. core/complex/to_r_spec
-  - [ ] 4.17.42. core/complex/to_s_spec
-  - [ ] 4.17.43. core/complex/uminus_spec
-- [ ] 4.18. core/rational
-  - [ ] 4.18.1. core/rational/abs_spec
-  - [ ] 4.18.2. core/rational/ceil_spec
-  - [ ] 4.18.3. core/rational/comparison_spec
-  - [ ] 4.18.4. core/rational/denominator_spec
-  - [ ] 4.18.5. core/rational/div_spec
-  - [ ] 4.18.6. core/rational/divide_spec
-  - [ ] 4.18.7. core/rational/divmod_spec
-  - [ ] 4.18.8. core/rational/equal_value_spec
+  - [x] 4.17.34. core/complex/rationalize_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.17.35. core/complex/real_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.17.36. core/complex/rect_spec - 1 file, 12 examples, 55 expectations, 0 failures, 0 errors
+  - [x] 4.17.37. core/complex/rectangular_spec - 1 file, 12 examples, 55 expectations, 0 failures, 0 errors
+  - [x] 4.17.38. core/complex/to_c_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.17.39. core/complex/to_f_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.17.40. core/complex/to_i_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.17.41. core/complex/to_r_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.17.42. core/complex/to_s_spec - 1 file, 8 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.17.43. core/complex/uminus_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+- [ ] 4.18. core/rational - 32 files; 27 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.18.1. core/rational/abs_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.18.2. core/rational/ceil_spec - 1 file, 9 examples, 43 expectations, 0 failures, 0 errors
+  - [x] 4.18.3. core/rational/comparison_spec - 1 file, 13 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 4.18.4. core/rational/denominator_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.18.5. core/rational/div_spec - 1 file, 10 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 4.18.6. core/rational/divide_spec - 1 file, 9 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 4.18.7. core/rational/divmod_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.18.8. core/rational/equal_value_spec - 1 file, 4 examples, 14 expectations, 0 failures, 0 errors
   - [ ] 4.18.9. core/rational/exponent_spec
-  - [ ] 4.18.10. core/rational/fdiv_spec
-  - [ ] 4.18.11. core/rational/floor_spec
-  - [ ] 4.18.12. core/rational/hash_spec
-  - [ ] 4.18.13. core/rational/inspect_spec
-  - [ ] 4.18.14. core/rational/integer_spec
-  - [ ] 4.18.15. core/rational/magnitude_spec
+  - [x] 4.18.10. core/rational/fdiv_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 4.18.11. core/rational/floor_spec - 1 file, 8 examples, 35 expectations, 0 failures, 0 errors
+  - [x] 4.18.12. core/rational/hash_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 4.18.13. core/rational/inspect_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 4.18.14. core/rational/integer_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.18.15. core/rational/magnitude_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [ ] 4.18.16. core/rational/marshal_dump_spec
-  - [ ] 4.18.17. core/rational/minus_spec
-  - [ ] 4.18.18. core/rational/modulo_spec
-  - [ ] 4.18.19. core/rational/multiply_spec
-  - [ ] 4.18.20. core/rational/numerator_spec
-  - [ ] 4.18.21. core/rational/plus_spec
+  - [x] 4.18.17. core/rational/minus_spec - 1 file, 6 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.18.18. core/rational/modulo_spec - 1 file, 4 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 4.18.19. core/rational/multiply_spec - 1 file, 6 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 4.18.20. core/rational/numerator_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 4.18.21. core/rational/plus_spec - 1 file, 6 examples, 13 expectations, 0 failures, 0 errors
   - [ ] 4.18.22. core/rational/quo_spec
-  - [ ] 4.18.23. core/rational/rational_spec
+  - [x] 4.18.23. core/rational/rational_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.18.24. core/rational/rationalize_spec
-  - [ ] 4.18.25. core/rational/remainder_spec
-  - [ ] 4.18.26. core/rational/round_spec
-  - [ ] 4.18.27. core/rational/to_f_spec
-  - [ ] 4.18.28. core/rational/to_i_spec
+  - [x] 4.18.25. core/rational/remainder_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 4.18.26. core/rational/round_spec - 1 file, 12 examples, 51 expectations, 0 failures, 0 errors
+  - [x] 4.18.27. core/rational/to_f_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.18.28. core/rational/to_i_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.18.29. core/rational/to_r_spec
-  - [ ] 4.18.30. core/rational/to_s_spec
-  - [ ] 4.18.31. core/rational/truncate_spec
-  - [ ] 4.18.32. core/rational/zero_spec
-- [ ] 4.19. core/math
-  - [ ] 4.19.1. core/math/acos_spec
-  - [ ] 4.19.2. core/math/acosh_spec
-  - [ ] 4.19.3. core/math/asin_spec
-  - [ ] 4.19.4. core/math/asinh_spec
-  - [ ] 4.19.5. core/math/atan2_spec
-  - [ ] 4.19.6. core/math/atan_spec
-  - [ ] 4.19.7. core/math/atanh_spec
-  - [ ] 4.19.8. core/math/cbrt_spec
-  - [ ] 4.19.9. core/math/constants_spec
-  - [ ] 4.19.10. core/math/cos_spec
-  - [ ] 4.19.11. core/math/cosh_spec
-  - [ ] 4.19.12. core/math/erf_spec
-  - [ ] 4.19.13. core/math/erfc_spec
-  - [ ] 4.19.14. core/math/exp_spec
-  - [ ] 4.19.15. core/math/expm1_spec
-  - [ ] 4.19.16. core/math/frexp_spec
+  - [x] 4.18.30. core/rational/to_s_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
+  - [x] 4.18.31. core/rational/truncate_spec - 1 file, 10 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 4.18.32. core/rational/zero_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+- [ ] 4.19. core/math - 29 files; 27 pass, and gamma_spec and lgamma_spec need a gamma function accurate to the last digit
+  - [x] 4.19.1. core/math/acos_spec - 1 file, 10 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.19.2. core/math/acosh_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.19.3. core/math/asin_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 4.19.4. core/math/asinh_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.19.5. core/math/atan2_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.19.6. core/math/atan_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.19.7. core/math/atanh_spec - 1 file, 17 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 4.19.8. core/math/cbrt_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.19.9. core/math/constants_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.19.10. core/math/cos_spec - 1 file, 8 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.19.11. core/math/cosh_spec - 1 file, 7 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.19.12. core/math/erf_spec - 1 file, 7 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.19.13. core/math/erfc_spec - 1 file, 7 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.19.14. core/math/exp_spec - 1 file, 7 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.19.15. core/math/expm1_spec - 1 file, 7 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.19.16. core/math/frexp_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.19.17. core/math/gamma_spec
-  - [ ] 4.19.18. core/math/hypot_spec
-  - [ ] 4.19.19. core/math/ldexp_spec
+  - [x] 4.19.18. core/math/hypot_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 4.19.19. core/math/ldexp_spec - 1 file, 12 examples, 18 expectations, 0 failures, 0 errors
   - [ ] 4.19.20. core/math/lgamma_spec
-  - [ ] 4.19.21. core/math/log10_spec
-  - [ ] 4.19.22. core/math/log1p_spec
-  - [ ] 4.19.23. core/math/log2_spec
-  - [ ] 4.19.24. core/math/log_spec
-  - [ ] 4.19.25. core/math/sin_spec
-  - [ ] 4.19.26. core/math/sinh_spec
-  - [ ] 4.19.27. core/math/sqrt_spec
-  - [ ] 4.19.28. core/math/tan_spec
-  - [ ] 4.19.29. core/math/tanh_spec
+  - [x] 4.19.21. core/math/log10_spec - 1 file, 9 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.19.22. core/math/log1p_spec - 1 file, 10 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.19.23. core/math/log2_spec - 1 file, 8 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.19.24. core/math/log_spec - 1 file, 11 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.19.25. core/math/sin_spec - 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.19.26. core/math/sinh_spec - 1 file, 7 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.19.27. core/math/sqrt_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.19.28. core/math/tan_spec - 1 file, 8 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.19.29. core/math/tanh_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
 
 ### Collections
 
-- [ ] 4.20. core/array
+- [ ] 4.20. core/array - 102 files; 18 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.20.1. core/array/all_spec
   - [ ] 4.20.2. core/array/allocate_spec
   - [ ] 4.20.3. core/array/any_spec
-  - [ ] 4.20.4. core/array/append_spec
-  - [ ] 4.20.5. core/array/array_spec
+  - [x] 4.20.4. core/array/append_spec - 1 file, 8 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 4.20.5. core/array/array_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.20.6. core/array/assoc_spec
   - [ ] 4.20.7. core/array/at_spec
   - [ ] 4.20.8. core/array/bsearch_index_spec
   - [ ] 4.20.9. core/array/bsearch_spec
-  - [ ] 4.20.10. core/array/clear_spec
+  - [x] 4.20.10. core/array/clear_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.20.11. core/array/clone_spec
   - [ ] 4.20.12. core/array/collect_spec
   - [ ] 4.20.13. core/array/combination_spec
@@ -793,42 +793,42 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.17. core/array/constructor_spec
   - [ ] 4.20.18. core/array/count_spec
   - [ ] 4.20.19. core/array/cycle_spec
-  - [ ] 4.20.20. core/array/deconstruct_spec
-  - [ ] 4.20.21. core/array/delete_at_spec
-  - [ ] 4.20.22. core/array/delete_if_spec
-  - [ ] 4.20.23. core/array/delete_spec
+  - [x] 4.20.20. core/array/deconstruct_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.20.21. core/array/delete_at_spec - 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.20.22. core/array/delete_if_spec - 1 file, 13 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.20.23. core/array/delete_spec - 1 file, 7 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.20.24. core/array/difference_spec
   - [ ] 4.20.25. core/array/dig_spec
   - [ ] 4.20.26. core/array/drop_spec
   - [ ] 4.20.27. core/array/drop_while_spec
   - [ ] 4.20.28. core/array/dup_spec
-  - [ ] 4.20.29. core/array/each_index_spec
+  - [x] 4.20.29. core/array/each_index_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.20.30. core/array/each_spec
   - [ ] 4.20.31. core/array/element_reference_spec
   - [ ] 4.20.32. core/array/element_set_spec
-  - [ ] 4.20.33. core/array/empty_spec
+  - [x] 4.20.33. core/array/empty_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [ ] 4.20.34. core/array/eql_spec
   - [ ] 4.20.35. core/array/equal_value_spec
   - [ ] 4.20.36. core/array/fetch_spec
   - [ ] 4.20.37. core/array/fetch_values_spec
   - [ ] 4.20.38. core/array/fill_spec
   - [ ] 4.20.39. core/array/filter_spec
-  - [ ] 4.20.40. core/array/find_index_spec
+  - [x] 4.20.40. core/array/find_index_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.20.41. core/array/first_spec
   - [ ] 4.20.42. core/array/flatten_spec
-  - [ ] 4.20.43. core/array/frozen_spec
+  - [x] 4.20.43. core/array/frozen_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.20.44. core/array/hash_spec
-  - [ ] 4.20.45. core/array/include_spec
-  - [ ] 4.20.46. core/array/index_spec
+  - [x] 4.20.45. core/array/include_spec - 1 file, 3 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.20.46. core/array/index_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.20.47. core/array/initialize_spec
   - [ ] 4.20.48. core/array/insert_spec
   - [ ] 4.20.49. core/array/inspect_spec
   - [ ] 4.20.50. core/array/intersect_spec
   - [ ] 4.20.51. core/array/intersection_spec
   - [ ] 4.20.52. core/array/join_spec
-  - [ ] 4.20.53. core/array/keep_if_spec
+  - [x] 4.20.53. core/array/keep_if_spec - 1 file, 14 examples, 20 expectations, 0 failures, 0 errors
   - [ ] 4.20.54. core/array/last_spec
-  - [ ] 4.20.55. core/array/length_spec
+  - [x] 4.20.55. core/array/length_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.20.56. core/array/map_spec
   - [ ] 4.20.57. core/array/max_spec
   - [ ] 4.20.58. core/array/min_spec
@@ -871,13 +871,13 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.95. core/array/pop_spec
   - [ ] 4.20.96. core/array/prepend_spec
   - [ ] 4.20.97. core/array/product_spec
-  - [ ] 4.20.98. core/array/push_spec
+  - [x] 4.20.98. core/array/push_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.20.99. core/array/rassoc_spec
   - [ ] 4.20.100. core/array/reject_spec
   - [ ] 4.20.101. core/array/repeated_combination_spec
   - [ ] 4.20.102. core/array/repeated_permutation_spec
   - [ ] 4.20.103. core/array/replace_spec
-  - [ ] 4.20.104. core/array/reverse_each_spec
+  - [x] 4.20.104. core/array/reverse_each_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.20.105. core/array/reverse_spec
   - [ ] 4.20.106. core/array/rindex_spec
   - [ ] 4.20.107. core/array/rotate_spec
@@ -885,7 +885,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.109. core/array/select_spec
   - [ ] 4.20.110. core/array/shift_spec
   - [ ] 4.20.111. core/array/shuffle_spec
-  - [ ] 4.20.112. core/array/size_spec
+  - [x] 4.20.112. core/array/size_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.20.113. core/array/slice_spec
   - [ ] 4.20.114. core/array/sort_by_spec
   - [ ] 4.20.115. core/array/sort_spec
@@ -903,12 +903,12 @@ Parser fixes during Phase 4 work:
   - [ ] 4.20.127. core/array/unshift_spec
   - [ ] 4.20.128. core/array/values_at_spec
   - [ ] 4.20.129. core/array/zip_spec
-- [ ] 4.21. core/hash
+- [ ] 4.21. core/hash - 69 files; 1 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.21.1. core/hash/allocate_spec
   - [ ] 4.21.2. core/hash/any_spec
   - [ ] 4.21.3. core/hash/assoc_spec
   - [ ] 4.21.4. core/hash/clear_spec
-  - [ ] 4.21.5. core/hash/clone_spec
+  - [x] 4.21.5. core/hash/clone_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [ ] 4.21.6. core/hash/compact_spec
   - [ ] 4.21.7. core/hash/compare_by_identity_spec
   - [ ] 4.21.8. core/hash/constructor_spec
@@ -1028,8 +1028,8 @@ Parser fixes during Phase 4 work:
   - [ ] 4.22.52. core/set/to_a_spec
   - [ ] 4.22.53. core/set/to_s_spec
   - [ ] 4.22.54. core/set/union_spec
-- [ ] 4.23. core/range
-  - [ ] 4.23.1. core/range/begin_spec
+- [ ] 4.23. core/range - 33 files; 4 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.23.1. core/range/begin_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
   - [ ] 4.23.2. core/range/bsearch_spec
   - [ ] 4.23.3. core/range/case_compare_spec
   - [ ] 4.23.4. core/range/clone_spec
@@ -1037,13 +1037,13 @@ Parser fixes during Phase 4 work:
   - [ ] 4.23.6. core/range/cover_spec
   - [ ] 4.23.7. core/range/dup_spec
   - [ ] 4.23.8. core/range/each_spec
-  - [ ] 4.23.9. core/range/end_spec
+  - [x] 4.23.9. core/range/end_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
   - [ ] 4.23.10. core/range/eql_spec
   - [ ] 4.23.11. core/range/equal_value_spec
   - [ ] 4.23.12. core/range/exclude_end_spec
   - [ ] 4.23.13. core/range/first_spec
   - [ ] 4.23.14. core/range/frozen_spec
-  - [ ] 4.23.15. core/range/hash_spec
+  - [x] 4.23.15. core/range/hash_spec - 1 file, 3 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.23.16. core/range/include_spec
   - [ ] 4.23.17. core/range/initialize_spec
   - [ ] 4.23.18. core/range/inspect_spec
@@ -1055,44 +1055,44 @@ Parser fixes during Phase 4 work:
   - [ ] 4.23.24. core/range/new_spec
   - [ ] 4.23.25. core/range/overlap_spec
   - [ ] 4.23.26. core/range/percent_spec
-  - [ ] 4.23.27. core/range/range_spec
+  - [x] 4.23.27. core/range/range_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.23.28. core/range/reverse_each_spec
   - [ ] 4.23.29. core/range/size_spec
   - [ ] 4.23.30. core/range/step_spec
   - [ ] 4.23.31. core/range/to_a_spec
   - [ ] 4.23.32. core/range/to_s_spec
   - [ ] 4.23.33. core/range/to_set_spec
-- [ ] 4.24. core/struct
-  - [ ] 4.24.1. core/struct/clone_spec
-  - [ ] 4.24.2. core/struct/constants_spec
-  - [ ] 4.24.3. core/struct/deconstruct_keys_spec
-  - [ ] 4.24.4. core/struct/deconstruct_spec
-  - [ ] 4.24.5. core/struct/dig_spec
-  - [ ] 4.24.6. core/struct/dup_spec
-  - [ ] 4.24.7. core/struct/each_pair_spec
-  - [ ] 4.24.8. core/struct/each_spec
-  - [ ] 4.24.9. core/struct/element_reference_spec
-  - [ ] 4.24.10. core/struct/element_set_spec
-  - [ ] 4.24.11. core/struct/eql_spec
-  - [ ] 4.24.12. core/struct/equal_value_spec
-  - [ ] 4.24.13. core/struct/filter_spec
-  - [ ] 4.24.14. core/struct/hash_spec
+- [ ] 4.24. core/struct - 30 files; 28 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.24.1. core/struct/clone_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 4.24.2. core/struct/constants_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.24.3. core/struct/deconstruct_keys_spec - 1 file, 15 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 4.24.4. core/struct/deconstruct_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.24.5. core/struct/dig_spec - 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.24.6. core/struct/dup_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.24.7. core/struct/each_pair_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.24.8. core/struct/each_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.24.9. core/struct/element_reference_spec - 1 file, 6 examples, 22 expectations, 0 failures, 0 errors
+  - [x] 4.24.10. core/struct/element_set_spec - 1 file, 3 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.24.11. core/struct/eql_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.24.12. core/struct/equal_value_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.24.13. core/struct/filter_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.24.14. core/struct/hash_spec - 1 file, 8 examples, 12 expectations, 0 failures, 0 errors
   - [ ] 4.24.15. core/struct/initialize_spec
-  - [ ] 4.24.16. core/struct/inspect_spec
-  - [ ] 4.24.17. core/struct/instance_variable_get_spec
-  - [ ] 4.24.18. core/struct/instance_variables_spec
-  - [ ] 4.24.19. core/struct/keyword_init_spec
-  - [ ] 4.24.20. core/struct/length_spec
-  - [ ] 4.24.21. core/struct/members_spec
+  - [x] 4.24.16. core/struct/inspect_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.24.17. core/struct/instance_variable_get_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.24.18. core/struct/instance_variables_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.24.19. core/struct/keyword_init_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 4.24.20. core/struct/length_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.24.21. core/struct/members_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.24.22. core/struct/new_spec
-  - [ ] 4.24.23. core/struct/select_spec
-  - [ ] 4.24.24. core/struct/size_spec
-  - [ ] 4.24.25. core/struct/struct_spec
-  - [ ] 4.24.26. core/struct/to_a_spec
-  - [ ] 4.24.27. core/struct/to_h_spec
-  - [ ] 4.24.28. core/struct/to_s_spec
-  - [ ] 4.24.29. core/struct/values_at_spec
-  - [ ] 4.24.30. core/struct/values_spec
+  - [x] 4.24.23. core/struct/select_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.24.24. core/struct/size_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.24.25. core/struct/struct_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.24.26. core/struct/to_a_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.24.27. core/struct/to_h_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.24.28. core/struct/to_s_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.24.29. core/struct/values_at_spec - 1 file, 11 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.24.30. core/struct/values_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
 - [ ] 4.25. core/data
   - [ ] 4.25.1. core/data/constants_spec
   - [ ] 4.25.2. core/data/deconstruct_keys_spec
@@ -1254,7 +1254,7 @@ Parser fixes during Phase 4 work:
 
 ### Strings and Patterns
 
-- [ ] 4.28. core/string
+- [ ] 4.28. core/string - 114 files; 4 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.28.1. core/string/allocate_spec
   - [ ] 4.28.2. core/string/append_as_bytes_spec
   - [ ] 4.28.3. core/string/append_spec
@@ -1296,7 +1296,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.39. core/string/each_line_spec
   - [ ] 4.28.40. core/string/element_reference_spec
   - [ ] 4.28.41. core/string/element_set_spec
-  - [ ] 4.28.42. core/string/empty_spec
+  - [x] 4.28.42. core/string/empty_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [ ] 4.28.43. core/string/encode_spec
   - [ ] 4.28.44. core/string/encoding_spec
   - [ ] 4.28.45. core/string/end_with_spec
@@ -1307,7 +1307,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.50. core/string/getbyte_spec
   - [ ] 4.28.51. core/string/grapheme_clusters_spec
   - [ ] 4.28.52. core/string/gsub_spec
-  - [ ] 4.28.53. core/string/hash_spec
+  - [x] 4.28.53. core/string/hash_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [ ] 4.28.54. core/string/hex_spec
   - [ ] 4.28.55. core/string/include_spec
   - [ ] 4.28.56. core/string/index_spec
@@ -1343,7 +1343,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.86. core/string/split_spec
   - [ ] 4.28.87. core/string/squeeze_spec
   - [ ] 4.28.88. core/string/start_with_spec
-  - [ ] 4.28.89. core/string/string_spec
+  - [x] 4.28.89. core/string/string_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.28.90. core/string/strip_spec
   - [ ] 4.28.91. core/string/sub_spec
   - [ ] 4.28.92. core/string/succ_spec
@@ -1353,7 +1353,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.96. core/string/to_f_spec
   - [ ] 4.28.97. core/string/to_i_spec
   - [ ] 4.28.98. core/string/to_r_spec
-  - [ ] 4.28.99. core/string/to_s_spec
+  - [x] 4.28.99. core/string/to_s_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.28.100. core/string/to_str_spec
   - [ ] 4.28.101. core/string/to_sym_spec
   - [ ] 4.28.102. core/string/tr_s_spec
@@ -1396,19 +1396,19 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.139. core/string/upto_spec
   - [ ] 4.28.140. core/string/valid_encoding/utf_8_spec
   - [ ] 4.28.141. core/string/valid_encoding_spec
-- [ ] 4.29. core/symbol
+- [ ] 4.29. core/symbol - 29 files; 5 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.29.1. core/symbol/all_symbols_spec
   - [ ] 4.29.2. core/symbol/capitalize_spec
-  - [ ] 4.29.3. core/symbol/case_compare_spec
+  - [x] 4.29.3. core/symbol/case_compare_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.29.4. core/symbol/casecmp_spec
   - [ ] 4.29.5. core/symbol/comparison_spec
   - [ ] 4.29.6. core/symbol/downcase_spec
-  - [ ] 4.29.7. core/symbol/dup_spec
+  - [x] 4.29.7. core/symbol/dup_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.29.8. core/symbol/element_reference_spec
-  - [ ] 4.29.9. core/symbol/empty_spec
+  - [x] 4.29.9. core/symbol/empty_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.29.10. core/symbol/encoding_spec
   - [ ] 4.29.11. core/symbol/end_with_spec
-  - [ ] 4.29.12. core/symbol/equal_value_spec
+  - [x] 4.29.12. core/symbol/equal_value_spec - 1 file, 1 example, 7 expectations, 0 failures, 0 errors
   - [ ] 4.29.13. core/symbol/id2name_spec
   - [ ] 4.29.14. core/symbol/inspect_spec
   - [ ] 4.29.15. core/symbol/intern_spec
@@ -1424,7 +1424,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.29.25. core/symbol/symbol_spec
   - [ ] 4.29.26. core/symbol/to_proc_spec
   - [ ] 4.29.27. core/symbol/to_s_spec
-  - [ ] 4.29.28. core/symbol/to_sym_spec
+  - [x] 4.29.28. core/symbol/to_sym_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [ ] 4.29.29. core/symbol/upcase_spec
 - [ ] 4.30. core/regexp
   - [ ] 4.30.1. core/regexp/case_compare_spec

@@ -153,9 +153,9 @@ fn superclass_of_basicobject_is_nil() {
 
 #[test]
 fn ancestors_of_integer() {
-    // Integer, Numeric, Object.
+    // Integer, Comparable, Numeric, Object.
     let result = run("Integer.ancestors.length");
-    assert_eq!(result, Some(Object::Int(3)));
+    assert_eq!(result, Some(Object::Int(4)));
 }
 
 #[test]
@@ -1508,7 +1508,7 @@ fn divmod_by_zero_raises() {
 #[test]
 fn divmod_rejects_a_non_numeric_divisor() {
     let error = run_err(r#"1.divmod("two")"#);
-    assert!(error.contains("Integer or Float"));
+    assert!(error.contains("String can't be coerced into Integer"));
 }
 
 #[test]

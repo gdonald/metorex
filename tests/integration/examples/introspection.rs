@@ -43,10 +43,11 @@ Binding
 
 #[test]
 fn test_introspection_basic_attributes_execution() {
+    // A nil doc interpolates as the empty string, the way `nil.to_s` reads.
     let expected = r#"greet.name = greet
 calculate.name = calculate
-greet.doc = nil
-calculate.doc = nil
+greet.doc = 
+calculate.doc = 
 "#;
     let output = run_example("introspection/basic_attributes.rb");
     assert_eq!(output, expected);

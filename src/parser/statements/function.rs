@@ -26,8 +26,21 @@ impl Parser {
     fn parse_singleton_method_name(&mut self) -> Result<String, MetorexError> {
         let method_name = match self.advance().kind {
             TokenKind::Ident(method_name) => method_name,
-            TokenKind::Plus => "+".to_string(),
-            TokenKind::Minus => "-".to_string(),
+            // `-@` and `+@` name the unary operators, spelled with the `@`
+            // the lexer reads as an instance variable with no name of its own.
+            kind @ (TokenKind::Plus | TokenKind::Minus) => {
+                let operator = if matches!(kind, TokenKind::Plus) {
+                    "+"
+                } else {
+                    "-"
+                };
+                if matches!(&self.peek().kind, TokenKind::InstanceVar(name) if name.is_empty()) {
+                    self.advance();
+                    format!("{}@", operator)
+                } else {
+                    operator.to_string()
+                }
+            }
             TokenKind::Star => "*".to_string(),
             TokenKind::StarStar => "**".to_string(),
             TokenKind::Slash => "/".to_string(),
@@ -101,8 +114,21 @@ impl Parser {
                 }
             }
             // Operator method names
-            TokenKind::Plus => "+".to_string(),
-            TokenKind::Minus => "-".to_string(),
+            // `-@` and `+@` name the unary operators, spelled with the `@`
+            // the lexer reads as an instance variable with no name of its own.
+            kind @ (TokenKind::Plus | TokenKind::Minus) => {
+                let operator = if matches!(kind, TokenKind::Plus) {
+                    "+"
+                } else {
+                    "-"
+                };
+                if matches!(&self.peek().kind, TokenKind::InstanceVar(name) if name.is_empty()) {
+                    self.advance();
+                    format!("{}@", operator)
+                } else {
+                    operator.to_string()
+                }
+            }
             TokenKind::Star => "*".to_string(),
             TokenKind::Slash => "/".to_string(),
             TokenKind::Percent => "%".to_string(),

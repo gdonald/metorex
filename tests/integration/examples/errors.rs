@@ -336,7 +336,7 @@ fn test_errors_errno_classes_execution() {
         "Errno::EINVAL\n",
         "22\ntrue\ntrue\nfalse\n",
         "Errno::ENOENT\n",
-        "boom\ntrue\ntrue\nnil\n",
+        "No such file or directory - boom\ntrue\ntrue\nnil\n",
         "Invalid argument\n",
         "Invalid argument - custom message\n",
         "Invalid argument @ location - custom message\n",
@@ -356,7 +356,7 @@ fn test_errors_errno_classes_parens_execution() {
         "Errno::EINVAL\n",
         "22\ntrue\ntrue\nfalse\n",
         "Errno::ENOENT\n",
-        "boom\ntrue\ntrue\nnil\n",
+        "No such file or directory - boom\ntrue\ntrue\nnil\n",
         "Invalid argument\n",
         "Invalid argument - custom message\n",
         "Invalid argument @ location - custom message\n",
@@ -825,5 +825,192 @@ fn test_errors_exit_status_coercion_parens_execution() {
         "true\n"
     );
     let output = run_example("errors/exit_status_coercion_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_syntax_error_path_execution() {
+    let expected = concat!(
+        "nil\n",
+        "nil\n",
+        "SyntaxError\n",
+        "\"speccing.rb\"\n",
+        "nil\n",
+        "SyntaxError\n",
+        "true\n"
+    );
+    let output = run_example("errors/syntax_error/path.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_syntax_error_path_parens_execution() {
+    let expected = concat!(
+        "nil\n",
+        "nil\n",
+        "SyntaxError\n",
+        "\"speccing.rb\"\n",
+        "nil\n",
+        "SyntaxError\n",
+        "true\n"
+    );
+    let output = run_example("errors/syntax_error/path_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_main_using_scope_execution() {
+    let expected = "main.using is permitted only at toplevel\ntoplevel using allowed\n";
+    let output = run_example("errors/using_scope/main_using.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_main_using_scope_parens_execution() {
+    let expected = "main.using is permitted only at toplevel\ntoplevel using allowed\n";
+    let output = run_example("errors/using_scope/main_using_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_system_call_error_execution() {
+    let expected = concat!(
+        "Errno::EINVAL\n",
+        "Invalid argument\n",
+        "Invalid argument - custom message\n",
+        "Invalid argument @ location - custom message\n",
+        "Invalid argument\n",
+        "SystemCallError\n",
+        "16777216\n",
+        "true\n",
+        "nil\n",
+        "message\n",
+        "42\n",
+        "Errno::ENOENT\n",
+        "Errno::ENOENT\n",
+        "-1\n",
+        "ArgumentError\n",
+        "no implicit conversion of Symbol into String\n",
+        "no implicit conversion of String into Integer\n",
+        "can't convert 2.9+1i into Integer\n"
+    );
+    let output = run_example("errors/errno/system_call_error.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_system_call_error_parens_execution() {
+    let expected = concat!(
+        "Errno::EINVAL\n",
+        "Invalid argument\n",
+        "Invalid argument - custom message\n",
+        "Invalid argument @ location - custom message\n",
+        "Invalid argument\n",
+        "SystemCallError\n",
+        "16777216\n",
+        "true\n",
+        "nil\n",
+        "message\n",
+        "42\n",
+        "Errno::ENOENT\n",
+        "Errno::ENOENT\n",
+        "-1\n",
+        "ArgumentError\n",
+        "no implicit conversion of Symbol into String\n",
+        "no implicit conversion of String into Integer\n",
+        "can't convert 2.9+1i into Integer\n"
+    );
+    let output = run_example("errors/errno/system_call_error_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_system_exit_new_execution() {
+    let expected = concat!(
+        "42\n",
+        "message\n",
+        "false\n",
+        "0\n",
+        "1\n",
+        "SystemExit\n",
+        "42\n",
+        "0\n",
+        "message\n",
+        "0\n",
+        "SystemExit\n",
+        "8\n",
+        "false\n"
+    );
+    let output = run_example("errors/system_exit_new.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_system_exit_new_parens_execution() {
+    let expected = concat!(
+        "42\n",
+        "message\n",
+        "false\n",
+        "0\n",
+        "1\n",
+        "SystemExit\n",
+        "42\n",
+        "0\n",
+        "message\n",
+        "0\n",
+        "SystemExit\n",
+        "8\n",
+        "false\n"
+    );
+    let output = run_example("errors/system_exit_new_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_system_exit_subclass_exits_silently() {
+    let binary = env!("CARGO_BIN_EXE_metorex");
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let full_path = format!("{}/errors/system_exit_subclass.rb", EXAMPLES_DIR);
+    let mut command = Command::new(binary);
+    command.current_dir(manifest_dir).arg(&full_path);
+
+    let output = command.output().expect("failed to execute example");
+    let stdout = String::from_utf8(output.stdout).expect("stdout was not utf8");
+    let stderr = String::from_utf8(output.stderr).expect("stderr was not utf8");
+
+    assert_eq!(stdout, "before raise\n");
+    assert_eq!(stderr, "");
+    assert_eq!(output.status.code(), Some(8));
+}
+
+#[test]
+fn test_errors_uncaught_throw_execution() {
+    let expected = concat!(
+        ":abc\n",
+        "nil\n",
+        "uncaught throw :abc\n",
+        ":b\n",
+        "\"carried\"\n",
+        "nil\n",
+        "nil\n",
+        "false\n"
+    );
+    let output = run_example("errors/uncaught_throw.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_errors_uncaught_throw_parens_execution() {
+    let expected = concat!(
+        ":abc\n",
+        "nil\n",
+        "uncaught throw :abc\n",
+        ":b\n",
+        "\"carried\"\n",
+        "nil\n",
+        "nil\n",
+        "false\n"
+    );
+    let output = run_example("errors/uncaught_throw_parens.rb");
     assert_eq!(output, expected);
 }

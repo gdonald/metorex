@@ -296,11 +296,97 @@ impl VirtualMachine {
         };
 
         match method_name {
+            // The unary operators, which a sign in front of a Rational reaches.
+            "-@" | "+@" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let numerator = match method_name {
+                    "-@" => -numerator,
+                    _ => numerator,
+                };
+                self.make_rational(numerator, denominator, position)
+                    .map(Some)
+            }
+            // A Rational compared against something that is not a number
+            // answers by asking that object instead.
+            "==" if arguments.len() == 1
+                && matches!(&arguments[0], Object::Instance(instance)
+                    if !matches!(instance.borrow().class.name(), "Rational" | "Complex")) =>
+            {
+                let answer = self.send_to_object(
+                    arguments[0].clone(),
+                    "==",
+                    vec![receiver.clone()],
+                    position,
+                )?;
+                Ok(Some(Object::Bool(answer.is_truthy())))
+            }
             "numerator" => Ok(Some(Object::integer(numerator))),
             "denominator" => Ok(Some(Object::integer(denominator))),
+            // `floor`, `ceil`, `truncate`, and `round` take a precision: a
+            // positive one keeps that many decimal places and answers a
+            // Rational, and zero or less answers the Integer those places sit
+            // in.
+            "floor" | "ceil" | "truncate" | "round" => {
+                // `round` takes a `half:` keyword naming where a value exactly
+                // between two multiples goes.
+                let (arguments, half) = match method_name {
+                    "round" => crate::vm::native_methods::split_rounding_mode(arguments),
+                    _ => (arguments, None),
+                };
+                let half = self.rounding_mode(half, position)?;
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // Ruby takes an Integer precision here and nothing else, so an
+                // object carrying `to_int` is refused rather than converted.
+                let digits = match arguments.first() {
+                    None => 0,
+                    Some(Object::Int(digits)) => *digits,
+                    Some(_) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            "not an integer",
+                            position,
+                        ));
+                    }
+                };
+                let ten = num_bigint::BigInt::from(10);
+                // Move the decimal point by the precision, round there, and
+                // move it back.
+                let (scaled_numerator, scaled_denominator) = if digits > 0 {
+                    (&numerator * ten.pow(digits as u32), denominator.clone())
+                } else {
+                    (
+                        numerator.clone(),
+                        &denominator * ten.pow(digits.unsigned_abs() as u32),
+                    )
+                };
+                let rounded =
+                    round_fraction(&scaled_numerator, &scaled_denominator, method_name, &half);
+                if digits > 0 {
+                    return self
+                        .make_rational(rounded, ten.pow(digits as u32), position)
+                        .map(Some);
+                }
+                Ok(Some(Object::integer(
+                    rounded * ten.pow(digits.unsigned_abs() as u32),
+                )))
+            }
             "to_r" | "rationalize" => Ok(Some(receiver.clone())),
             // Rational truncates toward zero, so (8/3) is 2 and (-8/3) is -2.
-            "to_i" | "to_int" | "truncate" => {
+            "to_i" | "to_int" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -311,9 +397,12 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::integer(numerator / denominator)))
             }
-            "to_f" => Ok(Some(Object::Float(
-                big_to_float(&numerator) / big_to_float(&denominator),
-            ))),
+            // The two sides divide with the precision their widths carry, so a
+            // fraction of two bignums answers the ratio between them.
+            "to_f" => Ok(Some(Object::Float(crate::vm::native_methods::exact_ratio(
+                &numerator,
+                &denominator,
+            )))),
             "abs" => {
                 let magnitude = if numerator < num_bigint::BigInt::from(0) {
                     -numerator
@@ -457,4 +546,69 @@ impl VirtualMachine {
 fn big_to_float(value: &num_bigint::BigInt) -> f64 {
     use std::str::FromStr;
     f64::from_str(&value.to_string()).unwrap_or(f64::INFINITY)
+}
+
+/// The whole number a fraction rounds to, in the direction the method names.
+fn round_fraction(
+    numerator: &num_bigint::BigInt,
+    denominator: &num_bigint::BigInt,
+    method_name: &str,
+    half: &crate::vm::native_methods::RoundingMode,
+) -> num_bigint::BigInt {
+    let zero = num_bigint::BigInt::from(0);
+    let quotient = numerator / denominator;
+    let remainder = numerator % denominator;
+    if remainder == zero {
+        return quotient;
+    }
+    let negative = (numerator < &zero) != (denominator < &zero);
+    match method_name {
+        "truncate" => quotient,
+        "floor" => {
+            if negative {
+                quotient - 1
+            } else {
+                quotient
+            }
+        }
+        "ceil" => {
+            if negative {
+                quotient
+            } else {
+                quotient + 1
+            }
+        }
+        // A value exactly between two whole numbers goes where the `half:`
+        // keyword says, and away from zero when it says nothing.
+        _ => {
+            use crate::vm::native_methods::RoundingMode;
+            let doubled: num_bigint::BigInt = remainder.clone() * 2;
+            let magnitude = if doubled < zero { -doubled } else { doubled };
+            let divisor = if *denominator < zero {
+                -denominator.clone()
+            } else {
+                denominator.clone()
+            };
+            let away = if negative {
+                quotient.clone() - 1
+            } else {
+                quotient.clone() + 1
+            };
+            match magnitude.cmp(&divisor) {
+                std::cmp::Ordering::Less => quotient,
+                std::cmp::Ordering::Greater => away,
+                std::cmp::Ordering::Equal => match half {
+                    RoundingMode::Down => quotient,
+                    RoundingMode::Even => {
+                        if &quotient % 2 == zero {
+                            quotient
+                        } else {
+                            away
+                        }
+                    }
+                    RoundingMode::Up => away,
+                },
+            }
+        }
+    }
 }

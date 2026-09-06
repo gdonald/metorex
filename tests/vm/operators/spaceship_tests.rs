@@ -10,13 +10,6 @@ fn run(code: &str) -> Option<Object> {
     vm.execute_program(&stmts).expect("execution failed")
 }
 
-fn run_err(code: &str) -> String {
-    let tokens = Lexer::new(code).tokenize();
-    let stmts = Parser::new(tokens).parse().expect("parse failed");
-    let mut vm = VirtualMachine::new();
-    vm.execute_program(&stmts).unwrap_err().to_string()
-}
-
 #[test]
 fn spaceship_int_int() {
     assert_eq!(run("1 <=> 2"), Some(Object::Int(-1)));
@@ -52,7 +45,7 @@ fn spaceship_string_string() {
 }
 
 #[test]
-fn spaceship_type_error() {
-    let err = run_err("1 <=> 'a'");
-    assert!(err.contains("type") || err.contains("Cannot"));
+fn spaceship_against_an_unordered_value() {
+    // A number has no ordering against a String, which Ruby reports as nil.
+    assert_eq!(run("1 <=> 'a'"), Some(Object::Nil));
 }

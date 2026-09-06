@@ -12,17 +12,53 @@ impl Parser {
         &mut self,
         token_position: Position,
     ) -> Result<Expression, MetorexError> {
+        let expr = self.parse_expression_with_assignment()?;
+        self.expect(TokenKind::RParen, "Expected ')' after expression")?;
+        Ok(Expression::Grouped {
+            expression: Box::new(expr),
+            position: token_position,
+        })
+    }
+
+    /// Parse an expression that may assign, which is what an assignment
+    /// written where a value is expected does: `(x = 5)` and `array[i += 1]`
+    /// both answer what they assigned.
+    pub(crate) fn parse_expression_with_assignment(&mut self) -> Result<Expression, MetorexError> {
         let expr = self.parse_expression()?;
-        // Support parenthesized assignment: `(x = 5)`, `(@x = 5)`, etc.
-        let expr = if self.check(&[TokenKind::Equal])
-            && matches!(
-                expr,
-                Expression::Identifier { .. }
-                    | Expression::InstanceVariable { .. }
-                    | Expression::ClassVariable { .. }
-                    | Expression::GlobalVariable { .. }
-                    | Expression::Index { .. }
-            ) {
+        let assignable = matches!(
+            expr,
+            Expression::Identifier { .. }
+                | Expression::InstanceVariable { .. }
+                | Expression::ClassVariable { .. }
+                | Expression::GlobalVariable { .. }
+                | Expression::Index { .. }
+        );
+        let compound = [
+            (TokenKind::PlusEqual, crate::ast::BinaryOp::Add),
+            (TokenKind::MinusEqual, crate::ast::BinaryOp::Subtract),
+            (TokenKind::StarEqual, crate::ast::BinaryOp::Multiply),
+            (TokenKind::SlashEqual, crate::ast::BinaryOp::Divide),
+            (TokenKind::LogicalOrAssign, crate::ast::BinaryOp::Or),
+            (TokenKind::LogicalAndAssign, crate::ast::BinaryOp::And),
+        ]
+        .into_iter()
+        .find(|(kind, _)| assignable && self.check(std::slice::from_ref(kind)));
+        let expr = if let Some((_, operation)) = compound {
+            let operator_position = self.advance().position;
+            self.skip_whitespace();
+            let value = self.parse_expression()?;
+            Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr.clone()),
+                right: Box::new(Expression::BinaryOp {
+                    op: operation,
+                    left: Box::new(expr),
+                    right: Box::new(value),
+                    position: operator_position,
+                }),
+                position: operator_position,
+            }
+        } else if assignable && self.check(&[TokenKind::Equal]) {
             let eq_pos = self.advance().position;
             self.skip_whitespace();
             let value = self.parse_expression()?;
@@ -35,11 +71,7 @@ impl Parser {
         } else {
             expr
         };
-        self.expect(TokenKind::RParen, "Expected ')' after expression")?;
-        Ok(Expression::Grouped {
-            expression: Box::new(expr),
-            position: token_position,
-        })
+        Ok(expr)
     }
 
     /// Parse an array literal after the opening `[` has been consumed.
@@ -96,7 +128,6 @@ impl Parser {
         // `ident: value` — the shorthand whose key is a Symbol.
         if matches!(self.peek().kind, TokenKind::Ident(_))
             && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
-            && !matches!(self.peek_ahead(2).kind, TokenKind::Colon)
         {
             let ident_token = self.advance();
             let TokenKind::Ident(name) = ident_token.kind else {
@@ -142,7 +173,6 @@ impl Parser {
                 // so we don't resolve `ident` as a variable.
                 let key = if matches!(self.peek().kind, TokenKind::Ident(_))
                     && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
-                    && !matches!(self.peek_ahead(2).kind, TokenKind::Colon)
                 {
                     let ident_token = self.advance();
                     let name = match ident_token.kind {

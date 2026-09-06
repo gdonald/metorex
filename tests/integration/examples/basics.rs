@@ -413,3 +413,575 @@ fn test_basics_heredoc_bare_parens_execution() {
     let output = run_example("basics/heredoc_bare_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_basics_warn_categories_execution() {
+    let expected = concat!(
+        "[:deprecated, :experimental, :performance, :strict_unused_block]\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "unknown category: noop\n",
+        "no implicit conversion of String into Symbol\n",
+        "no implicit conversion of Integer into Symbol\n",
+        "true\n",
+        "Warning\n",
+        "nil\n",
+        "printed\n",
+        "{key: :value2}\n",
+        "1\n",
+        "true\n"
+    );
+    let output = run_example("basics/warn/categories.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_warn_categories_parens_execution() {
+    let expected = concat!(
+        "[:deprecated, :experimental, :performance, :strict_unused_block]\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "unknown category: noop\n",
+        "no implicit conversion of String into Symbol\n",
+        "no implicit conversion of Integer into Symbol\n",
+        "true\n",
+        "Warning\n",
+        "nil\n",
+        "printed\n",
+        "{key: :value2}\n",
+        "1\n",
+        "true\n"
+    );
+    let output = run_example("basics/warn/categories_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_operator_name_symbols_execution() {
+    let expected = concat!(
+        "3\n", "8\n", "2\n", "7\n", "-2\n", "2\n", "2\n", "-2.5\n", ":/\n", ":**\n", ":-@\n",
+        ":!\n", "1\n", "[:key]\n"
+    );
+    let output = run_example("basics/symbols/operator_names.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_operator_name_symbols_parens_execution() {
+    let expected = concat!(
+        "3\n", "8\n", "2\n", "7\n", "-2\n", "2\n", "2\n", "-2.5\n", ":/\n", ":**\n", ":-@\n",
+        ":!\n", "1\n", "[:key]\n"
+    );
+    let output = run_example("basics/symbols/operator_names_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_bit_predicates_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "no implicit conversion of String into Integer\n"
+    );
+    let output = run_example("basics/integers/bit_predicates.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_bit_predicates_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "no implicit conversion of String into Integer\n"
+    );
+    let output = run_example("basics/integers/bit_predicates_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_rounding_execution() {
+    let expected = concat!(
+        "15\n",
+        "15\n",
+        "15\n",
+        "15\n",
+        "20\n",
+        "10\n",
+        "10\n",
+        "-10\n",
+        "-20\n",
+        "200\n",
+        "300\n",
+        "30\n",
+        "20\n",
+        "20\n",
+        "40\n",
+        "-30\n",
+        "-20\n",
+        "invalid rounding mode: foo\n",
+        "1\n",
+        "-4\n",
+        "200\n"
+    );
+    let output = run_example("basics/integers/rounding.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_rounding_parens_execution() {
+    let expected = concat!(
+        "15\n",
+        "15\n",
+        "15\n",
+        "15\n",
+        "20\n",
+        "10\n",
+        "10\n",
+        "-10\n",
+        "-20\n",
+        "200\n",
+        "300\n",
+        "30\n",
+        "20\n",
+        "20\n",
+        "40\n",
+        "-30\n",
+        "-20\n",
+        "invalid rounding mode: foo\n",
+        "1\n",
+        "-4\n",
+        "200\n"
+    );
+    let output = run_example("basics/integers/rounding_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_coercion_execution() {
+    let expected = concat!(
+        "2\n",
+        "7\n",
+        "5\n",
+        "18\n",
+        "3\n",
+        "true\n",
+        "1\n",
+        "will not coerce\n",
+        "false\n",
+        "true\n",
+        "6\n",
+        "true\n"
+    );
+    let output = run_example("basics/integers/coercion.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_coercion_parens_execution() {
+    let expected = concat!(
+        "2\n",
+        "7\n",
+        "5\n",
+        "18\n",
+        "3\n",
+        "true\n",
+        "1\n",
+        "will not coerce\n",
+        "false\n",
+        "true\n",
+        "6\n",
+        "true\n"
+    );
+    let output = run_example("basics/integers/coercion_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_division_execution() {
+    let expected = concat!(
+        "2\n",
+        "-3\n",
+        "2\n",
+        "1\n",
+        "[1, 2]\n",
+        "[-2, 1]\n",
+        "2\n",
+        "-2\n",
+        "2\n",
+        "2.5\n",
+        "2\n",
+        "-1\n",
+        "10.0\n",
+        "divided by 0\n",
+        "Infinity\n",
+        "4\n",
+        "true\n",
+        "[5, 4, 3, 2, 1]\n",
+        "[2, 13, 4]\n",
+        "[2, 1]\n",
+        "[2.5, 1.0]\n"
+    );
+    let output = run_example("basics/integers/division.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_division_parens_execution() {
+    let expected = concat!(
+        "2\n",
+        "-3\n",
+        "2\n",
+        "1\n",
+        "[1, 2]\n",
+        "[-2, 1]\n",
+        "2\n",
+        "-2\n",
+        "2\n",
+        "2.5\n",
+        "2\n",
+        "-1\n",
+        "10.0\n",
+        "divided by 0\n",
+        "Infinity\n",
+        "4\n",
+        "true\n",
+        "[5, 4, 3, 2, 1]\n",
+        "[2, 13, 4]\n",
+        "[2, 1]\n",
+        "[2.5, 1.0]\n"
+    );
+    let output = run_example("basics/integers/division_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_comparison_and_scope_execution() {
+    let expected = concat!(
+        "true\n",
+        "[Integer, Comparable, Numeric, Object]\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "nil\n",
+        "3 metric\n",
+        "metric\n",
+        "34\n",
+        "1\n",
+        "(34/1)\n",
+        "8\n"
+    );
+    let output = run_example("basics/integers/comparison_and_scope.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_integer_comparison_and_scope_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "[Integer, Comparable, Numeric, Object]\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "nil\n",
+        "3 metric\n",
+        "metric\n",
+        "34\n",
+        "1\n",
+        "(34/1)\n",
+        "8\n"
+    );
+    let output = run_example("basics/integers/comparison_and_scope_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_float_methods_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "true\n",
+        "2.5\n",
+        "0\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "0.0\n",
+        "Infinity\n",
+        "[1.0, 1.2]\n",
+        "[2.5, 1.0]\n",
+        "1\n",
+        "2\n",
+        "(12/1)\n",
+        "3.1\n",
+        "3.2\n",
+        "34.5\n",
+        "1200\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "divided by 0\n",
+        "[2, 1.0]\n",
+        "3.5\n"
+    );
+    let output = run_example("basics/floats/methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_float_methods_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "true\n",
+        "true\n",
+        "2.5\n",
+        "0\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "0.0\n",
+        "Infinity\n",
+        "[1.0, 1.2]\n",
+        "[2.5, 1.0]\n",
+        "1\n",
+        "2\n",
+        "(12/1)\n",
+        "3.1\n",
+        "3.2\n",
+        "34.5\n",
+        "1200\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "divided by 0\n",
+        "[2, 1.0]\n",
+        "3.5\n"
+    );
+    let output = run_example("basics/floats/methods_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_numeric_protocol_execution() {
+    let expected = concat!(
+        "true\n",
+        "false\n",
+        "false\n",
+        "250\n",
+        "-250\n",
+        "false\n",
+        "3\n",
+        "2\n",
+        "3.0\n",
+        "-2\n",
+        "2\n",
+        "false\n",
+        "true\n",
+        "-250\n",
+        "[200, 100]\n",
+        "[3.0, 1.0]\n",
+        "true\n",
+        "false\n"
+    );
+    let output = run_example("basics/floats/numeric_protocol.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_numeric_protocol_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "false\n",
+        "false\n",
+        "250\n",
+        "-250\n",
+        "false\n",
+        "3\n",
+        "2\n",
+        "3.0\n",
+        "-2\n",
+        "2\n",
+        "false\n",
+        "true\n",
+        "-250\n",
+        "[200, 100]\n",
+        "[3.0, 1.0]\n",
+        "true\n",
+        "false\n"
+    );
+    let output = run_example("basics/floats/numeric_protocol_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_rational_rounding_execution() {
+    let expected = concat!(
+        "315\n",
+        "314\n",
+        "314\n",
+        "314\n",
+        "(3143/10)\n",
+        "(7857/25)\n",
+        "(157143/500)\n",
+        "400\n",
+        "310\n",
+        "3\n",
+        "2\n",
+        "2\n",
+        "-2\n",
+        "10.0\n",
+        "(1/1)\n",
+        "1\n"
+    );
+    let output = run_example("basics/rationals/rounding.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_rational_rounding_parens_execution() {
+    let expected = concat!(
+        "315\n",
+        "314\n",
+        "314\n",
+        "314\n",
+        "(3143/10)\n",
+        "(7857/25)\n",
+        "(157143/500)\n",
+        "400\n",
+        "310\n",
+        "3\n",
+        "2\n",
+        "2\n",
+        "-2\n",
+        "10.0\n",
+        "(1/1)\n",
+        "1\n"
+    );
+    let output = run_example("basics/rationals/rounding_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_complex_arithmetic_execution() {
+    let expected = concat!(
+        "(4+6i)\n",
+        "(-2-2i)\n",
+        "(-5+10i)\n",
+        "((11/25)+(2/25)*i)\n",
+        "(-3+4i)\n",
+        "(2+2i)\n",
+        "(2+2i)\n",
+        "(2+4i)\n",
+        "5.0\n",
+        "25\n",
+        "true\n",
+        "5.0\n",
+        "[3, 4]\n",
+        "(1-2i)\n",
+        "(-1-2i)\n",
+        "3\n",
+        "can't convert 3+1i into Float\n",
+        "can't convert 3+0.0i into Integer\n",
+        "true\n",
+        "false\n",
+        "\"1+2i\"\n"
+    );
+    let output = run_example("basics/complexes/arithmetic.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_complex_arithmetic_parens_execution() {
+    let expected = concat!(
+        "(4+6i)\n",
+        "(-2-2i)\n",
+        "(-5+10i)\n",
+        "((11/25)+(2/25)*i)\n",
+        "(-3+4i)\n",
+        "(2+2i)\n",
+        "(2+2i)\n",
+        "(2+4i)\n",
+        "5.0\n",
+        "25\n",
+        "true\n",
+        "5.0\n",
+        "[3, 4]\n",
+        "(1-2i)\n",
+        "(-1-2i)\n",
+        "3\n",
+        "can't convert 3+1i into Float\n",
+        "can't convert 3+0.0i into Integer\n",
+        "true\n",
+        "false\n",
+        "\"1+2i\"\n"
+    );
+    let output = run_example("basics/complexes/arithmetic_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_complex_protocol_execution() {
+    let expected = concat!(
+        "(0+1i)\n",
+        "(-1+0i)\n",
+        "(7+16i)\n",
+        "8\n",
+        "1\n",
+        "1\n",
+        "nil\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "undefined method 'new' for class 'Float'\n",
+        "can't unfreeze Integer\n",
+        "3\n",
+        "2\n"
+    );
+    let output = run_example("basics/complexes/protocol.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_basics_complex_protocol_parens_execution() {
+    let expected = concat!(
+        "(0+1i)\n",
+        "(-1+0i)\n",
+        "(7+16i)\n",
+        "8\n",
+        "1\n",
+        "1\n",
+        "nil\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "undefined method 'new' for class 'Float'\n",
+        "can't unfreeze Integer\n",
+        "3\n",
+        "2\n"
+    );
+    let output = run_example("basics/complexes/protocol_parens.rb");
+    assert_eq!(output, expected);
+}

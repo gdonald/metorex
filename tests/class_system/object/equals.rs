@@ -33,7 +33,9 @@ fn test_equals_int() {
 #[test]
 fn test_equals_float() {
     assert!(Object::Float(3.14).equals(&Object::Float(3.14)));
-    assert!(Object::Float(1.0).equals(&Object::Float(1.0 + 1e-10))); // Within epsilon
+    // Two Floats are equal when they are the same number, the way Ruby
+    // compares them, so a difference this small still counts.
+    assert!(!Object::Float(1.0).equals(&Object::Float(1.0 + 1e-10)));
     assert!(!Object::Float(3.14).equals(&Object::Float(2.71)));
     assert!(Object::Float(1.0).equals(&Object::Int(1)));
     assert!(!Object::Float(1.5).equals(&Object::Int(1)));

@@ -103,14 +103,14 @@ fn test_stdlib_testing_framework_parens_execution() {
 
 #[test]
 fn test_builtins_type_introspection_execution() {
-    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n3\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n4\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
     let output = run_example("builtins/type_introspection.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_builtins_type_introspection_parens_execution() {
-    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n3\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n4\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
     let output = run_example("builtins/type_introspection_parens.rb");
     assert_eq!(output, expected);
 }
@@ -262,7 +262,7 @@ fn test_stdlib_string_new_methods_parens_execution() {
 
 #[test]
 fn test_stdlib_error_paths_test_execution() {
-    let expected = "3.14\n-3.14\n4\n3\n4.0\n3\n3.14\n42.0\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
+    let expected = "3.14\n3.14\n4\n3\n4.0\n3\n3.14\n42.0\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
     let output = run_example("stdlib/error_paths_test.rb");
     assert_eq!(output, expected);
 }
@@ -718,5 +718,53 @@ fn test_stdlib_string_stringio_printf_parens_execution() {
         "written\n"
     );
     let output = run_example("stdlib/string/stringio_printf_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_math_functions_execution() {
+    let expected = concat!(
+        "2.0\n",
+        "3.0\n",
+        "5.0\n",
+        "0.0\n",
+        "3.0\n",
+        "3.0\n",
+        "3.0\n",
+        "1.0\n",
+        "[0.6025390625, 11]\n",
+        "1234.0\n",
+        "5.0\n",
+        "true\n",
+        "10001.0\n",
+        "Numerical argument is out of domain - \"sqrt\"\n",
+        "can't convert String into Float\n",
+        "true\n"
+    );
+    let output = run_example("stdlib/math/functions.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_math_functions_parens_execution() {
+    let expected = concat!(
+        "2.0\n",
+        "3.0\n",
+        "5.0\n",
+        "0.0\n",
+        "3.0\n",
+        "3.0\n",
+        "3.0\n",
+        "1.0\n",
+        "[0.6025390625, 11]\n",
+        "1234.0\n",
+        "5.0\n",
+        "true\n",
+        "10001.0\n",
+        "Numerical argument is out of domain - \"sqrt\"\n",
+        "can't convert String into Float\n",
+        "true\n"
+    );
+    let output = run_example("stdlib/math/functions_parens.rb");
     assert_eq!(output, expected);
 }

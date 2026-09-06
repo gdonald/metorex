@@ -20,8 +20,10 @@ fn run_err(code: &str) -> String {
 // ── Integer division ────────────────────────────────────────────────────────
 
 #[test]
-fn int_divide_non_evenly_produces_float() {
-    assert_eq!(run("5 / 2"), Some(Object::Float(2.5)));
+fn int_divide_rounds_toward_negative_infinity() {
+    assert_eq!(run("5 / 2"), Some(Object::Int(2)));
+    assert_eq!(run("-5 / 2"), Some(Object::Int(-3)));
+    assert_eq!(run("5 / 2.0"), Some(Object::Float(2.5)));
 }
 
 #[test]
@@ -58,11 +60,11 @@ fn float_divide_by_zero_is_infinite() {
 }
 
 #[test]
-fn float_modulo_by_zero_is_nan() {
-    let Some(Object::Float(result)) = run("4.0 % 0.0") else {
-        panic!("expected a Float");
-    };
-    assert!(result.is_nan());
+fn float_modulo_by_zero_raises() {
+    // `%` refuses a zero divisor whatever the receiver, where `/` answers an
+    // infinity.
+    let error = run_err("4.0 % 0.0");
+    assert!(error.contains("divided by 0"));
 }
 
 // ── Int / Float ──────────────────────────────────────────────────────────────
@@ -93,11 +95,11 @@ fn int_float_divide_by_zero_is_infinite() {
 }
 
 #[test]
-fn int_float_modulo_by_zero_is_nan() {
-    let Some(Object::Float(result)) = run("5 % 0.0") else {
-        panic!("expected a Float");
-    };
-    assert!(result.is_nan());
+fn int_float_modulo_by_zero_raises() {
+    // An Integer refuses a zero divisor whether or not it is a Float, where a
+    // Float receiver would answer NaN.
+    let error = run_err("5 % 0.0");
+    assert!(error.contains("divided by 0"));
 }
 
 // ── Float / Int ──────────────────────────────────────────────────────────────
@@ -128,11 +130,9 @@ fn float_int_divide_by_zero_is_infinite() {
 }
 
 #[test]
-fn float_int_modulo_by_zero_is_nan() {
-    let Some(Object::Float(result)) = run("5.0 % 0") else {
-        panic!("expected a Float");
-    };
-    assert!(result.is_nan());
+fn float_int_modulo_by_zero_raises() {
+    let error = run_err("5.0 % 0");
+    assert!(error.contains("divided by 0"));
 }
 
 // ── Addition ─────────────────────────────────────────────────────────────────

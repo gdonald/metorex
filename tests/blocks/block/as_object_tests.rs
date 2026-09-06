@@ -549,6 +549,7 @@ fn test_block_returned_from_method() {
             name: "BlockFactory".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
                 name: "create_multiplier".to_string(),

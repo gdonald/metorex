@@ -25,10 +25,10 @@ mod module_methods;
 mod object_methods;
 mod range_methods;
 pub(crate) mod rational_methods;
-pub(crate) use rational_methods::rational_parts;
+pub(crate) use rational_methods::{complex_parts, rational_parts};
 mod set_methods;
 mod string_methods;
-mod struct_methods;
+pub(crate) mod struct_methods;
 pub(crate) use struct_methods::struct_members;
 
 /// Instance variable a String subclass keeps its characters in.
@@ -790,4 +790,59 @@ pub(crate) fn is_valid_constant_name(name: &str) -> bool {
         _ => return false,
     }
     chars.all(|c| c.is_alphanumeric() || c == '_')
+}
+
+pub(crate) use int_methods::{RoundingMode, exact_ratio, split_rounding_mode};
+
+/// Multiply by a power of two in steps small enough that each factor is a
+/// Float, so an exponent far outside the Float range still scales correctly.
+pub(crate) fn scale_by_power_of_two(value: f64, exponent: i64) -> f64 {
+    const STEP: i64 = 500;
+    let mut value = value;
+    let mut remaining = exponent;
+    while remaining != 0 {
+        let step = remaining.clamp(-STEP, STEP);
+        value *= (2f64).powi(step as i32);
+        remaining -= step;
+        if value == 0.0 || !value.is_finite() {
+            break;
+        }
+    }
+    value
+}
+
+impl VirtualMachine {
+    /// The Enumerator a method answers when it is called without the block it
+    /// would have yielded to. It remembers the receiver and the call, so
+    /// walking it runs the method with a block of the Enumerator's own.
+    pub(crate) fn make_enumerator(
+        &mut self,
+        receiver: &Object,
+        method_name: &str,
+        arguments: &[Object],
+        position: crate::lexer::Position,
+    ) -> Result<Object, crate::error::MetorexError> {
+        let Some(enumerator @ Object::Class(_)) = self.globals().get("Enumerator") else {
+            return Err(crate::error::MetorexError::runtime_error(
+                "Enumerator is not defined",
+                crate::vm::utils::position_to_location(position),
+            ));
+        };
+        // The size an Enumerator reports without walking it, which for a
+        // collection is how many elements it holds. A search reports none,
+        // since how far it runs depends on what it finds.
+        let counted = !matches!(method_name, "rindex" | "index" | "find_index");
+        let size = match receiver {
+            Object::Array(elements) if counted => Object::Int(elements.borrow().len() as i64),
+            Object::Dict(entries) if counted => Object::Int(entries.borrow().len() as i64),
+            _ => Object::Nil,
+        };
+        let call = vec![
+            receiver.clone(),
+            Object::Symbol(Rc::new(method_name.to_string())),
+            Object::array(arguments.to_vec()),
+            size,
+        ];
+        self.send_to_object(enumerator, "new", call, position)
+    }
 }

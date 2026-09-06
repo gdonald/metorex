@@ -138,6 +138,21 @@ impl VirtualMachine {
                 position,
             } => {
                 let value = self.evaluate_expression(operand)?;
+                // An object that defines `-@` or `+@` names what the sign in
+                // front of it does, which is how a number a program writes
+                // negates.
+                if let Object::Instance(_) = &value
+                    && let Some(name) = match op {
+                        crate::ast::UnaryOp::Minus => Some("-@"),
+                        crate::ast::UnaryOp::Plus => Some("+@"),
+                        _ => None,
+                    }
+                    && (self.responds_to(&value, name)
+                        || crate::vm::native_methods::rational_parts(&value).is_some()
+                        || crate::vm::native_methods::complex_parts(&value).is_some())
+                {
+                    return self.send_to_object(value, name, vec![], *position);
+                }
                 self.evaluate_unary_operation(op, value, *position)
             }
             Expression::BinaryOp {
@@ -529,7 +544,7 @@ impl VirtualMachine {
 }
 
 /// Map a binary operator to its operator method name for user-defined dispatch.
-fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
+pub(crate) fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
     match op {
         BinaryOp::Add => Some("+"),
         BinaryOp::Subtract => Some("-"),

@@ -557,9 +557,11 @@ fn array_first_empty() {
 }
 
 #[test]
-fn array_first_error_with_args() {
-    let err = run_err("[1].first(1)");
-    assert!(err.contains("argument"));
+fn array_first_takes_a_count() {
+    assert_eq!(
+        run("[1, 2, 3].first(2).inspect"),
+        Some(Object::string("[1, 2]"))
+    );
 }
 
 #[test]
@@ -573,9 +575,11 @@ fn array_last_empty() {
 }
 
 #[test]
-fn array_last_error_with_args() {
-    let err = run_err("[1].last(1)");
-    assert!(err.contains("argument"));
+fn array_last_takes_a_count() {
+    assert_eq!(
+        run("[1, 2, 3].last(2).inspect"),
+        Some(Object::string("[2, 3]"))
+    );
 }
 
 // ── include? ────────────────────────────────────────────────────────────────

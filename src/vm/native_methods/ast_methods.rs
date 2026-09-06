@@ -25,7 +25,7 @@ fn str_obj(s: impl Into<String>) -> Object {
     Object::string(s.into())
 }
 
-fn binary_op_str(op: &BinaryOp) -> &'static str {
+pub(crate) fn binary_op_str(op: &BinaryOp) -> &'static str {
     match op {
         BinaryOp::Add => "+",
         BinaryOp::Subtract => "-",

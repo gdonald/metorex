@@ -55,7 +55,7 @@ fn test_programs_calculator() {
     let expected = r#"Addition: 10 + 3 = 13
 Subtraction: 10 - 3 = 7
 Multiplication: 10 * 3 = 30
-Division: 10 / 3 = 3.3333333333333335
+Division: 10 / 3 = 3
 Modulo: 10 % 3 = 1
 Division by zero:
 Error: Division by zero
@@ -70,7 +70,7 @@ fn test_programs_calculator_no_parens() {
     let expected = r#"Addition: 10 + 3 = 13
 Subtraction: 10 - 3 = 7
 Multiplication: 10 * 3 = 30
-Division: 10 / 3 = 3.3333333333333335
+Division: 10 / 3 = 3
 Modulo: 10 % 3 = 1
 Division by zero:
 Error: Division by zero

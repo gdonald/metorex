@@ -60,6 +60,60 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         use BinaryOp::*;
 
+        // A Complex carries its own arithmetic too, and a real number on the
+        // left of one is promoted so that arithmetic runs.
+        if let Some(name) = crate::vm::eval::binary_op_method_name(op) {
+            if crate::vm::native_methods::complex_parts(&left).is_some()
+                && let Some(result) =
+                    self.call_complex_method(&left, name, std::slice::from_ref(&right), position)?
+            {
+                return Ok(result);
+            }
+            if crate::vm::native_methods::complex_parts(&right).is_some()
+                && is_number(&left)
+                && let Some(result) = {
+                    let promoted = self.make_complex(left.clone(), Object::Int(0), position)?;
+                    self.call_complex_method(
+                        &promoted,
+                        name,
+                        std::slice::from_ref(&right),
+                        position,
+                    )?
+                }
+            {
+                return Ok(result);
+            }
+        }
+
+        // A Rational carries its own arithmetic, which runs whichever side it
+        // sits on.
+        if let Some(name) = crate::vm::eval::binary_op_method_name(op)
+            && crate::vm::native_methods::rational_parts(&left).is_some()
+            && let Some(result) =
+                self.call_rational_method(&left, name, std::slice::from_ref(&right), position)?
+        {
+            return Ok(result);
+        }
+        // A Rational on the right promotes the number on the left, so the
+        // Rational's own exact arithmetic runs rather than a Float one.
+        if let (Some(name), Object::Int(_) | Object::BigInt(_) | Object::Float(_)) =
+            (crate::vm::eval::binary_op_method_name(op), &left)
+            && crate::vm::native_methods::rational_parts(&right).is_some()
+        {
+            let promoted = self.promote_to_rational(&left, position)?;
+            if let Some(result) =
+                self.call_rational_method(&promoted, name, std::slice::from_ref(&right), position)?
+            {
+                return Ok(result);
+            }
+        }
+
+        // Ruby hands an operand it does not know to the other side's `coerce`,
+        // which answers the pair to apply the operator to instead.
+        if let Some(coerced) = self.coerce_binary_operand(op, &left, &right, position)? {
+            return Ok(coerced);
+        }
+
         match op {
             Add => self.evaluate_addition(left, right, position),
             Modulo if matches!(left, Object::String(_)) => {
@@ -69,6 +123,14 @@ impl VirtualMachine {
                 self.evaluate_numeric_binary(op, left, right, position)
             }
             Equal => {
+                // A number compared against something that is not one answers
+                // by asking that object instead, which is how a class that
+                // stands for a number reports equality with one.
+                if is_number(&left) && takes_coercion(&right) {
+                    let answer =
+                        self.send_to_object(right.clone(), "==", vec![left.clone()], position)?;
+                    return Ok(Object::Bool(answer.is_truthy()));
+                }
                 // For instances, dispatch to user-defined == method if present,
                 // or to <=> (Comparable protocol) if the class has <=> defined.
                 if let Object::Instance(inst_rc) = &left {
@@ -138,6 +200,13 @@ impl VirtualMachine {
                 Ok(Object::Bool(left.equals(&right)))
             }
             CaseEqual => {
+                // A number's `===` is its `==`, so it too answers by asking an
+                // operand that is not a number.
+                if is_number(&left) && takes_coercion(&right) {
+                    let answer =
+                        self.send_to_object(right.clone(), "==", vec![left.clone()], position)?;
+                    return Ok(Object::Bool(answer.is_truthy()));
+                }
                 // Regexp === str: whether the pattern matches anywhere.
                 if let Object::Regex(pattern, flags) = &left {
                     // A Regexp matches a Symbol's name as readily as a String.
@@ -424,6 +493,11 @@ impl VirtualMachine {
                 let b = right.as_big_integer().expect("integer-kinded");
                 integer_arithmetic(op, a, b, position)
             }
+            // An Integer receiver refuses a zero divisor whether or not the
+            // divisor is a Float, so the bignum path says so.
+            (Object::BigInt(a), Object::Float(b)) if matches!(op, BinaryOp::Modulo) => {
+                float_modulo(big_to_float(&a), b, position)
+            }
             (Object::BigInt(a), Object::Float(b)) => {
                 float_arithmetic(op, big_to_float(&a), b, position)
             }
@@ -436,7 +510,7 @@ impl VirtualMachine {
                 // Float division by zero follows IEEE 754 and answers an
                 // infinity or NaN. Only Integer / Integer raises.
                 BinaryOp::Divide => Ok(Object::Float(a / b)),
-                BinaryOp::Modulo => Ok(Object::Float(a % b)),
+                BinaryOp::Modulo => float_modulo(a, b, position),
                 BinaryOp::Power => Ok(Object::Float(a.powf(b))),
                 _ => unreachable!(),
             },
@@ -444,7 +518,7 @@ impl VirtualMachine {
                 BinaryOp::Subtract => Ok(Object::Float((a as f64) - b)),
                 BinaryOp::Multiply => Ok(Object::Float((a as f64) * b)),
                 BinaryOp::Divide => Ok(Object::Float((a as f64) / b)),
-                BinaryOp::Modulo => Ok(Object::Float((a as f64) % b)),
+                BinaryOp::Modulo => float_modulo(a as f64, b, position),
                 BinaryOp::Power => Ok(Object::Float((a as f64).powf(b))),
                 _ => unreachable!(),
             },
@@ -452,8 +526,10 @@ impl VirtualMachine {
                 BinaryOp::Subtract => Ok(Object::Float(a - (b as f64))),
                 BinaryOp::Multiply => Ok(Object::Float(a * (b as f64))),
                 BinaryOp::Divide => Ok(Object::Float(a / (b as f64))),
-                BinaryOp::Modulo => Ok(Object::Float(a % (b as f64))),
-                BinaryOp::Power => Ok(Object::Float(a.powi(b as i32))),
+                BinaryOp::Modulo => float_modulo(a, b as f64, position),
+                // `powf` rounds once, where repeated multiplication through
+                // `powi` drifts, so `10.0 ** 308` matches `(10 ** 308).to_f`.
+                BinaryOp::Power => Ok(Object::Float(a.powf(b as f64))),
                 _ => unreachable!(),
             },
             // `"ab" * 3` repeats the string, and a negative count is an
@@ -501,11 +577,40 @@ impl VirtualMachine {
             return Ok(Object::Bool(result));
         }
 
+        // A bignum against a Float is ordered exactly, since rounding the
+        // bignum to a Float would lose the digits the answer turns on.
+        let exact = match (&left, &right) {
+            (Object::BigInt(value), Object::Float(float)) => {
+                compare_integer_to_float(value, *float)
+            }
+            (Object::Float(float), Object::BigInt(value)) => {
+                compare_integer_to_float(value, *float).map(|order| order.reverse())
+            }
+            _ => None,
+        };
+        if matches!(
+            (&left, &right),
+            (Object::BigInt(_), Object::Float(_)) | (Object::Float(_), Object::BigInt(_))
+        ) {
+            use std::cmp::Ordering;
+            // Nothing compares against NaN, which every ordering reports as
+            // false rather than as a failure.
+            let result = match exact {
+                None => false,
+                Some(order) => match op {
+                    BinaryOp::Less => order == Ordering::Less,
+                    BinaryOp::Greater => order == Ordering::Greater,
+                    BinaryOp::LessEqual => order != Ordering::Greater,
+                    BinaryOp::GreaterEqual => order != Ordering::Less,
+                    _ => unreachable!("caller restricts op to the comparison set"),
+                },
+            };
+            return Ok(Object::Bool(result));
+        }
+
         // Numeric comparisons
         let numeric_result = match (&left, &right) {
             (Object::Int(a), Object::Int(b)) => Some((*a as f64, *b as f64)),
-            (Object::BigInt(a), Object::Float(b)) => Some((big_to_float(a), *b)),
-            (Object::Float(a), Object::BigInt(b)) => Some((*a, big_to_float(b))),
             (Object::Float(a), Object::Float(b)) => Some((*a, *b)),
             (Object::Int(a), Object::Float(b)) => Some((*a as f64, *b)),
             (Object::Float(a), Object::Int(b)) => Some((*a, *b as f64)),
@@ -992,14 +1097,13 @@ impl VirtualMachine {
         }
         match (&left, &right) {
             (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a.cmp(b) as i64)),
+            // A bignum carries more digits than a Float has, so the two are
+            // ordered exactly rather than by rounding the bignum.
             (Object::BigInt(a), Object::Float(b)) => Ok(Object::Int(
-                big_to_float(a)
-                    .partial_cmp(b)
-                    .map_or(0, |order| order as i64),
+                compare_integer_to_float(a, *b).map_or(0, |order| order as i64),
             )),
             (Object::Float(a), Object::BigInt(b)) => Ok(Object::Int(
-                a.partial_cmp(&big_to_float(b))
-                    .map_or(0, |order| order as i64),
+                compare_integer_to_float(b, *a).map_or(0, |order| order.reverse() as i64),
             )),
             (Object::Float(a), Object::Float(b)) => {
                 Ok(Object::Int(a.partial_cmp(b).map_or(0, |o| o as i64)))
@@ -1030,6 +1134,9 @@ impl VirtualMachine {
             // Module#<=> against a non-module argument returns nil rather than
             // raising.
             (Object::Class(_) | Object::Module(_), _) => Ok(Object::Nil),
+            // A number has no ordering against something that is not one, and
+            // Ruby reports that as nil rather than as an error.
+            (Object::Int(_) | Object::BigInt(_) | Object::Float(_), _) => Ok(Object::Nil),
             _ => Err(binary_type_error(
                 BinaryOp::Spaceship,
                 &left,
@@ -1037,6 +1144,78 @@ impl VirtualMachine {
                 position,
             )),
         }
+    }
+
+    /// Ruby's coercion protocol: a number handed an operand it does not know
+    /// asks that operand to `coerce` it, then applies the operator to the pair
+    /// it answers. An error raised inside `coerce` belongs to the caller, so it
+    /// travels out rather than becoming a TypeError here.
+    fn coerce_binary_operand(
+        &mut self,
+        op: &BinaryOp,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        // A Rational or Complex asks for coercion too, since its own
+        // arithmetic only knows the numbers it can already work with.
+        let numeric_left =
+            is_number(left) || crate::vm::native_methods::rational_parts(left).is_some();
+        if !coerces_its_operand(op) || !numeric_left || !takes_coercion(right) {
+            return Ok(None);
+        }
+        if !self.responds_to(right, "coerce") {
+            return Ok(None);
+        }
+        let pair = self.send_to_object(right.clone(), "coerce", vec![left.clone()], position)?;
+        // A `coerce` that answers no pair leaves the operator with nothing to
+        // apply, which for an ordering means the two have no order at all.
+        let parts = match &pair {
+            Object::Array(parts) if parts.borrow().len() == 2 => parts.borrow().clone(),
+            _ if matches!(op, BinaryOp::Spaceship) => return Ok(Some(Object::Nil)),
+            _ => return Ok(None),
+        };
+        let name = crate::vm::native_methods::ast_methods::binary_op_str(op);
+        self.send_to_object(parts[0].clone(), name, vec![parts[1].clone()], position)
+            .map(Some)
+    }
+}
+
+/// Whether the operator consults `coerce` for an operand it does not know.
+/// Equality does not: Ruby answers it by asking the other object instead.
+fn coerces_its_operand(op: &BinaryOp) -> bool {
+    matches!(
+        op,
+        BinaryOp::Add
+            | BinaryOp::Subtract
+            | BinaryOp::Multiply
+            | BinaryOp::Divide
+            | BinaryOp::Modulo
+            | BinaryOp::Power
+            | BinaryOp::BitwiseAnd
+            | BinaryOp::BitwiseOr
+            | BinaryOp::Xor
+            | BinaryOp::Less
+            | BinaryOp::Greater
+            | BinaryOp::LessEqual
+            | BinaryOp::GreaterEqual
+            | BinaryOp::Spaceship
+    )
+}
+
+/// Whether this operand is one of the numbers the operators handle directly.
+fn is_number(value: &Object) -> bool {
+    matches!(value, Object::Int(_) | Object::BigInt(_) | Object::Float(_))
+}
+
+/// Whether an operand is a candidate for coercion. Rational and Complex carry
+/// their own arithmetic, so they are left to it.
+fn takes_coercion(value: &Object) -> bool {
+    match value {
+        Object::Instance(instance) => {
+            !matches!(instance.borrow().class.name(), "Rational" | "Complex")
+        }
+        _ => false,
     }
 }
 
@@ -1054,7 +1233,7 @@ fn comparison_operator_name(op: &BinaryOp) -> Option<&'static str> {
 /// The nearest Float to an arbitrary-precision integer, which is what Ruby
 /// answers when one meets a Float in arithmetic. A magnitude past the Float
 /// range becomes an infinity, as Ruby's does.
-fn big_to_float(value: &num_bigint::BigInt) -> f64 {
+pub(crate) fn big_to_float(value: &num_bigint::BigInt) -> f64 {
     use std::str::FromStr;
     f64::from_str(&value.to_string()).unwrap_or(f64::INFINITY)
 }
@@ -1070,22 +1249,21 @@ fn integer_arithmetic(
     match op {
         BinaryOp::Subtract => Ok(Object::integer(left - right)),
         BinaryOp::Multiply => Ok(Object::integer(left * right)),
+        // Dividing two integers answers an integer, rounded toward negative
+        // infinity rather than toward zero, so `-5 / 2` is -3.
         BinaryOp::Divide => {
             if right == BigInt::from(0) {
                 return Err(divide_by_zero_error(position));
             }
-            let remainder = &left % &right;
-            if remainder == BigInt::from(0) {
-                Ok(Object::integer(left / right))
-            } else {
-                Ok(Object::Float(big_to_float(&left) / big_to_float(&right)))
-            }
+            Ok(Object::integer(floored_quotient(&left, &right)))
         }
+        // The modulus takes the sign of the divisor, which is what pairs with
+        // that division: `-5 % 3` is 1.
         BinaryOp::Modulo => {
             if right == BigInt::from(0) {
                 return Err(divide_by_zero_error(position));
             }
-            Ok(Object::integer(left % right))
+            Ok(Object::integer(floored_remainder(&left, &right)))
         }
         BinaryOp::Power => {
             // A negative exponent has no exact integer result.
@@ -1111,8 +1289,72 @@ fn float_arithmetic(
         BinaryOp::Subtract => left - right,
         BinaryOp::Multiply => left * right,
         BinaryOp::Divide => left / right,
-        BinaryOp::Modulo => left % right,
+        BinaryOp::Modulo => {
+            return float_modulo(left, right, _position);
+        }
         BinaryOp::Power => left.powf(right),
         _ => unreachable!("caller restricts op to the arithmetic set"),
     }))
+}
+
+/// Order an arbitrary-width integer against a Float without rounding the
+/// integer, which a bignum does not survive. The Float is split at the decimal
+/// point so its whole part is compared exactly and its fraction breaks a tie.
+fn compare_integer_to_float(value: &num_bigint::BigInt, float: f64) -> Option<std::cmp::Ordering> {
+    use std::cmp::Ordering;
+    if float.is_nan() {
+        return None;
+    }
+    if float == f64::INFINITY {
+        return Some(Ordering::Less);
+    }
+    if float == f64::NEG_INFINITY {
+        return Some(Ordering::Greater);
+    }
+    let whole = float.trunc();
+    let whole: num_bigint::BigInt = format!("{:.0}", whole).parse().ok()?;
+    match value.cmp(&whole) {
+        Ordering::Equal => (0.0).partial_cmp(&(float - float.trunc())),
+        other => Some(other),
+    }
+}
+
+/// The quotient of two integers rounded toward negative infinity, which is the
+/// division Ruby pairs with its modulus.
+fn floored_quotient(left: &num_bigint::BigInt, right: &num_bigint::BigInt) -> num_bigint::BigInt {
+    let quotient = left / right;
+    let remainder = left % right;
+    if remainder != num_bigint::BigInt::from(0)
+        && (remainder < num_bigint::BigInt::from(0)) != (*right < num_bigint::BigInt::from(0))
+    {
+        quotient - 1
+    } else {
+        quotient
+    }
+}
+
+/// The remainder left by that division, which carries the sign of the divisor.
+fn floored_remainder(left: &num_bigint::BigInt, right: &num_bigint::BigInt) -> num_bigint::BigInt {
+    let remainder = left % right;
+    if remainder != num_bigint::BigInt::from(0)
+        && (remainder < num_bigint::BigInt::from(0)) != (*right < num_bigint::BigInt::from(0))
+    {
+        remainder + right
+    } else {
+        remainder
+    }
+}
+
+/// Ruby's `%` on Floats leaves a remainder carrying the sign of the divisor,
+/// the same way the integer one does, and refuses a zero divisor rather than
+/// answering NaN.
+fn float_modulo(left: f64, right: f64, position: Position) -> Result<Object, MetorexError> {
+    if right == 0.0 {
+        return Err(divide_by_zero_error(position));
+    }
+    let remainder = left % right;
+    if remainder != 0.0 && (remainder < 0.0) != (right < 0.0) {
+        return Ok(Object::Float(remainder + right));
+    }
+    Ok(Object::Float(remainder))
 }

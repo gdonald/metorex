@@ -70,12 +70,23 @@ impl VirtualMachine {
         self.emit_warning_to_stderr(&message, position);
     }
 
-    /// `Warning[:category]` — unknown categories read as off.
+    /// Turn a warning category on, which `-w` does for the deprecation
+    /// warnings a plain run keeps quiet.
+    pub fn enable_warning_category(&mut self, category: &str) {
+        if let Some(Object::Module(warning) | Object::Class(warning)) =
+            self.globals().get("Warning")
+        {
+            warning.set_class_var(category_key(category), Object::Bool(true));
+        }
+    }
+
+    /// `Warning[:category]` — a category no one has set reads as its own
+    /// default, and one Ruby does not know reads as off.
     pub(crate) fn warning_category_enabled(&self, category: &str) -> bool {
-        matches!(
-            self.warning_category_slot(category),
-            Some(Object::Bool(true))
-        )
+        match self.warning_category_slot(category) {
+            Some(Object::Bool(enabled)) => enabled,
+            _ => category == "experimental",
+        }
     }
 
     /// The stored `Warning[:category]` value, if the `Warning` module and the
@@ -96,33 +107,86 @@ impl VirtualMachine {
         class_rc: &Rc<Class>,
         method_name: &str,
         arguments: &[Object],
-    ) -> Option<Object> {
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
         if class_rc.name() != "Warning" {
-            return None;
+            return Ok(None);
         }
-        let category = match arguments.first() {
-            Some(Object::Symbol(s)) => s.as_str().to_string(),
-            Some(Object::String(s)) => s.as_str().to_string(),
-            _ => return None,
-        };
-        match method_name {
-            // `Warning[]`/`Warning[]=` are native, so they are invisible to
-            // the generic `respond_to?`. Other names fall through to it.
-            "respond_to?" | "respond_to_missing?" => match category.as_str() {
-                "[]" | "[]=" => Some(Object::Bool(true)),
+        // `Warning[]`/`Warning[]=` are native, so they are invisible to the
+        // generic `respond_to?`. Other names fall through to it.
+        if matches!(method_name, "respond_to?" | "respond_to_missing?") {
+            let named = match arguments.first() {
+                Some(Object::Symbol(name) | Object::String(name)) => (**name).clone(),
+                _ => return Ok(None),
+            };
+            return Ok(match named.as_str() {
+                "[]" | "[]=" | "categories" => Some(Object::Bool(true)),
                 _ => None,
-            },
-            "[]" => Some(Object::Bool(self.warning_category_enabled(&category))),
-            "[]=" => {
+            });
+        }
+        // `Warning.categories` — every category Ruby knows, in the order it
+        // lists them.
+        if method_name == "categories" && arguments.is_empty() {
+            let categories = WARNING_CATEGORIES
+                .iter()
+                .map(|name| Object::Symbol(Rc::new((*name).to_string())))
+                .collect();
+            return Ok(Some(Object::array(categories)));
+        }
+        if !matches!(method_name, "[]" | "[]=") {
+            return Ok(None);
+        }
+        let category = self.warning_category_argument(arguments.first(), position)?;
+        match method_name {
+            "[]" => Ok(Some(Object::Bool(self.warning_category_enabled(&category)))),
+            _ => {
                 let value = arguments.get(1).cloned().unwrap_or(Object::Nil);
                 let enabled = crate::vm::utils::is_truthy(&value);
                 class_rc.set_class_var(category_key(&category), Object::Bool(enabled));
-                Some(value)
+                Ok(Some(value))
             }
-            _ => None,
         }
     }
+
+    /// The category `Warning[]` was indexed with. Ruby takes a Symbol and
+    /// nothing else, and only one it knows.
+    fn warning_category_argument(
+        &mut self,
+        argument: Option<&Object>,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let Some(Object::Symbol(name)) = argument else {
+            let given = argument.cloned().unwrap_or(Object::Nil);
+            let message = format!(
+                "no implicit conversion of {} into Symbol",
+                self.builtins().class_of(&given).name()
+            );
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
+        };
+        if !WARNING_CATEGORIES.contains(&name.as_str()) {
+            let message = format!("unknown category: {}", name);
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("ArgumentError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
+        }
+        Ok((**name).clone())
+    }
 }
+
+/// The categories `Warning.categories` reports, which are the only ones
+/// `Warning[]` accepts.
+const WARNING_CATEGORIES: &[&str] = &[
+    "deprecated",
+    "experimental",
+    "performance",
+    "strict_unused_block",
+];
 
 /// Class-variable slot backing one `Warning[]` category.
 fn category_key(category: &str) -> String {

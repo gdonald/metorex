@@ -8,6 +8,13 @@ impl<'a> Lexer<'a> {
     /// closing brackets, `end`, `true`, etc.) `/` is division; otherwise it
     /// starts a regex.
     pub(super) fn slash_is_regex(&self) -> bool {
+        // `:/` names the division method. A colon with anything between it and
+        // the slash is a ternary or a label, where a regex can follow.
+        if matches!(self.prev_significant, Some(TokenKind::Colon))
+            && self.prev_significant_end == self.offset
+        {
+            return false;
+        }
         match &self.prev_significant {
             None => true, // start of file
             Some(kind) => !matches!(

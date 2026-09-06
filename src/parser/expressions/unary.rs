@@ -21,6 +21,39 @@ impl Parser {
                 position: op_token.position,
             });
         }
+        // A sign glued to a numeric literal belongs to the literal, so
+        // `-1.abs` is `(-1).abs` rather than `-(1.abs)`. An exponent still
+        // binds tighter than the sign, leaving `-2 ** 2` as `-(2 ** 2)`.
+        if self.check(&[TokenKind::Minus, TokenKind::Plus])
+            && !self.peek_ahead(1).had_leading_space
+            && matches!(
+                self.peek_ahead(1).kind,
+                TokenKind::Int(_) | TokenKind::Float(_) | TokenKind::BigInt(_)
+            )
+            && !matches!(self.peek_ahead(2).kind, TokenKind::StarStar)
+        {
+            let negative = self.advance().kind == TokenKind::Minus;
+            let literal_token = self.advance();
+            let position = literal_token.position;
+            let sign = if negative { -1 } else { 1 };
+            let literal = match literal_token.kind {
+                TokenKind::Int(value) => Expression::IntLiteral {
+                    value: sign * value,
+                    position,
+                },
+                TokenKind::Float(value) => Expression::FloatLiteral {
+                    value: sign as f64 * value,
+                    position,
+                },
+                TokenKind::BigInt(digits) if negative => Expression::BigIntLiteral {
+                    digits: format!("-{}", digits),
+                    position,
+                },
+                TokenKind::BigInt(digits) => Expression::BigIntLiteral { digits, position },
+                _ => unreachable!(),
+            };
+            return self.parse_call_from(literal);
+        }
         if self.check(&[TokenKind::Plus, TokenKind::Minus, TokenKind::Bang]) {
             let op_token = self.advance();
             let op = match op_token.kind {
@@ -29,13 +62,18 @@ impl Parser {
                 TokenKind::Bang => UnaryOp::Not,
                 _ => unreachable!(),
             };
-            // `!` nests (`!!x`), but `-` / `+` go straight to the power level so
+            // A sign at the end of a line carries the expression onto the
+            // next one.
+            self.skip_whitespace();
+            // `!` nests (`!!x`), and so does a sign in front of another sign
+            // (`--5`). A lone `-` or `+` goes straight to the power level so
             // that `-2**2 == -(2**2)` per Ruby semantics.
-            let operand = if matches!(op, UnaryOp::Not) {
-                self.parse_unary()?
-            } else {
-                self.parse_power()?
-            };
+            let operand =
+                if matches!(op, UnaryOp::Not) || self.check(&[TokenKind::Plus, TokenKind::Minus]) {
+                    self.parse_unary()?
+                } else {
+                    self.parse_power()?
+                };
             Ok(Expression::UnaryOp {
                 op,
                 operand: Box::new(operand),

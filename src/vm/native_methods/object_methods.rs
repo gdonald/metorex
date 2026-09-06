@@ -1159,6 +1159,9 @@ impl VirtualMachine {
                     let inst = inst_rc.borrow();
                     inst.instance_vars
                         .keys()
+                        .filter(|name| {
+                            !crate::vm::native_methods::struct_methods::is_member_slot(name)
+                        })
                         .map(|k| Object::Symbol(std::rc::Rc::new(format!("@{}", k))))
                         .collect()
                 } else {
@@ -1546,6 +1549,9 @@ impl VirtualMachine {
                     std::cell::RefCell::new(method_symbols),
                 ))))
             }
+            // `eql?` is equality without conversion, so a number equals only
+            // one of its own kind: `1.0.eql?(1)` is false where `1.0 == 1` is
+            // true.
             "eql?" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -1555,7 +1561,16 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Bool(receiver.equals(&arguments[0]))))
+                let same_kind = match (receiver, &arguments[0]) {
+                    (Object::Float(_), other) => matches!(other, Object::Float(_)),
+                    (Object::Int(_) | Object::BigInt(_), other) => {
+                        matches!(other, Object::Int(_) | Object::BigInt(_))
+                    }
+                    _ => true,
+                };
+                Ok(Some(Object::Bool(
+                    same_kind && receiver.equals(&arguments[0]),
+                )))
             }
             "equal?" => {
                 if arguments.len() != 1 {

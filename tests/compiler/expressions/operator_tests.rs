@@ -119,9 +119,18 @@ fn compile_comparison_greater_equal() {
 
 #[test]
 fn compile_negate() {
-    let chunk = compile("-5");
+    // A sign glued to a numeric literal is part of the literal, so the negation
+    // a `-` compiles to shows up on an operand that is not one.
+    let chunk = compile("x = 5\n-x");
     let ops = opcodes(&chunk);
     assert!(ops.contains(&OpCode::Negate));
+}
+
+#[test]
+fn compile_negative_literal_without_negate() {
+    let chunk = compile("-5");
+    let ops = opcodes(&chunk);
+    assert!(!ops.contains(&OpCode::Negate));
 }
 
 #[test]

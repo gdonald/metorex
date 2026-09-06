@@ -31,7 +31,7 @@ total = 0
 students.each do |s|
   total += s["grade"]
 end
-average = total / students.length
+average = total.to_f / students.length
 puts "Average grade: #{average}"
 
 math_count = 0

@@ -569,6 +569,10 @@ pub enum Statement {
         /// on the current lexical scope (existing behavior).
         namespace: Option<Box<Expression>>,
         superclass: Option<String>,
+        /// A superclass written as an expression rather than a constant path,
+        /// which is what `class C < Struct.new(:a)` names. When set, it is
+        /// evaluated and the class it answers becomes the parent.
+        superclass_expression: Option<Box<Expression>>,
         body: Vec<Statement>,
         position: Position,
     },

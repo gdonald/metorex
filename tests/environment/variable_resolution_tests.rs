@@ -489,6 +489,7 @@ fn test_class_definition_scope() {
         name: "MyClass".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "initialize".to_string(),

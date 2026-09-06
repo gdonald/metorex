@@ -23,7 +23,11 @@ warn "plain"
 warn "already ended\n"
 warn "first", "second"
 warn ["from", "an array"]
+# A warning in a category that is switched off never prints.
+Warning[:deprecated] = true
 warn "categorized", category: :deprecated
+Warning[:deprecated] = false
+warn "silenced by its category", category: :deprecated
 
 empty = {}
 warn(**empty)

@@ -69,6 +69,7 @@ fn test_class_def_no_superclass() {
         name: "Person".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -82,6 +83,7 @@ fn test_class_def_with_superclass() {
         name: "Employee".to_string(),
         namespace: None,
         superclass: Some("Person".to_string()),
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };

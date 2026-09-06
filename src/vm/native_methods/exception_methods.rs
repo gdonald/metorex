@@ -95,18 +95,41 @@ impl VirtualMachine {
                 };
                 Ok(is_no_method_error.then_some(Object::Nil))
             }
-            // LoadError#path — the feature that could not be loaded, nil on a
-            // LoadError raised by nothing in particular.
+            // LoadError#path — the feature that could not be loaded.
+            // SyntaxError#path — the file the unparsable code came from. Both
+            // answer nil on an exception raised by nothing in particular.
             "path" => {
                 let details = exception.borrow();
-                if let Some(path) = details.instance_vars.get(crate::vm::LOAD_ERROR_PATH_KEY) {
+                if let Some(path) = details.instance_vars.get(crate::vm::EXCEPTION_PATH_KEY) {
                     return Ok(Some(path.clone()));
                 }
-                let is_load_error = match &details.class {
-                    Some(class) => crate::vm::method_invocation::descends_from(class, "LoadError"),
-                    None => details.exception_type == "LoadError",
+                let has_path = match &details.class {
+                    Some(class) => ["LoadError", "SyntaxError"]
+                        .iter()
+                        .any(|name| crate::vm::method_invocation::descends_from(class, name)),
+                    None => matches!(details.exception_type.as_str(), "LoadError" | "SyntaxError"),
                 };
-                Ok(is_load_error.then_some(Object::Nil))
+                Ok(has_path.then_some(Object::Nil))
+            }
+            // UncaughtThrowError#tag / #value — the tag `throw` was called
+            // with and the value it carried, both nil on one raised by no
+            // throw at all.
+            "tag" | "value" => {
+                let details = exception.borrow();
+                let key = match method_name {
+                    "tag" => crate::vm::THROW_TAG_KEY,
+                    _ => crate::vm::THROW_VALUE_KEY,
+                };
+                if let Some(thrown) = details.instance_vars.get(key) {
+                    return Ok(Some(thrown.clone()));
+                }
+                let is_throw_error = match &details.class {
+                    Some(class) => {
+                        crate::vm::method_invocation::descends_from(class, "UncaughtThrowError")
+                    }
+                    None => details.exception_type == "UncaughtThrowError",
+                };
+                Ok(is_throw_error.then_some(Object::Nil))
             }
             // KeyError#key — the lookup that missed, absent on an exception
             // no failed lookup raised.
@@ -175,12 +198,12 @@ impl VirtualMachine {
                 }))
             }
             // SystemExit#status — the exit status the exception carries.
-            "status" if exception.borrow().exception_type == "SystemExit" => {
+            "status" if exception.borrow().is_system_exit() => {
                 let status = exception.borrow().status.unwrap_or(0);
                 Ok(Some(Object::Int(status)))
             }
             // SystemExit#success? — true when the status means a clean exit.
-            "success?" if exception.borrow().exception_type == "SystemExit" => {
+            "success?" if exception.borrow().is_system_exit() => {
                 let status = exception.borrow().status.unwrap_or(0);
                 Ok(Some(Object::Bool(status == 0)))
             }
@@ -413,8 +436,16 @@ impl VirtualMachine {
                     None => Object::Nil,
                 }))
             }
-            // `SystemCallError#errno` is the number its class carries.
+            // `SystemCallError#errno` is the number it was built with, and
+            // failing that the one its class carries.
             "errno" => {
+                if let Some(number) = exception
+                    .borrow()
+                    .instance_vars
+                    .get(crate::vm::system_call_error::ERRNO_VALUE_KEY)
+                {
+                    return Ok(Some(number.clone()));
+                }
                 let exception_type = exception.borrow().exception_type.clone();
                 let Some(Object::Class(class)) = self
                     .globals()

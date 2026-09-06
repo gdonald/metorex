@@ -31,8 +31,10 @@ fn test_dsl_config_execution() {
 #[test]
 fn test_dsl_keyword_arg_options_execution() {
     // Trailing `key: value` syntax fills the last positional `options = nil`
-    // parameter when the callee declares no explicit keyword params.
-    let expected = "options.class = Hash\noptions[:shared] = true\noptions[\"shared\"] = nil\noptions.class = Hash\noptions[:shared] = true\noptions[\"shared\"] = nil\noptions is nil\n";
+    // parameter when the callee declares no explicit keyword params. The
+    // missing string key interpolates as the empty string, since `nil.to_s`
+    // is empty.
+    let expected = "options.class = Hash\noptions[:shared] = true\noptions[\"shared\"] = \noptions.class = Hash\noptions[:shared] = true\noptions[\"shared\"] = \noptions is nil\n";
     let output = run_example("dsl/keyword_arg_options.rb");
     assert_eq!(output, expected);
 }

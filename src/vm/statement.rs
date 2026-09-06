@@ -157,12 +157,14 @@ impl VirtualMachine {
                 name,
                 namespace,
                 superclass,
+                superclass_expression,
                 body,
                 position,
             } => self.execute_class_def(
                 name,
                 namespace.as_deref(),
                 superclass.as_deref(),
+                superclass_expression.as_deref(),
                 body,
                 *position,
             ),
@@ -618,7 +620,7 @@ impl VirtualMachine {
                             )?;
                             Ok(())
                         } else if self
-                            .call_warning_methods(&cls, "[]=", &[idx, value])
+                            .call_warning_methods(&cls, "[]=", &[idx, value], *position)?
                             .is_some()
                         {
                             Ok(())
@@ -778,14 +780,28 @@ impl VirtualMachine {
                                 self.invoke_method(owner, method, other, vec![value], *position)?;
                                 Ok(())
                             } else {
-                                Err(MetorexError::runtime_error(
-                                    format!(
-                                        "Cannot call setter method '{}' on {}",
-                                        setter_method,
-                                        other.type_name()
-                                    ),
-                                    position_to_location(*position),
-                                ))
+                                // A setter the class implements natively, such
+                                // as the stream methods the String standing in
+                                // for STDOUT answers, is reached last.
+                                let class = self.builtins().class_of(&other);
+                                let handled = self.call_native_method(
+                                    &class,
+                                    &other,
+                                    &setter_method,
+                                    std::slice::from_ref(&value),
+                                    *position,
+                                )?;
+                                match handled {
+                                    Some(_) => Ok(()),
+                                    None => Err(MetorexError::runtime_error(
+                                        format!(
+                                            "Cannot call setter method '{}' on {}",
+                                            setter_method,
+                                            other.type_name()
+                                        ),
+                                        position_to_location(*position),
+                                    )),
+                                }
                             }
                         }
                     }

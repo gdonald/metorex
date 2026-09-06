@@ -27,3 +27,37 @@ fn test_signals_exception_construction_parens_execution() {
     let output = run_example("signals/exception_construction_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_signals_signame_execution() {
+    let expected = concat!(
+        "EXIT\n",
+        "TERM\n",
+        "nil\n",
+        "ABRT\n",
+        "CHLD\n",
+        "true\n",
+        "EXIT\n",
+        "no implicit conversion of String into Integer\n",
+        "can't convert NotANumber to Integer (NotANumber#to_int gives String)\n"
+    );
+    let output = run_example("signals/signame.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_signals_signame_parens_execution() {
+    let expected = concat!(
+        "EXIT\n",
+        "TERM\n",
+        "nil\n",
+        "ABRT\n",
+        "CHLD\n",
+        "true\n",
+        "EXIT\n",
+        "no implicit conversion of String into Integer\n",
+        "can't convert NotANumber to Integer (NotANumber#to_int gives String)\n"
+    );
+    let output = run_example("signals/signame_parens.rb");
+    assert_eq!(output, expected);
+}

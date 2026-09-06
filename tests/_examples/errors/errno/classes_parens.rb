@@ -14,7 +14,8 @@ puts((Errno::EINVAL === invalid).to_s)
 puts((SystemCallError === invalid).to_s)
 puts((Errno::ENOENT === invalid).to_s)
 
-# `SystemCallError.new(message, errno)` answers the class that number names.
+# `SystemCallError.new(message, errno)` answers the class that number names,
+# reporting what the number stands for with the custom message appended.
 named = SystemCallError.new("boom", Errno::ENOENT::Errno)
 puts(named.class.to_s)
 puts(named.message)

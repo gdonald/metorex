@@ -43,6 +43,13 @@ impl VirtualMachine {
         {
             return Ok(Object::Nil);
         }
+        // A warning in a category that is switched off never reaches
+        // `Warning.warn` at all.
+        if let Object::Symbol(name) = &category
+            && !self.warning_category_enabled(name)
+        {
+            return Ok(Object::Nil);
+        }
 
         let mut text = String::new();
         for message in &messages {
@@ -187,6 +194,20 @@ impl VirtualMachine {
             (Some(line), None) => format!("{}: warning: ", line),
             (None, _) => "warning: ".to_string(),
         }
+    }
+
+    /// Emit an interpreter warning the way `Kernel#warn` does, through the
+    /// `Warning.warn` in force so a program that replaced it sees this one too.
+    pub(crate) fn warn_through_warning_module(
+        &mut self,
+        text: String,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if matches!(self.globals().get("VERBOSE"), None | Some(Object::Nil)) {
+            return Ok(());
+        }
+        self.dispatch_to_warning_module(text, Object::Nil, position)?;
+        Ok(())
     }
 
     /// Hand the assembled text to `Warning.warn`. MRI passes `category:` only

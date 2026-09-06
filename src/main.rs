@@ -83,9 +83,9 @@ struct Cli {
     #[arg(short = 'n', hide = true, action = clap::ArgAction::SetTrue)]
     each_line: bool,
 
-    /// Ignored: Ruby -w (warnings)
+    /// Ruby -w (turn on the warnings a plain run keeps quiet)
     #[arg(short = 'w', hide = true, action = clap::ArgAction::SetTrue)]
-    _warnings: bool,
+    warnings: bool,
 
     /// Ignored: Ruby -W (warning level)
     #[arg(short = 'W', hide = true)]
@@ -120,8 +120,13 @@ fn run_program(
     Ok(())
 }
 
-/// Apply `-I` (include paths) and `-r` (require libraries) flags to a VM.
+/// Apply `-I` (include paths), `-r` (require libraries) and `-w` (warnings)
+/// flags to a VM.
 fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
+    // Ruby's `-w` turns on the deprecation warnings a plain run keeps quiet.
+    if cli.warnings {
+        vm.enable_warning_category("deprecated");
+    }
     for path in &cli.include_paths {
         vm.prepend_load_path(path.clone());
     }
@@ -306,7 +311,7 @@ fn real_main() {
             exception: exception @ metorex::object::Object::Exception(exc),
             ..
         } = &err
-            && exc.borrow().exception_type == "SystemExit"
+            && exc.borrow().is_system_exit()
         {
             let status = exc.borrow().status.unwrap_or(0) as i32;
             let ending = exception.clone();

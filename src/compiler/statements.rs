@@ -414,6 +414,7 @@ impl Compiler {
                 name,
                 namespace: _,
                 superclass,
+                superclass_expression: _,
                 body,
                 position,
             } => {

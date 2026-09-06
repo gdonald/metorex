@@ -182,3 +182,53 @@ fn test_data_structures_hash_map_parens_execution() {
     let output = run_example("data_structures/hash_map_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_arrays_searching_execution() {
+    let expected = concat!(
+        "true\n",
+        "2\n",
+        "3\n",
+        "nil\n",
+        "[2, :b]\n",
+        "[1, :a]\n",
+        "\"Enumerator\"\n",
+        "[0, 1, 2, 3]\n",
+        "\"Enumerator\"\n",
+        "\"a\"\n",
+        "[\"b\"]\n",
+        "\"not found\"\n",
+        "[]\n",
+        "[1, 3]\n",
+        "[4, 5]\n",
+        "[1, 2, 3]\n",
+        "true\n"
+    );
+    let output = run_example("data_structures/arrays/searching.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_arrays_searching_parens_execution() {
+    let expected = concat!(
+        "true\n",
+        "2\n",
+        "3\n",
+        "nil\n",
+        "[2, :b]\n",
+        "[1, :a]\n",
+        "\"Enumerator\"\n",
+        "[0, 1, 2, 3]\n",
+        "\"Enumerator\"\n",
+        "\"a\"\n",
+        "[\"b\"]\n",
+        "\"not found\"\n",
+        "[]\n",
+        "[1, 3]\n",
+        "[4, 5]\n",
+        "[1, 2, 3]\n",
+        "true\n"
+    );
+    let output = run_example("data_structures/arrays/searching_parens.rb");
+    assert_eq!(output, expected);
+}

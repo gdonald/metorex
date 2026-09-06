@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use super::core::VirtualMachine;
 use crate::error::{MetorexError, SourceLocation};
 use crate::object::Object;
+use crate::vm::errors::keep_exception;
 use std::rc::Rc;
 
 impl VirtualMachine {
@@ -469,10 +470,12 @@ impl VirtualMachine {
         })?;
 
         self.execute_file(&resolved).map_err(|e| {
-            MetorexError::runtime_error(
-                format!("require('{}') — {}", name, e.message()),
-                SourceLocation::new(0, 0, 0),
-            )
+            keep_exception(e, |message| {
+                MetorexError::runtime_error(
+                    format!("require('{}') — {}", name, message),
+                    SourceLocation::new(0, 0, 0),
+                )
+            })
         })?;
 
         Ok(())
@@ -567,9 +570,10 @@ impl VirtualMachine {
 
         // Parse file with error context
         let statements = parse_file(&source, &canonical_path.to_string_lossy()).map_err(|e| {
-            MetorexError::runtime_error(
+            crate::vm::errors::syntax_error(
                 format!("Failed to parse file '{}': {}", canonical_path.display(), e),
-                SourceLocation::new(0, 0, 0),
+                Some(&canonical_path.to_string_lossy()),
+                crate::lexer::Position::new(0, 0, 0),
             )
         })?;
 
@@ -626,10 +630,17 @@ impl VirtualMachine {
         self.loading_paths.pop();
         self.current_file = previous_file;
         let value = result.map_err(|e| {
-            MetorexError::runtime_error(
-                format!("Error executing file '{}': {}", canonical_path.display(), e),
-                SourceLocation::new(0, 0, 0),
-            )
+            let rendered = e.to_string();
+            keep_exception(e, |_| {
+                MetorexError::runtime_error(
+                    format!(
+                        "Error executing file '{}': {}",
+                        canonical_path.display(),
+                        rendered
+                    ),
+                    SourceLocation::new(0, 0, 0),
+                )
+            })
         })?;
 
         // Return the result or Nil if no return value

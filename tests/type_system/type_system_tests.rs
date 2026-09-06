@@ -523,16 +523,16 @@ fn test_deeply_nested_structures() {
 }
 
 #[test]
-fn test_float_epsilon_equality() {
-    // Very close floats should be equal (within epsilon)
+fn test_float_equality_is_exact() {
+    // Ruby compares Floats by value, so two numbers that differ at all are
+    // different however close they sit.
     let f1 = Object::Float(1.0);
     let f2 = Object::Float(1.0 + 1e-10);
-    assert!(f1.equals(&f2));
+    assert!(!f1.equals(&f2));
 
-    // Floats outside epsilon should not be equal
     let f3 = Object::Float(1.0);
-    let f4 = Object::Float(1.01);
-    assert!(!f3.equals(&f4));
+    let f4 = Object::Float(1.0);
+    assert!(f3.equals(&f4));
 }
 
 #[test]

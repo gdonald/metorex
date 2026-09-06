@@ -16,6 +16,7 @@ mod oop;
 mod programs;
 mod signals;
 mod stdlib;
+mod structs;
 
 use crate::common::EXAMPLES_DIR;
 use std::process::Command;

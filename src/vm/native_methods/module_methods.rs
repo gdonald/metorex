@@ -199,6 +199,7 @@ impl VirtualMachine {
         if module_rc.name() == "Signal" {
             match method_name {
                 "list" => return Ok(Some(self.signal_list())),
+                "signame" => return self.signal_name(arguments, position).map(Some),
                 "trap" => return self.install_signal_trap(arguments, position).map(Some),
                 _ => {}
             }

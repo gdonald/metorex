@@ -54,6 +54,39 @@ pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
     )
 }
 
+/// Whether a `:` glued to this token names an operator method, as `:/` and
+/// `:<=>` do. Kept apart from the names above because only an adjacent colon
+/// makes one: `condition ? value : -1` is a ternary, not the symbol `:-`.
+pub(crate) fn starts_operator_symbol(kind: &TokenKind) -> bool {
+    matches!(
+        kind,
+        TokenKind::Plus
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::StarStar
+            | TokenKind::Slash
+            | TokenKind::Percent
+            | TokenKind::EqualEqual
+            | TokenKind::TripleEqual
+            | TokenKind::BangEqual
+            | TokenKind::Less
+            | TokenKind::Greater
+            | TokenKind::LessEqual
+            | TokenKind::GreaterEqual
+            | TokenKind::Spaceship
+            | TokenKind::Shovel
+            | TokenKind::RightShift
+            | TokenKind::Tilde
+            | TokenKind::Caret
+            | TokenKind::Match
+            | TokenKind::NotMatch
+            | TokenKind::Bang
+            | TokenKind::Ampersand
+            | TokenKind::Pipe
+            | TokenKind::LBracket
+    )
+}
+
 impl Parser {
     /// Parse a symbol literal after a leading `:` token has been consumed.
     pub(super) fn parse_symbol_literal(
@@ -124,9 +157,24 @@ impl Parser {
                 }
             }
 
-            // Operator symbols
-            TokenKind::Plus => Ok(symbol("+", symbol_position)),
-            TokenKind::Minus => Ok(symbol("-", symbol_position)),
+            // Operator symbols. `-@` and `+@` name the unary forms, spelled
+            // with the `@` the lexer reads as an instance variable with no
+            // name of its own.
+            TokenKind::Plus | TokenKind::Minus => {
+                let operator = match next.kind {
+                    TokenKind::Plus => "+",
+                    _ => "-",
+                };
+                if matches!(&self.peek().kind, TokenKind::InstanceVar(name) if name.is_empty()) {
+                    self.advance();
+                    return Ok(symbol(format!("{}@", operator), symbol_position));
+                }
+                Ok(symbol(operator, symbol_position))
+            }
+            TokenKind::StarStar => Ok(symbol("**", symbol_position)),
+            TokenKind::Bang => Ok(symbol("!", symbol_position)),
+            TokenKind::Ampersand => Ok(symbol("&", symbol_position)),
+            TokenKind::Pipe => Ok(symbol("|", symbol_position)),
             TokenKind::Star => Ok(symbol("*", symbol_position)),
             TokenKind::Slash => Ok(symbol("/", symbol_position)),
             TokenKind::Percent => Ok(symbol("%", symbol_position)),

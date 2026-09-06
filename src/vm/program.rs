@@ -263,7 +263,7 @@ impl VirtualMachine {
                 Err(crate::error::MetorexError::UncaughtException {
                     exception: Object::Exception(details),
                     ..
-                }) if details.borrow().exception_type == "SystemExit" => {
+                }) if details.borrow().is_system_exit() => {
                     // `exit` inside a handler ends that handler and settles
                     // the status the program leaves with.
                     if let Some(carried) = details.borrow().status {

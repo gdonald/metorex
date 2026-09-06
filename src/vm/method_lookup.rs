@@ -658,9 +658,21 @@ impl VirtualMachine {
 /// `__class__` convention by `def self.name` or `module_function`, or copied
 /// in by `extend` under the `__ext__` convention.
 pub(crate) fn module_level_method(class_rc: &Rc<Class>, method_name: &str) -> Option<Rc<Method>> {
-    if let Some(method) = class_rc.find_method(&format!("__class__{}", method_name)) {
-        return Some(method);
-    }
+    module_own_method(class_rc, method_name)
+        .or_else(|| module_extended_method(class_rc, method_name))
+}
+
+/// A method written on the module itself with `def self.name` or `def Mod.name`.
+pub(crate) fn module_own_method(class_rc: &Rc<Class>, method_name: &str) -> Option<Rc<Method>> {
+    class_rc.find_method(&format!("__class__{}", method_name))
+}
+
+/// A method the module answers to because it extended a module, its own
+/// instance methods included when it extended itself.
+pub(crate) fn module_extended_method(
+    class_rc: &Rc<Class>,
+    method_name: &str,
+) -> Option<Rc<Method>> {
     match class_rc.get_class_var(&format!("__ext__{}", method_name)) {
         Some(Object::Method(method)) => Some(method),
         _ => None,

@@ -16,6 +16,7 @@ fn test_empty_class() {
         name: "Empty".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -31,6 +32,7 @@ fn test_class_with_simple_name() {
         name: "Person".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -45,6 +47,7 @@ fn test_class_with_uppercase_name() {
         name: "MyClass".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -60,6 +63,7 @@ fn test_class_with_superclass() {
         name: "Dog".to_string(),
         namespace: None,
         superclass: Some("Animal".to_string()),
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -75,6 +79,7 @@ fn test_class_inheritance_chain() {
         name: "LivingThing".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -84,6 +89,7 @@ fn test_class_inheritance_chain() {
         name: "Animal".to_string(),
         namespace: None,
         superclass: Some("LivingThing".to_string()),
+        superclass_expression: None,
         body: vec![],
         position: pos(5, 1),
     };
@@ -93,6 +99,7 @@ fn test_class_inheritance_chain() {
         name: "Dog".to_string(),
         namespace: None,
         superclass: Some("Animal".to_string()),
+        superclass_expression: None,
         body: vec![],
         position: pos(10, 1),
     };
@@ -108,6 +115,7 @@ fn test_class_with_single_method() {
         name: "Greeter".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "greet".to_string(),
@@ -134,6 +142,7 @@ fn test_class_with_multiple_methods() {
         name: "Calculator".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![
             Statement::MethodDef {
                 is_class_method: false,
@@ -198,6 +207,7 @@ fn test_class_with_constructor() {
         name: "Person".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "initialize".to_string(),
@@ -243,6 +253,7 @@ fn test_class_with_constructor_and_methods() {
         name: "Rectangle".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![
             Statement::MethodDef {
                 is_class_method: false,
@@ -313,6 +324,7 @@ fn test_class_with_instance_variable_initialization() {
         name: "Counter".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "initialize".to_string(),
@@ -342,6 +354,7 @@ fn test_class_with_multiple_instance_variables() {
         name: "Person".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "initialize".to_string(),
@@ -401,6 +414,7 @@ fn test_class_with_class_variable() {
         name: "SharedCounter".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "initialize".to_string(),
@@ -432,6 +446,7 @@ fn test_class_method_with_default_parameters() {
         name: "Configurator".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "setup".to_string(),
@@ -461,6 +476,7 @@ fn test_class_method_with_variadic_parameters() {
         name: "Logger".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "log".to_string(),
@@ -480,6 +496,7 @@ fn test_class_method_with_keyword_parameters() {
         name: "ConfigManager".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "configure".to_string(),
@@ -501,6 +518,7 @@ fn test_class_with_getter_and_setter() {
         name: "Box".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![
             Statement::MethodDef {
                 is_class_method: false,
@@ -564,6 +582,7 @@ fn test_class_method_with_conditional() {
         name: "Validator".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "is_positive".to_string(),
@@ -612,6 +631,7 @@ fn test_class_method_with_loop() {
         name: "Summer".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "sum_to".to_string(),
@@ -718,6 +738,7 @@ fn test_inherited_class_with_override() {
         name: "Animal".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "speak".to_string(),
@@ -738,6 +759,7 @@ fn test_inherited_class_with_override() {
         name: "Dog".to_string(),
         namespace: None,
         superclass: Some("Animal".to_string()),
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "speak".to_string(),
@@ -763,6 +785,7 @@ fn test_inherited_class_with_additional_methods() {
         name: "Dog".to_string(),
         namespace: None,
         superclass: Some("Animal".to_string()),
+        superclass_expression: None,
         body: vec![
             Statement::MethodDef {
                 is_class_method: false,
@@ -805,6 +828,7 @@ fn test_class_with_nested_function() {
         name: "Outer".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "outer_method".to_string(),
@@ -844,6 +868,7 @@ fn test_class_with_self_reference() {
         name: "Chainable".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "set_value".to_string(),
@@ -881,6 +906,7 @@ fn test_class_with_exception_handling() {
         name: "SafeCalculator".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![Statement::MethodDef {
             is_class_method: false,
             name: "divide".to_string(),
@@ -935,6 +961,7 @@ fn test_multiple_empty_classes() {
         name: "First".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(1, 1),
     };
@@ -943,6 +970,7 @@ fn test_multiple_empty_classes() {
         name: "Second".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(5, 1),
     };
@@ -951,6 +979,7 @@ fn test_multiple_empty_classes() {
         name: "Third".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![],
         position: pos(9, 1),
     };
@@ -976,6 +1005,7 @@ fn test_class_name_variations() {
             name: name.to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![],
             position: pos(1, 1),
         };

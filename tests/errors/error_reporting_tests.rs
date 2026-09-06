@@ -212,6 +212,7 @@ fn test_nested_method_call_shows_stack_trace() {
         name: "TestClass".to_string(),
         namespace: None,
         superclass: None,
+        superclass_expression: None,
         body: vec![
             Statement::MethodDef {
                 is_class_method: false,
@@ -395,6 +396,7 @@ fn test_method_argument_count_error_has_location() {
             name: "Calculator".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: vec![Statement::MethodDef {
                 is_class_method: false,
                 name: "add".to_string(),
@@ -604,6 +606,7 @@ fn test_error_in_deeply_nested_calls() {
             name: "Deep".to_string(),
             namespace: None,
             superclass: None,
+            superclass_expression: None,
             body: methods,
             position: pos(),
         },

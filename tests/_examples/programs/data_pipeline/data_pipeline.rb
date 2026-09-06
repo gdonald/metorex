@@ -36,7 +36,7 @@ total = 0
 students.each do |s|
   total += s["grade"]
 end
-average = total / students.length
+average = total.to_f / students.length
 puts "Average grade: #{average}"
 
 # Step 4: Count students per subject

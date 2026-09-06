@@ -512,7 +512,12 @@ fn array_find_index_with_block_not_found() {
 
 #[test]
 fn array_index_no_args_no_block() {
-    assert_eq!(run("[1, 2].index"), Some(Object::Nil));
+    // Without an argument or a block there is nothing to search for, so the
+    // call answers the Enumerator that walks the array instead.
+    assert_eq!(
+        run("[1, 2].index.class.to_s"),
+        Some(Object::string("Enumerator"))
+    );
 }
 
 // ── clear ───────────────────────────────────────────────────────────────────

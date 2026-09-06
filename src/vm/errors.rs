@@ -262,11 +262,45 @@ pub(super) fn load_error(message: String, feature: &str) -> Object {
     let exception = Object::exception("LoadError", message);
     if let Object::Exception(details) = &exception {
         details.borrow_mut().instance_vars.insert(
-            crate::vm::LOAD_ERROR_PATH_KEY.to_string(),
+            crate::vm::EXCEPTION_PATH_KEY.to_string(),
             Object::string(feature),
         );
     }
     exception
+}
+
+/// A SyntaxError carrying the file the unparsable code came from, which
+/// `#path` answers. `path` is None for code with no file behind it.
+pub(super) fn syntax_error(
+    message: String,
+    path: Option<&str>,
+    position: Position,
+) -> MetorexError {
+    let exception = Object::exception("SyntaxError", message.clone());
+    if let (Object::Exception(details), Some(path)) = (&exception, path) {
+        details.borrow_mut().instance_vars.insert(
+            crate::vm::EXCEPTION_PATH_KEY.to_string(),
+            Object::string(path),
+        );
+    }
+    MetorexError::UncaughtException {
+        exception,
+        location: position_to_location(position),
+        message,
+    }
+}
+
+/// An exception raised while a file was loading keeps its class and message
+/// on the way out of the load, the way MRI propagates it. Any other error is
+/// handed to `wrap`, which adds the load's own context to its message.
+pub(crate) fn keep_exception(
+    error: MetorexError,
+    wrap: impl FnOnce(&str) -> MetorexError,
+) -> MetorexError {
+    match error {
+        MetorexError::UncaughtException { .. } => error,
+        other => wrap(other.message()),
+    }
 }
 
 /// Raise `class_name` with a fixed message.

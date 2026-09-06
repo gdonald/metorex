@@ -198,16 +198,16 @@ impl VirtualMachine {
                     return Ok(Some(Object::Nil));
                 };
                 let found = dict_rc.borrow().get(&key_str).cloned();
-                let Some(mut value) = found else {
+                let Some(value) = found else {
                     return Ok(Some(Object::Nil));
                 };
-                for key in &arguments[1..] {
-                    if matches!(value, Object::Nil) {
-                        return Ok(Some(Object::Nil));
-                    }
-                    value = self.dig_into(&value, key, position)?;
+                if arguments.len() == 1 {
+                    return Ok(Some(value));
                 }
-                Ok(Some(value))
+                if matches!(value, Object::Nil) {
+                    return Ok(Some(Object::Nil));
+                }
+                self.dig_into(&value, &arguments[1..], position).map(Some)
             }
             "get" | "fetch" => {
                 if arguments.is_empty() || arguments.len() > 2 {

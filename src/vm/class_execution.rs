@@ -21,6 +21,7 @@ impl VirtualMachine {
         name: &str,
         namespace_expr: Option<&Expression>,
         superclass_name: Option<&str>,
+        superclass_expression: Option<&Expression>,
         body: &[Statement],
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
@@ -53,7 +54,26 @@ impl VirtualMachine {
         // Resolve superclass if specified. Check enclosing scope's constants first
         // (so `class Bar < Foo` inside `module M` can see `M::Foo`), then the
         // environment, then globals.
-        let superclass = if let Some(super_name) = superclass_name {
+        // A superclass written as a call is evaluated here, which is what
+        // `class Point < Struct.new(:x)` names.
+        let evaluated_parent = match superclass_expression {
+            Some(expression) => match self.evaluate_expression(expression)? {
+                Object::Class(class) => Some(class),
+                other => {
+                    let message =
+                        format!("superclass must be a Class ({} given)", other.type_name());
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &message,
+                        position,
+                    ));
+                }
+            },
+            None => None,
+        };
+        let superclass = if let Some(parent) = evaluated_parent {
+            Some(parent)
+        } else if let Some(super_name) = superclass_name {
             let resolved = if super_name.contains("::") {
                 self.resolve_constant_with_autoload(super_name)?
             } else {
@@ -1828,6 +1848,7 @@ impl VirtualMachine {
                     name: class_name,
                     namespace,
                     superclass,
+                    superclass_expression,
                     body: class_body,
                     position: class_pos,
                 } => {
@@ -1835,6 +1856,7 @@ impl VirtualMachine {
                         class_name,
                         namespace.as_deref(),
                         superclass.as_deref(),
+                        superclass_expression.as_deref(),
                         class_body,
                         *class_pos,
                     )?;

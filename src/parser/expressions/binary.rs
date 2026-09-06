@@ -213,6 +213,9 @@ impl Parser {
                 TokenKind::Minus => BinaryOp::Subtract,
                 _ => unreachable!(),
             };
+            // An operator at the end of a line carries the expression onto
+            // the next one.
+            self.skip_whitespace();
             let right = self.parse_factor()?;
             expr = Expression::BinaryOp {
                 op,

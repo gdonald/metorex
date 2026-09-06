@@ -36,6 +36,9 @@ pub(crate) fn signal_table() -> Vec<(&'static str, i32)> {
         ("WINCH", libc::SIGWINCH),
         ("USR1", libc::SIGUSR1),
         ("USR2", libc::SIGUSR2),
+        // Ruby lists the older spelling of SIGCHLD alongside it. It comes
+        // last so a lookup by number answers the name the signal goes by.
+        ("CLD", libc::SIGCHLD),
     ]
 }
 
@@ -96,6 +99,63 @@ impl crate::vm::VirtualMachine {
             entries.insert(name.to_string(), Object::Int(number as i64));
         }
         Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(entries)))
+    }
+
+    /// `Signal.signame(number)` — the name that number goes by, and nil for
+    /// a number no signal uses. Anything but an Integer is asked for `to_int`.
+    pub(crate) fn signal_name(
+        &mut self,
+        arguments: &[Object],
+        position: crate::lexer::Position,
+    ) -> Result<Object, crate::error::MetorexError> {
+        if arguments.len() != 1 {
+            return Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::Exact(1),
+                arguments.len(),
+                position,
+            ));
+        }
+        let number = self.coerce_signal_number(&arguments[0], position)?;
+        let Ok(number) = i32::try_from(number) else {
+            return Ok(Object::Nil);
+        };
+        Ok(match name_for_number(number) {
+            Some(name) => Object::string(name),
+            None => Object::Nil,
+        })
+    }
+
+    /// A signal number argument: an Integer as it stands, and anything else
+    /// through `to_int`.
+    fn coerce_signal_number(
+        &mut self,
+        argument: &Object,
+        position: crate::lexer::Position,
+    ) -> Result<i64, crate::error::MetorexError> {
+        if let Object::Int(number) = argument {
+            return Ok(*number);
+        }
+        let source = self.builtins().class_of(argument).name().to_string();
+        let refuse = |message: String| crate::error::MetorexError::UncaughtException {
+            exception: Object::exception("TypeError", message.clone()),
+            location: crate::vm::utils::position_to_location(position),
+            message,
+        };
+        let Some((class, method)) = self.lookup_method(argument, "to_int") else {
+            return Err(refuse(format!(
+                "no implicit conversion of {} into Integer",
+                source
+            )));
+        };
+        match self.invoke_method(class, method, argument.clone(), Vec::new(), position)? {
+            Object::Int(number) => Ok(number),
+            produced => Err(refuse(format!(
+                "can't convert {} to Integer ({}#to_int gives {})",
+                source,
+                source,
+                self.builtins().class_of(&produced).name()
+            ))),
+        }
     }
 
     /// `Signal.trap(signal, command)` — install a handler and answer the one

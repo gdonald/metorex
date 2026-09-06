@@ -346,6 +346,29 @@ impl VirtualMachine {
                     Ok(Some(Object::string(chars.last().unwrap().to_string())))
                 }
             }
+            // String#ord — the codepoint of the first character. An empty
+            // String has none, which Ruby reports as an ArgumentError.
+            "ord" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                match string_value.chars().next() {
+                    Some(character) => Ok(Some(Object::Int(character as i64))),
+                    None => {
+                        let message = "empty string".to_string();
+                        Err(MetorexError::UncaughtException {
+                            exception: Object::exception("ArgumentError", message.clone()),
+                            location: position_to_location(position),
+                            message,
+                        })
+                    }
+                }
+            }
             "chars" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(

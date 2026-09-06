@@ -293,8 +293,10 @@ impl VirtualMachine {
                 value.as_big_integer().expect("integer-kinded"),
                 num_bigint::BigInt::from(1),
             )),
+            // A Float is a binary fraction, and that exact value is the
+            // Rational it stands for: `Rational(0.3)` is not (3/10).
             Object::Float(number) if number.is_finite() => {
-                Ok(super::rational_methods::float_fraction(*number))
+                Ok(super::rational_methods::float_exact_fraction(*number))
             }
             // `Rational("1/3")` and `Rational(".52")` are exact; text that is
             // not wholly a rational is refused rather than read leniently the

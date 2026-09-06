@@ -224,9 +224,8 @@ fn float_ceil_whole() {
 }
 
 #[test]
-fn float_ceil_error_with_args() {
-    let err = run_err("3.14.ceil(1)");
-    assert!(err.contains("argument"));
+fn float_ceil_keeps_the_digits_a_precision_asks_for() {
+    assert_eq!(run("3.14.ceil(1)"), Some(Object::Float(3.2)));
 }
 
 // ============================================================================
@@ -246,9 +245,8 @@ fn float_floor_negative() {
 }
 
 #[test]
-fn float_floor_error_with_args() {
-    let err = run_err("3.14.floor(1)");
-    assert!(err.contains("argument"));
+fn float_floor_keeps_the_digits_a_precision_asks_for() {
+    assert_eq!(run("3.14.floor(1)"), Some(Object::Float(3.1)));
 }
 
 // ============================================================================

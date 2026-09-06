@@ -59,6 +59,22 @@ pub struct Exception {
 }
 
 impl Exception {
+    /// Whether this exception ends the program with a status, which
+    /// SystemExit and every subclass of it does.
+    pub fn is_system_exit(&self) -> bool {
+        let Some(class) = &self.class else {
+            return self.exception_type == "SystemExit";
+        };
+        let mut cursor = Some(std::rc::Rc::clone(class));
+        while let Some(current) = cursor {
+            if current.name() == "SystemExit" {
+                return true;
+            }
+            cursor = current.superclass();
+        }
+        false
+    }
+
     /// Create a new exception
     pub fn new(exception_type: String, message: String) -> Self {
         Self {
