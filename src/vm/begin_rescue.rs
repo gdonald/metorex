@@ -119,6 +119,7 @@ impl VirtualMachine {
                     return Err(MetorexError::NonLocalReturn {
                         value,
                         location: position_to_location(position),
+                        home_frame: self.current_method_frame,
                     });
                 }
                 ControlFlow::Exception {
@@ -141,6 +142,7 @@ impl VirtualMachine {
                     return Err(MetorexError::BlockBreak {
                         value,
                         location: position_to_location(position),
+                        home_frame: None,
                     });
                 }
                 ControlFlow::Redo { position } => {

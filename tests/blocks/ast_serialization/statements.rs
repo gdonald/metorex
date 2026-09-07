@@ -183,7 +183,10 @@ end
 C.new.get_source(:my_method).name
 "#,
     );
-    assert_eq!(result, Some(Object::string("my_method")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("my_method".to_string())))
+    );
 }
 
 #[test]

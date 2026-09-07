@@ -294,6 +294,11 @@ impl VirtualMachine {
                 .map(Some);
         }
 
+        // A Proc is already one, so `to_proc` answers the same object.
+        if method_name == "to_proc" && matches!(receiver, Object::Block(_)) {
+            return Ok(Some(receiver.clone()));
+        }
+
         // Symbol#to_proc — `:foo.to_proc` is a two-parameter callable that
         // sends `foo` to its first argument.
         if method_name == "to_proc"
@@ -368,6 +373,15 @@ impl VirtualMachine {
             }
         }
         match method_name {
+            // `a&.b` reaches here as a call on `a`. A nil receiver answers
+            // nil without the named method running at all.
+            crate::parser::SAFE_CALL => {
+                if matches!(receiver, Object::Nil) {
+                    self.pending_block.take();
+                    return Ok(Some(Object::Nil));
+                }
+                self.call_object_method(receiver, "send", arguments, position)
+            }
             "__send__" | "send" | "public_send" => {
                 if arguments.is_empty() {
                     let message = "no method name given".to_string();
@@ -421,6 +435,21 @@ impl VirtualMachine {
                     self.call_object_method(receiver, &method, &rest_args, position)?
                 {
                     return Ok(Some(result));
+                }
+                // A class that answers what it was not asked for decides what
+                // a name with no method behind it means.
+                if let Some((owner, handler)) = self.lookup_method(receiver, "method_missing")
+                    && !handler.is_undefined
+                {
+                    let mut relayed = vec![Object::Symbol(std::rc::Rc::new(method.clone()))];
+                    relayed.extend(rest_args);
+                    return Ok(Some(self.invoke_method(
+                        owner,
+                        handler,
+                        receiver.clone(),
+                        relayed,
+                        position,
+                    )?));
                 }
                 Err(undefined_method_error(
                     &method, receiver, &rest_args, position,
@@ -947,7 +976,13 @@ impl VirtualMachine {
                 // `def self.foo`) and mixins resolve, not just the class's
                 // own method table.
                 let public_only = method_name == "public_method";
-                if let Some((resolved_class, method)) = self.lookup_method(receiver, &name_str) {
+                // A method the receiver's class supplies natively is that
+                // class's own, even when Enumerable declares the same name.
+                let shadowed_by_enumerable = self.enumerable_stands_in(receiver, &name_str);
+                if let Some((resolved_class, method)) = self
+                    .lookup_method(receiver, &name_str)
+                    .filter(|_| !shadowed_by_enumerable)
+                {
                     if public_only && self.method_is_restricted(receiver, &name_str) {
                         let msg = format!(
                             "undefined method '{}' for class '{}'",
@@ -963,6 +998,21 @@ impl VirtualMachine {
                     }
                     let mut bound = method.as_ref().clone();
                     bound.receiver = Some(Box::new(receiver.clone()));
+                    // Two names that are the same native method answer the
+                    // same Method object, which is what makes
+                    // `method(:to_s) == method(:inspect)` hold for an alias.
+                    if let Some(target) =
+                        native_alias_target(self.builtins().class_of(receiver).name(), &name_str)
+                    {
+                        if bound.original_name.is_none() {
+                            bound.original_name = Some(target.to_string());
+                        }
+                        // The receiver's own class answers it, whatever the
+                        // lookup walked past to get here.
+                        let owner = self.builtins().class_of(receiver);
+                        bound.owner = Some(owner.ruby_name());
+                        bound.owner_class = Some(owner);
+                    }
                     if bound.owner_class.is_none() {
                         bound.owner_class = Some(resolved_class);
                     }
@@ -981,6 +1031,55 @@ impl VirtualMachine {
                 // The Kernel methods every object carries are native too.
                 if let Some(mut stub) = super::class_methods::native_kernel_method_stub(&name_str) {
                     stub.receiver = Some(Box::new(receiver.clone()));
+                    return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
+                }
+                // A method the receiver's own class implements natively, such
+                // as an operator on a number, is handed out as a stub bound to
+                // the receiver. `invoke_method` runs the native one.
+                let is_operator = matches!(
+                    name_str.as_str(),
+                    "+" | "-"
+                        | "*"
+                        | "/"
+                        | "%"
+                        | "**"
+                        | "=="
+                        | "!="
+                        | "<"
+                        | ">"
+                        | "<="
+                        | ">="
+                        | "<=>"
+                        | "==="
+                        | "<<"
+                        | ">>"
+                        | "&"
+                        | "|"
+                        | "^"
+                        | "[]"
+                        | "[]="
+                        | "-@"
+                        | "+@"
+                        | "~"
+                );
+                if is_operator || self.responds_to(receiver, &name_str) {
+                    let owner = self.builtins().class_of(receiver);
+                    let mut stub = crate::object::Method::new(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                    );
+                    stub.receiver = Some(Box::new(receiver.clone()));
+                    stub.owner = Some(owner.ruby_name());
+                    // Two names that are the same native method answer the
+                    // same Method object, which is what makes `method(:to_s)
+                    // == method(:inspect)` hold for an alias.
+                    stub.original_name = Some(
+                        native_alias_target(owner.name(), &name_str)
+                            .unwrap_or(&name_str)
+                            .to_string(),
+                    );
+                    stub.owner_class = Some(owner);
                     return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
                 }
                 // An object that answers `respond_to_missing?` for the name
@@ -1539,6 +1638,10 @@ impl VirtualMachine {
                             .is_none_or(|m| !m.is_undefined)
                     });
                 }
+                // A private method is not among the ones an object answers
+                // to from outside, so `methods` leaves it out.
+                let holder = self.builtins().class_of(receiver);
+                names.retain(|name| !self.method_is_private_anywhere(&holder, name));
                 names.sort();
                 names.dedup();
                 let method_symbols: Vec<Object> = names
@@ -1633,17 +1736,11 @@ impl VirtualMachine {
                 match (matchable_text(receiver), matchable_text(&arguments[0])) {
                     (Some(MatchSide::Pattern(pattern, flags)), Some(MatchSide::Text(text)))
                     | (Some(MatchSide::Text(text)), Some(MatchSide::Pattern(pattern, flags))) => {
-                        let re_pattern = if flags.contains('i') {
-                            format!("(?i){}", pattern)
-                        } else {
-                            pattern
-                        };
-                        match regex::Regex::new(&re_pattern) {
-                            Ok(re) => match re.find(&text) {
-                                Some(found) => Ok(Some(Object::Int(found.start() as i64))),
-                                None => Ok(Some(Object::Nil)),
-                            },
-                            Err(_) => Ok(Some(Object::Nil)),
+                        match self.regexp_match_data(&pattern, &flags, &text, 0, position)? {
+                            Some(data) => self
+                                .send_to_object(data, "begin", vec![Object::Int(0)], position)
+                                .map(Some),
+                            None => Ok(Some(Object::Nil)),
                         }
                     }
                     _ => Ok(Some(Object::Nil)),
@@ -2473,4 +2570,44 @@ fn body_defines_a_method(body: &[crate::ast::Statement]) -> bool {
             crate::ast::Statement::MethodDef { .. } | crate::ast::Statement::FunctionDef { .. }
         )
     })
+}
+
+/// The name a native method is really spelled with, for the aliases Ruby
+/// documents as the same method rather than a separate one.
+fn native_alias_target<'a>(class_name: &str, method_name: &'a str) -> Option<&'a str> {
+    match (class_name, method_name) {
+        // Integer answers these natively, so they are its own rather than
+        // the Numeric versions the prelude also declares.
+        ("Integer", "zero?") => Some("zero?"),
+        ("Set", "to_s") => Some("inspect"),
+        ("Set", "===") | ("Set", "member?") => Some("include?"),
+        ("Set", "length") => Some("size"),
+        ("Set", "filter") => Some("select"),
+        ("Set", "collect") => Some("map"),
+        _ => None,
+    }
+}
+
+impl VirtualMachine {
+    /// Whether a name is private on a class or anywhere above it, which is
+    /// what keeps it out of the list of methods an object answers to.
+    fn method_is_private_anywhere(
+        &self,
+        holder: &std::rc::Rc<crate::class::Class>,
+        name: &str,
+    ) -> bool {
+        let mut cursor = Some(std::rc::Rc::clone(holder));
+        while let Some(current) = cursor {
+            if current.find_own_method(name).is_some() || current.is_method_private(name) {
+                return current.is_method_private(name);
+            }
+            for mixin in current.mixin_chain() {
+                if mixin.find_own_method(name).is_some() || mixin.is_method_private(name) {
+                    return mixin.is_method_private(name);
+                }
+            }
+            cursor = current.superclass();
+        }
+        false
+    }
 }

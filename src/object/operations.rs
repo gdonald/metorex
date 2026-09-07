@@ -54,6 +54,14 @@ impl Object {
     fn equals_inner(&self, other: &Object, in_flight: &mut Vec<(usize, usize)>) -> bool {
         // An instance of an Array subclass compares by the elements it holds,
         // so it equals a plain Array with the same contents.
+        // An instance of a Hash subclass compares by the entries it holds,
+        // so it equals a plain Hash with the same contents.
+        match (backing_hash(self), backing_hash(other)) {
+            (Some(left), None) => return left.equals_within(other, in_flight),
+            (None, Some(right)) => return self.equals_within(&right, in_flight),
+            (Some(left), Some(right)) => return left.equals_within(&right, in_flight),
+            (None, None) => {}
+        }
         match (backing_array(self), backing_array(other)) {
             (Some(left), None) => return left.equals_within(other, in_flight),
             (None, Some(right)) => return self.equals_within(&right, in_flight),
@@ -94,15 +102,25 @@ impl Object {
                     .all(|(left, right)| left.equals_within(right, in_flight))
             }
             (Object::Dict(a), Object::Dict(b)) => {
+                // The sentinels a hash keeps for its default, its key objects,
+                // and its identity setting are bookkeeping, not contents.
                 let dict_a = a.borrow();
                 let dict_b = b.borrow();
-                if dict_a.len() != dict_b.len() {
+                let entries = |dict: &indexmap::IndexMap<String, Object>| {
+                    dict.iter()
+                        .filter(|(key, _)| !key.starts_with("__MX_"))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect::<Vec<_>>()
+                };
+                let left_entries = entries(&dict_a);
+                let right_entries = entries(&dict_b);
+                if left_entries.len() != right_entries.len() {
                     return false;
                 }
-                dict_a.iter().all(|(key, val)| {
-                    dict_b
-                        .get(key)
-                        .is_some_and(|other| val.equals_within(other, in_flight))
+                left_entries.iter().all(|(key, value)| {
+                    right_entries.iter().any(|(other_key, other_value)| {
+                        key == other_key && value.equals_within(other_value, in_flight)
+                    })
                 })
             }
             (Object::Set(a), Object::Set(b)) => {
@@ -252,4 +270,13 @@ fn backing_array(value: &Object) -> Option<Object> {
         return None;
     };
     instance.borrow().instance_vars.get("__array__").cloned()
+}
+
+/// The entries an instance of a Hash subclass holds, or None for anything
+/// else.
+fn backing_hash(value: &Object) -> Option<Object> {
+    let Object::Instance(instance) = value else {
+        return None;
+    };
+    instance.borrow().instance_vars.get("__hash__").cloned()
 }

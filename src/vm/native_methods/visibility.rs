@@ -75,7 +75,10 @@ impl VirtualMachine {
                 // global native functions rather than entries in Object's
                 // method table, so a visibility declaration naming one still
                 // has a method to talk about.
-                let on_kernel = matches!(self.globals().get(&n), Some(Object::NativeFunction(_)));
+                let on_kernel = matches!(self.globals().get(&n), Some(Object::NativeFunction(_)))
+                    // Object's own methods are native rather than table
+                    // entries, so `private :hash` names one that exists.
+                    || crate::vm::native_methods::is_native_kernel_method(&n);
                 // A singleton class of a class carries the class-level
                 // methods, which are native rather than table entries. `new`
                 // is the one specs redeclare, to make a class uninstantiable.

@@ -22,23 +22,27 @@ fn run_err(code: &str) -> String {
 // ── Array sort with non-comparable types (line 25 in compare_objects) ─────────
 
 #[test]
-fn array_sort_with_mixed_types_uses_string_comparison() {
-    // [true, false, nil] sorted - triggers the fallback string comparison
-    let result = run(r#"
+fn array_sort_with_mixed_types_raises() {
+    // Sorting orders with `<=>`, and true, false, and nil have no ordering
+    // against each other, so the comparison fails the way Ruby's does.
+    let err = run_err(
+        r#"
 arr = [true, false, nil]
 arr.sort
-"#);
-    // Sort uses string comparison as fallback, result should be Some
-    assert!(result.is_some());
+"#,
+    );
+    assert!(err.contains("comparison of FalseClass with TrueClass failed"));
 }
 
 #[test]
-fn array_sort_with_bool_and_int_uses_fallback() {
-    let result = run(r#"
+fn array_sort_with_bool_and_int_raises() {
+    let err = run_err(
+        r#"
 arr = [true, 1, false]
 arr.sort
-"#);
-    assert!(result.is_some());
+"#,
+    );
+    assert!(err.contains("comparison of Integer with TrueClass failed"));
 }
 
 // ── Array each without block ───────────────────────────────────────────────────
@@ -76,13 +80,13 @@ fn array_select_without_block_answers_an_enumerator() {
 // ── Array reduce without block ─────────────────────────────────────────────────
 
 #[test]
-fn array_reduce_without_block_error() {
+fn array_reduce_without_block_or_operator_error() {
     let err = run_err(
         r#"
 [1, 2, 3].reduce
 "#,
     );
-    assert!(err.contains("block") || err.contains("reduce") || err.contains("requires"));
+    assert!(err.contains("wrong number of arguments"), "{}", err);
 }
 
 // ── Array each/map/select/reduce block paths ────────────────────────────
@@ -184,24 +188,26 @@ end
 // ── array_methods.rs: transpose with jagged arrays (line 354, nil padding) ──
 
 #[test]
-fn array_transpose_jagged_arrays_nil_padding() {
-    let result = run(r#"
+fn array_transpose_jagged_arrays_raise() {
+    // Every row must be the same length, which Ruby reports as an IndexError
+    // rather than padding the short one with nil.
+    let err = run_err(
+        r#"
 arr = [[1, 2, 3], [4, 5]]
-t = arr.transpose
-t.length
-"#);
-    assert_eq!(result, Some(Object::Int(3)));
+arr.transpose
+"#,
+    );
+    assert!(err.contains("element size differs (2 should be 3)"));
 }
 
 #[test]
-fn array_transpose_jagged_arrays_nil_values() {
-    // The third column should have nil for the second row
+fn array_transpose_even_rows_swap_axes() {
     let result = run(r#"
-arr = [[1, 2, 3], [4, 5]]
+arr = [[1, 2, 3], [4, 5, 6]]
 t = arr.transpose
 t[2][1]
 "#);
-    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(result, Some(Object::Int(6)));
 }
 
 // ── array_methods.rs: reduce with initial value ─────────────────────────────
@@ -304,9 +310,9 @@ fn array_partition_basic() {
 // ── array_methods.rs: inject without block error (lines 216-221) ─────────────
 
 #[test]
-fn array_inject_without_block_error() {
+fn array_inject_without_block_or_operator_error() {
     let err = run_err("[1, 2, 3].inject");
-    assert!(err.contains("block") || err.contains("inject") || err.contains("requires"));
+    assert!(err.contains("wrong number of arguments"), "{}", err);
 }
 
 // ── array_methods.rs: inject basic (lines 216-221 success path) ──────────────
@@ -344,9 +350,9 @@ fn array_inject_empty_with_initial_returns_initial() {
 // ── array_methods.rs: reduce too many args error (lines 297-302) ─────────────
 
 #[test]
-fn array_reduce_too_many_args_error() {
-    let err = run_err("[1, 2, 3].reduce(1, 2) { |s, x| s + x }");
-    assert!(err.contains("argument"));
+fn array_reduce_more_than_two_arguments_error() {
+    let err = run_err("[1, 2, 3].reduce(1, :+, 2) { |s, x| s + x }");
+    assert!(err.contains("argument"), "{}", err);
 }
 
 // ── array_methods.rs: min with mixed types keeps first (line 703) ─────────────

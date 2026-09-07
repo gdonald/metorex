@@ -349,24 +349,18 @@ fn dir_glob_returns_array() {
     }
 }
 
-// ── Time.now (mod.rs lines 153-157) ──────────────────────────────────────
+// ── Time.now ─────────────────────────────────────────────────────────────
 
 #[test]
-fn time_now_returns_float() {
-    let result = run("Time.now");
-    match result {
-        Some(Object::Float(f)) => assert!(f > 0.0),
-        other => panic!("expected Float, got {:?}", other),
-    }
+fn time_now_answers_a_time() {
+    let result = run("Time.now.class.name");
+    assert_eq!(result, Some(Object::string("Time")));
 }
 
 #[test]
-fn time_new_returns_float() {
-    let result = run("Time.new");
-    match result {
-        Some(Object::Float(f)) => assert!(f > 0.0),
-        other => panic!("expected Float, got {:?}", other),
-    }
+fn time_new_without_arguments_answers_the_current_time() {
+    let result = run("Time.new.to_i > 1600000000");
+    assert_eq!(result, Some(Object::Bool(true)));
 }
 
 // ── module_function with Symbol name (mod.rs lines 614-620) ──────────────

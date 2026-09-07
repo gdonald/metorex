@@ -263,6 +263,9 @@ impl<'a> Lexer<'a> {
                     } else {
                         Token::new(TokenKind::LogicalAnd, position)
                     }
+                } else if self.peek() == Some('.') {
+                    self.advance();
+                    Token::new(TokenKind::SafeDot, position)
                 } else {
                     Token::new(TokenKind::Ampersand, position)
                 }

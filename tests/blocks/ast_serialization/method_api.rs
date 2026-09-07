@@ -15,7 +15,10 @@ end
 C.new.get_source(:my_func).name
 "#,
     );
-    assert_eq!(result, Some(Object::string("my_func")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("my_func".to_string())))
+    );
 }
 
 #[test]

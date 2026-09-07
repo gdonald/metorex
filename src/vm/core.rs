@@ -21,6 +21,10 @@ use crate::environment::Environment;
 use crate::object::Object;
 
 /// Core virtual machine responsible for executing Metorex programs.
+/// The frame top-level code runs in, so a block written there is told apart
+/// from one whose home frame was never recorded.
+pub(crate) const TOP_LEVEL_FRAME: u64 = 0;
+
 pub struct VirtualMachine {
     pub(crate) environment: Environment,
     pub(crate) call_stack: Vec<CallFrame>,
@@ -43,6 +47,20 @@ pub struct VirtualMachine {
     /// The file whose code is running right now, which differs from
     /// `current_file` inside a method defined in another file.
     pub(crate) current_source_file: Option<String>,
+    /// The method invocation a block written right now would return from.
+    /// A `return` inside a block unwinds to the method that created the
+    /// block, so the block records this id and the unwinding stops at the
+    /// invocation that matches.
+    pub(crate) current_method_frame: Option<u64>,
+    /// The Sets a walk is running over, by address. A mutation while one is
+    /// open is what Ruby reports as a modification during iteration.
+    pub(crate) iterating_sets: Vec<usize>,
+    /// The invocations that have not returned yet. A `return` from a block
+    /// whose home invocation is gone has nowhere to go, which is what makes
+    /// it a LocalJumpError.
+    pub(crate) live_frames: Vec<u64>,
+    /// The id the next method invocation takes.
+    pub(crate) next_method_frame: u64,
     pub(crate) loaded_files: HashSet<PathBuf>,
     /// Depth counter that tracks whether we're inside a const-access
     /// autoload trigger. While >0, `effective_autoload` skips moving the
@@ -196,6 +214,10 @@ impl VirtualMachine {
             popen_children: HashMap::new(),
             next_popen_id: 0,
             current_source_file: None,
+            current_method_frame: Some(TOP_LEVEL_FRAME),
+            iterating_sets: Vec::new(),
+            live_frames: vec![TOP_LEVEL_FRAME],
+            next_method_frame: TOP_LEVEL_FRAME + 1,
             loaded_files: HashSet::new(),
             autoload_const_access_depth: 0,
             thread_current_stack: Vec::new(),

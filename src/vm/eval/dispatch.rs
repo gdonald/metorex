@@ -44,18 +44,30 @@ impl VirtualMachine {
             Expression::ClassVariable { name, position } => {
                 self.eval_class_var_read(name, *position)
             }
-            Expression::GlobalVariable { name, .. } => {
+            Expression::GlobalVariable { name, position } => {
                 // `$?` is the status of the last child waited for, which lives
                 // with the process rather than in the global table.
                 if name == "?" {
                     return Ok(self.process_last_status());
                 }
+                // `$1` through `$9` name the captures of the last match, and
+                // `` $` `` and `$'` the text on either side of it.
+                if let Some(group) = crate::vm::native_methods::capture_reference(name) {
+                    return self.last_match_part(group, *position);
+                }
                 Ok(self.globals().get(name).unwrap_or(Object::Nil))
             }
             Expression::MagicFile { .. } => {
+                // The file the code was written in, which is not the file
+                // being run when a required file's method or block is what is
+                // executing.
                 let path = self
-                    .reported_current_file()
-                    .map(|p| p.display().to_string())
+                    .current_source_file
+                    .clone()
+                    .or_else(|| {
+                        self.reported_current_file()
+                            .map(|path| path.display().to_string())
+                    })
                     .unwrap_or_else(|| "(eval)".to_string());
                 Ok(Object::String(Rc::new(path)))
             }
@@ -127,6 +139,7 @@ impl VirtualMachine {
                     .current_source_file
                     .clone()
                     .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()));
+                block.home_frame = self.current_method_frame;
                 Ok(Object::Block(Rc::new(block)))
             }
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
@@ -298,6 +311,12 @@ impl VirtualMachine {
                 position,
             } => {
                 let collection = self.evaluate_expression(array)?;
+                // `Held[*values]` spreads the values across the subscript,
+                // the same way `Held.[](*values)` does.
+                if let Expression::Splat { .. } = index.as_ref() {
+                    let spread = self.evaluate_arguments(std::slice::from_ref(index.as_ref()))?;
+                    return self.send_to_object(collection, "[]", spread, *position);
+                }
                 let key = self.evaluate_expression(index)?;
                 // Block/Lambda [] call syntax: proc[args]
                 if let Object::Block(block) = &collection {

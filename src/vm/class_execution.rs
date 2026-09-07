@@ -555,8 +555,12 @@ impl VirtualMachine {
             Some(obj) => self.coerce_eval_string(obj, position)?,
             None => {
                 let caller = self
-                    .reported_current_file()
-                    .map(|p| p.display().to_string())
+                    .current_source_file
+                    .clone()
+                    .or_else(|| {
+                        self.reported_current_file()
+                            .map(|path| path.display().to_string())
+                    })
                     .unwrap_or_else(|| "(eval)".to_string());
                 format!("(eval at {}:{})", caller, position.line)
             }
@@ -618,11 +622,13 @@ impl VirtualMachine {
         self.def_scope_stack.push(Rc::clone(class_rc));
         let prev_file = self.current_file.clone();
         self.current_file = Some(std::path::PathBuf::from(&filename));
+        let prev_source_file = self.current_source_file.replace(filename.clone());
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
         let result = self.apply_class_body(class_rc, &statements, position);
         self.user_def_nesting = saved_nesting;
         self.current_file = prev_file;
+        self.current_source_file = prev_source_file;
         self.def_scope_stack.pop();
         for _ in 0..enclosing_pushed {
             self.def_scope_stack.pop();

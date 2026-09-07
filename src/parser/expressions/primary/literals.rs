@@ -7,24 +7,39 @@ use crate::parser::Parser;
 
 impl Parser {
     /// Parse a `%w[a b c]` percent-word array literal token into an `Array` of `StringLiteral`s.
-    pub(super) fn primary_percent_w(&self, value: String, position: Position) -> Expression {
+    pub(super) fn primary_percent_w(
+        &self,
+        value: String,
+        filled: bool,
+        position: Position,
+    ) -> Expression {
         let elements: Vec<Expression> = value
             .split_whitespace()
-            .map(|word| Expression::StringLiteral {
-                value: word.to_string(),
-                position,
-            })
+            .map(|word| percent_word(word, filled, position))
             .collect();
         Expression::Array { elements, position }
     }
 
     /// Build the Array a `%i[a b c]` symbol-array literal denotes.
-    pub(super) fn primary_percent_i(&self, value: String, position: Position) -> Expression {
+    pub(super) fn primary_percent_i(
+        &self,
+        value: String,
+        filled: bool,
+        position: Position,
+    ) -> Expression {
         let elements: Vec<Expression> = value
             .split_whitespace()
-            .map(|word| Expression::Symbol {
-                value: word.to_string(),
-                position,
+            .map(|word| match percent_word(word, filled, position) {
+                Expression::StringLiteral { value, position } => {
+                    Expression::Symbol { value, position }
+                }
+                built => Expression::MethodCall {
+                    receiver: Box::new(built),
+                    method: "to_sym".to_string(),
+                    arguments: Vec::new(),
+                    trailing_block: None,
+                    position,
+                },
             })
             .collect();
         Expression::Array { elements, position }
@@ -156,3 +171,46 @@ pub(super) fn nil_literal(position: Position) -> Expression {
 
 #[allow(dead_code)]
 fn _silence_unused_token_kind(_: TokenKind) {}
+
+/// One word of a percent list. A `%W` or `%I` word reads its `#{}` parts the
+/// way a double-quoted string does.
+fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
+    let plain = Expression::StringLiteral {
+        value: word.to_string(),
+        position,
+    };
+    if !filled || !word.contains("#{") {
+        return plain;
+    }
+    let source = format!("\"{}\"", word);
+    let tokens = crate::lexer::Lexer::new(&source).tokenize();
+    let Some(TokenKind::InterpolatedString(parts)) = tokens.first().map(|token| token.kind.clone())
+    else {
+        return plain;
+    };
+    let mut built = Vec::new();
+    for part in parts {
+        match part {
+            crate::lexer::InterpolationPart::Text(text) => {
+                built.push(crate::ast::InterpolationPart::Text(text));
+            }
+            crate::lexer::InterpolationPart::Expression(source) => {
+                let inner = crate::lexer::Lexer::new(&source).tokenize();
+                let Ok(mut statements) = crate::parser::Parser::new(inner).parse() else {
+                    return plain;
+                };
+                let Some(crate::ast::Statement::Expression { expression, .. }) = statements.pop()
+                else {
+                    return plain;
+                };
+                built.push(crate::ast::InterpolationPart::Expression(Box::new(
+                    expression,
+                )));
+            }
+        }
+    }
+    Expression::InterpolatedString {
+        parts: built,
+        position,
+    }
+}

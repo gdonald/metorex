@@ -344,8 +344,18 @@ impl VirtualMachine {
                 // anonymous classes/modules on first assignment, matching
                 // Ruby's `klass.name` behavior after binding to a constant.
                 let is_const = name.chars().next().is_some_and(|c| c.is_ascii_uppercase());
-                if is_const && let Object::Class(v) | Object::Module(v) = &value {
-                    v.set_assigned_name_if_anonymous(name);
+                // A constant bound inside a class or module body names what
+                // it holds under that namespace, so `M::Foo` reports its own
+                // path rather than the bare constant name.
+                if is_const {
+                    match self.def_scope_stack.last().cloned() {
+                        Some(enclosing) => name_constant_value(&enclosing, name, &value),
+                        None => {
+                            if let Object::Class(v) | Object::Module(v) = &value {
+                                v.set_assigned_name_if_anonymous(name);
+                            }
+                        }
+                    }
                 }
                 // Constants assigned in a context that has a lexically
                 // enclosing class/module land on that scope's class_var
@@ -510,27 +520,11 @@ impl VirtualMachine {
                 let idx = self.evaluate_expression(index)?;
 
                 match obj {
-                    Object::Array(array_rc) => {
-                        // Array index assignment
-                        if let Object::Int(i) = idx {
-                            let mut array = array_rc.borrow_mut();
-                            let len = array.len() as i64;
-                            let actual_index = if i < 0 { len + i } else { i };
-
-                            if actual_index < 0 || actual_index >= len {
-                                return Err(MetorexError::runtime_error(
-                                    format!("Array index out of bounds: {}", i),
-                                    position_to_location(*position),
-                                ));
-                            }
-                            array[actual_index as usize] = value;
-                            Ok(())
-                        } else {
-                            Err(MetorexError::runtime_error(
-                                "Array index must be an integer",
-                                position_to_location(*position),
-                            ))
-                        }
+                    // Every array index assignment goes through `[]=`, which
+                    // knows the index, start-and-length, and Range forms.
+                    Object::Array(_) => {
+                        self.send_to_object(obj.clone(), "[]=", vec![idx, value], *position)?;
+                        Ok(())
                     }
                     Object::Dict(dict_rc) => {
                         // Hash/Dict index assignment — Ruby allows any object as a key
@@ -551,10 +545,22 @@ impl VirtualMachine {
                                 Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(key_objs))),
                             );
                         }
-                        dict.insert(key_str, value);
+                        dict.insert(key_str, value.clone());
+                        drop(dict);
+                        self.record_environment_change(&dict_rc, &idx, &value);
                         Ok(())
                     }
                     Object::Instance(instance_rc) => {
+                        // An instance of an Array or Hash subclass writes
+                        // through the storage it is backed by.
+                        let holder = Object::Instance(Rc::clone(&instance_rc));
+                        if let Some(backing) =
+                            crate::vm::native_methods::array_subclass_value(&holder)
+                                .or_else(|| crate::vm::native_methods::hash_subclass_value(&holder))
+                        {
+                            self.send_to_object(backing, "[]=", vec![idx, value], *position)?;
+                            return Ok(());
+                        }
                         // Dispatch to user-defined []= method
                         let class = Rc::clone(&instance_rc.borrow().class);
                         if let Some(method) = class.find_method("[]=") {
@@ -657,12 +663,45 @@ impl VirtualMachine {
                 position,
                 ..
             } => {
+                // `values[start, length] = other` parses as a call to `[]`,
+                // and assigning to it sends `[]=` with the same subscripts.
+                if method == "[]" {
+                    let receiver_obj = self.evaluate_expression(receiver)?;
+                    let mut subscripts = Vec::with_capacity(arguments.len() + 1);
+                    for argument in arguments {
+                        subscripts.push(self.evaluate_expression(argument)?);
+                    }
+                    subscripts.push(value);
+                    self.send_to_object(receiver_obj, "[]=", subscripts, *position)?;
+                    return Ok(());
+                }
                 // Handle setter method calls (e.g., obj.name = value becomes obj.name=(value))
                 if arguments.is_empty() {
                     // This is a setter method call: obj.method = value -> obj.method=(value)
                     let setter_method = format!("{}=", method);
                     let receiver_obj = self.evaluate_expression(receiver)?;
 
+                    // An instance of an Array or Hash subclass answers the
+                    // writers of the value it is backed by.
+                    if let Some(backing) = crate::vm::native_methods::array_subclass_value(
+                        &receiver_obj,
+                    )
+                    .or_else(|| crate::vm::native_methods::hash_subclass_value(&receiver_obj))
+                    {
+                        let class = self.builtins().class_of(&backing);
+                        if self
+                            .call_native_method(
+                                &class,
+                                &backing,
+                                &setter_method,
+                                std::slice::from_ref(&value),
+                                *position,
+                            )?
+                            .is_some()
+                        {
+                            return Ok(());
+                        }
+                    }
                     // Look up the setter method and invoke it
                     match receiver_obj {
                         Object::Instance(instance_rc) => {
@@ -678,7 +717,7 @@ impl VirtualMachine {
                                 // call (`obj.foo = …`) can only invoke public
                                 // methods, mirroring `evaluate_method_call`.
                                 let is_explicit_receiver =
-                                    !matches!(receiver.as_ref(), Expression::SelfExpr { .. });
+                                    !crate::vm::method_lookup::names_self(receiver.as_ref());
                                 if is_explicit_receiver
                                     && class.is_method_restricted(&setter_method)
                                 {
@@ -699,6 +738,23 @@ impl VirtualMachine {
                                     method,
                                     Object::Instance(Rc::clone(&instance_rc)),
                                     vec![value],
+                                    *position,
+                                )?;
+                                Ok(())
+                            } else if instance_rc
+                                .borrow()
+                                .class
+                                .find_method("method_missing")
+                                .is_some()
+                            {
+                                // A class that answers what it was not asked
+                                // for decides what a setter with no method
+                                // behind it means.
+                                let name = Object::Symbol(Rc::new(setter_method.clone()));
+                                self.send_to_object(
+                                    Object::Instance(Rc::clone(&instance_rc)),
+                                    "method_missing",
+                                    vec![name, value],
                                     *position,
                                 )?;
                                 Ok(())

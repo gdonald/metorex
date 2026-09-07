@@ -26,9 +26,14 @@ mod object_methods;
 mod range_methods;
 pub(crate) mod rational_methods;
 pub(crate) use rational_methods::{complex_parts, rational_parts};
+mod regexp_methods;
+pub(crate) use regexp_methods::{
+    LAST_MATCH, capture_reference, comparable_flags, compile, subject_text,
+};
 mod set_methods;
 mod string_methods;
 pub(crate) mod struct_methods;
+mod time_methods;
 pub(crate) use struct_methods::struct_members;
 
 /// Instance variable a String subclass keeps its characters in.
@@ -36,6 +41,12 @@ pub(crate) const STRING_SUBCLASS_VAR: &str = "__string__";
 /// Instance variable an instance of an Array subclass stores its elements in,
 /// since a plain Array is a primitive rather than an instance.
 pub(crate) const ARRAY_SUBCLASS_VAR: &str = "__array__";
+/// Instance variable an instance of a Set subclass stores its elements in,
+/// since a plain Set is a primitive rather than an instance.
+pub(crate) const SET_SUBCLASS_VAR: &str = "__set__";
+/// Instance variable an instance of a Hash subclass stores its entries in,
+/// since a plain Hash is a primitive rather than an instance.
+pub(crate) const HASH_SUBCLASS_VAR: &str = "__hash__";
 
 /// The characters behind an instance of a String subclass.
 pub(crate) fn string_subclass_value(receiver: &Object) -> Option<Object> {
@@ -59,6 +70,32 @@ pub(crate) fn array_subclass_value(receiver: &Object) -> Option<Object> {
         .borrow()
         .instance_vars
         .get(ARRAY_SUBCLASS_VAR)
+        .cloned()
+}
+/// The backing set an instance of a Set subclass holds, or None when
+/// `receiver` is not one. The Rc is shared, so a change through it is visible
+/// to the instance.
+pub(crate) fn set_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(SET_SUBCLASS_VAR)
+        .cloned()
+}
+/// The backing hash an instance of a Hash subclass holds, or None when
+/// `receiver` is not one. The Rc is shared, so a change through it is visible
+/// to the instance.
+pub(crate) fn hash_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(HASH_SUBCLASS_VAR)
         .cloned()
 }
 mod visibility;
@@ -239,6 +276,54 @@ impl VirtualMachine {
             }
         }
 
+        // An instance of a Hash subclass answers Hash's methods, backed by
+        // the entries it holds.
+        if let Some(entries) = hash_subclass_value(receiver) {
+            // Hash implements `to_hash` nowhere else, because a Hash already
+            // is one, and from a subclass it answers the instance itself.
+            if method_name == "to_hash" {
+                return Ok(Some(receiver.clone()));
+            }
+            // `to_h` answers a plain Hash, which is what a subclass instance
+            // converts into.
+            if method_name == "to_h" && arguments.is_empty() && self.pending_block.is_none() {
+                let Object::Dict(stored) = &entries else {
+                    return Ok(None);
+                };
+                let copied = stored.borrow().clone();
+                return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(copied)))));
+            }
+            if let Some(result) =
+                self.call_hash_method(&entries, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
+        }
+
+        // An instance of a Set subclass answers Set's methods, applied to the
+        // set it is backed by.
+        if let Some(backing @ Object::Set(_)) = set_subclass_value(receiver)
+            && let Some(result) =
+                self.call_set_method(&backing, method_name, arguments, position)?
+        {
+            // A method that answers the set itself answers the instance.
+            return Ok(Some(match result {
+                Object::Set(inner) if matches!(&backing, Object::Set(outer) if Rc::ptr_eq(&inner, outer)) => {
+                    receiver.clone()
+                }
+                other => other,
+            }));
+        }
+
+        // A Regexp is a primitive rather than an instance, so its methods are
+        // dispatched before the class-name table below.
+        if let Object::Regex(pattern, flags) = receiver
+            && let Some(result) =
+                self.call_regexp_method(pattern, flags, method_name, arguments, position)?
+        {
+            return Ok(Some(result));
+        }
+
         // Instances of a generated struct class get Struct's instance methods.
         if let Object::Instance(instance) = receiver {
             let instance_class = Rc::clone(&instance.borrow().class);
@@ -276,8 +361,28 @@ impl VirtualMachine {
                 let Object::Symbol(text) = receiver else {
                     return Ok(None);
                 };
+                // The names a Symbol answers for itself: `id2name` and `name`
+                // give its characters, and `intern` and `to_sym` give it back.
+                match method_name {
+                    "id2name" | "name" => {
+                        return Ok(Some(Object::String(Rc::clone(text))));
+                    }
+                    "intern" | "to_sym" => return Ok(Some(receiver.clone())),
+                    _ => {}
+                }
                 let as_string = Object::String(Rc::clone(text));
-                self.call_string_method(&as_string, method_name, arguments, position)
+                let answered =
+                    self.call_string_method(&as_string, method_name, arguments, position)?;
+                // The methods that answer a name answer a Symbol from a
+                // Symbol, where String's own answer a String.
+                let answers_a_symbol = matches!(
+                    method_name,
+                    "upcase" | "downcase" | "capitalize" | "swapcase" | "succ" | "next"
+                );
+                Ok(match answered {
+                    Some(Object::String(text)) if answers_a_symbol => Some(Object::Symbol(text)),
+                    other => other,
+                })
             }
             "Integer" => self.call_int_method(receiver, method_name, arguments, position),
             "Array" => self.call_array_method(receiver, method_name, arguments, position),

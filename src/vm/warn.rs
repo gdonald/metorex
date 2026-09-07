@@ -162,7 +162,7 @@ impl VirtualMachine {
     /// names the line the `warn` call itself sits on, level 1 the line that
     /// called that method, and so on outward. A level past the top of the
     /// stack leaves only the `warning: ` part.
-    fn warning_prefix(&self, level: i64, position: Position) -> String {
+    pub(crate) fn warning_prefix(&self, level: i64, position: Position) -> String {
         let stack = self.call_stack();
         let (line, path) = if level == 0 {
             (Some(position.line), self.current_source_file.clone())

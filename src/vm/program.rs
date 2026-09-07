@@ -37,6 +37,36 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
     )
 }
 
+/// Build the block `&some_method` hands over: `{ |*args| target.call(*args) }`,
+/// where `target` is the Method itself. The call keeps the method's own arity,
+/// so a callable given the wrong number of arguments still says so.
+fn method_to_proc_block(position: Position) -> BlockStatement {
+    let call = Expression::MethodCall {
+        receiver: Box::new(Expression::Identifier {
+            name: "__method_proc_target".to_string(),
+            position,
+        }),
+        method: "call".to_string(),
+        arguments: vec![Expression::Splat {
+            expression: Box::new(Expression::Identifier {
+                name: "__method_proc_args".to_string(),
+                position,
+            }),
+            position,
+        }],
+        trailing_block: None,
+        position,
+    };
+    BlockStatement::new(
+        vec!["*__method_proc_args".to_string()],
+        vec![Statement::Expression {
+            expression: call,
+            position,
+        }],
+        std::collections::HashMap::new(),
+    )
+}
+
 impl VirtualMachine {
     /// Execute a sequence of statements and return an optional result (from return statements).
     pub fn execute_program(
@@ -172,7 +202,11 @@ impl VirtualMachine {
                         _ => args.push(value),
                     }
                 }
-                Expression::BlockArg { expression, .. } => {
+                Expression::BlockArg {
+                    expression,
+                    position: other_position,
+                } => {
+                    let other_position = *other_position;
                     // `&expr`: bind the value as the pending block. If the
                     // value is nil, the call is treated as if no block were
                     // given (the arg is dropped, not pushed).
@@ -190,6 +224,17 @@ impl VirtualMachine {
                             // on the parameter.
                             self.pending_block =
                                 Some(Object::Block(std::rc::Rc::new(symbol_to_proc_block(&sym))));
+                            self.pending_block_from_ampersand = true;
+                        }
+                        // `&some_method` hands the method over as the block,
+                        // which is what `to_proc` on a Method answers.
+                        target @ Object::Method(_) => {
+                            let mut block = method_to_proc_block(other_position);
+                            block.captured_vars.insert(
+                                "__method_proc_target".to_string(),
+                                std::rc::Rc::new(std::cell::RefCell::new(target)),
+                            );
+                            self.pending_block = Some(Object::Block(std::rc::Rc::new(block)));
                             self.pending_block_from_ampersand = true;
                         }
                         other => {
@@ -214,19 +259,26 @@ impl VirtualMachine {
         &mut self,
         expression: &Expression,
     ) -> Result<Object, MetorexError> {
-        // Guard against infinite recursion
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static DEPTH: AtomicUsize = AtomicUsize::new(0);
-        let d = DEPTH.fetch_add(1, Ordering::Relaxed);
-        if d > 1000 {
-            DEPTH.store(0, Ordering::Relaxed);
+        // Guard against infinite recursion. The count belongs to the thread
+        // running the program, so two virtual machines running side by side
+        // do not add their nesting together.
+        thread_local! {
+            static DEPTH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+        }
+        let reached = DEPTH.with(|depth| {
+            let reached = depth.get();
+            depth.set(reached + 1);
+            reached
+        });
+        if reached > 1000 {
+            DEPTH.with(|depth| depth.set(depth.get() - 1));
             return Err(MetorexError::runtime_error(
                 "SystemStackError: stack level too deep".to_string(),
                 crate::vm::utils::position_to_location(expression.position()),
             ));
         }
         let result = self.evaluate_expression_inner(expression);
-        DEPTH.fetch_sub(1, Ordering::Relaxed);
+        DEPTH.with(|depth| depth.set(depth.get() - 1));
         result
     }
 }

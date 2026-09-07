@@ -38,7 +38,7 @@ end
 m = method(:greet)
 m.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("greet".to_string()))));
+    assert_eq!(result, Some(Object::Symbol(Rc::new("greet".to_string()))));
 }
 
 #[test]

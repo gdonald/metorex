@@ -489,6 +489,8 @@ impl Parser {
         }
         match self.advance().kind {
             TokenKind::Ident(name) => Ok(name),
+            // `alias :'a' :'b'` names its methods with quoted symbols.
+            TokenKind::String(name) => Ok(name),
             TokenKind::Include => Ok("include".to_string()),
             TokenKind::Extend => Ok("extend".to_string()),
             TokenKind::Class => Ok("class".to_string()),
@@ -519,7 +521,7 @@ impl Parser {
             TokenKind::Caret => Ok("^".to_string()),
             TokenKind::Ampersand => Ok("&".to_string()),
             TokenKind::Pipe => Ok("|".to_string()),
-            TokenKind::Bang => Ok("!".to_string()),
+            TokenKind::Bang | TokenKind::NotKeyword => Ok("!".to_string()),
             TokenKind::Match => Ok("=~".to_string()),
             TokenKind::NotMatch => Ok("!~".to_string()),
             TokenKind::LBracket => {

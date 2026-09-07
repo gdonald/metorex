@@ -430,6 +430,29 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(8)))
             }
+            // `chr` names the character a code point stands for.
+            "chr" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::Int(code) = receiver else {
+                    return Ok(None);
+                };
+                let Some(letter) = u32::try_from(*code).ok().and_then(char::from_u32) else {
+                    let message = format!("{} out of char range", code);
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        &message,
+                        position,
+                    ));
+                };
+                Ok(Some(Object::string(letter.to_string())))
+            }
             "to_s" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -484,6 +507,7 @@ impl VirtualMachine {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
                                 location: super::super::utils::position_to_location(position),
+                                home_frame: block.home_frame,
                             });
                         }
                         super::super::ControlFlow::Exception {
@@ -596,10 +620,18 @@ impl VirtualMachine {
                         ));
                     }
                     None => {
-                        let values: Vec<Object> = sequence.into_iter().map(Object::Int).collect();
-                        return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
-                            values,
-                        )))));
+                        // Without a block it answers an Enumerator over the
+                        // sequence, which is what Ruby hands back.
+                        let counted = sequence.len() as i64;
+                        return self
+                            .build_enumerator(
+                                receiver.clone(),
+                                method_name,
+                                arguments.to_vec(),
+                                Some(counted),
+                                position,
+                            )
+                            .map(Some);
                     }
                 };
                 for value in sequence {
@@ -618,6 +650,7 @@ impl VirtualMachine {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
                                 location: super::super::utils::position_to_location(position),
+                                home_frame: block.home_frame,
                             });
                         }
                         super::super::ControlFlow::Exception {

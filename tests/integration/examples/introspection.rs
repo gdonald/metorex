@@ -55,10 +55,10 @@ calculate.doc =
 
 #[test]
 fn test_introspection_annotations_execution() {
-    let expected = r#"add.parameters = [x, y]
-greet.parameters = [name]
-process.parameters = [data, count, flag]
-no_annotations.parameters = [a, b]
+    let expected = r#"add.parameters = [[:req, :x], [:req, :y]]
+greet.parameters = [[:req, :name]]
+process.parameters = [[:req, :data], [:req, :count], [:req, :flag]]
+no_annotations.parameters = [[:req, :a], [:req, :b]]
 "#;
     let output = run_example("introspection/annotations.rb");
     assert_eq!(output, expected);
@@ -66,7 +66,7 @@ no_annotations.parameters = [a, b]
 
 #[test]
 fn test_introspection_default_parameters_execution() {
-    let expected = "no_defaults\na\nb\nwith_defaults\na\nb\nc\nall_defaults\nx\ny\nz\ngreet\nname\ngreeting\npunctuation\n";
+    let expected = ":no_defaults\n[[:req, :a], [:req, :b]]\n:with_defaults\n[[:req, :a], [:opt, :b], [:opt, :c]]\n:all_defaults\n[[:opt, :x], [:opt, :y], [:opt, :z]]\n:greet\n[[:req, :name], [:opt, :greeting], [:opt, :punctuation]]\n";
     let output = run_example("introspection/default_parameters.rb");
     assert_eq!(output, expected);
 }
@@ -285,14 +285,16 @@ fn test_introspection_method_via_respond_to_missing_no_parens() {
 
 #[test]
 fn test_introspection_methods_listing() {
-    let expected = "[]\n[:polish]\n[:polish]\ntrue\ntrue\n[:buff, :polish]\n[:buff]\nfalse\ntrue\nSymbol\nfalse\n6\n2\n3\n1\n2\n3\n4\n";
+    // `puts (a & b).inspect` inspects the array and prints one line, since
+    // the paren-less argument carries its trailing method call.
+    let expected = "[]\n[:polish]\n[:polish]\ntrue\ntrue\n[:buff, :polish]\n[:buff]\nfalse\ntrue\nSymbol\nfalse\n6\n[2, 3]\n[1, 2, 3, 4]\n";
     let output = run_example("introspection/methods_listing.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_introspection_methods_listing_no_parens() {
-    let expected = "[]\n[:polish]\n[:polish]\ntrue\ntrue\n[:buff, :polish]\n[:buff]\nfalse\ntrue\nSymbol\nfalse\n6\n2\n3\n1\n2\n3\n4\n";
+    let expected = "[]\n[:polish]\n[:polish]\ntrue\ntrue\n[:buff, :polish]\n[:buff]\nfalse\ntrue\nSymbol\nfalse\n6\n[2, 3]\n[1, 2, 3, 4]\n";
     let output = run_example("introspection/methods_listing_no_parens.rb");
     assert_eq!(output, expected);
 }
@@ -550,4 +552,20 @@ fn test_introspection_instance_variable_queries_execution() {
     );
     let output = run_example("introspection/instance_variable_queries.rb");
     assert_eq!(output, expected);
+}
+
+/// The expected output of both `introspection/method_shapes` variants, which
+/// differ only in whether the calls are written with parentheses.
+const METHOD_SHAPES_OUTPUT: &str = "[[:req, :name], [:opt, :greeting], [:rest, :rest], [:keyreq, :punctuation], [:key, :times], [:keyrest, :options], [:block, :block]]\n-3\n-3\nGreetings\nnil\nGreeter\nGreeter\nnil\n1\n-2\n2\n[[:req, :a], [:keyreq, :k], [:keyrest, :rest]]\n";
+
+#[test]
+fn test_introspection_method_shapes_execution() {
+    let output = run_example("introspection/method_shapes.rb");
+    assert_eq!(output, METHOD_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_introspection_method_shapes_no_parens_execution() {
+    let output = run_example("introspection/method_shapes_no_parens.rb");
+    assert_eq!(output, METHOD_SHAPES_OUTPUT);
 }

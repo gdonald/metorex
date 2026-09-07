@@ -150,8 +150,9 @@ fn array_zip_error_no_args() {
 
 #[test]
 fn array_zip_error_non_array_arg() {
+    // An argument with neither `to_ary` nor `each` cannot be zipped.
     let err = run_err("[1, 2].zip(42)");
-    assert!(err.contains("Array"));
+    assert!(err.contains("must respond to :each"));
 }
 
 // ── transpose ────────────────────────────────────────────────────────────────
@@ -176,8 +177,10 @@ fn array_transpose_empty() {
 
 #[test]
 fn array_transpose_error_non_array_element() {
+    // A row that is not an array is asked for one, and an Integer answers
+    // no `to_ary`, so the conversion is refused.
     let err = run_err("[1, 2, 3].transpose");
-    assert!(err.contains("transpose"));
+    assert!(err.contains("no implicit conversion of Integer into Array"));
 }
 
 #[test]

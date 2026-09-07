@@ -430,14 +430,14 @@ fn continue_at_top_level_error() {
 // ── Array index assignment errors ─────────────────────────────────────────────
 
 #[test]
-fn array_index_out_of_bounds_assignment_error() {
-    let err = run_err(
-        r#"
+fn array_index_past_the_end_pads_with_nil() {
+    // Ruby grows the array rather than refusing an index past the end.
+    let result = run(r#"
 arr = [1, 2, 3]
-arr[10] = 99
-"#,
-    );
-    assert!(err.contains("out of bounds") || err.contains("index"));
+arr[5] = 99
+arr.length
+"#);
+    assert_eq!(result, Some(Object::Int(6)));
 }
 
 #[test]
@@ -448,7 +448,7 @@ arr = [1, 2, 3]
 arr["key"] = 99
 "#,
     );
-    assert!(err.contains("integer") || err.contains("index"));
+    assert!(err.contains("no implicit conversion of String into Integer"));
 }
 
 // ── Hash index assignment with complex key ────────────────────────────────────

@@ -391,6 +391,7 @@ fn format_object_block() {
         defining_method: None,
         is_lambda: false,
         source_file: None,
+        home_frame: None,
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }
@@ -678,8 +679,7 @@ fn format_object_exception() {
 #[test]
 fn format_object_set() {
     use metorex::object::ObjectHash;
-    use std::collections::HashSet;
-    let mut set = HashSet::new();
+    let mut set = indexmap::IndexSet::new();
     set.insert(ObjectHash::from_object(&Object::string("a")).unwrap());
     set.insert(ObjectHash::from_object(&Object::string("b")).unwrap());
     let obj = Object::Set(Rc::new(RefCell::new(set)));

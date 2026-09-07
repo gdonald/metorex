@@ -331,9 +331,11 @@ fn test_missing_colon_in_dictionary() {
 }
 
 #[test]
-fn test_missing_value_in_dictionary() {
+fn test_shorthand_value_in_dictionary() {
+    // `{x:, y: 2}` takes x's value from the name itself, which Ruby calls a
+    // shorthand hash value, so it parses rather than failing.
     let source = "{x:, y: 2}";
-    assert!(parse_fails(source));
+    assert!(!parse_fails(source));
 }
 
 // ============================================================================

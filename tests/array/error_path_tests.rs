@@ -93,18 +93,20 @@ fn array_partition_without_block() {
 
 // ── Array#reduce without block ───────────────────────────────────────────────
 
+// Without a block, the single argument is the operator name, so a call with
+// neither is an argument error.
 #[test]
-fn array_reduce_without_block() {
+fn array_reduce_without_block_or_operator() {
     let err = run_err("[1, 2, 3].reduce");
-    assert!(err.contains("block") || err.contains("requires"));
+    assert!(err.contains("wrong number of arguments"), "{}", err);
 }
 
 // ── Array#inject without block ───────────────────────────────────────────────
 
 #[test]
-fn array_inject_without_block() {
+fn array_inject_without_block_or_operator() {
     let err = run_err("[1, 2, 3].inject");
-    assert!(err.contains("block") || err.contains("requires"));
+    assert!(err.contains("wrong number of arguments"), "{}", err);
 }
 
 // ── Array#each error cases ───────────────────────────────────────────────────

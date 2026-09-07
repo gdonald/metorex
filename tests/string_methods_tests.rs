@@ -262,9 +262,11 @@ fn string_start_with_false_all() {
 }
 
 #[test]
-fn string_start_with_no_args_errors() {
-    let result = std::panic::catch_unwind(|| run(r#""hello".start_with?"#));
-    assert!(result.is_err());
+fn string_start_with_no_args_answers_false() {
+    // With nothing to match against, nothing matches, which is what Ruby
+    // answers rather than refusing the call.
+    let result = run(r#""hello".start_with?"#);
+    assert_eq!(result, Some(Object::Bool(false)));
 }
 
 #[test]
@@ -373,9 +375,18 @@ fn string_each_char_error_with_args() {
 }
 
 #[test]
-fn string_each_char_error_no_block() {
-    let err = run_err(r#""hello".each_char"#);
-    assert!(err.contains("block"));
+fn string_each_char_without_a_block_answers_an_enumerator() {
+    let result = run(r#""hello".each_char.to_a.inspect"#);
+    assert_eq!(
+        result,
+        Some(Object::string("[\"h\", \"e\", \"l\", \"l\", \"o\"]"))
+    );
+}
+
+#[test]
+fn string_each_char_enumerator_reports_the_character_count() {
+    let result = run(r#""hello".each_char.size"#);
+    assert_eq!(result, Some(Object::Int(5)));
 }
 
 // ── slice ────────────────────────────────────────────────────────────────────

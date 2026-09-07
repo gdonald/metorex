@@ -5,7 +5,7 @@ use metorex::builtin_classes::BuiltinClasses;
 use metorex::object::Object;
 use metorex::object::ObjectHash;
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 // ── builtin_classes.rs: class_of for all object types ───────────────────────
@@ -69,9 +69,9 @@ fn class_of_dict() {
 #[test]
 fn class_of_set() {
     let builtins = BuiltinClasses::new();
-    let class = builtins.class_of(&Object::Set(Rc::new(RefCell::new(
-        HashSet::<ObjectHash>::new(),
-    ))));
+    let class = builtins.class_of(&Object::Set(Rc::new(RefCell::new(indexmap::IndexSet::<
+        ObjectHash,
+    >::new()))));
     assert_eq!(class.name(), "Set");
 }
 
@@ -120,6 +120,7 @@ fn class_of_block() {
         defining_method: None,
         is_lambda: false,
         source_file: None,
+        home_frame: None,
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");

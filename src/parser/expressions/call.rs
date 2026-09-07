@@ -2,6 +2,10 @@
 // Handles parsing of function calls, method calls, and array indexing
 
 use crate::ast::Expression;
+
+/// The method a `&.` call is written as: it answers nil for a nil receiver
+/// and otherwise sends the name it was given.
+pub(crate) const SAFE_CALL: &str = "__mx_safe_call__";
 use crate::error::MetorexError;
 use crate::lexer::TokenKind;
 use crate::parser::Parser;
@@ -22,10 +26,16 @@ impl Parser {
         let mut expr = primary;
 
         loop {
-            if self.match_token(&[TokenKind::LParen]) {
+            self.step_over_fluent_break();
+            if self.check(&[TokenKind::LParen]) && !self.spaced_paren_opens_argument(&expr) {
+                self.advance();
                 // Function call with parentheses
                 expr = self.finish_call(expr)?;
-            } else if self.match_token(&[TokenKind::Dot]) {
+            } else if self.check(&[TokenKind::Dot, TokenKind::SafeDot]) {
+                // A call written with `&.` answers nil for a nil receiver
+                // without running the method at all.
+                let safe = self.check(&[TokenKind::SafeDot]);
+                self.advance();
                 // Method call. Trailing-dot continuation: `.foo.\n  .bar` —
                 // after a `.` we may skip newlines/comments before the method
                 // name. This lets multi-line method chains parse correctly.
@@ -36,6 +46,13 @@ impl Parser {
                 {
                     self.advance();
                     self.advance();
+                    // `.[]=` names the writer, which takes its subscripts and
+                    // the value together in the parentheses that follow.
+                    let name = if self.match_token(&[TokenKind::Equal]) {
+                        "[]=".to_string()
+                    } else {
+                        "[]".to_string()
+                    };
                     let position = expr.position();
                     // `.[](index)` carries its index in the parentheses that
                     // follow, the same as any other named method call.
@@ -46,7 +63,7 @@ impl Parser {
                     };
                     expr = Expression::MethodCall {
                         receiver: Box::new(expr),
-                        method: "[]".to_string(),
+                        method: name,
                         arguments,
                         trailing_block: None,
                         position,
@@ -134,12 +151,27 @@ impl Parser {
                 };
 
                 let position = expr.position();
-                expr = Expression::MethodCall {
-                    receiver: Box::new(expr),
-                    method: method_name,
-                    arguments,
-                    trailing_block,
-                    position,
+                expr = if safe {
+                    let mut relayed = vec![Expression::Symbol {
+                        value: method_name,
+                        position,
+                    }];
+                    relayed.extend(arguments);
+                    Expression::MethodCall {
+                        receiver: Box::new(expr),
+                        method: SAFE_CALL.to_string(),
+                        arguments: relayed,
+                        trailing_block,
+                        position,
+                    }
+                } else {
+                    Expression::MethodCall {
+                        receiver: Box::new(expr),
+                        method: method_name,
+                        arguments,
+                        trailing_block,
+                        position,
+                    }
                 };
             } else if self.check(&[TokenKind::LBracket])
                 && !self.bracket_starts_array_argument(&expr)
@@ -157,17 +189,62 @@ impl Parser {
                         position,
                     };
                 } else {
+                    // A `name:` or `key =>` opening the brackets makes the
+                    // whole subscript a Hash, which is what `Hash[a: 1]` and
+                    // `Hash[1 => 2]` pass.
+                    let opens_hash = self.bracket_opens_hash();
                     // An index may be written as an assignment, which answers
                     // what it assigned: `array[i += 1]`.
-                    let first_arg = self.parse_expression_with_assignment()?;
-                    if self.match_token(&[TokenKind::Comma]) {
-                        // Multi-arg bracket: obj[a, b] — method call to []
+                    let first_arg = if opens_hash {
+                        None
+                    } else {
+                        Some(self.parse_expression_with_assignment()?)
+                    };
+                    if first_arg.is_some() {
                         self.skip_whitespace();
-                        let mut args = vec![first_arg];
-                        args.push(self.parse_expression()?);
+                    }
+                    if opens_hash
+                        || self.check(&[TokenKind::FatArrow])
+                        || self.check(&[TokenKind::Comma])
+                    {
+                        let mut args: Vec<Expression> = first_arg.into_iter().collect();
+                        // Trailing `key => value` and `name: value` pairs
+                        // gather into one Hash, which is what
+                        // `Array[1, 2, 3 => 4]` passes.
+                        let mut pairs: Vec<(Expression, Expression)> = Vec::new();
+                        if let Some(pair) = self.parse_bracket_hash_pair()? {
+                            pairs.push(pair);
+                        } else if self.match_token(&[TokenKind::FatArrow]) {
+                            self.skip_whitespace();
+                            let key = args.pop().expect("a key was parsed");
+                            let value = self.parse_expression()?;
+                            pairs.push((key, value));
+                        }
                         while self.match_token(&[TokenKind::Comma]) {
                             self.skip_whitespace();
-                            args.push(self.parse_expression()?);
+                            if self.check(&[TokenKind::RBracket]) {
+                                break;
+                            }
+                            if let Some(pair) = self.parse_bracket_hash_pair()? {
+                                pairs.push(pair);
+                                continue;
+                            }
+                            let argument = self.parse_expression()?;
+                            self.skip_whitespace();
+                            if self.match_token(&[TokenKind::FatArrow]) {
+                                self.skip_whitespace();
+                                let value = self.parse_expression()?;
+                                pairs.push((argument, value));
+                            } else {
+                                args.push(argument);
+                            }
+                        }
+                        if !pairs.is_empty() {
+                            let position = self.peek().position;
+                            args.push(Expression::Dictionary {
+                                entries: pairs,
+                                position,
+                            });
                         }
                         self.expect(TokenKind::RBracket, "Expected ']'")?;
                         let position = expr.position();
@@ -183,7 +260,7 @@ impl Parser {
                         let position = expr.position();
                         expr = Expression::Index {
                             array: Box::new(expr),
-                            index: Box::new(first_arg),
+                            index: Box::new(first_arg.expect("an index was parsed")),
                             position,
                         };
                     }
@@ -295,6 +372,7 @@ impl Parser {
         // the already-parsed expression.
         let mut expr = initial;
         loop {
+            self.step_over_fluent_break();
             if self.match_token(&[TokenKind::Dot]) {
                 self.skip_whitespace();
                 let method_name = match self.advance().kind {
@@ -381,14 +459,19 @@ impl Parser {
         loop {
             self.skip_whitespace();
 
-            // Detect keyword argument: Ident followed by Colon
-            if matches!(self.peek().kind, TokenKind::Ident(_))
+            // Detect keyword argument: a name followed by a Colon. A keyword
+            // such as `lambda:` names one the same as an identifier does.
+            if crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
+                .is_some()
                 && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+                && !self.peek_ahead(1).had_leading_space
             {
-                let name = match self.advance().kind {
-                    TokenKind::Ident(n) => n,
-                    _ => unreachable!(),
-                };
+                let name = crate::parser::expressions::primary::groups::keyword_symbol_key(
+                    &self.peek().kind,
+                )
+                .expect("the name was checked")
+                .to_string();
+                self.advance();
                 self.advance(); // consume ':'
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
@@ -479,7 +562,9 @@ impl Parser {
                     position,
                 });
             } else {
-                let expression = self.parse_expression()?;
+                // An argument may assign, which answers what it assigned:
+                // `StringIO.new(text = "hello")` binds `text` and passes it.
+                let expression = self.parse_expression_with_assignment()?;
                 self.skip_whitespace();
                 if self.match_token(&[TokenKind::FatArrow]) {
                     self.skip_whitespace();
@@ -574,6 +659,70 @@ impl Parser {
         self.peek().had_leading_space && !self.bound_names.contains(name)
     }
 
+    /// `p (1..3).to_a` passes what the parentheses hold along with the calls
+    /// that follow, where `p(1..3).to_a` calls those on what `p` answers.
+    /// Ruby tells them apart by the space before the parenthesis and by what
+    /// follows the matching one.
+    fn spaced_paren_opens_argument(&mut self, callee: &Expression) -> bool {
+        let Expression::Identifier { name, .. } = callee else {
+            return false;
+        };
+        if !self.peek().had_leading_space || self.bound_names.contains(name) {
+            return false;
+        }
+        let mut depth = 0;
+        let mut offset = 0;
+        loop {
+            match self.peek_ahead(offset).kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => {
+                    depth -= 1;
+                    if depth == 0 {
+                        return matches!(
+                            self.peek_ahead(offset + 1).kind,
+                            TokenKind::Dot | TokenKind::ColonColon
+                        );
+                    }
+                }
+                TokenKind::EOF => return false,
+                _ => {}
+            }
+            offset += 1;
+        }
+    }
+
+    /// Whether the brackets open a Hash rather than a subscript, which they do
+    /// when the first thing inside is a `name:` pair.
+    fn bracket_opens_hash(&mut self) -> bool {
+        matches!(self.peek().kind, TokenKind::Ident(_))
+            && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
+            && !self.peek_ahead(1).had_leading_space
+    }
+
+    /// One `name: value` pair inside brackets, or None when what follows is
+    /// an ordinary subscript.
+    fn parse_bracket_hash_pair(
+        &mut self,
+    ) -> Result<Option<(Expression, Expression)>, MetorexError> {
+        if !self.bracket_opens_hash() {
+            return Ok(None);
+        }
+        let position = self.peek().position;
+        let TokenKind::Ident(name) = self.advance().kind else {
+            unreachable!("the name was checked")
+        };
+        self.advance();
+        self.skip_whitespace();
+        let value = self.parse_expression()?;
+        Ok(Some((
+            Expression::Symbol {
+                value: name,
+                position,
+            },
+            value,
+        )))
+    }
+
     fn can_start_argument_for_call(&mut self, _callee: &Expression) -> bool {
         // Don't skip whitespace yet - we need to check if there's a statement
         // terminator first. Newlines, comments, and semicolons all end a
@@ -636,6 +785,7 @@ impl Parser {
                 | TokenKind::False
                 | TokenKind::Nil
                 | TokenKind::LBracket
+                | TokenKind::LParen
                 | TokenKind::InstanceVar(_)
                 | TokenKind::ClassVar(_)
                 | TokenKind::GlobalVar(_)
@@ -680,7 +830,10 @@ impl Parser {
         // A `[` is the exception: `p [:only]` opens an array whose first
         // element is a symbol, not a key.
         if matches!(self.peek_ahead(1).kind, TokenKind::Colon)
-            && !matches!(self.peek().kind, TokenKind::Ident(_) | TokenKind::LBracket)
+            && !matches!(
+                self.peek().kind,
+                TokenKind::Ident(_) | TokenKind::LBracket | TokenKind::LParen
+            )
         {
             return false;
         }
@@ -768,11 +921,14 @@ impl Parser {
                     | TokenKind::ClassVar(_)
                     | TokenKind::GlobalVar(_)
                     | TokenKind::Bang
+                    | TokenKind::NotKeyword
                     | TokenKind::MagicFile
                     | TokenKind::MagicLine
                     | TokenKind::MagicDir
                     | TokenKind::CommandString(_)
                     | TokenKind::CommandSymbol
+                    | TokenKind::PercentW(_, _)
+                    | TokenKind::PercentI(_, _)
                     | TokenKind::Ampersand
                     | TokenKind::Colon
                     | TokenKind::Include
@@ -878,14 +1034,16 @@ impl Parser {
         // The colon must be glued to the identifier (no space): `key: value` is
         // a kwarg, but `have_method :boom` is a paren-less call whose argument
         // is the symbol `:boom`.
-        if matches!(self.peek().kind, TokenKind::Ident(_))
+        if crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
+            .is_some()
             && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
             && !self.peek_ahead(1).had_leading_space
         {
-            let name = match self.advance().kind {
-                TokenKind::Ident(n) => n,
-                _ => unreachable!(),
-            };
+            let name =
+                crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
+                    .expect("the name was checked")
+                    .to_string();
+            self.advance();
             self.advance(); // consume ':'
             self.skip_whitespace();
             let value = self.parse_expression()?;
@@ -924,14 +1082,17 @@ impl Parser {
             // Detect keyword argument — require the colon to be glued to the
             // identifier (no leading space) so `foo bar :baz` parses as
             // `foo(bar, :baz)`, not `foo(bar: :baz)`.
-            if matches!(self.peek().kind, TokenKind::Ident(_))
+            if crate::parser::expressions::primary::groups::keyword_symbol_key(&self.peek().kind)
+                .is_some()
                 && matches!(self.peek_ahead(1).kind, TokenKind::Colon)
                 && !self.peek_ahead(1).had_leading_space
             {
-                let name = match self.advance().kind {
-                    TokenKind::Ident(n) => n,
-                    _ => unreachable!(),
-                };
+                let name = crate::parser::expressions::primary::groups::keyword_symbol_key(
+                    &self.peek().kind,
+                )
+                .expect("the name was checked")
+                .to_string();
+                self.advance();
                 self.advance(); // consume ':'
                 self.skip_whitespace();
                 let value = self.parse_expression()?;
@@ -1010,5 +1171,25 @@ impl Parser {
             trailing_block,
             position,
         })
+    }
+}
+
+impl crate::parser::Parser {
+    /// A chain may be written with the dot leading the next line, so the
+    /// newlines and comments between one call and that dot are stepped over.
+    /// Anything else leaves the walk where it was.
+    pub(crate) fn step_over_fluent_break(&mut self) {
+        let resume = self.stream.current_position();
+        let mut walked = 0;
+        while matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
+            self.advance();
+            walked += 1;
+            if walked > 64 {
+                break;
+            }
+        }
+        if !self.check(&[TokenKind::Dot]) {
+            self.stream.restore_position(resume);
+        }
     }
 }

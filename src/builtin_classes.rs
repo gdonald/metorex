@@ -46,6 +46,8 @@ pub struct BuiltinClasses {
     pub method_class: Rc<Class>,
     /// Binding class (captured execution contexts)
     pub binding_class: Rc<Class>,
+    /// Regexp: literals are primitives, and this is the class they report.
+    pub regexp_class: Rc<Class>,
 }
 
 impl BuiltinClasses {
@@ -74,6 +76,7 @@ impl BuiltinClasses {
         let proc_class = Rc::new(Class::new("Proc", Some(Rc::clone(&object_class))));
         let method_class = Rc::new(Class::new("Method", Some(Rc::clone(&object_class))));
         let binding_class = Rc::new(Class::new("Binding", Some(Rc::clone(&object_class))));
+        let regexp_class = Rc::new(Class::new("Regexp", Some(Rc::clone(&object_class))));
 
         // Create exception hierarchy
         let exception_class = Rc::new(Class::new("Exception", Some(Rc::clone(&object_class))));
@@ -115,6 +118,7 @@ impl BuiltinClasses {
             proc_class,
             method_class,
             binding_class,
+            regexp_class,
         }
     }
 
@@ -140,7 +144,7 @@ impl BuiltinClasses {
             Object::NativeFunction(_) => Rc::clone(&self.object_class),
             Object::Range { .. } => Rc::clone(&self.range_class),
             Object::CompiledFunction(_) => Rc::clone(&self.object_class),
-            Object::Regex(_, _) => Rc::clone(&self.object_class),
+            Object::Regex(_, _) => Rc::clone(&self.regexp_class),
         }
     }
 
@@ -148,6 +152,9 @@ impl BuiltinClasses {
     /// Also walks the per-instance singleton class so a module attached via
     /// `obj.extend(Mod)` shows up in `is_a?` / `kind_of?`.
     pub fn is_instance_of(&self, obj: &Object, class: &Class) -> bool {
+        if value_class_name(obj).is_some_and(|name| name == class.name()) {
+            return true;
+        }
         let obj_class = self.class_of(obj);
         if self.is_subclass_of(&obj_class, class) {
             return true;
@@ -265,16 +272,29 @@ impl BuiltinClasses {
             "BasicObject".to_string(),
             Rc::new(Class::new("BasicObject", None)),
         );
+        classes.insert("Regexp".to_string(), Rc::clone(&self.regexp_class));
         classes.insert("Symbol".to_string(), Rc::clone(&self.symbol_class));
         classes.insert("Numeric".to_string(), Rc::clone(&self.numeric_class));
         classes.insert("Proc".to_string(), Rc::clone(&self.proc_class));
         classes.insert("Method".to_string(), Rc::clone(&self.method_class));
         classes.insert("UnboundMethod".to_string(), Rc::clone(&self.method_class));
         classes.insert("Binding".to_string(), Rc::clone(&self.binding_class));
+        classes.insert("Regexp".to_string(), Rc::clone(&self.regexp_class));
         classes.insert("NilClass".to_string(), Rc::clone(&self.object_class));
         classes.insert("TrueClass".to_string(), Rc::clone(&self.object_class));
         classes.insert("FalseClass".to_string(), Rc::clone(&self.object_class));
         classes
+    }
+}
+
+/// The class nil, true, and false answer to. All three are backed by Object
+/// internally, so their own class cannot be reported by `class_of`.
+pub fn value_class_name(obj: &Object) -> Option<&'static str> {
+    match obj {
+        Object::Nil => Some("NilClass"),
+        Object::Bool(true) => Some("TrueClass"),
+        Object::Bool(false) => Some("FalseClass"),
+        _ => None,
     }
 }
 
@@ -285,6 +305,117 @@ impl Default for BuiltinClasses {
 }
 
 /// Initialize built-in methods for the Object class
+/// Register stubs for the methods a Proc answers natively, so `Proc` reports
+/// them the way `public_instance_methods` is asked to.
+pub fn init_proc_methods(proc_class: &Class) {
+    for name in [
+        "call",
+        "()",
+        "[]",
+        "===",
+        "yield",
+        "arity",
+        "lambda?",
+        "curry",
+        "parameters",
+        "to_proc",
+        "==",
+        "eql?",
+        "hash",
+        "inspect",
+        "to_s",
+        "source_location",
+        "binding",
+        ">>",
+        "<<",
+        "ruby2_keywords",
+    ] {
+        proc_class.define_method(name, Rc::new(Method::new(name.to_string(), vec![], vec![])));
+    }
+}
+
+/// Register stubs for the methods a Set answers natively, so `Set` reports
+/// them the way `instance_methods` is asked to.
+pub fn init_set_methods(set_class: &Class) {
+    for name in [
+        "add",
+        "add?",
+        "<<",
+        "delete",
+        "delete?",
+        "clear",
+        "merge",
+        "subtract",
+        "replace",
+        "include?",
+        "member?",
+        "===",
+        "size",
+        "length",
+        "empty?",
+        "to_a",
+        "to_set",
+        "each",
+        "union",
+        "intersection",
+        "difference",
+        "|",
+        "+",
+        "-",
+        "&",
+        "^",
+        "subset?",
+        "superset?",
+        "proper_subset?",
+        "proper_superset?",
+        "disjoint?",
+        "intersect?",
+        "==",
+        "eql?",
+        "hash",
+        "inspect",
+        "to_s",
+        "join",
+        "dup",
+        "clone",
+        "<=>",
+        "map!",
+        "collect!",
+        "select!",
+        "filter!",
+        "reject!",
+        "delete_if",
+        "keep_if",
+    ] {
+        set_class.define_method(name, Rc::new(Method::new(name.to_string(), vec![], vec![])));
+    }
+}
+
+/// Register stubs for the methods a Regexp answers natively, so `Regexp`
+/// reports them the way `instance_methods` is asked to.
+pub fn init_regexp_methods(regexp_class: &Class) {
+    for name in [
+        "match",
+        "match?",
+        "=~",
+        "===",
+        "source",
+        "options",
+        "casefold?",
+        "names",
+        "named_captures",
+        "to_s",
+        "inspect",
+        "==",
+        "eql?",
+        "hash",
+        "freeze",
+        "frozen?",
+    ] {
+        regexp_class.define_method(name, Rc::new(Method::new(name.to_string(), vec![], vec![])));
+    }
+}
+
 pub fn init_object_methods(object_class: &Class) {
     // Object#to_s - convert to string representation
     let to_s_method = Rc::new(Method::new("to_s".to_string(), vec![], vec![]));
@@ -424,6 +555,12 @@ pub fn init_array_methods(array_class: &Class) {
         vec![],
     ));
     array_class.define_method("[]", index_method);
+
+    // `min` and `max` are Array's own rather than Enumerable's, which is what
+    // `[1].method(:max).owner` reports.
+    for name in ["min", "max", "minmax"] {
+        array_class.define_method(name, Rc::new(Method::new(name.to_string(), vec![], vec![])));
+    }
 }
 
 /// Initialize built-in methods for the Float class

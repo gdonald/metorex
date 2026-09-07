@@ -15,6 +15,13 @@ use std::rc::Rc;
 use super::core::VirtualMachine;
 use super::errors::{binary_type_error, divide_by_zero_error, unary_type_error};
 
+thread_local! {
+    /// Array pairs currently being ordered, so a pair that reaches itself
+    /// answers 0 instead of recursing forever.
+    static ORDERING: std::cell::RefCell<Vec<(usize, usize)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
 impl VirtualMachine {
     /// Evaluate a unary operation (`+` or `-`).
     pub(crate) fn evaluate_unary_operation(
@@ -48,6 +55,25 @@ impl VirtualMachine {
                 Object::Bool(false) | Object::Nil
             ))),
         }
+    }
+
+    /// Whether `elements` holds a value `eql?` to `wanted`, which is how Ruby
+    /// matches for array difference, intersection, and union.
+    pub(crate) fn contains_eql(
+        &mut self,
+        elements: &[Object],
+        wanted: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        // The value being looked up is the one asked, so an object of the
+        // program's own answers `eql?` for itself. The same object counts
+        // whatever its `eql?` says, which is what a hash lookup amounts to.
+        for element in elements {
+            if same_object(element, wanted) || self.values_eql(wanted, element, position)? {
+                return Ok(true);
+            }
+        }
+        Ok(false)
     }
 
     /// Evaluate a binary operation across runtime values.
@@ -114,7 +140,81 @@ impl VirtualMachine {
             return Ok(coerced);
         }
 
+        // A Set answers the algebra operators from its own method table, so
+        // `a - b`, `a | b`, and the comparisons read the same as the named
+        // methods do.
+        if matches!(left, Object::Set(_))
+            && let Some(name) = set_operator_name(op)
+        {
+            let class = self.builtins().class_of(&left);
+            if let Some(result) = self.call_native_method(
+                &class,
+                &left,
+                name,
+                std::slice::from_ref(&right),
+                position,
+            )? {
+                return Ok(result);
+            }
+        }
+
         match op {
+            // `[1] + other` puts the right operand through `to_ary`, so an
+            // object standing for an array concatenates the way one does.
+            Add if matches!(left, Object::Array(_)) && !matches!(right, Object::Array(_)) => {
+                let Some(elements) = self.as_array_operand(&right, position)? else {
+                    return Err(binary_type_error(BinaryOp::Add, &left, &right, position));
+                };
+                self.evaluate_addition(left, Object::Array(elements), position)
+            }
+            Add if crate::vm::native_methods::array_subclass_value(&left).is_some() => {
+                let elements = self
+                    .as_array_operand(&left, position)?
+                    .expect("an Array subclass instance stands for an array");
+                // Recurse so the right operand goes through the same
+                // conversion, which is how two subclass instances add.
+                self.evaluate_binary_operation(
+                    &BinaryOp::Add,
+                    Object::Array(elements),
+                    right,
+                    position,
+                )
+            }
+            // `-`, `&`, and `|` between arrays put the right operand through
+            // `to_ary` too, the same way `+` does.
+            Subtract | BitwiseAnd | BitwiseOr
+                if matches!(left, Object::Array(_)) && !matches!(right, Object::Array(_)) =>
+            {
+                let Some(elements) = self.as_array_operand(&right, position)? else {
+                    return Err(binary_type_error(op.clone(), &left, &right, position));
+                };
+                self.evaluate_binary_operation(op, left, Object::Array(elements), position)
+            }
+            Subtract | BitwiseAnd | BitwiseOr
+                if crate::vm::native_methods::array_subclass_value(&left).is_some() =>
+            {
+                let elements = self
+                    .as_array_operand(&left, position)?
+                    .expect("an Array subclass instance stands for an array");
+                self.evaluate_binary_operation(op, Object::Array(elements), right, position)
+            }
+            // Array difference keeps what the right operand does not hold,
+            // matching on `eql?` the way Ruby does.
+            Subtract if matches!((&left, &right), (Object::Array(_), Object::Array(_))) => {
+                let (Object::Array(left_items), Object::Array(right_items)) = (&left, &right)
+                else {
+                    unreachable!("both operands are arrays")
+                };
+                let left_items = left_items.borrow().clone();
+                let right_items = right_items.borrow().clone();
+                let mut remaining = Vec::new();
+                for item in &left_items {
+                    if !self.contains_eql(&right_items, item, position)? {
+                        remaining.push(item.clone());
+                    }
+                }
+                Ok(Object::array(remaining))
+            }
             Add => self.evaluate_addition(left, right, position),
             Modulo if matches!(left, Object::String(_)) => {
                 self.evaluate_string_format(left, right, position)
@@ -130,6 +230,30 @@ impl VirtualMachine {
                     let answer =
                         self.send_to_object(right.clone(), "==", vec![left.clone()], position)?;
                     return Ok(Object::Bool(answer.is_truthy()));
+                }
+                // Two patterns are the same when their source and flags are.
+                if let (Object::Regex(pattern, flags), Object::Regex(other, other_flags)) =
+                    (&left, &right)
+                {
+                    use crate::vm::native_methods::comparable_flags;
+                    return Ok(Object::Bool(
+                        pattern == other
+                            && comparable_flags(flags) == comparable_flags(other_flags),
+                    ));
+                }
+                // Two ranges compare by their ends and their exclusivity,
+                // which Range answers from its own method table.
+                if matches!((&left, &right), (Object::Range { .. }, _)) {
+                    let class = self.builtins().class_of(&left);
+                    if let Some(answer) = self.call_native_method(
+                        &class,
+                        &left,
+                        "==",
+                        std::slice::from_ref(&right),
+                        position,
+                    )? {
+                        return Ok(Object::Bool(answer.is_truthy()));
+                    }
                 }
                 // For instances, dispatch to user-defined == method if present,
                 // or to <=> (Comparable protocol) if the class has <=> defined.
@@ -207,21 +331,62 @@ impl VirtualMachine {
                         self.send_to_object(right.clone(), "==", vec![left.clone()], position)?;
                     return Ok(Object::Bool(answer.is_truthy()));
                 }
-                // Regexp === str: whether the pattern matches anywhere.
+                // Regexp === str: whether the pattern matches anywhere. A
+                // Symbol matches on its name, and an object that answers
+                // `to_str` on the characters it hands over.
                 if let Object::Regex(pattern, flags) = &left {
-                    // A Regexp matches a Symbol's name as readily as a String.
-                    let (Object::String(subject) | Object::Symbol(subject)) = &right else {
+                    let subject = match &right {
+                        Object::String(text) | Object::Symbol(text) => Some(text.as_ref().clone()),
+                        other => match crate::vm::native_methods::subject_text(other) {
+                            Some(text) => Some(text),
+                            None if self.responds_to(other, "to_str") => {
+                                match self.send_to_object(
+                                    other.clone(),
+                                    "to_str",
+                                    vec![],
+                                    position,
+                                )? {
+                                    Object::String(text) => Some((*text).clone()),
+                                    _ => None,
+                                }
+                            }
+                            None => None,
+                        },
+                    };
+                    let Some(subject) = subject else {
                         return Ok(Object::Bool(false));
                     };
-                    let source = if flags.contains('i') {
-                        format!("(?i){}", pattern)
-                    } else {
-                        pattern.as_ref().clone()
-                    };
-                    return Ok(Object::Bool(match regex::Regex::new(&source) {
-                        Ok(compiled) => compiled.is_match(subject),
-                        Err(_) => false,
-                    }));
+                    let (pattern, flags) = (pattern.as_ref().clone(), flags.as_ref().clone());
+                    let found = self.regexp_match_data(&pattern, &flags, &subject, 0, position)?;
+                    return Ok(Object::Bool(found.is_some()));
+                }
+                // A Set holds a value or it does not, which is the branch a
+                // `case` over one picks.
+                if matches!(left, Object::Set(_)) {
+                    let class = self.builtins().class_of(&left);
+                    if let Some(answer) = self.call_native_method(
+                        &class,
+                        &left,
+                        "include?",
+                        std::slice::from_ref(&right),
+                        position,
+                    )? {
+                        return Ok(Object::Bool(answer.is_truthy()));
+                    }
+                }
+                // A Range covers a value the way `cover?` reports, which is
+                // what `case` uses to pick a branch.
+                if matches!(left, Object::Range { .. }) {
+                    let class = self.builtins().class_of(&left);
+                    if let Some(answer) = self.call_native_method(
+                        &class,
+                        &left,
+                        "cover?",
+                        std::slice::from_ref(&right),
+                        position,
+                    )? {
+                        return Ok(Object::Bool(answer.is_truthy()));
+                    }
                 }
                 // Class/Module === obj: check type membership (Ruby's case
                 // equality). Modules also count as the "type test" form so
@@ -259,6 +424,11 @@ impl VirtualMachine {
                     // chain. Also include the singleton class of Instances so
                     // `Module === obj.extend(Module)` returns true.
                     if !matches!(right, Object::Class(_) | Object::Module(_)) {
+                        if crate::builtin_classes::value_class_name(&right)
+                            .is_some_and(|name| name == class_rc.name())
+                        {
+                            return Ok(Object::Bool(true));
+                        }
                         let right_class = self.builtins().class_of(&right);
                         if self.builtins().is_subclass_of(&right_class, class_rc) {
                             return Ok(Object::Bool(true));
@@ -306,6 +476,27 @@ impl VirtualMachine {
                 let equal = self.evaluate_binary_operation(&Equal, left, right, position)?;
                 Ok(Object::Bool(!crate::vm::utils::is_truthy(&equal)))
             }
+            // Two hashes compare by containment rather than by order, which
+            // Hash answers from its own method table.
+            Less | Greater | LessEqual | GreaterEqual if matches!(left, Object::Dict(_)) => {
+                let name = match op {
+                    Less => "<",
+                    Greater => ">",
+                    LessEqual => "<=",
+                    _ => ">=",
+                };
+                let class = self.builtins().class_of(&left);
+                match self.call_native_method(
+                    &class,
+                    &left,
+                    name,
+                    std::slice::from_ref(&right),
+                    position,
+                )? {
+                    Some(answer) => Ok(answer),
+                    None => self.evaluate_comparison(op, left, right, position),
+                }
+            }
             Less | Greater | LessEqual | GreaterEqual => {
                 self.evaluate_comparison(op, left, right, position)
             }
@@ -314,6 +505,20 @@ impl VirtualMachine {
                 // so, and nil otherwise. It never consults #eql?. A class that
                 // defines its own #<=> is dispatched before reaching here.
                 if let Object::Instance(inst_rc) = &left {
+                    // A class of the program's own answers for itself, which
+                    // is what a walk over elements reaches here.
+                    if let Some((class, method)) = self.lookup_method(&left, "<=>")
+                        && !method.is_undefined
+                        && !method.body.is_empty()
+                    {
+                        return self.invoke_method(
+                            class,
+                            method,
+                            left.clone(),
+                            vec![right],
+                            position,
+                        );
+                    }
                     if let Object::Instance(rhs) = &right
                         && Rc::ptr_eq(inst_rc, rhs)
                     {
@@ -327,24 +532,34 @@ impl VirtualMachine {
                         Object::Nil
                     });
                 }
+                // Two arrays order element by element, and each element is
+                // sent `<=>` so one of the program's own answers for itself.
+                if let Object::Array(left_elements) = &left {
+                    let left_elements = Rc::clone(left_elements);
+                    if let Some(right_elements) = self.as_array_operand(&right, position)? {
+                        return self.order_arrays(&left_elements, &right_elements, position);
+                    }
+                    return Ok(Object::Nil);
+                }
                 self.evaluate_spaceship(left, right, position)
             }
             BitwiseAnd => match (left, right) {
                 // Array intersection, keeping the left operand's order and
                 // dropping duplicates.
                 (Object::Array(left_items), Object::Array(right_items)) => {
+                    // Ruby matches on `hash` and `eql?` here, so an object of
+                    // the program's own decides for itself.
                     let right_items = right_items.borrow().clone();
+                    let left_items = left_items.borrow().clone();
                     let mut intersection: Vec<Object> = Vec::new();
-                    for item in left_items.borrow().iter() {
-                        if right_items.iter().any(|other| other.equals(item))
-                            && !intersection.iter().any(|kept| kept.equals(item))
+                    for item in &left_items {
+                        if self.contains_eql(&right_items, item, position)?
+                            && !self.contains_eql(&intersection, item, position)?
                         {
                             intersection.push(item.clone());
                         }
                     }
-                    Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
-                        intersection,
-                    ))))
+                    Ok(Object::array(intersection))
                 }
                 // nil & x always returns false (Ruby semantics)
                 (Object::Nil, _) | (_, Object::Nil) => Ok(Object::Bool(false)),
@@ -364,19 +579,15 @@ impl VirtualMachine {
                 // Array union, keeping first-seen order and dropping
                 // duplicates.
                 (Object::Array(left_items), Object::Array(right_items)) => {
+                    let mut all = left_items.borrow().clone();
+                    all.extend(right_items.borrow().iter().cloned());
                     let mut union: Vec<Object> = Vec::new();
-                    for item in left_items
-                        .borrow()
-                        .iter()
-                        .chain(right_items.borrow().iter())
-                    {
-                        if !union.iter().any(|kept| kept.equals(item)) {
+                    for item in &all {
+                        if !self.contains_eql(&union, item, position)? {
                             union.push(item.clone());
                         }
                     }
-                    Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
-                        union,
-                    ))))
+                    Ok(Object::array(union))
                 }
                 // nil | x returns truthiness of x
                 (Object::Nil, other) => Ok(Object::Bool(other.is_truthy())),
@@ -543,6 +754,34 @@ impl VirtualMachine {
                     ));
                 };
                 Ok(Object::string(text.repeat(count)))
+            }
+            // `[1, 2] * 3` repeats the array, and `[1, 2] * ", "` joins it
+            // with that separator.
+            (Object::Array(elements), Object::Int(count)) if matches!(op, BinaryOp::Multiply) => {
+                let Ok(count) = usize::try_from(count) else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "negative argument",
+                        position,
+                    ));
+                };
+                let source = elements.borrow().clone();
+                let mut repeated = Vec::with_capacity(source.len() * count);
+                for _ in 0..count {
+                    repeated.extend(source.iter().cloned());
+                }
+                Ok(Object::array(repeated))
+            }
+            (Object::Array(elements), Object::String(separator))
+                if matches!(op, BinaryOp::Multiply) =>
+            {
+                let joined = elements
+                    .borrow()
+                    .iter()
+                    .map(|element| format!("{}", element))
+                    .collect::<Vec<_>>()
+                    .join(&separator);
+                Ok(Object::string(joined))
             }
             (lhs, rhs) => Err(binary_type_error(op.clone(), &lhs, &rhs, position)),
         }
@@ -1080,6 +1319,93 @@ impl VirtualMachine {
         Ok(Object::String(Rc::new(result)))
     }
 
+    /// The elements of an operand that stands for an array: an Array itself,
+    /// an instance of an Array subclass, or an object answering `to_ary`.
+    /// A subclass is taken directly, which is why `to_ary` is not called on
+    /// one.
+    fn as_array_operand(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<Option<Rc<std::cell::RefCell<Vec<Object>>>>, MetorexError> {
+        if let Object::Array(elements) = value {
+            return Ok(Some(Rc::clone(elements)));
+        }
+        if let Some(Object::Array(elements)) =
+            crate::vm::native_methods::array_subclass_value(value)
+        {
+            return Ok(Some(elements));
+        }
+        if !self.responds_to(value, "to_ary") {
+            return Ok(None);
+        }
+        // An error raised inside `to_ary` belongs to the caller, so it travels
+        // out rather than reading as an operand that is not an array.
+        match self.send_to_object(value.clone(), "to_ary", vec![], position)? {
+            Object::Array(elements) => Ok(Some(elements)),
+            _ => Ok(None),
+        }
+    }
+
+    /// Order two arrays element by element, with the shorter one first when
+    /// every shared element is equal. A pair already being ordered further up
+    /// the stack is taken as equal, so two arrays that reach themselves answer
+    /// rather than recursing forever.
+    fn order_arrays(
+        &mut self,
+        left: &Rc<std::cell::RefCell<Vec<Object>>>,
+        right: &Rc<std::cell::RefCell<Vec<Object>>>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let pair = (Rc::as_ptr(left) as usize, Rc::as_ptr(right) as usize);
+        if pair.0 == pair.1 {
+            return Ok(Object::Int(0));
+        }
+        let entered = ORDERING.with(|active| {
+            let mut active = active.borrow_mut();
+            if active.contains(&pair) {
+                return false;
+            }
+            active.push(pair);
+            true
+        });
+        if !entered {
+            return Ok(Object::Int(0));
+        }
+        let outcome = self.order_array_elements(left, right, position);
+        ORDERING.with(|active| {
+            active.borrow_mut().pop();
+        });
+        outcome
+    }
+
+    fn order_array_elements(
+        &mut self,
+        left: &Rc<std::cell::RefCell<Vec<Object>>>,
+        right: &Rc<std::cell::RefCell<Vec<Object>>>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let left_elements = left.borrow().clone();
+        let right_elements = right.borrow().clone();
+        for (one, other) in left_elements.iter().zip(right_elements.iter()) {
+            let order = self.evaluate_binary_operation(
+                &BinaryOp::Spaceship,
+                one.clone(),
+                other.clone(),
+                position,
+            )?;
+            // The first result that is not zero is what the whole comparison
+            // answers, whatever kind of value it is.
+            match order {
+                Object::Int(0) => continue,
+                other => return Ok(other),
+            }
+        }
+        Ok(Object::Int(
+            left_elements.len().cmp(&right_elements.len()) as i64
+        ))
+    }
+
     /// Evaluate the spaceship operator (<=>), returning -1, 0, or 1.
     pub(crate) fn evaluate_spaceship(
         &self,
@@ -1117,6 +1443,8 @@ impl VirtualMachine {
                 Ok(Object::Int(a.partial_cmp(&b).map_or(0, |o| o as i64)))
             }
             (Object::String(a), Object::String(b)) => Ok(Object::Int(a.cmp(b) as i64)),
+            // A Symbol orders by its name, the way its String does.
+            (Object::Symbol(a), Object::Symbol(b)) => Ok(Object::Int(a.cmp(b) as i64)),
             // Module#<=>: compares the ancestry relationship of two modules or
             // classes. -1 when the left is a descendant/includer of the right,
             // +1 when it's an ancestor/included-by, 0 when they're the same,
@@ -1355,4 +1683,30 @@ fn float_modulo(left: f64, right: f64, position: Position) -> Result<Object, Met
         return Ok(Object::Float(remainder + right));
     }
     Ok(Object::Float(remainder))
+}
+
+/// Whether two values are the same object, which is what `equal?` reports.
+fn same_object(left: &Object, right: &Object) -> bool {
+    match (left, right) {
+        (Object::Instance(one), Object::Instance(other)) => Rc::ptr_eq(one, other),
+        (Object::Array(one), Object::Array(other)) => Rc::ptr_eq(one, other),
+        (Object::Dict(one), Object::Dict(other)) => Rc::ptr_eq(one, other),
+        _ => false,
+    }
+}
+
+/// The Set method an operator spells, if it names one.
+fn set_operator_name(op: &BinaryOp) -> Option<&'static str> {
+    match op {
+        BinaryOp::Add | BinaryOp::BitwiseOr => Some("union"),
+        BinaryOp::Subtract => Some("difference"),
+        BinaryOp::BitwiseAnd => Some("intersection"),
+        BinaryOp::Xor => Some("^"),
+        BinaryOp::LessEqual => Some("subset?"),
+        BinaryOp::GreaterEqual => Some("superset?"),
+        BinaryOp::Less => Some("proper_subset?"),
+        BinaryOp::Greater => Some("proper_superset?"),
+        BinaryOp::Spaceship => Some("<=>"),
+        _ => None,
+    }
 }

@@ -16,6 +16,9 @@ use std::rc::Rc;
 /// Initialize built-in methods for core classes.
 pub(super) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
     builtin_classes::init_object_methods(builtins.object_class.as_ref());
+    builtin_classes::init_proc_methods(builtins.proc_class.as_ref());
+    builtin_classes::init_set_methods(builtins.set_class.as_ref());
+    builtin_classes::init_regexp_methods(builtins.regexp_class.as_ref());
     builtin_classes::init_string_methods(builtins.string_class.as_ref());
     builtin_classes::init_array_methods(builtins.array_class.as_ref());
     builtin_classes::init_integer_methods(builtins.integer_class.as_ref());
@@ -280,7 +283,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // into the classes whose values have an order, which is what
     // `Integer.include?(Comparable)` reports.
     let comparable = Rc::new(Class::new_module("Comparable"));
-    for name in ["Numeric", "Integer", "Float", "String"] {
+    for name in ["Numeric", "Integer", "Float", "String", "Symbol"] {
         if let Some(Object::Class(class)) = globals.get(name) {
             class.add_mixin(Rc::clone(&comparable));
         }
@@ -605,6 +608,8 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     );
     // Misc Kernel methods used by mspec
     globals.set("warn", Object::NativeFunction("warn".to_string()));
+    // `trap` is Kernel's name for `Signal.trap`.
+    globals.set("trap", Object::NativeFunction("trap".to_string()));
     globals.set("sprintf", Object::NativeFunction("sprintf".to_string()));
     globals.set("format", Object::NativeFunction("sprintf".to_string()));
     globals.set(

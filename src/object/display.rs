@@ -138,16 +138,27 @@ impl fmt::Display for Object {
                 let exception = exc.borrow();
                 write!(f, "{}: {}", exception.exception_type, exception.message)
             }
+            // A Set renders the way `inspect` does, and prints `{...}` when
+            // it reaches itself rather than recursing forever.
             Object::Set(set) => {
-                write!(f, "#{{")?;
-                let elements = set.borrow();
-                for (i, elem) in elements.iter().enumerate() {
-                    if i > 0 {
-                        write!(f, ", ")?;
-                    }
-                    write!(f, "{}", elem.hash_value)?;
+                let elements: Vec<Object> =
+                    set.borrow().iter().map(|held| held.value.clone()).collect();
+                let rendered = render_guarded(Rc::as_ptr(set) as usize, || {
+                    elements
+                        .iter()
+                        .map(|element| match element {
+                            Object::String(text) => format!("{:?}", text.as_str()),
+                            Object::Symbol(name) => format!(":{}", name.as_str()),
+                            Object::Nil => "nil".to_string(),
+                            other => other.to_string(),
+                        })
+                        .collect::<Vec<String>>()
+                        .join(", ")
+                });
+                match rendered {
+                    Some(body) => write!(f, "Set[{}]", body),
+                    None => write!(f, "Set[...]"),
                 }
-                write!(f, "}}")
             }
             Object::Result(result) => match result {
                 Ok(obj) => write!(f, "Ok({})", obj),

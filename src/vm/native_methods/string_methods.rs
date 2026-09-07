@@ -108,8 +108,63 @@ impl VirtualMachine {
                 out.push('"');
                 Ok(Some(Object::string(out)))
             }
+            // `match` answers the MatchData, and records it as the last match
+            // the way every other match does.
+            "match" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error("match", 1, 0, position));
+                }
+                let (pattern, flags) = match &arguments[0] {
+                    Object::Regex(pattern, flags) => {
+                        (pattern.as_ref().clone(), flags.as_ref().clone())
+                    }
+                    Object::String(source) => (source.as_ref().clone(), String::new()),
+                    other => {
+                        return Err(method_argument_type_error(
+                            "match",
+                            "Regexp or String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let subject = string_value.as_ref().clone();
+                let start = match arguments.get(1) {
+                    Some(Object::Int(offset)) => {
+                        let length = subject.chars().count() as i64;
+                        let resolved = if *offset < 0 {
+                            offset + length
+                        } else {
+                            *offset
+                        };
+                        if resolved < 0 || resolved > length {
+                            return Ok(Some(Object::Nil));
+                        }
+                        subject
+                            .char_indices()
+                            .nth(resolved as usize)
+                            .map(|(index, _)| index)
+                            .unwrap_or(subject.len())
+                    }
+                    _ => 0,
+                };
+                // The block is taken before the walk, since building the
+                // MatchData is itself a call and would consume it.
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let found = self.regexp_match_data(&pattern, &flags, &subject, start, position)?;
+                match (found, block) {
+                    (Some(data), Some(block)) => self
+                        .execute_block_callable(&block, vec![data], position)
+                        .map(Some),
+                    (Some(data), None) => Ok(Some(data)),
+                    (None, _) => Ok(Some(Object::Nil)),
+                }
+            }
             "match?" => {
-                if arguments.len() != 1 {
+                if arguments.is_empty() || arguments.len() > 2 {
                     return Err(method_argument_error(
                         "match?",
                         1,
@@ -129,19 +184,98 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let re_pattern = if flags.contains('i') {
-                    format!("(?i){}", pattern)
-                } else {
-                    pattern
+                // A second argument names the character offset to start at,
+                // counting from the end when negative.
+                let subject = string_value.as_ref();
+                let start = match arguments.get(1) {
+                    Some(Object::Int(offset)) => {
+                        let length = subject.chars().count() as i64;
+                        let resolved = if *offset < 0 {
+                            offset + length
+                        } else {
+                            *offset
+                        };
+                        if resolved < 0 || resolved > length {
+                            return Ok(Some(Object::Bool(false)));
+                        }
+                        subject
+                            .char_indices()
+                            .nth(resolved as usize)
+                            .map(|(index, _)| index)
+                            .unwrap_or(subject.len())
+                    }
+                    _ => 0,
                 };
-                match regex::Regex::new(&re_pattern) {
-                    Ok(re) => Ok(Some(Object::Bool(re.is_match(string_value.as_ref())))),
-                    Err(_) => Ok(Some(Object::Bool(false))),
-                }
+                let matched = super::compile(&pattern, &flags)
+                    .map(|compiled| compiled.find_at(subject, start).is_some())
+                    .unwrap_or(false);
+                Ok(Some(Object::Bool(matched)))
             }
             // String#encode — metorex strings are always UTF-8 and carry no
             // encoding metadata, so re-encoding is the identity.
             "encode" => Ok(Some(Object::String(Rc::new(string_value.to_string())))),
+            // `index` answers where a substring or pattern first appears at
+            // or after the offset, counted in characters.
+            "index" | "rindex" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(1, 2),
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let letters: Vec<char> = string_value.chars().collect();
+                let from_end = method_name == "rindex";
+                let start = match arguments.get(1) {
+                    Some(Object::Int(offset)) => {
+                        let counted = if *offset < 0 {
+                            *offset + letters.len() as i64
+                        } else {
+                            *offset
+                        };
+                        if counted < 0 {
+                            return Ok(Some(Object::Nil));
+                        }
+                        counted as usize
+                    }
+                    _ => {
+                        if from_end {
+                            letters.len()
+                        } else {
+                            0
+                        }
+                    }
+                };
+                let found = match &arguments[0] {
+                    Object::String(needle) => character_index(&letters, needle, start, from_end),
+                    Object::Regex(pattern, flags) => {
+                        let Some(compiled) = super::compile(pattern, flags) else {
+                            return Ok(Some(Object::Nil));
+                        };
+                        let places: Vec<usize> = compiled
+                            .find_iter(string_value)
+                            .map(|found| string_value[..found.start()].chars().count())
+                            .collect();
+                        if from_end {
+                            places.into_iter().rev().find(|place| *place <= start)
+                        } else {
+                            places.into_iter().find(|place| *place >= start)
+                        }
+                    }
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                Ok(Some(match found {
+                    Some(place) => Object::Int(place as i64),
+                    None => Object::Nil,
+                }))
+            }
             "upcase" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -220,36 +354,6 @@ impl VirtualMachine {
                 result.push_str(&s[split_at..]);
                 Ok(Some(Object::string(result)))
             }
-            // String#rindex(substr) — last occurrence index, or nil.
-            "rindex" => {
-                if arguments.len() != 1 {
-                    return Err(method_argument_error(
-                        method_name,
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let needle = match &arguments[0] {
-                    Object::String(s) => s.as_ref().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            other,
-                            position,
-                        ));
-                    }
-                };
-                let s = string_value.as_ref().as_str();
-                match s.rfind(needle.as_str()) {
-                    Some(byte_idx) => {
-                        let char_idx = s[..byte_idx].chars().count() as i64;
-                        Ok(Some(Object::Int(char_idx)))
-                    }
-                    None => Ok(Some(Object::Nil)),
-                }
-            }
             "succ" | "next" | "succ!" | "next!" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -259,26 +363,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let s = string_value.as_ref().as_str();
-                let next = if s.chars().all(|c| c.is_ascii_digit()) {
-                    if s.is_empty() {
-                        String::new()
-                    } else {
-                        let n: u128 = s.parse().unwrap_or(0);
-                        format!("{}", n + 1)
-                    }
-                } else if let Some(last) = s.chars().last() {
-                    let mut prefix: String = s.chars().take(s.chars().count() - 1).collect();
-                    let bumped = (last as u32).wrapping_add(1);
-                    if let Some(c) = char::from_u32(bumped) {
-                        prefix.push(c);
-                    } else {
-                        prefix.push(last);
-                    }
-                    prefix
-                } else {
-                    String::new()
-                };
+                let next = successor_of(string_value.as_ref().as_str());
                 Ok(Some(Object::string(next)))
             }
             "downcase" => {
@@ -291,6 +376,50 @@ impl VirtualMachine {
                     ));
                 }
                 Ok(Some(Object::string(string_value.to_lowercase())))
+            }
+            // `capitalize` raises the first letter and lowers the rest, and
+            // `swapcase` turns each letter the other way.
+            "capitalize" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let mut letters = string_value.chars();
+                let capitalized = match letters.next() {
+                    None => String::new(),
+                    Some(first) => first
+                        .to_uppercase()
+                        .chain(letters.flat_map(|letter| letter.to_lowercase()))
+                        .collect(),
+                };
+                Ok(Some(Object::string(capitalized)))
+            }
+            "swapcase" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let swapped: String = string_value
+                    .chars()
+                    .flat_map(|letter| {
+                        if letter.is_uppercase() {
+                            letter.to_lowercase().collect::<Vec<_>>()
+                        } else if letter.is_lowercase() {
+                            letter.to_uppercase().collect::<Vec<_>>()
+                        } else {
+                            vec![letter]
+                        }
+                    })
+                    .collect();
+                Ok(Some(Object::string(swapped)))
             }
             "+" => {
                 if arguments.len() != 1 {
@@ -325,6 +454,92 @@ impl VirtualMachine {
                     ));
                 }
                 Ok(Some(Object::string(string_value.trim().to_string())))
+            }
+            // `lstrip` and `rstrip` trim one end. Ruby counts a NUL as
+            // whitespace at the right end, which `trim_end` does not.
+            // `each_line` and `lines` split on a separator, keeping it on the
+            // end of each piece the way Ruby does.
+            "each_line" | "lines" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let separator = match arguments.first() {
+                    None => "\n".to_string(),
+                    Some(Object::String(text)) => (**text).clone(),
+                    Some(Object::Nil) => String::new(),
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let text = string_value.as_ref().as_str();
+                let pieces: Vec<Object> = if separator.is_empty() {
+                    if text.is_empty() {
+                        Vec::new()
+                    } else {
+                        vec![Object::string(text.to_string())]
+                    }
+                } else {
+                    let mut collected = Vec::new();
+                    let mut rest = text;
+                    while let Some(cut) = rest.find(&separator) {
+                        let end = cut + separator.len();
+                        collected.push(Object::string(rest[..end].to_string()));
+                        rest = &rest[end..];
+                    }
+                    if !rest.is_empty() {
+                        collected.push(Object::string(rest.to_string()));
+                    }
+                    collected
+                };
+                if method_name == "lines" {
+                    self.warn_unused_block(position)?;
+                    return Ok(Some(Object::array(pieces)));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .make_enumerator(receiver, method_name, arguments, position)
+                        .map(Some);
+                };
+                for piece in pieces {
+                    self.execute_block_callable(&block, vec![piece], position)?;
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "lstrip" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::string(string_value.trim_start().to_string())))
+            }
+            "rstrip" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::string(
+                    string_value
+                        .trim_end_matches(|letter: char| letter.is_whitespace() || letter == '\0')
+                        .to_string(),
+                )))
             }
             "reverse" => {
                 if !arguments.is_empty() {
@@ -369,6 +584,185 @@ impl VirtualMachine {
                     }
                 }
             }
+            // The bytes a String is made of, which is what its length in
+            // bytes and each byte-level reader are counted from.
+            "bytesize" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Int(string_value.len() as i64)))
+            }
+            "bytes" | "each_byte" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let bytes: Vec<Object> = string_value
+                    .bytes()
+                    .map(|byte| Object::Int(byte as i64))
+                    .collect();
+                if method_name == "bytes" {
+                    return Ok(Some(Object::Array(Rc::new(RefCell::new(bytes)))));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    let size = bytes.len() as i64;
+                    return self
+                        .build_enumerator(
+                            receiver.clone(),
+                            method_name,
+                            vec![],
+                            Some(size),
+                            position,
+                        )
+                        .map(Some);
+                };
+                for byte in bytes {
+                    self.execute_block_callable(&block, vec![byte], position)?;
+                }
+                Ok(Some(receiver.clone()))
+            }
+            "getbyte" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::Int(index) = &arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "Integer",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                let length = string_value.len() as i64;
+                let resolved = if *index < 0 { index + length } else { *index };
+                if resolved < 0 || resolved >= length {
+                    return Ok(Some(Object::Nil));
+                }
+                Ok(Some(Object::Int(
+                    string_value.as_bytes()[resolved as usize] as i64,
+                )))
+            }
+            // The first character, or an empty String when there is none.
+            "chr" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::string(
+                    string_value
+                        .chars()
+                        .next()
+                        .map(String::from)
+                        .unwrap_or_default(),
+                )))
+            }
+            // Metorex strings are UTF-8 throughout, so every one of them is
+            // valid, and whether it is ASCII is a question about its bytes.
+            "valid_encoding?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(true)))
+            }
+            "ascii_only?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(string_value.is_ascii())))
+            }
+            // `hex` and `oct` read a number off the front of the string, in
+            // base 16 and base 8, with `oct` honoring a base prefix.
+            "hex" | "oct" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let default_radix = if method_name == "hex" { 16 } else { 8 };
+                Ok(Some(Object::Int(leading_radix_number(
+                    string_value,
+                    default_radix,
+                ))))
+            }
+            // `to_str` is the implicit conversion, which a String answers
+            // with itself.
+            "to_str" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::String(Rc::clone(string_value))))
+            }
+            // The code point of each character, which `each_codepoint` walks
+            // one at a time.
+            "codepoints" | "each_codepoint" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let points: Vec<Object> = string_value
+                    .chars()
+                    .map(|character| Object::Int(character as i64))
+                    .collect();
+                if method_name == "codepoints" {
+                    return Ok(Some(Object::Array(Rc::new(RefCell::new(points)))));
+                }
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    let size = points.len() as i64;
+                    return self
+                        .build_enumerator(
+                            receiver.clone(),
+                            method_name,
+                            vec![],
+                            Some(size),
+                            position,
+                        )
+                        .map(Some);
+                };
+                for point in points {
+                    self.execute_block_callable(&block, vec![point], position)?;
+                }
+                Ok(Some(receiver.clone()))
+            }
             "chars" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -397,21 +791,6 @@ impl VirtualMachine {
                 Ok(Some(
                     self.globals().get("Encoding::UTF_8").unwrap_or(Object::Nil),
                 ))
-            }
-            "bytes" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let bytes: Vec<Object> = string_value
-                    .bytes()
-                    .map(|b| Object::Int(b as i64))
-                    .collect();
-                Ok(Some(Object::Array(Rc::new(RefCell::new(bytes)))))
             }
             "size" => {
                 if !arguments.is_empty() {
@@ -565,28 +944,6 @@ impl VirtualMachine {
                 Ok(Some(Object::string(result)))
             }
             // `lines` splits on the line separator, keeping it on each piece.
-            "lines" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let mut lines: Vec<Object> = Vec::new();
-                let mut current = String::new();
-                for character in string_value.chars() {
-                    current.push(character);
-                    if character == '\n' {
-                        lines.push(Object::string(std::mem::take(&mut current)));
-                    }
-                }
-                if !current.is_empty() {
-                    lines.push(Object::string(current));
-                }
-                Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(lines)))))
-            }
             "split" => {
                 if arguments.len() > 1 {
                     return Err(method_argument_error(
@@ -704,16 +1061,19 @@ impl VirtualMachine {
                 }
             }
             "start_with?" | "end_with?" => {
-                if arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        1,
-                        arguments.len(),
-                        position,
-                    ));
-                }
+                // With no arguments nothing matches, which is what Ruby
+                // answers rather than refusing the call.
                 let mut result = false;
                 for arg in arguments {
+                    // An argument that is not a String is asked for one, which
+                    // is what `to_str` answers.
+                    let arg = &match arg {
+                        Object::String(_) => arg.clone(),
+                        other if self.responds_to(other, "to_str") => {
+                            self.send_to_object(other.clone(), "to_str", vec![], position)?
+                        }
+                        other => other.clone(),
+                    };
                     match arg {
                         Object::String(s) => {
                             if method_name == "start_with?" {
@@ -722,6 +1082,19 @@ impl VirtualMachine {
                                     break;
                                 }
                             } else if string_value.ends_with(s.as_ref()) {
+                                result = true;
+                                break;
+                            }
+                        }
+                        // `start_with?` also takes a Regexp, which matches at
+                        // the front of the string and records the match the
+                        // way any other match does.
+                        Object::Regex(pattern, flags) if method_name == "start_with?" => {
+                            let anchored = format!("\\A(?:{})", pattern);
+                            let subject = string_value.as_ref().clone();
+                            let found =
+                                self.regexp_match_data(&anchored, flags, &subject, 0, position)?;
+                            if found.is_some() {
                                 result = true;
                                 break;
                             }
@@ -800,10 +1173,16 @@ impl VirtualMachine {
                         ));
                     }
                     None => {
-                        return Err(MetorexError::runtime_error(
-                            "each_char requires a block",
-                            crate::vm::utils::position_to_location(position),
-                        ));
+                        let size = string_value.chars().count() as i64;
+                        return self
+                            .build_enumerator(
+                                receiver.clone(),
+                                method_name,
+                                vec![],
+                                Some(size),
+                                position,
+                            )
+                            .map(Some);
                     }
                 };
                 for ch in string_value.chars() {
@@ -848,14 +1227,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let trimmed = string_value.trim();
-                let n: f64 = trimmed
-                    .chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == '-' || *c == '+')
-                    .collect::<String>()
-                    .parse()
-                    .unwrap_or(0.0);
-                Ok(Some(Object::Float(n)))
+                Ok(Some(Object::Float(leading_float(string_value.as_ref()))))
             }
             "dup" => {
                 if !arguments.is_empty() {
@@ -892,6 +1264,11 @@ impl VirtualMachine {
                 match &arguments[0] {
                     Object::String(s) => {
                         let pattern = s.as_ref().clone();
+                        // A String pattern matches literally, and the match it
+                        // finds is recorded the way a Regexp one is.
+                        let escaped = regex::escape(&pattern);
+                        let subject = string_value.as_ref().clone();
+                        self.regexp_match_data(&escaped, "", &subject, 0, position)?;
                         let result = if limit == 0 {
                             string_value.replace(&pattern, &replacement)
                         } else {
@@ -910,6 +1287,9 @@ impl VirtualMachine {
                         } else {
                             pattern.as_ref().clone()
                         };
+                        let (source, flags) = (pattern.as_ref().clone(), flags.as_ref().clone());
+                        let subject = string_value.as_ref().clone();
+                        self.regexp_match_data(&source, &flags, &subject, 0, position)?;
                         match regex::Regex::new(&re_pattern) {
                             Ok(re) => {
                                 let result = if limit == 0 {
@@ -945,5 +1325,214 @@ impl VirtualMachine {
             }
             _ => Ok(None),
         }
+    }
+}
+
+/// Ruby's `String#succ`: the rightmost alphanumeric character is bumped, and a
+/// carry moves left, growing the string when the leftmost one wraps. A string
+/// with no alphanumeric character bumps its last byte instead.
+fn successor_of(text: &str) -> String {
+    if text.is_empty() {
+        return String::new();
+    }
+    let mut letters: Vec<char> = text.chars().collect();
+    let alphanumeric: Vec<usize> = letters
+        .iter()
+        .enumerate()
+        .filter(|(_, letter)| letter.is_ascii_alphanumeric())
+        .map(|(index, _)| index)
+        .collect();
+    if alphanumeric.is_empty() {
+        let last = letters.len() - 1;
+        let bumped = (letters[last] as u32).wrapping_add(1);
+        if let Some(letter) = char::from_u32(bumped) {
+            letters[last] = letter;
+        }
+        return letters.into_iter().collect();
+    }
+    for (step, position) in alphanumeric.iter().rev().enumerate() {
+        let (next, carried) = bump(letters[*position]);
+        letters[*position] = next;
+        if !carried {
+            return letters.into_iter().collect();
+        }
+        if step + 1 == alphanumeric.len() {
+            // Every character carried, so one more is prepended: "zz" grows
+            // into "aaa" and "99" into "100".
+            let leading = if letters[*position].is_ascii_digit() {
+                '1'
+            } else {
+                letters[*position]
+            };
+            letters.insert(*position, leading);
+        }
+    }
+    letters.into_iter().collect()
+}
+
+/// One character of a `succ`, answering what it becomes and whether the bump
+/// carried past the end of its run.
+fn bump(letter: char) -> (char, bool) {
+    match letter {
+        'z' => ('a', true),
+        'Z' => ('A', true),
+        '9' => ('0', true),
+        other => (char::from_u32(other as u32 + 1).unwrap_or(other), false),
+    }
+}
+
+/// The Float the leading characters of a string spell, which is 0.0 when they
+/// spell none. Underscores separate digits, and a trailing `e`, `.`, or sign
+/// that names no digits is left off rather than refused.
+fn leading_float(text: &str) -> f64 {
+    let letters: Vec<char> = text.trim_start().chars().collect();
+    let mut taken = String::new();
+    let mut index = 0;
+    if matches!(letters.first(), Some('+') | Some('-')) {
+        taken.push(letters[0]);
+        index = 1;
+    }
+    // An underscore separates digits, so one that does not sit between two of
+    // them ends the number.
+    let mut digits = 0;
+    while index < letters.len() {
+        if letters[index].is_ascii_digit() {
+            taken.push(letters[index]);
+            digits += 1;
+            index += 1;
+            continue;
+        }
+        if letters[index] == '_'
+            && digits > 0
+            && letters
+                .get(index + 1)
+                .is_some_and(|next| next.is_ascii_digit())
+        {
+            index += 1;
+            continue;
+        }
+        break;
+    }
+    if index < letters.len() && letters[index] == '.' {
+        let mut fraction = String::new();
+        let mut cursor = index + 1;
+        while cursor < letters.len() {
+            if letters[cursor].is_ascii_digit() {
+                fraction.push(letters[cursor]);
+                cursor += 1;
+                continue;
+            }
+            if letters[cursor] == '_'
+                && !fraction.is_empty()
+                && letters
+                    .get(cursor + 1)
+                    .is_some_and(|next| next.is_ascii_digit())
+            {
+                cursor += 1;
+                continue;
+            }
+            break;
+        }
+        if !fraction.is_empty() || digits > 0 {
+            taken.push('.');
+            taken.push_str(&fraction);
+            digits += fraction.len();
+            index = cursor;
+        }
+    }
+    if digits == 0 {
+        return 0.0;
+    }
+    // An exponent counts only when digits follow it.
+    if index < letters.len() && (letters[index] == 'e' || letters[index] == 'E') {
+        let mut cursor = index + 1;
+        let mut exponent = String::new();
+        if matches!(letters.get(cursor), Some('+') | Some('-')) {
+            exponent.push(letters[cursor]);
+            cursor += 1;
+        }
+        let mut exponent_digits = 0;
+        while cursor < letters.len() {
+            if letters[cursor].is_ascii_digit() {
+                exponent.push(letters[cursor]);
+                exponent_digits += 1;
+                cursor += 1;
+                continue;
+            }
+            if letters[cursor] == '_'
+                && exponent_digits > 0
+                && letters
+                    .get(cursor + 1)
+                    .is_some_and(|next| next.is_ascii_digit())
+            {
+                cursor += 1;
+                continue;
+            }
+            break;
+        }
+        if exponent_digits > 0 {
+            taken.push('e');
+            taken.push_str(&exponent);
+        }
+    }
+    taken.parse().unwrap_or(0.0)
+}
+
+/// Read a number off the front of `text` in `default_radix`, honoring a base
+/// prefix (`0x`, `0b`, `0o`, `0d`) and treating an underscore between digits
+/// as a separator. Anything the number does not start with answers 0.
+fn leading_radix_number(text: &str, default_radix: u32) -> i64 {
+    let trimmed = text.trim_start();
+    let (sign, rest) = match trimmed.strip_prefix('-') {
+        Some(rest) => (-1i64, rest),
+        None => (1i64, trimmed.strip_prefix('+').unwrap_or(trimmed)),
+    };
+    // `hex` reads only the `0x` prefix, since `0b` and `0d` are themselves
+    // hex digits. `oct` reads every base prefix.
+    let (radix, rest) = match rest.get(..2).map(str::to_ascii_lowercase).as_deref() {
+        Some("0x") => (16, &rest[2..]),
+        Some("0b") if default_radix == 8 => (2, &rest[2..]),
+        Some("0o") if default_radix == 8 => (8, &rest[2..]),
+        Some("0d") if default_radix == 8 => (10, &rest[2..]),
+        _ => (default_radix, rest),
+    };
+    let mut digits = String::new();
+    let mut previous_was_digit = false;
+    for character in rest.chars() {
+        if character == '_' && previous_was_digit {
+            previous_was_digit = false;
+            continue;
+        }
+        if !character.is_digit(radix) {
+            break;
+        }
+        previous_was_digit = true;
+        digits.push(character);
+    }
+    match i64::from_str_radix(&digits, radix) {
+        Ok(value) => sign * value,
+        Err(_) => 0,
+    }
+}
+
+/// Where a needle sits among `letters`, counted in characters. The walk runs
+/// forward from `start`, or backward from it when the caller asked for the
+/// last place instead of the first.
+fn character_index(letters: &[char], needle: &str, start: usize, from_end: bool) -> Option<usize> {
+    let wanted: Vec<char> = needle.chars().collect();
+    if wanted.is_empty() {
+        return Some(start.min(letters.len()));
+    }
+    if wanted.len() > letters.len() {
+        return None;
+    }
+    let last = letters.len() - wanted.len();
+    let places: Vec<usize> = (0..=last)
+        .filter(|place| letters[*place..*place + wanted.len()] == wanted[..])
+        .collect();
+    if from_end {
+        places.into_iter().rev().find(|place| *place <= start)
+    } else {
+        places.into_iter().find(|place| *place >= start)
     }
 }

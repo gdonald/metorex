@@ -201,7 +201,7 @@ s.nonexistent_method
 // ── Error path tests for set operations ────────────────────────────────────
 
 #[test]
-fn set_intersection_wrong_type_error() {
+fn set_intersection_with_a_non_enumerable_errors() {
     let err = run_err(
         r#"
 s = Set.new
@@ -209,15 +209,11 @@ s.add("a")
 s.intersection(42)
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 #[test]
-fn set_difference_wrong_type_error() {
+fn set_difference_with_a_non_enumerable_errors() {
     let err = run_err(
         r#"
 s = Set.new
@@ -225,11 +221,7 @@ s.add("a")
 s.difference("not a set")
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 // ── From remaining_tests ────────────────────────────────────────────────────
@@ -300,7 +292,7 @@ fn set_each_with_args_error() {
 // ── set_methods.rs: union with non-Set argument error (lines 147-151) ────────
 
 #[test]
-fn set_union_wrong_type_error() {
+fn set_union_with_a_non_enumerable_errors() {
     let err = run_err(
         r#"
 s = Set.new
@@ -308,17 +300,13 @@ s.add("a")
 s.union(42)
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type") || err.contains("argument"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 // ── set_methods.rs: intersection with non-Set argument error (lines 174-179) ─
 
 #[test]
-fn set_intersection_non_set_type_error() {
+fn set_intersection_with_a_plain_string_errors() {
     let err = run_err(
         r#"
 s = Set.new
@@ -326,11 +314,7 @@ s.add("a")
 s.intersection("not a set")
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type") || err.contains("argument"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 // ── set_methods.rs: difference result (lines 210-215 success path) ───────────

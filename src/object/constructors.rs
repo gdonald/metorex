@@ -3,7 +3,6 @@
 use crate::class::Class;
 use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::{Exception, Instance, Object};
@@ -56,7 +55,7 @@ impl Object {
 
     /// Create an empty set
     pub fn empty_set() -> Self {
-        Object::Set(Rc::new(RefCell::new(HashSet::new())))
+        Object::Set(Rc::new(RefCell::new(indexmap::IndexSet::new())))
     }
 
     /// Create an instance of a class

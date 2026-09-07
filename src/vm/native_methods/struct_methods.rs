@@ -476,6 +476,7 @@ impl VirtualMachine {
         if let Some((_, method)) = self.lookup_method(receiver, method_name)
             && !method.body.is_empty()
             && !members.iter().any(|member| member == method_name)
+            && !self.enumerable_stands_in(receiver, method_name)
         {
             return Ok(None);
         }
@@ -851,7 +852,7 @@ impl VirtualMachine {
 
     /// The `[key, value]` pair a `to_h` block answers, coerced with `to_ary`
     /// when it is not already an Array.
-    fn pair_from_block_result(
+    pub(crate) fn pair_from_block_result(
         &mut self,
         produced: Object,
         position: Position,

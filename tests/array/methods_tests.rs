@@ -318,15 +318,15 @@ fn array_filter_enumerator_no_block() {
 // ── reduce error paths ───────────────────────────────────────────────────────
 
 #[test]
-fn array_reduce_error_no_block() {
+fn array_reduce_error_no_block_or_operator() {
     let err = run_err("[1, 2, 3].reduce");
-    assert!(err.contains("block"));
+    assert!(err.contains("wrong number of arguments"), "{}", err);
 }
 
 #[test]
-fn array_reduce_error_too_many_args() {
+fn array_reduce_second_argument_must_name_a_method() {
     let err = run_err("[1, 2, 3].reduce(0, 1) { |acc, n| acc + n }");
-    assert!(err.contains("argument"));
+    assert!(err.contains("is not a symbol nor a string"), "{}", err);
 }
 
 #[test]
@@ -352,8 +352,15 @@ fn array_push_no_args_returns_self() {
 }
 
 #[test]
-fn array_pop_error_with_args() {
-    let err = run_err("[1, 2, 3].pop(1)");
+fn array_pop_with_a_count_answers_an_array() {
+    // A count asks for that many elements back, as an array.
+    let result = run("[1, 2, 3].pop(1)");
+    assert_eq!(result, Some(Object::array(vec![Object::Int(3)])));
+}
+
+#[test]
+fn array_pop_error_with_too_many_args() {
+    let err = run_err("[1, 2, 3].pop(1, 2)");
     assert!(err.contains("argument"));
 }
 
@@ -364,8 +371,14 @@ fn array_size_error_with_args() {
 }
 
 #[test]
-fn array_shift_error_with_args() {
-    let err = run_err("[1, 2, 3].shift(1)");
+fn array_shift_with_a_count_answers_an_array() {
+    let result = run("[1, 2, 3].shift(1)");
+    assert_eq!(result, Some(Object::array(vec![Object::Int(1)])));
+}
+
+#[test]
+fn array_shift_error_with_too_many_args() {
+    let err = run_err("[1, 2, 3].shift(1, 2)");
     assert!(err.contains("argument"));
 }
 
@@ -446,9 +459,9 @@ fn array_inject_empty_with_initial() {
 }
 
 #[test]
-fn array_inject_error_too_many_args() {
+fn array_inject_second_argument_must_name_a_method() {
     let err = run_err("[1].inject(0, 1) { |a, b| a }");
-    assert!(err.contains("argument"));
+    assert!(err.contains("is not a symbol nor a string"), "{}", err);
 }
 
 // ── dup / clone ─────────────────────────────────────────────────────────────

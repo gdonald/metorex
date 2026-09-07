@@ -229,6 +229,8 @@ impl VirtualMachine {
                 })
             }
             "warn" => self.kernel_warn(arguments, position),
+            // `trap` is Kernel's name for `Signal.trap`.
+            "trap" => self.install_signal_trap(&arguments, position),
             "sprintf" => {
                 if arguments.is_empty() {
                     return Err(MetorexError::runtime_error(
@@ -525,13 +527,22 @@ impl VirtualMachine {
 
                 // Look up the method in the current environment
                 if let Some(obj) = self.environment().get(method_name) {
-                    match obj {
-                        Object::Method(_) => Ok(obj),
-                        _ => Err(MetorexError::runtime_error(
-                            format!("'{}' is not a method", method_name),
-                            crate::vm::utils::position_to_location(position),
-                        )),
+                    if let Object::Method(_) = obj {
+                        return Ok(obj);
                     }
+                    // A name the environment holds as something other than a
+                    // method may still name one the receiver defines, which is
+                    // what `def p(a); end` does to the builtin of that name.
+                    let not_a_method = MetorexError::runtime_error(
+                        format!("'{}' is not a method", method_name),
+                        crate::vm::utils::position_to_location(position),
+                    );
+                    let Some(receiver) = self.environment().get("self") else {
+                        return Err(not_a_method);
+                    };
+                    let name = Object::Symbol(std::rc::Rc::new(method_name.to_string()));
+                    self.send_to_object(receiver, "method", vec![name], position)
+                        .map_err(|_| not_a_method)
                 } else if let Some(receiver) = self.environment().get("self") {
                     // Inside an instance method a bare `method(:name)` means
                     // `self.method(:name)`, and the name is not a local.
@@ -763,6 +774,12 @@ impl VirtualMachine {
                 let resolved = match found_path {
                     Some(p) => p,
                     None => {
+                        // A library metorex carries is used when the load path
+                        // holds no file of that name.
+                        if let Some(source) = crate::vm::stdlib::embedded_library(&require_name) {
+                            let already = self.run_embedded_library(&require_name, source)?;
+                            return Ok(Object::Bool(already));
+                        }
                         // Raise a LoadError exception so Ruby-level rescue LoadError catches it.
                         let exc = crate::vm::errors::load_error(
                             format!("cannot load such file -- {}", require_name),
@@ -1221,7 +1238,18 @@ impl VirtualMachine {
                     // file behind it, which is what `__FILE__` and `__dir__`
                     // report there.
                     None if binding.is_some() => self.current_file = None,
-                    None => {}
+                    // Ruby names the eval'd code after the place it was
+                    // written, which is what `__FILE__` reports inside it.
+                    None => {
+                        let written_in = prev_file
+                            .as_ref()
+                            .map(|file| file.display().to_string())
+                            .unwrap_or_default();
+                        self.current_file = Some(std::path::PathBuf::from(format!(
+                            "(eval at {}:{})",
+                            written_in, position.line
+                        )));
+                    }
                 }
                 // The eval'd string runs in the caller's body, so it sees the
                 // visibility state in force there. A toggle it sets belongs to

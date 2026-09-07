@@ -13,6 +13,9 @@ impl Parser {
 
         let condition = self.parse_condition()?;
         self.skip_whitespace();
+        // `if cond then` may hold its body on the following line.
+        self.match_token(&[TokenKind::Then]);
+        self.skip_whitespace();
 
         // Parse then branch
         let mut then_branch = Vec::new();
@@ -271,6 +274,9 @@ impl Parser {
         self.skip_whitespace();
 
         let condition = self.parse_condition()?;
+        self.skip_whitespace();
+        // `unless cond then` may hold its body on the following line.
+        self.match_token(&[TokenKind::Then]);
         self.skip_whitespace();
 
         // Parse then branch

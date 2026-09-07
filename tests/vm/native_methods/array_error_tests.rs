@@ -231,15 +231,15 @@ fn array_partition_with_arg_errors() {
 // ── reduce/inject with too many args error (lines 288-294, 527-532) ──────────
 
 #[test]
-fn array_reduce_too_many_args_errors() {
+fn array_reduce_second_argument_must_name_a_method() {
     let err = run_err("[1,2,3].reduce(0, 1) { |acc, x| acc + x }");
-    assert!(err.contains("argument"));
+    assert!(err.contains("is not a symbol nor a string"), "{}", err);
 }
 
 #[test]
-fn array_inject_too_many_args_errors() {
-    let err = run_err("[1,2,3].inject(0, 1) { |acc, x| acc + x }");
-    assert!(err.contains("argument"));
+fn array_inject_more_than_two_arguments_errors() {
+    let err = run_err("[1,2,3].inject(0, :+, 2) { |acc, x| acc + x }");
+    assert!(err.contains("argument"), "{}", err);
 }
 
 // ── pack with non-Int values in various directives (lines 839, 847, 855, 863) ─

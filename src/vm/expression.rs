@@ -213,6 +213,10 @@ impl VirtualMachine {
                 let dict = dict_rc.borrow();
                 if let Some(value) = dict.get(&key_string) {
                     Ok(value.clone())
+                } else if let Some(default) = dict.get("__MX_DEFAULT__") {
+                    // `Hash.new(default)` answers that value for a key it has
+                    // no entry for, without storing anything.
+                    Ok(default.clone())
                 } else if let Some(Object::Block(default_proc)) = dict.get("__MX_DEFAULT_PROC__") {
                     // Auto-vivify: call the default block with (hash, key)
                     // The block typically does h[k] = default_value, which sets
@@ -393,6 +397,7 @@ impl VirtualMachine {
                         return Err(MetorexError::NonLocalReturn {
                             value,
                             location: position_to_location(position),
+                            home_frame: self.current_method_frame,
                         });
                     }
                     ControlFlow::Break { value, position } => {
@@ -405,6 +410,7 @@ impl VirtualMachine {
                         return Err(MetorexError::BlockBreak {
                             value,
                             location: position_to_location(position),
+                            home_frame: None,
                         });
                     }
                     ControlFlow::Redo { position } => {

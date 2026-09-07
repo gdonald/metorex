@@ -131,6 +131,13 @@ impl VirtualMachine {
                 };
                 Ok(is_throw_error.then_some(Object::Nil))
             }
+            // LocalJumpError#exit_value and #reason — the value a stray
+            // `return` carried and what kind of jump it was.
+            "exit_value" | "reason" => {
+                let details = exception.borrow();
+                let key = format!("@{}", method_name);
+                Ok(details.instance_vars.get(&key).cloned())
+            }
             // KeyError#key — the lookup that missed, absent on an exception
             // no failed lookup raised.
             "key" => {

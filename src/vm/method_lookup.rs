@@ -54,6 +54,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let has_block = trailing_block.is_some();
+        let calling_frame = self.current_method_frame;
         let result = self.evaluate_method_call_inner(
             receiver_expr,
             method_name,
@@ -63,10 +64,13 @@ impl VirtualMachine {
         );
         // Ruby: `break <value>` inside the block passed to this call unwinds
         // to *this* method call and makes the call return `value`. Only catch
-        // when a block was attached here, so nested invocations don't absorb
-        // breaks meant for an outer call.
+        // when a block was attached here and the break came from a block
+        // written in this frame, so a nested call does not absorb a break
+        // meant for an outer one.
         match result {
-            Err(MetorexError::BlockBreak { value, .. }) if has_block => Ok(value),
+            Err(MetorexError::BlockBreak {
+                value, home_frame, ..
+            }) if has_block && (home_frame.is_none() || home_frame == calling_frame) => Ok(value),
             other => other,
         }
     }
@@ -119,7 +123,7 @@ impl VirtualMachine {
         if let Object::Class(class_rc) | Object::Module(class_rc) = &receiver {
             let class_rc = Rc::clone(class_rc);
             if let Some(method) = module_level_method(&class_rc, method_name) {
-                let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
+                let is_explicit_receiver = !names_self(receiver_expr);
                 if is_explicit_receiver && self.method_is_restricted(&receiver, method_name) {
                     if let Some(handled) = self.restricted_call_via_method_missing(
                         &receiver,
@@ -149,6 +153,19 @@ impl VirtualMachine {
             }
         }
 
+        // Enumerable is written over `each`, so its methods stand in only
+        // where the receiver's class has none of its own. A native method
+        // counts as the class's own, which is what puts Struct#to_h ahead of
+        // Enumerable#to_h the way Ruby's ancestor order does.
+        if self.enumerable_stands_in(&receiver, method_name) {
+            let class = self.builtins().class_of(&receiver);
+            if let Some(result) =
+                self.call_native_method(&class, &receiver, method_name, &arguments, position)?
+            {
+                return Ok(result);
+            }
+        }
+
         // Try user-defined method lookup first
         match self.lookup_method(&receiver, method_name) {
             Some((class, method)) if !method.is_undefined => {
@@ -159,7 +176,7 @@ impl VirtualMachine {
                 // `Expression::SelfExpr` as implicit self even though it's
                 // syntactically present, matching Ruby — `self.foo` is
                 // allowed regardless of visibility.
-                let is_explicit_receiver = !matches!(receiver_expr, Expression::SelfExpr { .. });
+                let is_explicit_receiver = !names_self(receiver_expr);
                 let mut is_private = self.method_is_restricted(&receiver, method_name);
                 // A prepended module sits ahead of the class, so when one of
                 // them supplies the method its visibility is the one in force
@@ -542,6 +559,19 @@ impl VirtualMachine {
             .map(|(owner, _)| owner)
     }
 
+    /// Whether the method the receiver would answer comes from the Enumerable
+    /// module rather than from its own class.
+    pub(crate) fn enumerable_stands_in(&self, receiver: &Object, method_name: &str) -> bool {
+        let class = match receiver {
+            Object::Instance(instance_rc) => Rc::clone(&instance_rc.borrow().class),
+            Object::Class(_) | Object::Module(_) => return false,
+            other => self.builtins().class_of(other),
+        };
+        class
+            .find_method_with_owner(method_name)
+            .is_some_and(|(owner, _)| owner.ruby_name() == "Enumerable")
+    }
+
     pub(crate) fn lookup_method(
         &self,
         receiver: &Object,
@@ -584,7 +614,12 @@ impl VirtualMachine {
                     }
                     cursor = current.superclass();
                 }
-                if let Some(method) = class_rc.find_method(method_name) {
+                // A class renders as its own name, so an `inspect` or `to_s`
+                // written for its instances does not answer for the class
+                // object itself.
+                if !matches!(method_name, "inspect" | "to_s")
+                    && let Some(method) = class_rc.find_method(method_name)
+                {
                     return Some((Rc::clone(class_rc), method));
                 }
                 // Every class is an instance of `Class`, which descends from
@@ -676,5 +711,17 @@ pub(crate) fn module_extended_method(
     match class_rc.get_class_var(&format!("__ext__{}", method_name)) {
         Some(Object::Method(method)) => Some(method),
         _ => None,
+    }
+}
+
+/// Whether a receiver expression names `self`, which Ruby treats as an
+/// implicit receiver: `self.name` reaches a private method the way a bare
+/// `name` does. The lexer reads `self` as an identifier, so the keyword form
+/// and the parser's own `SelfExpr` both have to be recognized here.
+pub(crate) fn names_self(receiver_expr: &Expression) -> bool {
+    match receiver_expr {
+        Expression::SelfExpr { .. } => true,
+        Expression::Identifier { name, .. } => name == "self",
+        _ => false,
     }
 }

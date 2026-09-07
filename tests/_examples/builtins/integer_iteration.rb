@@ -6,8 +6,8 @@ end
   puts n
 end
 
-puts 1.upto(3).inspect
-puts 3.downto(1).inspect
+puts 1.upto(3).to_a.inspect
+puts 3.downto(1).to_a.inspect
 
 half = 3.quo(2)
 puts half.to_s

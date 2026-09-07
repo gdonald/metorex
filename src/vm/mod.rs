@@ -28,6 +28,7 @@ mod pattern_matching;
 mod prelude;
 mod program;
 pub(crate) mod signals;
+pub(crate) mod stdlib;
 mod warn;
 pub(crate) use native_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 pub(crate) mod statement;

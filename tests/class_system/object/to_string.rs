@@ -47,14 +47,13 @@ fn test_to_string_class() {
 #[test]
 fn test_set_display_multiple_elements() {
     use metorex::object::ObjectHash;
-    use std::collections::HashSet;
-    let mut set = HashSet::new();
+    let mut set = indexmap::IndexSet::new();
     set.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     set.insert(ObjectHash::from_object(&Object::Int(2)).unwrap());
     let obj = Object::Set(Rc::new(RefCell::new(set)));
     let display = format!("{}", obj);
-    assert!(display.starts_with("#{"));
-    assert!(display.ends_with("}"));
+    assert!(display.starts_with("Set["));
+    assert!(display.ends_with("]"));
     assert!(display.contains("1"));
     assert!(display.contains("2"));
 }

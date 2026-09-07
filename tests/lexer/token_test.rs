@@ -275,7 +275,7 @@ fn test_magic_constants_display() {
 #[test]
 fn test_percent_w_display() {
     assert_eq!(
-        TokenKind::PercentW("a b c".to_string()).to_string(),
+        TokenKind::PercentW("a b c".to_string(), false).to_string(),
         "%w[a b c]"
     );
 }

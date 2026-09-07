@@ -14,14 +14,14 @@ def greet(name, greeting="Hello", punctuation="!")
   greeting + " " + name + punctuation
 end
 
-puts method(:no_defaults).name
-puts method(:no_defaults).parameters
+p method(:no_defaults).name
+p method(:no_defaults).parameters
 
-puts method(:with_defaults).name
-puts method(:with_defaults).parameters
+p method(:with_defaults).name
+p method(:with_defaults).parameters
 
-puts method(:all_defaults).name
-puts method(:all_defaults).parameters
+p method(:all_defaults).name
+p method(:all_defaults).parameters
 
-puts method(:greet).name
-puts method(:greet).parameters
+p method(:greet).name
+p method(:greet).parameters

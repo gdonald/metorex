@@ -70,13 +70,23 @@ impl Parser {
                 }
             }
             TokenKind::Def => self.parse_function_def(),
-            TokenKind::If => self.parse_if_statement(),
-            TokenKind::Unless => self.parse_unless_statement(),
-            TokenKind::While => self.parse_while_statement(),
-            TokenKind::Until => self.parse_until_statement(),
+            TokenKind::If => self.control_flow_statement(token.position, Self::parse_if_statement),
+            TokenKind::Unless => {
+                self.control_flow_statement(token.position, Self::parse_unless_statement)
+            }
+            TokenKind::While => {
+                self.control_flow_statement(token.position, Self::parse_while_statement)
+            }
+            TokenKind::Until => {
+                self.control_flow_statement(token.position, Self::parse_until_statement)
+            }
             TokenKind::For => self.parse_for_statement(),
-            TokenKind::Case => self.parse_case_statement(),
-            TokenKind::Begin => self.parse_begin_statement(),
+            TokenKind::Case => {
+                self.control_flow_statement(token.position, Self::parse_case_statement)
+            }
+            TokenKind::Begin => {
+                self.control_flow_statement(token.position, Self::parse_begin_statement)
+            }
             TokenKind::Raise => self.parse_raise_statement(),
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
@@ -270,7 +280,33 @@ impl Parser {
 
     /// Check for postfix if/unless modifiers and wrap the statement.
     /// Only matches if the modifier is on the same line (no newline before it).
-    fn wrap_with_modifier(&mut self, stmt: Statement) -> Result<Statement, MetorexError> {
+    /// A control-flow form read as a statement, unless a `.` follows its
+    /// `end`. That marks the form as being read for its value, so it is
+    /// parsed again as an expression and the chained call lands on what it
+    /// answers.
+    fn control_flow_statement(
+        &mut self,
+        position: crate::lexer::Position,
+        parse: fn(&mut Self) -> Result<Statement, MetorexError>,
+    ) -> Result<Statement, MetorexError> {
+        let opened_at = self.stream.current_position();
+        let parsed = parse(self)?;
+        if !self.check(&[TokenKind::Dot]) {
+            return Ok(parsed);
+        }
+        self.stream.restore_position(opened_at);
+        let expression = self.parse_expression_with_lambda()?;
+        let stmt = Statement::Expression {
+            expression,
+            position,
+        };
+        self.wrap_with_modifier(stmt)
+    }
+
+    pub(crate) fn wrap_with_modifier(
+        &mut self,
+        stmt: Statement,
+    ) -> Result<Statement, MetorexError> {
         // Don't consume newlines — modifier must be on the same line
         if matches!(self.peek().kind, TokenKind::Newline | TokenKind::Comment(_)) {
             return Ok(stmt);
@@ -405,6 +441,17 @@ impl Parser {
                 right: Box::new(value),
                 position,
             })
+        } else if self.paren_less_arg_depth == 0 && self.check(&[crate::lexer::TokenKind::Comma]) {
+            // `a, b` on the right of an assignment builds an array, which is
+            // how `values[0, 2] = 1, 2, 3` names its replacement.
+            let position = self.peek().position;
+            let mut elements = vec![expr];
+            while self.match_token(&[crate::lexer::TokenKind::Comma]) {
+                self.skip_whitespace();
+                elements.push(self.parse_expression_with_lambda()?);
+            }
+            let array = crate::ast::Expression::Array { elements, position };
+            self.wrap_with_rescue_modifier(array)
         } else {
             // `a = b rescue c` assigns the fallback, so the modifier binds to
             // the right-hand side rather than to the assignment.

@@ -22,13 +22,13 @@ fn run_err(code: &str) -> String {
 // ── Hash each without block ───────────────────────────────────────────────────
 
 #[test]
-fn hash_each_without_block_error() {
-    let err = run_err(
-        r#"
-{"a" => 1}.each
-"#,
-    );
-    assert!(err.contains("block") || err.contains("each") || err.contains("requires"));
+fn hash_each_without_block_answers_an_enumerator() {
+    // Without a block it answers an Enumerator over the pairs, the way Ruby
+    // does, rather than raising.
+    let class_name = run(r#"
+{"a" => 1}.each.class.to_s
+"#);
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Hash map without block ─────────────────────────────────────────────────────
@@ -46,13 +46,13 @@ fn hash_map_without_block_error() {
 // ── Hash select without block ──────────────────────────────────────────────────
 
 #[test]
-fn hash_select_without_block_error() {
-    let err = run_err(
-        r#"
-{"a" => 1}.select
-"#,
-    );
-    assert!(err.contains("block") || err.contains("select") || err.contains("requires"));
+fn hash_select_without_block_answers_an_enumerator() {
+    // Without a block it answers an Enumerator over the pairs, the way Ruby
+    // does, rather than raising.
+    let class_name = run(r#"
+{"a" => 1}.select.class.to_s
+"#);
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 // ── Hash each with break ────────────────────────────────────────────────
@@ -379,13 +379,10 @@ h.merge("not a hash")
 // ── hash_methods.rs: each with block (lines 224-229 – the None branch when no block) ─
 
 #[test]
-fn hash_each_without_block_raises_error() {
-    let err = run_err(r#"{"a" => 1, "b" => 2}.each"#);
-    assert!(
-        err.contains("block") || err.contains("each") || err.contains("requires"),
-        "Error was: {}",
-        err
-    );
+fn hash_each_without_block_answers_a_sized_enumerator() {
+    // The Enumerator knows how many pairs it will walk.
+    let size = run(r#"{"a" => 1, "b" => 2}.each.size"#);
+    assert_eq!(size, Some(Object::Int(2)));
 }
 
 // ── hash_methods.rs lines 144-147: Hash#[] via send ──────────────────────────

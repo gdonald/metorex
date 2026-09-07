@@ -54,8 +54,15 @@ pub(crate) fn bind_params(
 
         for (i, param) in params.iter().enumerate() {
             let value = if i < vi {
-                // Before splat: normal positional
-                positional.get(i).cloned().unwrap_or(Object::Nil)
+                // Before splat: normal positional, falling back to the
+                // parameter's default when the call did not reach it.
+                match positional.get(i) {
+                    Some(value) => value.clone(),
+                    None => match default_parameters.iter().find(|(index, _)| *index == i) {
+                        Some((_, default_expr)) => vm.evaluate_expression(default_expr)?,
+                        None => Object::Nil,
+                    },
+                }
             } else if i == vi {
                 // The splat parameter: collect middle args into an array
                 let rest: Vec<Object> =

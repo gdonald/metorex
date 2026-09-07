@@ -33,6 +33,9 @@ pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
         Object::String(s) => Some((**s).clone()),
         Object::Symbol(s) => Some(format!(":{}", s)),
         Object::Int(i) => Some(i.to_string()),
+        // A Float key keeps its fraction, so 4.0 and 4 are different keys the
+        // way Ruby's `eql?` makes them.
+        Object::Float(f) if f.fract() == 0.0 && f.is_finite() => Some(format!("{:.1}", f)),
         Object::Float(f) => Some(f.to_string()),
         Object::Bool(b) => Some(b.to_string()),
         Object::Nil => Some("nil".to_string()),
@@ -40,16 +43,26 @@ pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
     }
 }
 
+/// Whether a string reads back as a number, a boolean, or nil, which is what
+/// makes it ambiguous as a hash key.
+fn reads_as_another_kind(text: &str) -> bool {
+    text == "nil"
+        || text == "true"
+        || text == "false"
+        || text.parse::<i64>().is_ok()
+        || text.parse::<f64>().is_ok()
+}
+
 /// Check if a key value is primitive (reconstructible from string alone).
 pub(super) fn is_primitive_key(value: &Object) -> bool {
+    // A String that reads back as some other kind is not reconstructible from
+    // its text, so `{"1" => x}` keeps the key object beside the entry.
+    if let Object::String(text) = value {
+        return !reads_as_another_kind(text);
+    }
     matches!(
         value,
-        Object::String(_)
-            | Object::Symbol(_)
-            | Object::Int(_)
-            | Object::Float(_)
-            | Object::Bool(_)
-            | Object::Nil
+        Object::Symbol(_) | Object::Int(_) | Object::Float(_) | Object::Bool(_) | Object::Nil
     )
 }
 

@@ -47,8 +47,12 @@ impl Parser {
             }),
             TokenKind::String(value) => Ok(literals::string_literal(value, position)),
             TokenKind::Regex(pattern, flags) => self.regex_expression(pattern, flags, position),
-            TokenKind::PercentW(value) => Ok(self.primary_percent_w(value, position)),
-            TokenKind::PercentI(value) => Ok(self.primary_percent_i(value, position)),
+            TokenKind::PercentW(value, filled) => {
+                Ok(self.primary_percent_w(value, filled, position))
+            }
+            TokenKind::PercentI(value, filled) => {
+                Ok(self.primary_percent_i(value, filled, position))
+            }
             TokenKind::InterpolatedString(parts) => {
                 self.primary_interpolated_string(parts, position)
             }
@@ -131,6 +135,7 @@ impl Parser {
             TokenKind::Case => self.parse_case_expression(position),
             TokenKind::If => self.parse_if_expression(position),
             TokenKind::Unless => self.parse_unless_expression(position),
+            TokenKind::While | TokenKind::Until => self.parse_loop_expression(position),
 
             other => Err(self.error_at_previous(&format!("Unexpected token: {:?}", other))),
         }

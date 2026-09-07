@@ -4,7 +4,7 @@
 use indexmap::IndexMap;
 use metorex::object::{Class, Method, Object, ObjectHash};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 // ── lib::version ────────────────────────────────────────────────────────────
@@ -247,7 +247,7 @@ fn display_exception() {
 #[test]
 fn display_set() {
     let s = Object::empty_set();
-    assert_eq!(format!("{}", s), "#{}");
+    assert_eq!(format!("{}", s), "Set[]");
 }
 
 #[test]
@@ -383,9 +383,9 @@ fn equals_dict() {
 
 #[test]
 fn equals_set() {
-    let mut s1 = HashSet::new();
+    let mut s1 = indexmap::IndexSet::new();
     s1.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
-    let mut s2 = HashSet::new();
+    let mut s2 = indexmap::IndexSet::new();
     s2.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     let a = Object::Set(Rc::new(RefCell::new(s1)));
     let b = Object::Set(Rc::new(RefCell::new(s2)));
@@ -394,9 +394,9 @@ fn equals_set() {
 
 #[test]
 fn equals_set_different_size() {
-    let mut s1 = HashSet::new();
+    let mut s1 = indexmap::IndexSet::new();
     s1.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
-    let s2 = HashSet::new();
+    let s2 = indexmap::IndexSet::new();
     let a = Object::Set(Rc::new(RefCell::new(s1)));
     let b = Object::Set(Rc::new(RefCell::new(s2)));
     assert!(!a.equals(&b));

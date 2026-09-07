@@ -55,14 +55,25 @@ impl VirtualMachine {
 
         // A stub copied under a new name (`define_singleton_method(:other,
         // method(:constants))`) still means the native method it was cut from.
+        // The receiver's own class is what dispatches it, since the stub may
+        // live on a singleton class that names no native table.
         if method.body.is_empty()
             && method.captured_vars.is_none()
             && let Some(original) = &method.original_name
             && original != &method_name
-            && let Some(result) =
-                self.call_native_method(class.as_ref(), &receiver, original, &arguments, position)?
         {
-            return Ok(result);
+            let original = original.clone();
+            for owner in [Rc::clone(&class), self.builtins().class_of(&receiver)] {
+                if let Some(result) = self.call_native_method(
+                    owner.as_ref(),
+                    &receiver,
+                    &original,
+                    &arguments,
+                    position,
+                )? {
+                    return Ok(result);
+                }
+            }
         }
 
         // For stub methods (empty body, registered on Object for introspection),
@@ -79,11 +90,16 @@ impl VirtualMachine {
         let takes_keywords =
             !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some();
         let mut positional_count = positional_arg_count_for(&arguments, takes_keywords);
-        // If a trailing &block argument is passed and the method accepts a block parameter,
-        // extract it as pending_block and don't count it as positional.
+        // A trailing Proc argument stands in for the block only when the
+        // method has no room for it as a positional, since `&` is what makes
+        // a Proc the block: `detect(ifnone)` reads the Proc as the argument
+        // it was written as.
         if method.block_parameter.is_some()
+            && self.pending_block.is_none()
             && !arguments.is_empty()
             && matches!(arguments.last(), Some(Object::Block(_)))
+            && method.variadic_param.is_none()
+            && positional_count > method.parameters.len()
         {
             self.pending_block = arguments.pop();
             self.pending_block_from_ampersand = false;
@@ -253,6 +269,14 @@ impl VirtualMachine {
                 .and_then(|location| location.filename.clone()),
         );
 
+        // A `return` written in a block created inside this body unwinds to
+        // this invocation and no other, so the body runs under an id the
+        // blocks it makes record.
+        let frame = self.next_method_frame;
+        self.next_method_frame += 1;
+        let saved_frame = self.current_method_frame.replace(frame);
+        self.live_frames.push(frame);
+
         let result = (|| -> Result<Object, MetorexError> {
             self.environment_mut()
                 .define("self".to_string(), self_value.clone());
@@ -319,9 +343,25 @@ impl VirtualMachine {
             self.def_scope_stack = previous;
         }
         self.current_source_file = saved_source_file;
+        self.current_method_frame = saved_frame;
+        self.live_frames.pop();
         self.environment_mut().pop_scope();
         match result {
-            Err(MetorexError::NonLocalReturn { value, .. }) => Ok(value),
+            Err(MetorexError::NonLocalReturn {
+                value,
+                location,
+                home_frame,
+            }) => {
+                if home_frame.is_some_and(|home| home != frame) {
+                    Err(MetorexError::NonLocalReturn {
+                        value,
+                        location,
+                        home_frame,
+                    })
+                } else {
+                    Ok(value)
+                }
+            }
             other => other,
         }
     }
@@ -336,6 +376,11 @@ impl VirtualMachine {
 
         // Take the pending block now so nested calls don't see it.
         let block = self.pending_block.take();
+
+        let frame = self.next_method_frame;
+        self.next_method_frame += 1;
+        let saved_frame = self.current_method_frame.replace(frame);
+        self.live_frames.push(frame);
 
         let result = (|| -> Result<Object, MetorexError> {
             // Bind parameters to arguments (no self for standalone functions)
@@ -376,9 +421,25 @@ impl VirtualMachine {
             self.execute_body_statements(function.body(), false)
         })();
 
+        self.current_method_frame = saved_frame;
+        self.live_frames.pop();
         self.environment_mut().pop_scope();
         match result {
-            Err(MetorexError::NonLocalReturn { value, .. }) => Ok(value),
+            Err(MetorexError::NonLocalReturn {
+                value,
+                location,
+                home_frame,
+            }) => {
+                if home_frame.is_some_and(|home| home != frame) {
+                    Err(MetorexError::NonLocalReturn {
+                        value,
+                        location,
+                        home_frame,
+                    })
+                } else {
+                    Ok(value)
+                }
+            }
             other => other,
         }
     }

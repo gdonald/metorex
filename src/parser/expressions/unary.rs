@@ -54,12 +54,29 @@ impl Parser {
             };
             return self.parse_call_from(literal);
         }
-        if self.check(&[TokenKind::Plus, TokenKind::Minus, TokenKind::Bang]) {
+        // `not(x)` takes what the parentheses hold and nothing more, so a
+        // call may be chained onto the answer: `not(true).should`.
+        if self.check(&[TokenKind::NotKeyword]) && self.peek_ahead(1).kind == TokenKind::LParen {
+            let op_token = self.advance();
+            let group = self.parse_primary()?;
+            let negated = Expression::UnaryOp {
+                op: UnaryOp::Not,
+                operand: Box::new(group),
+                position: op_token.position,
+            };
+            return self.parse_call_from(negated);
+        }
+        if self.check(&[
+            TokenKind::Plus,
+            TokenKind::Minus,
+            TokenKind::Bang,
+            TokenKind::NotKeyword,
+        ]) {
             let op_token = self.advance();
             let op = match op_token.kind {
                 TokenKind::Plus => UnaryOp::Plus,
                 TokenKind::Minus => UnaryOp::Minus,
-                TokenKind::Bang => UnaryOp::Not,
+                TokenKind::Bang | TokenKind::NotKeyword => UnaryOp::Not,
                 _ => unreachable!(),
             };
             // A sign at the end of a line carries the expression onto the

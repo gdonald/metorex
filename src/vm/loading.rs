@@ -459,6 +459,15 @@ impl VirtualMachine {
             }
         }
 
+        // A library metorex carries is used when the load path holds no file
+        // of that name.
+        if found_path.is_none()
+            && let Some(source) = crate::vm::stdlib::embedded_library(name)
+        {
+            self.run_embedded_library(name, source)?;
+            return Ok(());
+        }
+
         let resolved = found_path.ok_or_else(|| {
             MetorexError::runtime_error(
                 format!(
@@ -645,5 +654,37 @@ impl VirtualMachine {
 
         // Return the result or Nil if no return value
         Ok(value.unwrap_or(Object::Nil))
+    }
+}
+
+impl VirtualMachine {
+    /// Run a library held in the binary, recording it so a second `require`
+    /// of the same name does nothing.
+    pub(crate) fn run_embedded_library(
+        &mut self,
+        name: &str,
+        source: &str,
+    ) -> Result<bool, MetorexError> {
+        let feature = format!("<metorex>/{}.rb", name);
+        let marker = std::path::PathBuf::from(&feature);
+        if self.is_file_loaded(&marker) {
+            return Ok(false);
+        }
+        self.mark_file_loaded(marker);
+        let tokens = crate::lexer::Lexer::new(source).tokenize();
+        let statements = crate::parser::Parser::new(tokens)
+            .parse()
+            .map_err(|errors| {
+                let first = errors
+                    .first()
+                    .map(|error| error.to_string())
+                    .unwrap_or_default();
+                MetorexError::runtime_error(
+                    format!("require('{}') reports {}", name, first),
+                    SourceLocation::new(0, 0, 0),
+                )
+            })?;
+        self.execute_program(&statements)?;
+        Ok(true)
     }
 }

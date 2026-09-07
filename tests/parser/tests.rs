@@ -515,10 +515,12 @@ fn symbol_from_string_literal() {
 }
 #[test]
 fn interpolated_symbol_dynamic() {
+    // `:"..."` with interpolation names a Symbol built at run time, not the
+    // String its characters were assembled in.
     let result = run_sym(r#"x = "name"; :"@#{x}""#);
     assert_eq!(
         result,
-        Some(Object::String(std::rc::Rc::new("@name".to_string())))
+        Some(Object::Symbol(std::rc::Rc::new("@name".to_string())))
     );
 }
 

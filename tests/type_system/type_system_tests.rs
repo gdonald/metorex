@@ -4,7 +4,7 @@
 use indexmap::IndexMap;
 use metorex::object::{BlockStatement, Class, Exception, Instance, Method, Object, ObjectHash};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 // ============================================================================
@@ -23,7 +23,7 @@ fn test_create_all_object_types() {
     // Collection types
     let array_obj = Object::empty_array();
     let dict_obj = Object::empty_dict();
-    let set_obj = Object::Set(Rc::new(RefCell::new(HashSet::new())));
+    let set_obj = Object::Set(Rc::new(RefCell::new(indexmap::IndexSet::new())));
 
     // Verify types exist
     assert!(matches!(nil, Object::Nil));
@@ -215,12 +215,12 @@ fn test_dict_deep_equality() {
 
 #[test]
 fn test_set_equality() {
-    let mut set1 = HashSet::new();
+    let mut set1 = indexmap::IndexSet::new();
     set1.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     set1.insert(ObjectHash::from_object(&Object::Int(2)).unwrap());
     set1.insert(ObjectHash::from_object(&Object::Int(3)).unwrap());
 
-    let mut set2 = HashSet::new();
+    let mut set2 = indexmap::IndexSet::new();
     set2.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     set2.insert(ObjectHash::from_object(&Object::Int(2)).unwrap());
     set2.insert(ObjectHash::from_object(&Object::Int(3)).unwrap());
@@ -231,7 +231,7 @@ fn test_set_equality() {
     assert!(obj1.equals(&obj2));
 
     // Different size sets
-    let mut set3 = HashSet::new();
+    let mut set3 = indexmap::IndexSet::new();
     set3.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     let obj3 = Object::Set(Rc::new(RefCell::new(set3)));
 
@@ -400,9 +400,9 @@ fn test_object_hash_wrapper() {
     assert_eq!(hash1, hash2);
     assert_ne!(hash1, hash3);
 
-    // Non-hashable should return None
+    // An Array is an element too, told apart by what it holds.
     let arr_hash = ObjectHash::from_object(&Object::empty_array());
-    assert!(arr_hash.is_none());
+    assert!(arr_hash.is_some());
 }
 
 // ============================================================================
@@ -591,4 +591,33 @@ fn test_result_type_operations() {
     // Nested results
     let nested_ok = Object::Result(Ok(Box::new(Object::Result(Ok(Box::new(Object::Int(42)))))));
     assert!(matches!(nested_ok, Object::Result(Ok(_))));
+}
+
+// ── allocate on the classes whose instances are primitives ──────────────────
+
+#[test]
+fn allocate_answers_an_empty_array_or_hash() {
+    let tokens = metorex::lexer::Lexer::new("[Array.allocate, Hash.allocate].inspect").tokenize();
+    let stmts = metorex::parser::Parser::new(tokens)
+        .parse()
+        .expect("parse failed");
+    let mut vm = metorex::vm::VirtualMachine::new();
+    let result = vm.execute_program(&stmts).expect("execution failed");
+    assert_eq!(result, Some(Object::string("[[], {}]")));
+}
+
+#[test]
+fn allocate_is_refused_for_proc_and_match_data() {
+    for (code, wanted) in [
+        ("Proc.allocate", "allocator undefined for Proc"),
+        ("MatchData.allocate", "undefined method 'allocate'"),
+    ] {
+        let tokens = metorex::lexer::Lexer::new(code).tokenize();
+        let stmts = metorex::parser::Parser::new(tokens)
+            .parse()
+            .expect("parse failed");
+        let mut vm = metorex::vm::VirtualMachine::new();
+        let error = vm.execute_program(&stmts).unwrap_err().to_string();
+        assert!(error.contains(wanted), "{}: {}", code, error);
+    }
 }

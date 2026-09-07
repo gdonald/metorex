@@ -129,7 +129,7 @@ fn test_result_err() {
 fn test_set_object() {
     let obj = Object::empty_set();
     assert_eq!(obj.type_name(), "Set");
-    assert_eq!(format!("{}", obj), "#{}");
+    assert_eq!(format!("{}", obj), "Set[]");
 }
 
 #[test]
@@ -223,8 +223,13 @@ fn test_object_hash() {
     let hash3 = ObjectHash::from_object(&Object::string("hello"));
     assert_ne!(hash1, hash3);
 
+    // An Array is an element too, told apart by what it holds.
     let hash4 = ObjectHash::from_object(&Object::empty_array());
-    assert!(hash4.is_none());
+    assert!(hash4.is_some());
+
+    // A Proc has no stable rendering to be told apart by.
+    let hash5 = ObjectHash::from_object(&Object::NativeFunction("puts".to_string()));
+    assert!(hash5.is_none());
 }
 
 #[test]

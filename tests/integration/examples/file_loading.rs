@@ -169,6 +169,22 @@ fn test_require_autoload_reload_warning_parens_execution() {
     assert_eq!(output, expected);
 }
 
+/// The expected output of both `require/source_file` variants, which differ
+/// only in whether the calls are written with parentheses.
+const SOURCE_FILE_OUTPUT: &str = "reporter.rb\nreporter.rb\ncustom.rb\n7\n";
+
+#[test]
+fn test_require_source_file_execution() {
+    let output = run_example("require/source_file.rb");
+    assert_eq!(output, SOURCE_FILE_OUTPUT);
+}
+
+#[test]
+fn test_require_source_file_no_parens_execution() {
+    let output = run_example("require/source_file_no_parens.rb");
+    assert_eq!(output, SOURCE_FILE_OUTPUT);
+}
+
 #[test]
 fn test_require_kernel_autoload_execution() {
     let expected = concat!(

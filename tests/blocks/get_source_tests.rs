@@ -26,7 +26,10 @@ m = Dog.new.get_source(:speak)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(result, Some(Object::string("speak")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("speak".to_string())))
+    );
 }
 
 #[test]
@@ -41,7 +44,10 @@ m = Dog.new.get_source("speak")
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(result, Some(Object::string("speak")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("speak".to_string())))
+    );
 }
 
 #[test]
@@ -84,7 +90,10 @@ m = Dog.new.get_source(:speak)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(result, Some(Object::string("speak")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("speak".to_string())))
+    );
 }
 
 #[test]
@@ -101,7 +110,8 @@ end
 calc = Calculator.new
 m_add = calc.get_source(:add)
 m_sub = calc.get_source(:subtract)
-m_add.name + " " + m_sub.name
+# A method names itself with a Symbol, so the two are joined as strings.
+m_add.name.to_s + " " + m_sub.name.to_s
 "#;
     let result = eval(source);
     assert_eq!(result, Some(Object::string("add subtract")));
@@ -120,7 +130,10 @@ m = g.get_source(:hello)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(result, Some(Object::string("hello")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("hello".to_string())))
+    );
 }
 
 #[test]
@@ -133,5 +146,8 @@ m = Foo.new.get_source(:bar)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(result, Some(Object::string("bar")));
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("bar".to_string())))
+    );
 }

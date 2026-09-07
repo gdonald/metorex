@@ -54,6 +54,7 @@ impl Parser {
             TokenKind::GreaterEqual => ">=".to_string(),
             TokenKind::Spaceship => "<=>".to_string(),
             TokenKind::Shovel => "<<".to_string(),
+            TokenKind::RightShift => ">>".to_string(),
             TokenKind::Pipe => "|".to_string(),
             TokenKind::Ampersand => "&".to_string(),
             TokenKind::Match => "=~".to_string(),
@@ -96,6 +97,9 @@ impl Parser {
         self.skip_whitespace();
 
         let mut _singleton_receiver: Option<String> = None;
+        // The assignment a parenthesized receiver carries, which runs before
+        // the definition so the variable holds the object it names.
+        let mut receiver_setup: Option<crate::ast::Expression> = None;
         let name = match self.advance().kind {
             TokenKind::Ident(name) => {
                 // Check for singleton method: def obj.method_name
@@ -130,6 +134,7 @@ impl Parser {
                 }
             }
             TokenKind::Star => "*".to_string(),
+            TokenKind::StarStar => "**".to_string(),
             TokenKind::Slash => "/".to_string(),
             TokenKind::Percent => "%".to_string(),
             TokenKind::EqualEqual => "==".to_string(),
@@ -145,6 +150,7 @@ impl Parser {
             TokenKind::Pipe => "|".to_string(),
             TokenKind::Ampersand => "&".to_string(),
             TokenKind::Shovel => "<<".to_string(),
+            TokenKind::RightShift => ">>".to_string(),
             // Allow keywords as method names
             TokenKind::Continue => "next".to_string(),
             TokenKind::Include => "include".to_string(),
@@ -187,7 +193,9 @@ impl Parser {
             }
             // def (expr).method_name — singleton method on expression result.
             TokenKind::LParen => {
-                let receiver_expr = self.parse_expression()?;
+                // The receiver may be an assignment, which names what it
+                // assigned: `def (@matcher = Object.new).===(other)`.
+                let receiver_expr = self.parse_expression_with_assignment()?;
                 self.expect(TokenKind::RParen, "Expected ')' after singleton receiver")?;
                 self.expect(TokenKind::Dot, "Expected '.' after singleton receiver")?;
                 let method_name = self.parse_singleton_method_name()?;
@@ -206,6 +214,29 @@ impl Parser {
                     crate::ast::Expression::NilLiteral { .. } => {
                         Some(format!("{}NilClass", SOLE_INSTANCE_RECEIVER))
                     }
+                    // `def (@matcher = Object.new).===(other)` assigns first
+                    // and then defines the method on what the variable holds.
+                    crate::ast::Expression::InstanceVariable { name, .. } => {
+                        Some(format!("@{}", name))
+                    }
+                    crate::ast::Expression::GlobalVariable { name, .. } => {
+                        Some(format!("${}", name))
+                    }
+                    crate::ast::Expression::BinaryOp {
+                        op: crate::ast::BinaryOp::Assign,
+                        left,
+                        ..
+                    } => match left.as_ref() {
+                        crate::ast::Expression::InstanceVariable { name, .. } => {
+                            receiver_setup = Some(receiver_expr.clone());
+                            Some(format!("@{}", name))
+                        }
+                        crate::ast::Expression::GlobalVariable { name, .. } => {
+                            receiver_setup = Some(receiver_expr.clone());
+                            Some(format!("${}", name))
+                        }
+                        _ => None,
+                    },
                     _ => None,
                 };
                 method_name
@@ -250,13 +281,17 @@ impl Parser {
                     position: start_pos,
                 });
             }
-            return Ok(Statement::FunctionDef {
-                name,
-                parameters,
-                body,
-                position: start_pos,
-                singleton_class: _singleton_receiver,
-            });
+            return Ok(with_receiver_setup(
+                Statement::FunctionDef {
+                    name,
+                    parameters,
+                    body,
+                    position: start_pos,
+                    singleton_class: _singleton_receiver,
+                },
+                receiver_setup,
+                start_pos,
+            ));
         }
 
         self.skip_whitespace();
@@ -344,13 +379,17 @@ impl Parser {
                 position: start_pos,
             })
         } else {
-            Ok(Statement::FunctionDef {
-                name,
-                parameters,
-                body,
-                position: start_pos,
-                singleton_class: _singleton_receiver,
-            })
+            Ok(with_receiver_setup(
+                Statement::FunctionDef {
+                    name,
+                    parameters,
+                    body,
+                    position: start_pos,
+                    singleton_class: _singleton_receiver,
+                },
+                receiver_setup,
+                start_pos,
+            ))
         }
     }
 
@@ -384,6 +423,9 @@ impl Parser {
             } else if self.match_token(&[TokenKind::StarStar]) {
                 if self.check(&[TokenKind::Comma, TokenKind::Newline, TokenKind::Semicolon]) {
                     params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
+                } else if self.match_token(&[TokenKind::Nil]) {
+                    // `**nil` says the method takes no keyword arguments at
+                    // all, which is a declaration rather than a parameter.
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,
@@ -489,6 +531,9 @@ impl Parser {
             else if self.match_token(&[TokenKind::StarStar]) {
                 if self.check(&[TokenKind::Comma, TokenKind::RParen, TokenKind::Pipe]) {
                     params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
+                } else if self.match_token(&[TokenKind::Nil]) {
+                    // `**nil` says the method takes no keyword arguments at
+                    // all, which is a declaration rather than a parameter.
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,
@@ -552,5 +597,27 @@ impl Parser {
         self.expect(TokenKind::RParen, "Expected ')' after parameters")?;
 
         Ok(params)
+    }
+}
+
+/// A `def (@name = value).method` runs the assignment before the definition,
+/// so the two travel together as one statement.
+fn with_receiver_setup(
+    definition: Statement,
+    receiver_setup: Option<crate::ast::Expression>,
+    position: crate::lexer::Position,
+) -> Statement {
+    match receiver_setup {
+        None => definition,
+        Some(assignment) => Statement::Block {
+            statements: vec![
+                Statement::Expression {
+                    expression: assignment,
+                    position,
+                },
+                definition,
+            ],
+            position,
+        },
     }
 }

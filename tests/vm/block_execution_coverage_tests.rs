@@ -164,3 +164,91 @@ end
 "#);
     assert_eq!(result, Some(Object::Int(103)));
 }
+
+// ── return from a block travels to the method that wrote the block ──────────
+
+#[test]
+fn return_in_a_block_leaves_the_method_that_created_it_not_the_yielding_one() {
+    let result = run(r#"
+class Walker
+  def each
+    yield 1
+    yield 2
+    yield 3
+    :walked_everything
+  end
+
+  def first_even
+    each do |value|
+      return value if value.even?
+    end
+    :none
+  end
+end
+Walker.new.first_even
+"#);
+    assert_eq!(result, Some(Object::Int(2)));
+}
+
+#[test]
+fn return_travels_through_several_yielding_methods() {
+    let result = run(r#"
+class Layers
+  def inner
+    yield :from_inner
+    :inner_finished
+  end
+
+  def outer
+    inner { |value| yield value }
+    :outer_finished
+  end
+
+  def answer
+    outer { |value| return value }
+    :never
+  end
+end
+Layers.new.answer
+"#);
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("from_inner".to_string())))
+    );
+}
+
+#[test]
+fn a_yielding_method_answers_normally_when_its_own_block_does_not_return() {
+    let result = run(r#"
+class Counter
+  def each
+    yield 1
+    yield 2
+    :finished
+  end
+end
+Counter.new.each { |value| value }
+"#);
+    assert_eq!(
+        result,
+        Some(Object::Symbol(std::rc::Rc::new("finished".to_string())))
+    );
+}
+
+// ── A return from a block whose method has already finished ─────────────────
+
+#[test]
+fn a_return_from_an_orphaned_proc_is_a_local_jump_error() {
+    let result = run(r#"
+def make_a_return
+  Proc.new { return 42 }
+end
+begin
+  make_a_return.call
+  :never
+rescue LocalJumpError => error
+  [error.exit_value, error.reason].inspect
+end
+"#);
+    assert_eq!(result, Some(Object::string("[42, :return]")));
+}

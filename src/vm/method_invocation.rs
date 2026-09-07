@@ -249,12 +249,60 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        // Hash.new (with or without default block) returns a native Dict.
-        if class.name() == "Hash" && arguments.is_empty() {
+        // `Hash.new`, `Hash.new(default)`, and `Hash.new { |hash, key| ... }`
+        // all answer a native Dict, with the default kept beside the entries.
+        if class.name() == "Hash" && arguments.len() <= 2 {
+            // `capacity:` only sizes the storage, so it is accepted and
+            // dropped. Any other keyword is refused the way Ruby refuses it.
+            let mut arguments = arguments;
+            if let Some(Object::Dict(entries)) = arguments.last() {
+                let named: Vec<String> = entries
+                    .borrow()
+                    .keys()
+                    .filter(|key| key.as_str() != crate::vm::param_binding::KWARGS_MARKER)
+                    .cloned()
+                    .collect();
+                if entries
+                    .borrow()
+                    .contains_key(crate::vm::param_binding::KWARGS_MARKER)
+                {
+                    if let Some(unknown) = named.iter().find(|key| key.as_str() != ":capacity") {
+                        let message = format!(
+                            "unknown keyword: {}",
+                            unknown.strip_prefix(':').unwrap_or(unknown)
+                        );
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    arguments.pop();
+                }
+            }
+            if arguments.len() > 1 {
+                return Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    "wrong number of arguments (given 2, expected 0..1)",
+                    position,
+                ));
+            }
             let block = self.pending_block.take();
+            // Ruby refuses a default value and a default block together,
+            // since a hash answers with one or the other.
+            if block.is_some() && !arguments.is_empty() {
+                return Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    "wrong number of arguments (given 1, expected 0)",
+                    position,
+                ));
+            }
             let mut map = indexmap::IndexMap::new();
             if let Some(block_obj) = block {
                 map.insert("__MX_DEFAULT_PROC__".to_string(), block_obj);
+            }
+            if let Some(default) = arguments.first() {
+                map.insert("__MX_DEFAULT__".to_string(), default.clone());
             }
             return Ok(Object::Dict(Rc::new(RefCell::new(map))));
         }
@@ -323,6 +371,51 @@ impl VirtualMachine {
             return Ok(Object::Instance(Rc::new(RefCell::new(instance))));
         }
 
+        // `Range.new(first, last, exclusive)` builds the same value a literal
+        // does. A subclass builds one too, since a Range is a primitive here
+        // rather than something a subclass can carry state on.
+        if descends_from(&class, "Range") && (2..=3).contains(&arguments.len()) {
+            self.pending_block.take();
+            return Ok(Object::Range {
+                start: Box::new(arguments[0].clone()),
+                end: Box::new(arguments[1].clone()),
+                exclusive: arguments.get(2).is_some_and(|flag| flag.is_truthy()),
+            });
+        }
+
+        // A subclass of Hash holds its entries in an instance variable, since
+        // a plain Hash is a primitive rather than an instance. The storage is
+        // in place before `initialize` runs, so `self[key] = value` inside it
+        // reaches the hash the instance is backed by.
+        if descends_from(&class, "Hash") && class.name() != "Hash" {
+            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            let mut entries = indexmap::IndexMap::new();
+            if let Some(block) = self.pending_block.take() {
+                entries.insert("__MX_DEFAULT_PROC__".to_string(), block);
+            }
+            if let Some(default) = arguments.first() {
+                entries.insert("__MX_DEFAULT__".to_string(), default.clone());
+            }
+            instance.set_var(
+                crate::vm::native_methods::HASH_SUBCLASS_VAR.to_string(),
+                Object::Dict(Rc::new(RefCell::new(entries))),
+            );
+            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            if let Some(initialize) = class.find_method("initialize")
+                && !initialize.is_undefined
+                && !initialize.body.is_empty()
+            {
+                self.invoke_method(
+                    Rc::clone(&class),
+                    initialize,
+                    object.clone(),
+                    arguments,
+                    position,
+                )?;
+            }
+            return Ok(object);
+        }
+
         // A subclass of Array holds its elements in an instance variable,
         // since a plain Array is a primitive rather than an instance. The
         // storage is in place before `initialize` runs, so `self << x` inside
@@ -350,6 +443,39 @@ impl VirtualMachine {
                         crate::vm::native_methods::array_subclass_value(&object)
                     {
                         *storage.borrow_mut() = elements;
+                    }
+                }
+            }
+            return Ok(object);
+        }
+
+        // A subclass of Set holds its elements in an instance variable, the
+        // same way an Array subclass holds its own.
+        if descends_from(&class, "Set") {
+            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.set_var(
+                crate::vm::native_methods::SET_SUBCLASS_VAR.to_string(),
+                Object::empty_set(),
+            );
+            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            match class.find_method("initialize") {
+                Some(initialize) if !initialize.is_undefined && !initialize.body.is_empty() => {
+                    self.invoke_method(
+                        Rc::clone(&class),
+                        initialize,
+                        object.clone(),
+                        arguments,
+                        position,
+                    )?;
+                }
+                _ => {
+                    let set_class = Rc::clone(&self.builtins().set_class);
+                    let built = self.call_class_methods(&set_class, "new", &arguments, position)?;
+                    if let (Some(Object::Set(storage)), Some(Object::Set(built))) = (
+                        crate::vm::native_methods::set_subclass_value(&object),
+                        built,
+                    ) {
+                        *storage.borrow_mut() = built.borrow().clone();
                     }
                 }
             }

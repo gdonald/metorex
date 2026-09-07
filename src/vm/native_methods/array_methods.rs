@@ -157,17 +157,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let other = match &arguments[0] {
-                    Object::Array(a) => a.borrow().clone(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Array",
-                            other,
-                            position,
-                        ));
-                    }
-                };
+                let other = self.coerce_to_array(&arguments[0], position)?;
                 let mut arr = array_rc.borrow_mut();
                 arr.clear();
                 arr.extend(other);
@@ -226,41 +216,10 @@ impl VirtualMachine {
                 drop(arr);
                 Ok(Some(receiver.clone()))
             }
-            "pop" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                Ok(Some(array_rc.borrow_mut().pop().unwrap_or(Object::Nil)))
-            }
-            "[]" => {
-                if arguments.len() == 2 {
-                    let (start, len) = match (&arguments[0], &arguments[1]) {
-                        (Object::Int(s), Object::Int(l)) => (*s, *l),
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Integer",
-                                &arguments[0],
-                                position,
-                            ));
-                        }
-                    };
-                    let array = array_rc.borrow();
-                    let total = array.len() as i64;
-                    let start_idx = if start < 0 { total + start } else { start };
-                    if start_idx < 0 || start_idx > total || len < 0 {
-                        return Ok(Some(Object::Nil));
-                    }
-                    let end_idx = (start_idx + len).min(total);
-                    let slice: Vec<Object> = array[start_idx as usize..end_idx as usize].to_vec();
-                    return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(slice)))));
-                }
-                if arguments.len() != 1 {
+            // `pop` and `shift` take an optional count, and then answer an
+            // array of what they removed rather than a single element.
+            "pop" | "shift" => {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
                         1,
@@ -268,11 +227,79 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(self.evaluate_index_operation(
-                    receiver.clone(),
-                    arguments[0].clone(),
-                    position,
-                )?))
+                let from_front = method_name == "shift";
+                let Some(count) = arguments.first() else {
+                    let mut array = array_rc.borrow_mut();
+                    if array.is_empty() {
+                        return Ok(Some(Object::Nil));
+                    }
+                    return Ok(Some(if from_front {
+                        array.remove(0)
+                    } else {
+                        array.pop().unwrap_or(Object::Nil)
+                    }));
+                };
+                let wanted: i64 = self
+                    .coerce_integer_argument(count, position)?
+                    .try_into()
+                    .unwrap_or(i64::MAX);
+                if wanted < 0 {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "negative array size",
+                        position,
+                    ));
+                }
+                let mut array = array_rc.borrow_mut();
+                let taken = (wanted as usize).min(array.len());
+                let kept = array.len() - taken;
+                let removed: Vec<Object> = if from_front {
+                    array.drain(..taken).collect()
+                } else {
+                    array.split_off(kept)
+                };
+                Ok(Some(Object::array(removed)))
+            }
+            "[]" | "slice" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let total = array_rc.borrow().len() as i64;
+                if arguments.len() == 2 {
+                    let start = self.machine_index(&arguments[0], total, position)?;
+                    let span = self.machine_index(&arguments[1], 0, position)?;
+                    let array = array_rc.borrow();
+                    if start < 0 || start > total || span < 0 {
+                        return Ok(Some(Object::Nil));
+                    }
+                    let end = start.saturating_add(span).min(total);
+                    return Ok(Some(Object::array(
+                        array[start as usize..end as usize].to_vec(),
+                    )));
+                }
+                // A Range slices, and each bound goes through `to_int` too.
+                if let Object::Range { .. } = &arguments[0] {
+                    let (start, span) = self.range_bounds(&arguments[0], total, position)?;
+                    if start < 0 || start > total {
+                        return Ok(Some(Object::Nil));
+                    }
+                    let array = array_rc.borrow();
+                    let end = start.saturating_add(span).min(total);
+                    return Ok(Some(Object::array(
+                        array[start as usize..end.max(start) as usize].to_vec(),
+                    )));
+                }
+                let index = self.machine_index(&arguments[0], total, position)?;
+                let array = array_rc.borrow();
+                if index < 0 || index >= total {
+                    return Ok(Some(Object::Nil));
+                }
+                Ok(Some(array[index as usize].clone()))
             }
             // `dig(index, *rest)` — index, then keep digging into the result.
             "dig" => {
@@ -334,6 +361,7 @@ impl VirtualMachine {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
                                 location: super::super::utils::position_to_location(position),
+                                home_frame: block.home_frame,
                             });
                         }
                         super::super::ControlFlow::Exception {
@@ -401,6 +429,7 @@ impl VirtualMachine {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
                                 location: super::super::utils::position_to_location(position),
+                                home_frame: block.home_frame,
                             });
                         }
                         super::super::ControlFlow::Exception {
@@ -507,6 +536,13 @@ impl VirtualMachine {
                 let inverted = method_name == "grep_v";
                 let pattern = arguments[0].clone();
                 let elements = array_rc.borrow().clone();
+                // Without a block the walk leaves the last match where it
+                // found it, so a `$~` set before the call still reads the
+                // same afterwards.
+                let saved_match = self
+                    .globals()
+                    .get(crate::vm::native_methods::LAST_MATCH)
+                    .unwrap_or(Object::Nil);
                 let mut results = Vec::new();
                 for element in elements {
                     let matched = self.evaluate_binary_operation(
@@ -523,18 +559,28 @@ impl VirtualMachine {
                         None => element,
                     });
                 }
+                if block.is_none() {
+                    self.globals_mut()
+                        .set(crate::vm::native_methods::LAST_MATCH, saved_match);
+                }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
             }
-            // The first element the block accepts, or nil.
+            // The first element the block accepts. When nothing matches, the
+            // ifnone argument is called for the answer, and a missing one
+            // makes it nil.
             "find" | "detect" => {
-                if !arguments.is_empty() {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        1,
                         arguments.len(),
                         position,
                     ));
                 }
+                let ifnone = match arguments.first() {
+                    Some(Object::Nil) | None => None,
+                    Some(other) => Some(other.clone()),
+                };
                 let block = match self.pending_block.take() {
                     Some(Object::Block(b)) => b,
                     Some(other) => {
@@ -559,7 +605,12 @@ impl VirtualMachine {
                         return Ok(Some(element));
                     }
                 }
-                Ok(Some(Object::Nil))
+                match ifnone {
+                    Some(ifnone) => self
+                        .send_to_object(ifnone, "call", vec![], position)
+                        .map(Some),
+                    None => Ok(Some(Object::Nil)),
+                }
             }
             "partition" => {
                 if !arguments.is_empty() {
@@ -604,55 +655,62 @@ impl VirtualMachine {
                     Object::Array(Rc::new(RefCell::new(falsy))),
                 ])))))
             }
-            "reduce" => {
-                if arguments.len() > 1 {
+            "inject" | "reduce" => {
+                if arguments.len() > 2 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        2,
                         arguments.len(),
                         position,
                     ));
                 }
                 let block = match self.pending_block.take() {
-                    Some(Object::Block(b)) => b,
-                    Some(other) => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Block",
-                            &other,
-                            position,
-                        ));
-                    }
-                    None => {
-                        return Err(MetorexError::runtime_error(
-                            "reduce requires a block",
-                            position_to_location(position),
-                        ));
-                    }
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
                 };
-                let array = array_rc.borrow();
-
-                let (initial_value, start_index) = if arguments.len() == 1 {
-                    (Some(arguments[0].clone()), 0)
-                } else {
-                    (None, 1)
+                // The last argument names an operator when there are two of
+                // them, or when there is one and no block. The rest is the
+                // starting value.
+                let names_operator =
+                    arguments.len() == 2 || (arguments.len() == 1 && block.is_none());
+                let operator = match arguments.last().filter(|_| names_operator) {
+                    Some(name) => Some(self.coerce_method_name(name, method_name, position)?),
+                    None => None,
                 };
-
-                if array.is_empty() {
-                    return Ok(Some(Object::Nil));
+                if operator.is_some() && arguments.len() == 2 && block.is_some() {
+                    let warning =
+                        format!("{}given block not used", self.warning_prefix(0, position));
+                    self.emit_warning_to_stderr(&warning, position);
                 }
-
-                let mut accumulator = if let Some(init) = initial_value {
-                    init
-                } else {
-                    array[0].clone()
-                };
-
-                for element in array.iter().skip(start_index) {
-                    let args = vec![accumulator.clone(), element.clone()];
-                    accumulator = self.execute_block_body(&block, args)?;
+                if operator.is_none() && block.is_none() {
+                    return Err(method_argument_error(method_name, 1, 0, position));
                 }
-                Ok(Some(accumulator))
+                let seeded = arguments.len() == 2 || (arguments.len() == 1 && operator.is_none());
+                let mut accumulator = if seeded {
+                    Some(arguments[0].clone())
+                } else {
+                    array_rc.borrow().first().cloned()
+                };
+                // The walk reads one element at a time, so a block that grows
+                // the array reaches what it added.
+                let mut index = if seeded { 0 } else { 1 };
+                loop {
+                    let Some(element) = array_rc.borrow().get(index).cloned() else {
+                        break;
+                    };
+                    index += 1;
+                    let carried = accumulator.clone().unwrap_or(Object::Nil);
+                    accumulator = Some(match (&operator, &block) {
+                        (Some(operator), _) => {
+                            self.send_to_object(carried, operator, vec![element], position)?
+                        }
+                        (None, Some(block)) => {
+                            self.execute_block_body(block, vec![carried, element])?
+                        }
+                        (None, None) => unreachable!("a block or an operator was required"),
+                    });
+                }
+                Ok(Some(accumulator.unwrap_or(Object::Nil)))
             }
             "zip" => {
                 if arguments.is_empty() {
@@ -663,24 +721,13 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let array = array_rc.borrow();
-
+                // Each argument is put through `to_ary`, and one that answers
+                // none is walked with `each` instead.
                 let mut other_arrays = Vec::new();
-                for arg in arguments {
-                    match arg {
-                        Object::Array(arr_rc) => {
-                            other_arrays.push(arr_rc.borrow().clone());
-                        }
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "Array",
-                                arg,
-                                position,
-                            ));
-                        }
-                    }
+                for argument in arguments {
+                    other_arrays.push(self.coerce_to_walkable(argument, position)?);
                 }
+                let array = array_rc.borrow();
 
                 let mut results = Vec::new();
                 for (i, element) in array.iter().enumerate() {
@@ -711,25 +758,30 @@ impl VirtualMachine {
                     return Ok(Some(Object::Array(Rc::new(RefCell::new(Vec::new())))));
                 }
 
+                let elements = array.clone();
+                drop(array);
+                // Each row goes through `to_ary`, so an object standing for an
+                // array transposes the way one does.
                 let mut row_arrays = Vec::new();
-                for element in array.iter() {
-                    match element {
-                        Object::Array(arr_rc) => {
-                            row_arrays.push(arr_rc.borrow().clone());
-                        }
-                        _ => {
-                            return Err(MetorexError::runtime_error(
-                                format!(
-                                    "transpose requires all elements to be arrays, found {}",
-                                    element.type_name()
-                                ),
-                                position_to_location(position),
-                            ));
-                        }
-                    }
+                for element in &elements {
+                    row_arrays.push(self.coerce_to_array(element, position)?);
                 }
 
-                let max_cols = row_arrays.iter().map(|row| row.len()).max().unwrap_or(0);
+                // Every row must be the same length, which Ruby reports as an
+                // IndexError naming the two it found.
+                let max_cols = row_arrays.first().map(|row| row.len()).unwrap_or(0);
+                if let Some(odd) = row_arrays.iter().find(|row| row.len() != max_cols) {
+                    let message = format!(
+                        "element size differs ({} should be {})",
+                        odd.len(),
+                        max_cols
+                    );
+                    return Err(crate::vm::errors::simple_exception(
+                        "IndexError",
+                        &message,
+                        position,
+                    ));
+                }
 
                 let mut transposed = Vec::new();
                 for col_idx in 0..max_cols {
@@ -757,22 +809,6 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(array_rc.borrow().len() as i64)))
             }
-            "shift" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let mut array = array_rc.borrow_mut();
-                if array.is_empty() {
-                    Ok(Some(Object::Nil))
-                } else {
-                    Ok(Some(array.remove(0)))
-                }
-            }
             "unshift" | "prepend" => {
                 // Ruby: unshift(*items) prepends all items in order, accepts 0+ args
                 let mut arr = array_rc.borrow_mut();
@@ -797,14 +833,9 @@ impl VirtualMachine {
                     Some(Object::Block(block)) => Some(block),
                     _ => None,
                 };
-                let mut sorted = array_rc.borrow().clone();
-                match block {
-                    None => sorted.sort_by(compare_for_sort),
-                    Some(block) => {
-                        sorted = self.sort_with_block(sorted, &block, position)?;
-                    }
-                }
-                Ok(Some(Object::Array(Rc::new(RefCell::new(sorted)))))
+                let elements = array_rc.borrow().clone();
+                let sorted = self.sort_elements(elements, block, position)?;
+                Ok(Some(Object::array(sorted)))
             }
             "sort_by" => {
                 if !arguments.is_empty() {
@@ -868,6 +899,8 @@ impl VirtualMachine {
                 } else {
                     match &arguments[0] {
                         Object::String(s) => s.as_ref().clone(),
+                        // A nil separator joins with nothing between.
+                        Object::Nil => String::new(),
                         _ => {
                             return Err(method_argument_type_error(
                                 method_name,
@@ -878,63 +911,17 @@ impl VirtualMachine {
                         }
                     }
                 };
+                // Each element joins as its `to_s`, so a Symbol contributes
+                // the name it is spelled with rather than the leading colon.
                 let parts: Vec<String> = array_rc
                     .borrow()
                     .iter()
-                    .map(|obj| format!("{obj}"))
+                    .map(|element| match element {
+                        Object::Symbol(name) => (**name).clone(),
+                        other => format!("{other}"),
+                    })
                     .collect();
                 Ok(Some(Object::string(parts.join(&sep))))
-            }
-            "inject" => {
-                // inject is an alias for reduce
-                if arguments.len() > 1 {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let block = match self.pending_block.take() {
-                    Some(Object::Block(b)) => b,
-                    Some(other) => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Block",
-                            &other,
-                            position,
-                        ));
-                    }
-                    None => {
-                        return Err(MetorexError::runtime_error(
-                            "inject requires a block",
-                            position_to_location(position),
-                        ));
-                    }
-                };
-                let array = array_rc.borrow();
-
-                let (initial_value, start_index) = if arguments.len() == 1 {
-                    (Some(arguments[0].clone()), 0)
-                } else {
-                    (None, 1)
-                };
-
-                if array.is_empty() {
-                    return Ok(Some(initial_value.unwrap_or(Object::Nil)));
-                }
-
-                let mut accumulator = if let Some(init) = initial_value {
-                    init
-                } else {
-                    array[0].clone()
-                };
-
-                for element in array.iter().skip(start_index) {
-                    let args = vec![accumulator.clone(), element.clone()];
-                    accumulator = self.execute_block_body(&block, args)?;
-                }
-                Ok(Some(accumulator))
             }
             "dup" | "clone" => {
                 if !arguments.is_empty() {
@@ -1034,7 +1021,15 @@ impl VirtualMachine {
                     return Ok(Some(element.cloned().unwrap_or(Object::Nil)));
                 };
                 let count = self.coerce_integer_argument(argument, position)?;
-                let count = i64::try_from(&count).unwrap_or(i64::MAX);
+                // A count too large for a machine word is a RangeError, which
+                // is what Ruby raises before it looks at the array at all.
+                let Ok(count) = i64::try_from(&count) else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        "bignum too big to convert into `long'",
+                        position,
+                    ));
+                };
                 if count < 0 {
                     return Err(crate::vm::errors::simple_exception(
                         "ArgumentError",
@@ -1235,15 +1230,48 @@ impl VirtualMachine {
             }
             // `values_at` reads several positions at once, answering nil for
             // one the array does not reach.
+            // `values_at` takes indexes and Ranges, answering nil for a
+            // position the array has no element at.
             "values_at" => {
                 let array = array_rc.borrow().clone();
                 let length = array.len() as i64;
                 let mut picked = Vec::new();
                 for argument in arguments {
-                    match normalize_index(argument, length) {
-                        Some(index) => picked.push(array[index].clone()),
-                        None => picked.push(Object::Nil),
+                    if let Object::Range {
+                        start,
+                        end,
+                        exclusive,
+                    } = argument
+                    {
+                        let first = match start.as_ref() {
+                            Object::Nil => 0,
+                            bound => self.index_from(bound, length, position)?,
+                        };
+                        // A start before the front names nothing. A start past
+                        // the end still fills nil for every position the range
+                        // covers, which is what Ruby answers.
+                        if first < 0 {
+                            continue;
+                        }
+                        let last = match end.as_ref() {
+                            Object::Nil => length - 1,
+                            bound => {
+                                let resolved = self.index_from(bound, length, position)?;
+                                if *exclusive { resolved - 1 } else { resolved }
+                            }
+                        };
+                        for index in first..=last.max(first - 1) {
+                            picked.push(array.get(index as usize).cloned().unwrap_or(Object::Nil));
+                        }
+                        continue;
                     }
+                    let index = self.index_from(argument, length, position)?;
+                    picked.push(
+                        usize::try_from(index)
+                            .ok()
+                            .and_then(|index| array.get(index).cloned())
+                            .unwrap_or(Object::Nil),
+                    );
                 }
                 Ok(Some(Object::array(picked)))
             }
@@ -1287,20 +1315,33 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // The row's own element is asked `==`, so an object of the
+                // program's own answers, and the row itself comes back rather
+                // than a copy of it.
                 let slot = usize::from(method_name == "rassoc");
-                let found = array_rc.borrow().iter().find_map(|element| {
-                    let Object::Array(pair) = element else {
-                        return None;
+                let rows = array_rc.borrow().clone();
+                for element in rows {
+                    // A row that is not an Array is asked for one, and what it
+                    // answers is what comes back when it matches.
+                    let row = match &element {
+                        Object::Array(_) => element.clone(),
+                        other if self.responds_to(other, "to_ary") => {
+                            self.send_to_object(other.clone(), "to_ary", vec![], position)?
+                        }
+                        _ => continue,
                     };
-                    let pair = pair.borrow();
-                    match pair.get(slot) {
-                        Some(candidate) if candidate.equals(&arguments[0]) => Some(Object::Array(
-                            std::rc::Rc::new(std::cell::RefCell::new(pair.clone())),
-                        )),
-                        _ => None,
+                    let Object::Array(pair) = &row else {
+                        continue;
+                    };
+                    let candidate = pair.borrow().get(slot).cloned();
+                    let Some(candidate) = candidate else {
+                        continue;
+                    };
+                    if self.elements_equal(&candidate, &arguments[0], position)? {
+                        return Ok(Some(row));
                     }
-                });
-                Ok(Some(found.unwrap_or(Object::Nil)))
+                }
+                Ok(Some(Object::Nil))
             }
             // The array is read a position at a time rather than held open,
             // since the block or the `==` it runs may change it.
@@ -1401,13 +1442,17 @@ impl VirtualMachine {
                         _ => Object::Nil,
                     }));
                 }
+                let wants_min = matches!(method_name, "min" | "minmax");
+                let wants_max = matches!(method_name, "max" | "minmax");
                 let mut smallest = elements[0].clone();
                 let mut largest = elements[0].clone();
                 for element in &elements[1..] {
-                    if self.compare_elements(element, &smallest, &block, position)? < 0 {
+                    if wants_min && self.compare_elements(element, &smallest, &block, position)? < 0
+                    {
                         smallest = element.clone();
                     }
-                    if self.compare_elements(element, &largest, &block, position)? > 0 {
+                    if wants_max && self.compare_elements(element, &largest, &block, position)? > 0
+                    {
                         largest = element.clone();
                     }
                 }
@@ -1485,6 +1530,290 @@ impl VirtualMachine {
                 }
                 let rest = array_rc.borrow()[index.min(array_rc.borrow().len())..].to_vec();
                 Ok(Some(Object::array(rest)))
+            }
+            // `union`, `intersection`, and `difference` fold the matching
+            // operator over every argument, so each one is coerced and matched
+            // the same way `|`, `&`, and `-` are.
+            "union" | "intersection" | "difference" => {
+                let operator = match method_name {
+                    "union" => crate::ast::BinaryOp::BitwiseOr,
+                    "intersection" => crate::ast::BinaryOp::BitwiseAnd,
+                    _ => crate::ast::BinaryOp::Subtract,
+                };
+                // With no arguments each answers a copy, which for `union` and
+                // `intersection` has its duplicates dropped.
+                let mut folded = if arguments.is_empty() && method_name != "difference" {
+                    let elements = array_rc.borrow().clone();
+                    let mut unique = Vec::new();
+                    for element in &elements {
+                        if !self.contains_eql(&unique, element, position)? {
+                            unique.push(element.clone());
+                        }
+                    }
+                    Object::array(unique)
+                } else {
+                    Object::array(array_rc.borrow().clone())
+                };
+                for argument in arguments {
+                    folded = self.evaluate_binary_operation(
+                        &operator,
+                        folded,
+                        argument.clone(),
+                        position,
+                    )?;
+                }
+                Ok(Some(folded))
+            }
+            // `fetch(index)` raises when the index names no element, unless a
+            // default value or a block says what to answer instead.
+            "fetch" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // The block is set aside first, since coercing the index runs
+                // `to_int` on an object of the program's own, which would
+                // otherwise take the block for itself.
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let index: i64 = self
+                    .coerce_integer_argument(&arguments[0], position)?
+                    .try_into()
+                    .unwrap_or(i64::MAX);
+                let length = array_rc.borrow().len() as i64;
+                let resolved = if index < 0 { index + length } else { index };
+                if resolved >= 0 && resolved < length {
+                    if block.is_some() {
+                        self.pending_block = None;
+                        let file = self
+                            .current_source_file
+                            .clone()
+                            .unwrap_or_else(|| "-".to_string());
+                        let message = format!(
+                            "{}:{}: warning: given block not used\n",
+                            file, position.line
+                        );
+                        self.warn_through_warning_module(message, position)?;
+                    }
+                    return Ok(Some(array_rc.borrow()[resolved as usize].clone()));
+                }
+                // A block wins over a default value, and Ruby says so.
+                if let Some(block) = block {
+                    if arguments.len() == 2 {
+                        let file = self
+                            .current_source_file
+                            .clone()
+                            .unwrap_or_else(|| "-".to_string());
+                        let message = format!(
+                            "{}:{}: warning: block supersedes default value argument\n",
+                            file, position.line
+                        );
+                        self.warn_through_warning_module(message, position)?;
+                    }
+                    return self
+                        .execute_block_callable(&block, vec![arguments[0].clone()], position)
+                        .map(Some);
+                }
+                if let Some(fallback) = arguments.get(1) {
+                    return Ok(Some(fallback.clone()));
+                }
+                let message = format!(
+                    "index {} outside of array bounds: {}...{}",
+                    index, -length, length
+                );
+                Err(crate::vm::errors::simple_exception(
+                    "IndexError",
+                    &message,
+                    position,
+                ))
+            }
+            // `fetch_values(*indexes)` fetches each one, so a missing index
+            // raises unless the block says what to answer for it.
+            "fetch_values" => {
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let mut fetched = Vec::with_capacity(arguments.len());
+                for wanted in arguments {
+                    let index: i64 = self
+                        .coerce_integer_argument(wanted, position)?
+                        .try_into()
+                        .unwrap_or(i64::MAX);
+                    let length = array_rc.borrow().len() as i64;
+                    let resolved = if index < 0 { index + length } else { index };
+                    if resolved >= 0 && resolved < length {
+                        fetched.push(array_rc.borrow()[resolved as usize].clone());
+                        continue;
+                    }
+                    let Some(block) = &block else {
+                        let message = format!(
+                            "index {} outside of array bounds: {}...{}",
+                            index, -length, length
+                        );
+                        return Err(crate::vm::errors::simple_exception(
+                            "IndexError",
+                            &message,
+                            position,
+                        ));
+                    };
+                    let block = Rc::clone(block);
+                    fetched.push(self.execute_block_callable(
+                        &block,
+                        vec![wanted.clone()],
+                        position,
+                    )?);
+                }
+                Ok(Some(Object::array(fetched)))
+            }
+            // `insert(index, *objects)` puts the objects before the element at
+            // a non-negative index and after it for a negative one, padding
+            // with nil when the index is past the end.
+            "insert" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                }
+                if arguments.len() == 1 {
+                    return Ok(Some(receiver.clone()));
+                }
+                let index: i64 = self
+                    .coerce_integer_argument(&arguments[0], position)?
+                    .try_into()
+                    .unwrap_or(i64::MAX);
+                let mut array = array_rc.borrow_mut();
+                let length = array.len() as i64;
+                let at = if index < 0 { index + length + 1 } else { index };
+                if at < 0 {
+                    let message = format!(
+                        "index {} too small for array; minimum: {}",
+                        index,
+                        -length - 1
+                    );
+                    return Err(crate::vm::errors::simple_exception(
+                        "IndexError",
+                        &message,
+                        position,
+                    ));
+                }
+                while (array.len() as i64) < at {
+                    array.push(Object::Nil);
+                }
+                for (offset, value) in arguments[1..].iter().enumerate() {
+                    array.insert(at as usize + offset, value.clone());
+                }
+                drop(array);
+                Ok(Some(receiver.clone()))
+            }
+            // `[]=` in its three forms: one index, a start and a length, and
+            // a Range. The span forms splice, and a value that is an Array
+            // contributes its elements.
+            "[]=" => {
+                if arguments.len() < 2 || arguments.len() > 3 {
+                    return Err(method_argument_error(
+                        method_name,
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let value = arguments[arguments.len() - 1].clone();
+                let length = array_rc.borrow().len() as i64;
+                // A Range start before the front is a RangeError, while the
+                // other forms report an IndexError.
+                let out_of_range_error =
+                    if arguments.len() == 2 && matches!(&arguments[0], Object::Range { .. }) {
+                        "RangeError"
+                    } else {
+                        "IndexError"
+                    };
+                let (start, span) = if arguments.len() == 3 {
+                    let start = self.index_from(&arguments[0], length, position)?;
+                    let span: i64 = self
+                        .coerce_integer_argument(&arguments[1], position)?
+                        .try_into()
+                        .unwrap_or(i64::MAX);
+                    if span < 0 {
+                        let message = format!("negative length ({})", span);
+                        return Err(crate::vm::errors::simple_exception(
+                            "IndexError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    (start, Some(span))
+                } else if let Object::Range { .. } = &arguments[0] {
+                    let (start, span) = self.range_bounds(&arguments[0], length, position)?;
+                    (start, Some(span))
+                } else {
+                    (self.index_from(&arguments[0], length, position)?, None)
+                };
+                if start < 0 {
+                    let message = format!(
+                        "index {} too small for array; minimum: {}",
+                        start - length,
+                        -length
+                    );
+                    return Err(crate::vm::errors::simple_exception(
+                        out_of_range_error,
+                        &message,
+                        position,
+                    ));
+                }
+                // The replacement is read before the array is borrowed for
+                // writing, since `a[0, 2] = a` names the same array on both
+                // sides.
+                // A span is filled with the elements of an Array, or with the
+                // one value anything else stands for. An object that answers
+                // `to_ary` contributes its elements too, while an instance of
+                // an Array subclass is taken as the array it already is.
+                let replacement = match &span {
+                    None => Vec::new(),
+                    Some(_) => match &value {
+                        Object::Array(elements) => elements.borrow().clone(),
+                        other => match crate::vm::native_methods::array_subclass_value(other) {
+                            Some(Object::Array(elements)) => elements.borrow().clone(),
+                            _ if self.responds_to(other, "to_ary") => {
+                                match self.send_to_object(
+                                    other.clone(),
+                                    "to_ary",
+                                    vec![],
+                                    position,
+                                )? {
+                                    Object::Array(elements) => elements.borrow().clone(),
+                                    converted => vec![converted],
+                                }
+                            }
+                            _ => vec![other.clone()],
+                        },
+                    },
+                };
+                let mut array = array_rc.borrow_mut();
+                while (array.len() as i64) < start {
+                    array.push(Object::Nil);
+                }
+                match span {
+                    None => {
+                        let at = start as usize;
+                        if at < array.len() {
+                            array[at] = value.clone();
+                        } else {
+                            array.push(value.clone());
+                        }
+                    }
+                    Some(span) => {
+                        let at = start as usize;
+                        let taken = (span as usize).min(array.len().saturating_sub(at));
+                        array.splice(at..at + taken, replacement);
+                    }
+                }
+                drop(array);
+                Ok(Some(value))
             }
             // `at` is `[]` with a single index, and nothing else.
             "at" => {
@@ -1654,6 +1983,57 @@ impl VirtualMachine {
                 }
                 Ok(Some(receiver.clone()))
             }
+            // `to_set` collects the elements into a Set, passing each through
+            // the block first when one is given.
+            "to_set" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // A class given as the first argument builds the set instead
+                // of Set itself, which Ruby warns about.
+                let set_class = match arguments.first() {
+                    Some(named @ Object::Class(_)) => {
+                        let file = self
+                            .current_source_file
+                            .clone()
+                            .unwrap_or_else(|| "-".to_string());
+                        let message = format!(
+                            "{}:{}: warning: passing arguments to Enumerable#to_set is deprecated\n",
+                            file, position.line
+                        );
+                        self.warn_through_warning_module(message, position)?;
+                        Some(named.clone())
+                    }
+                    _ => None,
+                };
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                let mut collected = Vec::new();
+                for element in array_rc.borrow().clone() {
+                    collected.push(match &block {
+                        None => element,
+                        Some(block) => {
+                            self.execute_block_callable(block, vec![element], position)?
+                        }
+                    });
+                }
+                let set_class = match set_class {
+                    Some(named) => named,
+                    None => match self.globals().get("Set") {
+                        Some(found) => found,
+                        None => return Ok(None),
+                    },
+                };
+                self.send_to_object(set_class, "new", vec![Object::array(collected)], position)
+                    .map(Some)
+            }
             // The in-place variants. Each writes the new elements back into
             // the receiver; the ones Ruby documents as answering nil when
             // nothing changed do so here too.
@@ -1705,11 +2085,8 @@ impl VirtualMachine {
                     Some(Object::Block(block)) => Some(block),
                     _ => None,
                 };
-                let mut sorted = array_rc.borrow().clone();
-                match block {
-                    None => sorted.sort_by(compare_for_sort),
-                    Some(block) => sorted = self.sort_with_block(sorted, &block, position)?,
-                }
+                let elements = array_rc.borrow().clone();
+                let sorted = self.sort_elements(elements, block, position)?;
                 *array_rc.borrow_mut() = sorted;
                 Ok(Some(receiver.clone()))
             }
@@ -1953,6 +2330,29 @@ impl VirtualMachine {
         Ok(survived)
     }
 
+    /// Sort by insertion, ordering each pair with the block when one is given
+    /// and with `<=>` otherwise. Insertion keeps the comparisons in the order
+    /// Ruby makes them, which a block that records them can observe.
+    fn sort_elements(
+        &mut self,
+        elements: Vec<Object>,
+        block: Option<Rc<crate::object::BlockStatement>>,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        let mut sorted: Vec<Object> = Vec::with_capacity(elements.len());
+        for element in elements {
+            let mut place = sorted.len();
+            for (index, other) in sorted.clone().into_iter().enumerate() {
+                if self.compare_elements(&element, &other, &block, position)? < 0 {
+                    place = index;
+                    break;
+                }
+            }
+            sorted.insert(place, element);
+        }
+        Ok(sorted)
+    }
+
     /// Order two elements with `<=>`, or with the block when one is given.
     /// A comparison that answers nil is an ArgumentError, which is what Ruby
     /// raises when the two cannot be ordered.
@@ -1967,23 +2367,37 @@ impl VirtualMachine {
             Some(block) => {
                 self.execute_block_callable(block, vec![left.clone(), right.clone()], position)?
             }
-            None => self.send_to_object(left.clone(), "<=>", vec![right.clone()], position)?,
+            None => {
+                // A class with no `<=>` at all cannot be ordered, and Ruby
+                // reports the missing method rather than a failed comparison.
+                if matches!(left, Object::Instance(_)) && !self.responds_to(left, "<=>") {
+                    return Err(crate::vm::errors::undefined_method_error(
+                        "<=>",
+                        left,
+                        std::slice::from_ref(right),
+                        position,
+                    ));
+                }
+                self.send_to_object(left.clone(), "<=>", vec![right.clone()], position)?
+            }
         };
         match answer {
             Object::Int(order) => Ok(order),
             Object::Float(order) => Ok(order as i64),
-            _ => {
-                let message = format!(
-                    "comparison of {} with {} failed",
-                    self.builtins().class_of(left).ruby_name(),
-                    self.builtins().class_of(right).ruby_name()
-                );
-                Err(crate::vm::errors::simple_exception(
-                    "ArgumentError",
-                    &message,
-                    position,
-                ))
+            // A bignum answers only by its sign, and an object of the
+            // program's own is asked how it compares to zero, which is what
+            // Ruby reduces a block result to.
+            Object::BigInt(ref value) => {
+                Ok(num_bigint::BigInt::from(0).cmp(value).reverse() as i64)
             }
+            Object::Instance(_) => {
+                match self.send_to_object(answer.clone(), "<=>", vec![Object::Int(0)], position)? {
+                    Object::Int(order) => Ok(order),
+                    Object::Float(order) => Ok(order as i64),
+                    _ => Err(comparison_failed(left, right, position)),
+                }
+            }
+            _ => Err(comparison_failed(left, right, position)),
         }
     }
 
@@ -2133,52 +2547,122 @@ impl VirtualMachine {
     }
 }
 
-impl VirtualMachine {
-    /// Sort by what a block answers for each pair, which is an insertion sort
-    /// so the comparisons run in the order Ruby makes them.
-    pub(crate) fn sort_with_block(
-        &mut self,
-        elements: Vec<Object>,
-        block: &Rc<crate::object::BlockStatement>,
-        position: Position,
-    ) -> Result<Vec<Object>, MetorexError> {
-        let mut sorted: Vec<Object> = Vec::with_capacity(elements.len());
-        for element in elements {
-            let mut place = sorted.len();
-            for (index, other) in sorted.clone().into_iter().enumerate() {
-                let answer =
-                    self.execute_block_body(block, vec![element.clone(), other.clone()])?;
-                let order = match answer {
-                    Object::Int(order) => order,
-                    Object::Float(order) => order as i64,
-                    Object::Nil => {
-                        let message = format!(
-                            "comparison of {} with {} failed",
-                            self.builtins().class_of(&element).name(),
-                            self.builtins().class_of(&other).name()
-                        );
-                        return Err(crate::vm::errors::simple_exception(
-                            "ArgumentError",
-                            &message,
-                            position,
-                        ));
-                    }
-                    _ => 0,
-                };
-                if order < 0 {
-                    place = index;
-                    break;
-                }
-            }
-            sorted.insert(place, element);
-        }
-        Ok(sorted)
-    }
-}
+impl VirtualMachine {}
 
 impl VirtualMachine {
     /// The elements of an argument that stands for an array: one as it is, and
     /// anything else through `to_ary`.
+    /// One index that must fit a machine word, counted from the end when
+    /// negative. A value too large for one is a RangeError, which is what
+    /// Ruby raises before it looks at the array.
+    fn machine_index(
+        &mut self,
+        value: &Object,
+        length: i64,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let index = match value {
+            Object::Int(index) => *index,
+            Object::Float(index) => *index as i64,
+            other => {
+                let wide = self.coerce_integer_argument(other, position)?;
+                let Ok(index) = i64::try_from(&wide) else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        "bignum too big to convert into `long'",
+                        position,
+                    ));
+                };
+                index
+            }
+        };
+        Ok(if index < 0 { index + length } else { index })
+    }
+
+    /// The start and length a Range names over `length` elements, with a
+    /// negative bound counted from the end.
+    fn range_bounds(
+        &mut self,
+        range: &Object,
+        length: i64,
+        position: Position,
+    ) -> Result<(i64, i64), MetorexError> {
+        let Object::Range {
+            start,
+            end,
+            exclusive,
+        } = range
+        else {
+            return Ok((0, 0));
+        };
+        let first = match start.as_ref() {
+            Object::Nil => 0,
+            bound => self.machine_index(bound, length, position)?,
+        };
+        let last = match end.as_ref() {
+            Object::Nil => length - 1,
+            bound => {
+                let resolved = self.machine_index(bound, length, position)?;
+                if *exclusive { resolved - 1 } else { resolved }
+            }
+        };
+        Ok((first, last.saturating_sub(first).saturating_add(1).max(0)))
+    }
+
+    /// One index into an array of `length` elements, counted from the end when
+    /// negative and coerced through `to_int` when it is not already an
+    /// Integer.
+    fn index_from(
+        &mut self,
+        value: &Object,
+        length: i64,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let index: i64 = match value {
+            Object::Int(index) => *index,
+            Object::Float(index) => *index as i64,
+            other => self
+                .coerce_integer_argument(other, position)?
+                .try_into()
+                .unwrap_or(i64::MAX),
+        };
+        Ok(if index < 0 { index + length } else { index })
+    }
+
+    /// The elements an argument to `zip` stands for: an Array, something that
+    /// answers `to_ary`, or failing that anything that can be walked with
+    /// `each`. An object with neither is refused the way Ruby refuses it.
+    fn coerce_to_walkable(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        if let Object::Array(elements) = value {
+            return Ok(elements.borrow().clone());
+        }
+        if self.responds_to(value, "to_ary")
+            && let Object::Array(elements) =
+                self.send_to_object(value.clone(), "to_ary", vec![], position)?
+        {
+            return Ok(elements.borrow().clone());
+        }
+        if self.responds_to(value, "each") {
+            let collected = self.send_to_object(value.clone(), "to_a", vec![], position)?;
+            if let Object::Array(elements) = collected {
+                return Ok(elements.borrow().clone());
+            }
+        }
+        let message = format!(
+            "wrong argument type {} (must respond to :each)",
+            self.builtins().class_of(value).ruby_name()
+        );
+        Err(crate::vm::errors::simple_exception(
+            "TypeError",
+            &message,
+            position,
+        ))
+    }
+
     pub(crate) fn coerce_to_array(
         &mut self,
         value: &Object,
@@ -2255,6 +2739,22 @@ fn rotate_elements(elements: &[Object], by: i64) -> Vec<Object> {
     let mut rotated = elements[offset..].to_vec();
     rotated.extend_from_slice(&elements[..offset]);
     rotated
+}
+
+/// The ArgumentError Ruby raises when two values cannot be ordered.
+fn comparison_failed(left: &Object, right: &Object, position: Position) -> MetorexError {
+    // An instance reports its own class; every other kind reports the class
+    // Ruby names it with, which `class_of` does not know for true and nil.
+    let name_of = |value: &Object| match value {
+        Object::Instance(instance) => instance.borrow().class.ruby_name(),
+        other => crate::vm::native_methods::define_method::ruby_class_name(other).to_string(),
+    };
+    let message = format!(
+        "comparison of {} with {} failed",
+        name_of(left),
+        name_of(right)
+    );
+    crate::vm::errors::simple_exception("ArgumentError", &message, position)
 }
 
 /// One element of an array, read without holding a borrow, so the block a

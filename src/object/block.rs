@@ -16,6 +16,12 @@ use super::Object;
 /// trailing comma is what tells Ruby to destructure a single array argument,
 /// so it has to survive parsing; it never binds a name.
 pub const TRAILING_COMMA_PARAM: &str = ",";
+/// Marks a `|(a, b)|` group, whose names follow separated by commas. One
+/// array argument spreads across them.
+pub const DESTRUCTURED_GROUP_PREFIX: &str = "(";
+/// Marks a `|name:|` keyword parameter, which takes its value from the
+/// keyword arguments rather than by position.
+pub const KEYWORD_PARAM_PREFIX: &str = ":";
 
 /// Block/lambda/closure with captured variables
 #[derive(Debug, Clone)]
@@ -45,6 +51,10 @@ pub struct BlockStatement {
     /// The file the block was written in, which a backtrace entry for a call
     /// made from its body has to name.
     pub source_file: Option<String>,
+    /// The method invocation this block was written inside. A `return` in the
+    /// body unwinds to that invocation, however many other methods the block
+    /// travels through first. None for a block created outside any method.
+    pub home_frame: Option<u64>,
 }
 
 /// Two blocks are the same when they were written the same way. The captured
@@ -76,6 +86,7 @@ impl BlockStatement {
             defining_method: None,
             is_lambda: false,
             source_file: None,
+            home_frame: None,
         }
     }
 
@@ -100,6 +111,7 @@ impl BlockStatement {
             defining_method,
             is_lambda,
             source_file: None,
+            home_frame: None,
         }
     }
 
@@ -112,6 +124,11 @@ impl BlockStatement {
     /// a block does when it declares more than one of them or when its
     /// parameter list ended in a comma.
     pub fn destructures_single_array(&self) -> bool {
+        // A lambda takes its arguments the way a method does, so a lone array
+        // stays one argument rather than spreading across the parameters.
+        if self.is_lambda {
+            return false;
+        }
         if self
             .parameters
             .iter()
@@ -121,7 +138,7 @@ impl BlockStatement {
         }
         self.parameters
             .iter()
-            .filter(|name| !name.starts_with('&'))
+            .filter(|name| !name.starts_with('&') && !name.starts_with(KEYWORD_PARAM_PREFIX))
             .count()
             > 1
     }

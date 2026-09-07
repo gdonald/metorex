@@ -33,6 +33,11 @@ impl<'a> Lexer<'a> {
         Some(ch)
     }
 
+    /// Put a character back so the next `peek` and `advance` see it again.
+    pub(super) fn push_back(&mut self, letter: char) {
+        self.prepend.push(letter);
+    }
+
     /// Peek at the next character without consuming it
     pub(super) fn peek(&mut self) -> Option<char> {
         if let Some(&c) = self.prepend.last() {

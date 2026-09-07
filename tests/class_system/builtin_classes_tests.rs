@@ -287,8 +287,9 @@ fn test_all_classes() {
     let builtins = BuiltinClasses::new();
     let all = builtins.all_classes();
 
-    assert_eq!(all.len(), 25);
+    assert_eq!(all.len(), 26);
     assert!(all.contains_key("Dir"));
+    assert!(all.contains_key("Regexp"));
     assert!(all.contains_key("BasicObject"));
     assert!(all.contains_key("Object"));
     assert!(all.contains_key("String"));

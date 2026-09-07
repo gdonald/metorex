@@ -33,6 +33,119 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Struct**: `Struct.new` builds member classes with accessors, `[]`/`[]=`, `to_a`, `to_h`, `each`, `each_pair`, `dig`, `values_at`, and value equality, with `keyword_init:` and a class-body block
 - **Struct members and Enumerable**: a member accessor wins over Struct's own `length`, `size`, `members`, and `to_a`, member values stay out of `instance_variables`, `each`/`each_pair`/`select`/`filter` answer an Enumerator without a block, and Struct mixes in Enumerable
 - **Struct pattern matching and conversion**: `deconstruct_keys` takes member names, positions, and `to_int` keys, `to_h` accepts a block that returns `[key, value]` pairs, `values_at` takes Ranges, `keyword_init?` reports how the class was built, and writers raise FrozenError on a frozen struct
+- **Enumerable**: a class that defines `each` and includes Enumerable answers `to_a`, `entries`, `map`, `select`, `filter`, `find_all`, `reject`, `partition`, `group_by`, `sort`, `sort_by`, `min`, `max`, `minmax`, `min_by`, `max_by`, `minmax_by`, `include?`, `member?`, `take`, `first`, `each_with_index`, `each_entry`, `reverse_each`, `filter_map`, `compact`, `inject`, and the rest of the walk
+- **Enumerable argument forms**: `min(n)` and `max(n)` answer the n smallest or largest, `min_by(n)` and `max_by(n)` do the same by the block's value, `find` and `detect` take an ifnone callable, and `take` coerces its count through `to_int`
+- **Enumerable enumerators**: a method called without its block answers an Enumerator whose `size` is the receiver's own, and an `each` that yields several values at once hands the block one packed array
+- **Non-local return**: `return` inside a block leaves the method that wrote the block, however many yielding methods it travels through first
+- **Splatted super arguments**: `super(*list)` spreads the array across the parent's parameters, and mixes with plain arguments as `super(0, *rest)`
+- **Enumerable predicates**: `all?`, `any?`, `none?`, `one?`, `count`, and `find_index` take a pattern matched with `===`, which stands in for a block and warns that the block went unused, and more than one argument is an ArgumentError
+- **Enumerable batching and counting**: `each_slice` and `each_cons` coerce their width through `to_int` and report the batch count on the Enumerator they answer, `tally` counts into a Hash given as an argument, `zip` reaches an argument through `to_ary` or `to_enum`, and `flat_map` flattens one level through `to_ary`
+- **Enumerable counts and sums**: `take`, `drop`, and `first` coerce a count through `to_int` and raise TypeError, ArgumentError, or RangeError for one they cannot use, `find` and `detect` take an ifnone callable, and `sum` adds floats with Kahan-Babuska compensation
+- **break through a walk**: `break` in a block leaves the method the block was handed, so `take_while { break :stopped }` answers `:stopped` even when the walk runs through several yielding methods
+- **NilClass, TrueClass, and FalseClass**: `nil`, `true`, and `false` answer to their own classes, so `NilClass === nil` and `true.is_a?(TrueClass)` hold
+- **Optional parameters before a splat**: `def each(arg = :default, *rest)` binds the default when the call does not reach the parameter
+- **Enumerator#each with a block**: walking with a block runs the method the Enumerator was cut from and answers what that method answers
+- **Enumerable#inject and #reduce**: fold through a block or through an operator named by a Symbol, a String, or an object answering `to_str`, with the starting value optional, a warning when a block goes unused beside an operator, and an ArgumentError when neither is given
+- **inject over a growing Array**: the walk reads one element at a time, so a block that appends to the array reaches what it added
+- **Enumerable#grep and #grep_v**: the elements a pattern matches with `===`, or the ones it does not, passed through the block when one is given
+- **Enumerator::Lazy**: `lazy` answers a walk that applies `map`, `select`, `filter`, `find_all`, `reject`, `filter_map`, `flat_map`, `collect_concat`, `compact`, `take`, `take_while`, `drop`, `drop_while`, `grep`, `grep_v`, `uniq`, `with_index`, and `zip` one element at a time, so a source with no end still answers `first` and `force`
+- **Lazy sizes**: a step that keeps every element reports the source's size, `take` and `drop` report what the count leaves, and a step that decides what to keep reports nil
+- **Lazy grouping**: `chunk`, `chunk_while`, `slice_when`, `slice_before`, and `slice_after` cut runs as the walk goes, and the same methods on Enumerable answer an Enumerator over the runs
+- **Enumerator::Chain**: `chain` and `+` build a walk over several collections in order, reporting the sum of their sizes and answering nil or Infinity for the first part of such a size
+- **Array pickings**: `combination`, `permutation`, `repeated_combination`, and `repeated_permutation` yield each group of a given length and answer the array itself, or an Enumerator reporting how many groups there are
+- **Array#product**: the rows drawn one element from each list, reaching an argument through `to_ary` and refusing a number of rows it will not walk
+- **Array#bsearch and #bsearch_index**: halve a sorted array rather than walking it, reading true and false from the block or a number saying which way to go
+- **Set#classify and #divide**: group the elements under what a block answers, where a block of two parameters instead groups the elements it relates
+- **Set#flatten and #flatten!**: open up every set held inside, raising ArgumentError for a set that reaches itself
+- **Hash#to_proc**: a lambda of one parameter that reads a key out of the hash, so `[:a, :b].map(&hash)` looks each one up
+- **Enumerator#with_object**: walks with a second value handed to the block each time, answering that value when the walk is done
+- **A lazy walk pulled one at a time**: `next`, `peek`, and `rewind` run the walk no further than what was asked for, and `String#each_char` without a block answers an Enumerator
+- **Data**: `Data.define` builds a value class whose members are read-only, with `new` and `[]` taking positional or keyword arguments, `with` for a copy carrying changes, plus `members`, `to_h`, `deconstruct`, `deconstruct_keys`, `==`, `eql?`, `hash`, and an `inspect` that shows a value reaching itself as the class alone
+- **Method#parameters and #arity**: each parameter reports its kind (`:req`, `:opt`, `:rest`, `:keyreq`, `:key`, `:keyrest`, `:block`), and the arity counts the required ones, turning negative where a call may pass more or fewer
+- **Proc#parameters and #arity**: a lambda counts the way a method does, while a proc reports its positional parameters as optional and only a splat leaves its count open
+- **Method and UnboundMethod rendering**: `inspect` and `to_s` name the receiver's class, the module the method came from when that differs, the parameters, and the file and line
+- **Method#super_method**: the next definition of the name above the module the method was found in, following an alias back to what it was cut from
+- **UnboundMethod#bind_call**: binds and calls in one step, without an intermediate Method object
+- **A class defining `self.new`**: builds its instances that way rather than through allocate-and-initialize
+- **`super` with keyword arguments**: the argument list reads the same as any other call's, so keywords, splats, and a block argument all reach the parent method
+- **A constant bound inside a conditional**: a class assigned to a constant inside an `if` in a module body still reports the namespaced name
+- **Time**: a point in time held as a whole number of seconds since the epoch plus an exact fraction, with `now`, `at`, `new`, `utc`/`gm`, and `local`/`mktime` building one
+- **Time calendar fields**: `year`, `month`/`mon`, `day`/`mday`, `hour`, `min`, `sec`, `wday`, `yday`, `zone`, `utc_offset`, `dst?`, and the `monday?` through `sunday?` questions, read in UTC, in a fixed offset, or in the zone the operating system holds
+- **Time subseconds**: `subsec`, `usec`, and `nsec` keep the fraction exact, so `Time.at(Rational(3, 2)).subsec` answers `(1/2)` and `Time.at(10.75).subsec` answers `(3/4)`
+- **Time rendering**: `to_s`, `inspect`, `asctime`/`ctime`, `strftime` (including `%L`, `%N`, `%z`, and `%:z`), `iso8601`/`xmlschema`, and `to_a`
+- **Time arithmetic**: `+` and `-` shift by an exact number of seconds, subtracting two times answers a Float, and `<=>`, `==`, `eql?`, `hash`, `round`, `floor`, and `ceil` all read the exact value
+- **Time zones**: `utc`/`gmtime`, `getutc`/`getgm`, `localtime`, and `getlocal` move between UTC, a fixed offset given as seconds or as `"+05:00"`, and the local zone
+- **ENV writes reach the process environment**: setting `ENV["TZ"]` changes what a local time reads, since the C library sees the same environment
+- **A control-flow form read for its value**: `case`, `if`, `unless`, `while`, `until`, and `begin` may be chained onto, so `case x when 1 then :a end.to_s` reads the way it does in Ruby
+- **`then` before a newline**: `if cond then` may hold its body on the following line
+- **An empty pair of parentheses**: `()` answers nil, which `[0, (), 2]` and `{() => ()}` rely on
+- **A group of statements**: `(a; b; c)` answers the last one
+- **Percent literals**: `%W` and `%I` fill in their `#{}` parts, and `%q` reads none
+- **A chain with the dot leading the line**: newlines and comments may sit between a call and the dot that continues it
+- **Safe navigation**: `a&.b` answers nil for a nil receiver without running the method
+- **Quoted symbols in `alias`**: `alias :'new' :'old'` names either method that way
+- **Libraries metorex carries**: `require` finds `base64`, `shellwords`, `abbrev`, `singleton`, `observer`, `securerandom`, and `stringio` without a directory on the load path
+- **Percent literals with any delimiter**: `%!text!`, `%@text@`, and `%_text_` all read as strings, they fill in their `#{}` parts, and `%x(...)` runs its text as a command. A `%` that follows a value still divides
+- **`not` with parentheses**: `not(x)` takes what the parentheses hold, so a call may be chained onto the answer
+- **A group with a trailing modifier**: `(123 if true)` and `(count += 1 until done)` answer what the modifier left
+- **`Object#methods`**: leaves out the private methods, which are not the ones an object answers to from outside
+- **Code named after where it was written**: `__FILE__` inside `eval` reports `(eval at <file>:<line>)`
+- **StringIO**: a string read and written the way a file is. Reading with `getc`, `getbyte`, `readchar`, `readbyte`, `gets`, `readline`, `readlines`, `each_line`, `each_char`, `each_byte`, `each_codepoint`, and `ungetc`. Writing with `write`, `print`, `printf`, `puts`, `putc`, and `<<`, padding with NUL when the position sits past the end. Moving with `pos`, `seek`, `rewind`, and `lineno`. Reshaping with `truncate`, `string=`, and `reopen`. Modes decide which sides are open, `close_read` and `close_write` close them apart, and `inspect` shows the class and address alone
+- **`String#index` and `#rindex`**: where a substring or pattern first or last sits, counted in characters, with an optional offset
+- **Octal escapes**: `"\000"` reads up to three digits as one character
+- **An argument may assign**: `StringIO.new(text = "hello")` binds `text` and passes what it assigned
+- **`io/console`**: `require` finds it, adding `getch` and `getpass` to StringIO
+- **StringScanner**: `require 'strscan'` gives a cursor over a string. `scan`, `check`, `match?`, and `skip` match where the cursor stands, `scan_until`, `check_until`, `skip_until`, `exist?`, `search_full`, and `scan_full` search ahead, and `matched`, `pre_match`, `post_match`, `[]`, `captures`, `named_captures`, and `values_at` report what the last match found. `pos`, `charpos`, `rest`, `eos?`, `bol?`, `reset`, `terminate`, and `unscan` move the cursor, and `getch`, `peek`, `peek_byte`, and `scan_byte` read one piece at a time
+- **OpenStruct**: `require 'ostruct'` gives an object whose fields are decided as they are set, with `[]`, `[]=`, `delete_field`, `dig`, `each_pair`, `to_h`, `==`, `marshal_dump`, and an `inspect` that shows a field reaching back to the object as the class alone. A frozen one may be read but not written
+- **Prime**: `require 'prime'` gives `Prime.prime?`, `Prime.each` (lazy without a block, so `next` and `rewind` walk it), `Prime.first`, `Prime.prime_division`, and `Prime.int_from_prime_division`, plus `Integer#prime?`, `Integer#prime_division`, `Integer.from_prime_division`, and `Integer.each_prime`
+- **Matrix and Vector**: `require 'matrix'` gives rectangular arrays of numbers and the arithmetic over them. Matrices are built with `[]`, `rows`, `columns`, `build`, `diagonal`, `scalar`, `identity`, `zero`, `row_vector`, `column_vector`, and `empty`, and answer `row`, `column`, `[]`, `transpose`, `+`, `-`, `*`, `/`, `**`, `determinant`, `trace`, `rank`, `inverse`, `minor`, `first_minor`, `cofactor`, `collect`, `each`, `each_with_index`, and the shape questions from `square?` through `unitary?`. Vectors answer `+`, `-`, `*`, `inner_product`, `cross_product`, `magnitude`, `normalize`, `each2`, `covector`, and `angle_with`
+- **Date**: `require 'date'` gives a calendar day held as the Julian Day Number it stands for, together with the day the Gregorian calendar takes over from the Julian one. Dates are built with `civil`, `jd`, `ordinal`, `commercial`, `today`, `parse`, `strptime`, `iso8601`, and `rfc3339`, and answer `year`, `month`, `day`, `yday`, `wday`, `cwyear`, `cweek`, `cwday`, `mjd`, `ajd`, `amjd`, `ld`, `leap?`, and a question per weekday. `+`, `-`, `>>`, `<<`, `next_day`, `prev_month`, `succ`, `upto`, `downto`, and `step` move about, `new_start`, `italy`, `england`, `julian`, and `gregorian` say which calendar a date is read on, and `strftime`, `to_s`, `inspect`, `asctime`, `iso8601`, and `rfc3339` write one out. `Date.valid_civil?`, `valid_ordinal?`, `valid_commercial?`, `valid_jd?`, `leap?`, `gregorian_leap?`, and `julian_leap?` answer without raising, and `Date::Infinity` stands for a calendar that never reforms
+- **A method may be named for the right shift operator**: `def >>(count)` parses
+- **`self.` reaches a private method**: `self.hidden` calls it the way a bare `hidden` does, rather than raising NoMethodError
+- **The recursion guard counts per thread**: two virtual machines running side by side no longer add their nesting together
+- **A splat spreads across a subscript**: `Held[*values]` passes the values one by one, the same way `Held.[](*values)` does
+- **A method may be named for the power operator**: `def **(count)` parses
+- **An unknown name reaches `method_missing`**: an attribute assignment with no setter behind it, and `send` of a name with no method behind it, both go there
+- **Singleton definition on an expression**: `def (@matcher = Object.new).===(other)` assigns first and defines the method on what the variable holds
+- **`__FILE__`**: names the file the code was written in, so a method or block from a required file reports that file rather than the one being run
+- **MatchData**: a match answers one, with `[]` by index or group name, `captures`, `named_captures`, `names`, `values_at`, `begin`, `end`, `offset`, `match`, `match_length`, `pre_match`, `post_match`, `to_a`, `deconstruct`, `deconstruct_keys`, and equality by subject, pattern, and positions
+- **Named groups**: once a pattern names any group the unnamed ones stop capturing, which is what puts `captures` and `inspect` on the named ones alone
+- **Match globals**: `$~`, `$1` through `$9`, `` $` ``, `$'`, `$&`, and `Regexp.last_match` all read the last match, which a pattern that finds nothing clears, and `grep` without a block leaves alone
+- **Regexp methods**: `match`, `match?`, `=~`, `===`, `source`, `options`, `casefold?`, `names`, `named_captures`, `to_s`, `inspect`, `==`, and `hash`, with `Regexp.new`, `Regexp.compile`, `Regexp.union`, and `Regexp.last_match`; a pattern reports Regexp as its class
+- **String#match**: answers the MatchData for a Regexp or a String pattern, from an optional offset, and hands it to a block when one is given
+- **Case equality**: a Range answers `===` the way `cover?` does, and a Regexp reaches an operand's characters through `to_str`
+- **Set**: keeps its elements in the order they were added and holds any value with a stable rendering, so a Symbol, an Array, or nil is an element like a number is
+- **Set algebra**: `union`, `difference`, `intersection`, and their `|`, `+`, `-`, `&`, `^` spellings, with `subset?`, `superset?`, `proper_subset?`, `proper_superset?`, `disjoint?`, and `intersect?`; an operand may be any Enumerable
+- **Set in place**: `<<`, `add?`, `merge`, `subtract`, `replace`, `clear`, `delete_if`, `keep_if`, `select!`, `reject!`, and `map!`, plus `join`, `hash`, `dup`, and an `each` that answers an Enumerator without a block
+- **Orphaned return**: `Proc.new { return }` called after its defining method has returned raises a LocalJumpError carrying `exit_value` and `reason`
+- **Set membership**: `include?`, `member?`, and `===` ask the element for its `hash` and `eql?`, so two objects that agree on both are the same element; an Integer and a Float of the same value are not
+- **Set during iteration**: adding to, merging into, replacing, or clearing a Set while a walk over it is open raises a RuntimeError rather than changing what the walk is reading
+- **allocate**: `Array.allocate` and `Hash.allocate` answer an empty one, `Proc.allocate` raises TypeError, and `MatchData.allocate` does not exist
+- **Proc method table**: `Proc` reports the methods it answers, so `public_instance_methods` lists `call`, `eql?`, `==`, `arity`, `curry`, and the rest
+- **Array#join**: a Symbol element contributes the name it is spelled with, and a nil separator joins with nothing between
+- **Hash#replace and #transform_values!**: `replace` answers the receiver even when the new contents are written as keyword arguments, and a `break` out of `transform_values!` keeps what it changed
+- **Range#size**: reports a count only when the range steps from an Integer, answers nil for one that steps from a String or Symbol, and raises TypeError for one it cannot step from at all
+- **start_with? with a Regexp**: records the match, so `$~`, `$1`, and `Regexp.last_match` read it afterwards
+- **Repeated group names**: a pattern may write the same name on more than one group, and the match reports the farthest one under it that matched; a name spelled with multi-byte characters counts in characters
+- **Regexp introspection**: `names` lists each written name once and `named_captures` reports the group numbers each was written on, both on the pattern and on the match
+- **Regexp equality**: two patterns differing only in the `/n` encoding option are the same pattern, and hash the same
+- **sub and gsub record the match**: `$~`, `$1`, and `Regexp.last_match` read it afterwards, whether the pattern was a Regexp or a String
+- **Set comparison and identity**: `<=>` reports containment, `delete` answers the set while `delete?` answers nil for an element that was not there, and two names for one native method answer the same Method object
+- **Set subclasses**: `class Bag < Set` instances carry their elements and answer Set's methods, which is what lets `to_set(Bag)` build one
+- **Set rendering**: a Set inspects as `Set[1, 2]`, and one that reaches itself as `Set[...]`
+- **String#to_str, #codepoints, and #each_codepoint**: the implicit conversion and the code point of each character
+- **String#to_r**: an underscore between digits is a separator rather than part of the number
+- **Enumerable#sum**: an infinity stays one rather than turning into a NaN, since there is no rounding to compensate for
+- **Lambda parameters**: a lambda written without parentheses takes defaults and keyword parameters the same as one written with them, so `-> name = "world" { }` and `-> *rest, tag: :none { }` both read as declared
+- **Lambda arity**: a lambda takes its arguments the way a method does, refusing a call that gives it the wrong number
+- **`**nil`**: a method declares that it takes no keyword arguments at all
+- **A method as a block**: `&some_method` hands the method over as the block, keeping its own arity, so `hash.each(&recorder.method(:record))` gets one `[key, value]` pair per entry
+- **match with a block**: `String#match`, `Symbol#match`, and `Regexp#match` hand the MatchData to a block and answer what the block answers; `match?` takes the offset to start at
+- **Symbol has no constructor**: `Symbol.new` and `Symbol.allocate` are undefined, the way Ruby leaves them
+- **Nested Sets**: a Set holding Sets compares by what those hold, so the order they were added in does not matter
+- **Kernel#trap**: Kernel's name for `Signal.trap`, listed among its private instance methods
+- **String bytes**: `bytesize`, `bytes`, `each_byte`, and `getbyte` read a String as the bytes it is made of, alongside `chr`, `ascii_only?`, and `valid_encoding?`
+- **String#hex and #oct**: read a number off the front of the text, `hex` honoring only the `0x` prefix and `oct` honoring `0x`, `0b`, `0o`, and `0d`, with an underscore between digits treated as a separator
 - **Kernel Conversion Functions**: `Hash()`, `Integer()`, `Rational()`, and `String()`, with coercion through `to_hash` / `to_int` / `to_i` / `to_r` / `to_s` and `exception: false`
 - **Rational Numbers**: the `5r` literal suffix, arithmetic and ordering against Integer, Float, and Rational, `to_r` on String, Integer, and Float, and results always in lowest terms and frozen
 - **Numeric Literals**: decimal, `0x`/`0b`/`0o`/`0d` radix prefixes, bare-leading-zero octal, scientific notation, `_` digit separators, and the `r` rational suffix
@@ -369,6 +482,13 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - Array's in-place methods: `#compact!`, `#reverse!`, `#sort!`, `#sort_by!`, `#map!`/`#collect!`, `#reject!`, `#select!`/`#filter!`, `#uniq!`, `#rotate!`, `#shuffle!` and `#flatten!`, each answering nil when nothing changed where Ruby does
 - `Array#at`, `#count`, `#take_while`, `#drop_while`, `#rotate`, `#shuffle`, `#sample`, `#to_a`, `#entries`, and `#uniq` with a block that names the key
 - `Array#min`, `#max`, and `#minmax` order with `<=>` or a block, and raise ArgumentError when two elements cannot be compared
+- `Array#fetch`, `#fetch_values`, `#insert`, `#union`, `#intersection`, and `#difference`, with `#pop` and `#shift` taking a count
+- `Array#<=>` orders element by element, answering the first non-zero result verbatim, and two arrays that reach themselves compare rather than recursing
+- `-`, `&`, `|`, `union`, `intersection`, and `difference` match elements with `eql?` the way Ruby does, and the same object counts whatever its `eql?` says
+- `+`, `-`, `&`, `|`, `zip`, `transpose`, `assoc`, and `rassoc` put an operand that is not an Array through `to_ary`, while an Array subclass is taken as the array it already is
+- `[1, 2] * 3` repeats the array and `[1, 2] * ", "` joins it
+- `Array#values_at` takes Ranges, including endless and beginless ones, and answers nil for a position the array has no element at
+- `Array#transpose` raises IndexError when the rows are not all the same length, and `#first`/`#last` raise RangeError for a count too large for a machine word
 - `Array#flatten` descends all the way down, or as many levels as its argument names, and raises ArgumentError on an array that contains itself
 - A subclass of Array holds real elements: `Sub.new` runs the subclass's own `initialize` against storage that is already in place, `Sub[1, 2]` fills it without calling `initialize`, and an instance answers Array's methods and compares equal to a plain Array with the same contents
 - `each`, `map`, `select`, `filter`, `reject`, `map!`, `select!`, `reject!`, `sort_by!`, `take_while`, and `drop_while` answer an Enumerator without a block, and a walk may append to the array it is walking
@@ -464,6 +584,42 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `ruby2_keywords` raises NameError for a name no method answers to, and warns rather than applying when the method takes keywords or has no bare `*args` splat
 - `refine` takes a module as readily as a class, requires a block, and registers the refinement before the block runs, so calls inside it and every sibling refinement in the same module are already in force
 - `Hash#map` and `#collect` yield each key and value and answer an Array of what the block returned
+- `Hash.new(default)` answers that value for a key it has no entry for, and `#default`, `#default=`, `#default_proc`, and `#default_proc=` read and set it
+- `Hash[...]` builds a hash from another hash, from an array of pairs, or from an even number of key and value arguments, and `Hash[a: 1]` and `Hash[1 => 2]` write the pairs in the brackets
+- Hash gained `#empty?`, `#has_value?`/`#value?`, `#key`, `#each_key`, `#each_value`, `#invert`, `#store`, `#clear`, `#compact`, `#except`, `#slice`, `#values_at`, `#fetch_values`, `#transform_keys`, `#transform_values`, `#select`/`#filter`, `#reject`, `#keep_if`, `#delete_if`, `#assoc`, `#rassoc`, `#flatten`, `#sort`, `#shift`, `#deconstruct_keys`, `#any?`, `#none?`, `#all?`, and `#to_hash`
+- `<`, `<=`, `>`, and `>=` between hashes compare by containment, asking a non-Hash operand for `to_hash`
+- Hash gained `#merge!`/`#update`, `#replace`, `#compact!`, `#select!`/`#filter!`, `#reject!`, `#transform_keys!`, `#transform_values!`, `#to_h`, and `#[]`/`#[]=` as methods of their own
+- A key that is not a primitive is matched the way Ruby matches one: same `hash`, then `eql?` asked of the key being looked up
+- `Hash#fetch` and `#fetch_values` raise a KeyError that reports the hash and the key, and a block wins over a default value with a warning
+- `compare_by_identity` and `compare_by_identity?` record the setting, and a hash derived by `slice`, `merge`, `select`, and the rest carries it over
+- `Hash#default(key)` runs the default proc for that key, and setting a default value clears the default proc
+- `Hash#each` yields one `[key, value]` array, which a block of two parameters spreads across them, and answers an Enumerator without a block
+- A String hash key that reads back as a number, a boolean, or nil keeps its own identity, so `{"1" => x}` has a String key
+- A subclass of Hash holds real entries, so `MyHash.new[key] = value` reaches the hash the instance is backed by
+- A subclass of Hash or Array compares equal to the plain value it holds, and `to_h` on one answers a plain Hash
+- `\xNN` names a byte, a run of them spells one character, and `\uXXXX`, `\u{...}`, `\s`, `\a`, `\b`, `\f`, and `\v` are read in a double-quoted string
+- `:"a#{b}"` names a Symbol built at run time rather than the String its characters were assembled in
+- Symbol answers a Symbol from `#upcase`, `#downcase`, `#capitalize`, `#swapcase`, `#succ`, and `#next`, gained `#id2name`, `#name`, and `#intern`, and mixes in Comparable
+- `String#succ` bumps the rightmost alphanumeric character and carries left, growing the string when the leftmost one wraps, and `#capitalize` and `#swapcase` were added
+- `String#to_f` reads an exponent and treats an underscore as a digit separator, and `#start_with?`/`#end_with?` put an argument through `to_str`, with `start_with?` also taking a Regexp
+- `Integer#chr` names the character a code point stands for
+- Range gained `#to_s`, `#inspect`, `#==`, `#eql?`, and `#count`, walks a String or Symbol range with `succ`, walks two single ASCII characters by code point, and refuses to collect an endless one
+- `Range.new(first, last, exclusive)` builds the range a literal would
+- Range gained `#first(n)`, `#last(n)`, `#min`, `#max`, `#minmax`, `#cover?`, `#overlap?`, `#size`, `#reverse_each`, and `#to_set`, and `#include?`/`#member?` walk a range of names while every other kind compares against the ends
+- A block takes a `|(a, b)|` group, which spreads one array argument across the names, and a `|name:|` keyword parameter with a default
+- `-> &b { }` and `-> **rest { }` name a lambda's block and keyword arguments, and a `&name` parameter takes the block the call was handed
+- A keyword names a keyword argument, so `parameters(lambda: true)` reads as one
+- `Method#name` and `#original_name` answer Symbols, `#receiver` answers what the method is bound to, and `method(:+)` on a number hands out a Method for the operator
+- `Integer#upto` and `#downto` answer an Enumerator without a block, and Enumerator gained `#next_values` and `#peek_values`
+- `String#lstrip`, `#rstrip`, `#each_line`, and `#lines` with a separator; `Array#to_set` and `Set[...]`
+- `p (1..3).to_a` passes what the parentheses hold along with the calls that follow, the way Ruby reads a spaced parenthesis after a method name
+- `{nil: 1}` and `{false: 2}` name the symbols `:nil` and `:false`, `{a:, b:}` takes each value from the name itself, and an assignment works as an array element, a ternary branch, or a parenthesized expression
+- A Float hash key keeps its fraction, so `4` and `4.0` are different keys
+- `Array#[]=` takes an index, a start and a length, or a Range, growing the array with nil when the index is past the end and putting a replacement through `to_ary`
+- `Array#[]` and `#slice` coerce an index through `to_int` and raise RangeError for one too large for a machine word
+- `Range.new(first, last, exclusive)` builds the range a literal would, and a subclass of Range builds one too
+- `values[start, length] = a, b, c` assigns the array the right-hand list builds, `x.[]=(i, v)` names the writer, and `Array[1, 2, 3 => 4]` gathers trailing pairs into a Hash
+- `private :hash` names a method Object answers natively, which needs no definition of its own
 - `String#dump` renders a string as source that reads back as itself, escaping control and non-ASCII characters and the `#` that would start an interpolation
 - Interpolating `nil` adds nothing, since `nil.to_s` is the empty string
 - A prepended module's visibility is the one in force for the methods it supplies, so `private :name` on the class does not restrict a public method the prepended module defines under that name

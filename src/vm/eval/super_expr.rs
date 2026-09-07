@@ -57,11 +57,7 @@ impl VirtualMachine {
             let evaluated_args = if forward_args {
                 self.method_arg_stack.last().cloned().unwrap_or_default()
             } else {
-                let mut evaluated_args = Vec::with_capacity(arguments.len());
-                for arg in arguments {
-                    evaluated_args.push(self.evaluate_expression(arg)?);
-                }
-                evaluated_args
+                self.evaluate_arguments(arguments)?
             };
             // A module extended with another module reaches that module's
             // copy through `super`: the extended copy sits just above the
@@ -261,11 +257,7 @@ impl VirtualMachine {
             let evaluated_args = if forward_args {
                 self.method_arg_stack.last().cloned().unwrap_or_default()
             } else {
-                let mut evaluated_args = Vec::with_capacity(arguments.len());
-                for arg in arguments {
-                    evaluated_args.push(self.evaluate_expression(arg)?);
-                }
-                evaluated_args
+                self.evaluate_arguments(arguments)?
             };
             drop(instance_borrowed);
             return self.invoke_method(
@@ -285,10 +277,7 @@ impl VirtualMachine {
                 // Object#<=> returns 0 if self.equal?(other), else nil
                 if method_name == "<=>" {
                     drop(instance_borrowed);
-                    let mut evaluated_args = Vec::with_capacity(arguments.len());
-                    for arg in arguments {
-                        evaluated_args.push(self.evaluate_expression(arg)?);
-                    }
+                    let evaluated_args = self.evaluate_arguments(arguments)?;
                     let self_val = self.environment().get("self").unwrap_or(Object::Nil);
                     if let Some(other) = evaluated_args.first() {
                         let same = matches!(
@@ -329,10 +318,7 @@ impl VirtualMachine {
             Some(m) => m,
             None if method_name == "<=>" => {
                 drop(instance_borrowed);
-                let mut evaluated_args = Vec::with_capacity(arguments.len());
-                for arg in arguments {
-                    evaluated_args.push(self.evaluate_expression(arg)?);
-                }
+                let evaluated_args = self.evaluate_arguments(arguments)?;
                 let self_val = self.environment().get("self").unwrap_or(Object::Nil);
                 if let Some(other) = evaluated_args.first() {
                     let same = matches!(
@@ -352,11 +338,7 @@ impl VirtualMachine {
                 let evaluated_args = if forward_args {
                     self.method_arg_stack.last().cloned().unwrap_or_default()
                 } else {
-                    let mut evaluated_args = Vec::with_capacity(arguments.len());
-                    for arg in arguments {
-                        evaluated_args.push(self.evaluate_expression(arg)?);
-                    }
-                    evaluated_args
+                    self.evaluate_arguments(arguments)?
                 };
                 let self_val = self.environment().get("self").unwrap_or(Object::Nil);
                 if let Some(result) =
@@ -420,11 +402,7 @@ impl VirtualMachine {
         let evaluated_args = if forward_args {
             self.method_arg_stack.last().cloned().unwrap_or_default()
         } else {
-            let mut evaluated_args = Vec::with_capacity(arguments.len());
-            for arg in arguments {
-                evaluated_args.push(self.evaluate_expression(arg)?);
-            }
-            evaluated_args
+            self.evaluate_arguments(arguments)?
         };
 
         // Drop the borrow before invoking the method

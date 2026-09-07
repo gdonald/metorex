@@ -3,7 +3,7 @@
 use indexmap::IndexMap;
 use metorex::object::{BlockStatement, Class, Exception, Instance, Method, Object, ObjectHash};
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::rc::Rc;
 
 #[test]
@@ -194,6 +194,7 @@ fn test_equals_method() {
         bound_self: None,
         owner: None,
         owner_class: None,
+        origin_class: None,
         source_location: None,
         captured_vars: None,
         is_undefined: false,
@@ -217,6 +218,7 @@ fn test_equals_method() {
         bound_self: None,
         owner: None,
         owner_class: None,
+        origin_class: None,
         source_location: None,
         captured_vars: None,
         is_undefined: false,
@@ -248,6 +250,7 @@ fn test_equals_block() {
         defining_method: None,
         is_lambda: false,
         source_file: None,
+        home_frame: None,
     });
     let block2 = Rc::clone(&block1);
     let block3 = Rc::new(BlockStatement {
@@ -259,6 +262,7 @@ fn test_equals_block() {
         defining_method: None,
         is_lambda: false,
         source_file: None,
+        home_frame: None,
     });
 
     let obj1 = Object::Block(block1);
@@ -302,15 +306,15 @@ fn test_equals_exception() {
 
 #[test]
 fn test_equals_set() {
-    let mut set1 = HashSet::new();
+    let mut set1 = indexmap::IndexSet::new();
     set1.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     set1.insert(ObjectHash::from_object(&Object::Int(2)).unwrap());
 
-    let mut set2 = HashSet::new();
+    let mut set2 = indexmap::IndexSet::new();
     set2.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
     set2.insert(ObjectHash::from_object(&Object::Int(2)).unwrap());
 
-    let mut set3 = HashSet::new();
+    let mut set3 = indexmap::IndexSet::new();
     set3.insert(ObjectHash::from_object(&Object::Int(1)).unwrap());
 
     let obj1 = Object::Set(Rc::new(RefCell::new(set1)));

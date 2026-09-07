@@ -108,11 +108,12 @@ fn test_lexer_string_with_multiple_escapes() {
 }
 
 #[test]
-fn test_lexer_string_with_unknown_escape() {
+fn test_lexer_string_with_byte_escape() {
     let mut lexer = Lexer::new(r#""test\xabc""#);
     let token = lexer.next_token();
-    // Unknown escapes keep the backslash
-    assert_eq!(token.kind, TokenKind::String("test\\xabc".to_string()));
+    // `\xab` names a byte, which stands alone as a character here, and the
+    // `c` that follows is an ordinary letter.
+    assert_eq!(token.kind, TokenKind::String("test\u{ab}c".to_string()));
 }
 
 #[test]
@@ -252,7 +253,7 @@ fn lexer_percent_w_brackets() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "a b c"))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s, _) if s == "a b c"))
     );
 }
 
@@ -262,7 +263,7 @@ fn lexer_percent_w_bang() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "a b c"))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s, _) if s == "a b c"))
     );
 }
 
@@ -272,7 +273,7 @@ fn lexer_percent_w_parens() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "one two"))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s, _) if s == "one two"))
     );
 }
 
@@ -282,7 +283,7 @@ fn lexer_percent_w_braces() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "x y z"))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s, _) if s == "x y z"))
     );
 }
 
@@ -292,7 +293,7 @@ fn lexer_percent_w_angle_brackets() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s == "p q r"))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s, _) if s == "p q r"))
     );
 }
 
@@ -303,7 +304,7 @@ fn lexer_percent_w_with_escape() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(_)))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(_, _)))
     );
 }
 
@@ -313,7 +314,7 @@ fn lexer_percent_w_empty() {
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::PercentW(s) if s.is_empty()))
+            .any(|t| matches!(&t.kind, TokenKind::PercentW(s, _) if s.is_empty()))
     );
 }
 

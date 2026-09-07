@@ -2,7 +2,7 @@
 // Handles parsing of all expression types
 
 mod binary;
-mod call;
+pub(crate) mod call;
 mod primary;
 mod unary;
 
@@ -229,12 +229,14 @@ impl Parser {
             let position = self.advance().position; // consume ?
             self.skip_whitespace();
             self.ternary_depth += 1;
-            let then_expr = self.parse_assignment()?;
+            // A branch may be an assignment, which answers what it assigned:
+            // `flag ? hash[key] = 1 : hash[key] = 2`.
+            let then_expr = self.parse_expression_with_assignment()?;
             self.ternary_depth -= 1;
             self.skip_whitespace();
             self.expect(TokenKind::Colon, "Expected ':' in ternary expression")?;
             self.skip_whitespace();
-            let else_expr = self.parse_assignment()?;
+            let else_expr = self.parse_expression_with_assignment()?;
             return Ok(Expression::If {
                 condition: Box::new(expr),
                 then_branch: vec![Statement::Expression {
@@ -282,15 +284,65 @@ impl Parser {
                     ""
                 };
                 self.skip_whitespace();
-                // `|*|`, `|**|`, and `|&|` take the values without naming
-                // them, so the prefix stands alone.
-                if !prefix.is_empty() && self.check(&[TokenKind::Pipe, TokenKind::Comma]) {
+                // `|(a, b)|` spreads one array argument across the names in
+                // the group, which the binder undoes by the marker.
+                if prefix.is_empty() && self.match_token(&[TokenKind::LParen]) {
+                    let mut names = Vec::new();
+                    loop {
+                        self.skip_whitespace();
+                        if self.match_token(&[TokenKind::RParen]) {
+                            break;
+                        }
+                        match self.advance().kind {
+                            TokenKind::Ident(name) => names.push(name),
+                            _ => {
+                                return Err(
+                                    self.error_at_previous("Expected parameter name in group")
+                                );
+                            }
+                        }
+                        self.skip_whitespace();
+                        if !self.match_token(&[TokenKind::Comma]) {
+                            self.skip_whitespace();
+                            self.expect(TokenKind::RParen, "Expected ')' after group")?;
+                            break;
+                        }
+                    }
+                    params.push(format!(
+                        "{}{}",
+                        crate::object::DESTRUCTURED_GROUP_PREFIX,
+                        names.join(",")
+                    ));
+                } else if !prefix.is_empty() && self.check(&[TokenKind::Pipe, TokenKind::Comma]) {
+                    // `|*|`, `|**|`, and `|&|` take the values without naming
+                    // them, so the prefix stands alone.
                     params.push(prefix.to_string());
                 } else {
                     let param_token = self.advance();
                     match param_token.kind {
                         TokenKind::Ident(name) => {
-                            params.push(format!("{}{}", prefix, name));
+                            // `|x:|` names a keyword parameter, which takes
+                            // its value from the keyword arguments.
+                            if prefix.is_empty()
+                                && self.check(&[TokenKind::Colon])
+                                && !self.peek().had_leading_space
+                            {
+                                self.advance();
+                                params.push(format!(
+                                    "{}{}",
+                                    crate::object::KEYWORD_PARAM_PREFIX,
+                                    name
+                                ));
+                                // `|x: 1|` gives the keyword a default, which
+                                // follows the colon directly.
+                                self.skip_whitespace();
+                                if !self.check(&[TokenKind::Comma, TokenKind::Pipe]) {
+                                    let default = self.parse_range()?;
+                                    defaults.push((params.len() - 1, default));
+                                }
+                            } else {
+                                params.push(format!("{}{}", prefix, name));
+                            }
                         }
                         _ => return Err(self.error_at_previous("Expected parameter name")),
                     }

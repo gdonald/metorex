@@ -83,9 +83,9 @@ pub enum TokenKind {
     CommandString(Vec<InterpolationPart>),
     /// `:` followed by a backtick, which names the command method.
     CommandSymbol,
-    Regex(String, String), // pattern, flags
-    PercentW(String),      // %w[...] array of whitespace-split words
-    PercentI(String),      // %i[...] array of whitespace-split symbols
+    Regex(String, String),  // pattern, flags
+    PercentW(String, bool), // %w[...] words, true when %W fills in `#{}`
+    PercentI(String, bool), // %i[...] symbols, true when %I fills in `#{}`
     True,
     False,
     Nil,
@@ -139,6 +139,8 @@ pub enum TokenKind {
     FatArrow,         // =>
     Pipe,             // |
     Ampersand,        // &
+    SafeDot,          // &. — a call that answers nil for a nil receiver
+    NotKeyword,       // the word `not`, which takes a parenthesized operand
     LogicalAnd,       // &&
     LogicalOr,        // ||
     LogicalOrAssign,  // ||=
@@ -234,8 +236,8 @@ impl fmt::Display for TokenKind {
             TokenKind::BigInt(digits) => write!(f, "{}", digits),
             TokenKind::Float(n) => write!(f, "{}", n),
             TokenKind::String(s) => write!(f, "\"{}\"", s),
-            TokenKind::PercentW(s) => write!(f, "%w[{}]", s),
-            TokenKind::PercentI(s) => write!(f, "%i[{}]", s),
+            TokenKind::PercentW(s, _) => write!(f, "%w[{}]", s),
+            TokenKind::PercentI(s, _) => write!(f, "%i[{}]", s),
             TokenKind::CommandSymbol => write!(f, ":`"),
             TokenKind::CommandString(parts) => {
                 write!(f, "`")?;
@@ -315,6 +317,8 @@ impl fmt::Display for TokenKind {
             TokenKind::FatArrow => write!(f, "=>"),
             TokenKind::Pipe => write!(f, "|"),
             TokenKind::Ampersand => write!(f, "&"),
+            TokenKind::SafeDot => write!(f, "&."),
+            TokenKind::NotKeyword => write!(f, "not"),
             TokenKind::LogicalAnd => write!(f, "&&"),
             TokenKind::LogicalOr => write!(f, "||"),
             TokenKind::LogicalOrAssign => write!(f, "||="),

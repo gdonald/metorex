@@ -3,7 +3,6 @@
 use crate::class::Class;
 use indexmap::IndexMap;
 use std::cell::RefCell;
-use std::collections::HashSet;
 use std::rc::Rc;
 
 use super::{Binding, BlockStatement, CompiledFunction, Exception, Instance, Method, ObjectHash};
@@ -61,7 +60,7 @@ pub enum Object {
     Exception(Rc<RefCell<Exception>>),
 
     /// Set (unordered collection of unique objects)
-    Set(Rc<RefCell<HashSet<ObjectHash>>>),
+    Set(Rc<RefCell<indexmap::IndexSet<ObjectHash>>>),
 
     /// Result type for explicit error handling
     Result(Result<Box<Object>, Box<Object>>),

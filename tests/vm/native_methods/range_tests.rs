@@ -46,19 +46,18 @@ fn range_map_without_block_error() {
 // ── Range select without block ─────────────────────────────────────────────────
 
 #[test]
-fn range_select_without_block_error() {
-    let err = run_err(
-        r#"
-(1..5).select
-"#,
-    );
-    assert!(err.contains("block") || err.contains("select") || err.contains("requires"));
+fn range_select_without_block_answers_an_enumerator() {
+    let result = run(r#"
+(1..5).select.to_a
+"#);
+    assert_eq!(format!("{}", result.expect("a value")), "[1, 2, 3, 4, 5]");
 }
 
 // ── Range.each with non-integer range (lines 89-91) ──────────────────────────
 
 #[test]
 fn range_each_float_bounds_error() {
+    // Ruby walks a range with `succ`, which a Float has none of.
     let err = run_err(
         r#"
 r = 1.5..3.5
@@ -66,7 +65,8 @@ r.each { |i| i }
 "#,
     );
     assert!(
-        err.contains("integer")
+        err.contains("can't iterate from Float")
+            || err.contains("integer")
             || err.contains("Integer")
             || err.contains("Range")
             || err.contains("only supports")
@@ -77,6 +77,7 @@ r.each { |i| i }
 
 #[test]
 fn range_to_a_float_bounds_error() {
+    // Ruby walks a range with `succ`, which a Float has none of.
     let err = run_err(
         r#"
 r = 1.5..3.5
@@ -84,7 +85,8 @@ r.to_a
 "#,
     );
     assert!(
-        err.contains("integer")
+        err.contains("can't iterate from Float")
+            || err.contains("integer")
             || err.contains("Integer")
             || err.contains("Range")
             || err.contains("only supports")
@@ -111,7 +113,8 @@ r.map { |i| i }
 "#,
     );
     assert!(
-        err.contains("integer")
+        err.contains("can't iterate from Float")
+            || err.contains("integer")
             || err.contains("Integer")
             || err.contains("Range")
             || err.contains("only supports")
@@ -356,4 +359,30 @@ fn float_range_include_inclusive() {
 #[test]
 fn float_range_include_outside() {
     assert_eq!(run("(1.0..3.0).include?(5.0)"), Some(Object::Bool(false)));
+}
+
+// ── Range#first over a range that never reaches an end ──────────────────────
+
+#[test]
+fn range_first_counts_out_of_an_endless_integer_range() {
+    let result = run("(3..).first(4).inspect");
+    assert_eq!(result, Some(Object::string("[3, 4, 5, 6]")));
+}
+
+#[test]
+fn range_first_counts_out_of_an_infinite_float_end() {
+    let result = run("(0..Float::INFINITY).first(3).inspect");
+    assert_eq!(result, Some(Object::string("[0, 1, 2]")));
+}
+
+#[test]
+fn range_first_of_an_endless_range_answers_nothing_for_zero() {
+    let result = run("(0..Float::INFINITY).first(0).inspect");
+    assert_eq!(result, Some(Object::string("[]")));
+}
+
+#[test]
+fn range_last_of_an_infinite_float_end_still_walks_the_values() {
+    let err = run_err("(0..Float::INFINITY).last(3)");
+    assert!(err.contains("can't iterate from"), "Error was: {}", err);
 }

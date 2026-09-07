@@ -126,6 +126,9 @@ pub enum MetorexError {
     NonLocalReturn {
         value: crate::object::Object,
         location: SourceLocation,
+        /// The method invocation the block belonged to, which is where the
+        /// unwinding stops. None unwinds to the nearest one.
+        home_frame: Option<u64>,
     },
 
     /// A `break <value>` from inside a block passed to a method - unwinds
@@ -136,6 +139,10 @@ pub enum MetorexError {
     BlockBreak {
         value: crate::object::Object,
         location: SourceLocation,
+        /// The method invocation the block was written in. The call made from
+        /// that invocation is the one the break unwinds to. None until the
+        /// block boundary fills it in.
+        home_frame: Option<u64>,
     },
 
     /// A `next <value>` raised from a nested expression context (e.g. inside

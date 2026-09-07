@@ -143,7 +143,7 @@ impl<'a> Lexer<'a> {
             "__dir__" => TokenKind::MagicDir,
             "and" => TokenKind::LogicalAnd,
             "or" => TokenKind::LogicalOr,
-            "not" => TokenKind::Bang,
+            "not" => TokenKind::NotKeyword,
             _ => TokenKind::Ident(ident),
         }
     }

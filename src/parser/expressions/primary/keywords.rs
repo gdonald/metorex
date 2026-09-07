@@ -19,42 +19,10 @@ impl Parser {
         let mut forward_args = false;
         let arguments = if self.check(&[TokenKind::LParen]) {
             self.advance(); // consume (
-            let mut args = Vec::new();
-            self.skip_whitespace();
-
-            if !self.check(&[TokenKind::RParen]) {
-                loop {
-                    self.skip_whitespace();
-                    if self.match_token(&[TokenKind::Ampersand]) {
-                        let arg_position = self.previous().position;
-                        let expression = Box::new(self.parse_expression()?);
-                        args.push(Expression::BlockArg {
-                            expression,
-                            position: arg_position,
-                        });
-                    } else if self.match_token(&[TokenKind::Star]) {
-                        let arg_position = self.previous().position;
-                        let expression = Box::new(self.parse_expression()?);
-                        args.push(Expression::Splat {
-                            expression,
-                            position: arg_position,
-                        });
-                    } else {
-                        // `**expr` reaches the callee as a trailing hash.
-                        self.match_token(&[TokenKind::StarStar]);
-                        args.push(self.parse_expression()?);
-                    }
-                    self.skip_whitespace();
-
-                    if !self.match_token(&[TokenKind::Comma]) {
-                        break;
-                    }
-                }
-            }
-
-            self.skip_whitespace();
-            self.expect(TokenKind::RParen, "Expected ')' after super arguments")?;
-            args
+            // The argument list reads the same as any other call's, so
+            // keyword arguments, splats and a block argument all arrive the
+            // way the enclosing method would have received them.
+            self.parse_arguments()?
         } else if self.check(&[
             TokenKind::Newline,
             TokenKind::Semicolon,

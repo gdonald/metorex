@@ -16,17 +16,85 @@ use crate::object::{BlockStatement, Object};
 /// `&block` (block) prefixes in parameter names. `defaults` carries
 /// default-value expressions keyed by index into `params`; they evaluate
 /// in the block's fresh scope when the corresponding argument is missing.
+/// Bind one block parameter. A `|(a, b)|` group spreads the value it is given
+/// across the names in the group, filling nil where the array is shorter.
+fn define_block_param(vm: &mut VirtualMachine, param: &str, value: Object) {
+    let Some(names) = param.strip_prefix(crate::object::DESTRUCTURED_GROUP_PREFIX) else {
+        vm.environment_mut().define(param.to_string(), value);
+        return;
+    };
+    let spread = match &value {
+        Object::Array(elements) => elements.borrow().clone(),
+        other => vec![other.clone()],
+    };
+    for (index, name) in names.split(',').enumerate() {
+        if name.is_empty() {
+            continue;
+        }
+        let bound = spread.get(index).cloned().unwrap_or(Object::Nil);
+        vm.environment_mut().define(name.to_string(), bound);
+    }
+}
+
 fn bind_block_params(
     vm: &mut VirtualMachine,
     params: &[String],
     defaults: &[(usize, crate::ast::Expression)],
     arguments: Vec<Object>,
 ) {
+    // A trailing keyword-argument hash feeds the `name:` parameters, and
+    // what is left over is bound by position.
+    let keyword_params: Vec<String> = params
+        .iter()
+        .filter(|param| param.starts_with(crate::object::KEYWORD_PARAM_PREFIX))
+        .cloned()
+        .collect();
+    let mut arguments = arguments;
+    if !keyword_params.is_empty() {
+        let named = match arguments.last() {
+            Some(Object::Dict(entries)) => {
+                let taken = entries.borrow().clone();
+                arguments.pop();
+                taken
+            }
+            _ => indexmap::IndexMap::new(),
+        };
+        for param in &keyword_params {
+            let name = param
+                .strip_prefix(crate::object::KEYWORD_PARAM_PREFIX)
+                .unwrap_or(param)
+                .to_string();
+            let given = named
+                .get(&format!(":{}", name))
+                .or_else(|| named.get(&name))
+                .cloned();
+            let value = match given {
+                Some(value) => value,
+                // A keyword the call left out takes its default, and nil when
+                // it declares none.
+                None => {
+                    let index = params
+                        .iter()
+                        .position(|declared| declared == param)
+                        .unwrap_or(usize::MAX);
+                    match defaults.iter().find(|(at, _)| *at == index) {
+                        Some((_, default)) => {
+                            vm.evaluate_expression(default).unwrap_or(Object::Nil)
+                        }
+                        None => Object::Nil,
+                    }
+                }
+            };
+            vm.environment_mut().define(name, value);
+        }
+    }
     // A `**kwargs` parameter takes no positional value, so it is left out of
     // the positional binding entirely.
     let params: Vec<String> = params
         .iter()
-        .filter(|param| !param.starts_with("**"))
+        .filter(|param| {
+            !param.starts_with("**") && !param.starts_with(crate::object::KEYWORD_PARAM_PREFIX)
+        })
         .cloned()
         .collect();
     let params = params.as_slice();
@@ -77,15 +145,17 @@ fn bind_block_params(
                     None => Object::Nil,
                 },
             };
-            vm.environment_mut().define((*param).clone(), value);
+            define_block_param(vm, param, value);
         }
     }
 
-    // Bind block param to nil for now (no block passing through blocks)
+    // A `&name` parameter takes the block the call was handed, which is nil
+    // when it was handed none.
     if let Some(bi) = block_idx {
         let name = params[bi].trim_start_matches('&').to_string();
         if !name.is_empty() {
-            vm.environment_mut().define(name, Object::Nil);
+            let given = vm.pending_block.take().unwrap_or(Object::Nil);
+            vm.environment_mut().define(name, given);
         }
     }
 }
@@ -291,6 +361,7 @@ impl VirtualMachine {
                             return Err(MetorexError::BlockBreak {
                                 value,
                                 location: position_to_location(position),
+                                home_frame: None,
                             });
                         }
                         ControlFlow::Redo { position } => {
@@ -341,6 +412,12 @@ impl VirtualMachine {
                     .define_captured(name.clone(), value_ref.clone());
             }
 
+            // A lambda takes its arguments the way a method does, so the
+            // count has to match what it declared.
+            if block.is_lambda {
+                check_lambda_arity(block, &arguments, Position::new(0, 0, 0))?;
+            }
+
             // Define parameters as regular variables (handles *args/&block prefixes)
             bind_block_params(
                 self,
@@ -381,9 +458,18 @@ impl VirtualMachine {
                             last_value = value;
                             break;
                         }
+                        // The invocation the block was written in may have
+                        // returned already, and then the return has nowhere
+                        // to go.
+                        if let Some(home) = block.home_frame
+                            && !self.live_frames.contains(&home)
+                        {
+                            return Err(orphaned_return_error(value, position));
+                        }
                         return Err(MetorexError::NonLocalReturn {
                             value,
                             location: position_to_location(position),
+                            home_frame: block.home_frame,
                         });
                     }
                     ControlFlow::Exception {
@@ -405,6 +491,7 @@ impl VirtualMachine {
                         return Err(MetorexError::BlockBreak {
                             value,
                             location: position_to_location(position),
+                            home_frame: None,
                         });
                     }
                     ControlFlow::Redo { position } => {
@@ -421,7 +508,21 @@ impl VirtualMachine {
 
         self.environment_mut().pop_scope();
         self.def_scope_stack = saved_def_scope;
-        result
+        // A `break` leaving this body belongs to the invocation that was
+        // handed the block, which is the call made from the frame the block
+        // was written in.
+        match result {
+            Err(MetorexError::BlockBreak {
+                value,
+                location,
+                home_frame: None,
+            }) => Err(MetorexError::BlockBreak {
+                value,
+                location,
+                home_frame: block.home_frame,
+            }),
+            other => other,
+        }
     }
 
     /// Execute a block body and return ControlFlow (for use in iterators like .each)
@@ -490,4 +591,78 @@ impl VirtualMachine {
         self.environment_mut().pop_scope();
         result
     }
+}
+
+/// A `return` from a block whose defining method has already returned. Ruby
+/// reports it as a LocalJumpError carrying the value and the reason.
+fn orphaned_return_error(value: Object, position: Position) -> MetorexError {
+    let message = "unexpected return".to_string();
+    let exception = Object::exception("LocalJumpError", message.clone());
+    if let Object::Exception(details) = &exception {
+        let mut details = details.borrow_mut();
+        details
+            .instance_vars
+            .insert("@exit_value".to_string(), value);
+        details.instance_vars.insert(
+            "@reason".to_string(),
+            Object::Symbol(std::rc::Rc::new("return".to_string())),
+        );
+    }
+    MetorexError::UncaughtException {
+        exception,
+        location: position_to_location(position),
+        message,
+    }
+}
+
+/// A lambda refuses a call that gives it the wrong number of arguments, the
+/// way a method does. A splat parameter makes the upper bound open, and a
+/// parameter with a default makes the lower bound smaller.
+fn check_lambda_arity(
+    block: &BlockStatement,
+    arguments: &[Object],
+    position: Position,
+) -> Result<(), MetorexError> {
+    let names = block.binding_parameters();
+    let positional: Vec<&String> = names
+        .iter()
+        .filter(|name| {
+            !name.starts_with('&')
+                && !name.starts_with(crate::object::KEYWORD_PARAM_PREFIX)
+                && !name.starts_with("**")
+        })
+        .collect();
+    if positional.iter().any(|name| name.starts_with('*')) {
+        return Ok(());
+    }
+    let takes_keywords = names
+        .iter()
+        .any(|name| name.starts_with(crate::object::KEYWORD_PARAM_PREFIX));
+    let given = if takes_keywords && matches!(arguments.last(), Some(Object::Dict(_))) {
+        arguments.len().saturating_sub(1)
+    } else {
+        arguments.len()
+    };
+    let expected = positional.len();
+    let optional = block
+        .parameter_defaults
+        .iter()
+        .filter(|(index, _)| {
+            names
+                .get(*index)
+                .is_some_and(|name| !name.starts_with(crate::object::KEYWORD_PARAM_PREFIX))
+        })
+        .count();
+    let required = expected.saturating_sub(optional);
+    if given >= required && given <= expected {
+        return Ok(());
+    }
+    let accepted = if required == expected {
+        crate::vm::errors::Arity::Exact(expected)
+    } else {
+        crate::vm::errors::Arity::Range(required, expected)
+    };
+    Err(crate::vm::errors::argument_count_error(
+        accepted, given, position,
+    ))
 }

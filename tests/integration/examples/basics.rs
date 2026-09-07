@@ -985,3 +985,19 @@ fn test_basics_complex_protocol_parens_execution() {
     let output = run_example("basics/complexes/protocol_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `basics/string_bytes` variants, which differ
+/// only in whether the calls are written with parentheses.
+const STRING_BYTES_OUTPUT: &str = "5\n6\n[104, 195, 169, 108, 108, 111]\n104\n195\n111\nnil\n\"h\"\nfalse\ntrue\ntrue\n[97, 98, 99]\n[97, 98, 99]\n10\n31\n2880289470\n725008\n11259375\n0\n-4660\n511\n10\n15\n99\n255\n-511\n0\n";
+
+#[test]
+fn test_basics_string_bytes_execution() {
+    let output = run_example("basics/string_bytes.rb");
+    assert_eq!(output, STRING_BYTES_OUTPUT);
+}
+
+#[test]
+fn test_basics_string_bytes_no_parens_execution() {
+    let output = run_example("basics/string_bytes_no_parens.rb");
+    assert_eq!(output, STRING_BYTES_OUTPUT);
+}

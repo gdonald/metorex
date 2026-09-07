@@ -120,6 +120,8 @@ fn test_kernel_integer_execution() {
 
 #[test]
 fn test_integer_iteration_execution() {
+    // `upto` and `downto` answer an Enumerator without a block, so the example
+    // collects it before inspecting.
     let expected = "1\n2\n3\n3\n2\n1\n[1, 2, 3]\n[3, 2, 1]\n3/2\n1\n1.5\n3\n2\n2\n2/1\n";
     let output = run_example("builtins/integer_iteration.rb");
     assert_eq!(output, expected);

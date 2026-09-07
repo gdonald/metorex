@@ -12,7 +12,7 @@
 mod blocks;
 mod control;
 mod dispatch;
-mod groups;
+pub(crate) mod groups;
 mod keywords;
 mod literals;
 pub(crate) mod symbols;

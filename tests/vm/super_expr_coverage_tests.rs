@@ -377,3 +377,44 @@ Missing.new.no_such_kernel_method
         "super: no superclass method 'no_such_kernel_method' for an instance of Missing"
     ));
 }
+
+// ── Splatted super arguments ─────────────────────────────────────────────────
+
+#[test]
+fn super_spreads_a_splatted_array_across_the_parent_parameters() {
+    let result = run(r#"
+class Holder
+  def initialize(*list)
+    @list = list
+  end
+  def list
+    @list
+  end
+end
+class Forwarder < Holder
+  def initialize(*list)
+    super(*list)
+  end
+end
+Forwarder.new(1, 2, 3).list.inspect
+"#);
+    assert_eq!(result, Some(Object::string("[1, 2, 3]")));
+}
+
+#[test]
+fn super_spreads_a_splat_alongside_a_plain_argument() {
+    let result = run(r#"
+class Sink
+  def take(first, second, third)
+    [first, second, third]
+  end
+end
+class Source < Sink
+  def take(*rest)
+    super(0, *rest)
+  end
+end
+Source.new.take(1, 2).inspect
+"#);
+    assert_eq!(result, Some(Object::string("[0, 1, 2]")));
+}

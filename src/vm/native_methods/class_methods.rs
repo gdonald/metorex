@@ -77,6 +77,12 @@ impl VirtualMachine {
         {
             return Ok(Some(result));
         }
+        // A class that defines `new` of its own builds its instances that
+        // way, rather than through the allocate-and-initialize every class
+        // is given.
+        if method_name == "new" && self.class_method_of(class_rc, "new").is_some() {
+            return Ok(None);
+        }
         // `Integer.sqrt` and `Integer.try_convert` belong to the class rather
         // than to a number.
         if class_rc.name() == "Integer" && matches!(method_name, "sqrt" | "try_convert") {
@@ -143,8 +149,44 @@ impl VirtualMachine {
                 message,
             });
         }
-        let non_instantiable = matches!(class_rc.name(), "TrueClass" | "FalseClass" | "NilClass");
-        if non_instantiable && method_name == "allocate" {
+        // `allocate` on a class whose instances are primitives answers an
+        // empty one of them, since there is no separate uninitialized form.
+        if method_name == "allocate" && matches!(class_rc.name(), "Array" | "Hash" | "Set") {
+            if !arguments.is_empty() {
+                return Err(method_argument_error(
+                    "allocate",
+                    0,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            return Ok(Some(match class_rc.name() {
+                "Array" => Object::empty_array(),
+                "Hash" => Object::empty_dict(),
+                _ => Object::empty_set(),
+            }));
+        }
+        // A Proc has no allocator, and MatchData has no `allocate` at all.
+        if method_name == "allocate" && class_rc.name() == "MatchData" {
+            let message = "undefined method 'allocate' for class 'MatchData'".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: crate::vm::errors::no_method_error(
+                    &message,
+                    method_name,
+                    &Object::Class(Rc::clone(class_rc)),
+                    arguments,
+                ),
+                location: position_to_location(position),
+                message,
+            });
+        }
+        // `Proc.new` builds one from a block, but there is no uninitialized
+        // Proc for `allocate` to hand back.
+        let non_instantiable = matches!(
+            class_rc.name(),
+            "TrueClass" | "FalseClass" | "NilClass" | "Symbol"
+        );
+        if (non_instantiable || class_rc.name() == "Proc") && method_name == "allocate" {
             let exc = Object::exception(
                 "TypeError",
                 format!("allocator undefined for {}", class_rc.name()),
@@ -695,6 +737,69 @@ impl VirtualMachine {
             let source = self.coerce_name_argument(&arguments[0], position)?;
             return Ok(Some(Object::String(Rc::new(regex::escape(&source)))));
         }
+        // `Regexp.last_match` answers the whole MatchData, and with a number
+        // the capture that number names.
+        if class_rc.name() == "Regexp" && method_name == "last_match" {
+            let last = self
+                .globals()
+                .get(crate::vm::native_methods::LAST_MATCH)
+                .unwrap_or(Object::Nil);
+            return match arguments.first() {
+                None => Ok(Some(last)),
+                Some(_) if matches!(last, Object::Nil) => Ok(Some(Object::Nil)),
+                Some(index) => self
+                    .send_to_object(last, "[]", vec![index.clone()], position)
+                    .map(Some),
+            };
+        }
+        // `Regexp.new` / `Regexp.compile` build a pattern from a source
+        // string, with the second argument turning case folding on.
+        if class_rc.name() == "Regexp" && matches!(method_name, "new" | "compile") {
+            let source = match arguments.first() {
+                Some(Object::Regex(pattern, flags)) => {
+                    return Ok(Some(Object::Regex(Rc::clone(pattern), Rc::clone(flags))));
+                }
+                Some(argument) => self.coerce_name_argument(argument, position)?,
+                None => {
+                    return Err(method_argument_error("new", 1, 0, position));
+                }
+            };
+            let mut flags = String::new();
+            match arguments.get(1) {
+                Some(Object::Int(options)) => {
+                    if options & 1 != 0 {
+                        flags.push('i');
+                    }
+                    if options & 2 != 0 {
+                        flags.push('x');
+                    }
+                    if options & 4 != 0 {
+                        flags.push('m');
+                    }
+                }
+                Some(Object::Bool(true)) => flags.push('i'),
+                _ => {}
+            }
+            return Ok(Some(Object::Regex(Rc::new(source), Rc::new(flags))));
+        }
+        // `Regexp.union` matches any of what it was given.
+        if class_rc.name() == "Regexp" && method_name == "union" {
+            let parts: Vec<Object> = match arguments.first() {
+                Some(Object::Array(array)) if arguments.len() == 1 => array.borrow().clone(),
+                _ => arguments.to_vec(),
+            };
+            let mut sources = Vec::with_capacity(parts.len());
+            for part in &parts {
+                sources.push(match part {
+                    Object::Regex(pattern, _) => (**pattern).clone(),
+                    other => regex::escape(&self.coerce_name_argument(other, position)?),
+                });
+            }
+            return Ok(Some(Object::Regex(
+                Rc::new(sources.join("|")),
+                Rc::new(String::new()),
+            )));
+        }
         // Module.used_refinements: the refinements `using` has brought into
         // the current scope.
         if method_name == "used_refinements" && class_rc.name() == "Module" {
@@ -788,14 +893,14 @@ impl VirtualMachine {
                 _ => {}
             }
         }
-        if method_name == "new" && class_rc.name() == "Time"
-            || (method_name == "now" && class_rc.name() == "Time")
+        // Time is written in Ruby against a few calendar helpers the C
+        // library carries out, so a local time follows the operating
+        // system's zone rules.
+        if class_rc.name() == "Time"
+            && let Some(answered) =
+                self.call_time_class_methods(method_name, arguments, position)?
         {
-            let secs = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs_f64();
-            return Ok(Some(Object::Float(secs)));
+            return Ok(Some(answered));
         }
         // Queue.new / SizedQueue.new — synchronous FIFO stub. The instance
         // carries an Array under `__queue_items`; SizedQueue ignores its
@@ -886,6 +991,72 @@ impl VirtualMachine {
         }
         // Array.new — `new(size)`, `new(size, default)`, `new(size) { |i| ... }`.
         // Without arguments, returns an empty array.
+        // `Set[1, 2, 3]` builds a set from the arguments directly.
+        if method_name == "[]" && class_rc.name() == "Set" {
+            let elements = Object::array(arguments.to_vec());
+            return self
+                .send_to_object(
+                    Object::Class(Rc::clone(class_rc)),
+                    "new",
+                    vec![elements],
+                    position,
+                )
+                .map(Some);
+        }
+        // `Hash[...]` builds a Hash from a single Hash, from an array of
+        // pairs, or from an even number of key and value arguments.
+        if method_name == "[]" && crate::vm::method_invocation::descends_from(class_rc, "Hash") {
+            let mut entries: Vec<(Object, Object)> = Vec::new();
+            match arguments {
+                [] => {}
+                [Object::Dict(source)] => {
+                    for (key, value) in source.borrow().iter() {
+                        if key.starts_with("__MX_") {
+                            continue;
+                        }
+                        entries.push((Object::string(key.clone()), value.clone()));
+                    }
+                    let mut built = indexmap::IndexMap::new();
+                    for (key, value) in entries {
+                        let Object::String(rendered) = key else {
+                            continue;
+                        };
+                        built.insert((*rendered).clone(), value);
+                    }
+                    return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(built)))));
+                }
+                [Object::Array(rows)] => {
+                    for row in rows.borrow().iter() {
+                        let Object::Array(pair) = row else {
+                            continue;
+                        };
+                        let pair = pair.borrow();
+                        entries.push((
+                            pair.first().cloned().unwrap_or(Object::Nil),
+                            pair.get(1).cloned().unwrap_or(Object::Nil),
+                        ));
+                    }
+                }
+                values if values.len().is_multiple_of(2) => {
+                    for pair in values.chunks(2) {
+                        entries.push((pair[0].clone(), pair[1].clone()));
+                    }
+                }
+                _ => {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "odd number of arguments for Hash",
+                        position,
+                    ));
+                }
+            }
+            let mut built = indexmap::IndexMap::new();
+            for (key, value) in entries {
+                let rendered = crate::vm::utils::object_to_dict_key(&key).unwrap_or_default();
+                built.insert(rendered, value);
+            }
+            return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(built)))));
+        }
         // `Array[1, 2, 3]` and the same form on a subclass build a value from
         // the arguments directly, without running `initialize`.
         if method_name == "[]" && crate::vm::method_invocation::descends_from(class_rc, "Array") {
@@ -910,26 +1081,44 @@ impl VirtualMachine {
         }
         if method_name == "new" && class_rc.name() == "Set" {
             use crate::object::ObjectHash;
-            let mut set = std::collections::HashSet::new();
+            let mut set: indexmap::IndexSet<ObjectHash> = indexmap::IndexSet::new();
             if arguments.len() == 1 {
-                if let Object::Array(arr_rc) = &arguments[0] {
-                    for item in arr_rc.borrow().iter() {
-                        if let Some(hash) = ObjectHash::from_object(item) {
-                            set.insert(hash);
-                        } else {
-                            return Err(MetorexError::runtime_error(
-                                format!("Cannot add {} to set (not hashable)", item.type_name()),
-                                position_to_location(position),
-                            ));
+                // An Array is taken as it is, and anything else that walks is
+                // asked for one.
+                let items = match &arguments[0] {
+                    Object::Array(elements) => elements.borrow().clone(),
+                    Object::Nil => Vec::new(),
+                    other if self.responds_to(other, "to_a") => {
+                        match self.send_to_object(other.clone(), "to_a", vec![], position)? {
+                            Object::Array(elements) => elements.borrow().clone(),
+                            _ => Vec::new(),
                         }
                     }
-                } else {
-                    return Err(method_argument_type_error(
-                        "Set.new",
-                        "Array",
-                        &arguments[0],
-                        position,
-                    ));
+                    other => {
+                        return Err(method_argument_type_error(
+                            "Set.new", "Array", other, position,
+                        ));
+                    }
+                };
+                let block = match self.pending_block.take() {
+                    Some(Object::Block(block)) => Some(block),
+                    _ => None,
+                };
+                for item in items {
+                    // `Set.new(list) { |item| ... }` stores what the block
+                    // answers rather than the item itself.
+                    let item = match &block {
+                        Some(block) => self.execute_block_callable(block, vec![item], position)?,
+                        None => item,
+                    };
+                    if let Some(hash) = ObjectHash::from_object(&item) {
+                        set.insert(hash);
+                    } else {
+                        return Err(MetorexError::runtime_error(
+                            format!("Cannot add {} to set (not hashable)", item.type_name()),
+                            position_to_location(position),
+                        ));
+                    }
                 }
             } else if arguments.len() > 1 {
                 return Err(MetorexError::runtime_error(
@@ -998,12 +1187,12 @@ impl VirtualMachine {
                             &name_str, class_rc, position,
                         ));
                     }
-                    if method.owner_class.is_some() {
-                        return Ok(Some(Object::Method(method)));
-                    }
                     let mut unbound = (*method).clone();
-                    unbound.owner = Some(owner.name().to_string());
-                    unbound.owner_class = Some(owner);
+                    if unbound.owner_class.is_none() {
+                        unbound.owner = Some(owner.name().to_string());
+                        unbound.owner_class = Some(owner);
+                    }
+                    unbound.origin_class = Some(Rc::clone(class_rc));
                     return Ok(Some(Object::Method(Rc::new(unbound))));
                 }
                 // Synthesize a stub for well-known Module-private mixin
@@ -2318,6 +2507,25 @@ impl VirtualMachine {
                         class_rc.define_method(&new_name, Rc::new(stub));
                         found = true;
                     }
+                    // A singleton class aliasing one of the attached object's
+                    // native methods has no entry to copy either, so the stub
+                    // records the name it was cut from and the call reaches
+                    // the native implementation through that.
+                    if !found
+                        && let Some(attached) = class_rc.get_class_var("__attached__")
+                        && self.responds_to(&attached, &old_name)
+                    {
+                        let mut stub = Method::with_owner(
+                            new_name.clone(),
+                            vec!["args".to_string()],
+                            vec![],
+                            class_rc.name().to_string(),
+                        );
+                        stub.variadic_param = Some((0, "args".to_string()));
+                        stub.original_name = Some(old_name.clone());
+                        class_rc.define_method(&new_name, Rc::new(stub));
+                        found = true;
+                    }
                     if !found {
                         let msg = format!(
                             "undefined method '{}' for {} '{}'",
@@ -3082,6 +3290,7 @@ pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "puts",
     "throw",
     "trace_var",
+    "trap",
     "untrace_var",
     "warn",
 ];
@@ -3314,7 +3523,7 @@ pub(super) fn push_module_ancestors(
 
 /// Append the full ancestor chain of a class (class itself, its mixins
 /// recursively, then each superclass with its own mixins) onto `chain`.
-pub(super) fn push_class_ancestors(
+pub(crate) fn push_class_ancestors(
     class: &Rc<Class>,
     chain: &mut Vec<Object>,
     seen: &mut Vec<*const Class>,

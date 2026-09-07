@@ -32,15 +32,11 @@ s.add("a")
 s.intersection("not a set")
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 #[test]
-fn set_intersection_with_int_errors() {
+fn set_intersection_with_a_non_enumerable_errors() {
     let err = run_err(
         r#"
 s = Set.new
@@ -48,11 +44,7 @@ s.add("a")
 s.intersection(123)
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -60,7 +52,7 @@ s.intersection(123)
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn set_difference_with_non_set_errors() {
+fn set_difference_with_a_non_enumerable_errors() {
     let err = run_err(
         r#"
 s = Set.new
@@ -68,11 +60,7 @@ s.add("a")
 s.difference(42)
 "#,
     );
-    assert!(
-        err.contains("Set") || err.contains("type"),
-        "Error was: {}",
-        err
-    );
+    assert!(err.contains("must be enumerable"), "Error was: {}", err);
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -138,11 +126,12 @@ s.remove("a")
 }
 
 #[test]
-fn set_delete_alias() {
+fn set_delete_answers_the_set() {
     let result = run(r#"
 s = Set.new
 s.add("x")
 s.delete("x")
+s.empty?
 "#);
     assert_eq!(result, Some(Object::Bool(true)));
 }

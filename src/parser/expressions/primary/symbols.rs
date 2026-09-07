@@ -196,9 +196,8 @@ impl Parser {
             // :"string" syntax — symbol from string literal
             TokenKind::String(s) => Ok(symbol(s, symbol_position)),
 
-            // :"#{interpolated}" syntax — dynamic symbol. Returned as an
-            // InterpolatedString (a runtime `to_sym` would be needed for true
-            // Symbol semantics; this works for mspec's usages).
+            // `:"#{...}"` names a symbol built at run time, so the assembled
+            // characters go through `to_sym`.
             TokenKind::InterpolatedString(parts) => {
                 let mut ast_parts = Vec::new();
                 for part in parts {
@@ -217,8 +216,14 @@ impl Parser {
                         }
                     }
                 }
-                Ok(Expression::InterpolatedString {
-                    parts: ast_parts,
+                Ok(Expression::MethodCall {
+                    receiver: Box::new(Expression::InterpolatedString {
+                        parts: ast_parts,
+                        position: symbol_position,
+                    }),
+                    method: "to_sym".to_string(),
+                    arguments: Vec::new(),
+                    trailing_block: None,
                     position: symbol_position,
                 })
             }

@@ -44,6 +44,10 @@ pub struct Method {
     /// validate that an UnboundMethod may be rebound onto the target module,
     /// and by `Method#owner` to return the module itself rather than its name.
     pub owner_class: Option<Rc<crate::class::Class>>,
+    /// The class the method was looked up on, which may sit below the module
+    /// that owns it. `super_method` needs it to walk the same ancestors the
+    /// lookup did.
+    pub origin_class: Option<Rc<crate::class::Class>>,
     /// Source location where the method is defined
     pub source_location: Option<SourceLocation>,
     /// Captured closure variables (from define_method blocks)
@@ -84,6 +88,7 @@ impl Method {
             bound_self: None,
             owner: None,
             owner_class: None,
+            origin_class: None,
             source_location: None,
             captured_vars: None,
             is_undefined: false,
@@ -115,6 +120,7 @@ impl Method {
             bound_self: None,
             owner: Some(owner),
             owner_class: None,
+            origin_class: None,
             source_location: None,
             captured_vars: None,
             is_undefined: false,
@@ -146,6 +152,7 @@ impl Method {
             bound_self: None,
             owner: None,
             owner_class: None,
+            origin_class: None,
             source_location: Some(source_location),
             captured_vars: None,
             is_undefined: false,
@@ -178,6 +185,7 @@ impl Method {
             bound_self: None,
             owner: Some(owner),
             owner_class: None,
+            origin_class: None,
             source_location: Some(source_location),
             captured_vars: None,
             is_undefined: false,
@@ -204,6 +212,7 @@ impl Method {
             bound_self: None,
             owner: None,
             owner_class: None,
+            origin_class: None,
             source_location: None,
             captured_vars: None,
             is_undefined: true,
@@ -230,6 +239,7 @@ impl Method {
             bound_self: self.bound_self.clone(),
             owner: self.owner.clone(),
             owner_class: self.owner_class.clone(),
+            origin_class: self.origin_class.clone(),
             source_location: self.source_location.clone(),
             captured_vars: self.captured_vars.clone(),
             is_undefined: self.is_undefined,

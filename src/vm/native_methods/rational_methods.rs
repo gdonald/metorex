@@ -183,16 +183,23 @@ pub(crate) fn parse_rational_text(text: &str) -> (num_bigint::BigInt, num_bigint
         }
         return (numerator, scale * BigInt::from(denominator));
     }
-    let mut end = 0;
+    // An underscore between digits is a separator rather than part of the
+    // number, the same way it is in a literal.
+    let mut digits = String::new();
+    let mut previous_was_digit = false;
     for (index, ch) in trimmed.char_indices() {
+        if ch == '_' && previous_was_digit {
+            continue;
+        }
         let acceptable =
             ch.is_ascii_digit() || ch == '.' || ((ch == '+' || ch == '-') && index == 0);
         if !acceptable {
             break;
         }
-        end = index + ch.len_utf8();
+        previous_was_digit = ch.is_ascii_digit();
+        digits.push(ch);
     }
-    parse_decimal_fraction(&trimmed[..end]).unwrap_or_else(|| (BigInt::from(0), BigInt::from(1)))
+    parse_decimal_fraction(&digits).unwrap_or_else(|| (BigInt::from(0), BigInt::from(1)))
 }
 
 fn leading_integer(text: &str) -> Option<i64> {

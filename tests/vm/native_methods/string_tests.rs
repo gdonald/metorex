@@ -90,13 +90,11 @@ result
 }
 
 #[test]
-fn string_each_char_without_block_error() {
-    let err = run_err(
-        r#"
-"abc".each_char
-"#,
-    );
-    assert!(err.contains("block") || err.contains("each_char") || err.contains("requires"));
+fn string_each_char_without_a_block_answers_an_enumerator() {
+    let result = run(r#"
+"abc".each_char.class.name
+"#);
+    assert_eq!(result, Some(Object::string("Enumerator")));
 }
 
 // ── String concatenation ──────────────────────────────────────────────────

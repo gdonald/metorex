@@ -37,9 +37,20 @@ impl VirtualMachine {
             }
         };
 
+        // `yield(*values)` hands the block the elements one by one, the way a
+        // splat does in any other argument list.
         let mut evaluated_args = Vec::with_capacity(arguments.len());
-        for arg in arguments {
-            evaluated_args.push(self.evaluate_expression(arg)?);
+        for argument in arguments {
+            if let Expression::Splat { expression, .. } = argument {
+                match self.evaluate_expression(expression)? {
+                    Object::Array(elements) => {
+                        evaluated_args.extend(elements.borrow().iter().cloned());
+                    }
+                    other => evaluated_args.push(other),
+                }
+                continue;
+            }
+            evaluated_args.push(self.evaluate_expression(argument)?);
         }
 
         block.call(self, evaluated_args, position)

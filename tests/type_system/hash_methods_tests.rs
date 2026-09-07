@@ -250,9 +250,10 @@ h.size
 }
 
 #[test]
-fn hash_merge_error_no_args() {
-    let err = run_err(r#"{"a" => 1}.merge"#);
-    assert!(err.contains("argument"));
+fn hash_merge_without_arguments_answers_a_copy() {
+    // Ruby's `merge` takes any number of hashes, so none answers a copy.
+    let result = run(r#"{"a" => 1}.merge.size"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 #[test]
@@ -294,9 +295,11 @@ r.size
 }
 
 #[test]
-fn hash_each_error_no_block() {
-    let err = run_err(r#"{"a" => 1}.each"#);
-    assert!(err.contains("block") || err.contains("Block"));
+fn hash_each_without_block_answers_an_enumerator() {
+    // Without a block it answers an Enumerator over the pairs, the way Ruby
+    // does, rather than raising.
+    let class_name = run(r#"{"a" => 1}.each.class.to_s"#);
+    assert_eq!(class_name, Some(Object::string("Enumerator")));
 }
 
 #[test]
@@ -349,9 +352,10 @@ fn hash_fetch_array_key_raises() {
 }
 
 #[test]
-fn hash_merge_error_too_many_args() {
-    let err = run_err(r#"{"a" => 1}.merge({"b" => 2}, {"c" => 3})"#);
-    assert!(err.contains("argument"));
+fn hash_merge_takes_several_hashes() {
+    // Each argument merges in turn, so later keys win.
+    let result = run(r#"{"a" => 1}.merge({"b" => 2}, {"c" => 3}).size"#);
+    assert_eq!(result, Some(Object::Int(3)));
 }
 
 #[test]

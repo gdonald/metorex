@@ -84,18 +84,22 @@ fn partition_without_block_errors() {
 // ── reduce with too many args errors ───────────────────────────────────────
 
 #[test]
-fn reduce_with_too_many_args_errors() {
+fn reduce_second_argument_must_name_a_method() {
     let err = run_err("[1, 2, 3].reduce(0, 1) { |a, x| a + x }");
-    assert!(err.contains("argument"), "unexpected: {}", err);
+    assert!(
+        err.contains("is not a symbol nor a string"),
+        "unexpected: {}",
+        err
+    );
 }
 
 // ── inject without block errors ────────────────────────────────────────────
 
 #[test]
-fn inject_without_block_errors() {
+fn inject_without_block_or_operator_errors() {
     let err = run_err("[1, 2, 3].inject");
     assert!(
-        err.contains("block") || err.contains("inject"),
+        err.contains("wrong number of arguments"),
         "unexpected: {}",
         err
     );
@@ -104,9 +108,13 @@ fn inject_without_block_errors() {
 // ── inject with too many args errors ───────────────────────────────────────
 
 #[test]
-fn inject_with_too_many_args_errors() {
+fn inject_second_argument_must_name_a_method() {
     let err = run_err("[1, 2, 3].inject(0, 1) { |a, x| a + x }");
-    assert!(err.contains("argument"), "unexpected: {}", err);
+    assert!(
+        err.contains("is not a symbol nor a string"),
+        "unexpected: {}",
+        err
+    );
 }
 
 // ── reduce on empty array returns nil (line 344) ──────────────────────────

@@ -232,3 +232,30 @@ impl Parser {
         })
     }
 }
+
+impl crate::parser::Parser {
+    /// A loop read for its value. The loop stays a statement, held in a body
+    /// so what surrounds it can chain onto what the loop answered.
+    pub(super) fn parse_loop_expression(
+        &mut self,
+        position: crate::lexer::Position,
+    ) -> Result<Expression, MetorexError> {
+        // The keyword was already stepped over on the way here, so the walk
+        // goes back to it and the statement parser reads the whole loop.
+        let keyword = self.stream.current_position().saturating_sub(1);
+        let until = matches!(self.previous().kind, TokenKind::Until);
+        self.stream.restore_position(keyword);
+        let looped = if until {
+            self.parse_until_statement()?
+        } else {
+            self.parse_while_statement()?
+        };
+        Ok(Expression::BeginRescue {
+            body: vec![looped],
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
+            position,
+        })
+    }
+}

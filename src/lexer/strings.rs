@@ -113,10 +113,128 @@ impl<'a> Lexer<'a> {
                             current_text.push('\x1B');
                             self.advance();
                         }
-                        Some('0') => {
-                            // Null character
-                            current_text.push('\0');
+                        // An octal escape runs to three digits, so `\000` is
+                        // one NUL rather than a NUL followed by two zeros.
+                        Some(digit) if ('0'..='7').contains(&digit) => {
+                            let mut digits = String::new();
+                            while digits.len() < 3
+                                && self.peek().is_some_and(|next| ('0'..='7').contains(&next))
+                            {
+                                digits.push(self.peek().expect("a digit was seen"));
+                                self.advance();
+                            }
+                            let value = u32::from_str_radix(&digits, 8).unwrap_or(0);
+                            match char::from_u32(value) {
+                                Some(letter) => current_text.push(letter),
+                                None => current_text.push('\0'),
+                            }
+                        }
+                        Some('s') => {
+                            current_text.push(' ');
                             self.advance();
+                        }
+                        Some('a') => {
+                            current_text.push('\u{7}');
+                            self.advance();
+                        }
+                        Some('b') => {
+                            current_text.push('\u{8}');
+                            self.advance();
+                        }
+                        Some('f') => {
+                            current_text.push('\u{c}');
+                            self.advance();
+                        }
+                        Some('v') => {
+                            current_text.push('\u{b}');
+                            self.advance();
+                        }
+                        // `\xNN` names a byte and `\uXXXX` or `\u{...}` a
+                        // code point, which is how a spec writes a character
+                        // it cannot type.
+                        Some('x') => {
+                            // A run of `\xNN` escapes names bytes, which
+                            // together may spell one character.
+                            let mut bytes = Vec::new();
+                            loop {
+                                self.advance();
+                                let mut digits = String::new();
+                                while digits.len() < 2
+                                    && self.peek().is_some_and(|digit| digit.is_ascii_hexdigit())
+                                {
+                                    digits.push(self.peek().expect("a digit was seen"));
+                                    self.advance();
+                                }
+                                match u8::from_str_radix(&digits, 16) {
+                                    Ok(byte) => bytes.push(byte),
+                                    Err(_) => {
+                                        current_text.push_str("\\x");
+                                        current_text.push_str(&digits);
+                                    }
+                                }
+                                if self.peek() != Some('\\') {
+                                    break;
+                                }
+                                self.advance();
+                                if self.peek() != Some('x') {
+                                    // The backslash opened some other escape,
+                                    // so it is handed back to the main loop.
+                                    self.push_back('\\');
+                                    break;
+                                }
+                            }
+                            match String::from_utf8(bytes.clone()) {
+                                Ok(text) => current_text.push_str(&text),
+                                Err(_) => {
+                                    for byte in bytes {
+                                        current_text.push(byte as char);
+                                    }
+                                }
+                            }
+                        }
+                        Some('u') => {
+                            self.advance();
+                            let mut points = Vec::new();
+                            if self.peek() == Some('{') {
+                                self.advance();
+                                let mut digits = String::new();
+                                while let Some(letter) = self.peek() {
+                                    if letter == '}' {
+                                        self.advance();
+                                        break;
+                                    }
+                                    if letter == ' ' {
+                                        points.push(digits.clone());
+                                        digits.clear();
+                                    } else {
+                                        digits.push(letter);
+                                    }
+                                    self.advance();
+                                }
+                                points.push(digits);
+                            } else {
+                                let mut digits = String::new();
+                                while digits.len() < 4
+                                    && self.peek().is_some_and(|digit| digit.is_ascii_hexdigit())
+                                {
+                                    digits.push(self.peek().expect("a digit was seen"));
+                                    self.advance();
+                                }
+                                points.push(digits);
+                            }
+                            for point in points {
+                                match u32::from_str_radix(&point, 16)
+                                    .ok()
+                                    .and_then(char::from_u32)
+                                {
+                                    Some(letter) => current_text.push(letter),
+                                    None => {
+                                        current_text.push('\\');
+                                        current_text.push('u');
+                                        current_text.push_str(&point);
+                                    }
+                                }
+                            }
                         }
                         Some(ch) => {
                             // For unrecognized escape sequences, include the backslash

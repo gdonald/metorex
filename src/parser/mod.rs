@@ -3,6 +3,7 @@
 
 mod error;
 mod expressions;
+pub(crate) use expressions::call::SAFE_CALL;
 mod statements;
 pub(crate) use statements::function::{
     ANONYMOUS_BLOCK, ANONYMOUS_KWREST, ANONYMOUS_SPLAT, SOLE_INSTANCE_RECEIVER,

@@ -130,15 +130,15 @@ fn object_hash_from_symbol() {
 }
 
 #[test]
-fn object_hash_from_array_is_none() {
+fn object_hash_from_array_holds_the_array() {
     let h = ObjectHash::from_object(&Object::empty_array());
-    assert!(h.is_none());
+    assert!(h.is_some());
 }
 
 #[test]
-fn object_hash_from_dict_is_none() {
+fn object_hash_from_dict_holds_the_dict() {
     let h = ObjectHash::from_object(&Object::empty_dict());
-    assert!(h.is_none());
+    assert!(h.is_some());
 }
 
 // ── CompiledFunction ────────────────────────────────────────────────────────
