@@ -582,6 +582,41 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::Int(touched)))
             }
+            // File.binread(path) answers the bytes the file holds, one to a
+            // character, so a file that is not text reads back unchanged.
+            "binread" => {
+                if arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::String(path) = &arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                if std::path::Path::new(path.as_str()).is_dir() {
+                    return Err(crate::vm::errors::simple_exception(
+                        "Errno::EISDIR",
+                        &format!("Is a directory @ io_fread - {path}"),
+                        position,
+                    ));
+                }
+                let held = std::fs::read(path.as_str()).map_err(|problem| {
+                    crate::vm::errors::simple_exception(
+                        "Errno::ENOENT",
+                        &format!("No such file or directory @ rb_sysopen - {path}: {problem}"),
+                        position,
+                    )
+                })?;
+                Ok(Some(super::pack_format::bytes_to_string(&held)))
+            }
             // File.read(path) answers everything the file holds.
             "read" => {
                 if arguments.is_empty() {
@@ -904,6 +939,40 @@ impl VirtualMachine {
                     }
                 }
                 Ok(Some(Object::Int(deleted)))
+            }
+            // File.binwrite(path, content) writes the bytes the content
+            // stands for, one to a character, rather than the bytes a text
+            // encoding would spell them with.
+            "binwrite" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        "binwrite",
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::String(path) = &arguments[0] else {
+                    return Err(method_argument_type_error(
+                        "binwrite",
+                        "String",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                let content = match &arguments[1] {
+                    Object::String(text) => text.as_str().to_string(),
+                    other => format!("{}", other),
+                };
+                let bytes = super::pack_format::string_to_bytes(&content);
+                std::fs::write(path.as_str(), &bytes).map_err(|problem| {
+                    crate::vm::errors::simple_exception(
+                        "Errno::ENOENT",
+                        &format!("No such file or directory @ rb_sysopen - {path}: {problem}"),
+                        position,
+                    )
+                })?;
+                Ok(Some(Object::Int(bytes.len() as i64)))
             }
             "write" => {
                 if arguments.len() != 2 {

@@ -1972,7 +1972,7 @@ Parser fixes during Phase 4 work:
 
 ### Concurrency
 
-- [ ] 4.43. core/thread - 3 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [ ] 4.43. core/thread - 4 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
   - [ ] 4.43.1. core/thread/abort_on_exception_spec
   - [ ] 4.43.2. core/thread/add_trace_func_spec
   - [ ] 4.43.3. core/thread/alive_spec
@@ -2008,7 +2008,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.43.33. core/thread/name_spec
   - [ ] 4.43.34. core/thread/native_thread_id_spec - no examples on this platform at ruby 4.0.1
   - [ ] 4.43.35. core/thread/new_spec
-  - [ ] 4.43.36. core/thread/pass_spec
+  - [x] 4.43.36. core/thread/pass_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.43.37. core/thread/pending_interrupt_spec
   - [ ] 4.43.38. core/thread/priority_spec
   - [ ] 4.43.39. core/thread/raise_spec
@@ -2384,7 +2384,7 @@ different reported release would open, without committing metorex to it.
   - [x] 5.1.8. language/private_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [x] 5.1.9. language/order_spec - 1 file, 5 examples, 25 expectations, 0 failures, 0 errors
   - [x] 5.1.10. language/source_encoding_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
-- [ ] 5.2. library - 560 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
+- [ ] 5.2. library - 628 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
   - [x] 5.2.1. library/abbrev/abbrev_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 5.2.2. library/base64/urlsafe_decode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.3. library/base64/urlsafe_encode64_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
@@ -2945,6 +2945,74 @@ different reported release would open, without committing metorex to it.
   - [x] 5.2.558. library/base64/strict_encode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.559. library/securerandom/bytes_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 5.2.560. library/securerandom/random_bytes_spec - 1 file, 10 examples, 396 expectations, 0 failures, 0 errors
+  - [x] 5.2.561. library/digest/bubblebabble_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.562. library/digest/hexencode_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.563. library/digest/instance/append_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.564. library/digest/instance/new_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.565. library/digest/instance/update_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.566. library/digest/md5/append_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.567. library/digest/md5/block_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.568. library/digest/md5/digest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.569. library/digest/md5/digest_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.570. library/digest/md5/digest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.571. library/digest/md5/equal_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.572. library/digest/md5/file_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.573. library/digest/md5/hexdigest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.574. library/digest/md5/hexdigest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.575. library/digest/md5/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.576. library/digest/md5/length_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.577. library/digest/md5/reset_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.578. library/digest/md5/size_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.579. library/digest/md5/to_s_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.580. library/digest/md5/update_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.581. library/digest/sha1/digest_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.582. library/digest/sha1/file_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.583. library/digest/sha2/hexdigest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.584. library/digest/sha256/append_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.585. library/digest/sha256/block_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.586. library/digest/sha256/digest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.587. library/digest/sha256/digest_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.588. library/digest/sha256/digest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.589. library/digest/sha256/equal_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.590. library/digest/sha256/file_spec - 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.591. library/digest/sha256/hexdigest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.592. library/digest/sha256/hexdigest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.593. library/digest/sha256/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.594. library/digest/sha256/length_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.595. library/digest/sha256/reset_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.596. library/digest/sha256/size_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.597. library/digest/sha256/to_s_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.598. library/digest/sha256/update_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.599. library/digest/sha384/append_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.600. library/digest/sha384/block_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.601. library/digest/sha384/digest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.602. library/digest/sha384/digest_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.603. library/digest/sha384/digest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.604. library/digest/sha384/equal_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.605. library/digest/sha384/file_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.606. library/digest/sha384/hexdigest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.607. library/digest/sha384/hexdigest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.608. library/digest/sha384/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.609. library/digest/sha384/length_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.610. library/digest/sha384/reset_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.611. library/digest/sha384/size_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.612. library/digest/sha384/to_s_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.613. library/digest/sha384/update_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.614. library/digest/sha512/append_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.615. library/digest/sha512/block_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.616. library/digest/sha512/digest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.617. library/digest/sha512/digest_length_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.618. library/digest/sha512/digest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.619. library/digest/sha512/equal_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.620. library/digest/sha512/file_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.621. library/digest/sha512/hexdigest_bang_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.622. library/digest/sha512/hexdigest_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.623. library/digest/sha512/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.624. library/digest/sha512/length_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.625. library/digest/sha512/reset_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.626. library/digest/sha512/size_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.627. library/digest/sha512/to_s_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.628. library/digest/sha512/update_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
 - [ ] 5.3. command_line - 7 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.3.1. command_line/dash_r_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
   - [x] 5.3.2. command_line/error_message_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors

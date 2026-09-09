@@ -495,6 +495,10 @@ pub fn init_string_methods(string_class: &Class) {
     // String#bytes
     let bytes_method = Rc::new(Method::new("bytes".to_string(), vec![], vec![]));
     string_class.define_method("bytes", bytes_method);
+
+    // String#to_str, which is how a String says it already is one.
+    let to_str_method = Rc::new(Method::new("to_str".to_string(), vec![], vec![]));
+    string_class.define_method("to_str", to_str_method);
 }
 
 /// Initialize built-in methods for the Array class

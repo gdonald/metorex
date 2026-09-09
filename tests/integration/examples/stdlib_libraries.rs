@@ -33,3 +33,57 @@ fn test_stdlib_libraries_reading_the_user_database_no_parens_execution() {
     let output = run_example("stdlib_libraries/reading_the_user_database_no_parens.rb");
     assert_eq!(output, READING_THE_USER_DATABASE_OUTPUT);
 }
+
+#[test]
+fn test_stdlib_libraries_message_digests_execution() {
+    let expected = concat!(
+        "\"900150983cd24fb0d6963f7d28e17f72\"\n",
+        "\"a9993e364706816aba3e25717850c26c9cd0d89d\"\n",
+        "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"\n",
+        "\"cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7\"\n",
+        "\"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f\"\n",
+        "\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n",
+        "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"\n",
+        "32\n",
+        "64\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "\"#<Digest::MD5: d41d8cd98f00b204e9800998ecf8427e>\"\n",
+        "true\n",
+        "\"47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=\"\n",
+        "\"73616d706c6520737472696e67\"\n",
+        "\"xexax\"\n",
+        "\"xinik-zorox\"\n",
+        "\"xesef-disof-gytuf-katof-movif-baxux\"\n",
+    );
+    let output = run_example("stdlib_libraries/message_digests.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_stdlib_libraries_message_digests_parens_execution() {
+    let expected = concat!(
+        "\"900150983cd24fb0d6963f7d28e17f72\"\n",
+        "\"a9993e364706816aba3e25717850c26c9cd0d89d\"\n",
+        "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"\n",
+        "\"cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7\"\n",
+        "\"ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f\"\n",
+        "\"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\"\n",
+        "\"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad\"\n",
+        "32\n",
+        "64\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "\"#<Digest::MD5: d41d8cd98f00b204e9800998ecf8427e>\"\n",
+        "true\n",
+        "\"47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=\"\n",
+        "\"73616d706c6520737472696e67\"\n",
+        "\"xexax\"\n",
+        "\"xinik-zorox\"\n",
+        "\"xesef-disof-gytuf-katof-movif-baxux\"\n",
+    );
+    let output = run_example("stdlib_libraries/message_digests_parens.rb");
+    assert_eq!(output, expected);
+}

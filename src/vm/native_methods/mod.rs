@@ -13,6 +13,7 @@ pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod complex_methods;
 mod constant_visibility;
 pub(crate) mod define_method;
+mod digest_algorithms;
 mod etc_methods;
 mod exception_methods;
 mod file_methods;

@@ -368,11 +368,13 @@ fn too_few_items(position: Position) -> MetorexError {
 }
 
 /// Write base64, in lines of sixty characters the way `pack("m")` does.
-fn encode_base64(bytes: &[u8]) -> String {
+/// Write base64. `wrapped` asks for the line breaks `m` writes every sixty
+/// characters and the newline that ends it, which `m0` leaves out.
+fn encode_base64(bytes: &[u8], wrapped: bool) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
     for (count, chunk) in bytes.chunks(3).enumerate() {
-        if count > 0 && count % 20 == 0 {
+        if wrapped && count > 0 && count % 20 == 0 {
             out.push('\n');
         }
         let mut held = 0u32;
@@ -387,7 +389,9 @@ fn encode_base64(bytes: &[u8]) -> String {
             }
         }
     }
-    out.push('\n');
+    if wrapped {
+        out.push('\n');
+    }
     out
 }
 
@@ -966,7 +970,8 @@ impl VirtualMachine {
                     let written = match directive.code {
                         'u' => encode_uu(&source),
                         'M' => encode_quoted_printable(&source),
-                        _ => encode_base64(&source),
+                        // `m0` asks for base64 with no line breaks in it.
+                        _ => encode_base64(&source, directive.count != Count::Exactly(0)),
                     };
                     out.extend_from_slice(written.as_bytes());
                 }

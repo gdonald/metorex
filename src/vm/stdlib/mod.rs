@@ -16,6 +16,11 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "coverage" => Some(include_str!("coverage.rb")),
         "csv" => Some(include_str!("csv.rb")),
         "date" => Some(include_str!("date.rb")),
+        // Every name the digest library is reached by loads the one
+        // file, which carries all of the algorithms metorex has.
+        "digest" | "digest/md5" | "digest/sha1" | "digest/sha2" | "digest/bubblebabble" => {
+            Some(include_str!("digest.rb"))
+        }
         "matrix" => Some(include_str!("matrix.rb")),
         "objspace" => Some(include_str!("objspace.rb")),
         "observer" => Some(include_str!("observer.rb")),

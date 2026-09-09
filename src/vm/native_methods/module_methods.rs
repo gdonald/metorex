@@ -214,6 +214,12 @@ impl VirtualMachine {
             return Ok(Some(answered));
         }
 
+        // The digest library asks for its answers here, so the algorithms
+        // themselves stay in one place rather than being written in Ruby.
+        if module_rc.name() == "Digest" && method_name == "__digest__" {
+            return self.compute_digest(arguments, position).map(Some);
+        }
+
         if module_rc.name() == "Process" {
             match method_name {
                 "pid" => return Ok(Some(Object::Int(std::process::id() as i64))),

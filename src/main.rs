@@ -49,6 +49,44 @@ struct Cli {
     #[arg(long = "disable", hide = true)]
     _disable: Option<String>,
 
+    /// Ignored: Ruby --enable=<feature>
+    #[arg(long = "enable", hide = true)]
+    _enable: Option<String>,
+
+    /// Ignored: Ruby --enable-frozen-string-literal, spelled either way.
+    /// Metorex has no in-place String mutation, so its literals already
+    /// behave as frozen ones do.
+    #[arg(
+        long = "enable-frozen-string-literal",
+        alias = "enable-frozen_string_literal",
+        alias = "disable-frozen-string-literal",
+        alias = "disable-frozen_string_literal",
+        hide = true,
+        action = clap::ArgAction::SetTrue
+    )]
+    _frozen_string_literal: bool,
+
+    /// Ignored: Ruby --enable-gems
+    #[arg(long = "enable-gems", hide = true, action = clap::ArgAction::SetTrue)]
+    _enable_gems: bool,
+
+    /// Ignored: Ruby --enable-did_you_mean, spelled either way
+    #[arg(
+        long = "enable-did_you_mean",
+        alias = "enable-did-you-mean",
+        hide = true,
+        action = clap::ArgAction::SetTrue
+    )]
+    _enable_did_you_mean: bool,
+
+    /// Ignored: Ruby --enable-rubyopt
+    #[arg(long = "enable-rubyopt", hide = true, action = clap::ArgAction::SetTrue)]
+    _enable_rubyopt: bool,
+
+    /// Ignored: Ruby --enable-all
+    #[arg(long = "enable-all", hide = true, action = clap::ArgAction::SetTrue)]
+    _enable_all: bool,
+
     /// Ignored: Ruby --disable-gems
     #[arg(long = "disable-gems", hide = true, action = clap::ArgAction::SetTrue)]
     _disable_gems: bool,

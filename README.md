@@ -68,6 +68,8 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **UnboundMethod#bind_call**: binds and calls in one step, without an intermediate Method object
 - **A class defining `self.new`**: builds its instances that way rather than through allocate-and-initialize
 - **`super` with keyword arguments**: the argument list reads the same as any other call's, so keywords, splats, and a block argument all reach the parent method
+- **`super` with a block**: `super { ... }` and `super(a) do ... end` both hand the parent method a block of their own, in place of the one the caller supplied. A bare `super` still forwards the enclosing method's arguments
+- **A superclass named from the top level**: `class C < ::Parent` starts the name at the top level rather than inside the module being opened, whether it names a class or builds one, as `class Pair < ::Struct.new(:left, :right)` does
 - **A constant bound inside a conditional**: a class assigned to a constant inside an `if` in a module body still reports the namespaced name
 - **Time**: a point in time held as a whole number of seconds since the epoch plus an exact fraction, with `now`, `at`, `new`, `utc`/`gm`, and `local`/`mktime` building one
 - **Time calendar fields**: `year`, `month`/`mon`, `day`/`mday`, `hour`, `min`, `sec`, `wday`, `yday`, `zone`, `utc_offset`, `dst?`, and the `monday?` through `sunday?` questions, read in UTC, in a fixed offset, or in the zone the operating system holds
@@ -84,7 +86,7 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **A chain with the dot leading the line**: newlines and comments may sit between a call and the dot that continues it
 - **Safe navigation**: `a&.b` answers nil for a nil receiver without running the method
 - **Quoted symbols in `alias`**: `alias :'new' :'old'` names either method that way
-- **Libraries metorex carries**: `require` finds `base64`, `shellwords`, `abbrev`, `singleton`, `observer`, `securerandom`, and `stringio` without a directory on the load path
+- **Libraries metorex carries**: `require` finds `base64`, `shellwords`, `abbrev`, `singleton`, `observer`, `securerandom`, `digest`, and `stringio` without a directory on the load path
 - **Percent literals with any delimiter**: `%!text!`, `%@text@`, and `%_text_` all read as strings, they fill in their `#{}` parts, and `%x(...)` runs its text as a command. A `%` that follows a value still divides
 - **`not` with parentheses**: `not(x)` takes what the parentheses hold, so a call may be chained onto the answer
 - **A group with a trailing modifier**: `(123 if true)` and `(count += 1 until done)` answer what the modifier left
@@ -101,6 +103,8 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **Matrix and Vector**: `require 'matrix'` gives rectangular arrays of numbers and the arithmetic over them. Matrices are built with `[]`, `rows`, `columns`, `build`, `diagonal`, `scalar`, `identity`, `zero`, `row_vector`, `column_vector`, and `empty`, and answer `row`, `column`, `[]`, `transpose`, `+`, `-`, `*`, `/`, `**`, `determinant`, `trace`, `rank`, `inverse`, `minor`, `first_minor`, `cofactor`, `collect`, `each`, `each_with_index`, and the shape questions from `square?` through `unitary?`. Vectors answer `+`, `-`, `*`, `inner_product`, `cross_product`, `magnitude`, `normalize`, `each2`, `covector`, and `angle_with`
 - **ObjectSpace::WeakMap and ObjectSpace::WeakKeyMap**: two maps that hold their entries only as long as something else does, written here as ordinary maps since metorex frees an object when the last reference to it goes. The first is keyed by identity and answers `[]`, `[]=`, `delete`, `key?`, `member?`, `key`, `size`, `length`, `keys`, `values`, `each`, `each_pair`, `each_key`, and `each_value`, and includes Enumerable. The second is keyed by value, adds `getkey` and `clear`, and refuses a number, a symbol, or one of the three singletons as a key
 - **ObjectSpace.memsize_of**: `require 'objspace'` reports how much an object holds, counted from its instance variables and its contents. A name ObjectSpace keeps no account of still answers nil, and a name the library adds now wins over that
+- **Message digests**: `require 'digest'` gives `Digest::MD5`, `Digest::SHA1`, `Digest::SHA256`, `Digest::SHA384`, `Digest::SHA512`, and `Digest::SHA2`, which picks one of the last three by bit length. Each answers `digest`, `hexdigest`, `base64digest`, and the `!` forms of all three, both on the class and on an object that takes its message through `update` or `<<`. An object also answers `reset`, `new`, `file`, `length`, `size`, `digest_length`, `block_length`, `to_s`, `inspect`, and an `==` that compares against another digest or against the text of a hexdigest. `Digest.hexencode` names bytes in hex and `Digest.bubblebabble` names them in syllables
+- **`File.binread` and `File.binwrite`**: the bytes a file holds, one to a character, so a file that is not text reads back and writes out unchanged
 - **A Singleton is reached through `instance` alone**: both `new` and `allocate` are refused on a class that includes it
 - **Etc**: `require 'etc'` reads the password and group databases and what the system reports about itself. `getpwuid`, `getpwnam`, `getpwent`, `setpwent`, `endpwent`, and `passwd` walk the accounts, `getgrgid`, `getgrnam`, `getgrent`, `setgrent`, `endgrent`, and `group` walk the groups, and both hand back `Etc::Passwd` and `Etc::Group` structs. `uname`, `nprocessors`, `sysconf`, `confstr`, `getlogin`, `sysconfdir`, and `systmpdir` answer the rest, with the `SC_` and `CS_PATH` constants the C library knows
 - **Coverage**: `require 'coverage'` gives `supported?`, `running?`, `start`, `result`, and `peek_result`. No measurement is recorded yet, so every mode reports unsupported and a result is empty
@@ -602,6 +606,8 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `$LOAD_PATH` entries may be objects answering `to_path`
 - `File::Separator` and its siblings, `File.chmod`, and `Process.euid` / `Process.uid`
 - An endless definition, `def name = expression`, defines a method whose body is that expression, with or without parameters and for a class method as readily as an instance one
+- A writer may name its parameter without parentheses, as `def total= amount`. The `=` has to sit against the name, which is what tells a writer from the endless definition `def total = amount`
+- A writer answers wherever it was written: `def self.name=` on a class or module, and `def obj.name=` on one object, both run when an assignment names them
 - `Object#inspect` shows the instance variables alongside the class and address, each rendered as `inspect` would. An `instance_variables_to_inspect` method chooses which to show, nil from it means all of them, and anything else raises TypeError
 - A format string reads `%{name}` and `%<name>` from the Hash it was given, raising KeyError for a name that Hash does not carry. With `$VERBOSE` on, arguments the format never reached are pointed out, and a keyword Hash is not counted among them
 - `format` and `sprintf` are private instance methods of Kernel, and `Kernel.format` names the same one

@@ -10,6 +10,14 @@ use crate::class::Class;
 use crate::vm::core::VirtualMachine;
 use crate::vm::utils::position_to_location;
 
+/// What a `super` call was written as: the arguments it named, whether it
+/// forwards the enclosing method's own, and the block it carries.
+struct SuperCall<'a> {
+    arguments: &'a [Expression],
+    forward_args: bool,
+    block: Option<Object>,
+}
+
 impl VirtualMachine {
     /// Evaluate a `super` call. Walks the inheritance chain from the receiver's
     /// class to find the class defining the current method, then invokes the
@@ -160,9 +168,11 @@ impl VirtualMachine {
                     other,
                     &class_name,
                     &method_name,
-                    arguments,
-                    forward_args,
-                    super_block,
+                    SuperCall {
+                        arguments,
+                        forward_args,
+                        block: super_block,
+                    },
                     position,
                 );
             }
@@ -415,11 +425,14 @@ impl VirtualMachine {
         receiver: Object,
         class_name: &str,
         method_name: &str,
-        arguments: &[Expression],
-        forward_args: bool,
-        super_block: Option<Object>,
+        call: SuperCall<'_>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        let SuperCall {
+            arguments,
+            forward_args,
+            block: super_block,
+        } = call;
         let receiver_class = self.builtins().class_of(&receiver);
         let mut chain = Vec::new();
         if let Some(singleton) = self.existing_singleton_class(&receiver) {
