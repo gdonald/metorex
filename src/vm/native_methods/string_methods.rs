@@ -68,8 +68,8 @@ impl VirtualMachine {
                 out.push('"');
                 Ok(Some(Object::string(out)))
             }
-            // `b` answers a binary copy. Every metorex string is UTF-8 and
-            // carries no encoding of its own, so the copy is the same bytes.
+            // `b` answers a copy of the text tagged as a run of bytes. It is
+            // a new string, so tagging it leaves the receiver alone.
             "b" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -79,7 +79,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::String(Rc::clone(string_value))))
+                Ok(Some(Object::binary_string(string_value.as_str())))
             }
             "inspect" => {
                 if !arguments.is_empty() {
@@ -116,9 +116,9 @@ impl VirtualMachine {
                 }
                 let (pattern, flags) = match &arguments[0] {
                     Object::Regex(pattern, flags) => {
-                        (pattern.as_ref().clone(), flags.as_ref().clone())
+                        (pattern.as_str().to_string(), flags.as_str().to_string())
                     }
-                    Object::String(source) => (source.as_ref().clone(), String::new()),
+                    Object::String(source) => (source.as_str().to_string(), String::new()),
                     other => {
                         return Err(method_argument_type_error(
                             "match",
@@ -128,7 +128,7 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let subject = string_value.as_ref().clone();
+                let subject = string_value.as_str().to_string();
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => {
                         let length = subject.chars().count() as i64;
@@ -154,7 +154,14 @@ impl VirtualMachine {
                     Some(Object::Block(block)) => Some(block),
                     _ => None,
                 };
-                let found = self.regexp_match_data(&pattern, &flags, &subject, start, position)?;
+                let found = self.regexp_match_data_in(
+                    &pattern,
+                    &flags,
+                    &subject,
+                    start,
+                    Some(string_value.encoding_name()),
+                    position,
+                )?;
                 match (found, block) {
                     (Some(data), Some(block)) => self
                         .execute_block_callable(&block, vec![data], position)
@@ -173,8 +180,8 @@ impl VirtualMachine {
                     ));
                 }
                 let (pattern, flags) = match &arguments[0] {
-                    Object::Regex(p, f) => (p.as_ref().clone(), f.as_ref().clone()),
-                    Object::String(s) => (s.as_ref().clone(), String::new()),
+                    Object::Regex(p, f) => (p.as_str().to_string(), f.as_str().to_string()),
+                    Object::String(s) => (s.as_str().to_string(), String::new()),
                     other => {
                         return Err(method_argument_type_error(
                             "match?",
@@ -213,7 +220,22 @@ impl VirtualMachine {
             }
             // String#encode — metorex strings are always UTF-8 and carry no
             // encoding metadata, so re-encoding is the identity.
-            "encode" => Ok(Some(Object::String(Rc::new(string_value.to_string())))),
+            // Text that is nothing but ASCII reads the same in every
+            // ASCII-compatible encoding, so a copy of it can be tagged with
+            // the one asked for without converting anything. Text that is not
+            // needs a conversion metorex does not carry out, and the copy
+            // keeps the encoding it had.
+            "encode" => {
+                let copy = Object::string(string_value.as_str());
+                if string_value.as_str().is_ascii()
+                    && let Some(named) = arguments.first()
+                    && let Ok(wanted) = self.encoding_name_argument(named, position)
+                    && let Object::String(copied) = &copy
+                {
+                    copied.set_encoding(wanted);
+                }
+                Ok(Some(copy))
+            }
             // `index` answers where a substring or pattern first appears at
             // or after the offset, counted in characters.
             "index" | "rindex" => {
@@ -321,7 +343,7 @@ impl VirtualMachine {
                     }
                 };
                 let to_insert = match &arguments[1] {
-                    Object::String(s) => s.as_ref().clone(),
+                    Object::String(s) => s.as_str().to_string(),
                     other => {
                         return Err(method_argument_type_error(
                             method_name,
@@ -432,7 +454,7 @@ impl VirtualMachine {
                 }
                 match &arguments[0] {
                     Object::String(rhs) => {
-                        let mut combined = string_value.as_ref().clone();
+                        let mut combined = string_value.as_str().to_string();
                         combined.push_str(rhs);
                         Ok(Some(Object::string(combined)))
                     }
@@ -470,7 +492,7 @@ impl VirtualMachine {
                 }
                 let separator = match arguments.first() {
                     None => "\n".to_string(),
-                    Some(Object::String(text)) => (**text).clone(),
+                    Some(Object::String(text)) => text.as_str().to_string(),
                     Some(Object::Nil) => String::new(),
                     Some(other) => {
                         return Err(method_argument_type_error(
@@ -778,7 +800,65 @@ impl VirtualMachine {
                     .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(chars)))))
             }
-            // Metorex strings are UTF-8 throughout.
+            // `unpack` reads the bytes back as the directives describe them,
+            // and `unpack1` answers the first of them.
+            "unpack" | "unpack1" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let format = match &arguments[0] {
+                    Object::String(format) => format.as_str().to_string(),
+                    other if self.responds_to(other, "to_str") => {
+                        match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                            Object::String(format) => format.as_str().to_string(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "String",
+                                    other,
+                                    position,
+                                ));
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let held = string_value.as_str().to_string();
+                let read = self.string_unpack(&held, &format, position)?;
+                if method_name == "unpack1" {
+                    return Ok(Some(read.into_iter().next().unwrap_or(Object::Nil)));
+                }
+                Ok(Some(Object::array(read)))
+            }
+            // `force_encoding` tags the string as being in another encoding
+            // without touching what it holds, which is what Ruby does for a
+            // string whose bytes are already right for the new one.
+            "force_encoding" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let named = self.encoding_name_argument(&arguments[0], position)?;
+                string_value.set_encoding(named);
+                Ok(Some(receiver.clone()))
+            }
+            // The encoding this string says it is in.
             "encoding" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -788,9 +868,8 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(
-                    self.globals().get("Encoding::UTF_8").unwrap_or(Object::Nil),
-                ))
+                let named = string_value.encoding_name();
+                Ok(Some(self.encoding_object(&named)))
             }
             "size" => {
                 if !arguments.is_empty() {
@@ -853,7 +932,7 @@ impl VirtualMachine {
                 };
                 let pad = if arguments.len() == 2 {
                     match &arguments[1] {
-                        Object::String(s) if !s.is_empty() => (**s).clone(),
+                        Object::String(s) if !s.is_empty() => s.as_str().to_string(),
                         Object::String(_) => {
                             return Err(MetorexError::runtime_error(
                                 format!("zero width padding for {}", method_name),
@@ -945,24 +1024,43 @@ impl VirtualMachine {
             }
             // `lines` splits on the line separator, keeping it on each piece.
             "split" => {
-                if arguments.len() > 1 {
+                if arguments.len() > 2 {
                     return Err(method_argument_error(
                         method_name,
-                        1,
+                        2,
                         arguments.len(),
                         position,
                     ));
                 }
-                let parts: Vec<Object> = if arguments.is_empty() {
+                // Ruby's limit: a positive one caps the number of fields and
+                // leaves the rest in the last, zero (or none) drops trailing
+                // empty fields, and a negative one keeps them.
+                let limit = match arguments.get(1) {
+                    None => 0i64,
+                    Some(Object::Int(count)) => *count,
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Integer",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let mut parts: Vec<String> = if arguments.is_empty() {
                     string_value
                         .split_whitespace()
-                        .map(|s| Object::string(s.to_string()))
+                        .map(|piece| piece.to_string())
                         .collect()
                 } else {
                     match &arguments[0] {
-                        Object::String(sep) => string_value
-                            .split(sep.as_ref())
-                            .map(|s| Object::string(s.to_string()))
+                        Object::String(separator) if limit > 0 => string_value
+                            .splitn(limit as usize, separator.as_str())
+                            .map(|piece| piece.to_string())
+                            .collect(),
+                        Object::String(separator) => string_value
+                            .split(separator.as_str())
+                            .map(|piece| piece.to_string())
                             .collect(),
                         Object::Regex(pattern, flags) => {
                             // Build the same regex used by Regex literal eval.
@@ -979,9 +1077,13 @@ impl VirtualMachine {
                                 builder.ignore_whitespace(true);
                             }
                             match builder.build() {
+                                Ok(re) if limit > 0 => re
+                                    .splitn(string_value.as_str(), limit as usize)
+                                    .map(|piece| piece.to_string())
+                                    .collect(),
                                 Ok(re) => re
                                     .split(string_value.as_str())
-                                    .map(|s| Object::string(s.to_string()))
+                                    .map(|piece| piece.to_string())
                                     .collect(),
                                 Err(e) => {
                                     return Err(MetorexError::runtime_error(
@@ -1001,9 +1103,22 @@ impl VirtualMachine {
                         }
                     }
                 };
+                if limit == 0 {
+                    while parts.last().is_some_and(|piece| piece.is_empty()) {
+                        parts.pop();
+                    }
+                }
+                let parts: Vec<Object> = parts.into_iter().map(Object::string).collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(parts)))))
             }
             "slice" | "[]" => {
+                // One argument is the same lookup a subscript makes, so an
+                // Integer, Range, String, or Regexp all read the same way.
+                if arguments.len() == 1 {
+                    return self
+                        .evaluate_index_operation(receiver.clone(), arguments[0].clone(), position)
+                        .map(Some);
+                }
                 if arguments.len() != 2 {
                     return Err(method_argument_error(
                         method_name,
@@ -1050,7 +1165,7 @@ impl VirtualMachine {
                 }
                 match &arguments[0] {
                     Object::String(substr) => {
-                        Ok(Some(Object::Bool(string_value.contains(substr.as_ref()))))
+                        Ok(Some(Object::Bool(string_value.contains(substr.as_str()))))
                     }
                     _ => Err(method_argument_type_error(
                         method_name,
@@ -1077,11 +1192,11 @@ impl VirtualMachine {
                     match arg {
                         Object::String(s) => {
                             if method_name == "start_with?" {
-                                if string_value.starts_with(s.as_ref()) {
+                                if string_value.starts_with(s.as_str()) {
                                     result = true;
                                     break;
                                 }
-                            } else if string_value.ends_with(s.as_ref()) {
+                            } else if string_value.ends_with(s.as_str()) {
                                 result = true;
                                 break;
                             }
@@ -1091,7 +1206,7 @@ impl VirtualMachine {
                         // way any other match does.
                         Object::Regex(pattern, flags) if method_name == "start_with?" => {
                             let anchored = format!("\\A(?:{})", pattern);
-                            let subject = string_value.as_ref().clone();
+                            let subject = string_value.as_str().to_string();
                             let found =
                                 self.regexp_match_data(&anchored, flags, &subject, 0, position)?;
                             if found.is_some() {
@@ -1122,7 +1237,7 @@ impl VirtualMachine {
                 }
                 match &arguments[0] {
                     Object::String(prefix) => Ok(Some(Object::Bool(
-                        string_value.starts_with(prefix.as_ref()),
+                        string_value.starts_with(prefix.as_str()),
                     ))),
                     _ => Err(method_argument_type_error(
                         method_name,
@@ -1143,7 +1258,7 @@ impl VirtualMachine {
                 }
                 match &arguments[0] {
                     Object::String(suffix) => {
-                        Ok(Some(Object::Bool(string_value.ends_with(suffix.as_ref()))))
+                        Ok(Some(Object::Bool(string_value.ends_with(suffix.as_str()))))
                     }
                     _ => Err(method_argument_type_error(
                         method_name,
@@ -1193,21 +1308,41 @@ impl VirtualMachine {
                 Ok(Some(receiver.clone()))
             }
             "to_i" => {
-                if !arguments.is_empty() {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        1,
                         arguments.len(),
                         position,
                     ));
                 }
+                // A base of its own reads the digits of that base, so
+                // `"ff".to_i(16)` is 255.
+                let base = match arguments.first() {
+                    None => 10u32,
+                    Some(Object::Int(held)) if (2..=36).contains(held) => *held as u32,
+                    Some(Object::Int(held)) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            &format!("invalid radix {}", held),
+                            position,
+                        ));
+                    }
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Integer",
+                            other,
+                            position,
+                        ));
+                    }
+                };
                 let trimmed = string_value.trim();
-                let n: i64 = trimmed
+                let digits: String = trimmed
                     .chars()
-                    .take_while(|c| c.is_ascii_digit() || *c == '-' || *c == '+')
-                    .collect::<String>()
-                    .parse()
-                    .unwrap_or(0);
+                    .take_while(|held| held.is_digit(base) || *held == '-' || *held == '+')
+                    .collect();
+                let n = i64::from_str_radix(&digits, base).unwrap_or(0);
                 Ok(Some(Object::Int(n)))
             }
             // `to_r` reads the leading rational value and answers (0/1) when
@@ -1238,9 +1373,141 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::string(string_value.as_ref().clone())))
+                Ok(Some(Object::string(string_value.as_str().to_string())))
+            }
+            // `scan` walks every match of a pattern. Without capture
+            // groups each match is the text it matched, and with them each is
+            // the array of what the groups took.
+            "scan" => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let (pattern, flags) = match &arguments[0] {
+                    Object::String(text) => (regex::escape(text.as_str()), String::new()),
+                    Object::Regex(pattern, flags) => {
+                        (pattern.as_str().to_string(), flags.as_str().to_string())
+                    }
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String or Regexp",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                let mut builder = regex::RegexBuilder::new(&pattern);
+                if flags.contains('i') {
+                    builder.case_insensitive(true);
+                }
+                if flags.contains('m') {
+                    builder.dot_matches_new_line(true);
+                }
+                if flags.contains('x') {
+                    builder.ignore_whitespace(true);
+                }
+                let compiled = match builder.build() {
+                    Ok(compiled) => compiled,
+                    Err(problem) => {
+                        return Err(MetorexError::runtime_error(
+                            format!("invalid regex for scan: {}", problem),
+                            position_to_location(position),
+                        ));
+                    }
+                };
+                let subject = string_value.as_str().to_string();
+                let groups = compiled.captures_len() - 1;
+                let mut found: Vec<Object> = Vec::new();
+                for captured in compiled.captures_iter(&subject) {
+                    if groups == 0 {
+                        let whole = captured.get(0).map(|held| held.as_str()).unwrap_or("");
+                        found.push(Object::string(whole.to_string()));
+                        continue;
+                    }
+                    let taken: Vec<Object> = (1..=groups)
+                        .map(|index| match captured.get(index) {
+                            Some(held) => Object::string(held.as_str().to_string()),
+                            None => Object::Nil,
+                        })
+                        .collect();
+                    found.push(Object::array(taken));
+                }
+                match self.pending_block.take() {
+                    Some(Object::Block(block)) => {
+                        for item in found {
+                            self.execute_block_body(&block, vec![item])?;
+                        }
+                        Ok(Some(receiver.clone()))
+                    }
+                    _ => Ok(Some(Object::array(found))),
+                }
             }
             "gsub" | "sub" => {
+                // A block form takes the pattern alone and answers each
+                // replacement from what the block returns for that match.
+                if arguments.len() == 1
+                    && let Some(Object::Block(block)) = self.pending_block.take()
+                {
+                    let (pattern, flags) = match &arguments[0] {
+                        Object::String(text) => (regex::escape(text.as_str()), String::new()),
+                        Object::Regex(pattern, flags) => {
+                            (pattern.as_str().to_string(), flags.as_str().to_string())
+                        }
+                        other => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String or Regexp",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    let mut builder = regex::RegexBuilder::new(&pattern);
+                    if flags.contains('i') {
+                        builder.case_insensitive(true);
+                    }
+                    if flags.contains('m') {
+                        builder.dot_matches_new_line(true);
+                    }
+                    if flags.contains('x') {
+                        builder.ignore_whitespace(true);
+                    }
+                    let compiled = match builder.build() {
+                        Ok(compiled) => compiled,
+                        Err(problem) => {
+                            return Err(MetorexError::runtime_error(
+                                format!("invalid regex for {}: {}", method_name, problem),
+                                position_to_location(position),
+                            ));
+                        }
+                    };
+                    let subject = string_value.as_str().to_string();
+                    let mut built = String::new();
+                    let mut cut = 0;
+                    let once = method_name == "sub";
+                    for (replaced, found) in compiled.find_iter(&subject).enumerate() {
+                        if once && replaced == 1 {
+                            break;
+                        }
+                        built.push_str(&subject[cut..found.start()]);
+                        let answered = self.execute_block_body(
+                            &block,
+                            vec![Object::string(found.as_str().to_string())],
+                        )?;
+                        match &answered {
+                            Object::String(text) => built.push_str(text),
+                            other => built.push_str(&other.to_string()),
+                        }
+                        cut = found.end();
+                    }
+                    built.push_str(&subject[cut..]);
+                    return Ok(Some(Object::string(built)));
+                }
                 if arguments.len() != 2 {
                     return Err(method_argument_error(
                         method_name,
@@ -1250,7 +1517,7 @@ impl VirtualMachine {
                     ));
                 }
                 let replacement = match &arguments[1] {
-                    Object::String(s) => s.as_ref().clone(),
+                    Object::String(s) => s.as_str().to_string(),
                     _ => {
                         return Err(method_argument_type_error(
                             method_name,
@@ -1263,11 +1530,11 @@ impl VirtualMachine {
                 let limit = if method_name == "sub" { 1 } else { 0 };
                 match &arguments[0] {
                     Object::String(s) => {
-                        let pattern = s.as_ref().clone();
+                        let pattern = s.as_str().to_string();
                         // A String pattern matches literally, and the match it
                         // finds is recorded the way a Regexp one is.
                         let escaped = regex::escape(&pattern);
-                        let subject = string_value.as_ref().clone();
+                        let subject = string_value.as_str().to_string();
                         self.regexp_match_data(&escaped, "", &subject, 0, position)?;
                         let result = if limit == 0 {
                             string_value.replace(&pattern, &replacement)
@@ -1285,10 +1552,11 @@ impl VirtualMachine {
                         let re_pattern = if flags.contains('i') {
                             format!("(?i){}", pattern)
                         } else {
-                            pattern.as_ref().clone()
+                            pattern.as_str().to_string()
                         };
-                        let (source, flags) = (pattern.as_ref().clone(), flags.as_ref().clone());
-                        let subject = string_value.as_ref().clone();
+                        let (source, flags) =
+                            (pattern.as_str().to_string(), flags.as_str().to_string());
+                        let subject = string_value.as_str().to_string();
                         self.regexp_match_data(&source, &flags, &subject, 0, position)?;
                         match regex::Regex::new(&re_pattern) {
                             Ok(re) => {
@@ -1301,7 +1569,7 @@ impl VirtualMachine {
                                 };
                                 Ok(Some(Object::string(result)))
                             }
-                            Err(_) => Ok(Some(Object::string(string_value.as_ref().clone()))),
+                            Err(_) => Ok(Some(Object::string(string_value.as_str().to_string()))),
                         }
                     }
                     other => Err(method_argument_type_error(
@@ -1534,5 +1802,50 @@ fn character_index(letters: &[char], needle: &str, start: usize, from_end: bool)
         places.into_iter().rev().find(|place| *place <= start)
     } else {
         places.into_iter().find(|place| *place >= start)
+    }
+}
+
+impl VirtualMachine {
+    /// The encoding an argument names, whether it arrives as an Encoding or
+    /// as its name in text.
+    pub(crate) fn encoding_name_argument(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match value {
+            Object::Class(encoding) => Ok(encoding.name().to_string()),
+            Object::String(named) => {
+                let found = self.send_to_object(
+                    self.globals().get("Encoding").unwrap_or(Object::Nil),
+                    "find",
+                    vec![Object::string(named.as_str())],
+                    position,
+                )?;
+                match found {
+                    Object::Class(encoding) => Ok(encoding.name().to_string()),
+                    _ => Ok(named.as_str().to_string()),
+                }
+            }
+            other => Err(method_argument_type_error(
+                "force_encoding",
+                "String",
+                other,
+                position,
+            )),
+        }
+    }
+
+    /// The Encoding object a name stands for, and UTF-8 where the name is one
+    /// metorex does not carry a constant for.
+    pub(crate) fn encoding_object(&mut self, name: &str) -> Object {
+        for (constant, display, _) in crate::vm::init::ENCODING_NAMES {
+            if display == name
+                && let Some(found) = self.globals().get(&format!("Encoding::{}", constant))
+            {
+                return found;
+            }
+        }
+        self.globals().get("Encoding::UTF_8").unwrap_or(Object::Nil)
     }
 }

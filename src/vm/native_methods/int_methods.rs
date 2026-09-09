@@ -343,6 +343,12 @@ impl VirtualMachine {
                 } else {
                     (method_name == "<<", count as u64)
                 };
+                // A left shift is exact in Ruby, so a result too wide for an
+                // i64 keeps its value rather than dropping the high bits.
+                if shift_left && count < 1_000_000 {
+                    let widened = num_bigint::BigInt::from(*n) << count as usize;
+                    return Ok(Some(Object::integer(widened)));
+                }
                 Ok(Some(Object::Int(shift_integer(*n, shift_left, count))))
             }
             "~" => {
@@ -453,6 +459,35 @@ impl VirtualMachine {
                 };
                 Ok(Some(Object::string(letter.to_string())))
             }
+            "to_s" | "inspect" if !arguments.is_empty() => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // A base of its own writes the digits of that base, so
+                // `255.to_s(16)` is "ff".
+                let Object::Int(base) = arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "Integer",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                if !(2..=36).contains(&base) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("invalid radix {base}"),
+                        position,
+                    ));
+                }
+                let written = num_bigint::BigInt::from(*n).to_str_radix(base as u32);
+                Ok(Some(Object::string(written)))
+            }
             "to_s" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -462,7 +497,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::String(Rc::new(n.to_string()))))
+                Ok(Some(Object::string(n.to_string())))
             }
             "times" => {
                 if !arguments.is_empty() {
@@ -582,6 +617,31 @@ impl VirtualMachine {
                 }
                 // A Float endpoint counts up to the whole number inside it, so
                 // `1.upto(3.7)` stops at 3 and `5.downto(2.3)` stops at 3.
+                // Without a block the walk is handed back as an Enumerator
+                // whatever the endpoint is, and only asking it for a size
+                // reports that it cannot count to one it does not understand.
+                let numeric_limit = matches!(&arguments[0], Object::Int(_) | Object::Float(_));
+                if !numeric_limit && self.pending_block.is_none() {
+                    let message = format!(
+                        "comparison of Integer with {} failed",
+                        crate::vm::native_methods::array_methods::inspect_element(&arguments[0])
+                    );
+                    let walk = self.build_enumerator(
+                        receiver.clone(),
+                        method_name,
+                        arguments.to_vec(),
+                        None,
+                        position,
+                    )?;
+                    return self
+                        .send_to_object(
+                            walk,
+                            "__refuse_size__",
+                            vec![Object::string(message)],
+                            position,
+                        )
+                        .map(Some);
+                }
                 let limit = match &arguments[0] {
                     Object::Int(limit) => *limit,
                     Object::Float(limit) if limit.is_finite() => {
@@ -699,7 +759,7 @@ impl VirtualMachine {
         match method_name {
             "to_s" | "inspect" => {
                 no_arguments(0)?;
-                Ok(Some(Object::String(Rc::new(value.to_string()))))
+                Ok(Some(Object::string(value.to_string())))
             }
             "to_i" | "to_int" | "ord" => Ok(Some(Object::BigInt(Rc::clone(value)))),
             "to_f" => {
@@ -818,7 +878,7 @@ impl VirtualMachine {
             }
             "hash" => {
                 no_arguments(0)?;
-                Ok(Some(Object::String(Rc::new(value.to_string()))))
+                Ok(Some(Object::string(value.to_string())))
             }
             "integer?" => {
                 no_arguments(0)?;
@@ -1014,7 +1074,7 @@ impl VirtualMachine {
     ) -> Result<RoundingMode, MetorexError> {
         let named = match half {
             None | Some(Object::Nil) => return Ok(RoundingMode::Up),
-            Some(Object::Symbol(name) | Object::String(name)) => (*name).clone(),
+            Some(Object::Symbol(name) | Object::String(name)) => name.as_str().to_string(),
             Some(other) => self.coerce_name_argument(&other, position)?,
         };
         match named.as_str() {

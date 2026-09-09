@@ -18,6 +18,11 @@ impl VirtualMachine {
         &mut self,
         statement: &Statement,
     ) -> Result<ControlFlow, MetorexError> {
+        // Every statement is a `:line` event for whatever is tracing, which
+        // costs a check on an empty list when nothing is.
+        if !self.tracepoints.is_empty() {
+            self.fire_line_event(statement.position())?;
+        }
         match statement {
             Statement::Expression {
                 expression,
@@ -191,9 +196,7 @@ impl VirtualMachine {
                     std::slice::from_ref(statement),
                     *position,
                 )?;
-                Ok(ControlFlow::Value(Object::Symbol(std::rc::Rc::new(
-                    name.clone(),
-                ))))
+                Ok(ControlFlow::Value(Object::symbol(name.clone())))
             }
             Statement::Begin {
                 body,
@@ -589,8 +592,8 @@ impl VirtualMachine {
                             // here to avoid recursing through a general
                             // native-method fallback.
                             let key_str = match &idx {
-                                Object::Symbol(s) => Some((**s).clone()),
-                                Object::String(s) => Some((**s).clone()),
+                                Object::Symbol(s) => Some(s.as_str().to_string()),
+                                Object::String(s) => Some(s.as_str().to_string()),
                                 _ => None,
                             };
                             if let Some(k) = key_str {
@@ -750,7 +753,7 @@ impl VirtualMachine {
                                 // A class that answers what it was not asked
                                 // for decides what a setter with no method
                                 // behind it means.
-                                let name = Object::Symbol(Rc::new(setter_method.clone()));
+                                let name = Object::symbol(setter_method.clone());
                                 self.send_to_object(
                                     Object::Instance(Rc::clone(&instance_rc)),
                                     "method_missing",
@@ -759,6 +762,23 @@ impl VirtualMachine {
                                 )?;
                                 Ok(())
                             } else {
+                                // A setter the instance answers natively, such
+                                // as an open file handle's `lineno=`, lives in
+                                // the native table rather than the method map.
+                                let receiver = Object::Instance(Rc::clone(&instance_rc));
+                                let class = self.builtins().class_of(&receiver);
+                                if self
+                                    .call_native_method(
+                                        &class,
+                                        &receiver,
+                                        &setter_method,
+                                        std::slice::from_ref(&value),
+                                        *position,
+                                    )?
+                                    .is_some()
+                                {
+                                    return Ok(());
+                                }
                                 Err(MetorexError::runtime_error(
                                     format!("Undefined setter method '{}'", setter_method),
                                     position_to_location(*position),
@@ -795,6 +815,22 @@ impl VirtualMachine {
                                 )?;
                                 Ok(())
                             } else {
+                                // A setter the module answers natively, such
+                                // as `Process.maxgroups=`, lives in the native
+                                // table rather than in the method map.
+                                let receiver = Object::Module(Rc::clone(&module_rc));
+                                if self
+                                    .call_module_methods(
+                                        &module_rc,
+                                        &receiver,
+                                        &setter_method,
+                                        std::slice::from_ref(&value),
+                                        *position,
+                                    )?
+                                    .is_some()
+                                {
+                                    return Ok(());
+                                }
                                 module_rc.set_class_var(
                                     format!("@{}", setter_method.trim_end_matches('=')),
                                     value,

@@ -209,10 +209,7 @@ def with_optional_block(&blk)
 end
 with_optional_block()
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("no block".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("no block".to_string())));
 }
 
 #[test]

@@ -225,7 +225,7 @@ impl VirtualMachine {
                 if required == 0 {
                     return self.invoke_method(object_class, method, Object::Nil, vec![], position);
                 } else {
-                    let mut bound = method.as_ref().clone();
+                    let mut bound = (*method).clone();
                     bound.receiver = Some(Box::new(Object::Nil));
                     return Ok(Object::Method(Rc::new(bound)));
                 }
@@ -335,7 +335,7 @@ impl VirtualMachine {
             if required == 0 {
                 return self.invoke_method(class, method, receiver, vec![], position);
             } else {
-                let mut bound = method.as_ref().clone();
+                let mut bound = (*method).clone();
                 bound.receiver = Some(Box::new(receiver));
                 return Ok(Object::Method(Rc::new(bound)));
             }
@@ -380,7 +380,7 @@ impl VirtualMachine {
             if required == 0 {
                 return self.invoke_method(object_class, method, receiver, vec![], position);
             } else {
-                let mut bound = method.as_ref().clone();
+                let mut bound = (*method).clone();
                 bound.receiver = Some(Box::new(receiver));
                 return Ok(Object::Method(Rc::new(bound)));
             }

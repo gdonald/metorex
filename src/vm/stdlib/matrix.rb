@@ -61,6 +61,14 @@ class Vector
   end
   private :build_from
 
+  # Anything sized and indexable stands in for a Vector in the pairwise
+  # methods, which is how an Array argument is accepted.
+  def pairs_with_vector?(other)
+    return true if other.is_a?(Vector) || other.is_a?(Array)
+    other.respond_to?(:size) && other.respond_to?(:[])
+  end
+  private :pairs_with_vector?
+
   def to_a
     @elements.dup
   end
@@ -84,7 +92,7 @@ class Vector
   end
 
   def each2(other)
-    raise TypeError, "expected Vector" unless other.is_a?(Vector)
+    raise TypeError, "expected Vector" unless pairs_with_vector?(other)
     raise ExceptionForMatrix::ErrDimensionMismatch unless size == other.size
     return to_enum(:each2, other) unless block_given?
     index = 0
@@ -96,7 +104,7 @@ class Vector
   end
 
   def collect2(other)
-    raise TypeError, "expected Vector" unless other.is_a?(Vector)
+    raise TypeError, "expected Vector" unless pairs_with_vector?(other)
     raise ExceptionForMatrix::ErrDimensionMismatch unless size == other.size
     return to_enum(:collect2, other) unless block_given?
     collected = []
@@ -161,7 +169,7 @@ class Vector
     total = 0
     index = 0
     while index < size
-      total += @elements[index] * other[index]
+      total += @elements[index] * other[index].conjugate
       index += 1
     end
     total
@@ -273,6 +281,9 @@ class Matrix
   end
   private_class_method :as_row
 
+  # A matrix is made through the named builders, so `new` is not one of them.
+  private_class_method :new
+
   def self.rows(rows, copy = true)
     self[*rows.to_a]
   end
@@ -282,13 +293,32 @@ class Matrix
   end
 
   def self.build(row_count, column_count = row_count)
+    row_count = coerce_to_int(row_count)
+    column_count = coerce_to_int(column_count)
     raise ArgumentError, "negative size" if row_count < 0 || column_count < 0
     return to_enum(:build, row_count, column_count) unless block_given?
     made = (0...row_count).map do |row|
       (0...column_count).map { |column| yield row, column }
     end
-    rows(made)
+    made_matrix = allocate
+    made_matrix.send(:build_from, made, column_count)
+    made_matrix
   end
+
+  # A size given as something other than an Integer goes through `to_int`,
+  # which is where a wrong type is reported.
+  def self.coerce_to_int(value)
+    return value if value.is_a?(Integer)
+    unless value.respond_to?(:to_int)
+      raise TypeError, "can't convert #{value.class} into Integer"
+    end
+    converted = value.to_int
+    unless converted.is_a?(Integer)
+      raise TypeError, "can't convert #{value.class} into Integer"
+    end
+    converted
+  end
+  private_class_method :coerce_to_int
 
   def self.diagonal(*values)
     values = values[0].to_a if values.size == 1 && values[0].is_a?(Array)
@@ -324,7 +354,9 @@ class Matrix
   end
 
   def self.column_vector(values)
-    rows(values.to_a.map { |value| [value] })
+    listed = values.to_a
+    return empty(0, 1) if listed.empty?
+    rows(listed.map { |value| [value] })
   end
 
   def self.empty(row_count = 0, column_count = 0)
@@ -457,16 +489,33 @@ class Matrix
   end
 
   def find_index(*args)
-    return to_enum(:find_index) if args.empty? && !block_given?
-    wanted = args.first
-    @rows.each_with_index do |row, row_index|
-      row.each_with_index do |value, column_index|
-        matched = args.empty? ? yield(value) : value == wanted
-        return [row_index, column_index] if matched
+    if args.size > 2
+      raise ArgumentError, "wrong number of arguments (given #{args.size}, expected 0..2)"
+    end
+    which = if args.size == 2 || (args.size == 1 && selector?(args.last))
+      args.pop
+    else
+      :all
+    end
+    if args.size == 1
+      each_with_index(which) do |value, row_index, column_index|
+        return [row_index, column_index] if value == args.first
       end
+    elsif block_given?
+      each_with_index(which) do |value, row_index, column_index|
+        return [row_index, column_index] if yield(value)
+      end
+    else
+      return to_enum(:find_index, *args, which)
     end
     nil
   end
+
+  # Whether a name asks for one part of a matrix rather than a value to find.
+  def selector?(name)
+    [:all, :diagonal, :off_diagonal, :lower, :strict_lower, :strict_upper, :upper].include?(name)
+  end
+  private :selector?
 
   def index(*args, &block)
     find_index(*args, &block)
@@ -474,19 +523,38 @@ class Matrix
 
   def minor(*args)
     if args.size == 2
-      rows_wanted = args[0]
-      columns_wanted = args[1]
-      picked = @rows[rows_wanted] || []
-      made = picked.map { |row| row[columns_wanted] || [] }
-      return new_matrix(made)
-    end
-    unless args.size == 4
+      row_range = args[0]
+      column_range = args[1]
+      from_row = row_range.first
+      from_row += row_size if from_row < 0
+      to_row = row_range.end
+      to_row += row_size if to_row < 0
+      to_row += 1 unless row_range.exclude_end?
+      size_row = to_row - from_row
+
+      from_column = column_range.first
+      from_column += @column_count if from_column < 0
+      to_column = column_range.end
+      to_column += @column_count if to_column < 0
+      to_column += 1 unless column_range.exclude_end?
+      size_column = to_column - from_column
+    elsif args.size == 4
+      from_row = args[0]
+      size_row = args[1]
+      from_column = args[2]
+      size_column = args[3]
+      return nil if size_row < 0 || size_column < 0
+      from_row += row_size if from_row < 0
+      from_column += @column_count if from_column < 0
+    else
       raise ArgumentError, "wrong number of arguments (given #{args.size}, expected 2 or 4)"
     end
-    made = (args[0]...(args[0] + args[1])).map do |row|
-      (args[2]...(args[2] + args[3])).map { |column| @rows[row][column] }
+
+    if from_row > row_size || from_column > @column_count || from_row < 0 || from_column < 0
+      return nil
     end
-    new_matrix(made)
+    picked = @rows[from_row, size_row].map { |row| row[from_column, size_column] }
+    new_matrix(picked, [@column_count - from_column, size_column].min)
   end
 
   def first_minor(row, column)
@@ -508,8 +576,10 @@ class Matrix
     new_matrix(made)
   end
 
+  # A matrix holding nothing still has a shape, and turning it over swaps
+  # the two sizes rather than losing them.
   def transpose
-    return self.class.empty(column_size, row_size) if @rows.empty?
+    return self.class.empty(column_size, row_size) if self.empty?
     made = (0...@column_count).map do |column|
       @rows.map { |row| row[column] }
     end
@@ -565,7 +635,7 @@ class Matrix
         total
       end
     end
-    new_matrix(made)
+    new_matrix(made, other.column_size)
   end
 
   def /(other)
@@ -582,7 +652,7 @@ class Matrix
       raise ExceptionForMatrix::ErrOperationNotImplemented
     end
     return inverse ** -count if count < 0
-    answered = Matrix.identity(row_size)
+    answered = self.class.identity(row_size)
     count.times { answered = answered * self }
     answered
   end
@@ -827,6 +897,7 @@ class Matrix
 
   def eql?(other)
     return false unless other.is_a?(Matrix)
+    return false unless column_size == other.column_size
     to_a.eql?(other.to_a)
   end
 
@@ -844,6 +915,7 @@ class Matrix
   end
 
   def inspect
+    return "#{self.class}.empty(#{row_size}, #{column_size})" if self.empty?
     "#{self.class}[#{@rows.map { |row| row.inspect }.join(", ")}]"
   end
 
@@ -901,5 +973,155 @@ class Matrix
       raise TypeError, "wrong argument type" unless other.is_a?(Numeric)
       Scalar.new(@value ** other)
     end
+  end
+end
+
+class Matrix
+  # The LU decomposition of a matrix with partial pivoting: a lower triangular
+  # L, an upper triangular U, and a permutation P such that L * U == P * A.
+  # The pivoting is what keeps the arithmetic stable, and the row swaps it
+  # makes are the ones P records.
+  class LUPDecomposition
+    include ExceptionForMatrix
+
+    def initialize(matrix)
+      raise TypeError, "expected Matrix but got #{matrix.class}" unless matrix.is_a?(Matrix)
+      # `lu` holds the two triangles in one array as the elimination runs,
+      # with L below the diagonal and U on and above it.
+      @lu = matrix.to_a
+      @row_count = matrix.row_count
+      @column_count = matrix.column_count
+      @pivots = (0...@row_count).to_a
+      @pivot_sign = 1
+      column_work = Array.new(@row_count, 0)
+
+      (0...@column_count).each do |column|
+        (0...@row_count).each { |row| column_work[row] = @lu[row][column] }
+
+        (0...@row_count).each do |row|
+          last = row < column ? row : column
+          total = 0
+          (0...last).each { |step| total += @lu[row][step] * column_work[step] }
+          column_work[row] = column_work[row] - total
+          @lu[row][column] = column_work[row]
+        end
+
+        # The largest remaining entry in this column becomes the pivot, and
+        # its row is swapped into place.
+        pivot = column
+        (column + 1...@row_count).each do |row|
+          pivot = row if column_work[row].abs > column_work[pivot].abs
+        end
+        if pivot != column
+          @lu[pivot], @lu[column] = @lu[column], @lu[pivot]
+          @pivots[pivot], @pivots[column] = @pivots[column], @pivots[pivot]
+          @pivot_sign = -@pivot_sign
+        end
+
+        next unless column < @row_count && @lu[column][column] != 0
+        (column + 1...@row_count).each do |row|
+          @lu[row][column] = @lu[row][column].quo(@lu[column][column])
+        end
+      end
+    end
+
+    attr_reader :pivots
+
+    # The lower triangle, with ones down its diagonal.
+    def l
+      Matrix.build(@row_count, [@row_count, @column_count].min) do |row, column|
+        if row > column
+          @lu[row][column]
+        elsif row == column
+          1
+        else
+          0
+        end
+      end
+    end
+
+    # The upper triangle, the diagonal included.
+    def u
+      Matrix.build([@row_count, @column_count].min, @column_count) do |row, column|
+        row <= column ? @lu[row][column] : 0
+      end
+    end
+
+    # The permutation the pivoting made, as a matrix.
+    def p
+      rows = @pivots
+      Matrix.build(@row_count) { |row, column| rows[row] == column ? 1 : 0 }
+    end
+
+    def to_a
+      [l, u, p]
+    end
+
+    # The product down U's diagonal, signed by how many rows were swapped.
+    def determinant
+      raise ExceptionForMatrix::ErrDimensionMismatch unless @row_count == @column_count
+      found = @pivot_sign
+      (0...@column_count).each { |column| found *= @lu[column][column] }
+      found
+    end
+
+    def singular?
+      (0...@column_count).any? { |column| @lu[column][column] == 0 }
+    end
+
+    # Solve `self * x == values` for x, by substituting forward through L and
+    # then back through U.
+    def solve(values)
+      raise ExceptionForMatrix::ErrNotRegular if singular?
+      case values
+      when Matrix
+        raise ExceptionForMatrix::ErrDimensionMismatch unless values.row_count == @row_count
+        wanted = values.column_count
+        held = @pivots.map { |row| values.row(row).to_a }
+        __substitute__ held, wanted
+        Matrix.rows(held.first(@column_count))
+      when Vector
+        raise ExceptionForMatrix::ErrDimensionMismatch unless values.size == @row_count
+        held = @pivots.map { |row| [values[row]] }
+        __substitute__ held, 1
+        Vector.elements(held.first(@column_count).map { |row| row[0] })
+      else
+        raise TypeError, "expected Matrix or Vector but got #{values.class}"
+      end
+    end
+
+    # Forward substitution through L, then back substitution through U, in
+    # place on the rows handed over.
+    def __substitute__(held, wanted)
+      (0...@column_count).each do |column|
+        (column + 1...@column_count).each do |row|
+          (0...wanted).each do |at|
+            held[row][at] -= held[column][at] * @lu[row][column]
+          end
+        end
+      end
+      (@column_count - 1).downto(0) do |column|
+        (0...wanted).each do |at|
+          held[column][at] = held[column][at].quo(@lu[column][column])
+        end
+        (0...column).each do |row|
+          (0...wanted).each do |at|
+            held[row][at] -= held[column][at] * @lu[row][column]
+          end
+        end
+      end
+      held
+    end
+    private :__substitute__
+  end
+
+  # The LU decomposition of this matrix, with the row swaps that keep the
+  # arithmetic stable recorded alongside.
+  def lup
+    LUPDecomposition.new(self)
+  end
+
+  def lup_decomposition
+    lup
   end
 end

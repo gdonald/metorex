@@ -73,10 +73,7 @@ f = Foo.new
 f.name = "hello"
 f.name
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hello".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]

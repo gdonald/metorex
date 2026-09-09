@@ -122,7 +122,7 @@ impl VirtualMachine {
                 class,
                 method,
                 value.clone(),
-                vec![Object::Symbol(Rc::new("to_s".to_string()))],
+                vec![Object::symbol("to_s".to_string())],
                 position,
             )?;
             if !answer.is_truthy() {
@@ -186,7 +186,7 @@ impl VirtualMachine {
                     missing_class,
                     missing,
                     value.clone(),
-                    vec![Object::Symbol(Rc::new("to_s".to_string()))],
+                    vec![Object::symbol("to_s".to_string())],
                     position,
                 )
                 .map_err(|_| self.no_string_conversion(value, position));

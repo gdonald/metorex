@@ -30,7 +30,7 @@ pub(super) fn format_exception(exception: &Object) -> String {
 /// Convert an object into a dictionary key string representation.
 pub(super) fn object_to_dict_key(value: &Object) -> Option<String> {
     match value {
-        Object::String(s) => Some((**s).clone()),
+        Object::String(s) => Some(s.as_str().to_string()),
         Object::Symbol(s) => Some(format!(":{}", s)),
         Object::Int(i) => Some(i.to_string()),
         // A Float key keeps its fraction, so 4.0 and 4 are different keys the
@@ -78,7 +78,7 @@ pub(super) fn dict_key_to_object(key_str: &str) -> Object {
         return Object::Bool(false);
     }
     if let Some(sym) = key_str.strip_prefix(':') {
-        return Object::Symbol(std::rc::Rc::new(sym.to_string()));
+        return Object::symbol(sym.to_string());
     }
     if let Ok(n) = key_str.parse::<i64>() {
         return Object::Int(n);
@@ -86,7 +86,7 @@ pub(super) fn dict_key_to_object(key_str: &str) -> Object {
     if let Ok(f) = key_str.parse::<f64>() {
         return Object::Float(f);
     }
-    Object::String(std::rc::Rc::new(key_str.to_string()))
+    Object::string(key_str.to_string())
 }
 
 /// Determine if a value is truthy for conditional statements.

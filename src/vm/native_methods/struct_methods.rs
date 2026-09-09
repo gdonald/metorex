@@ -41,7 +41,7 @@ pub(crate) fn struct_members(class_rc: &Rc<Class>) -> Option<Vec<String>> {
                 .borrow()
                 .iter()
                 .map(|name| match name {
-                    Object::Symbol(s) => (**s).clone(),
+                    Object::Symbol(s) => s.as_str().to_string(),
                     other => other.to_string(),
                 })
                 .collect(),
@@ -60,7 +60,7 @@ fn symbols(names: &[String]) -> Object {
     Object::Array(Rc::new(RefCell::new(
         names
             .iter()
-            .map(|name| Object::Symbol(Rc::new(name.clone())))
+            .map(|name| Object::symbol(name.clone()))
             .collect(),
     )))
 }
@@ -324,15 +324,15 @@ impl VirtualMachine {
         if let Object::String(first) = &positional[0]
             && first.chars().next().is_some_and(|c| c.is_uppercase())
         {
-            constant_name = Some((**first).clone());
+            constant_name = Some(first.as_str().to_string());
             index = 1;
         }
 
         let mut members = Vec::new();
         for argument in &positional[index..] {
             match argument {
-                Object::Symbol(name) => members.push((**name).clone()),
-                Object::String(name) => members.push((**name).clone()),
+                Object::Symbol(name) => members.push(name.as_str().to_string()),
+                Object::String(name) => members.push(name.as_str().to_string()),
                 other => {
                     return Err(MetorexError::type_error(
                         format!("{} is not a symbol nor a string", other),
@@ -516,11 +516,11 @@ impl VirtualMachine {
                 for member in members {
                     let value = member_value(receiver, member);
                     let (key, value) = match &block {
-                        None => (Object::Symbol(Rc::new(member.clone())), value),
+                        None => (Object::symbol(member.clone()), value),
                         Some(block) => {
                             let produced = self.execute_block_callable(
                                 block,
-                                vec![Object::Symbol(Rc::new(member.clone())), value],
+                                vec![Object::symbol(member.clone()), value],
                                 position,
                             )?;
                             self.pair_from_block_result(produced, position)?
@@ -679,7 +679,7 @@ impl VirtualMachine {
                         vec![member_value(receiver, member)]
                     } else {
                         vec![
-                            Object::Symbol(Rc::new(member.clone())),
+                            Object::symbol(member.clone()),
                             member_value(receiver, member),
                         ]
                     };

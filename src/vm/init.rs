@@ -13,6 +13,79 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// The encodings metorex names, as (constant, the name the encoding reports,
+/// whether it is a dummy). Ruby spells most of the names by turning the
+/// underscores into dashes, and the ones that break that rule carry their own
+/// spelling here. A dummy encoding is one Ruby names and tags strings with but
+/// cannot convert through.
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 43] = [
+    ("UTF_8", "UTF-8", false),
+    ("US_ASCII", "US-ASCII", false),
+    ("ASCII_8BIT", "ASCII-8BIT", false),
+    ("BINARY", "ASCII-8BIT", false),
+    ("UTF_16", "UTF-16", false),
+    ("UTF_16BE", "UTF-16BE", false),
+    ("UTF_16LE", "UTF-16LE", false),
+    ("UTF_32", "UTF-32", false),
+    ("UTF_32BE", "UTF-32BE", false),
+    ("UTF_32LE", "UTF-32LE", false),
+    ("ISO_8859_1", "ISO-8859-1", false),
+    ("ISO_8859_2", "ISO-8859-2", false),
+    ("ISO_8859_3", "ISO-8859-3", false),
+    ("ISO_8859_4", "ISO-8859-4", false),
+    ("ISO_8859_5", "ISO-8859-5", false),
+    ("ISO_8859_6", "ISO-8859-6", false),
+    ("ISO_8859_7", "ISO-8859-7", false),
+    ("ISO_8859_8", "ISO-8859-8", false),
+    ("ISO_8859_9", "ISO-8859-9", false),
+    ("ISO_8859_10", "ISO-8859-10", false),
+    ("ISO_8859_11", "ISO-8859-11", false),
+    ("ISO_8859_13", "ISO-8859-13", false),
+    ("ISO_8859_14", "ISO-8859-14", false),
+    ("ISO_8859_15", "ISO-8859-15", false),
+    ("ISO_8859_16", "ISO-8859-16", false),
+    ("EUC_JP", "EUC-JP", false),
+    ("EUC_KR", "EUC-KR", false),
+    ("EUC_TW", "EUC-TW", false),
+    ("EUC_CN", "EUC-CN", false),
+    ("Shift_JIS", "Shift_JIS", false),
+    ("SHIFT_JIS", "Shift_JIS", false),
+    ("Windows_31J", "Windows-31J", false),
+    ("KOI8_R", "KOI8-R", false),
+    ("KOI8_U", "KOI8-U", false),
+    ("Big5", "Big5", false),
+    ("GB18030", "GB18030", false),
+    ("GBK", "GBK", false),
+    ("IBM437", "IBM437", false),
+    ("IBM866", "IBM866", false),
+    ("MacJapanese", "MacJapanese", false),
+    // The dummy encodings: Ruby names them and tags strings with them, but
+    // converts nothing through them.
+    ("ISO_2022_JP", "ISO-2022-JP", true),
+    ("ISO_2022_JP_2", "ISO-2022-JP-2", true),
+    ("UTF_7", "UTF-7", true),
+];
+
+/// The flags `File.open` accepts in `flags:`, and the ones a glob or fnmatch
+/// is narrowed with. File, IO, and File::Constants all carry them.
+const FILE_OPEN_FLAGS: [(&str, i64); 15] = [
+    ("RDONLY", 0),
+    ("WRONLY", 1),
+    ("RDWR", 2),
+    ("CREAT", 0o100),
+    ("EXCL", 0o200),
+    ("TRUNC", 0o1000),
+    ("APPEND", 0o2000),
+    ("NONBLOCK", 0o4000),
+    ("FNM_NOESCAPE", 0x01),
+    ("FNM_PATHNAME", 0x02),
+    ("FNM_DOTMATCH", 0x04),
+    ("FNM_CASEFOLD", 0x08),
+    ("FNM_EXTGLOB", 0x10),
+    ("FNM_SYSCASE", 0),
+    ("FNM_SHORTNAME", 0),
+];
+
 /// Initialize built-in methods for core classes.
 pub(super) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
     builtin_classes::init_object_methods(builtins.object_class.as_ref());
@@ -42,23 +115,23 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     // block_given? defaults to false at global scope (no block context)
     globals.set("block_given?", Object::Bool(false));
     // Ruby constants that mspec and specs query
-    globals.set("RUBY_VERSION", Object::String(Rc::new("4.0.2".to_string())));
     globals.set(
-        "RUBY_ENGINE",
-        Object::String(Rc::new("metorex".to_string())),
+        "RUBY_VERSION",
+        Object::string(crate::reported_ruby_version()),
     );
+    globals.set("RUBY_ENGINE", Object::string("metorex".to_string()));
     globals.set(
         "RUBY_PLATFORM",
-        Object::String(Rc::new(std::env::consts::OS.to_string())),
+        Object::string(crate::reported_ruby_platform()),
     );
     globals.set(
         "RUBY_DESCRIPTION",
-        Object::String(Rc::new("metorex (ruby-compatible)".to_string())),
+        Object::string("metorex (ruby-compatible)".to_string()),
     );
     // Standard IO stream placeholders (used as constants like STDOUT/STDERR/STDIN)
-    globals.set("STDOUT", Object::String(Rc::new("STDOUT".to_string())));
-    globals.set("STDERR", Object::String(Rc::new("STDERR".to_string())));
-    globals.set("STDIN", Object::String(Rc::new("STDIN".to_string())));
+    globals.set("STDOUT", Object::string("STDOUT".to_string()));
+    globals.set("STDERR", Object::string("STDERR".to_string()));
+    globals.set("STDIN", Object::string("STDIN".to_string()));
 
     // BasicObject — Ruby's true root class. Object inherits from it.
     let basic_object = Rc::new(Class::new("BasicObject", None));
@@ -278,7 +351,7 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
 }
 
 /// Register built-in modules (Comparable, Enumerable, Kernel, etc.).
-pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
+pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &BuiltinClasses) {
     // Comparable — stub module, methods will be added later. Ruby mixes it
     // into the classes whose values have an order, which is what
     // `Integer.include?(Comparable)` reports.
@@ -312,12 +385,34 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // Encoding — metorex strings are UTF-8, so the named encodings exist as
     // distinct objects but every string reports UTF-8.
     let encoding = Rc::new(Class::new("Encoding", None));
-    for name in ["UTF_8", "US_ASCII", "BINARY", "ASCII_8BIT", "SHIFT_JIS"] {
-        let display = name.replace('_', "-");
-        let constant = Rc::new(Class::new(display, Some(Rc::clone(&encoding))));
+    // Two constants that name the same encoding, such as BINARY and
+    // ASCII_8BIT, reach one object, so `Encoding.find` on the name it reports
+    // answers the same encoding whichever constant it came from.
+    let mut built: HashMap<&str, Rc<Class>> = HashMap::new();
+    for (name, display, _) in ENCODING_NAMES {
+        let constant = Rc::clone(
+            built
+                .entry(display)
+                .or_insert_with(|| Rc::new(Class::new(display, Some(Rc::clone(&encoding))))),
+        );
         encoding.set_class_var(name, Object::Class(Rc::clone(&constant)));
         globals.set(format!("Encoding::{}", name), Object::Class(constant));
     }
+    // `Encoding.list` reports each encoding once, however many names reach it.
+    let mut listed: Vec<Object> = Vec::new();
+    for (_, display, _) in ENCODING_NAMES {
+        if let Some(found) = built.get(display)
+            && !listed
+                .iter()
+                .any(|held| matches!(held, Object::Class(class) if Rc::ptr_eq(class, found)))
+        {
+            listed.push(Object::Class(Rc::clone(found)));
+        }
+    }
+    globals.set(
+        "__Encoding_list",
+        Object::Array(Rc::new(RefCell::new(listed))),
+    );
     // The errors Encoding raises are constants on it, and descend from
     // StandardError the way every other one does.
     if let Some(Object::Class(standard_error)) = globals.get("StandardError") {
@@ -338,19 +433,37 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
 
     // The open flags `File.open` and `Kernel#open` accept in `flags:`.
     if let Some(Object::Class(file_class)) = globals.get("File") {
-        for (name, value) in [
-            ("RDONLY", 0),
-            ("WRONLY", 1),
-            ("RDWR", 2),
-            ("CREAT", 0o100),
-            ("EXCL", 0o200),
-            ("TRUNC", 0o1000),
-            ("APPEND", 0o2000),
-            ("NONBLOCK", 0o4000),
-        ] {
+        for (name, value) in FILE_OPEN_FLAGS {
             file_class.set_class_var(name, Object::Int(value));
             globals.set(format!("File::{}", name), Object::Int(value));
         }
+    }
+
+    // File::Constants carries the open and match flags, and File includes it,
+    // which is where `File.include?(File::Constants)` reads them from.
+    if let Some(Object::Class(file_class)) = globals.get("File") {
+        let constants = Rc::new(Class::new_module("File::Constants"));
+        for (name, value) in FILE_OPEN_FLAGS {
+            constants.set_class_var(name, Object::Int(value));
+        }
+        file_class.set_class_var("Constants", Object::Module(Rc::clone(&constants)));
+        globals.set("File::Constants", Object::Module(Rc::clone(&constants)));
+        file_class.add_mixin(constants);
+    }
+
+    // A file reads as a sequence of lines, so File carries Enumerable the way
+    // IO does.
+    if let (Some(Object::Class(file_class)), Some(Object::Module(enumerable))) =
+        (globals.get("File"), globals.get("Enumerable"))
+    {
+        file_class.add_mixin(enumerable);
+    }
+
+    // The path that discards everything written to it.
+    if let Some(Object::Class(file_class)) = globals.get("File") {
+        let null = Object::string("/dev/null");
+        file_class.set_class_var("NULL", null.clone());
+        globals.set("File::NULL", null);
     }
 
     // File::Separator and its aliases, which a path built by hand uses.
@@ -411,7 +524,17 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
         Some(Rc::new(Class::new("Object", None))),
     ));
     globals.set("Time", Object::Class(time));
-    let io = Rc::new(Class::new("IO", Some(Rc::new(Class::new("Object", None)))));
+    // File already stands under IO, so the global name has to reach that same
+    // class rather than a second one wearing the name.
+    let io = Rc::clone(&builtins.io_class);
+    // An IO reads as a sequence of lines, and it answers the open flags under
+    // its own name, both of which Ruby arranges by including these two.
+    if let Some(Object::Module(constants)) = globals.get("File::Constants") {
+        io.add_mixin(constants);
+    }
+    if let Some(Object::Module(enumerable)) = globals.get("Enumerable") {
+        io.add_mixin(enumerable);
+    }
     globals.set("IO", Object::Class(io));
 
     // Thread — stub
@@ -419,7 +542,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
         "Thread",
         Some(Rc::new(Class::new("Object", None))),
     ));
-    globals.set("Thread", Object::Class(thread));
+    globals.set("Thread", Object::Class(Rc::clone(&thread)));
 
     // Queue / SizedQueue — minimal FIFO stub. metorex runs Thread blocks
     // synchronously, so blocking-pop semantics aren't meaningful;
@@ -436,6 +559,16 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
         Some(Rc::new(Class::new("Object", None))),
     ));
     globals.set("SizedQueue", Object::Class(sized_queue));
+    // Ruby names both of these under Thread as well as at the top level, and
+    // the two names reach the same class.
+    if let (Some(queue_class), Some(sized_class)) =
+        (globals.get("Queue"), globals.get("SizedQueue"))
+    {
+        thread.set_class_var("Queue", queue_class.clone());
+        thread.set_class_var("SizedQueue", sized_class.clone());
+        globals.set("Thread::Queue", queue_class);
+        globals.set("Thread::SizedQueue", sized_class);
+    }
 
     // Mutex / ConditionVariable — single-threaded stubs. We don't have real
     // OS threads (Thread.new runs synchronously), so locks never contend and
@@ -456,7 +589,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry) {
     // because object_to_dict_key returns the raw String for Object::String.
     let mut env_map = IndexMap::new();
     for (k, v) in std::env::vars() {
-        env_map.insert(k, Object::String(Rc::new(v)));
+        env_map.insert(k, Object::string(v));
     }
     globals.set("ENV", Object::Dict(Rc::new(RefCell::new(env_map))));
 }
@@ -474,18 +607,22 @@ pub(super) fn register_special_globals(globals: &mut GlobalRegistry) {
     globals.set_variable("LOADED_FEATURES", loaded_features);
 
     // $stdout / $stderr / $stdin — placeholders
-    globals.set_variable("stdout", Object::String(Rc::new("$stdout".to_string())));
-    globals.set_variable("stderr", Object::String(Rc::new("$stderr".to_string())));
-    globals.set_variable("stdin", Object::String(Rc::new("$stdin".to_string())));
+    globals.set_variable("stdout", Object::string("$stdout".to_string()));
+    globals.set_variable("stderr", Object::string("$stderr".to_string()));
+    globals.set_variable("stdin", Object::string("$stdin".to_string()));
+
+    // $$ — this process's own id, which a script prints to say which one it
+    // is running as.
+    globals.set_variable("$", Object::Int(std::process::id() as i64));
 
     // $0 / $PROGRAM_NAME — set later by main when file is known
-    globals.set_variable("0", Object::String(Rc::new(String::new())));
-    globals.set_variable("PROGRAM_NAME", Object::String(Rc::new(String::new())));
+    globals.set_variable("0", Object::string(String::new()));
+    globals.set_variable("PROGRAM_NAME", Object::string(String::new()));
 
     // $; $, $/ $\ — string separator globals
     globals.set_variable(";", Object::Nil);
     globals.set_variable(",", Object::Nil);
-    globals.set_variable("/", Object::String(Rc::new("\n".to_string())));
+    globals.set_variable("/", Object::string("\n".to_string()));
     globals.set_variable("\\", Object::Nil);
 
     // $! $@ $~ $& — exception/regex globals
@@ -927,7 +1064,7 @@ fn register_errno_classes(errno_module: &Rc<Class>, system_call_error: &Rc<Class
         // show up as a Ruby-visible constant.
         class.set_class_var(
             ERRNO_MESSAGE_KEY,
-            Object::String(Rc::new(errno_description(*number))),
+            Object::string(errno_description(*number)),
         );
         errno_module.set_class_var(*name, Object::Class(class));
     }
@@ -938,10 +1075,7 @@ fn register_errno_classes(errno_module: &Rc<Class>, system_call_error: &Rc<Class
         Some(Rc::clone(system_call_error)),
     ));
     no_error.set_class_var("Errno", Object::Int(0));
-    no_error.set_class_var(
-        ERRNO_MESSAGE_KEY,
-        Object::String(Rc::new("Success".to_string())),
-    );
+    no_error.set_class_var(ERRNO_MESSAGE_KEY, Object::string("Success".to_string()));
     errno_module.set_class_var("NOERROR", Object::Class(no_error));
     // Ruby aliases these where the platform gives them the same number.
     for (alias, canonical) in [

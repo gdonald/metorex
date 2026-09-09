@@ -311,12 +311,12 @@ impl VirtualMachine {
         // which is how an interpolated literal is assembled.
         if class.name() == "Regexp" && !arguments.is_empty() {
             let source = match &arguments[0] {
-                Object::String(s) => (**s).clone(),
-                Object::Regex(pattern, _) => (**pattern).clone(),
+                Object::String(s) => s.as_str().to_string(),
+                Object::Regex(pattern, _) => pattern.as_str().to_string(),
                 other => format!("{}", other),
             };
             let flags = match arguments.get(1) {
-                Some(Object::String(f)) => (**f).clone(),
+                Some(Object::String(f)) => f.as_str().to_string(),
                 _ => String::new(),
             };
             return Ok(Object::Regex(Rc::new(source), Rc::new(flags)));
@@ -326,7 +326,7 @@ impl VirtualMachine {
         if arguments.len() == 1 {
             match class.name() {
                 "String" => {
-                    return Ok(Object::String(Rc::new(format!("{}", arguments[0]))));
+                    return Ok(Object::string(format!("{}", arguments[0])));
                 }
                 "Array" => {
                     if let Some(converted) =
@@ -359,7 +359,7 @@ impl VirtualMachine {
         if descends_from(&class, "String") && class.find_method("initialize").is_none() {
             self.pending_block.take();
             let text = match arguments.first() {
-                Some(Object::String(text)) => (**text).clone(),
+                Some(Object::String(text)) => text.as_str().to_string(),
                 Some(other) => format!("{}", other),
                 None => String::new(),
             };
@@ -538,11 +538,11 @@ impl VirtualMachine {
                 String::new()
             } else if arguments.len() == 1 {
                 match &arguments[0] {
-                    Object::String(s) => (**s).clone(),
+                    Object::String(s) => s.as_str().to_string(),
                     // Ruby renders the message with `to_s`, which a message
                     // object is free to define.
                     other => match self.send_to_object(other.clone(), "to_s", vec![], position)? {
-                        Object::String(text) => (*text).clone(),
+                        Object::String(text) => text.as_str().to_string(),
                         rendered => rendered.to_string(),
                     },
                 }
@@ -553,7 +553,7 @@ impl VirtualMachine {
                 named_name = Some(arguments[1].clone());
                 named_args = arguments.get(2).cloned();
                 match &arguments[0] {
-                    Object::String(text) => (**text).clone(),
+                    Object::String(text) => text.as_str().to_string(),
                     other => self.coerce_name_argument(other, position)?,
                 }
             } else {
@@ -677,7 +677,7 @@ impl VirtualMachine {
         };
         let message = match rest.first() {
             None | Some(Object::Nil) => None,
-            Some(Object::String(text)) => Some((**text).clone()),
+            Some(Object::String(text)) => Some(text.as_str().to_string()),
             Some(other) => Some(self.coerce_name_argument(other, position)?),
         };
         let exception = Object::exception(class.name(), message.clone().unwrap_or_default());

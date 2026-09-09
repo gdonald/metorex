@@ -4,7 +4,6 @@ use metorex::ast::{BinaryOp, ElsifBranch, Expression, Statement};
 use metorex::lexer::Position;
 use metorex::object::Object;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 // Helper function to create a test position
 fn pos(line: usize, column: usize) -> Position {
@@ -436,5 +435,5 @@ fn test_elsif_with_comparison() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("small".to_string()))); // Second elsif should match
+    assert_eq!(result, Object::string("small".to_string())); // Second elsif should match
 }

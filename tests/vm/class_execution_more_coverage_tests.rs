@@ -63,10 +63,7 @@ load("{}", true)
     std::fs::remove_file(&path).ok();
     // The include inside the wrapped load is suppressed; the program itself
     // returns :ok.
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── Rational equality via instance_vars (object/operations.rs 72-77) ──────
@@ -118,8 +115,5 @@ end
 # (Int, hits line 1124 _ => None), so include errors.
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }

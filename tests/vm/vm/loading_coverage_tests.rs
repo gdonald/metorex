@@ -3,7 +3,6 @@
 use metorex::object::Object;
 use metorex::vm::VirtualMachine;
 use std::path::Path;
-use std::rc::Rc;
 
 // ── require_library: happy path via $LOAD_PATH ──────────────────────────────
 
@@ -47,10 +46,8 @@ fn require_library_ignores_non_string_load_path_entries() {
 fn require_library_with_non_array_load_path_errors() {
     let mut vm = VirtualMachine::new();
     // Overwrite $LOAD_PATH so it's not an Array.
-    vm.globals_mut().set(
-        ":".to_string(),
-        Object::String(Rc::new("not-array".to_string())),
-    );
+    vm.globals_mut()
+        .set(":".to_string(), Object::string("not-array".to_string()));
     let err = vm.require_library("helper").unwrap_err();
     assert!(err.to_string().contains("cannot load"));
 }

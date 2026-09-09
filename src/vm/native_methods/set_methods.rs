@@ -229,17 +229,18 @@ impl VirtualMachine {
                                     home_frame: block.home_frame,
                                 });
                             }
+                            // The exception the block raised carries on as
+                            // itself, so a rescue naming its class catches it.
                             super::super::ControlFlow::Exception {
                                 exception,
                                 position,
                             } => {
-                                return Err(MetorexError::runtime_error(
-                                    format!(
-                                        "Uncaught exception: {}",
-                                        super::super::utils::format_exception(&exception)
-                                    ),
-                                    super::super::utils::position_to_location(position),
-                                ));
+                                let message = super::super::utils::format_exception(&exception);
+                                return Err(MetorexError::UncaughtException {
+                                    exception,
+                                    location: super::super::utils::position_to_location(position),
+                                    message,
+                                });
                             }
                         }
                     }
@@ -328,7 +329,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let Object::Set(other_rc) = &arguments[0] else {
+                let Some(theirs) = self.set_like_elements(&arguments[0], position)? else {
                     let message = "value must be a set".to_string();
                     return Err(MetorexError::UncaughtException {
                         exception: Object::exception("ArgumentError", message.clone()),
@@ -337,7 +338,6 @@ impl VirtualMachine {
                     });
                 };
                 let mine = set_rc.borrow();
-                let theirs = other_rc.borrow();
                 let contained = mine.iter().all(|held| theirs.contains(held));
                 let contains = theirs.iter().all(|held| mine.contains(held));
                 let answer = match method_name {
@@ -395,11 +395,13 @@ impl VirtualMachine {
                 })))
             }
             "==" | "eql?" => {
-                let Some(Object::Set(other_rc)) = arguments.first() else {
+                let Some(other) = arguments.first() else {
+                    return Ok(Some(Object::Bool(false)));
+                };
+                let Some(theirs) = self.set_like_elements(other, position)? else {
                     return Ok(Some(Object::Bool(false)));
                 };
                 let mine = set_rc.borrow();
-                let theirs = other_rc.borrow();
                 let same =
                     mine.len() == theirs.len() && mine.iter().all(|held| theirs.contains(held));
                 Ok(Some(Object::Bool(same)))
@@ -461,12 +463,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let elements: Vec<Object> = set_rc
-                    .borrow()
-                    .iter()
-                    .map(|held| held.value.clone())
-                    .collect();
-                let array = Object::Array(Rc::new(RefCell::new(elements)));
+                let array = self.send_to_object(receiver.clone(), "to_a", vec![], position)?;
                 let class = self.builtins().class_of(&array);
                 self.call_native_method(&class, &array, "join", arguments, position)
             }
@@ -635,4 +632,35 @@ fn element_of(object: &Object, position: Position) -> Result<ObjectHash, Metorex
             position_to_location(position),
         )
     })
+}
+
+impl VirtualMachine {
+    /// The elements of a value that stands for a set. A Set answers its own,
+    /// and so does anything whose `is_a?(Set)` says it is one, which is how
+    /// Ruby lets a set-like object be compared against a real Set.
+    fn set_like_elements(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<Option<indexmap::IndexSet<ObjectHash>>, MetorexError> {
+        if let Object::Set(held) = value {
+            return Ok(Some(held.borrow().clone()));
+        }
+        let Some(set_class) = self.globals().get("Set") else {
+            return Ok(None);
+        };
+        let answer = self.send_to_object(value.clone(), "is_a?", vec![set_class], position)?;
+        if !answer.is_truthy() {
+            return Ok(None);
+        }
+        let listed = self.send_to_object(value.clone(), "to_a", vec![], position)?;
+        let Object::Array(elements) = listed else {
+            return Ok(None);
+        };
+        let mut collected = indexmap::IndexSet::new();
+        for element in elements.borrow().iter() {
+            collected.insert(element_of(element, position)?);
+        }
+        Ok(Some(collected))
+    }
 }

@@ -10,7 +10,21 @@ use super::{Exception, Instance, Object};
 impl Object {
     /// Create a string object from a Rust string
     pub fn string(s: impl Into<String>) -> Self {
-        Object::String(Rc::new(s.into()))
+        Object::String(Rc::new(crate::object::StringValue::new(s)))
+    }
+
+    /// A Symbol, which carries its name the way a String carries its text.
+    pub fn symbol(s: impl Into<String>) -> Self {
+        Object::Symbol(Rc::new(crate::object::StringValue::new(s)))
+    }
+
+    /// A run of bytes with no character meaning, which is what `pack` and the
+    /// other byte-level readings answer.
+    pub fn binary_string(s: impl Into<String>) -> Self {
+        Object::String(Rc::new(crate::object::StringValue::with_encoding(
+            s,
+            "ASCII-8BIT",
+        )))
     }
 
     /// An Integer from an arbitrary-precision value, narrowed back to `Int`

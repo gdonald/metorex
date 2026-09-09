@@ -6,7 +6,6 @@ use metorex::compiler::Compiler;
 use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
-use std::rc::Rc;
 
 fn run(source: &str) -> Result<Object, String> {
     let tokens = Lexer::new(source).tokenize();
@@ -109,7 +108,7 @@ fn execute_set_global_undefined_variable_errors() {
     let mut chunk = Chunk::new();
     chunk.write_opcode(OpCode::Nil, 1);
     let idx = chunk
-        .add_constant(Object::String(Rc::new("undefined_var".to_string())))
+        .add_constant(Object::string("undefined_var".to_string()))
         .unwrap();
     chunk.write_op_u8(OpCode::SetGlobal, idx as u8, 1);
     chunk.write_opcode(OpCode::Return, 1);

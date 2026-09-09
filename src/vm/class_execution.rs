@@ -360,7 +360,7 @@ impl VirtualMachine {
                 holder,
                 method,
                 owner,
-                vec![Object::Symbol(Rc::new(const_name.to_string()))],
+                vec![Object::symbol(const_name.to_string())],
                 position,
             )?;
         }
@@ -475,7 +475,8 @@ impl VirtualMachine {
             .collect();
         for (i, param) in positional.iter().enumerate() {
             let value = args.get(i).cloned().unwrap_or(Object::Nil);
-            self.environment_mut().define((*param).clone(), value);
+            self.environment_mut()
+                .define(param.as_str().to_string(), value);
         }
         self.def_scope_stack.push(Rc::clone(class));
         let saved_nesting = self.user_def_nesting;
@@ -652,7 +653,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         if let Object::String(s) = arg {
-            return Ok((**s).clone());
+            return Ok(s.as_str().to_string());
         }
         let class_name = match arg {
             Object::Class(_) | Object::Module(_) => "Module".to_string(),
@@ -663,7 +664,7 @@ impl VirtualMachine {
         {
             let result = self.invoke_method(cls, m, arg.clone(), vec![], position)?;
             if let Object::String(s) = result {
-                return Ok((*s).clone());
+                return Ok(s.as_str().to_string());
             }
             let msg = format!("can't convert {} into String", class_name);
             let exc = Object::exception("TypeError", msg.clone());
@@ -784,7 +785,7 @@ impl VirtualMachine {
                     if module_function_is_active(class) {
                         self.copy_to_module_function(class, method_name, *def_position)?;
                     }
-                    last_value = Object::Symbol(Rc::new(method_name.clone()));
+                    last_value = Object::symbol(method_name.clone());
                 }
                 // `def self.name` inside a `Class.new do ... end` block: the parser
                 // emits a FunctionDef (not MethodDef, because `in_class_body` is
@@ -806,7 +807,7 @@ impl VirtualMachine {
                         self.snapshot_lexical_nesting(),
                     );
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
-                    last_value = Object::Symbol(Rc::new(method_name.clone()));
+                    last_value = Object::symbol(method_name.clone());
                 }
                 Statement::MethodDef {
                     name: method_name,
@@ -880,7 +881,7 @@ impl VirtualMachine {
                             self.copy_to_module_function(class, method_name, position)?;
                         }
                     }
-                    last_value = Object::Symbol(Rc::new(method_name.clone()));
+                    last_value = Object::symbol(method_name.clone());
                 }
                 Statement::Assignment {
                     target: Expression::InstanceVariable { name: var_name, .. },
@@ -1206,13 +1207,13 @@ impl VirtualMachine {
                     {
                         handled = true;
                         let new_name = match self.evaluate_expression(&call_args[0])? {
-                            Object::String(s) => (*s).clone(),
-                            Object::Symbol(s) => (*s).clone(),
+                            Object::String(s) => s.as_str().to_string(),
+                            Object::Symbol(s) => s.as_str().to_string(),
                             _ => String::new(),
                         };
                         let old_name = match self.evaluate_expression(&call_args[1])? {
-                            Object::String(s) => (*s).clone(),
-                            Object::Symbol(s) => (*s).clone(),
+                            Object::String(s) => s.as_str().to_string(),
+                            Object::Symbol(s) => s.as_str().to_string(),
                             _ => String::new(),
                         };
                         if !new_name.is_empty() && !old_name.is_empty() {

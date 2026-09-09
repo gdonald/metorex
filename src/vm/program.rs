@@ -304,6 +304,7 @@ impl VirtualMachine {
                 line: 0,
                 column: 0,
                 offset: 0,
+                prelude: false,
             };
             let outcome = self.execute_block_callable(&block, Vec::new(), position);
             // What a handler printed belongs before whatever the next one

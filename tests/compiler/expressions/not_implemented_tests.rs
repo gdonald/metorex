@@ -55,6 +55,7 @@ fn compile_if_expression_not_implemented() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let if_expr = Expression::If {
         condition: Box::new(Expression::BoolLiteral {
@@ -92,6 +93,7 @@ fn compile_unless_expression_not_implemented() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let unless_expr = Expression::Unless {
         condition: Box::new(Expression::BoolLiteral {

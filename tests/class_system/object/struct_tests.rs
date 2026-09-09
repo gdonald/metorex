@@ -125,7 +125,7 @@ fn object_hash_from_string() {
 
 #[test]
 fn object_hash_from_symbol() {
-    let h = ObjectHash::from_object(&Object::Symbol(Rc::new("foo".to_string())));
+    let h = ObjectHash::from_object(&Object::symbol("foo".to_string()));
     assert!(h.is_some());
 }
 

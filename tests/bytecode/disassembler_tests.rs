@@ -4,7 +4,6 @@ use metorex::bytecode::chunk::Chunk;
 use metorex::bytecode::disassembler::{disassemble, disassemble_instruction};
 use metorex::bytecode::opcode::OpCode;
 use metorex::object::Object;
-use std::rc::Rc;
 
 // ── disassemble: full chunk ─────────────────────────────────────────────
 
@@ -58,7 +57,7 @@ fn disassemble_constant_long_instruction() {
 fn disassemble_string_constant() {
     let mut chunk = Chunk::new();
     let idx = chunk
-        .add_constant(Object::String(Rc::new("hello".to_string())))
+        .add_constant(Object::string("hello".to_string()))
         .unwrap();
     chunk.write_op_u8(OpCode::Constant, idx as u8, 1);
 
@@ -136,7 +135,7 @@ fn jump_operand_shows_offset() {
 fn global_operand_shows_name() {
     let mut chunk = Chunk::new();
     let idx = chunk
-        .add_constant(Object::String(Rc::new("my_var".to_string())))
+        .add_constant(Object::string("my_var".to_string()))
         .unwrap();
     chunk.write_op_u8(OpCode::DefineGlobal, idx as u8, 1);
     chunk.write_op_u8(OpCode::GetGlobal, idx as u8, 2);
@@ -151,7 +150,7 @@ fn global_operand_shows_name() {
 fn invoke_shows_args_and_name() {
     let mut chunk = Chunk::new();
     let idx = chunk
-        .add_constant(Object::String(Rc::new("greet".to_string())))
+        .add_constant(Object::string("greet".to_string()))
         .unwrap();
     // Invoke: first byte = name index, second byte = arg count
     chunk.write_op_u16(OpCode::Invoke, (idx << 8) | 2, 1);
@@ -200,9 +199,7 @@ fn disassemble_realistic_program() {
     let mut chunk = Chunk::new();
     let c1 = chunk.add_constant(Object::Int(1)).unwrap();
     let c2 = chunk.add_constant(Object::Int(2)).unwrap();
-    let name = chunk
-        .add_constant(Object::String(Rc::new("x".to_string())))
-        .unwrap();
+    let name = chunk.add_constant(Object::string("x".to_string())).unwrap();
 
     chunk.write_constant(c1, 1);
     chunk.write_constant(c2, 1);
@@ -272,9 +269,7 @@ fn all_simple_opcodes_disassemble() {
 #[test]
 fn disassemble_symbol_constant() {
     let mut chunk = Chunk::new();
-    let idx = chunk.add_constant(metorex::object::Object::Symbol(std::rc::Rc::new(
-        "hello".to_string(),
-    )));
+    let idx = chunk.add_constant(metorex::object::Object::symbol("hello".to_string()));
     chunk.write_constant(idx.unwrap(), 1);
     let output = disassemble(&chunk, "symbol_test");
     assert!(

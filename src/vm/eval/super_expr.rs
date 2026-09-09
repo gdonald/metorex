@@ -6,6 +6,7 @@ use crate::lexer::Position;
 use crate::object::Object;
 use std::rc::Rc;
 
+use crate::class::Class;
 use crate::vm::core::VirtualMachine;
 use crate::vm::utils::position_to_location;
 
@@ -143,11 +144,17 @@ impl VirtualMachine {
             {
                 return Ok(Object::Nil);
             }
-            Some(_) => {
-                return Err(MetorexError::runtime_error(
-                    "super can only be called from within an instance method".to_string(),
-                    position_to_location(position),
-                ));
+            // `self` is a built-in value, so the running method was written
+            // on a reopened core class or on a module prepended to one.
+            Some(other) => {
+                return self.eval_super_on_builtin(
+                    other,
+                    &class_name,
+                    &method_name,
+                    arguments,
+                    forward_args,
+                    position,
+                );
             }
             None => {
                 return Err(MetorexError::runtime_error(
@@ -165,40 +172,6 @@ impl VirtualMachine {
         // the full ancestor chain — own class, its mixins, its superclass (and
         // that superclass's mixins, recursively) — so that methods mixed in
         // via `include` are reachable as the defining class.
-        fn walk_ancestors(class: &Rc<Class>) -> Vec<Rc<Class>> {
-            let mut out = Vec::new();
-            // A prepended module sits ahead of the class, so `super` from it
-            // reaches the class's own copy of the method.
-            for prepended in class.prepend_chain() {
-                for anc in walk_ancestors(&prepended) {
-                    if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
-                        out.push(anc);
-                    }
-                }
-            }
-            if !out.iter().any(|c| Rc::ptr_eq(c, class)) {
-                out.push(Rc::clone(class));
-            }
-            for mixin in class.mixin_chain() {
-                // Include the mixin itself AND any modules it transitively
-                // includes, so e.g. Target→Child→Parent is visited when only
-                // `Target includes Child` and `Child includes Parent`.
-                for anc in walk_ancestors(&mixin) {
-                    if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
-                        out.push(anc);
-                    }
-                }
-            }
-            if let Some(sc) = class.superclass() {
-                for anc in walk_ancestors(&sc) {
-                    if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
-                        out.push(anc);
-                    }
-                }
-            }
-            out
-        }
-        use crate::class::Class;
         // A singleton method's `super` reaches the class's own copy, so the
         // receiver's singleton class comes ahead of its class in the chain.
         let mut chain = Vec::new();
@@ -357,7 +330,8 @@ impl VirtualMachine {
                 // naming the method that was called.
                 if method_name == "method_missing" {
                     let missing = match evaluated_args.first() {
-                        Some(Object::Symbol(name) | Object::String(name)) => (**name).clone(),
+                        Some(Object::Symbol(name)) => name.as_str().to_string(),
+                        Some(Object::String(name)) => name.as_str().to_string(),
                         Some(other) => other.to_string(),
                         None => "method_missing".to_string(),
                     };
@@ -417,4 +391,137 @@ impl VirtualMachine {
             position,
         )
     }
+
+    /// `super` from a method whose `self` is a built-in value rather than an
+    /// instance: `class Integer; def +(o); super; end; end`, or the same
+    /// method written on a module prepended to Integer. Walks the receiver's
+    /// ancestors past the defining class, then falls through to the native
+    /// implementation the core class carries.
+    fn eval_super_on_builtin(
+        &mut self,
+        receiver: Object,
+        class_name: &str,
+        method_name: &str,
+        arguments: &[Expression],
+        forward_args: bool,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let receiver_class = self.builtins().class_of(&receiver);
+        let mut chain = Vec::new();
+        if let Some(singleton) = self.existing_singleton_class(&receiver) {
+            chain.push(singleton);
+        }
+        for ancestor in walk_ancestors(&receiver_class) {
+            if !chain.iter().any(|c| Rc::ptr_eq(c, &ancestor)) {
+                chain.push(ancestor);
+            }
+        }
+        let defining_class = self
+            .method_owner_stack
+            .last()
+            .cloned()
+            .flatten()
+            .filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)))
+            .or_else(|| chain.iter().find(|c| c.name() == class_name).cloned());
+
+        let evaluated_args = if forward_args {
+            self.method_arg_stack.last().cloned().unwrap_or_default()
+        } else {
+            self.evaluate_arguments(arguments)?
+        };
+
+        if let Some(defining_class) = &defining_class
+            && let Some(index) = chain.iter().position(|c| Rc::ptr_eq(c, defining_class))
+        {
+            for ancestor in chain.iter().skip(index + 1) {
+                if let Some(method) = ancestor.find_own_method(method_name)
+                    && !method.body.is_empty()
+                {
+                    return self.invoke_method(
+                        Rc::clone(ancestor),
+                        method,
+                        receiver.clone(),
+                        evaluated_args,
+                        position,
+                    );
+                }
+            }
+        }
+
+        if let Some(result) = self.call_native_method(
+            &receiver_class,
+            &receiver,
+            method_name,
+            &evaluated_args,
+            position,
+        )? {
+            return Ok(result);
+        }
+
+        // An operator written in syntax rather than in a method table: the
+        // core arithmetic lives in the binary-operator evaluator, so `super`
+        // from an override of `+` reaches it there.
+        if evaluated_args.len() == 1
+            && let Some(op) = crate::vm::native_methods::binary_op_for_method_name(method_name)
+        {
+            return self.evaluate_binary_operation(
+                &op,
+                receiver.clone(),
+                evaluated_args[0].clone(),
+                position,
+            );
+        }
+
+        let message = format!(
+            "super: no superclass method '{}' for an instance of {}",
+            method_name,
+            receiver_class.name()
+        );
+        Err(MetorexError::UncaughtException {
+            exception: crate::vm::errors::no_method_error(
+                &message,
+                method_name,
+                &receiver,
+                &evaluated_args,
+            ),
+            location: position_to_location(position),
+            message,
+        })
+    }
+}
+
+/// The ancestors of `class` in lookup order: its prepended modules, the class
+/// itself, its included modules, then the same for each superclass.
+fn walk_ancestors(class: &Rc<Class>) -> Vec<Rc<Class>> {
+    let mut out = Vec::new();
+    // A prepended module sits ahead of the class, so `super` from it
+    // reaches the class's own copy of the method.
+    for prepended in class.prepend_chain() {
+        for anc in walk_ancestors(&prepended) {
+            if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
+                out.push(anc);
+            }
+        }
+    }
+    if !out.iter().any(|c| Rc::ptr_eq(c, class)) {
+        out.push(Rc::clone(class));
+    }
+    for mixin in class.mixin_chain() {
+        // Include the mixin itself AND any modules it transitively
+        // includes, so e.g. Target→Child→Parent is visited when only
+        // `Target includes Child` and `Child includes Parent`.
+        for anc in walk_ancestors(&mixin) {
+            if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
+                out.push(anc);
+            }
+        }
+    }
+    if let Some(sc) = class.superclass() {
+        for anc in walk_ancestors(&sc) {
+            if !out.iter().any(|c| Rc::ptr_eq(c, &anc)) {
+                out.push(anc);
+            }
+        }
+    }
+    out
 }

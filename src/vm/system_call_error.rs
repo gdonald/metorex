@@ -124,7 +124,7 @@ impl VirtualMachine {
             if let Some(Object::String(message)) =
                 current.get_class_var(crate::vm::init::ERRNO_MESSAGE_KEY)
             {
-                return (*message).clone();
+                return message.as_str().to_string();
             }
             cursor = current.superclass();
         }
@@ -161,7 +161,7 @@ impl VirtualMachine {
     ) -> Result<Option<String>, MetorexError> {
         match argument {
             None | Some(Object::Nil) => Ok(None),
-            Some(Object::String(text)) => Ok(Some((**text).clone())),
+            Some(Object::String(text)) => Ok(Some(text.as_str().to_string())),
             Some(other) => {
                 let source = self.builtins().class_of(other).name().to_string();
                 let Some((class, method)) = self.lookup_method(other, "to_str") else {
@@ -173,7 +173,7 @@ impl VirtualMachine {
                     });
                 };
                 match self.invoke_method(class, method, other.clone(), Vec::new(), position)? {
-                    Object::String(text) => Ok(Some((*text).clone())),
+                    Object::String(text) => Ok(Some(text.as_str().to_string())),
                     produced => {
                         let message = format!(
                             "can't convert {} to String ({}#to_str gives {})",
@@ -200,7 +200,7 @@ impl VirtualMachine {
     ) -> Result<Option<String>, MetorexError> {
         match argument {
             None | Some(Object::Nil) => Ok(None),
-            Some(Object::String(text)) => Ok(Some((**text).clone())),
+            Some(Object::String(text)) => Ok(Some(text.as_str().to_string())),
             Some(other) => Ok(Some(self.coerce_name_argument(other, position)?)),
         }
     }
@@ -262,7 +262,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         match self.send_to_object(value.clone(), "to_s", vec![], position)? {
-            Object::String(text) => Ok((*text).clone()),
+            Object::String(text) => Ok(text.as_str().to_string()),
             rendered => Ok(rendered.to_string()),
         }
     }

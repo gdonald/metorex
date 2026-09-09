@@ -686,9 +686,9 @@ fn class_with_args_errors() {
 // ── to_s on object with args errors ──────────────────────────────────────────
 
 #[test]
-fn inspect_with_args_errors() {
-    let err = run_err("5.send(:inspect, 1)");
-    assert!(err.contains("argument"));
+fn inspect_with_a_base_writes_the_integer_in_it() {
+    assert_eq!(run("5.send(:inspect, 2)"), Some(Object::string("101")));
+    assert!(run_err("5.send(:inspect, 2, 3)").contains("argument"));
 }
 
 // ── object_id for same int ───────────────────────────────────────────────────
@@ -946,8 +946,17 @@ fn object_id_differs_for_different_symbols() {
 }
 
 #[test]
-fn object_id_matches_for_equal_strings() {
+fn object_id_differs_for_two_equal_strings() {
+    // Two literals holding the same text are two objects, so each answers an
+    // id of its own.
     let result = run(r#""hello".object_id == "hello".object_id"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn object_id_is_the_same_each_time_one_string_is_asked() {
+    let result = run(r#"held = "hello"
+held.object_id == held.object_id"#);
     assert_eq!(result, Some(Object::Bool(true)));
 }
 

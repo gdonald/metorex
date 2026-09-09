@@ -32,6 +32,17 @@ fn is_assignable(expr: &Expression) -> bool {
 impl Parser {
     /// Parse a single statement
     pub(crate) fn parse_statement(&mut self) -> Result<Statement, MetorexError> {
+        // A statement is never itself part of a paren-less argument list, even
+        // when it sits in a block body inside one. Clearing the depth here is
+        // what lets `guard -> { a or b }` read the `or` as its own.
+        let enclosing_arg_depth = self.paren_less_arg_depth;
+        self.paren_less_arg_depth = 0;
+        let parsed = self.parse_statement_inner();
+        self.paren_less_arg_depth = enclosing_arg_depth;
+        parsed
+    }
+
+    fn parse_statement_inner(&mut self) -> Result<Statement, MetorexError> {
         // Skip leading whitespace
         self.skip_whitespace();
 
@@ -146,6 +157,13 @@ impl Parser {
                     TokenKind::MinusEqual,
                     TokenKind::StarEqual,
                     TokenKind::SlashEqual,
+                    TokenKind::PercentEqual,
+                    TokenKind::StarStarEqual,
+                    TokenKind::PipeEqual,
+                    TokenKind::AmpersandEqual,
+                    TokenKind::CaretEqual,
+                    TokenKind::ShovelEqual,
+                    TokenKind::RightShiftEqual,
                     TokenKind::LogicalOrAssign,
                     TokenKind::LogicalAndAssign,
                 ]) {
@@ -181,6 +199,51 @@ impl Parser {
                             right: Box::new(value),
                             position: op_token.position,
                         },
+                        TokenKind::PercentEqual => Expression::BinaryOp {
+                            op: BinaryOp::Modulo,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        TokenKind::StarStarEqual => Expression::BinaryOp {
+                            op: BinaryOp::Power,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        TokenKind::PipeEqual => Expression::BinaryOp {
+                            op: BinaryOp::BitwiseOr,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        TokenKind::AmpersandEqual => Expression::BinaryOp {
+                            op: BinaryOp::BitwiseAnd,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        TokenKind::CaretEqual => Expression::BinaryOp {
+                            op: BinaryOp::Xor,
+                            left: Box::new(expr.clone()),
+                            right: Box::new(value),
+                            position: op_token.position,
+                        },
+                        // The shifts are methods rather than operators, so
+                        // `held <<= 2` calls the one the receiver defines.
+                        TokenKind::ShovelEqual | TokenKind::RightShiftEqual => {
+                            Expression::MethodCall {
+                                receiver: Box::new(expr.clone()),
+                                method: if matches!(op_token.kind, TokenKind::ShovelEqual) {
+                                    "<<".to_string()
+                                } else {
+                                    ">>".to_string()
+                                },
+                                arguments: vec![value],
+                                trailing_block: None,
+                                position: op_token.position,
+                            }
+                        }
                         TokenKind::LogicalOrAssign => Expression::BinaryOp {
                             op: BinaryOp::Or,
                             left: Box::new(expr.clone()),

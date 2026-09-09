@@ -27,11 +27,12 @@ pub enum Object {
     /// 64-bit floating point number
     Float(f64),
 
-    /// String value (reference counted for efficient copying)
-    String(Rc<String>),
+    /// String value: the text, and the encoding it says it is in. Reference
+    /// counted so a copy shares both.
+    String(Rc<crate::object::StringValue>),
 
     /// Symbol value (interned string identifier, like :name)
-    Symbol(Rc<String>),
+    Symbol(Rc<crate::object::StringValue>),
 
     /// Array/list of objects (mutable, reference counted)
     Array(Rc<RefCell<Vec<Object>>>),

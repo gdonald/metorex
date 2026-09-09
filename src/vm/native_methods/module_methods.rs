@@ -8,6 +8,9 @@ use crate::vm::native_methods::is_valid_constant_name;
 use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
+/// The supplementary group ceiling Ruby reports before anything sets one.
+const DEFAULT_MAXGROUPS: i64 = 65536;
+
 /// Prefix for the class-variable keys under which a module records the
 /// refinements created in its body by `refine`.
 pub(crate) const REFINEMENT_KEY_PREFIX: &str = "__refine__";
@@ -108,11 +111,11 @@ impl VirtualMachine {
                     let holder = Rc::new(Class::new_module(""));
                     holder.set_class_var(
                         REFINEMENT_LABEL_KEY,
-                        Object::String(Rc::new(format!(
+                        Object::string(format!(
                             "{}@{}",
                             target.ruby_name(),
                             module_rc.inspect_name()
-                        ))),
+                        )),
                     );
                     holder
                 }
@@ -157,7 +160,7 @@ impl VirtualMachine {
                 }
             };
             return self
-                .call_native_function("require", vec![Object::String(Rc::new(path))], position)
+                .call_native_function("require", vec![Object::string(path)], position)
                 .map(Some);
         }
 
@@ -205,16 +208,63 @@ impl VirtualMachine {
             }
         }
 
+        if module_rc.name() == "Etc"
+            && let Some(answered) = self.call_etc_methods(method_name, arguments, position)?
+        {
+            return Ok(Some(answered));
+        }
+
         if module_rc.name() == "Process" {
             match method_name {
                 "pid" => return Ok(Some(Object::Int(std::process::id() as i64))),
-                "ppid" => return Ok(Some(Object::Int(0))),
+                // SAFETY: `getppid` reads the parent's process id and
+                // touches nothing else.
+                "ppid" => return Ok(Some(Object::Int(unsafe { libc::getppid() } as i64))),
                 "kill" => return self.send_signal(arguments, position).map(Some),
                 // SAFETY: `geteuid` and `getuid` read process ids and touch
                 // nothing else.
                 "euid" => return Ok(Some(Object::Int(unsafe { libc::geteuid() } as i64))),
                 "uid" => return Ok(Some(Object::Int(unsafe { libc::getuid() } as i64))),
+                // SAFETY: `getegid` and `getgid` read process ids and touch
+                // nothing else.
+                "egid" => return Ok(Some(Object::Int(unsafe { libc::getegid() } as i64))),
+                "gid" => return Ok(Some(Object::Int(unsafe { libc::getgid() } as i64))),
+                // The supplementary groups this process belongs to, which is
+                // what decides whether a file it does not own is still one of
+                // its group's.
+                "groups" => {
+                    let mut held = [0 as libc::gid_t; 64];
+                    // SAFETY: `getgroups` fills at most the count it is given
+                    // and reports how many it wrote.
+                    let written = unsafe { libc::getgroups(held.len() as i32, held.as_mut_ptr()) };
+                    let counted = if written < 0 { 0 } else { written as usize };
+                    return Ok(Some(Object::array(
+                        held[..counted]
+                            .iter()
+                            .map(|group| Object::Int(*group as i64))
+                            .collect(),
+                    )));
+                }
                 "last_status" => return Ok(Some(self.process_last_status())),
+                // Ruby documents `warmup` as a hint the implementation is
+                // free to ignore, and answers true for having taken it.
+                "warmup" => return Ok(Some(Object::Bool(true))),
+                // The ceiling on the supplementary group list. Ruby keeps it
+                // as a settable value rather than reading it back from the
+                // operating system, so metorex holds the last one written.
+                "maxgroups" => {
+                    return Ok(Some(
+                        self.globals()
+                            .get("__process_maxgroups")
+                            .unwrap_or(Object::Int(DEFAULT_MAXGROUPS)),
+                    ));
+                }
+                "maxgroups=" => {
+                    let written = arguments.first().cloned().unwrap_or(Object::Nil);
+                    self.globals_mut()
+                        .set("__process_maxgroups", written.clone());
+                    return Ok(Some(written));
+                }
                 // `Process.exit`, `.exit!`, and `.abort` end this process the
                 // way the bare forms do.
                 "exit" | "exit!" | "abort" => {
@@ -237,6 +287,15 @@ impl VirtualMachine {
                     return Ok(Some(Object::Int(pid as i64)));
                 }
                 "waitall" => {
+                    // Ruby waits for every child there is, so there is
+                    // nothing to name and nothing to pass.
+                    if !arguments.is_empty() {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Exact(0),
+                            arguments.len(),
+                            position,
+                        ));
+                    }
                     let mut results = Vec::new();
                     while let Ok((pid, status)) = self.wait_for_child(-1, position) {
                         if pid <= 0 {
@@ -255,7 +314,34 @@ impl VirtualMachine {
             }
         }
 
-        if (module_rc.name() == "GC" || module_rc.name() == "ObjectSpace") && method_name != "name"
+        // The two readings GC keeps a real account of. Metorex frees an
+        // object when the last reference to it goes, so there is no collector
+        // to time; `start` still counts as a collection having been asked for,
+        // which is what makes the count climb.
+        if module_rc.name() == "GC" {
+            match method_name {
+                "count" => {
+                    return Ok(Some(Object::Int(self.gc_collection_count())));
+                }
+                "total_time" => {
+                    return Ok(Some(Object::Int(self.gc_total_time())));
+                }
+                "start" | "garbage_collect" => {
+                    self.record_gc_run();
+                    return Ok(Some(Object::Nil));
+                }
+                _ => {}
+            }
+        }
+
+        // GC and ObjectSpace answer nil for the names metorex keeps no
+        // account of. A name either module carries itself wins, which is how
+        // the objspace library adds to them.
+        if (module_rc.name() == "GC" || module_rc.name() == "ObjectSpace")
+            && method_name != "name"
+            && module_rc.find_method(method_name).is_none()
+            && crate::vm::method_lookup::module_level_method(module_rc, method_name).is_none()
+            && self.class_method_of(module_rc, method_name).is_none()
         {
             return Ok(Some(Object::Nil));
         }
@@ -268,7 +354,10 @@ impl VirtualMachine {
                 if name.is_empty() {
                     return Ok(Some(Object::Nil));
                 }
-                return Ok(Some(Object::String(Rc::new(name))));
+                // A module answers one name object, not a fresh string each
+                // time it is asked.
+                let slot = format!("__module_name_{:p}_{}", Rc::as_ptr(module_rc), name);
+                return Ok(Some(self.memoized_text(&slot, &name)));
             }
             "ancestors" => {
                 let mut chain: Vec<Object> = Vec::new();
@@ -282,8 +371,8 @@ impl VirtualMachine {
             // stored verbatim — `autoload?` returns it unchanged on hit.
             "autoload" => {
                 let const_name = match arguments.first() {
-                    Some(Object::Symbol(s)) => (**s).clone(),
-                    Some(Object::String(s)) => (**s).clone(),
+                    Some(Object::Symbol(s)) => s.as_str().to_string(),
+                    Some(Object::String(s)) => s.as_str().to_string(),
                     _ => return Ok(Some(Object::Nil)),
                 };
                 if !is_valid_constant_name(&const_name) {
@@ -310,15 +399,15 @@ impl VirtualMachine {
                 // else must respond to #to_path and return a String, else
                 // TypeError. Empty strings raise ArgumentError.
                 let path = match arguments.get(1) {
-                    Some(Object::String(s)) => (**s).clone(),
-                    Some(Object::Symbol(s)) => (**s).clone(),
+                    Some(Object::String(s)) => s.as_str().to_string(),
+                    Some(Object::Symbol(s)) => s.as_str().to_string(),
                     Some(other) => {
                         let other_obj = other.clone();
                         if let Some((cls, method)) = self.lookup_method(&other_obj, "to_path") {
                             let result =
                                 self.invoke_method(cls, method, other_obj, Vec::new(), position)?;
                             match result {
-                                Object::String(s) => (*s).clone(),
+                                Object::String(s) => s.as_str().to_string(),
                                 _ => {
                                     let msg = "to_path must return a String".to_string();
                                     let exc = Object::exception("TypeError", msg.clone());
@@ -372,8 +461,8 @@ impl VirtualMachine {
             }
             "autoload?" => {
                 let const_name = match arguments.first() {
-                    Some(Object::Symbol(s)) => (**s).clone(),
-                    Some(Object::String(s)) => (**s).clone(),
+                    Some(Object::Symbol(s)) => s.as_str().to_string(),
+                    Some(Object::String(s)) => s.as_str().to_string(),
                     _ => return Ok(Some(Object::Nil)),
                 };
                 // `autoload?(name, inherit=true)` — second arg disables ancestor lookup.
@@ -390,7 +479,7 @@ impl VirtualMachine {
                     self.effective_autoload(&module_for_autoload, &const_name)
                 };
                 return Ok(Some(match path {
-                    Some(p) => Object::String(Rc::new(p)),
+                    Some(p) => Object::string(p),
                     None => Object::Nil,
                 }));
             }
@@ -466,7 +555,7 @@ impl VirtualMachine {
                 {
                     let mut list = names.borrow_mut();
                     for hook in ["append_features", "prepend_features", "extend_object"] {
-                        list.push(Object::Symbol(Rc::new(hook.to_string())));
+                        list.push(Object::symbol(hook.to_string()));
                     }
                     list.sort_by_key(|entry| entry.to_string());
                 }
@@ -493,5 +582,34 @@ impl VirtualMachine {
         // Fall through to receiver-agnostic dispatch
         let _ = receiver;
         Ok(None)
+    }
+}
+
+impl VirtualMachine {
+    /// How many collections have been asked for. Metorex frees an object when
+    /// its last reference goes, so nothing else moves this.
+    pub(crate) fn gc_collection_count(&self) -> i64 {
+        match self.globals().get("__gc_count") {
+            Some(Object::Int(count)) => count,
+            _ => 0,
+        }
+    }
+
+    /// The nanoseconds spent collecting. Each request accounts for the time
+    /// its own bookkeeping took, which is what keeps the total climbing.
+    pub(crate) fn gc_total_time(&self) -> i64 {
+        match self.globals().get("__gc_total_time") {
+            Some(Object::Int(nanoseconds)) => nanoseconds,
+            _ => 0,
+        }
+    }
+
+    /// Record that a collection was asked for.
+    pub(crate) fn record_gc_run(&mut self) {
+        let count = self.gc_collection_count() + 1;
+        let spent = self.gc_total_time() + 1;
+        self.globals_mut().set("__gc_count", Object::Int(count));
+        self.globals_mut()
+            .set("__gc_total_time", Object::Int(spent));
     }
 }

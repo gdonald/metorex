@@ -17,3 +17,19 @@ fn test_stdlib_libraries_shipped_libraries_no_parens_execution() {
     let output = run_example("stdlib_libraries/shipped_libraries_no_parens.rb");
     assert_eq!(output, SHIPPED_LIBRARIES_OUTPUT);
 }
+
+/// The expected output of both `stdlib_libraries/reading_the_user_database`
+/// variants.
+const READING_THE_USER_DATABASE_OUTPUT: &str = "Etc::Passwd\nString\ntrue\ntrue\nString\nString\ntrue\nEtc::Group\nString\ntrue\nArray\nHash\n[:sysname, :nodename, :release, :version, :machine]\ntrue\ntrue\nString\n\"/etc\"\nString\ntrue\nRuntimeError\n\"no implicit conversion of String into Integer\"\n";
+
+#[test]
+fn test_stdlib_libraries_reading_the_user_database_execution() {
+    let output = run_example("stdlib_libraries/reading_the_user_database.rb");
+    assert_eq!(output, READING_THE_USER_DATABASE_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_reading_the_user_database_no_parens_execution() {
+    let output = run_example("stdlib_libraries/reading_the_user_database_no_parens.rb");
+    assert_eq!(output, READING_THE_USER_DATABASE_OUTPUT);
+}

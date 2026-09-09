@@ -37,6 +37,7 @@ pub struct BuiltinClasses {
     /// ValueError class (inherits from StandardError)
     pub value_error_class: Rc<Class>,
     /// File class for file I/O operations
+    pub io_class: Rc<Class>,
     pub file_class: Rc<Class>,
     /// Dir class for directory operations
     pub dir_class: Rc<Class>,
@@ -70,8 +71,10 @@ impl BuiltinClasses {
         let set_class = Rc::new(Class::new("Set", Some(Rc::clone(&object_class))));
         let range_class = Rc::new(Class::new("Range", Some(Rc::clone(&object_class))));
 
-        // Create utility classes
-        let file_class = Rc::new(Class::new("File", Some(Rc::clone(&object_class))));
+        // Create utility classes. A File is an IO opened on a name, which is
+        // what `to_io` and every `kind_of?(IO)` reading depend on.
+        let io_class = Rc::new(Class::new("IO", Some(Rc::clone(&object_class))));
+        let file_class = Rc::new(Class::new("File", Some(Rc::clone(&io_class))));
         let dir_class = Rc::new(Class::new("Dir", Some(Rc::clone(&object_class))));
         let proc_class = Rc::new(Class::new("Proc", Some(Rc::clone(&object_class))));
         let method_class = Rc::new(Class::new("Method", Some(Rc::clone(&object_class))));
@@ -113,6 +116,7 @@ impl BuiltinClasses {
             runtime_error_class,
             type_error_class,
             value_error_class,
+            io_class,
             file_class,
             dir_class,
             proc_class,

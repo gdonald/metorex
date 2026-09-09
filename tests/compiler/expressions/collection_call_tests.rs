@@ -228,6 +228,7 @@ fn compile_self_in_method_body() {
         line: 1,
         column: 0,
         offset: 0,
+        prelude: false,
     };
     let stmts = vec![Statement::MethodDef {
         is_class_method: false,

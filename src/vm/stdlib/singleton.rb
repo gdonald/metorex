@@ -30,6 +30,9 @@ module Singleton
         raise TypeError, "can't copy singleton class"
       end
     end
+    # A singleton is reached through `instance` alone, so the two ways of
+    # building one are not among the class's own methods.
+    target.private_class_method :allocate
   end
 
   def clone

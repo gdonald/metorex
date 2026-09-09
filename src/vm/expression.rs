@@ -38,6 +38,20 @@ impl VirtualMachine {
                         // `nil.to_s` is the empty string, so `"#{nil}"` adds
                         // nothing rather than the `nil` inspect form.
                         Object::Nil => {}
+                        // An object of the program's own is asked for its own
+                        // `to_s`, which is the text Ruby puts in the hole.
+                        Object::Instance(_) => {
+                            let written = self.send_to_object(
+                                value.clone(),
+                                "to_s",
+                                Vec::new(),
+                                expr.position(),
+                            )?;
+                            match written {
+                                Object::String(text) => buffer.push_str(&text),
+                                other => buffer.push_str(&other.to_string()),
+                            }
+                        }
                         _ => buffer.push_str(&value.to_string()),
                     }
                 }
@@ -245,7 +259,7 @@ impl VirtualMachine {
 
             // Symbol#[] mirrors String#[] on the symbol's name.
             Object::Symbol(s) => {
-                let as_string = Object::String(Rc::new((*s).clone()));
+                let as_string = Object::string(s.as_str().to_string());
                 self.evaluate_index_operation(as_string, key, position)
             }
 
@@ -257,7 +271,7 @@ impl VirtualMachine {
                     if idx < 0 || idx >= len {
                         Ok(Object::Nil)
                     } else {
-                        Ok(Object::String(Rc::new(chars[idx as usize].to_string())))
+                        Ok(Object::string(chars[idx as usize].to_string()))
                     }
                 }
                 Object::Range {
@@ -290,7 +304,39 @@ impl VirtualMachine {
                         .unwrap_or(&[])
                         .iter()
                         .collect();
-                    Ok(Object::String(Rc::new(sliced)))
+                    Ok(Object::string(sliced))
+                }
+                // `text[other]` answers the other string when it appears,
+                // which is how Ruby looks a substring up.
+                Object::String(ref wanted) => {
+                    if s.contains(wanted.as_str()) {
+                        Ok(Object::string(wanted.as_str().to_string()))
+                    } else {
+                        Ok(Object::Nil)
+                    }
+                }
+                // `text[pattern]` answers what the pattern matched.
+                Object::Regex(ref pattern, ref flags) => {
+                    let mut builder = regex::RegexBuilder::new(pattern.as_str());
+                    if flags.contains('i') {
+                        builder.case_insensitive(true);
+                    }
+                    if flags.contains('m') {
+                        builder.dot_matches_new_line(true);
+                    }
+                    if flags.contains('x') {
+                        builder.ignore_whitespace(true);
+                    }
+                    let compiled = builder.build().map_err(|problem| {
+                        MetorexError::runtime_error(
+                            format!("invalid regex for []: {}", problem),
+                            position_to_location(position),
+                        )
+                    })?;
+                    match compiled.find(s.as_str()) {
+                        Some(found) => Ok(Object::string(found.as_str().to_string())),
+                        None => Ok(Object::Nil),
+                    }
                 }
                 _ => Err(MetorexError::type_error(
                     format!(

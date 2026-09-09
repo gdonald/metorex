@@ -46,10 +46,7 @@ class Shouty
 end
 Shouty.new.to_a
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("mine".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("mine".to_string())));
 }
 
 #[test]
@@ -124,12 +121,7 @@ def pick(fallback = nil, &block)
 end
 pick(-> { :from_fallback }) { false }
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new(
-            "from_fallback".to_string()
-        )))
-    );
+    assert_eq!(result, Some(Object::symbol("from_fallback".to_string())));
 }
 
 #[test]
@@ -153,10 +145,7 @@ class Walker
 end
 Walker.new.take_while { |value| break :stopped if value == 3; true }
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("stopped".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("stopped".to_string())));
 }
 
 #[test]

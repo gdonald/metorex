@@ -99,11 +99,11 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Option<regex::Regex> {
 /// name the way Ruby's does.
 pub(crate) fn subject_text(object: &Object) -> Option<String> {
     match object {
-        Object::String(text) | Object::Symbol(text) => Some((**text).clone()),
+        Object::String(text) | Object::Symbol(text) => Some(text.as_str().to_string()),
         // An instance of a String subclass carries its characters in an
         // instance variable, and matches the same as a plain String.
         other => match super::string_subclass_value(other) {
-            Some(Object::String(text)) => Some((*text).clone()),
+            Some(Object::String(text)) => Some(text.as_str().to_string()),
             _ => None,
         },
     }
@@ -119,6 +119,20 @@ impl VirtualMachine {
         flags: &str,
         text: &str,
         start: usize,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        self.regexp_match_data_in(pattern, flags, text, start, None, position)
+    }
+
+    /// The same match, told which encoding the subject was tagged with so the
+    /// pieces cut out of it carry the same tag.
+    pub(crate) fn regexp_match_data_in(
+        &mut self,
+        pattern: &str,
+        flags: &str,
+        text: &str,
+        start: usize,
+        subject_encoding: Option<String>,
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         let Some(compiled) = compile(pattern, flags) else {
@@ -178,8 +192,15 @@ impl VirtualMachine {
         let Some(match_data_class) = self.globals().get("MatchData") else {
             return Ok(None);
         };
+        let subject = match &subject_encoding {
+            Some(named) => Object::String(Rc::new(crate::object::StringValue::with_encoding(
+                text.to_string(),
+                named.clone(),
+            ))),
+            None => Object::string(text.to_string()),
+        };
         let arguments = vec![
-            Object::String(Rc::new(text.to_string())),
+            subject,
             Object::Regex(Rc::new(pattern.to_string()), Rc::new(flags.to_string())),
             Object::Array(Rc::new(RefCell::new(begins))),
             Object::Array(Rc::new(RefCell::new(ends))),
@@ -201,7 +222,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         match method_name {
-            "source" => Ok(Some(Object::String(Rc::new(pattern.to_string())))),
+            "source" => Ok(Some(Object::string(pattern.to_string()))),
             "options" => {
                 let mut options = 0;
                 if flags.contains('i') {
@@ -223,7 +244,7 @@ impl VirtualMachine {
                     if seen.contains(&name) {
                         continue;
                     }
-                    named.push(Object::String(Rc::new(name.clone())));
+                    named.push(Object::string(name.clone()));
                     seen.push(name);
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(named)))))
@@ -318,13 +339,8 @@ impl VirtualMachine {
                     None => Ok(Some(Object::Nil)),
                 }
             }
-            "to_s" => Ok(Some(Object::String(Rc::new(to_source_string(
-                pattern, flags,
-            ))))),
-            "inspect" => Ok(Some(Object::String(Rc::new(format!(
-                "/{}/{}",
-                pattern, flags
-            ))))),
+            "to_s" => Ok(Some(Object::string(to_source_string(pattern, flags)))),
+            "inspect" => Ok(Some(Object::string(format!("/{}/{}", pattern, flags)))),
             "hash" => {
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 std::hash::Hash::hash(&(pattern, comparable_flags(flags)), &mut hasher);

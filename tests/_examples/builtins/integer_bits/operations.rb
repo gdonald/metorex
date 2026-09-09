@@ -7,9 +7,10 @@ puts shifts.inspect
 reversed = [5 << -1, 5 >> -1]
 puts reversed.inspect
 
-# A count past the width leaves 0, or the sign bit on a right shift.
-saturated = [1 << 200, -1 >> 200, 1 >> 200]
-puts saturated.inspect
+# A left shift is exact however wide the result grows, and a right shift past
+# the width leaves 0, or the sign bit for a negative value.
+widened = [1 << 200, -1 >> 200, 1 >> 200]
+puts widened.inspect
 
 negative_one = -1
 complements = [~5, ~0, ~negative_one]

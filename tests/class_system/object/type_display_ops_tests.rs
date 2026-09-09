@@ -44,10 +44,7 @@ fn type_name_string() {
 
 #[test]
 fn type_name_symbol() {
-    assert_eq!(
-        Object::Symbol(Rc::new("s".to_string())).type_name(),
-        "Symbol"
-    );
+    assert_eq!(Object::symbol("s".to_string()).type_name(), "Symbol");
 }
 
 #[test]
@@ -173,7 +170,7 @@ fn display_string() {
 
 #[test]
 fn display_symbol() {
-    let s = Object::Symbol(Rc::new("foo".to_string()));
+    let s = Object::symbol("foo".to_string());
     assert_eq!(format!("{}", s), ":foo");
 }
 

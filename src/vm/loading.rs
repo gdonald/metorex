@@ -28,7 +28,7 @@ impl VirtualMachine {
         let mut directories = Vec::with_capacity(entries.len());
         for entry in entries {
             match entry {
-                Object::String(directory) => directories.push((*directory).clone()),
+                Object::String(directory) => directories.push(directory.as_str().to_string()),
                 other => {
                     let position = crate::lexer::Position::new(0, 0, 0);
                     if let Ok(path) = self.coerce_load_path(&other, position) {
@@ -48,7 +48,7 @@ impl VirtualMachine {
         };
         let home = match self.globals().get("ENV") {
             Some(Object::Dict(entries)) => match entries.borrow().get("HOME") {
-                Some(Object::String(home)) => Some((**home).clone()),
+                Some(Object::String(home)) => Some(home.as_str().to_string()),
                 _ => None,
             },
             _ => None,
@@ -105,7 +105,7 @@ impl VirtualMachine {
         let path_str = path.to_string_lossy().into_owned();
         if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow_mut()
-                .retain(|o| !matches!(o, Object::String(s) if **s == path_str));
+                .retain(|o| !matches!(o, Object::String(s) if s.as_str() == path_str));
         }
     }
 
@@ -211,7 +211,7 @@ impl VirtualMachine {
         if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow()
                 .iter()
-                .any(|o| matches!(o, Object::String(s) if **s == canonical))
+                .any(|o| matches!(o, Object::String(s) if s.as_str() == canonical))
         } else {
             false
         }
@@ -293,7 +293,7 @@ impl VirtualMachine {
             }
             if let Some(Object::Array(arr)) = self.globals().get("\"") {
                 arr.borrow_mut()
-                    .retain(|o| !matches!(o, Object::String(s) if **s == path));
+                    .retain(|o| !matches!(o, Object::String(s) if s.as_str() == path));
             }
             reloading = true;
         }
@@ -345,7 +345,7 @@ impl VirtualMachine {
                 cls,
                 method,
                 main,
-                vec![Object::String(Rc::new(path.clone()))],
+                vec![Object::string(path.clone())],
                 crate::lexer::Position::new(0, 0, 0),
             )
             .map(|_| ())
@@ -419,7 +419,7 @@ impl VirtualMachine {
     /// Prepend a path to the `$LOAD_PATH` (`$:`) global array.
     pub fn prepend_load_path(&mut self, path: String) {
         if let Some(Object::Array(arr)) = self.globals.get(":") {
-            arr.borrow_mut().insert(0, Object::String(Rc::new(path)));
+            arr.borrow_mut().insert(0, Object::string(path));
         }
     }
 
@@ -535,7 +535,7 @@ impl VirtualMachine {
         let already_in_features = if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow()
                 .iter()
-                .any(|o| matches!(o, Object::String(s) if **s == canonical_str))
+                .any(|o| matches!(o, Object::String(s) if s.as_str() == canonical_str))
         } else {
             false
         };
@@ -556,8 +556,7 @@ impl VirtualMachine {
         if record {
             self.mark_file_loaded(canonical_path.clone());
             if let Some(Object::Array(arr)) = self.globals().get("\"") {
-                arr.borrow_mut()
-                    .push(Object::String(Rc::new(canonical_str.clone())));
+                arr.borrow_mut().push(Object::string(canonical_str.clone()));
             }
         }
 

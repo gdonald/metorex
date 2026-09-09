@@ -238,13 +238,13 @@ fn a_singleton_class_has_one_instance() {
         run(&format!(
             "{held}begin\n  Held.new\nrescue NoMethodError\n  :refused\nend"
         )),
-        Some(Object::Symbol(std::rc::Rc::new("refused".to_string())))
+        Some(Object::symbol("refused".to_string()))
     );
     assert_eq!(
         run(&format!(
             "{held}begin\n  Held.instance.dup\nrescue TypeError\n  :refused\nend"
         )),
-        Some(Object::Symbol(std::rc::Rc::new("refused".to_string())))
+        Some(Object::symbol("refused".to_string()))
     );
 }
 

@@ -211,10 +211,7 @@ class Layers
 end
 Layers.new.answer
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("from_inner".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("from_inner".to_string())));
 }
 
 #[test]
@@ -229,10 +226,7 @@ class Counter
 end
 Counter.new.each { |value| value }
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("finished".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("finished".to_string())));
 }
 
 // ── A return from a block whose method has already finished ─────────────────

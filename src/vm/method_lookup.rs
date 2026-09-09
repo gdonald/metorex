@@ -299,22 +299,12 @@ impl VirtualMachine {
         if let Some((method_missing_class, method_missing_method)) =
             self.lookup_method(&receiver, "method_missing")
         {
-            let method_name_obj = Object::String(Rc::new(method_name.to_string()));
-            let arity = method_missing_method.parameters.len();
-            let has_variadic = method_missing_method.variadic_param.is_some();
-            let method_missing_args = if arity <= 1 {
-                vec![method_name_obj]
-            } else if has_variadic {
-                // `def method_missing(name, *args, &block)` — spread original
-                // args so the splat collects them as individual positionals.
-                let mut v = Vec::with_capacity(arguments.len() + 1);
-                v.push(method_name_obj);
-                v.extend(arguments);
-                v
-            } else {
-                let args_array = Object::Array(Rc::new(RefCell::new(arguments)));
-                vec![method_name_obj, args_array]
-            };
+            // Ruby hands `method_missing` the name as a Symbol followed by
+            // the call's own arguments, one by one, so a handler written as
+            // `def method_missing(name, path)` reads the path as itself.
+            let mut method_missing_args = Vec::with_capacity(arguments.len() + 1);
+            method_missing_args.push(Object::symbol(method_name.to_string()));
+            method_missing_args.extend(arguments.iter().cloned());
             self.invoke_method(
                 method_missing_class,
                 method_missing_method,
@@ -347,7 +337,7 @@ impl VirtualMachine {
         if handler.is_undefined {
             return None;
         }
-        let mut handler_arguments = vec![Object::Symbol(Rc::new(method_name.to_string()))];
+        let mut handler_arguments = vec![Object::symbol(method_name.to_string())];
         handler_arguments.extend(arguments.iter().cloned());
         Some(self.invoke_method(
             owner,
@@ -570,6 +560,36 @@ impl VirtualMachine {
         class
             .find_method_with_owner(method_name)
             .is_some_and(|(owner, _)| owner.ruby_name() == "Enumerable")
+    }
+
+    /// An operator method written on a built-in value's own class, on one of
+    /// the modules prepended to it, or on the value's singleton class. Used
+    /// when `1 + 2` has to reach a reopened `Integer#+` rather than the native
+    /// arithmetic. An ancestor's copy does not count: the core library writes
+    /// several operators in Ruby on `Numeric` and on `Comparable`, and those
+    /// stand for the native implementation rather than replacing it. A
+    /// body-less stub does not count either, for the same reason.
+    pub(crate) fn lookup_own_operator_method(
+        &self,
+        receiver: &Object,
+        method_name: &str,
+    ) -> Option<(Rc<Class>, Rc<Method>)> {
+        let mut candidates = Vec::new();
+        if let Some(singleton) = self.existing_singleton_class(receiver) {
+            candidates.push(singleton);
+        }
+        let class = self.builtins().class_of(receiver);
+        candidates.extend(class.prepend_chain());
+        candidates.push(class);
+        for owner in candidates {
+            if let Some(method) = owner.find_own_method(method_name)
+                && !method.is_undefined
+                && !method.body.is_empty()
+            {
+                return Some((owner, method));
+            }
+        }
+        None
     }
 
     pub(crate) fn lookup_method(

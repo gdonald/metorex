@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -71,10 +70,7 @@ fn operator_or_nil_fallthrough() {
     let result = run(r#"
 nil || "fallback"
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("fallback".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("fallback".to_string())));
 }
 
 #[test]

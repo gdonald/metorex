@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -157,10 +156,7 @@ File.write("{path}", "roundtrip test")
 File.read("{path}")
 "#,
     ));
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("roundtrip test".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("roundtrip test".to_string())));
 
     // Cleanup
     std::fs::remove_file(path).ok();
@@ -314,7 +310,7 @@ fn dir_bracket_glob_returns_matches() {
                 .borrow()
                 .iter()
                 .filter_map(|o| match o {
-                    Object::String(s) => Some((**s).clone()),
+                    Object::String(s) => Some(s.as_str().to_string()),
                     _ => None,
                 })
                 .collect();

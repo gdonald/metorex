@@ -85,7 +85,7 @@ impl VirtualMachine {
             self.copy_to_module_function(class_rc, &method_name, position)?;
         }
 
-        Ok(Object::Symbol(Rc::new(method_name)))
+        Ok(Object::symbol(method_name))
     }
 
     /// Implements `Object#define_singleton_method`: the method is installed on

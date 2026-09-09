@@ -3,7 +3,6 @@ use metorex::error::MetorexError;
 use metorex::lexer::Position;
 use metorex::object::Object;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn pos(line: usize, column: usize) -> Position {
     Position::new(line, column, 0)
@@ -65,7 +64,7 @@ fn string_upcase_returns_new_string() {
     vm.execute_program(&[assign]).expect("execution failed");
     assert_eq!(
         vm.environment().get("shout"),
-        Some(Object::String(Rc::new("METOREX".to_string())))
+        Some(Object::string("METOREX".to_string()))
     );
 }
 
@@ -222,7 +221,7 @@ fn string_trim_removes_whitespace() {
     vm.execute_program(&[assign]).expect("execution failed");
     assert_eq!(
         vm.environment().get("trimmed"),
-        Some(Object::String(Rc::new("hello".to_string())))
+        Some(Object::string("hello".to_string()))
     );
 }
 
@@ -248,7 +247,7 @@ fn string_reverse_reverses_characters() {
     vm.execute_program(&[assign]).expect("execution failed");
     assert_eq!(
         vm.environment().get("reversed"),
-        Some(Object::String(Rc::new("cba".to_string())))
+        Some(Object::string("cba".to_string()))
     );
 }
 
@@ -277,8 +276,8 @@ fn string_chars_returns_array_of_characters() {
         Some(Object::Array(array_rc)) => {
             let array = array_rc.borrow();
             assert_eq!(array.len(), 2);
-            assert_eq!(array[0], Object::String(Rc::new("H".to_string())));
-            assert_eq!(array[1], Object::String(Rc::new("i".to_string())));
+            assert_eq!(array[0], Object::string("H".to_string()));
+            assert_eq!(array[1], Object::string("i".to_string()));
         }
         other => panic!("expected array, got {:?}", other),
     }
@@ -338,7 +337,7 @@ fn string_reverse_handles_unicode() {
     vm.execute_program(&[assign]).expect("execution failed");
     assert_eq!(
         vm.environment().get("reversed"),
-        Some(Object::String(Rc::new("はちにんこ".to_string())))
+        Some(Object::string("はちにんこ".to_string()))
     );
 }
 

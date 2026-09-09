@@ -50,6 +50,32 @@ impl VirtualMachine {
         let Object::Dict(dict_rc) = receiver else {
             return Ok(None);
         };
+        // ENV is a hash the process shares with the operating system, and a
+        // handful of methods answer differently on it.
+        if self.dict_is_environment(dict_rc) {
+            match method_name {
+                "to_s" => return Ok(Some(Object::string("ENV"))),
+                "rehash" => return Ok(Some(Object::Nil)),
+                // A copy of ENV would stop tracking the environment, so Ruby
+                // refuses and points at the hash it will make instead.
+                "dup" | "clone" => {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!(
+                            "Cannot {method_name} ENV, use ENV.to_h to get a copy of ENV as a hash"
+                        ),
+                        position,
+                    ));
+                }
+                // `to_h` and `to_hash` hand back a hash of their own, so
+                // changing it leaves the environment alone.
+                "to_h" | "to_hash" if self.pending_block.is_none() => {
+                    let copied = dict_rc.borrow().clone();
+                    return Ok(Some(Object::Dict(Rc::new(RefCell::new(copied)))));
+                }
+                _ => {}
+            }
+        }
         match method_name {
             // No-op stub: metorex doesn't distinguish identity from equality
             // for hash keys, so `compare_by_identity` just returns the receiver.
@@ -1493,6 +1519,15 @@ fn keep_pair(built: &mut indexmap::IndexMap<String, Object>, key: Object, value:
 }
 
 impl VirtualMachine {
+    /// Whether a hash is the one ENV names, which a few methods answer
+    /// differently on.
+    pub(crate) fn dict_is_environment(
+        &self,
+        dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+    ) -> bool {
+        matches!(self.globals().get("ENV"), Some(Object::Dict(held)) if Rc::ptr_eq(&held, dict_rc))
+    }
+
     /// A write to ENV reaches the process environment too, so the C library
     /// sees it. Anything the C library reads, such as the time zone, follows
     /// what the program set.
@@ -1514,6 +1549,14 @@ impl VirtualMachine {
         let Ok(name) = std::ffi::CString::new(name.as_str()) else {
             return;
         };
+        // Ruby removes the entry outright when a name is set to nil, so the
+        // name stops being one the environment holds at all.
+        if matches!(value, Object::Nil) {
+            let mut held = dict_rc.borrow_mut();
+            if let Some(key_text) = crate::vm::utils::object_to_dict_key(key) {
+                held.shift_remove(&key_text);
+            }
+        }
         unsafe {
             match value {
                 Object::Nil => {

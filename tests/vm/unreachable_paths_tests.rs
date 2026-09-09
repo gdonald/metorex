@@ -45,25 +45,36 @@ p.call
 }
 
 // ── native_methods/mod.rs line 211: Thread instance without __thread_block ─
-// `Thread.allocate` constructs a Thread instance via the class allocator,
-// bypassing Thread.new's constructor which normally sets __thread_block.
-// Calling .value on the bare allocated instance falls through to the
+// `Thread.new` with no block makes a Thread with nothing to run, so
+// __thread_block is never set and `.value` falls through to the
 // `Object::Nil` fallback at line 211.
 
 #[test]
-fn thread_allocated_without_block_value_returns_nil() {
+fn thread_without_block_value_returns_nil() {
     let result = run(r#"
-t = Thread.allocate
+t = Thread.new
 t.value
 "#);
     assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]
-fn thread_allocated_without_block_join_returns_self() {
+fn thread_allocate_is_refused() {
+    // A Thread has nothing to be without a block, so Ruby gives its class no
+    // allocator at all.
+    let error = run_err("Thread.allocate");
+    assert!(
+        error.contains("allocator undefined for Thread"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn thread_without_block_join_returns_self() {
     // join on a blockless Thread returns the receiver (the Thread instance).
     let result = run(r#"
-t = Thread.allocate
+t = Thread.new
 t.join.class.name
 "#);
     assert_eq!(result, Some(Object::string("Thread")));

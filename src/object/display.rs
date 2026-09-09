@@ -148,7 +148,7 @@ impl fmt::Display for Object {
                         .iter()
                         .map(|element| match element {
                             Object::String(text) => format!("{:?}", text.as_str()),
-                            Object::Symbol(name) => format!(":{}", name.as_str()),
+                            Object::Symbol(name) => inspect_symbol(name.as_str()),
                             Object::Nil => "nil".to_string(),
                             other => other.to_string(),
                         })
@@ -207,4 +207,80 @@ pub(crate) fn end_rendering() {
     RENDERING.with(|active| {
         active.borrow_mut().pop();
     });
+}
+
+/// A symbol written the way `inspect` writes one. A name that would not read
+/// back as a plain symbol is quoted, so `:"a b"` keeps its space.
+pub(crate) fn inspect_symbol(name: &str) -> String {
+    if reads_back_plainly(name) {
+        return format!(":{name}");
+    }
+    format!(":{name:?}")
+}
+
+/// Whether a symbol's name could be written after a colon and read back as
+/// the same symbol.
+fn reads_back_plainly(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    if matches!(
+        name,
+        "+" | "-"
+            | "*"
+            | "/"
+            | "%"
+            | "**"
+            | "=="
+            | "==="
+            | "!="
+            | "<"
+            | ">"
+            | "<="
+            | ">="
+            | "<=>"
+            | "<<"
+            | ">>"
+            | "[]"
+            | "[]="
+            | "!"
+            | "~"
+            | "&"
+            | "|"
+            | "^"
+            | "=~"
+            | "!~"
+            | "+@"
+            | "-@"
+            | "`"
+    ) {
+        return true;
+    }
+    // An instance, class, or global variable name is plain once its sigil is
+    // set aside.
+    let body = name
+        .strip_prefix("@@")
+        .or_else(|| name.strip_prefix('@'))
+        .or_else(|| name.strip_prefix('$'))
+        .unwrap_or(name);
+    let mut characters = body.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    if !(first.is_alphabetic() || first == '_') {
+        return false;
+    }
+    let rest: Vec<char> = characters.collect();
+    let Some((last, middle)) = rest.split_last() else {
+        return true;
+    };
+    if !middle
+        .iter()
+        .all(|held| held.is_alphanumeric() || *held == '_')
+    {
+        return false;
+    }
+    // Only the last character may be one of the three a method name may end
+    // with.
+    last.is_alphanumeric() || *last == '_' || *last == '?' || *last == '!' || *last == '='
 }

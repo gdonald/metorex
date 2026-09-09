@@ -84,7 +84,12 @@ impl<'a> Lexer<'a> {
                     Token::new(TokenKind::StarEqual, position)
                 } else if self.peek() == Some('*') {
                     self.advance();
-                    Token::new(TokenKind::StarStar, position)
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::StarStarEqual, position)
+                    } else {
+                        Token::new(TokenKind::StarStar, position)
+                    }
                 } else {
                     Token::new(TokenKind::Star, position)
                 }
@@ -107,7 +112,12 @@ impl<'a> Lexer<'a> {
             '%' => self.lex_percent(position),
             '^' => {
                 self.advance();
-                Token::new(TokenKind::Caret, position)
+                if self.peek() == Some('=') {
+                    self.advance();
+                    Token::new(TokenKind::CaretEqual, position)
+                } else {
+                    Token::new(TokenKind::Caret, position)
+                }
             }
             '=' => {
                 self.advance();
@@ -156,6 +166,9 @@ impl<'a> Lexer<'a> {
                     // Heredoc: `<<-IDENT` or `<<~IDENT` (with indent-strip)
                     if let Some(heredoc) = self.try_read_heredoc() {
                         Token::new(heredoc, position)
+                    } else if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::ShovelEqual, position)
                     } else {
                         Token::new(TokenKind::Shovel, position)
                     }
@@ -174,7 +187,12 @@ impl<'a> Lexer<'a> {
                     Token::new(TokenKind::GreaterEqual, position)
                 } else if self.peek() == Some('>') {
                     self.advance();
-                    Token::new(TokenKind::RightShift, position)
+                    if self.peek() == Some('=') {
+                        self.advance();
+                        Token::new(TokenKind::RightShiftEqual, position)
+                    } else {
+                        Token::new(TokenKind::RightShift, position)
+                    }
                 } else {
                     Token::new(TokenKind::Greater, position)
                 }
@@ -249,6 +267,9 @@ impl<'a> Lexer<'a> {
                     } else {
                         Token::new(TokenKind::LogicalOr, position)
                     }
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Token::new(TokenKind::PipeEqual, position)
                 } else {
                     Token::new(TokenKind::Pipe, position)
                 }
@@ -266,6 +287,9 @@ impl<'a> Lexer<'a> {
                 } else if self.peek() == Some('.') {
                     self.advance();
                     Token::new(TokenKind::SafeDot, position)
+                } else if self.peek() == Some('=') {
+                    self.advance();
+                    Token::new(TokenKind::AmpersandEqual, position)
                 } else {
                     Token::new(TokenKind::Ampersand, position)
                 }
@@ -273,6 +297,13 @@ impl<'a> Lexer<'a> {
             '?' => {
                 self.advance(); // consume ?
                 match self.peek() {
+                    // `?\n`, `?\001`, and `?\x41` name a character by an
+                    // escape, the same escapes a string literal reads.
+                    Some('\\') => {
+                        self.advance();
+                        let character = self.read_character_escape();
+                        Token::new(TokenKind::String(character), position)
+                    }
                     // ?x where x is not a space/newline: character literal
                     Some(ch) if !ch.is_whitespace() => {
                         self.advance();
@@ -301,6 +332,48 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 Token::new(TokenKind::EOF, position)
             }
+        }
+    }
+}
+
+impl Lexer<'_> {
+    /// The character an escape after `?` names. Reads the same escapes a
+    /// string literal does, so `?\n` is a newline, `?\001` is the byte one,
+    /// and `?\x41` is a capital A.
+    fn read_character_escape(&mut self) -> String {
+        let Some(marker) = self.peek() else {
+            return "\\".to_string();
+        };
+        self.advance();
+        match marker {
+            'n' => "\n".to_string(),
+            't' => "\t".to_string(),
+            'r' => "\r".to_string(),
+            's' => " ".to_string(),
+            '0'..='7' => {
+                let mut digits = String::from(marker);
+                while digits.len() < 3 && matches!(self.peek(), Some('0'..='7')) {
+                    digits.push(self.peek().expect("the guard read a digit"));
+                    self.advance();
+                }
+                let value = u32::from_str_radix(&digits, 8).unwrap_or(0);
+                char::from_u32(value).unwrap_or('\0').to_string()
+            }
+            'x' => {
+                let mut digits = String::new();
+                while digits.len() < 2 && matches!(self.peek(), Some(c) if c.is_ascii_hexdigit()) {
+                    digits.push(self.peek().expect("the guard read a digit"));
+                    self.advance();
+                }
+                let value = u32::from_str_radix(&digits, 16).unwrap_or(0);
+                char::from_u32(value).unwrap_or('\0').to_string()
+            }
+            'e' => "\u{1b}".to_string(),
+            'a' => "\u{7}".to_string(),
+            'b' => "\u{8}".to_string(),
+            'f' => "\u{c}".to_string(),
+            'v' => "\u{b}".to_string(),
+            other => other.to_string(),
         }
     }
 }

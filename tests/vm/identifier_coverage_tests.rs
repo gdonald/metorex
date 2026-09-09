@@ -6,7 +6,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -64,18 +63,12 @@ fn scope_resolution_on_class_with_constant() {
 
 #[test]
 fn string_index_int() {
-    assert_eq!(
-        run(r#""hello"[0]"#),
-        Some(Object::String(std::rc::Rc::new("h".to_string())))
-    );
+    assert_eq!(run(r#""hello"[0]"#), Some(Object::string("h".to_string())));
 }
 
 #[test]
 fn string_index_negative() {
-    assert_eq!(
-        run(r#""hello"[-1]"#),
-        Some(Object::String(std::rc::Rc::new("o".to_string())))
-    );
+    assert_eq!(run(r#""hello"[-1]"#), Some(Object::string("o".to_string())));
 }
 
 #[test]
@@ -87,7 +80,7 @@ fn string_index_out_of_bounds() {
 fn string_index_range() {
     assert_eq!(
         run(r#""hello"[1..3]"#),
-        Some(Object::String(std::rc::Rc::new("ell".to_string())))
+        Some(Object::string("ell".to_string()))
     );
 }
 
@@ -123,10 +116,7 @@ module Foo
 end
 Foo.test
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hello".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -229,7 +219,7 @@ class Foo
 end
 Foo.create.to_s
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("a Foo".to_string()))));
+    assert_eq!(result, Some(Object::string("a Foo".to_string())));
 }
 
 #[test]
@@ -273,10 +263,7 @@ class Foo
 end
 Foo.new.test
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("hi world".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hi world".to_string())));
 }
 
 #[test]
@@ -319,10 +306,7 @@ class Foo
 end
 Foo.new.test
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("from object".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("from object".to_string())));
 }
 
 #[test]
@@ -483,7 +467,7 @@ class Foo
 end
 Foo.new.check.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Widget".to_string()))));
+    assert_eq!(result, Some(Object::string("Widget".to_string())));
 }
 
 // ── Splat in expression context ──────────────────────────────────────────────

@@ -5,7 +5,6 @@ use metorex::compiler::Compiler;
 use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
-use std::rc::Rc;
 
 fn run(source: &str) -> Result<Object, String> {
     let tokens = Lexer::new(source).tokenize();
@@ -190,5 +189,5 @@ fn execute_int_times_float() {
 #[test]
 fn execute_string_concat() {
     let result = run_ok("return \"hello\" + \" world\"");
-    assert_eq!(result, Object::String(Rc::new("hello world".to_string())));
+    assert_eq!(result, Object::string("hello world".to_string()));
 }

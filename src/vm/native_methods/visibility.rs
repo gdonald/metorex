@@ -114,12 +114,9 @@ impl VirtualMachine {
             }
         }
         match flat.len() {
-            1 => Ok(Object::Symbol(Rc::new(names[0].clone()))),
+            1 => Ok(Object::symbol(names[0].clone())),
             _ => Ok(Object::Array(Rc::new(std::cell::RefCell::new(
-                names
-                    .into_iter()
-                    .map(|n| Object::Symbol(Rc::new(n)))
-                    .collect(),
+                names.into_iter().map(Object::symbol).collect(),
             )))),
         }
     }

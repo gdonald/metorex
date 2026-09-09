@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -103,7 +102,7 @@ fn int_to_s_method() {
     let result = run(r#"
 42.to_s
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
+    assert_eq!(result, Some(Object::string("42".to_string())));
 }
 
 #[test]
@@ -131,9 +130,17 @@ fn integer_bit_length_takes_no_arguments() {
 }
 
 #[test]
-fn integer_shift_saturates_past_the_word_width() {
-    assert_eq!(run("1 << 200"), Some(Object::Int(0)));
+fn integer_shift_widens_left_and_saturates_right() {
+    // A left shift is exact in Ruby, so a result too wide for a machine word
+    // keeps its value instead of dropping the high bits.
+    assert_eq!(
+        run("(1 << 200).to_s"),
+        Some(Object::string(
+            "1606938044258990275541962092341162602522202993782792835301376"
+        ))
+    );
     assert_eq!(run("-1 >> 200"), Some(Object::Int(-1)));
+    assert_eq!(run("1 >> 200"), Some(Object::Int(0)));
 }
 
 #[test]

@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -190,7 +189,7 @@ Calc.new.send("add", 3, 4)
 #[test]
 fn send_on_builtin_string() {
     let result = run(r#""hello".send("upcase")"#);
-    assert_eq!(result, Some(Object::String(Rc::new("HELLO".to_string()))));
+    assert_eq!(result, Some(Object::string("HELLO".to_string())));
 }
 
 #[test]
@@ -208,7 +207,7 @@ end
 Foo.new.send("nonexistent")
 "#,
     );
-    assert!(err.contains("Undefined method"));
+    assert!(err.contains("undefined method"));
 }
 
 #[test]
@@ -238,7 +237,7 @@ Foo.new.send()
 #[test]
 fn send_calls_native_to_s() {
     let result = run(r#"42.send("to_s")"#);
-    assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
+    assert_eq!(result, Some(Object::string("42".to_string())));
 }
 
 #[test]

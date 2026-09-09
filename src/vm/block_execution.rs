@@ -497,8 +497,11 @@ impl VirtualMachine {
                     ControlFlow::Redo { position } => {
                         return Err(loop_control_error("redo", position));
                     }
-                    ControlFlow::Continue { position, .. } => {
-                        return Err(loop_control_error("continue", position));
+                    // `next <value>` ends this run of the block with that
+                    // value, which is what the method holding the block sees.
+                    ControlFlow::Continue { value, .. } => {
+                        last_value = value;
+                        break;
                     }
                 }
             }
@@ -512,6 +515,9 @@ impl VirtualMachine {
         // handed the block, which is the call made from the frame the block
         // was written in.
         match result {
+            // `next` written inside an expression unwinds to here, and ends
+            // this run of the block with the value it carried.
+            Err(MetorexError::BlockNext { value, .. }) => Ok(value),
             Err(MetorexError::BlockBreak {
                 value,
                 location,
@@ -603,10 +609,9 @@ fn orphaned_return_error(value: Object, position: Position) -> MetorexError {
         details
             .instance_vars
             .insert("@exit_value".to_string(), value);
-        details.instance_vars.insert(
-            "@reason".to_string(),
-            Object::Symbol(std::rc::Rc::new("return".to_string())),
-        );
+        details
+            .instance_vars
+            .insert("@reason".to_string(), Object::symbol("return".to_string()));
     }
     MetorexError::UncaughtException {
         exception,

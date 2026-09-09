@@ -54,10 +54,7 @@ def make_class
 end
 make_class
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("bye".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("bye".to_string())));
 }
 
 // ── module reopen ─────────────────────────────────────────────────────────────
@@ -80,10 +77,7 @@ class MyClass
 end
 MyClass.new.farewell
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("bye".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("bye".to_string())));
 }
 
 // ── module setter dispatch ───────────────────────────────────────────────────

@@ -5,7 +5,6 @@ use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
 use std::path::Path;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -335,10 +334,7 @@ class Greeter
 end
 Greeter.new.greet
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("world".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("world".to_string())));
 }
 
 // ── method_invocation.rs lines 212-213: block with captured vars ──
@@ -378,7 +374,7 @@ fn case_in_as_value_expression() {
 #[test]
 fn case_in_continues_after_match() {
     let result = run("case 5\nin Integer\n  \"matched\"\nend");
-    assert_eq!(result, Some(Object::String(Rc::new("matched".to_string()))));
+    assert_eq!(result, Some(Object::string("matched".to_string())));
 }
 
 // ── execute_file path (core.rs lines 238-263) ──────────────────────────
@@ -414,10 +410,7 @@ fn super_with_arguments() {
          class Child < Base\n  def greet(name)\n    super(name)\n  end\nend\n\
          Child.new.greet(\"World\")",
     );
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("Hello, World".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Hello, World".to_string())));
 }
 
 // ── binary_op_method_name (core.rs line 682) ───────────────────────────
@@ -509,10 +502,7 @@ rescue StandardError => e
 end
 result
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("caught errno".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("caught errno".to_string())));
 }
 
 #[test]
@@ -545,10 +535,7 @@ class Child < Base
 end
 Child.new.greet "World"
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("Hello, World".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Hello, World".to_string())));
 }
 
 // ── leading :: parse error (keywords.rs line 196) ─────────────────────────────

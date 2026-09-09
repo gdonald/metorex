@@ -259,7 +259,7 @@ impl VirtualMachine {
             return Ok(false);
         }
         let arguments = vec![
-            Object::Symbol(std::rc::Rc::new(name.to_string())),
+            Object::symbol(name.to_string()),
             Object::Bool(include_private),
         ];
         let answer = self.invoke_method(class, method, receiver.clone(), arguments, position)?;
@@ -327,7 +327,9 @@ impl VirtualMachine {
                         std::cell::RefCell::new(indexmap::IndexMap::new()),
                     ))));
                 }
-                "to_s" => return Ok(Some(Object::string(""))),
+                // One string that never changes, so asking twice answers the
+                // same object.
+                "to_s" => return Ok(Some(self.memoized_text("__nil_to_s", ""))),
                 "inspect" => return Ok(Some(Object::string("nil"))),
                 "to_r" | "rationalize" => {
                     if method_name == "rationalize" && arguments.len() > 1 {
@@ -441,7 +443,7 @@ impl VirtualMachine {
                 if let Some((owner, handler)) = self.lookup_method(receiver, "method_missing")
                     && !handler.is_undefined
                 {
-                    let mut relayed = vec![Object::Symbol(std::rc::Rc::new(method.clone()))];
+                    let mut relayed = vec![Object::symbol(method.clone())];
                     relayed.extend(rest_args);
                     return Ok(Some(self.invoke_method(
                         owner,
@@ -520,6 +522,13 @@ impl VirtualMachine {
                 self.environment().get("block_given?"),
                 Some(Object::Bool(true))
             )))),
+            // A TracePoint tells the interpreter when it is switched on or
+            // off, and asks whether a handler is running.
+            "__register__" => {
+                self.register_tracepoint(receiver);
+                Ok(Some(Object::Nil))
+            }
+            "__tracing__" => Ok(Some(Object::Bool(self.is_tracing()))),
             // ARGF#gets reads a line from the input stream.
             "gets"
                 if arguments.is_empty()
@@ -609,6 +618,17 @@ impl VirtualMachine {
                 // value share one, the way Ruby's do.
                 let id = match receiver {
                     Object::Instance(inst) => std::rc::Rc::as_ptr(inst) as i64,
+                    // Two strings holding the same text are two objects, so
+                    // each takes an id of its own the first time one is asked
+                    // for.
+                    Object::String(text) => {
+                        let next = self.next_object_id;
+                        let given = text.object_id(|| next);
+                        if given == next {
+                            self.next_object_id += 1;
+                        }
+                        given as i64
+                    }
                     Object::Array(arr) => std::rc::Rc::as_ptr(arr) as i64,
                     Object::Dict(dict) => std::rc::Rc::as_ptr(dict) as i64,
                     Object::Set(set) => std::rc::Rc::as_ptr(set) as i64,
@@ -626,7 +646,6 @@ impl VirtualMachine {
                     Object::Bool(false) => 0,
                     Object::Nil => 4,
                     Object::Symbol(name) => value_object_id("symbol", name),
-                    Object::String(text) => value_object_id("string", text),
                     Object::Float(value) => value_object_id("float", &value.to_bits().to_string()),
                     other => value_object_id("other", &other.to_string()),
                 };
@@ -847,7 +866,7 @@ impl VirtualMachine {
                 // Only the singleton layer counts: a method the object's
                 // class defines is not a singleton method of the object.
                 if let Some((owner, found)) = self.singleton_layer_method(receiver, &method) {
-                    let mut bound = found.as_ref().clone();
+                    let mut bound = (*found).clone();
                     bound.receiver = Some(Box::new(receiver.clone()));
                     if bound.owner_class.is_none() {
                         bound.owner_class = Some(owner);
@@ -871,11 +890,28 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // A String already is one, so `to_s` answers the receiver
+                // itself and the encoding it is tagged with travels with it.
+                if method_name == "to_s" && matches!(receiver, Object::String(_)) {
+                    return Ok(Some(receiver.clone()));
+                }
+                // `true` and `false` each write themselves as one string
+                // that never changes, so asking twice answers the same
+                // object.
+                if method_name == "to_s"
+                    && let Some((slot, text)) = match receiver {
+                        Object::Bool(true) => Some(("__true_to_s", "true")),
+                        Object::Bool(false) => Some(("__false_to_s", "false")),
+                        _ => None,
+                    }
+                {
+                    return Ok(Some(self.memoized_text(slot, text)));
+                }
                 if let Object::Symbol(s) = receiver {
                     return Ok(Some(Object::string(if method_name == "to_s" {
-                        (**s).clone()
+                        s.as_str().to_string()
                     } else {
-                        format!(":{}", s)
+                        crate::object::inspect_symbol(s)
                     })));
                 }
                 if method_name == "inspect"
@@ -996,7 +1032,7 @@ impl VirtualMachine {
                             message: msg,
                         });
                     }
-                    let mut bound = method.as_ref().clone();
+                    let mut bound = (*method).clone();
                     bound.receiver = Some(Box::new(receiver.clone()));
                     // Two names that are the same native method answer the
                     // same Method object, which is what makes
@@ -1261,7 +1297,7 @@ impl VirtualMachine {
                         .filter(|name| {
                             !crate::vm::native_methods::struct_methods::is_member_slot(name)
                         })
-                        .map(|k| Object::Symbol(std::rc::Rc::new(format!("@{}", k))))
+                        .map(|k| Object::symbol(format!("@{}", k)))
                         .collect()
                 } else {
                     vec![]
@@ -1515,10 +1551,7 @@ impl VirtualMachine {
                 };
                 names.sort();
                 names.dedup();
-                let symbols: Vec<Object> = names
-                    .into_iter()
-                    .map(|name| Object::Symbol(std::rc::Rc::new(name)))
-                    .collect();
+                let symbols: Vec<Object> = names.into_iter().map(Object::symbol).collect();
                 Ok(Some(Object::Array(std::rc::Rc::new(
                     std::cell::RefCell::new(symbols),
                 ))))
@@ -1644,10 +1677,7 @@ impl VirtualMachine {
                 names.retain(|name| !self.method_is_private_anywhere(&holder, name));
                 names.sort();
                 names.dedup();
-                let method_symbols: Vec<Object> = names
-                    .into_iter()
-                    .map(|n| Object::Symbol(std::rc::Rc::new(n)))
-                    .collect();
+                let method_symbols: Vec<Object> = names.into_iter().map(Object::symbol).collect();
                 Ok(Some(Object::Array(std::rc::Rc::new(
                     std::cell::RefCell::new(method_symbols),
                 ))))
@@ -1682,6 +1712,9 @@ impl VirtualMachine {
                 let other = &arguments[0];
                 let identity = match (receiver, other) {
                     (Object::Instance(a), Object::Instance(b)) => std::rc::Rc::ptr_eq(a, b),
+                    // Two strings holding the same text are still two
+                    // strings, which is what `equal?` tells apart.
+                    (Object::String(a), Object::String(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Array(a), Object::Array(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Dict(a), Object::Dict(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Class(a), Object::Class(b)) => std::rc::Rc::ptr_eq(a, b),
@@ -2086,10 +2119,7 @@ impl VirtualMachine {
         }
         names.sort();
         names.dedup();
-        let symbols: Vec<Object> = names
-            .into_iter()
-            .map(|n| Object::Symbol(std::rc::Rc::new(n)))
-            .collect();
+        let symbols: Vec<Object> = names.into_iter().map(Object::symbol).collect();
         Object::Array(std::rc::Rc::new(std::cell::RefCell::new(symbols)))
     }
     /// `Object#inspect` for an instance with no `inspect` of its own: the
@@ -2116,7 +2146,9 @@ impl VirtualMachine {
                             .borrow()
                             .iter()
                             .map(|name| match name {
-                                Object::Symbol(text) | Object::String(text) => (**text).clone(),
+                                Object::Symbol(text) | Object::String(text) => {
+                                    text.as_str().to_string()
+                                }
                                 other => other.to_string(),
                             })
                             .collect::<Vec<_>>(),
@@ -2413,7 +2445,7 @@ fn symbol_to_proc_block(name: &str, position: Position) -> crate::object::BlockS
 
 /// Map an operator method name back to its `BinaryOp`, for calls that arrive
 /// by name (`send(:+, 2)`) instead of through operator syntax.
-fn binary_op_for_method_name(name: &str) -> Option<crate::ast::BinaryOp> {
+pub(crate) fn binary_op_for_method_name(name: &str) -> Option<crate::ast::BinaryOp> {
     use crate::ast::BinaryOp;
     Some(match name {
         "+" => BinaryOp::Add,
@@ -2541,10 +2573,13 @@ enum MatchSide {
 /// Classify an operand of `=~`. A Symbol matches on its name, as Ruby's does.
 fn matchable_text(object: &Object) -> Option<MatchSide> {
     match object {
-        Object::Regex(pattern, flags) => {
-            Some(MatchSide::Pattern((**pattern).clone(), (**flags).clone()))
+        Object::Regex(pattern, flags) => Some(MatchSide::Pattern(
+            pattern.as_str().to_string(),
+            flags.as_str().to_string(),
+        )),
+        Object::String(text) | Object::Symbol(text) => {
+            Some(MatchSide::Text(text.as_str().to_string()))
         }
-        Object::String(text) | Object::Symbol(text) => Some(MatchSide::Text((**text).clone())),
         _ => None,
     }
 }
@@ -2609,5 +2644,17 @@ impl VirtualMachine {
             cursor = current.superclass();
         }
         false
+    }
+}
+
+impl VirtualMachine {
+    /// A string kept under a name, built once and answered every time after.
+    pub(crate) fn memoized_text(&mut self, slot: &str, text: &str) -> Object {
+        if let Some(held) = self.globals().get(slot) {
+            return held;
+        }
+        let made = Object::string(text);
+        self.globals_mut().set(slot, made.clone());
+        made
     }
 }

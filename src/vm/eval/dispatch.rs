@@ -23,17 +23,17 @@ impl VirtualMachine {
             // ── Literals ────────────────────────────────────────────────────
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
-            Expression::StringLiteral { value, .. } => Ok(Object::String(Rc::new(value.clone()))),
-            Expression::Symbol { value, .. } => Ok(Object::Symbol(Rc::new(value.clone()))),
+            Expression::StringLiteral { value, .. } => Ok(Object::string(value.clone())),
+            Expression::Symbol { value, .. } => Ok(Object::symbol(value.clone())),
             Expression::RegexLiteral { pattern, flags, .. } => Ok(Object::Regex(
                 Rc::new(pattern.clone()),
                 Rc::new(flags.clone()),
             )),
             Expression::BoolLiteral { value, .. } => Ok(Object::Bool(*value)),
             Expression::NilLiteral { .. } => Ok(Object::Nil),
-            Expression::InterpolatedString { parts, .. } => self
-                .evaluate_interpolated_string(parts)
-                .map(|s| Object::String(Rc::new(s))),
+            Expression::InterpolatedString { parts, .. } => {
+                self.evaluate_interpolated_string(parts).map(Object::string)
+            }
 
             // ── Variables / identifiers ─────────────────────────────────────
             Expression::Identifier { name, position } => self.eval_identifier(name, *position),
@@ -69,7 +69,7 @@ impl VirtualMachine {
                             .map(|path| path.display().to_string())
                     })
                     .unwrap_or_else(|| "(eval)".to_string());
-                Ok(Object::String(Rc::new(path)))
+                Ok(Object::string(path))
             }
             Expression::MagicLine { position, .. } => Ok(Object::Int(position.line as i64)),
             Expression::MagicDir { .. } => {
@@ -91,7 +91,7 @@ impl VirtualMachine {
                         _ => ".".to_string(),
                     },
                 };
-                Ok(Object::String(Rc::new(directory)))
+                Ok(Object::string(directory))
             }
 
             // ── Closures, grouping ──────────────────────────────────────────
@@ -201,6 +201,28 @@ impl VirtualMachine {
                 }
                 let left_value = self.evaluate_expression(left)?;
                 let right_value = self.evaluate_expression(right)?;
+                // A reopened core class, or a module prepended to one,
+                // holds the operator in a method table rather than in the
+                // native one, so `1 + 2` consults it before the built-in
+                // arithmetic runs. Only the receiver's own class and its
+                // prepended modules are asked: an ancestor's definition, such
+                // as the core library's Numeric#%, describes the operator the
+                // native path already implements, and answering from there
+                // would replace every built-in operator with its Ruby-level
+                // spelling.
+                if !matches!(left_value, Object::Instance(_))
+                    && let Some(op_name) = binary_op_method_name(op)
+                    && let Some((class, method)) =
+                        self.lookup_own_operator_method(&left_value, op_name)
+                {
+                    return self.invoke_method(
+                        class,
+                        method,
+                        left_value.clone(),
+                        vec![right_value],
+                        *position,
+                    );
+                }
                 // Check for user-defined operator methods on instances. Walk
                 // via lookup_method so per-instance singleton-class overrides
                 // (used by mspec mocks, among other things) win over the
@@ -345,8 +367,8 @@ impl VirtualMachine {
                     // native-method fallback.
                     if class.name() == "Thread" {
                         let key_str = match &key {
-                            Object::Symbol(s) => Some((**s).clone()),
-                            Object::String(s) => Some((**s).clone()),
+                            Object::Symbol(s) => Some(s.as_str().to_string()),
+                            Object::String(s) => Some(s.as_str().to_string()),
                             _ => None,
                         };
                         if let Some(k) = key_str {

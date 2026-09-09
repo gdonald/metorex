@@ -312,7 +312,16 @@ impl VirtualMachine {
                 if complex_parts(other).is_some() {
                     return Ok(Some(Object::array(vec![other.clone(), receiver.clone()])));
                 }
-                if !self.is_real_operand(other) {
+                // `coerce` takes a real number to pair with, so a String is
+                // refused even though `Complex("2")` reads one, and so is a
+                // Numeric that says it is not real.
+                let real_number = !matches!(other, Object::String(_))
+                    && self.is_real_operand(other)
+                    && !matches!(
+                        self.send_to_object(other.clone(), "real?", vec![], position),
+                        Ok(Object::Bool(false))
+                    );
+                if !real_number {
                     let message = format!(
                         "{} can't be coerced into Complex",
                         self.builtins().class_of(other).name()
@@ -1076,7 +1085,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         match self.send_to_object(value.clone(), method_name, vec![], position)? {
-            Object::String(text) => Ok((*text).clone()),
+            Object::String(text) => Ok(text.as_str().to_string()),
             other => Ok(other.to_string()),
         }
     }

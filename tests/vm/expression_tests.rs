@@ -214,10 +214,7 @@ def test_return
 end
 test_return
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("early".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("early".to_string())));
 }
 
 // ── evaluate_branch_value with break (expression.rs line 194) ──

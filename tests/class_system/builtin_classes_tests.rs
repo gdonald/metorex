@@ -395,7 +395,7 @@ fn test_array_index_parameters() {
 #[test]
 fn test_class_of_symbol() {
     let builtins = BuiltinClasses::new();
-    let obj = Object::Symbol(Rc::new("hello".to_string()));
+    let obj = Object::symbol("hello".to_string());
     let class = builtins.class_of(&obj);
     assert_eq!(class.name(), "Symbol");
 }

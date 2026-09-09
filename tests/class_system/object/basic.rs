@@ -134,7 +134,7 @@ fn test_set_object() {
 
 #[test]
 fn test_symbol_type_name() {
-    let obj = Object::Symbol(Rc::new("hello".to_string()));
+    let obj = Object::symbol("hello".to_string());
     assert_eq!(obj.type_name(), "Symbol");
 }
 
@@ -259,7 +259,7 @@ fn test_object_hash_float() {
 
 #[test]
 fn test_object_hash_symbol() {
-    let hash = ObjectHash::from_object(&Object::Symbol(Rc::new("foo".to_string())));
+    let hash = ObjectHash::from_object(&Object::symbol("foo".to_string()));
     assert!(hash.is_some());
     let str_hash = ObjectHash::from_object(&Object::string("foo"));
     assert_ne!(hash, str_hash);

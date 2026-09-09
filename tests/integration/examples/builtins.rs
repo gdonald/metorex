@@ -258,7 +258,7 @@ fn test_builtins_integer_bits_operations_execution() {
     let expected = concat!(
         "[8, 34359738368, 2, -2]\n",
         "[2, 10]\n",
-        "[0, -1, 0]\n",
+        "[1606938044258990275541962092341162602522202993782792835301376, -1, 0]\n",
         "[-6, -1, 0]\n",
         "[8, 9, 0, 0]\n",
         "[1, 3, 2]\n",
@@ -274,7 +274,7 @@ fn test_builtins_integer_bits_operations_parens_execution() {
     let expected = concat!(
         "[8, 34359738368, 2, -2]\n",
         "[2, 10]\n",
-        "[0, -1, 0]\n",
+        "[1606938044258990275541962092341162602522202993782792835301376, -1, 0]\n",
         "[-6, -1, 0]\n",
         "[8, 9, 0, 0]\n",
         "[1, 3, 2]\n",
@@ -654,5 +654,567 @@ fn test_builtins_kernel_pp_parens_execution() {
         "true\n",
     );
     let output = run_example("builtins/kernel_pp_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_core_class_additions_execution() {
+    let expected = concat!(
+        "\"/dev/null\"\n",
+        "true\n",
+        "IO\n",
+        "true\n",
+        "true\n",
+        "\"EUC-JP\"\n",
+        "\"ISO-8859-1\"\n",
+        "\"#<Encoding:UTF-8>\"\n",
+        "true\n",
+        "true\n",
+        "1\n",
+        "true\n",
+        "12\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "\"\"\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "[1, 2]\n",
+        "[1, 2]\n",
+        "true\n",
+    );
+    let output = run_example("builtins/core_class_additions.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_core_class_additions_parens_execution() {
+    let expected = concat!(
+        "\"/dev/null\"\n",
+        "true\n",
+        "IO\n",
+        "true\n",
+        "true\n",
+        "\"EUC-JP\"\n",
+        "\"ISO-8859-1\"\n",
+        "\"#<Encoding:UTF-8>\"\n",
+        "true\n",
+        "true\n",
+        "1\n",
+        "true\n",
+        "12\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "\"\"\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "[1, 2]\n",
+        "[1, 2]\n",
+        "true\n",
+    );
+    let output = run_example("builtins/core_class_additions_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_argf_stream_execution() {
+    let expected = concat!(
+        "\"ARGF\"\n",
+        "true\n",
+        "[\"/tmp/metorex_argf_plain_two.txt\"]\n",
+        "\"alpha\\n\"\n",
+        "1\n",
+        "false\n",
+        "\"beta\\n\"\n",
+        "true\n",
+        "\"gamma\\n\"\n",
+        "true\n",
+        "[\"delta\\n\"]\n",
+        "\"closed stream\"\n",
+        "\"al\"\n",
+        "2\n",
+        "0\n",
+        "\"a\"\n",
+        "\"lpha\\nbeta\\n\"\n",
+    );
+    let output = run_example("builtins/argf_stream.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_argf_stream_parens_execution() {
+    let expected = concat!(
+        "\"ARGF\"\n",
+        "true\n",
+        "[\"/tmp/metorex_argf_parens_two.txt\"]\n",
+        "\"alpha\\n\"\n",
+        "1\n",
+        "false\n",
+        "\"beta\\n\"\n",
+        "true\n",
+        "\"gamma\\n\"\n",
+        "true\n",
+        "[\"delta\\n\"]\n",
+        "\"closed stream\"\n",
+        "\"al\"\n",
+        "2\n",
+        "0\n",
+        "\"a\"\n",
+        "\"lpha\\nbeta\\n\"\n",
+    );
+    let output = run_example("builtins/argf_stream_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_file_handle_reads_execution() {
+    let expected = concat!(
+        "\"a\"\n",
+        "1\n",
+        "\"b\"\n",
+        "3\n",
+        "true\n",
+        "\"end of file reached\"\n",
+        "0\n",
+        "0\n",
+        "4\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "\"abc\\n\"\n",
+        "false\n",
+        "true\n",
+        "\"fifo\"\n",
+        "Errno::EEXIST\n",
+        "1\n",
+    );
+    let output = run_example("builtins/file_handle_reads.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_file_handle_reads_parens_execution() {
+    let expected = concat!(
+        "\"a\"\n",
+        "1\n",
+        "\"b\"\n",
+        "3\n",
+        "true\n",
+        "\"end of file reached\"\n",
+        "0\n",
+        "0\n",
+        "4\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "\"abc\\n\"\n",
+        "false\n",
+        "true\n",
+        "\"fifo\"\n",
+        "Errno::EEXIST\n",
+        "1\n",
+    );
+    let output = run_example("builtins/file_handle_reads_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_core_state_and_time_execution() {
+    let expected = concat!(
+        "false\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "ClosedQueueError\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "(13/25)\n",
+        "\"1991-01-01 00:00:00 +0000\"\n",
+        "\"1976-08-26 14:30:00 -0400\"\n",
+        "\"1997-11-21 09:55:06 -0600\"\n",
+        "[Infinity, 1]\n",
+        "[Infinity, -1]\n",
+        "(1.0000000000000002+1.7320508075688772i)\n",
+        "2.8284271247461903\n",
+        "true\n",
+        "Vector[(1/1), (2/1), (-1/1)]\n",
+        "false\n",
+        "true\n",
+    );
+    let output = run_example("builtins/core_state_and_time.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_core_state_and_time_parens_execution() {
+    let expected = concat!(
+        "false\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "false\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "ClosedQueueError\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "(13/25)\n",
+        "\"1991-01-01 00:00:00 +0000\"\n",
+        "\"1976-08-26 14:30:00 -0400\"\n",
+        "\"1997-11-21 09:55:06 -0600\"\n",
+        "[Infinity, 1]\n",
+        "[Infinity, -1]\n",
+        "(1.0000000000000002+1.7320508075688772i)\n",
+        "2.8284271247461903\n",
+        "true\n",
+        "Vector[(1/1), (2/1), (-1/1)]\n",
+        "false\n",
+        "true\n",
+    );
+    let output = run_example("builtins/core_state_and_time_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_pack_and_trace_execution() {
+    let expected = concat!(
+        "\"ABC\"\n",
+        "[97, 98, 99]\n",
+        "[97, 98]\n",
+        "[25185]\n",
+        "[24930]\n",
+        "[25185]\n",
+        "[24930]\n",
+        "[7523094288207667809]\n",
+        "4\n",
+        "\"ab  \"\n",
+        "[\"abc\", \"def\"]\n",
+        "[\"10000000\"]\n",
+        "[\"8f\"]\n",
+        "2\n",
+        "97\n",
+        "[97, 98, 99, 99]\n",
+        "8\n",
+        "4\n",
+        "\"\\x01\"\n",
+        "\"\\n\"\n",
+        "\"A\"\n",
+        "false\n",
+        "false\n",
+        "1\n",
+        ":line\n",
+        "[[:call, :traced_method], [:return, :traced_method]]\n",
+        "4\n",
+        "8\n",
+        "Enumerator\n",
+        "\"comparison of Integer with \\\"A\\\" failed\"\n",
+        "6\n",
+    );
+    let output = run_example("builtins/pack_and_trace.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_pack_and_trace_parens_execution() {
+    let expected = concat!(
+        "\"ABC\"\n",
+        "[97, 98, 99]\n",
+        "[97, 98]\n",
+        "[25185]\n",
+        "[24930]\n",
+        "[25185]\n",
+        "[24930]\n",
+        "[7523094288207667809]\n",
+        "4\n",
+        "\"ab  \"\n",
+        "[\"abc\", \"def\"]\n",
+        "[\"10000000\"]\n",
+        "[\"8f\"]\n",
+        "2\n",
+        "97\n",
+        "[97, 98, 99, 99]\n",
+        "8\n",
+        "4\n",
+        "\"\\x01\"\n",
+        "\"\\n\"\n",
+        "\"A\"\n",
+        "false\n",
+        "false\n",
+        "1\n",
+        ":line\n",
+        "[[:call, :traced_method], [:return, :traced_method]]\n",
+        "4\n",
+        "8\n",
+        "Enumerator\n",
+        "\"comparison of Integer with \\\"A\\\" failed\"\n",
+        "6\n",
+    );
+    let output = run_example("builtins/pack_and_trace_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_pack_directives_execution() {
+    let expected = concat!(
+        "4\n",
+        "\"ab  \"\n",
+        "4\n",
+        "[\"ab\", \"cd\"]\n",
+        "[\"ab\"]\n",
+        "[\"ab\", \"d\"]\n",
+        "[194, 160]\n",
+        "[5]\n",
+        "[194, 143]\n",
+        "[194, 143]\n",
+        "[\"1010\"]\n",
+        "[\"0000\"]\n",
+        "[\"8f\"]\n",
+        "[\"f8\"]\n",
+        "[1, 2]\n",
+        "[195, 191]\n",
+        "[1, 2]\n",
+        "[2, 1]\n",
+        "[0, 0, 1, 2]\n",
+        "[2, 1, 0, 0]\n",
+        "[0, 1]\n",
+        "4\n",
+        "8\n",
+        "8\n",
+        "[-1]\n",
+        "[255]\n",
+        "[258]\n",
+        "[16909060]\n",
+        "[72623859790382856]\n",
+        "4\n",
+        "8\n",
+        "4\n",
+        "8\n",
+        "4\n",
+        "8\n",
+        "[1.5]\n",
+        "[1.5]\n",
+        "2\n",
+        "[233]\n",
+        "[194, 130, 44]\n",
+        "[300]\n",
+        "3\n",
+        "[2]\n",
+        "4\n",
+        "[97, 101]\n",
+        "[99]\n",
+        "[97, 98, 99]\n",
+        "6\n",
+        "[97, 98]\n",
+        "[97, 98]\n",
+        "[ArgumentError, \"unknown pack directive 'K' in 'K'\"]\n",
+        "[ArgumentError, \"unknown unpack directive 'K' in 'K'\"]\n",
+        "[ArgumentError, \"unknown unpack directive '!' in 'a!'\"]\n",
+        "[ArgumentError, \"too few arguments\"]\n",
+        "[TypeError, \"no implicit conversion of String into Integer\"]\n",
+        "[ArgumentError, \"x outside of string\"]\n",
+        "[ArgumentError, \"X outside of string\"]\n",
+        "[ArgumentError, \"@ outside of string\"]\n",
+        "\"QUJD\\n\"\n",
+        "[\"ABC\"]\n",
+        "\"ab\\ncd=\\n\"\n",
+        "\"#04)#\\n\"\n",
+        "[\"ABC\"]\n",
+        "2\n",
+        "[1, 2]\n",
+        "[\"ABC\"]\n",
+        "[\"ABC\"]\n",
+        "[\"A\"]\n",
+        "[\"ab=cd\"]\n",
+        "[\"abcd\"]\n",
+        "[\"ab=ZZ\"]\n",
+        "[\"Cac\"]\n",
+        "[\"\"]\n",
+        "2\n",
+        "[960]\n",
+        "[97, 98, 99]\n",
+        "\"unknown unpack directive '_' in 'a_'\"\n",
+        "\"unpack length too big\"\n",
+        "[97, 98, 99]\n",
+        "\"A\"\n",
+    );
+    let output = run_example("builtins/pack_directives.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_pack_directives_parens_execution() {
+    let expected = concat!(
+        "4\n",
+        "\"ab  \"\n",
+        "4\n",
+        "[\"ab\", \"cd\"]\n",
+        "[\"ab\"]\n",
+        "[\"ab\", \"d\"]\n",
+        "[194, 160]\n",
+        "[5]\n",
+        "[194, 143]\n",
+        "[194, 143]\n",
+        "[\"1010\"]\n",
+        "[\"0000\"]\n",
+        "[\"8f\"]\n",
+        "[\"f8\"]\n",
+        "[1, 2]\n",
+        "[195, 191]\n",
+        "[1, 2]\n",
+        "[2, 1]\n",
+        "[0, 0, 1, 2]\n",
+        "[2, 1, 0, 0]\n",
+        "[0, 1]\n",
+        "4\n",
+        "8\n",
+        "8\n",
+        "[-1]\n",
+        "[255]\n",
+        "[258]\n",
+        "[16909060]\n",
+        "[72623859790382856]\n",
+        "4\n",
+        "8\n",
+        "4\n",
+        "8\n",
+        "4\n",
+        "8\n",
+        "[1.5]\n",
+        "[1.5]\n",
+        "2\n",
+        "[233]\n",
+        "[194, 130, 44]\n",
+        "[300]\n",
+        "3\n",
+        "[2]\n",
+        "4\n",
+        "[97, 101]\n",
+        "[99]\n",
+        "[97, 98, 99]\n",
+        "6\n",
+        "[97, 98]\n",
+        "[97, 98]\n",
+        "[ArgumentError, \"unknown pack directive 'K' in 'K'\"]\n",
+        "[ArgumentError, \"unknown unpack directive 'K' in 'K'\"]\n",
+        "[ArgumentError, \"unknown unpack directive '!' in 'a!'\"]\n",
+        "[ArgumentError, \"too few arguments\"]\n",
+        "[TypeError, \"no implicit conversion of String into Integer\"]\n",
+        "[ArgumentError, \"x outside of string\"]\n",
+        "[ArgumentError, \"X outside of string\"]\n",
+        "[ArgumentError, \"@ outside of string\"]\n",
+        "\"QUJD\\n\"\n",
+        "[\"ABC\"]\n",
+        "\"ab\\ncd=\\n\"\n",
+        "\"#04)#\\n\"\n",
+        "[\"ABC\"]\n",
+        "2\n",
+        "[1, 2]\n",
+        "[\"ABC\"]\n",
+        "[\"ABC\"]\n",
+        "[\"A\"]\n",
+        "[\"ab=cd\"]\n",
+        "[\"abcd\"]\n",
+        "[\"ab=ZZ\"]\n",
+        "[\"Cac\"]\n",
+        "[\"\"]\n",
+        "2\n",
+        "[960]\n",
+        "[97, 98, 99]\n",
+        "\"unknown unpack directive '_' in 'a_'\"\n",
+        "\"unpack length too big\"\n",
+        "[97, 98, 99]\n",
+        "\"A\"\n",
+    );
+    let output = run_example("builtins/pack_directives_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_string_encodings_execution() {
+    let expected = concat!(
+        "#<Encoding:UTF-8>\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:UTF-8>\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "true\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "#<Encoding:US-ASCII>\n",
+        "#<Encoding:US-ASCII>\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "\"Named\"\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:US-ASCII>\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "#<Encoding:US-ASCII>\n",
+    );
+    let output = run_example("builtins/string_encodings.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_string_encodings_parens_execution() {
+    let expected = concat!(
+        "#<Encoding:UTF-8>\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:UTF-8>\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "true\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "#<Encoding:US-ASCII>\n",
+        "#<Encoding:US-ASCII>\n",
+        "true\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "false\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "\"Named\"\n",
+        "#<Encoding:EUC-JP>\n",
+        "#<Encoding:US-ASCII>\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "#<Encoding:BINARY (ASCII-8BIT)>\n",
+        "#<Encoding:US-ASCII>\n",
+    );
+    let output = run_example("builtins/string_encodings_parens.rb");
     assert_eq!(output, expected);
 }

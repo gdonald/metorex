@@ -13,6 +13,7 @@ pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod complex_methods;
 mod constant_visibility;
 pub(crate) mod define_method;
+mod etc_methods;
 mod exception_methods;
 mod file_methods;
 mod float_methods;
@@ -25,6 +26,7 @@ mod module_methods;
 mod object_methods;
 mod range_methods;
 pub(crate) mod rational_methods;
+pub(crate) use object_methods::binary_op_for_method_name;
 pub(crate) use rational_methods::{complex_parts, rational_parts};
 mod regexp_methods;
 pub(crate) use regexp_methods::{
@@ -98,6 +100,7 @@ pub(crate) fn hash_subclass_value(receiver: &Object) -> Option<Object> {
         .get(HASH_SUBCLASS_VAR)
         .cloned()
 }
+mod pack_format;
 mod visibility;
 
 use super::VirtualMachine;
@@ -296,6 +299,19 @@ impl VirtualMachine {
             if let Some(result) =
                 self.call_hash_method(&entries, method_name, arguments, position)?
             {
+                // `merge` answers a hash of the receiver's own class, where
+                // the rest of the table answers a plain one.
+                if method_name == "merge"
+                    && let Object::Dict(_) = &result
+                    && let Object::Instance(instance) = receiver
+                {
+                    let class = std::rc::Rc::clone(&instance.borrow().class);
+                    let mut made = crate::object::Instance::new(class);
+                    made.set_var(HASH_SUBCLASS_VAR.to_string(), result);
+                    return Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
+                        made,
+                    )))));
+                }
                 return Ok(Some(result));
             }
         }
@@ -346,7 +362,10 @@ impl VirtualMachine {
             "Object" | "Proc" | "Method" => {
                 self.call_object_method(receiver, method_name, arguments, position)
             }
-            "String" => self.call_string_method(receiver, method_name, arguments, position),
+            "String" => {
+                let answer = self.call_string_method(receiver, method_name, arguments, position)?;
+                Ok(carry_string_encoding(receiver, answer))
+            }
             // Symbol shares String's character-level methods (`length`,
             // `upcase`, `start_with?`, comparison). Object's come first so
             // `class`, `inspect`, and friends report Symbol.
@@ -364,8 +383,14 @@ impl VirtualMachine {
                 // The names a Symbol answers for itself: `id2name` and `name`
                 // give its characters, and `intern` and `to_sym` give it back.
                 match method_name {
-                    "id2name" | "name" => {
-                        return Ok(Some(Object::String(Rc::clone(text))));
+                    // `name` answers one frozen string per symbol, where
+                    // `id2name` hands back a fresh one each time.
+                    "name" => {
+                        let slot = format!("__symbol_name_{}", text.as_str());
+                        return Ok(Some(self.memoized_text(&slot, text.as_str())));
+                    }
+                    "id2name" => {
+                        return Ok(Some(Object::string(text.as_str())));
                     }
                     "intern" | "to_sym" => return Ok(Some(receiver.clone())),
                     _ => {}
@@ -430,7 +455,7 @@ impl VirtualMachine {
             let line = format!("{}\n", msg);
             for cand in ["write", "<<"] {
                 if let Some((cls, method)) = self.lookup_method(&obj, cand) {
-                    let arg = Object::String(Rc::new(line.clone()));
+                    let arg = Object::string(line.clone());
                     let _ = self.invoke_method(cls, method, obj.clone(), vec![arg], position);
                     return;
                 }
@@ -452,15 +477,15 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         match arg {
-            Object::String(s) => Ok((**s).clone()),
-            Object::Symbol(s) => Ok((**s).clone()),
+            Object::String(s) => Ok(s.as_str().to_string()),
+            Object::Symbol(s) => Ok(s.as_str().to_string()),
             _ => {
                 if let Some((cls, m)) = self.lookup_method(arg, "to_str")
                     && !m.is_undefined
                 {
                     let result = self.invoke_method(cls, m, arg.clone(), vec![], position)?;
                     if let Object::String(s) = result {
-                        return Ok((*s).clone());
+                        return Ok(s.as_str().to_string());
                     }
                     let source_class = self.builtins().class_of(arg).name().to_string();
                     let msg = format!("can't convert {} into String", source_class);
@@ -567,8 +592,8 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = match &arguments[0] {
-                    Object::Symbol(s) => (**s).clone(),
-                    Object::String(s) => (**s).clone(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    Object::String(s) => s.as_str().to_string(),
                     _ => return Ok(Some(Object::Nil)),
                 };
                 let locals = inst.borrow().get_var("__thread_locals").cloned();
@@ -589,8 +614,8 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = match &arguments[0] {
-                    Object::Symbol(s) => (**s).clone(),
-                    Object::String(s) => (**s).clone(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    Object::String(s) => s.as_str().to_string(),
                     _ => return Ok(Some(arguments[1].clone())),
                 };
                 let existing = inst.borrow().get_var("__thread_locals").cloned();
@@ -653,7 +678,7 @@ impl VirtualMachine {
         // generic class methods (which include reopens of `File`) handle
         // the call.
         let path = match inst.borrow().get_var("__file_path").cloned() {
-            Some(Object::String(s)) => s.as_ref().clone(),
+            Some(Object::String(s)) => s.as_str().to_string(),
             _ => return Ok(None),
         };
         let append_text = |contents: String| -> Result<(), MetorexError> {
@@ -676,6 +701,52 @@ impl VirtualMachine {
             })?;
             Ok(())
         };
+        // Reading a closed handle, moving it, or asking where it stands is
+        // refused. What it is and what it was opened on still answer, and so
+        // does everything an object answers whatever it holds.
+        if matches!(
+            inst.borrow().get_var("__file_closed"),
+            Some(Object::Bool(true))
+        ) && matches!(
+            method_name,
+            "puts"
+                | "print"
+                | "write"
+                | "<<"
+                | "read"
+                | "gets"
+                | "readline"
+                | "readlines"
+                | "each"
+                | "each_line"
+                | "getc"
+                | "readchar"
+                | "readbyte"
+                | "eof"
+                | "eof?"
+                | "pos"
+                | "tell"
+                | "pos="
+                | "seek"
+                | "rewind"
+                | "lineno"
+                | "lineno="
+                | "fsync"
+                | "fdatasync"
+                | "fcntl"
+                | "ioctl"
+                | "fileno"
+                | "to_i"
+                | "sync"
+                | "sync="
+                | "flush"
+        ) {
+            return Err(crate::vm::errors::simple_exception(
+                "IOError",
+                "closed stream",
+                _position,
+            ));
+        }
         match method_name {
             "puts" => {
                 if arguments.is_empty() {
@@ -683,7 +754,7 @@ impl VirtualMachine {
                 } else {
                     for arg in arguments {
                         let s = match arg {
-                            Object::String(s) => s.as_ref().clone(),
+                            Object::String(s) => s.as_str().to_string(),
                             other => format!("{}", other),
                         };
                         let mut line = s;
@@ -698,7 +769,7 @@ impl VirtualMachine {
             "print" | "write" | "<<" => {
                 for arg in arguments {
                     let s = match arg {
-                        Object::String(s) => s.as_ref().clone(),
+                        Object::String(s) => s.as_str().to_string(),
                         other => format!("{}", other),
                     };
                     append_text(s)?;
@@ -716,7 +787,7 @@ impl VirtualMachine {
                 })?;
                 let lines: Vec<Object> = contents
                     .split_inclusive('\n')
-                    .map(|line| Object::String(Rc::new(line.to_string())))
+                    .map(|line| Object::string(line.to_string()))
                     .collect();
                 match self.pending_block.take() {
                     Some(Object::Block(block)) => {
@@ -754,7 +825,7 @@ impl VirtualMachine {
                     "__file_offset".to_string(),
                     Object::Int((offset + taken.len()) as i64),
                 );
-                Ok(Some(Object::String(Rc::new(taken))))
+                Ok(Some(Object::string(taken)))
             }
             // One line with its terminator, or nil once the file is drained.
             "gets" | "readline" => {
@@ -779,10 +850,122 @@ impl VirtualMachine {
                     "__file_offset".to_string(),
                     Object::Int((offset + line.len()) as i64),
                 );
-                Ok(Some(Object::String(Rc::new(line.to_string()))))
+                let counted = match inst.borrow().get_var("__file_lineno") {
+                    Some(Object::Int(counted)) => *counted,
+                    _ => 0,
+                };
+                inst.borrow_mut()
+                    .set_var("__file_lineno".to_string(), Object::Int(counted + 1));
+                Ok(Some(Object::string(line.to_string())))
             }
-            "close" => Ok(Some(Object::Nil)),
-            "closed?" => Ok(Some(Object::Bool(false))),
+            // One character, and nil once the handle is drained. `readchar`
+            // is the same reading, refused at the end rather than answered
+            // with nil.
+            "getc" | "readchar" => {
+                let contents = read_handle(&path)?;
+                let offset = handle_offset(&inst);
+                let Some(character) = contents.get(offset..).and_then(|rest| rest.chars().next())
+                else {
+                    if method_name == "readchar" {
+                        return Err(crate::vm::errors::simple_exception(
+                            "EOFError",
+                            "end of file reached",
+                            _position,
+                        ));
+                    }
+                    return Ok(Some(Object::Nil));
+                };
+                set_handle_offset(&inst, offset + character.len_utf8());
+                Ok(Some(Object::string(character.to_string())))
+            }
+            "eof" | "eof?" => {
+                let contents = read_handle(&path)?;
+                Ok(Some(Object::Bool(handle_offset(&inst) >= contents.len())))
+            }
+            "pos" | "tell" => Ok(Some(Object::Int(handle_offset(&inst) as i64))),
+            // `seek` counts from the start, the end, or where the handle
+            // already stands, which is what its second argument names.
+            "pos=" | "seek" => {
+                let wanted = match arguments.first() {
+                    Some(Object::Int(offset)) => *offset,
+                    _ => 0,
+                };
+                let whence = match arguments.get(1) {
+                    Some(Object::Int(whence)) => *whence,
+                    _ => 0,
+                };
+                let anchor = match whence {
+                    1 => handle_offset(&inst) as i64,
+                    2 => read_handle(&path)?.len() as i64,
+                    _ => 0,
+                };
+                set_handle_offset(&inst, (anchor + wanted).max(0) as usize);
+                Ok(Some(Object::Int(0)))
+            }
+            "rewind" => {
+                set_handle_offset(&inst, 0);
+                inst.borrow_mut()
+                    .set_var("__file_lineno".to_string(), Object::Int(0));
+                Ok(Some(Object::Int(0)))
+            }
+            "lineno" => Ok(Some(match inst.borrow().get_var("__file_lineno") {
+                Some(Object::Int(counted)) => Object::Int(*counted),
+                _ => Object::Int(0),
+            })),
+            "lineno=" => {
+                let counted = arguments.first().cloned().unwrap_or(Object::Int(0));
+                inst.borrow_mut()
+                    .set_var("__file_lineno".to_string(), counted.clone());
+                Ok(Some(counted))
+            }
+            // Nothing is buffered on the way out, so there is nothing left to
+            // push to storage and the request answers at once.
+            "fsync" | "fdatasync" => Ok(Some(Object::Int(0))),
+            // One byte as a number, refused at the end rather than answered
+            // with nil.
+            "readbyte" => {
+                let contents = read_handle(&path)?;
+                let offset = handle_offset(&inst);
+                let Some(byte) = contents.as_bytes().get(offset) else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "EOFError",
+                        "end of file reached",
+                        _position,
+                    ));
+                };
+                let byte = *byte;
+                set_handle_offset(&inst, offset + 1);
+                Ok(Some(Object::Int(byte as i64)))
+            }
+            // `reopen` points the handle at another name and starts it over,
+            // which is how a closed stream is put back to work.
+            "reopen" => {
+                if let Some(Object::String(named)) = arguments.first() {
+                    inst.borrow_mut()
+                        .set_var("__file_path".to_string(), Object::String(Rc::clone(named)));
+                }
+                if let Some(mode) = arguments.get(1) {
+                    inst.borrow_mut()
+                        .set_var("__file_mode".to_string(), mode.clone());
+                }
+                set_handle_offset(&inst, 0);
+                inst.borrow_mut()
+                    .set_var("__file_closed".to_string(), Object::Bool(false));
+                inst.borrow_mut()
+                    .set_var("__file_lineno".to_string(), Object::Int(0));
+                Ok(Some(receiver.clone()))
+            }
+            // A closed handle refuses nothing yet, but it reports itself as
+            // closed, which is what a caller checks before reading again.
+            "close" => {
+                inst.borrow_mut()
+                    .set_var("__file_closed".to_string(), Object::Bool(true));
+                Ok(Some(Object::Nil))
+            }
+            "closed?" => Ok(Some(Object::Bool(matches!(
+                inst.borrow().get_var("__file_closed"),
+                Some(Object::Bool(true))
+            )))),
             _ => Ok(None),
         }
     }
@@ -809,6 +992,18 @@ impl VirtualMachine {
         };
         match method_name {
             "push" | "<<" | "enq" => {
+                // A closed queue takes nothing more, which is how a producer
+                // learns the consumers have finished with it.
+                if matches!(
+                    inst.borrow().get_var("__queue_closed"),
+                    Some(Object::Bool(true))
+                ) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ClosedQueueError",
+                        "queue closed",
+                        _position,
+                    ));
+                }
                 if let Some(item) = arguments.first() {
                     items_arr.borrow_mut().push(item.clone());
                 }
@@ -863,7 +1058,22 @@ impl VirtualMachine {
                 items_arr.borrow_mut().clear();
                 Ok(Some(receiver.clone()))
             }
-            "close" | "closed?" => Ok(Some(Object::Bool(false))),
+            "close" => {
+                inst.borrow_mut()
+                    .set_var("__queue_closed".to_string(), Object::Bool(true));
+                Ok(Some(receiver.clone()))
+            }
+            "closed?" => Ok(Some(Object::Bool(matches!(
+                inst.borrow().get_var("__queue_closed"),
+                Some(Object::Bool(true))
+            )))),
+            // A queue carries state its own methods change, so Ruby refuses to
+            // freeze one at all rather than leaving a half-usable object.
+            "freeze" => Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!("cannot freeze {}", receiver),
+                _position,
+            )),
             _ => Ok(None),
         }
     }
@@ -984,10 +1194,54 @@ impl VirtualMachine {
         };
         let call = vec![
             receiver.clone(),
-            Object::Symbol(Rc::new(method_name.to_string())),
+            Object::symbol(method_name.to_string()),
             Object::array(arguments.to_vec()),
             size,
         ];
         self.send_to_object(enumerator, "new", call, position)
     }
+}
+
+/// The whole of an open handle's file. Every read works from the text and the
+/// offset the handle carries rather than from a descriptor.
+fn read_handle(path: &str) -> Result<String, MetorexError> {
+    std::fs::read_to_string(path).map_err(|error| {
+        MetorexError::runtime_error(
+            format!("Failed to read '{}': {}", path, error),
+            crate::error::SourceLocation::new(0, 0, 0),
+        )
+    })
+}
+
+/// How far into the file the handle stands.
+fn handle_offset(instance: &Rc<std::cell::RefCell<crate::object::Instance>>) -> usize {
+    match instance.borrow().get_var("__file_offset") {
+        Some(Object::Int(offset)) => (*offset).max(0) as usize,
+        _ => 0,
+    }
+}
+
+fn set_handle_offset(instance: &Rc<std::cell::RefCell<crate::object::Instance>>, offset: usize) {
+    instance
+        .borrow_mut()
+        .set_var("__file_offset".to_string(), Object::Int(offset as i64));
+}
+
+/// A string cut from another is in the same encoding, so an answer still
+/// carrying the encoding a fresh literal gets is retagged with the
+/// receiver's. A method that named an encoding of its own keeps it.
+fn carry_string_encoding(receiver: &Object, answer: Option<Object>) -> Option<Object> {
+    let Object::String(source) = receiver else {
+        return answer;
+    };
+    let held = source.encoding_name();
+    if held == crate::object::string_value::DEFAULT_ENCODING {
+        return answer;
+    }
+    if let Some(Object::String(derived)) = &answer
+        && derived.encoding_name() == crate::object::string_value::DEFAULT_ENCODING
+    {
+        derived.set_encoding(held);
+    }
+    answer
 }

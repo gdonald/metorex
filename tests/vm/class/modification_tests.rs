@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -61,7 +60,7 @@ end
 Foo.alias_method(:hi, :greet)
 Foo.new.hi
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -89,7 +88,7 @@ end
 Child.alias_method("hi", "greet")
 Child.new.hi
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("parent".to_string()))));
+    assert_eq!(result, Some(Object::string("parent".to_string())));
 }
 
 // ── remove_method ───────────────────────────────────────────────────
@@ -108,10 +107,7 @@ end
 Foo.remove_method("bar")
 Foo.new.bar
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("removed: bar".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("removed: bar".to_string())));
 }
 
 #[test]
@@ -142,7 +138,7 @@ end
 Child.remove_method("greet")
 Child.new.greet
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("parent".to_string()))));
+    assert_eq!(result, Some(Object::string("parent".to_string())));
 }
 
 // ── undef_method ────────────────────────────────────────────────────
@@ -161,10 +157,7 @@ end
 Foo.undef_method("bar")
 Foo.new.bar
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("undef: bar".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("undef: bar".to_string())));
 }
 
 #[test]
@@ -183,10 +176,7 @@ end
 Child.undef_method("greet")
 Child.new.greet
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("blocked: greet".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("blocked: greet".to_string())));
 }
 
 #[test]
@@ -202,7 +192,7 @@ Foo.undef_method("bar")
 Foo.new.bar
 "#,
     );
-    assert!(err.contains("Undefined method 'bar'"));
+    assert!(err.contains("undefined method 'bar'"));
 }
 
 #[test]
@@ -218,7 +208,7 @@ end
 Child.undef_method("greet")
 Parent.new.greet
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("parent".to_string()))));
+    assert_eq!(result, Some(Object::string("parent".to_string())));
 }
 
 // ── module_function ─────────────────────────────────────────────────
@@ -324,10 +314,7 @@ end
 Foo.remove_method(:bar)
 Foo.new.bar
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("gone".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("gone".to_string())));
 }
 
 #[test]
@@ -364,10 +351,7 @@ end
 Foo.undef_method(:bar)
 Foo.new.bar
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("undef".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("undef".to_string())));
 }
 
 #[test]
@@ -398,10 +382,7 @@ end
 Foo.alias_method(:hello, "greet")
 Foo.new.hello
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hi".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hi".to_string())));
 }
 
 #[test]
@@ -415,10 +396,7 @@ end
 Foo.alias_method("hello", :greet)
 Foo.new.hello
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hi".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hi".to_string())));
 }
 
 #[test]
@@ -575,10 +553,7 @@ class C
 end
 C.new.foo
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("blocked".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("blocked".to_string())));
 }
 
 #[test]
@@ -598,10 +573,7 @@ class C
 end
 C.new.foo
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("blocked".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("blocked".to_string())));
 }
 
 #[test]
@@ -643,10 +615,7 @@ class C
 end
 C.new.hello
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hi".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hi".to_string())));
 }
 
 #[test]
@@ -663,10 +632,7 @@ class C
 end
 C.new.hello
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hi".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hi".to_string())));
 }
 
 #[test]
@@ -780,10 +746,7 @@ module MyMod
 end
 MyMod.name
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("MyMod".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("MyMod".to_string())));
 }
 
 // ── define_method with block that has captured vars ─────────────────────────

@@ -124,10 +124,10 @@ class Date
       raise TypeError, "no implicit conversion of #{text.class} into String"
     end
     text = text.to_s
-    if text =~ /\A(-?\d{4,})-(\d{2})-(\d{2})\z/
+    if text =~ /\A(-?\d{4,})-(\d{2})-(\d{2})([Tt ].*)?\z/
       return { year: $1.to_i, mon: $2.to_i, mday: $3.to_i }
     end
-    if text =~ /\A(-?\d{4,})(\d{2})(\d{2})\z/
+    if text =~ /\A(-?\d{4,})(\d{2})(\d{2})([Tt ].*)?\z/
       return { year: $1.to_i, mon: $2.to_i, mday: $3.to_i }
     end
     {}
@@ -146,19 +146,21 @@ class Date
   def self.iso8601(text = "-4712-01-01", start = ITALY)
     fields = _iso8601(text)
     raise Date::Error, "invalid date" if fields.empty?
-    civil(fields[:year], fields[:mon], fields[:mday], start)
+    Date.civil(fields[:year], fields[:mon], fields[:mday], start)
   end
 
   def self.rfc3339(text = "-4712-01-01T00:00:00+00:00", start = ITALY)
     fields = _rfc3339(text)
     raise Date::Error, "invalid date" if fields.empty?
-    civil(fields[:year], fields[:mon], fields[:mday], start)
+    Date.civil(fields[:year], fields[:mon], fields[:mday], start)
   end
 
   # A date written as text, read back into the fields it names. Returns an
   # empty hash when the text names no date at all.
   def self._parse(text, comp = true)
     text = coerce_to_string(text)
+    clock = {}
+    text = take_clock(text, clock)
     tokens = tokenize(text)
     found = {}
     numbers = []
@@ -184,7 +186,8 @@ class Date
     found[:mon] = month unless month.nil?
     found[:wday] = weekday unless weekday.nil?
     if month.nil? && weekday.nil? && !found.key?(:mday)
-      return read_bare_numbers(numbers, comp)
+      bare = read_bare_numbers(numbers, comp)
+      return bare.empty? && clock.empty? ? {} : bare.merge(clock)
     end
     numbers.each do |number|
       if number.start_with?("-") || number.length >= 4
@@ -195,7 +198,55 @@ class Date
         found[:mday] = number.to_i
       end
     end
-    found
+    found.merge(clock)
+  end
+
+  # The time of day and zone a date string carries, taken out of the text so
+  # what remains is the date alone.
+  def self.take_clock(text, clock)
+    # A zone follows the clock either as a signed offset or as one of the
+    # names RFC 822 lists.
+    # RFC 2822 lets folding whitespace sit either side of the colons, so
+    # "09 :   55  :  06" names the same clock as "09:55:06".
+    pattern = /(\d{1,2})\s*:\s*(\d{2})(\s*:\s*(\d{2}(\.\d+)?))?\s*(z|Z|[+-]\d{2}:?\d{2}|[A-Za-z]{2,3})?/
+    return text if (text =~ pattern).nil?
+    clock[:hour] = $1.to_i
+    clock[:min] = $2.to_i
+    unless $4.nil?
+      # The digits after the point name an exact fraction, so ".52" is 13/25
+      # rather than the nearest Float to it.
+      if $4.include?(".")
+        whole, fraction = $4.split(".")
+        clock[:sec] = whole.to_i + Rational(fraction.to_i, 10 ** fraction.length)
+      else
+        clock[:sec] = $4.to_i
+      end
+    end
+    unless $6.nil?
+      clock[:offset] = (DateTime.read_offset(zone_text($6)) * 86400).to_i
+    end
+    text.sub(pattern, " ")
+  end
+
+  # The offsets RFC 822 gives the North American zone names, in hours from
+  # UTC. The military single letters are not listed: RFC 822 got their signs
+  # wrong, and RFC 2822 tells a reader to treat them as UTC.
+  NAMED_ZONE_HOURS = {
+    "ut" => 0, "gmt" => 0, "utc" => 0,
+    "est" => -5, "edt" => -4,
+    "cst" => -6, "cdt" => -5,
+    "mst" => -7, "mdt" => -6,
+    "pst" => -8, "pdt" => -7
+  }
+
+  # A zone written beside a time, spelled the way `read_offset` wants it.
+  def self.zone_text(written)
+    lowered = written.downcase
+    return "+0000" if lowered == "z"
+    hours = NAMED_ZONE_HOURS[lowered]
+    return written if hours.nil?
+    sign = hours < 0 ? "-" : "+"
+    sign + hours.abs.to_s.rjust(2, "0") + "00"
   end
 
   # The words and numbers a date string is built from, paired with which of
@@ -293,17 +344,17 @@ class Date
   def self.parse(text = "-4712-01-01", comp = true, start = ITALY)
     fields = _parse(text, comp)
     raise Date::Error, "invalid date" if fields.empty?
-    return ordinal(fields[:year] || today(start).year, fields[:yday], start) if fields[:yday]
+    return Date.ordinal(fields[:year] || Date.today(start).year, fields[:yday], start) if fields[:yday]
     if fields.key?(:wday) && !fields.key?(:mon) && !fields.key?(:mday) &&
        !fields.key?(:year)
-      now = today(start)
+      now = Date.today(start)
       landing = fields[:wday] == 0 ? 7 : fields[:wday]
-      return commercial(now.cwyear, now.cweek, landing, start)
+      return Date.commercial(now.cwyear, now.cweek, landing, start)
     end
-    now = today(start)
+    now = Date.today(start)
     year = fields[:year] || now.year
     month = fields[:mon] || (fields.key?(:year) ? 1 : now.month)
-    civil(year, month, fields[:mday] || 1, start)
+    Date.civil(year, month, fields[:mday] || 1, start)
   end
 
   # A date read out of text by a strftime template, returned as the fields
@@ -402,12 +453,14 @@ class Date
     when "V" then read_into(found, :cweek, text, at, 2, false)
     when "u" then read_into(found, :cwday, text, at, 1, false)
     when "w" then read_into(found, :wday, text, at, 1, false)
-    when "H", "k", "I", "l", "M", "S" then read_into(found, :ignored, text, at, 2, false)
+    when "H", "k", "I", "l" then read_into(found, :hour, text, at, 2, false)
+    when "M" then read_into(found, :min, text, at, 2, false)
+    when "S" then read_into(found, :sec, text, at, 2, false)
     when "L", "N", "Q" then read_into(found, :ignored, text, at, 12, true)
     when "A", "a" then read_name(found, :wday, ABBR_DAYNAMES, text, at)
     when "B", "b", "h" then read_name(found, :mon, ABBR_MONTHNAMES, text, at)
     when "p", "P" then read_word(text, at)
-    when "Z", "z" then read_run(text, at)
+    when "Z", "z" then read_zone(found, text, at)
     when "n", "t" then skip_whitespace(text, at)
     when "%" then text[at] == "%" ? at + 1 : nil
     end
@@ -447,9 +500,17 @@ class Date
     at
   end
 
-  def self.read_run(text, at)
+  def self.read_zone(found, text, at)
     at = skip_whitespace(text, at)
+    start = at
     at += 1 while at < text.length && !whitespace?(text[at])
+    written = text[start...at]
+    return at if written.empty?
+    begin
+      found[:offset] = (DateTime.read_offset(zone_text(written)) * 86400).to_i
+    rescue Date::Error
+      found[:offset] = 0
+    end
     at
   end
 
@@ -480,36 +541,36 @@ class Date
              end
     end
     if fields.key?(:mon) || fields.key?(:mday)
-      now = today(start)
+      now = Date.today(start)
       opening = year.nil? ? now.month : 1
-      return civil(year || now.year, fields[:mon] || opening, fields[:mday] || 1, start)
+      return Date.civil(year || now.year, fields[:mon] || opening, fields[:mday] || 1, start)
     end
-    return ordinal(year || today(start).year, fields[:yday], start) if fields.key?(:yday)
+    return Date.ordinal(year || Date.today(start).year, fields[:yday], start) if fields.key?(:yday)
     cwyear = fields[:cwyear]
     if cwyear.nil? && fields.key?(:cwyear_short)
       cwyear = complete_year(fields[:cwyear_short], true)
     end
     if !cwyear.nil? || fields.key?(:cweek) || fields.key?(:cwday)
-      now = today(start)
-      return commercial(cwyear || now.cwyear, fields[:cweek] || 1,
-                        fields[:cwday] || 1, start)
+      now = Date.today(start)
+      return Date.commercial(cwyear || now.cwyear, fields[:cweek] || 1,
+                             fields[:cwday] || 1, start)
     end
     if fields.key?(:week_sunday) || fields.key?(:week_monday) ||
        (!year.nil? && fields.key?(:wday))
-      return week_of(year || today(start).year, fields, start)
+      return week_of(year || Date.today(start).year, fields, start)
     end
     if fields.key?(:wday)
-      now = today(start)
-      return from_jd(now.jd - now.wday + fields[:wday], start)
+      now = Date.today(start)
+      return Date.from_jd(now.jd - now.wday + fields[:wday], start)
     end
-    return civil(year, 1, 1, start) unless year.nil?
-    civil(-4712, 1, 1, start)
+    return Date.civil(year, 1, 1, start) unless year.nil?
+    Date.civil(-4712, 1, 1, start)
   end
 
   # A date named by a week number counted from the first week of a year,
   # with weeks opening on Sunday for %U and on Monday for %W.
   def self.week_of(year, fields, start)
-    opening = civil(year, 1, 1, start)
+    opening = Date.civil(year, 1, 1, start)
     if fields.key?(:week_monday)
       base = opening.jd - ((opening.wday + 6) % 7)
       offset = fields.key?(:wday) ? (fields[:wday] + 6) % 7 : 0
@@ -519,7 +580,7 @@ class Date
       offset = fields[:wday] || 0
       week = fields[:week_sunday] || 0
     end
-    from_jd(base + week * 7 + offset, start)
+    Date.from_jd(base + week * 7 + offset, start)
   end
 
   def self.today(start = ITALY)
@@ -768,6 +829,74 @@ class Date
     Rational(0, 1)
   end
 
+  # The clock a date carries. A plain Date stands for midnight with no offset
+  # from UTC, and DateTime answers the time of day and offset it holds.
+  def clock_fraction
+    Rational(0, 1)
+  end
+  private :clock_fraction
+
+  def zone_offset
+    Rational(0, 1)
+  end
+  private :zone_offset
+
+  def clock_seconds
+    self.clock_fraction * 86400
+  end
+  private :clock_seconds
+
+  def clock_hour
+    self.clock_seconds.floor / 3600
+  end
+  private :clock_hour
+
+  def clock_minute
+    self.clock_seconds.floor / 60 % 60
+  end
+  private :clock_minute
+
+  def clock_second
+    self.clock_seconds.floor % 60
+  end
+  private :clock_second
+
+  def clock_sub_second
+    self.clock_seconds - self.clock_seconds.floor
+  end
+  private :clock_sub_second
+
+  # The part of a second below one, written to as many digits as asked for.
+  def sub_second_digits(count)
+    (self.clock_sub_second * 10 ** count).floor.to_s.rjust(count, "0")
+  end
+  private :sub_second_digits
+
+  # The offset from UTC, written with as many separators as the directive
+  # asking for it wants.
+  def offset_text(separators)
+    total = (self.zone_offset * 86400).to_i
+    sign = total < 0 ? "-" : "+"
+    total = total.abs
+    written = "#{sign}#{self.two(total / 3600)}"
+    return written + self.two(total / 60 % 60) if separators == 0
+    written = written + ":" + self.two(total / 60 % 60)
+    return written if separators == 1
+    written + ":" + self.two(total % 60)
+  end
+  private :offset_text
+
+  def epoch_seconds
+    ((@jd - 2440588) * 86400 + self.clock_seconds - self.zone_offset * 86400).floor
+  end
+  private :epoch_seconds
+
+  def epoch_milliseconds
+    (((@jd - 2440588) * 86400 + self.clock_seconds -
+      self.zone_offset * 86400) * 1000).floor
+  end
+  private :epoch_milliseconds
+
   def ld
     @jd - 2299160
   end
@@ -806,15 +935,22 @@ class Date
 
   # ── Moving about ─────────────────────────────────────────────────────────
 
+  # The same point on the calendar, moved to another day. DateTime overrides
+  # this so a shifted one keeps the time of day and offset it holds.
+  def rebuild(jd)
+    Date.from_jd(jd, @start)
+  end
+  private :rebuild
+
   def +(count)
     raise TypeError, "expected numeric" unless count.is_a?(Numeric)
-    Date.from_jd(@jd + count.to_i, @start)
+    self.rebuild(@jd + count.to_i)
   end
 
   def -(other)
     return @jd - other.jd if other.is_a?(Date)
     raise TypeError, "expected numeric" unless other.is_a?(Numeric)
-    Date.from_jd(@jd - other.to_i, @start)
+    self.rebuild(@jd - other.to_i)
   end
 
   def >>(months)
@@ -831,7 +967,7 @@ class Date
       found = Date.valid_civil_jd(landing_year, landing_month, landing_day, @start)
     end
     raise Date::Error, "invalid date" if found.nil?
-    Date.from_jd(found, @start)
+    self.rebuild(found)
   end
 
   def <<(months)
@@ -911,7 +1047,7 @@ class Date
   # ── Which calendar a date is read on ─────────────────────────────────────
 
   def new_start(start = ITALY)
-    Date.from_jd(@jd, start)
+    self.class.from_jd(@jd, start)
   end
 
   def italy
@@ -988,6 +1124,10 @@ class Date
     self
   end
 
+  def to_datetime
+    DateTime.from_parts(@jd, Rational(0, 1), Rational(0, 1), @start)
+  end
+
   def to_time
     Time.local(self.year, self.month, self.day)
   end
@@ -1030,9 +1170,13 @@ class Date
         break
       end
       directive = template[index]
-      if directive == ":" && index + 1 < template.length && template[index + 1] == "z"
-        index = index + 1
-        directive = ":z"
+      if directive == ":"
+        ahead = index
+        ahead += 1 while ahead < template.length && template[ahead] == ":"
+        if ahead < template.length && template[ahead] == "z"
+          directive = ahead - index == 1 ? ":z" : "::z"
+          index = ahead
+        end
       end
       index = index + 1
       built = built + self.format_directive(directive, flags, width)
@@ -1043,6 +1187,7 @@ class Date
   # One `%` directive of a strftime template, with the GNU flags that pad it,
   # drop its zeros, or shift its case applied.
   def format_directive(directive, flags, width)
+    return self.sub_second_digits(width.empty? ? 9 : width.to_i) if directive == "N"
     body = self.directive_body(directive)
     return body if body.nil? == false && self.directive_is_literal(directive)
     return "%" + flags + width + directive if body.nil?
@@ -1063,7 +1208,7 @@ class Date
 
   # Whether a directive writes text of its own that no flag or width touches.
   def directive_is_literal(directive)
-    ["n", "t", "%"].include?(directive)
+    ["n", "t", "%", "L"].include?(directive)
   end
   private :directive_is_literal
 
@@ -1081,7 +1226,8 @@ class Date
   private :padding_character
 
   def default_filler(directive)
-    ["A", "a", "B", "b", "h", "P", "p", "Z", "c", "v", "+", ":z"].include?(directive) ? " " : "0"
+    ["A", "a", "B", "b", "h", "P", "p", "Z", "c", "v", "+", "z", ":z",
+     "::z"].include?(directive) ? " " : "0"
   end
   private :default_filler
 
@@ -1090,7 +1236,7 @@ class Date
     return 4 if ["Y", "G"].include?(directive)
     return 1 if ["u", "w", "n", "t", "%", "L", "N", "s", "Q"].include?(directive)
     return 0 if ["A", "a", "B", "b", "h", "P", "p", "Z", "c", "D", "F", "R", "r",
-                 "T", "X", "x", "v", "+", ":z"].include?(directive)
+                 "T", "X", "x", "v", "+", "z", ":z", "::z"].include?(directive)
     2
   end
   private :directive_width
@@ -1107,19 +1253,18 @@ class Date
     when "F" then self.strftime("%Y-%m-%d")
     when "G" then self.cwyear.to_s
     when "g" then (self.cwyear % 100).to_s
-    when "H", "k" then "0"
-    when "I", "l" then "12"
+    when "H", "k" then self.clock_hour.to_s
+    when "I", "l" then self.twelve_hour.to_s
     when "j" then self.yday.to_s
-    when "M" then "0"
+    when "M" then self.clock_minute.to_s
     when "m" then self.month.to_s
     when "n" then "\n"
-    when "P" then "am"
-    when "p" then "AM"
-    when "S" then "0"
-    when "s" then ((@jd - 2440588) * 86400).to_s
-    when "L" then "0"
-    when "N" then "0"
-    when "Q" then ((@jd - 2440588) * 86400000).to_s
+    when "P" then self.clock_hour < 12 ? "am" : "pm"
+    when "p" then self.clock_hour < 12 ? "AM" : "PM"
+    when "S" then self.clock_second.to_s
+    when "s" then self.epoch_seconds.to_s
+    when "L" then self.sub_second_digits(3)
+    when "Q" then self.epoch_milliseconds.to_s
     when "t" then "\t"
     when "U" then self.week_of_year(0).to_s
     when "W" then self.week_of_year(1).to_s
@@ -1128,8 +1273,9 @@ class Date
     when "w" then self.wday.to_s
     when "Y" then self.year.to_s
     when "y" then (self.year % 100).to_s
-    when "Z", ":z" then "+00:00"
-    when "z" then "+0000"
+    when "Z", ":z" then self.offset_text(1)
+    when "::z" then self.offset_text(2)
+    when "z" then self.offset_text(0)
     when "%" then "%"
     when "c" then self.strftime("%a %b %e %H:%M:%S %Y")
     when "D", "x" then self.strftime("%m/%d/%y")
@@ -1141,6 +1287,13 @@ class Date
     end
   end
   private :directive_body
+
+  # The hour a twelve-hour clock shows, where midnight and noon both read 12.
+  def twelve_hour
+    shown = self.clock_hour % 12
+    shown == 0 ? 12 : shown
+  end
+  private :twelve_hour
 
   # The week of the year this date falls in, counting from the first week that
   # opens on the named weekday.
@@ -1167,4 +1320,366 @@ class Date
     field.to_s.rjust(2, "0")
   end
   private :two
+end
+
+# A calendar day together with a time of day and an offset from UTC. The date
+# is held the way Date holds one, and the time as an exact fraction of a day.
+class DateTime < Date
+  def self.from_parts(jd, fraction, offset, start)
+    made = allocate
+    made.instance_variable_set(:@jd, jd)
+    made.instance_variable_set(:@fraction, fraction)
+    made.instance_variable_set(:@offset, offset)
+    made.instance_variable_set(:@start, start)
+    made
+  end
+
+  def self.from_jd(jd, start)
+    from_parts(jd, Rational(0, 1), Rational(0, 1), start)
+  end
+
+  # ── Building ─────────────────────────────────────────────────────────────
+
+  def self.civil(year = -4712, month = 1, day = 1, hour = 0, minute = 0,
+                 second = 0, offset = 0, start = ITALY)
+    found = valid_civil_jd(year, month, day, start)
+    raise Date::Error, "invalid date" if found.nil?
+    with_clock(found, hour, minute, second, offset, start)
+  end
+
+  def self.new(year = -4712, month = 1, day = 1, hour = 0, minute = 0,
+               second = 0, offset = 0, start = ITALY)
+    civil(year, month, day, hour, minute, second, offset, start)
+  end
+
+  def self.jd(number = 0, hour = 0, minute = 0, second = 0, offset = 0,
+              start = ITALY)
+    with_clock(number.to_i, hour, minute, second, offset, start)
+  end
+
+  def self.ordinal(year = -4712, day = 1, hour = 0, minute = 0, second = 0,
+                   offset = 0, start = ITALY)
+    found = valid_ordinal_jd(year, day, start)
+    raise Date::Error, "invalid date" if found.nil?
+    with_clock(found, hour, minute, second, offset, start)
+  end
+
+  def self.commercial(year = -4712, week = 1, weekday = 1, hour = 0, minute = 0,
+                      second = 0, offset = 0, start = ITALY)
+    found = Date.commercial(year, week, weekday, start)
+    with_clock(found.jd, hour, minute, second, offset, start)
+  end
+
+  def self.now(start = ITALY)
+    moment = Time.now
+    found = Date.civil(moment.year, moment.month, moment.day, start)
+    fraction = Rational(moment.hour * 3600 + moment.min * 60 + moment.sec, 86400) +
+      moment.subsec / 86400
+    from_parts(found.jd, fraction, Rational(moment.utc_offset, 86400), start)
+  end
+
+  # A time of day fixed to a Julian Day Number. An hour, minute, or second
+  # written as a negative counts back from the next unit up, and 24 hours
+  # names midnight on the following day.
+  def self.with_clock(jd, hour, minute, second, offset, start, leap_second = false)
+    unless hour.is_a?(Integer) && minute.is_a?(Integer) && second.is_a?(Numeric)
+      raise Date::Error, "invalid date"
+    end
+    hour = 24 + hour if hour < 0
+    minute = 60 + minute if minute < 0
+    second = 60 + second if second < 0
+    raise Date::Error, "invalid date" if hour < 0 || hour > 24
+    raise Date::Error, "invalid date" if minute < 0 || minute >= 60
+    # A leap second is written as :60 in a timestamp being read, and it names
+    # the moment the next second begins, which is where the fraction below
+    # carries it. A datetime built field by field does not admit one.
+    raise Date::Error, "invalid date" if second < 0
+    if leap_second
+      raise Date::Error, "invalid date" if second > 60
+    else
+      raise Date::Error, "invalid date" if second >= 60
+    end
+    if hour == 24
+      raise Date::Error, "invalid date" unless minute == 0 && second == 0
+      jd += 1
+      hour = 0
+    end
+    fraction = Rational(hour, 24) + Rational(minute, 1440) + second.to_r / 86400
+    from_parts(jd, fraction, read_offset(offset), start)
+  end
+
+  # An offset from UTC, given either as a fraction of a day or as the text a
+  # zone is written with.
+  def self.read_offset(offset)
+    return offset.to_r if offset.is_a?(Numeric)
+    raise Date::Error, "invalid date" unless offset.is_a?(String)
+    text = offset.to_s
+    return Rational(0, 1) if ["Z", "z", "UTC", "GMT", "UT"].include?(text)
+    unless text =~ /\A([+-])(\d{2}):?(\d{2})?:?(\d{2})?\z/
+      raise Date::Error, "invalid date"
+    end
+    seconds = $2.to_i * 3600 + $3.to_i * 60 + $4.to_i
+    seconds = -seconds if $1 == "-"
+    Rational(seconds, 86400)
+  end
+
+  # ── Reading text ─────────────────────────────────────────────────────────
+
+  def self.parse(text = "-4712-01-01T00:00:00+00:00", comp = true, start = ITALY)
+    fields = _parse(text, comp)
+    raise Date::Error, "invalid date" if fields.empty?
+    Date.parse(text, comp, start).to_datetime.with_fields(fields)
+  end
+
+  def self.strptime(text = "-4712-01-01T00:00:00+00:00", format = "%FT%T%z",
+                    start = ITALY)
+    fields = _strptime(text, format)
+    raise Date::Error, "invalid date" if fields.nil?
+    assemble_strptime(fields, start).to_datetime.with_fields(fields)
+  end
+
+  def self.iso8601(text = "-4712-01-01T00:00:00+00:00", start = ITALY)
+    read_written(text, start) { |held| Date._iso8601(held) }
+  end
+
+  def self.rfc3339(text = "-4712-01-01T00:00:00+00:00", start = ITALY)
+    read_written(text, start) { |held| Date._rfc3339(held) }
+  end
+
+  def self.xmlschema(text = "-4712-01-01T00:00:00+00:00", start = ITALY)
+    iso8601(text, start)
+  end
+
+  def self.jisx0301(text = "-4712-01-01T00:00:00+00:00", start = ITALY)
+    iso8601(text, start)
+  end
+
+  def self.httpdate(text = "Mon, 01 Jan -4712 00:00:00 GMT", start = ITALY)
+    read_written(text, start) { |held| Date._parse(held) }
+  end
+
+  def self.rfc2822(text = "Mon, 1 Jan -4712 00:00:00 +0000", start = ITALY)
+    read_written(text, start) { |held| Date._parse(held) }
+  end
+
+  def self.rfc822(text = "Mon, 1 Jan -4712 00:00:00 +0000", start = ITALY)
+    rfc2822(text, start)
+  end
+
+  # Text read into a date by the block, with the time of day and offset the
+  # same text carries laid over it.
+  def self.read_written(text, start)
+    raise Date::Error, "invalid date" if text.nil?
+    fields = yield(text)
+    raise Date::Error, "invalid date" if fields.nil? || fields.empty?
+    clock = _parse(text)
+    Date.civil(fields[:year], fields[:mon], fields[:mday], start)
+      .to_datetime
+      .with_fields(clock)
+  end
+
+  # ── What a datetime stands for ───────────────────────────────────────────
+
+  def clock_fraction
+    @fraction
+  end
+  private :clock_fraction
+
+  def zone_offset
+    @offset
+  end
+  private :zone_offset
+
+  def hour
+    self.clock_hour
+  end
+
+  def min
+    self.clock_minute
+  end
+
+  def minute
+    self.clock_minute
+  end
+
+  def sec
+    self.clock_second
+  end
+
+  def second
+    self.clock_second
+  end
+
+  def sec_fraction
+    self.clock_sub_second
+  end
+
+  def second_fraction
+    self.clock_sub_second
+  end
+
+  def offset
+    @offset
+  end
+
+  def day_fraction
+    @fraction
+  end
+
+  def zone
+    self.offset_text(1)
+  end
+
+  # The same instant, read against another offset from UTC.
+  def new_offset(offset = 0)
+    wanted = DateTime.read_offset(offset)
+    moved = @jd + @fraction - @offset + wanted
+    landing = moved.floor
+    DateTime.from_parts(landing, moved - landing, wanted, @start)
+  end
+
+  def new_start(start = ITALY)
+    DateTime.from_parts(@jd, @fraction, @offset, start)
+  end
+
+  # The time of day and offset a parsed set of fields names, laid over this
+  # datetime. Fields the text left out keep what they already hold.
+  def with_fields(fields)
+    offset = fields[:offset].nil? ? @offset : Rational(fields[:offset], 86400)
+    DateTime.with_clock(@jd, fields[:hour] || 0, fields[:min] || 0,
+                        fields[:sec] || 0, offset, @start, true)
+  end
+
+  def rebuild(jd)
+    DateTime.from_parts(jd, @fraction, @offset, @start)
+  end
+  private :rebuild
+
+  # ── Moving about ─────────────────────────────────────────────────────────
+
+  def +(count)
+    raise TypeError, "expected numeric" unless count.is_a?(Numeric)
+    moved = @jd + @fraction + count.to_r
+    landing = moved.floor
+    DateTime.from_parts(landing, moved - landing, @offset, @start)
+  end
+
+  def -(other)
+    return (@jd + @fraction) - (other.jd + other.day_fraction) if other.is_a?(Date)
+    raise TypeError, "expected numeric" unless other.is_a?(Numeric)
+    self + (-other.to_r)
+  end
+
+  # The point in time this datetime names, counted in days from the same
+  # place whatever offset it is written against.
+  def absolute_day
+    @jd + @fraction - @offset
+  end
+
+  def <=>(other)
+    return self.absolute_day <=> other.absolute_day if other.is_a?(DateTime)
+    return self.absolute_day <=> (other.jd + other.day_fraction) if other.is_a?(Date)
+    return self.absolute_day <=> other if other.is_a?(Numeric)
+    nil
+  end
+
+  def ==(other)
+    return false unless other.is_a?(Date)
+    self.absolute_day == (other.is_a?(DateTime) ? other.absolute_day :
+                          other.jd + other.day_fraction)
+  end
+
+  def eql?(other)
+    self == other
+  end
+
+  def hash
+    self.absolute_day.hash
+  end
+
+  # ── Writing text ─────────────────────────────────────────────────────────
+
+  def strftime(template = "%FT%T%:z")
+    super(template)
+  end
+
+  def to_s
+    self.strftime("%Y-%m-%dT%H:%M:%S%:z")
+  end
+
+  def inspect
+    "#<DateTime: #{self.to_s} ((#{@jd}j),(#{@fraction}),(#{@offset}))>"
+  end
+
+  def iso8601
+    self.to_s
+  end
+
+  def xmlschema
+    self.to_s
+  end
+
+  def rfc3339
+    self.to_s
+  end
+
+  def jisx0301
+    self.to_s
+  end
+
+  def httpdate
+    self.new_offset(0).strftime("%a, %d %b %Y %H:%M:%S GMT")
+  end
+
+  def rfc2822
+    self.strftime("%a, %-d %b %Y %H:%M:%S %z")
+  end
+
+  def rfc822
+    self.rfc2822
+  end
+
+  def to_date
+    Date.from_jd(@jd, @start)
+  end
+
+  def to_datetime
+    self
+  end
+
+  def to_time
+    parts = Date.jd_to_gregorian(@jd)
+    Time.new(parts[0], parts[1], parts[2], self.hour, self.min,
+             self.sec + self.sec_fraction, (@offset * 86400).to_i)
+  end
+
+  def deconstruct_keys(keys)
+    all = { year: self.year, month: self.month, day: self.day, yday: self.yday,
+            wday: self.wday, hour: self.hour, min: self.min, sec: self.sec,
+            sec_fraction: self.sec_fraction, zone: self.zone }
+    return all if keys.nil?
+    unless keys.is_a?(Array)
+      raise TypeError, "wrong argument type #{keys.class} (expected Array or nil)"
+    end
+    picked = {}
+    keys.each { |key| picked[key] = all[key] if all.key?(key) }
+    picked
+  end
+end
+
+class Time
+  # The same instant as a DateTime, read on the calendar the offset this Time
+  # carries puts it on.
+  def to_datetime
+    seconds = self.to_r + self.utc_offset
+    days = seconds / 86400
+    landing = days.floor
+    DateTime.from_parts(landing + 2440588, days - landing,
+                        Rational(self.utc_offset, 86400), Date::ITALY)
+  end
+
+  def to_date
+    days = (self.to_r + self.utc_offset) / 86400
+    Date.from_jd(days.floor + 2440588, Date::ITALY)
+  end
 end

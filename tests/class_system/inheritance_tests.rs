@@ -90,10 +90,7 @@ fn test_basic_inheritance_method_lookup() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(
-        result,
-        Object::String(std::rc::Rc::new("Some sound".to_string()))
-    );
+    assert_eq!(result, Object::string("Some sound".to_string()));
 }
 
 #[test]
@@ -191,10 +188,7 @@ fn test_method_overriding() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(
-        result,
-        Object::String(std::rc::Rc::new("Woof!".to_string()))
-    );
+    assert_eq!(result, Object::string("Woof!".to_string()));
 }
 
 #[test]
@@ -317,7 +311,7 @@ fn test_inheritance_chain_method_lookup() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(std::rc::Rc::new("A".to_string())));
+    assert_eq!(result, Object::string("A".to_string()));
 }
 
 #[test]
@@ -425,10 +419,7 @@ fn test_inherited_initialize_method() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(
-        result,
-        Object::String(std::rc::Rc::new("Buddy".to_string()))
-    );
+    assert_eq!(result, Object::string("Buddy".to_string()));
 }
 
 #[test]
@@ -583,10 +574,7 @@ fn test_overriding_with_instance_variables() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(
-        result,
-        Object::String(std::rc::Rc::new("Woof!".to_string()))
-    );
+    assert_eq!(result, Object::string("Woof!".to_string()));
 }
 
 #[test]

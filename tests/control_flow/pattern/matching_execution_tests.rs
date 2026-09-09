@@ -12,6 +12,7 @@ fn pos() -> Position {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     }
 }
 

@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -104,10 +103,7 @@ fn string_concatenation_with_plus() {
     let result = run(r#"
 "hello" + " world"
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("hello world".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hello world".to_string())));
 }
 
 #[test]
@@ -143,8 +139,5 @@ result.length
 #[test]
 fn string_interpolation_with_expression_edge() {
     let result = run(r#"x = 5; "val: #{x + 1}""#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("val: 6".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("val: 6".to_string())));
 }

@@ -27,19 +27,13 @@ fn run(code: &str) -> Option<Object> {
 #[test]
 fn keyword_arg_call_without_parens_single() {
     let result = run("def greet(name:)\n  name\nend\ngreet name: \"Alice\"");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Alice".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Alice".to_string())));
 }
 
 #[test]
 fn keyword_arg_call_without_parens_multiple() {
     let result = run("def describe(name:, age:)\n  name\nend\ndescribe name: \"Bob\", age: 30");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Bob".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Bob".to_string())));
 }
 
 // ── No-paren call ───────────────────────────────────────────────────────────
@@ -349,4 +343,155 @@ fn brace_block_lambda_dot_call_no_paren_no_args() {
     // `.to_proc` with no parens and no args exercises the empty-Vec branch
     // of parse_postfix_calls.
     parse_ok("lambda { 1 }.to_proc");
+}
+
+// ── `and` / `or` against a paren-less argument list ──────────────────────────
+
+#[test]
+fn a_paren_less_call_leaves_a_following_and_to_the_call_itself() {
+    let result = run(r#"
+$order = []
+def take(value)
+  $order.push value
+  true
+end
+def other
+  $order.push "other"
+  false
+end
+take "x" and other
+$order
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[x, other]".to_string())
+    );
+}
+
+#[test]
+fn a_paren_less_call_leaves_a_following_or_to_the_call_itself() {
+    let result = run(r#"
+def take(value)
+  value == "x"
+end
+def other
+  raise "the or should not have reached here"
+end
+take "x" or other
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn double_ampersand_still_belongs_to_a_paren_less_argument() {
+    let result = run(r#"
+def take(value)
+  value
+end
+take true && false
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("false".to_string())
+    );
+}
+
+#[test]
+fn a_block_body_inside_a_paren_less_argument_reads_its_own_or() {
+    let result = run(r#"
+def guard(callable)
+  callable.call
+end
+guard -> {
+  false or
+  true
+}
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn a_bare_yield_may_be_followed_by_a_comparison() {
+    let result = run(r#"
+def counted
+  seen = 0
+  while yield == :retry
+    seen += 1
+    break if seen > 2
+  end
+  seen
+end
+counted { :retry }
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("3".to_string()));
+}
+
+#[test]
+fn a_bare_yield_may_be_followed_by_an_infix_plus() {
+    // `yield + x` adds to what the block answered, where `yield +x` passes a
+    // positive x to it.
+    let result = run(r#"
+def combined
+  yield + 3
+end
+combined { 7 }
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("10".to_string())
+    );
+}
+
+#[test]
+fn a_bare_yield_still_takes_a_signed_literal_argument() {
+    let result = run(r#"
+def handed
+  yield -1
+end
+handed { |value| value }
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("-1".to_string())
+    );
+}
+
+#[test]
+fn a_spaced_scope_resolution_is_a_paren_less_argument() {
+    // `p ::Name` passes the top-level Name, where `Held::Name` reads a name
+    // out of Held.
+    let result = run(r#"
+Held = 5
+p ::Held
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("5".to_string()));
+}
+
+#[test]
+fn a_spaced_scope_resolution_reaches_a_method_call_argument() {
+    let result = run(r#"
+Held = 5
+class Box
+  def take(value)
+    value
+  end
+end
+Box.new.take ::Held
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("5".to_string()));
+}
+
+#[test]
+fn a_namespace_still_reads_its_own_constant() {
+    let result = run("Math::PI > 3");
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
 }

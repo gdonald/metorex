@@ -254,263 +254,189 @@ fn run_sym(code: &str) -> Option<Object> {
 
 #[test]
 fn symbol_keyword_class() {
-    assert_eq!(
-        run_sym(":class"),
-        Some(Object::Symbol(std::rc::Rc::new("class".to_string())))
-    );
+    assert_eq!(run_sym(":class"), Some(Object::symbol("class".to_string())));
 }
 #[test]
 fn symbol_keyword_def() {
-    assert_eq!(
-        run_sym(":def"),
-        Some(Object::Symbol(std::rc::Rc::new("def".to_string())))
-    );
+    assert_eq!(run_sym(":def"), Some(Object::symbol("def".to_string())));
 }
 #[test]
 fn symbol_keyword_if() {
-    assert_eq!(
-        run_sym(":if"),
-        Some(Object::Symbol(std::rc::Rc::new("if".to_string())))
-    );
+    assert_eq!(run_sym(":if"), Some(Object::symbol("if".to_string())));
 }
 #[test]
 fn symbol_keyword_else() {
-    assert_eq!(
-        run_sym(":else"),
-        Some(Object::Symbol(std::rc::Rc::new("else".to_string())))
-    );
+    assert_eq!(run_sym(":else"), Some(Object::symbol("else".to_string())));
 }
 #[test]
 fn symbol_keyword_end() {
-    assert_eq!(
-        run_sym(":end"),
-        Some(Object::Symbol(std::rc::Rc::new("end".to_string())))
-    );
+    assert_eq!(run_sym(":end"), Some(Object::symbol("end".to_string())));
 }
 #[test]
 fn symbol_keyword_do() {
-    assert_eq!(
-        run_sym(":do"),
-        Some(Object::Symbol(std::rc::Rc::new("do".to_string())))
-    );
+    assert_eq!(run_sym(":do"), Some(Object::symbol("do".to_string())));
 }
 #[test]
 fn symbol_keyword_nil() {
-    assert_eq!(
-        run_sym(":nil"),
-        Some(Object::Symbol(std::rc::Rc::new("nil".to_string())))
-    );
+    assert_eq!(run_sym(":nil"), Some(Object::symbol("nil".to_string())));
 }
 #[test]
 fn symbol_keyword_true() {
-    assert_eq!(
-        run_sym(":true"),
-        Some(Object::Symbol(std::rc::Rc::new("true".to_string())))
-    );
+    assert_eq!(run_sym(":true"), Some(Object::symbol("true".to_string())));
 }
 #[test]
 fn symbol_keyword_false() {
-    assert_eq!(
-        run_sym(":false"),
-        Some(Object::Symbol(std::rc::Rc::new("false".to_string())))
-    );
+    assert_eq!(run_sym(":false"), Some(Object::symbol("false".to_string())));
 }
 #[test]
 fn symbol_keyword_return() {
     assert_eq!(
         run_sym(":return"),
-        Some(Object::Symbol(std::rc::Rc::new("return".to_string())))
+        Some(Object::symbol("return".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_begin() {
-    assert_eq!(
-        run_sym(":begin"),
-        Some(Object::Symbol(std::rc::Rc::new("begin".to_string())))
-    );
+    assert_eq!(run_sym(":begin"), Some(Object::symbol("begin".to_string())));
 }
 #[test]
 fn symbol_keyword_rescue() {
     assert_eq!(
         run_sym(":rescue"),
-        Some(Object::Symbol(std::rc::Rc::new("rescue".to_string())))
+        Some(Object::symbol("rescue".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_ensure() {
     assert_eq!(
         run_sym(":ensure"),
-        Some(Object::Symbol(std::rc::Rc::new("ensure".to_string())))
+        Some(Object::symbol("ensure".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_while() {
-    assert_eq!(
-        run_sym(":while"),
-        Some(Object::Symbol(std::rc::Rc::new("while".to_string())))
-    );
+    assert_eq!(run_sym(":while"), Some(Object::symbol("while".to_string())));
 }
 #[test]
 fn symbol_keyword_for() {
-    assert_eq!(
-        run_sym(":for"),
-        Some(Object::Symbol(std::rc::Rc::new("for".to_string())))
-    );
+    assert_eq!(run_sym(":for"), Some(Object::symbol("for".to_string())));
 }
 #[test]
 fn symbol_keyword_case() {
-    assert_eq!(
-        run_sym(":case"),
-        Some(Object::Symbol(std::rc::Rc::new("case".to_string())))
-    );
+    assert_eq!(run_sym(":case"), Some(Object::symbol("case".to_string())));
 }
 #[test]
 fn symbol_keyword_when() {
-    assert_eq!(
-        run_sym(":when"),
-        Some(Object::Symbol(std::rc::Rc::new("when".to_string())))
-    );
+    assert_eq!(run_sym(":when"), Some(Object::symbol("when".to_string())));
 }
 #[test]
 fn symbol_keyword_module() {
     assert_eq!(
         run_sym(":module"),
-        Some(Object::Symbol(std::rc::Rc::new("module".to_string())))
+        Some(Object::symbol("module".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_include() {
     assert_eq!(
         run_sym(":include"),
-        Some(Object::Symbol(std::rc::Rc::new("include".to_string())))
+        Some(Object::symbol("include".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_yield() {
-    assert_eq!(
-        run_sym(":yield"),
-        Some(Object::Symbol(std::rc::Rc::new("yield".to_string())))
-    );
+    assert_eq!(run_sym(":yield"), Some(Object::symbol("yield".to_string())));
 }
 #[test]
 fn symbol_keyword_super() {
-    assert_eq!(
-        run_sym(":super"),
-        Some(Object::Symbol(std::rc::Rc::new("super".to_string())))
-    );
+    assert_eq!(run_sym(":super"), Some(Object::symbol("super".to_string())));
 }
 #[test]
 fn symbol_keyword_lambda() {
     assert_eq!(
         run_sym(":lambda"),
-        Some(Object::Symbol(std::rc::Rc::new("lambda".to_string())))
+        Some(Object::symbol("lambda".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_break() {
-    assert_eq!(
-        run_sym(":break"),
-        Some(Object::Symbol(std::rc::Rc::new("break".to_string())))
-    );
+    assert_eq!(run_sym(":break"), Some(Object::symbol("break".to_string())));
 }
 #[test]
 fn symbol_keyword_next() {
-    assert_eq!(
-        run_sym(":next"),
-        Some(Object::Symbol(std::rc::Rc::new("next".to_string())))
-    );
+    assert_eq!(run_sym(":next"), Some(Object::symbol("next".to_string())));
 }
 #[test]
 fn symbol_keyword_raise() {
-    assert_eq!(
-        run_sym(":raise"),
-        Some(Object::Symbol(std::rc::Rc::new("raise".to_string())))
-    );
+    assert_eq!(run_sym(":raise"), Some(Object::symbol("raise".to_string())));
 }
 #[test]
 fn symbol_keyword_attr_reader() {
     assert_eq!(
         run_sym(":attr_reader"),
-        Some(Object::Symbol(std::rc::Rc::new("attr_reader".to_string())))
+        Some(Object::symbol("attr_reader".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_attr_writer() {
     assert_eq!(
         run_sym(":attr_writer"),
-        Some(Object::Symbol(std::rc::Rc::new("attr_writer".to_string())))
+        Some(Object::symbol("attr_writer".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_attr_accessor() {
     assert_eq!(
         run_sym(":attr_accessor"),
-        Some(Object::Symbol(std::rc::Rc::new(
-            "attr_accessor".to_string()
-        )))
+        Some(Object::symbol("attr_accessor".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_extend() {
     assert_eq!(
         run_sym(":extend"),
-        Some(Object::Symbol(std::rc::Rc::new("extend".to_string())))
+        Some(Object::symbol("extend".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_alias() {
-    assert_eq!(
-        run_sym(":alias"),
-        Some(Object::Symbol(std::rc::Rc::new("alias".to_string())))
-    );
+    assert_eq!(run_sym(":alias"), Some(Object::symbol("alias".to_string())));
 }
 #[test]
 fn symbol_keyword_unless() {
     assert_eq!(
         run_sym(":unless"),
-        Some(Object::Symbol(std::rc::Rc::new("unless".to_string())))
+        Some(Object::symbol("unless".to_string()))
     );
 }
 #[test]
 fn symbol_keyword_until() {
-    assert_eq!(
-        run_sym(":until"),
-        Some(Object::Symbol(std::rc::Rc::new("until".to_string())))
-    );
+    assert_eq!(run_sym(":until"), Some(Object::symbol("until".to_string())));
 }
 #[test]
 fn symbol_keyword_then() {
-    assert_eq!(
-        run_sym(":then"),
-        Some(Object::Symbol(std::rc::Rc::new("then".to_string())))
-    );
+    assert_eq!(run_sym(":then"), Some(Object::symbol("then".to_string())));
 }
 #[test]
 fn symbol_keyword_elsif() {
-    assert_eq!(
-        run_sym(":elsif"),
-        Some(Object::Symbol(std::rc::Rc::new("elsif".to_string())))
-    );
+    assert_eq!(run_sym(":elsif"), Some(Object::symbol("elsif".to_string())));
 }
 #[test]
 fn symbol_from_ivar() {
-    assert_eq!(
-        run_sym(":@name"),
-        Some(Object::Symbol(std::rc::Rc::new("@name".to_string())))
-    );
+    assert_eq!(run_sym(":@name"), Some(Object::symbol("@name".to_string())));
 }
 #[test]
 fn symbol_from_cvar() {
     assert_eq!(
         run_sym(":@@count"),
-        Some(Object::Symbol(std::rc::Rc::new("@@count".to_string())))
+        Some(Object::symbol("@@count".to_string()))
     );
 }
 #[test]
 fn symbol_from_string_literal() {
     assert_eq!(
         run_sym(r#":"hello""#),
-        Some(Object::Symbol(std::rc::Rc::new("hello".to_string())))
+        Some(Object::symbol("hello".to_string()))
     );
 }
 #[test]
@@ -518,10 +444,7 @@ fn interpolated_symbol_dynamic() {
     // `:"..."` with interpolation names a Symbol built at run time, not the
     // String its characters were assembled in.
     let result = run_sym(r#"x = "name"; :"@#{x}""#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("@name".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("@name".to_string())));
 }
 
 // ── Token stream / general parser (from additional_tests) ───────────────────
@@ -781,146 +704,92 @@ fn block_param_is_nil_when_no_block_given() {
 
 #[test]
 fn symbol_bracket_index() {
-    assert_eq!(
-        run_sym(":[]"),
-        Some(Object::Symbol(std::rc::Rc::new("[]".to_string())))
-    );
+    assert_eq!(run_sym(":[]"), Some(Object::symbol("[]".to_string())));
 }
 
 #[test]
 fn symbol_bracket_index_assign() {
-    assert_eq!(
-        run_sym(":[]="),
-        Some(Object::Symbol(std::rc::Rc::new("[]=".to_string())))
-    );
+    assert_eq!(run_sym(":[]="), Some(Object::symbol("[]=".to_string())));
 }
 
 #[test]
 fn symbol_plus() {
-    assert_eq!(
-        run_sym(":+"),
-        Some(Object::Symbol(std::rc::Rc::new("+".to_string())))
-    );
+    assert_eq!(run_sym(":+"), Some(Object::symbol("+".to_string())));
 }
 
 #[test]
 fn symbol_minus() {
-    assert_eq!(
-        run_sym(":-"),
-        Some(Object::Symbol(std::rc::Rc::new("-".to_string())))
-    );
+    assert_eq!(run_sym(":-"), Some(Object::symbol("-".to_string())));
 }
 
 #[test]
 fn symbol_star() {
-    assert_eq!(
-        run_sym(":*"),
-        Some(Object::Symbol(std::rc::Rc::new("*".to_string())))
-    );
+    assert_eq!(run_sym(":*"), Some(Object::symbol("*".to_string())));
 }
 
 #[test]
 fn symbol_percent() {
-    assert_eq!(
-        run_sym(":%"),
-        Some(Object::Symbol(std::rc::Rc::new("%".to_string())))
-    );
+    assert_eq!(run_sym(":%"), Some(Object::symbol("%".to_string())));
 }
 
 #[test]
 fn symbol_equal_equal() {
-    assert_eq!(
-        run_sym(":=="),
-        Some(Object::Symbol(std::rc::Rc::new("==".to_string())))
-    );
+    assert_eq!(run_sym(":=="), Some(Object::symbol("==".to_string())));
 }
 
 #[test]
 fn symbol_bang_equal() {
-    assert_eq!(
-        run_sym(":!="),
-        Some(Object::Symbol(std::rc::Rc::new("!=".to_string())))
-    );
+    assert_eq!(run_sym(":!="), Some(Object::symbol("!=".to_string())));
 }
 
 #[test]
 fn symbol_less() {
-    assert_eq!(
-        run_sym(":<"),
-        Some(Object::Symbol(std::rc::Rc::new("<".to_string())))
-    );
+    assert_eq!(run_sym(":<"), Some(Object::symbol("<".to_string())));
 }
 
 #[test]
 fn symbol_greater() {
-    assert_eq!(
-        run_sym(":>"),
-        Some(Object::Symbol(std::rc::Rc::new(">".to_string())))
-    );
+    assert_eq!(run_sym(":>"), Some(Object::symbol(">".to_string())));
 }
 
 #[test]
 fn symbol_less_equal() {
-    assert_eq!(
-        run_sym(":<="),
-        Some(Object::Symbol(std::rc::Rc::new("<=".to_string())))
-    );
+    assert_eq!(run_sym(":<="), Some(Object::symbol("<=".to_string())));
 }
 
 #[test]
 fn symbol_greater_equal() {
-    assert_eq!(
-        run_sym(":>="),
-        Some(Object::Symbol(std::rc::Rc::new(">=".to_string())))
-    );
+    assert_eq!(run_sym(":>="), Some(Object::symbol(">=".to_string())));
 }
 
 #[test]
 fn symbol_spaceship() {
-    assert_eq!(
-        run_sym(":<=>"),
-        Some(Object::Symbol(std::rc::Rc::new("<=>".to_string())))
-    );
+    assert_eq!(run_sym(":<=>"), Some(Object::symbol("<=>".to_string())));
 }
 
 #[test]
 fn symbol_shovel() {
-    assert_eq!(
-        run_sym(":<<"),
-        Some(Object::Symbol(std::rc::Rc::new("<<".to_string())))
-    );
+    assert_eq!(run_sym(":<<"), Some(Object::symbol("<<".to_string())));
 }
 
 #[test]
 fn symbol_caret() {
-    assert_eq!(
-        run_sym(":^"),
-        Some(Object::Symbol(std::rc::Rc::new("^".to_string())))
-    );
+    assert_eq!(run_sym(":^"), Some(Object::symbol("^".to_string())));
 }
 
 #[test]
 fn symbol_match_op() {
-    assert_eq!(
-        run_sym(":=~"),
-        Some(Object::Symbol(std::rc::Rc::new("=~".to_string())))
-    );
+    assert_eq!(run_sym(":=~"), Some(Object::symbol("=~".to_string())));
 }
 
 #[test]
 fn symbol_not_match_op() {
-    assert_eq!(
-        run_sym(":!~"),
-        Some(Object::Symbol(std::rc::Rc::new("!~".to_string())))
-    );
+    assert_eq!(run_sym(":!~"), Some(Object::symbol("!~".to_string())));
 }
 
 #[test]
 fn symbol_raise_keyword() {
-    assert_eq!(
-        run_sym(":raise"),
-        Some(Object::Symbol(std::rc::Rc::new("raise".to_string())))
-    );
+    assert_eq!(run_sym(":raise"), Some(Object::symbol("raise".to_string())));
 }
 
 // ── parser/statements/mod.rs: is_multiple_assignment lookahead paths ─────────
@@ -1016,10 +885,7 @@ fn chained_assignment_rhs_with_call_expression() {
 #[test]
 fn rescue_modifier_answers_the_fallback() {
     let result = run_sym("def boom\n  raise \"x\"\nend\nboom rescue :caught");
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("caught".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("caught".to_string())));
 }
 
 #[test]
@@ -1031,10 +897,7 @@ fn rescue_modifier_leaves_a_value_that_does_not_raise() {
 #[test]
 fn rescue_modifier_on_an_assignment_binds_to_the_value() {
     let result = run_sym("def boom\n  raise \"x\"\nend\nvalue = boom rescue :fallback\nvalue");
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("fallback".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("fallback".to_string())));
 }
 
 #[test]

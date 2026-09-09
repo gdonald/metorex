@@ -11,7 +11,6 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
-const RUBY_VERSION: &str = "4.0.2";
 const METOREX_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(ClapParser)]
@@ -170,7 +169,11 @@ fn real_main() {
 
     // Ruby-compatible version output
     if cli.ruby_version {
-        println!("ruby {} (metorex {})", RUBY_VERSION, METOREX_VERSION);
+        println!(
+            "ruby {} (metorex {})",
+            metorex::reported_ruby_version(),
+            METOREX_VERSION
+        );
         return;
     }
 

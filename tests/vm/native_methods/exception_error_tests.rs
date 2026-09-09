@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -35,10 +34,7 @@ rescue => e
 end
 result
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("test error".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("test error".to_string())));
 }
 
 #[test]
@@ -103,10 +99,7 @@ def t
 end
 t
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("RuntimeError".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("RuntimeError".to_string())));
 }
 
 #[test]
@@ -187,7 +180,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -203,7 +196,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -219,7 +212,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -235,7 +228,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -251,7 +244,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -267,7 +260,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -283,7 +276,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -299,7 +292,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 #[test]
@@ -315,7 +308,7 @@ def t
 end
 t
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("caught".to_string()))));
+    assert_eq!(result, Some(Object::string("caught".to_string())));
 }
 
 // ── exception_methods.rs line 52: backtrace returns empty array when no trace ──
@@ -367,8 +360,5 @@ def t
 end
 t
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("runtime error".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("runtime error".to_string())));
 }

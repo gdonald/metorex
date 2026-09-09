@@ -26,7 +26,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -254,19 +253,19 @@ fn thread_pass_returns_nil() {
 #[test]
 fn file_dirname_returns_parent_dir() {
     let result = run(r#"File.dirname("/a/b/c.rb")"#);
-    assert_eq!(result, Some(Object::String(Rc::new("/a/b".to_string()))));
+    assert_eq!(result, Some(Object::string("/a/b".to_string())));
 }
 
 #[test]
 fn file_dirname_root() {
     let result = run(r#"File.dirname("a.rb")"#);
-    assert_eq!(result, Some(Object::String(Rc::new(".".to_string()))));
+    assert_eq!(result, Some(Object::string(".".to_string())));
 }
 
 #[test]
 fn file_join_joins_parts() {
     let result = run(r#"File.join("a", "b", "c")"#);
-    assert_eq!(result, Some(Object::String(Rc::new("a/b/c".to_string()))));
+    assert_eq!(result, Some(Object::string("a/b/c".to_string())));
 }
 
 #[test]
@@ -286,7 +285,7 @@ fn file_respond_to_unknown_method() {
 #[test]
 fn module_nesting_returns_array() {
     let result = run("Module.nesting.class.name");
-    assert_eq!(result, Some(Object::String(Rc::new("Array".to_string()))));
+    assert_eq!(result, Some(Object::string("Array".to_string())));
 }
 
 // ── Module#include / prepend with args ───────────────────────────────────
@@ -299,7 +298,7 @@ class K; end
 K.include(M)
 K.new.greet
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("hi".to_string()))));
+    assert_eq!(result, Some(Object::symbol("hi".to_string())));
 }
 
 #[test]
@@ -310,7 +309,7 @@ class K; end
 K.prepend(M)
 K.new.tag
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("m_tag".to_string()))));
+    assert_eq!(result, Some(Object::symbol("m_tag".to_string())));
 }
 
 // ── freeze / FrozenError ─────────────────────────────────────────────────
@@ -366,7 +365,7 @@ end
 Foo.alias_method("baz", "bar")
 Foo.new.baz
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("ok".to_string()))));
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── alias keyword ────────────────────────────────────────────────────────
@@ -380,10 +379,7 @@ class Foo
 end
 Foo.new.baz
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(Rc::new("bar_value".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("bar_value".to_string())));
 }
 
 #[test]
@@ -395,10 +391,7 @@ class Foo
 end
 Foo.new.baz
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(Rc::new("bar_value".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("bar_value".to_string())));
 }
 
 // ── until keyword ────────────────────────────────────────────────────────
@@ -438,7 +431,7 @@ end
 class Child < Outer::Base; end
 Child.new.who
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("base".to_string()))));
+    assert_eq!(result, Some(Object::symbol("base".to_string())));
 }
 
 #[test]
@@ -460,10 +453,7 @@ Foo::CONST + Foo::CONST2
 #[test]
 fn object_superclass_is_basicobject() {
     let result = run("Object.superclass.name");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("BasicObject".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("BasicObject".to_string())));
 }
 
 #[test]
@@ -662,7 +652,7 @@ fn regular_class_allocate_returns_instance() {
 class Foo; end
 Foo.allocate.class.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Foo".to_string()))));
+    assert_eq!(result, Some(Object::string("Foo".to_string())));
 }
 
 // ── Class.new with non-class arg raises TypeError ───────────────────────
@@ -678,7 +668,7 @@ fn class_new_with_non_class_superclass_raises() {
 #[test]
 fn file_join_flattens_array_of_strings() {
     let result = run(r#"File.join(["a", "b"], "c")"#);
-    assert_eq!(result, Some(Object::String(Rc::new("a/b/c".to_string()))));
+    assert_eq!(result, Some(Object::string("a/b/c".to_string())));
 }
 
 #[test]
@@ -714,7 +704,7 @@ class Foo
 end
 Foo.alias_method(:baz, :bar)
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("baz".to_string()))));
+    assert_eq!(result, Some(Object::symbol("baz".to_string())));
 }
 
 #[test]
@@ -725,7 +715,7 @@ module Foo
 end
 Foo.alias_method(:baz, :bar)
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("baz".to_string()))));
+    assert_eq!(result, Some(Object::symbol("baz".to_string())));
 }
 
 #[test]
@@ -824,7 +814,7 @@ class K; end
 M.extend_object(K)
 K.foo
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("m".to_string()))));
+    assert_eq!(result, Some(Object::symbol("m".to_string())));
 }
 
 // ── private_constant / public_constant / deprecate_constant — no-op stubs
@@ -847,7 +837,7 @@ rescue NameError
   :raised
 end
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("raised".to_string()))));
+    assert_eq!(result, Some(Object::symbol("raised".to_string())));
 }
 
 #[test]

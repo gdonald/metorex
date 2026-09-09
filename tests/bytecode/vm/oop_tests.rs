@@ -292,9 +292,7 @@ fn get_and_set_instance_variable() {
     let inst_idx = chunk.add_constant(inst_obj).unwrap();
 
     // Constant 1: the ivar name "x"
-    let name_idx = chunk
-        .add_constant(Object::String(Rc::new("x".to_string())))
-        .unwrap();
+    let name_idx = chunk.add_constant(Object::string("x".to_string())).unwrap();
 
     // Constant 2: value 42
     let val_idx = chunk.add_constant(Object::Int(42)).unwrap();
@@ -340,7 +338,7 @@ fn get_instance_variable_returns_nil_when_unset() {
     let inst_obj = Object::Instance(Rc::new(RefCell::new(instance)));
     let inst_idx = chunk.add_constant(inst_obj).unwrap();
     let name_idx = chunk
-        .add_constant(Object::String(Rc::new("missing".to_string())))
+        .add_constant(Object::string("missing".to_string()))
         .unwrap();
 
     // Push instance to slot 0
@@ -360,12 +358,9 @@ fn get_instance_on_non_instance_errors() {
     // Test OP_GET_INSTANCE error path when receiver is not an Instance.
     use metorex::bytecode::chunk::Chunk;
     use metorex::bytecode::opcode::OpCode;
-    use std::rc::Rc;
 
     let mut chunk = Chunk::new();
-    let name_idx = chunk
-        .add_constant(Object::String(Rc::new("x".to_string())))
-        .unwrap();
+    let name_idx = chunk.add_constant(Object::string("x".to_string())).unwrap();
 
     // Push a non-instance value to slot 0
     chunk.write_opcode(OpCode::True, 1);
@@ -390,12 +385,9 @@ fn set_instance_on_non_instance_errors() {
     // Test OP_SET_INSTANCE error path when receiver is not an Instance.
     use metorex::bytecode::chunk::Chunk;
     use metorex::bytecode::opcode::OpCode;
-    use std::rc::Rc;
 
     let mut chunk = Chunk::new();
-    let name_idx = chunk
-        .add_constant(Object::String(Rc::new("x".to_string())))
-        .unwrap();
+    let name_idx = chunk.add_constant(Object::string("x".to_string())).unwrap();
 
     // Push a non-instance value to slot 0
     chunk.write_opcode(OpCode::True, 1);

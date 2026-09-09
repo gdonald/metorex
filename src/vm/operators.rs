@@ -120,6 +120,18 @@ impl VirtualMachine {
         {
             return Ok(result);
         }
+        // `2.0 ** (1/3r)` raises to a fractional power, which no exact
+        // Rational answer stands for, so the exponent is read as a Float and
+        // the Float arithmetic runs.
+        if matches!(op, BinaryOp::Power)
+            && matches!(left, Object::Float(_))
+            && crate::vm::native_methods::rational_parts(&right).is_some()
+        {
+            let exponent = self.send_to_object(right.clone(), "to_f", vec![], position)?;
+            if let Object::Float(exponent) = exponent {
+                return self.evaluate_numeric_binary(op, left, Object::Float(exponent), position);
+            }
+        }
         // A Rational on the right promotes the number on the left, so the
         // Rational's own exact arithmetic runs rather than a Float one.
         if let (Some(name), Object::Int(_) | Object::BigInt(_) | Object::Float(_)) =
@@ -218,6 +230,11 @@ impl VirtualMachine {
             Add => self.evaluate_addition(left, right, position),
             Modulo if matches!(left, Object::String(_)) => {
                 self.evaluate_string_format(left, right, position)
+            }
+            // `(1..10) % 2` is Range#%, which answers the same sequence
+            // `step` does.
+            Modulo if matches!(left, Object::Range { .. }) => {
+                self.send_to_object(left, "%", vec![right], position)
             }
             Subtract | Multiply | Divide | Modulo | Power => {
                 self.evaluate_numeric_binary(op, left, right, position)
@@ -321,6 +338,50 @@ impl VirtualMachine {
                         };
                     }
                 }
+                // A Set decides equality itself, since it counts anything
+                // that says it is one, however that value is built.
+                if matches!(left, Object::Set(_))
+                    && let Some(answer) = self.call_native_method(
+                        &self.builtins().class_of(&left),
+                        &left,
+                        "==",
+                        std::slice::from_ref(&right),
+                        position,
+                    )?
+                {
+                    return Ok(Object::Bool(answer.is_truthy()));
+                }
+                // Two arrays holding objects of the program's own are equal
+                // when those objects say so, so each pair is asked with `==`
+                // rather than compared as data.
+                if let (Object::Array(one), Object::Array(other)) = (&left, &right) {
+                    if Rc::ptr_eq(one, other) {
+                        return Ok(Object::Bool(true));
+                    }
+                    let held = one.borrow().clone();
+                    let against = other.borrow().clone();
+                    if held
+                        .iter()
+                        .chain(against.iter())
+                        .any(|item| matches!(item, Object::Instance(_)))
+                    {
+                        if held.len() != against.len() {
+                            return Ok(Object::Bool(false));
+                        }
+                        for (item, counterpart) in held.iter().zip(against.iter()) {
+                            let answer = self.evaluate_binary_operation(
+                                &BinaryOp::Equal,
+                                item.clone(),
+                                counterpart.clone(),
+                                position,
+                            )?;
+                            if !answer.is_truthy() {
+                                return Ok(Object::Bool(false));
+                            }
+                        }
+                        return Ok(Object::Bool(true));
+                    }
+                }
                 Ok(Object::Bool(left.equals(&right)))
             }
             CaseEqual => {
@@ -336,7 +397,9 @@ impl VirtualMachine {
                 // `to_str` on the characters it hands over.
                 if let Object::Regex(pattern, flags) = &left {
                     let subject = match &right {
-                        Object::String(text) | Object::Symbol(text) => Some(text.as_ref().clone()),
+                        Object::String(text) | Object::Symbol(text) => {
+                            Some(text.as_str().to_string())
+                        }
                         other => match crate::vm::native_methods::subject_text(other) {
                             Some(text) => Some(text),
                             None if self.responds_to(other, "to_str") => {
@@ -346,7 +409,7 @@ impl VirtualMachine {
                                     vec![],
                                     position,
                                 )? {
-                                    Object::String(text) => Some((*text).clone()),
+                                    Object::String(text) => Some(text.as_str().to_string()),
                                     _ => None,
                                 }
                             }
@@ -356,7 +419,8 @@ impl VirtualMachine {
                     let Some(subject) = subject else {
                         return Ok(Object::Bool(false));
                     };
-                    let (pattern, flags) = (pattern.as_ref().clone(), flags.as_ref().clone());
+                    let (pattern, flags) =
+                        (pattern.as_str().to_string(), flags.as_str().to_string());
                     let found = self.regexp_match_data(&pattern, &flags, &subject, 0, position)?;
                     return Ok(Object::Bool(found.is_some()));
                 }
@@ -458,7 +522,7 @@ impl VirtualMachine {
                     if let Some((owner, handler)) = self.lookup_method(&left, "method_missing")
                         && !handler.is_undefined
                     {
-                        let arguments = vec![Object::Symbol(Rc::new("===".to_string())), right];
+                        let arguments = vec![Object::symbol("===".to_string()), right];
                         return self.invoke_method(owner, handler, left, arguments, position);
                     }
                     if let Object::Instance(rhs) = &right
@@ -662,9 +726,9 @@ impl VirtualMachine {
             (Object::Int(a), Object::Float(b)) => Ok(Object::Float((a as f64) + b)),
             (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + (b as f64))),
             (Object::String(a), Object::String(b)) => {
-                let mut combined = a.as_ref().clone();
+                let mut combined = a.as_str().to_string();
                 combined.push_str(b.as_ref());
-                Ok(Object::String(Rc::new(combined)))
+                Ok(Object::string(combined))
             }
             (Object::Array(a), Object::Array(b)) => {
                 let mut combined = a.borrow().clone();
@@ -677,7 +741,7 @@ impl VirtualMachine {
 
     /// Evaluate numeric binary operations (`-`, `*`, `/`, `%`).
     pub(crate) fn evaluate_numeric_binary(
-        &self,
+        &mut self,
         op: &BinaryOp,
         left: Object,
         right: Object,
@@ -722,6 +786,18 @@ impl VirtualMachine {
                 // infinity or NaN. Only Integer / Integer raises.
                 BinaryOp::Divide => Ok(Object::Float(a / b)),
                 BinaryOp::Modulo => float_modulo(a, b, position),
+                // A negative base raised to a power that is not a whole
+                // number has no real root, so the answer is the principal
+                // complex one.
+                BinaryOp::Power if a < 0.0 && b.fract() != 0.0 && b.is_finite() => {
+                    let magnitude = (-a).powf(b);
+                    let angle = std::f64::consts::PI * b;
+                    self.make_complex(
+                        Object::Float(magnitude * angle.cos()),
+                        Object::Float(magnitude * angle.sin()),
+                        position,
+                    )
+                }
                 BinaryOp::Power => Ok(Object::Float(a.powf(b))),
                 _ => unreachable!(),
             },
@@ -895,7 +971,7 @@ impl VirtualMachine {
             && self.lookup_method(&left, "<=>").is_none()
             && let Some((class, method)) = self.lookup_method(&left, "method_missing")
         {
-            let name = Object::Symbol(Rc::new(operator.to_string()));
+            let name = Object::symbol(operator.to_string());
             return self.invoke_method(class, method, left, vec![name, right], position);
         }
 
@@ -1044,7 +1120,7 @@ impl VirtualMachine {
                 message,
             });
         };
-        let fmt_str = format.as_ref().clone();
+        let fmt_str = format.as_str().to_string();
 
         let args: Vec<Object> = match &right {
             Object::Array(arr) => arr.borrow().clone(),
@@ -1193,7 +1269,7 @@ impl VirtualMachine {
                         // `%s` renders with `to_s`, so a Symbol loses its
                         // leading colon the way `puts` drops it.
                         let s = match &arg {
-                            Object::Symbol(name) => (**name).clone(),
+                            Object::Symbol(name) => name.as_str().to_string(),
                             other => format!("{}", other),
                         };
                         if let Some(prec) = precision {
@@ -1316,7 +1392,7 @@ impl VirtualMachine {
         {
             eprintln!("warning: too many arguments for format string");
         }
-        Ok(Object::String(Rc::new(result)))
+        Ok(Object::string(result))
     }
 
     /// The elements of an operand that stands for an array: an Array itself,

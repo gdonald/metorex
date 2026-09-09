@@ -24,8 +24,8 @@ fn test_lexer_unterminated_string_single_quotes() {
 fn test_lexer_string_with_newline_unescaped() {
     let mut lexer = Lexer::new("\"hello\nworld\"");
     let token = lexer.next_token();
-    // Should return EOF on error (newline in string is not allowed)
-    assert_eq!(token.kind, TokenKind::EOF);
+    // A quoted string may run across lines, so the newline is content.
+    assert_eq!(token.kind, TokenKind::String("hello\nworld".to_string()));
 }
 
 #[test]

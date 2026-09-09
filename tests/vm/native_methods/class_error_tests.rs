@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -37,7 +36,7 @@ class Dyn
 end
 Dyn.new.greet
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -64,7 +63,7 @@ class Animal
 end
 Animal.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Animal".to_string()))));
+    assert_eq!(result, Some(Object::string("Animal".to_string())));
 }
 
 #[test]
@@ -76,7 +75,7 @@ class Child < Base
 end
 Child.superclass.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Base".to_string()))));
+    assert_eq!(result, Some(Object::string("Base".to_string())));
 }
 
 #[test]
@@ -104,10 +103,7 @@ class Solo
 end
 Solo.superclass.name
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Object".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Object".to_string())));
 }
 
 fn run_err(code: &str) -> String {
@@ -392,8 +388,14 @@ fn process_pid_returns_integer() {
 
 #[test]
 fn process_ppid_returns_integer() {
+    // Every process has a parent, so the id is a positive number rather than
+    // the zero a stub would answer.
     let result = run("Process.ppid");
-    assert_eq!(result, Some(Object::Int(0)));
+    assert!(
+        matches!(result, Some(Object::Int(parent)) if parent > 0),
+        "unexpected parent process id: {:?}",
+        result
+    );
 }
 
 #[test]
@@ -438,8 +440,8 @@ fn file_expand_path_nonexistent_path() {
 // ── object_methods.rs: to_s with args error (lines 45-49) ────────────────────
 
 #[test]
-fn to_s_with_args_errors() {
-    let err = run_err("42.to_s(10)");
+fn to_s_with_too_many_args_errors() {
+    let err = run_err("42.to_s(10, 2)");
     assert!(err.contains("argument"));
 }
 

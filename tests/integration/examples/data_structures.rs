@@ -232,3 +232,19 @@ fn test_arrays_searching_parens_execution() {
     let output = run_example("data_structures/arrays/searching_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `data_structures/maps_that_hold_weakly`
+/// variants.
+const MAPS_THAT_HOLD_WEAKLY_OUTPUT: &str = "true\n0\n2\n\"one\"\ntrue\n[\"one\", \"two\"]\nnil\ntrue\n[\"one\", \"two\"]\n[\"Object\", \"Object\"]\n\"one\"\n1\n\"gone\"\n1\ntrue\n\"A\"\n1\n2\n2\n0\n\"WeakKeyMap must be garbage collectable\"\nnil\nfalse\nnil\n0\n0\n0\ntrue\n";
+
+#[test]
+fn test_data_structures_maps_that_hold_weakly_execution() {
+    let output = run_example("data_structures/maps_that_hold_weakly.rb");
+    assert_eq!(output, MAPS_THAT_HOLD_WEAKLY_OUTPUT);
+}
+
+#[test]
+fn test_data_structures_maps_that_hold_weakly_no_parens_execution() {
+    let output = run_example("data_structures/maps_that_hold_weakly_no_parens.rb");
+    assert_eq!(output, MAPS_THAT_HOLD_WEAKLY_OUTPUT);
+}

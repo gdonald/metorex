@@ -277,8 +277,8 @@ impl VirtualMachine {
             }
             // `first` and `last` answer the endpoint, or that many values from
             // the front or the back when given a count.
-            "begin" => Ok(Some(start.as_ref().clone())),
-            "end" => Ok(Some(end.as_ref().clone())),
+            "begin" => Ok(Some((**start).clone())),
+            "end" => Ok(Some((**end).clone())),
             "first" | "last" => {
                 if arguments.is_empty() {
                     // The open side of a range has no first or last value.
@@ -297,9 +297,9 @@ impl VirtualMachine {
                         ));
                     }
                     return Ok(Some(if method_name == "first" {
-                        start.as_ref().clone()
+                        (**start).clone()
                     } else {
-                        end.as_ref().clone()
+                        (**end).clone()
                     }));
                 }
                 if arguments.len() > 1 {
@@ -371,26 +371,26 @@ impl VirtualMachine {
                     if method_name == "min" {
                         let order = self.evaluate_binary_operation(
                             &crate::ast::BinaryOp::Spaceship,
-                            start.as_ref().clone(),
-                            end.as_ref().clone(),
+                            (**start).clone(),
+                            (**end).clone(),
                             position,
                         )?;
                         if matches!(order, Object::Int(value) if value > 0) {
                             return Ok(Some(Object::Nil));
                         }
-                        return Ok(Some(start.as_ref().clone()));
+                        return Ok(Some((**start).clone()));
                     }
                     let order = self.evaluate_binary_operation(
                         &crate::ast::BinaryOp::Spaceship,
-                        start.as_ref().clone(),
-                        end.as_ref().clone(),
+                        (**start).clone(),
+                        (**end).clone(),
                         position,
                     )?;
                     if matches!(order, Object::Int(value) if value > 0) {
                         return Ok(Some(Object::Nil));
                     }
                     if !*exclusive {
-                        return Ok(Some(end.as_ref().clone()));
+                        return Ok(Some((**end).clone()));
                     }
                     // The largest value below an exclusive integer end is the
                     // one before it, which needs no walk.
@@ -432,8 +432,8 @@ impl VirtualMachine {
                             _ => {
                                 let order = self.evaluate_binary_operation(
                                     &crate::ast::BinaryOp::Spaceship,
-                                    other_end.as_ref().clone(),
-                                    end.as_ref().clone(),
+                                    (**other_end).clone(),
+                                    (**end).clone(),
                                     position,
                                 )?;
                                 matches!(order, Object::Int(value) if value <= 0)
@@ -649,7 +649,7 @@ impl VirtualMachine {
             return Ok((first..=last)
                 .filter_map(char::from_u32)
                 .map(|letter| {
-                    let text = Rc::new(letter.to_string());
+                    let text = Rc::new(crate::object::StringValue::new(letter.to_string()));
                     if symbols {
                         Object::Symbol(text)
                     } else {
@@ -692,7 +692,7 @@ impl VirtualMachine {
 }
 
 /// The characters a String or Symbol is named with.
-fn name_of(value: &Object) -> Option<Rc<String>> {
+fn name_of(value: &Object) -> Option<Rc<crate::object::StringValue>> {
     match value {
         Object::String(text) | Object::Symbol(text) => Some(Rc::clone(text)),
         _ => None,

@@ -16,24 +16,18 @@ fn run(code: &str) -> Option<Object> {
 fn string_format_percent_d() {
     assert_eq!(
         run(r#""value: %d" % 42"#),
-        Some(Object::String(std::rc::Rc::new("value: 42".to_string())))
+        Some(Object::string("value: 42".to_string()))
     );
 }
 
 #[test]
 fn string_format_percent_d_with_plus_sign() {
-    assert_eq!(
-        run(r#""%+d" % 5"#),
-        Some(Object::String(std::rc::Rc::new("+5".to_string())))
-    );
+    assert_eq!(run(r#""%+d" % 5"#), Some(Object::string("+5".to_string())));
 }
 
 #[test]
 fn string_format_percent_d_with_space_sign() {
-    assert_eq!(
-        run(r#""% d" % 5"#),
-        Some(Object::String(std::rc::Rc::new(" 5".to_string())))
-    );
+    assert_eq!(run(r#""% d" % 5"#), Some(Object::string(" 5".to_string())));
 }
 
 #[test]
@@ -47,18 +41,12 @@ fn string_format_percent_d_with_width() {
 
 #[test]
 fn string_format_percent_d_from_float_arg() {
-    assert_eq!(
-        run(r#""%d" % 3.7"#),
-        Some(Object::String(std::rc::Rc::new("3".to_string())))
-    );
+    assert_eq!(run(r#""%d" % 3.7"#), Some(Object::string("3".to_string())));
 }
 
 #[test]
 fn string_format_percent_d_negative_no_plus() {
-    assert_eq!(
-        run(r#""%+d" % -5"#),
-        Some(Object::String(std::rc::Rc::new("-5".to_string())))
-    );
+    assert_eq!(run(r#""%+d" % -5"#), Some(Object::string("-5".to_string())));
 }
 
 // ── %s ──────────────────────────────────────────────────────────────────────
@@ -67,7 +55,7 @@ fn string_format_percent_d_negative_no_plus() {
 fn string_format_percent_s() {
     assert_eq!(
         run(r#""hi %s" % "world""#),
-        Some(Object::String(std::rc::Rc::new("hi world".to_string())))
+        Some(Object::string("hi world".to_string()))
     );
 }
 
@@ -75,7 +63,7 @@ fn string_format_percent_s() {
 fn string_format_percent_s_with_precision() {
     assert_eq!(
         run(r#""%.3s" % "hello""#),
-        Some(Object::String(std::rc::Rc::new("hel".to_string())))
+        Some(Object::string("hel".to_string()))
     );
 }
 
@@ -83,7 +71,7 @@ fn string_format_percent_s_with_precision() {
 fn string_format_percent_with_array_args() {
     assert_eq!(
         run(r#""%s = %d" % ["x", 7]"#),
-        Some(Object::String(std::rc::Rc::new("x = 7".to_string())))
+        Some(Object::string("x = 7".to_string()))
     );
 }
 
@@ -102,7 +90,7 @@ fn string_format_percent_f_basic() {
 fn string_format_percent_f_with_precision() {
     assert_eq!(
         run(r#""%.2f" % 3.14159"#),
-        Some(Object::String(std::rc::Rc::new("3.14".to_string())))
+        Some(Object::string("3.14".to_string()))
     );
 }
 
@@ -137,34 +125,22 @@ fn string_format_percent_f_non_numeric_errors() {
 
 #[test]
 fn string_format_percent_x_lowercase() {
-    assert_eq!(
-        run(r#""%x" % 255"#),
-        Some(Object::String(std::rc::Rc::new("ff".to_string())))
-    );
+    assert_eq!(run(r#""%x" % 255"#), Some(Object::string("ff".to_string())));
 }
 
 #[test]
 fn string_format_percent_x_uppercase() {
-    assert_eq!(
-        run(r#""%X" % 255"#),
-        Some(Object::String(std::rc::Rc::new("FF".to_string())))
-    );
+    assert_eq!(run(r#""%X" % 255"#), Some(Object::string("FF".to_string())));
 }
 
 #[test]
 fn string_format_percent_o_octal() {
-    assert_eq!(
-        run(r#""%o" % 8"#),
-        Some(Object::String(std::rc::Rc::new("10".to_string())))
-    );
+    assert_eq!(run(r#""%o" % 8"#), Some(Object::string("10".to_string())));
 }
 
 #[test]
 fn string_format_percent_b_binary() {
-    assert_eq!(
-        run(r#""%b" % 5"#),
-        Some(Object::String(std::rc::Rc::new("101".to_string())))
-    );
+    assert_eq!(run(r#""%b" % 5"#), Some(Object::string("101".to_string())));
 }
 
 // ── %p ──────────────────────────────────────────────────────────────────────
@@ -173,7 +149,7 @@ fn string_format_percent_b_binary() {
 fn string_format_percent_p_string() {
     assert_eq!(
         run(r#""%p" % "hi""#),
-        Some(Object::String(std::rc::Rc::new("\"hi\"".to_string())))
+        Some(Object::string("\"hi\"".to_string()))
     );
 }
 
@@ -181,7 +157,7 @@ fn string_format_percent_p_string() {
 fn string_format_percent_p_nil() {
     assert_eq!(
         run(r#""%p" % nil"#),
-        Some(Object::String(std::rc::Rc::new("nil".to_string())))
+        Some(Object::string("nil".to_string()))
     );
 }
 
@@ -189,26 +165,17 @@ fn string_format_percent_p_nil() {
 
 #[test]
 fn string_format_percent_c_from_int() {
-    assert_eq!(
-        run(r#""%c" % 65"#),
-        Some(Object::String(std::rc::Rc::new("A".to_string())))
-    );
+    assert_eq!(run(r#""%c" % 65"#), Some(Object::string("A".to_string())));
 }
 
 #[test]
 fn string_format_percent_c_from_string() {
-    assert_eq!(
-        run(r#""%c" % "X""#),
-        Some(Object::String(std::rc::Rc::new("X".to_string())))
-    );
+    assert_eq!(run(r#""%c" % "X""#), Some(Object::string("X".to_string())));
 }
 
 #[test]
 fn string_format_percent_c() {
-    assert_eq!(
-        run("'%c' % 65"),
-        Some(Object::String(std::rc::Rc::new("A".to_string())))
-    );
+    assert_eq!(run("'%c' % 65"), Some(Object::string("A".to_string())));
 }
 
 // ── %% literal, alignment, padding ──────────────────────────────────────────
@@ -217,7 +184,7 @@ fn string_format_percent_c() {
 fn string_format_percent_literal_double() {
     assert_eq!(
         run(r#""100%%" % []"#),
-        Some(Object::String(std::rc::Rc::new("100%".to_string())))
+        Some(Object::string("100%".to_string()))
     );
 }
 
@@ -234,7 +201,7 @@ fn string_format_left_align() {
 fn string_format_zero_pad() {
     assert_eq!(
         run(r#""%05d" % 42"#),
-        Some(Object::String(std::rc::Rc::new("00042".to_string())))
+        Some(Object::string("00042".to_string()))
     );
 }
 
@@ -252,7 +219,7 @@ fn string_format_left_align_coverage() {
 fn string_format_zero_pad_coverage() {
     assert_eq!(
         run("'%05d' % 42"),
-        Some(Object::String(std::rc::Rc::new("00042".to_string())))
+        Some(Object::string("00042".to_string()))
     );
 }
 

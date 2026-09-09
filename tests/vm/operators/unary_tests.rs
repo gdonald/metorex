@@ -32,10 +32,7 @@ fn unary_plus_float() {
 #[test]
 fn unary_plus_on_string_returns_string() {
     let result = run(r#"+"hello""#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hello".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]

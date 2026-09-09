@@ -176,6 +176,7 @@ fn compile_assign_op_in_expression_context_errors() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let expr = Expression::BinaryOp {
         op: BinaryOp::Assign,
@@ -213,6 +214,7 @@ fn compile_add_assign_op_in_expression_context_errors() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let expr = Expression::BinaryOp {
         op: BinaryOp::AddAssign,
@@ -244,6 +246,7 @@ fn compile_subtract_assign_op_in_expression_context_errors() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let expr = Expression::BinaryOp {
         op: BinaryOp::SubtractAssign,
@@ -275,6 +278,7 @@ fn compile_multiply_assign_op_in_expression_context_errors() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let expr = Expression::BinaryOp {
         op: BinaryOp::MultiplyAssign,
@@ -306,6 +310,7 @@ fn compile_divide_assign_op_in_expression_context_errors() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let expr = Expression::BinaryOp {
         op: BinaryOp::DivideAssign,

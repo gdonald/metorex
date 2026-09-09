@@ -670,17 +670,32 @@ module Enumerable
     ordered.first(count[0])
   end
 
+  # On a tie the one that came first wins, so the walk keeps what it has
+  # unless a later value is strictly greater.
   def max_by(*count)
     return sized_enum(:max_by, *count) unless block_given?
-    ordered = sort_by { |*values| yield(packed(values)) }
-    return ordered.last if count.empty? || count[0].nil?
-    ordered.last(count[0]).reverse
+    unless count.empty? || count[0].nil?
+      ordered = sort_by { |*values| yield(packed(values)) }
+      return ordered.last(count[0]).reverse
+    end
+    held = nil
+    best = nil
+    each do |*values|
+      value = packed(values)
+      measured = yield(value)
+      if best.nil? || (measured <=> best) > 0
+        best = measured
+        held = value
+      end
+    end
+    held
   end
 
+  # The first of a tie wins at either end, which sorting alone does not
+  # promise, so each end is walked for itself.
   def minmax_by(&block)
     return sized_enum(:minmax_by) unless block_given?
-    ordered = sort_by(&block)
-    [ordered.first, ordered.last]
+    [min_by(&block), max_by(&block)]
   end
 
   def group_by
@@ -1861,21 +1876,27 @@ end
 class Enumerator
   include Enumerable
 
-  # Collects what a generator block hands it, so `Enumerator.new { |y| y << 1 }`
-  # reads the same way as one built over a method that yields.
+  # What a generator block is handed, so `Enumerator.new { |y| y << 1 }`
+  # reads the same way as one built over a method that yields. Everything
+  # handed to it goes to the block it was made with.
   class Yielder
-    def initialize(collected)
-      @collected = collected
+    def initialize(&block)
+      @block = block
+      self
     end
+    private :initialize
 
     def <<(value)
-      @collected.push(value)
+      @block.call(value)
       self
     end
 
     def yield(*values)
-      @collected.push(values.size == 1 ? values[0] : values)
-      nil
+      @block.call(*values)
+    end
+
+    def to_proc
+      @block
     end
   end
 
@@ -1888,8 +1909,17 @@ class Enumerator
     @generator = generator
   end
 
+  # The count the walk will hand out, where that is known ahead of it. An
+  # endpoint the walk cannot count to has no size to report, and asking is
+  # refused rather than answered with a guess.
   def size
+    raise ArgumentError, @size_error unless @size_error.nil?
     @size
+  end
+
+  def __refuse_size__(message)
+    @size_error = message
+    self
   end
 
   def to_a
@@ -1898,9 +1928,13 @@ class Enumerator
       if @generator.nil?
         @result = @receiver.send(@method_name, *@arguments) do |*yielded|
           collected.push(yielded.empty? ? nil : (yielded.size == 1 ? yielded[0] : yielded))
+          nil
         end
       else
-        @result = @generator.call(Yielder.new(collected))
+        @result = @generator.call(Yielder.new { |*yielded|
+          collected.push(yielded.size == 1 ? yielded[0] : yielded)
+          nil
+        })
       end
       @values = collected
     end
@@ -1937,9 +1971,13 @@ class Enumerator
       if @generator.nil?
         @result = @receiver.send(@method_name, *@arguments) do |*yielded|
           collected.push(yielded)
+          nil
         end
       else
-        @result = @generator.call(Yielder.new(collected))
+        @result = @generator.call(Yielder.new { |*yielded|
+          collected.push(yielded)
+          nil
+        })
       end
       @raw_values = collected
     end
@@ -1962,8 +2000,14 @@ class Enumerator
     value
   end
 
+  # Ruby hands the rewind on to the object the walk was cut from when that
+  # object can be rewound, so a source with a place of its own goes back to
+  # the start too.
   def rewind
     @position = 0
+    if !@receiver.nil? && !@receiver.equal?(self) && @receiver.respond_to?(:rewind)
+      @receiver.rewind
+    end
     self
   end
 
@@ -2515,6 +2559,251 @@ class Enumerator
   def +(other)
     Enumerator::Chain.new(self, other)
   end
+end
+
+# The Cartesian product of several walks, which yields one array per
+# combination in the order the walks were given.
+class Enumerator::Product < Enumerator
+  def initialize(*enumerables)
+    raise FrozenError, "can\'t modify frozen #{self.class}" if frozen?
+    @enumerables = enumerables
+    self
+  end
+  private :initialize
+
+  def initialize_copy(other)
+    return self if other.equal?(self)
+    raise FrozenError, "can\'t modify frozen #{self.class}" if frozen?
+    unless other.class == self.class
+      raise TypeError, "initialize_copy should take same class object"
+    end
+    taken = other.instance_variable_get(:@enumerables)
+    raise ArgumentError, "uninitialized product" if taken.nil?
+    @enumerables = taken
+    self
+  end
+  private :initialize_copy
+
+  def each
+    return Enumerator.new(self, :each, [], size) unless block_given?
+    combinations = [[]]
+    @enumerables.each do |enumerable|
+      entries = []
+      enumerable.each_entry { |entry| entries.push(entry) }
+      grown = []
+      combinations.each do |prefix|
+        entries.each { |entry| grown.push(prefix + [entry]) }
+      end
+      combinations = grown
+    end
+    combinations.each { |combination| yield combination }
+    self
+  end
+
+  def to_a
+    collected = []
+    each { |combination| collected.push(combination) }
+    collected
+  end
+
+  def rewind
+    @enumerables.each do |enumerable|
+      enumerable.rewind if enumerable.respond_to?(:rewind)
+    end
+    self
+  end
+
+  # The number of combinations, which is nil as soon as one walk cannot say
+  # how long it is.
+  def size
+    total = 1
+    @enumerables.each do |enumerable|
+      counted = begin
+        enumerable.size
+      rescue NoMethodError
+        return nil
+      end
+      return Float::INFINITY if counted == Float::INFINITY
+      return nil unless counted.is_a?(Integer)
+      total = total * counted
+    end
+    total
+  end
+
+  def inspect
+    return "#<Enumerator::Product: uninitialized>" if @enumerables.nil?
+    return "#<Enumerator::Product: ...>" if @rendering
+    @rendering = true
+    written = "#<Enumerator::Product: #{@enumerables.inspect}>"
+    @rendering = false
+    written
+  end
+end
+
+# A walk over evenly spaced numbers, which is what `1.step(10)` and
+# `(1..10).step(2)` answer when they are handed no block. It is built only
+# through those methods, so `new` and `allocate` are not among its own.
+class Enumerator::ArithmeticSequence < Enumerator
+  def self.allocate
+    raise TypeError, "allocator undefined for Enumerator::ArithmeticSequence"
+  end
+
+  def initialize(from, to, by, exclude_end, source, written_as, step_given)
+    @from = from
+    @to = to
+    @by = by
+    @exclude_end = exclude_end
+    @source = source
+    @written_as = written_as
+    @step_given = step_given
+    super(self, :each, [])
+  end
+  private_class_method :new
+
+  def begin
+    @from
+  end
+
+  def end
+    @to
+  end
+
+  def step
+    @by
+  end
+
+  def exclude_end?
+    @exclude_end
+  end
+
+  def each(&block)
+    return self if block.nil?
+    value = @from
+    while within?(value)
+      block.call(value)
+      value = value + @by
+    end
+    self
+  end
+
+  # Whether a value is still inside the sequence, which for a walk with no
+  # end is always.
+  def within?(value)
+    return true if @to.nil?
+    if @by < 0
+      @exclude_end ? value > @to : value >= @to
+    else
+      @exclude_end ? value < @to : value <= @to
+    end
+  end
+  private :within?
+
+  def size
+    return Float::INFINITY if @to.nil? || @from.nil?
+    return Float::INFINITY if @to == Float::INFINITY || @to == -Float::INFINITY
+    span = @to - @from
+    steps = (span / @by).floor
+    counted = steps + 1
+    counted = counted - 1 if @exclude_end && steps * @by == span
+    counted < 0 ? 0 : counted
+  end
+
+  def first(count = nil)
+    return @from if count.nil?
+    collected = []
+    each do |value|
+      break if collected.size >= count
+      collected.push(value)
+    end
+    collected
+  end
+
+  def last(count = nil)
+    counted = size
+    return nil if counted == Float::INFINITY
+    return nil if counted == 0
+    ending = @from + (counted - 1) * @by
+    return ending if count.nil?
+    kept = count > counted ? counted : count
+    (0...kept).map { |place| @from + (counted - kept + place) * @by }
+  end
+
+  def ==(other)
+    return false unless other.is_a?(Enumerator::ArithmeticSequence)
+    self.begin == other.begin && self.end == other.end &&
+      step == other.step && exclude_end? == other.exclude_end?
+  end
+
+  def eql?(other)
+    self == other
+  end
+
+  def hash
+    [@from, @to, @by, @exclude_end].hash
+  end
+
+  def inspect
+    "(" + written_form + ")"
+  end
+
+  def to_s
+    inspect
+  end
+
+  # How the sequence was asked for, which is what Ruby writes it back as.
+  def written_form
+    if @source.nil?
+      return "#{@from.inspect}.step" if @to.nil? && !@step_given
+      written = "#{@from.inspect}.step(#{@to.inspect}"
+      written = written + ", #{@by.inspect}" if @step_given
+      return written + ")"
+    end
+    written = "(#{@source.inspect}).#{@written_as}"
+    return written + "(#{@by.inspect})" if @step_given
+    written
+  end
+  private :written_form
+end
+
+class Numeric
+  # `1.step(10, 3)` walks 1, 4, 7, 10. Without a block it answers the
+  # sequence itself, which is what carries the walk about.
+  def step(limit = nil, by = nil, to: nil, by_named: nil, &block)
+    named_by = by_named
+    step_given = !by.nil? || !named_by.nil?
+    walked_by = by.nil? ? (named_by.nil? ? 1 : named_by) : by
+    raise ArgumentError, "step can\'t be 0" if walked_by == 0
+    walked_to = limit.nil? ? to : limit
+    sequence = Enumerator::ArithmeticSequence.send(
+      :new, self, walked_to, walked_by, false, nil, "step", step_given
+    )
+    return sequence if block.nil?
+    sequence.each { |value| block.call(value) }
+    self
+  end
+end
+
+class Range
+  # `(1..10).step(3)` walks 1, 4, 7, 10, and `%` is written for the same
+  # thing. Without a block either one answers the sequence itself.
+  def step(by = nil, &block)
+    stepped(by, "step", &block)
+  end
+
+  def %(by = nil, &block)
+    stepped(by, "%", &block)
+  end
+
+  def stepped(by, written_as, &block)
+    raise ArgumentError, "step can\'t be 0" if by == 0
+    sequence = Enumerator::ArithmeticSequence.send(
+      :new, self.begin, self.end, by.nil? ? 1 : by, exclude_end?, self, written_as, !by.nil?
+    )
+    return sequence if block.nil?
+    sequence.each { |value| block.call(value) }
+    self
+  end
+  private :stepped
 end
 
 class Array
@@ -3473,12 +3762,14 @@ class Time
     asctime
   end
 
+  # A time writes itself with nothing but ASCII in it, which is the encoding
+  # Ruby tags the result with.
   def to_s
-    "#{strftime("%Y-%m-%d %H:%M:%S")} #{zone_label}"
+    "#{strftime("%Y-%m-%d %H:%M:%S")} #{zone_label}".force_encoding(Encoding::US_ASCII)
   end
 
   def inspect
-    "#{strftime("%Y-%m-%d %H:%M:%S")}#{fraction_label} #{zone_label}"
+    "#{strftime("%Y-%m-%d %H:%M:%S")}#{fraction_label} #{zone_label}".force_encoding(Encoding::US_ASCII)
   end
 
   # What follows the seconds in a rendering: `UTC` for a time read in UTC,
@@ -3534,6 +3825,1480 @@ class IO
   SEEK_END = 2
 end
 
+# The numbers the operating system keeps about a file, presented the way Ruby
+# presents them.
+class File
+  class Stat
+    include Comparable
+
+    def initialize(path, follow = true)
+      unless path.is_a?(String)
+        unless path.respond_to?(:to_path)
+          raise TypeError, "no implicit conversion of #{path.class} into String"
+        end
+        path = path.to_path
+      end
+      @path = path.to_s
+      @fields = File.__stat_fields__(@path, follow)
+    end
+
+    def dev
+      @fields[:dev]
+    end
+
+    def dev_major
+      (@fields[:dev] >> 24) & 0xff
+    end
+
+    def dev_minor
+      @fields[:dev] & 0xffffff
+    end
+
+    def ino
+      @fields[:ino]
+    end
+
+    def mode
+      @fields[:mode]
+    end
+
+    def nlink
+      @fields[:nlink]
+    end
+
+    def uid
+      @fields[:uid]
+    end
+
+    def gid
+      @fields[:gid]
+    end
+
+    def rdev
+      @fields[:rdev]
+    end
+
+    def rdev_major
+      (@fields[:rdev] >> 24) & 0xff
+    end
+
+    def rdev_minor
+      @fields[:rdev] & 0xffffff
+    end
+
+    def size
+      @fields[:size]
+    end
+
+    def size?
+      @fields[:size] == 0 ? nil : @fields[:size]
+    end
+
+    def blksize
+      @fields[:blksize]
+    end
+
+    def blocks
+      @fields[:blocks]
+    end
+
+    def atime
+      Time.at(@fields[:atime])
+    end
+
+    def mtime
+      Time.at(@fields[:mtime])
+    end
+
+    def ctime
+      Time.at(@fields[:ctime])
+    end
+
+    def birthtime
+      raise NotImplementedError, "birthtime() function is unimplemented" if @fields[:birthtime].nil?
+      Time.at(@fields[:birthtime])
+    end
+
+    def ftype
+      @fields[:ftype]
+    end
+
+    def file?
+      @fields[:ftype] == "file"
+    end
+
+    def directory?
+      @fields[:ftype] == "directory"
+    end
+
+    def symlink?
+      @fields[:ftype] == "link"
+    end
+
+    def chardev?
+      @fields[:ftype] == "characterSpecial"
+    end
+
+    def blockdev?
+      @fields[:ftype] == "blockSpecial"
+    end
+
+    def pipe?
+      @fields[:ftype] == "fifo"
+    end
+
+    def socket?
+      @fields[:ftype] == "socket"
+    end
+
+    def zero?
+      @fields[:size] == 0
+    end
+
+    # The permission bits, which say who may read, write, and run the file.
+    def setuid?
+      (@fields[:mode] & 0o4000) != 0
+    end
+
+    def setgid?
+      (@fields[:mode] & 0o2000) != 0
+    end
+
+    def sticky?
+      (@fields[:mode] & 0o1000) != 0
+    end
+
+    def world_readable?
+      (@fields[:mode] & 0o004) == 0 ? nil : @fields[:mode] & 0o7777
+    end
+
+    def world_writable?
+      (@fields[:mode] & 0o002) == 0 ? nil : @fields[:mode] & 0o7777
+    end
+
+    def owned?
+      @fields[:uid] == Process.uid
+    end
+
+    # A file belongs to this process's group when its group is any of the
+    # ones the process is in, not only the one it runs as.
+    def grpowned?
+      return true if @fields[:gid] == Process.gid
+      Process.groups.include?(@fields[:gid])
+    end
+
+    def readable?
+      self.permitted?(0o400, 0o040, 0o004)
+    end
+
+    def writable?
+      self.permitted?(0o200, 0o020, 0o002)
+    end
+
+    def executable?
+      self.permitted?(0o100, 0o010, 0o001)
+    end
+
+    def readable_real?
+      self.readable?
+    end
+
+    def writable_real?
+      self.writable?
+    end
+
+    def executable_real?
+      self.executable?
+    end
+
+    # Whether this process may do the thing the three bits stand for, read
+    # against whichever of owner, group, and other it counts as.
+    def permitted?(owner, group, other)
+      return true if Process.uid == 0
+      return (@fields[:mode] & owner) != 0 if @fields[:uid] == Process.uid
+      return (@fields[:mode] & group) != 0 if @fields[:gid] == Process.gid
+      (@fields[:mode] & other) != 0
+    end
+    private :permitted?
+
+    def <=>(other)
+      return nil unless other.is_a?(File::Stat)
+      @fields[:mtime] <=> other.mtime.to_i
+    end
+
+    def inspect
+      written = "#<File::Stat dev=0x#{self.dev.to_s(16)}, ino=#{self.ino}"
+      written = written + ", mode=#{"%07o" % self.mode}, nlink=#{self.nlink}"
+      written = written + ", uid=#{self.uid}, gid=#{self.gid}"
+      written = written + ", rdev=0x#{self.rdev.to_s(16)}, size=#{self.size}"
+      written = written + ", blksize=#{self.blksize.inspect}, blocks=#{self.blocks.inspect}"
+      written = written + ", atime=#{self.atime.inspect}, mtime=#{self.mtime.inspect}"
+      written = written + ", ctime=#{self.ctime.inspect}"
+      written = written + ", birthtime=#{self.birthtime.inspect}" unless @fields[:birthtime].nil?
+      written + ">"
+    end
+
+    def to_s
+      self.inspect
+    end
+  end
+
+  def self.stat(path)
+    File::Stat.new(path, true)
+  end
+
+  def self.lstat(path)
+    File::Stat.new(path, false)
+  end
+
+  def self.birthtime(path)
+    File::Stat.new(path, true).birthtime
+  end
+
+  # The questions about a file that read what the operating system keeps
+  # about it. A name with nothing behind it answers the way Ruby's does
+  # rather than raising.
+  def self.__stat_answer__(path, follow, missing, &block)
+    begin
+      held = File::Stat.new(path, follow)
+    rescue SystemCallError, Errno::ENOENT
+      return missing
+    end
+    block.call(held)
+  end
+
+  def self.ftype(path)
+    File::Stat.new(path, false).ftype
+  end
+
+  def self.zero?(path)
+    self.__stat_answer__(path, true, false) { |held| held.zero? }
+  end
+
+  def self.empty?(path)
+    self.zero?(path)
+  end
+
+  def self.world_readable?(path)
+    self.__stat_answer__(path, true, nil) { |held| held.world_readable? }
+  end
+
+  def self.world_writable?(path)
+    self.__stat_answer__(path, true, nil) { |held| held.world_writable? }
+  end
+
+  def self.readable?(path)
+    self.__stat_answer__(path, true, false) { |held| held.readable? }
+  end
+
+  def self.readable_real?(path)
+    self.readable?(path)
+  end
+
+  def self.writable?(path)
+    self.__stat_answer__(path, true, false) { |held| held.writable? }
+  end
+
+  def self.writable_real?(path)
+    self.writable?(path)
+  end
+
+  def self.executable_real?(path)
+    self.__stat_answer__(path, true, false) { |held| held.executable? }
+  end
+
+  def self.owned?(path)
+    self.__stat_answer__(path, true, false) { |held| held.owned? }
+  end
+
+  def self.grpowned?(path)
+    self.__stat_answer__(path, true, false) { |held| held.grpowned? }
+  end
+
+  def self.setuid?(path)
+    self.__stat_answer__(path, true, false) { |held| held.setuid? }
+  end
+
+  def self.setgid?(path)
+    self.__stat_answer__(path, true, false) { |held| held.setgid? }
+  end
+
+  def self.sticky?(path)
+    self.__stat_answer__(path, true, false) { |held| held.sticky? }
+  end
+
+  def self.blockdev?(path)
+    self.__stat_answer__(path, false, false) { |held| held.blockdev? }
+  end
+
+  def self.chardev?(path)
+    self.__stat_answer__(path, false, false) { |held| held.chardev? }
+  end
+
+  def self.pipe?(path)
+    self.__stat_answer__(path, false, false) { |held| held.pipe? }
+  end
+
+  def self.socket?(path)
+    self.__stat_answer__(path, false, false) { |held| held.socket? }
+  end
+
+  # Two names stand for the same file when the device and the number the
+  # filesystem keeps it under both match.
+  def self.identical?(one, other)
+    first = self.__stat_answer__(one, true, nil) { |held| held }
+    second = self.__stat_answer__(other, true, nil) { |held| held }
+    return false if first.nil? || second.nil?
+    first.dev == second.dev && first.ino == second.ino
+  end
+
+  # `File.stat` and `File.lstat` read a name, and the instance forms read the
+  # name the handle was opened under. The two differ over a symlink: `stat`
+  # follows it to what it points at, `lstat` reports the link itself.
+  def self.stat(path)
+    File::Stat.new(path)
+  end
+
+  def self.lstat(path)
+    File::Stat.new(path, false)
+  end
+
+  def stat
+    File::Stat.new(self.path)
+  end
+
+  def lstat
+    File::Stat.new(self.path, false)
+  end
+
+  # The name the handle was opened under. An IO that never came from a name
+  # has none, which is what `to_path` answers for.
+  def path
+    @__file_path
+  end
+
+  def to_path
+    @__file_path
+  end
+
+  # An IO stands for itself where one is asked for.
+  def to_io
+    self
+  end
+
+  # The time the file was created, which the filesystem records separately
+  # from the last write.
+  # A name nothing stands for is refused rather than answered with nil, the
+  # way every other reading of a missing file is.
+  def self.birthtime(path)
+    File::Stat.new(path).birthtime
+  end
+
+  def birthtime
+    File.birthtime(self.path)
+  end
+end
+
+# An open directory, walked one name at a time.
+# The maps that hold their entries only as long as something else does. Both
+# are written here as ordinary maps, since metorex frees an object when the
+# last reference to it goes and never before.
+# A hook the interpreter calls as it runs. A TracePoint is built over the
+# events it cares about, switched on around a block, and handed itself when
+# one of those events happens. The readings it answers describe the event
+# being handled, so asking for one outside a handler is refused.
+class TracePoint
+  KNOWN_EVENTS = [:line, :call, :return, :c_call, :c_return, :class, :end,
+                  :b_call, :b_return, :raise, :rescue, :thread_begin,
+                  :thread_end, :fiber_switch, :script_compiled, :a_call,
+                  :a_return]
+
+  def self.new(*events, &block)
+    raise ArgumentError, "must be called with a block" if block.nil?
+    events.each do |event|
+      unless KNOWN_EVENTS.include?(event)
+        raise ArgumentError, "unknown event: #{event}"
+      end
+    end
+    made = allocate
+    made.send(:__set_up__, events, block)
+    made
+  end
+
+  def self.trace(*events, &block)
+    made = new(*events, &block)
+    made.enable
+    made
+  end
+
+  def __set_up__(events, block)
+    @events = events.empty? ? KNOWN_EVENTS : events
+    @block = block
+    @enabled = false
+    @handling = nil
+    self
+  end
+  private :__set_up__
+
+  def enabled?
+    @enabled == true
+  end
+
+  # With a block, the trace is on for the length of it and the block's value
+  # is the answer. Without one, the answer is what the switch was before.
+  def enable(target: nil, target_line: nil, target_thread: nil, &block)
+    was = enabled?
+    @enabled = true
+    __register__
+    return was if block.nil?
+    begin
+      block.call
+    ensure
+      @enabled = was
+      __register__
+    end
+  end
+
+  def disable(&block)
+    was = enabled?
+    @enabled = false
+    __register__
+    return was if block.nil?
+    begin
+      block.call
+    ensure
+      @enabled = was
+      __register__
+    end
+  end
+
+  # Ruby switches a trace off while its own handler runs, so an event the
+  # handler causes does not call it again. `allow_reentry` lifts that for the
+  # length of a block.
+  # Ruby switches a trace off while its own handler runs, so an event the
+  # handler causes does not call it again. `allow_reentry` lifts that for the
+  # length of a block, and is refused outside a handler.
+  def self.allow_reentry
+    raise RuntimeError, "allow_reentry is not allowed outside of a trace" unless __tracing__
+    yield
+  end
+
+  def event
+    __reading__(:event)
+  end
+
+  def lineno
+    __reading__(:lineno)
+  end
+
+  def path
+    __reading__(:path)
+  end
+
+  def self
+    __reading__(:self)
+  end
+
+  def method_id
+    __reading__(:method_id)
+  end
+
+  def return_value
+    __reading__(:return_value)
+  end
+
+  def callee_id
+    __reading__(:callee_id)
+  end
+
+  def defined_class
+    __reading__(:defined_class)
+  end
+
+  def inspect
+    return "#<TracePoint:disabled>" if @handling.nil?
+    "#<TracePoint:#{@handling["event"]}@#{@handling["path"]}:#{@handling["lineno"]}>"
+  end
+
+  # What the event being handled says about itself. Nothing is being handled
+  # outside a handler, which is what Ruby reports.
+  def __reading__(name)
+    raise RuntimeError, "access from outside" if @handling.nil?
+    @handling[name.to_s]
+  end
+  private :__reading__
+
+  def __handle__(details)
+    held = @handling
+    @handling = details
+    begin
+      @block.call(self)
+    ensure
+      @handling = held
+    end
+  end
+
+  def __wants__(event)
+    @events.include?(event)
+  end
+end
+
+# The format version `Marshal.dump` writes and `Marshal.load` reads. Metorex
+# writes no marshalled data yet, and these name the format it would be.
+module Marshal
+  MAJOR_VERSION = 4
+  MINOR_VERSION = 8
+end
+
+module ObjectSpace
+  # Keyed by identity: two objects that are equal but not the same are two
+  # keys.
+  class WeakMap
+    include Enumerable
+
+    def initialize
+      @entries = []
+    end
+
+    def []=(key, value)
+      place = place_of(key)
+      if place.nil?
+        @entries.push([key, value])
+      else
+        @entries[place] = [key, value]
+      end
+      value
+    end
+
+    def [](key)
+      place = place_of(key)
+      place.nil? ? nil : @entries[place][1]
+    end
+
+    def delete(key)
+      place = place_of(key)
+      if place.nil?
+        return yield(key) if block_given?
+        return nil
+      end
+      @entries.delete_at(place)[1]
+    end
+
+    def key?(key)
+      !place_of(key).nil?
+    end
+
+    def member?(key)
+      key?(key)
+    end
+
+    def include?(key)
+      key?(key)
+    end
+
+    def has_key?(key)
+      key?(key)
+    end
+
+    def key(value)
+      @entries.each do |entry|
+        return entry[0] if entry[1].equal?(value)
+      end
+      nil
+    end
+
+    def size
+      @entries.size
+    end
+
+    def length
+      size
+    end
+
+    def keys
+      @entries.map { |entry| entry[0] }
+    end
+
+    def values
+      @entries.map { |entry| entry[1] }
+    end
+
+    # A walk with no block is refused once there is anything to walk, which
+    # is what Ruby does with a map that cannot answer an enumerator.
+    def each
+      unless block_given?
+        return self if @entries.empty?
+        raise LocalJumpError, "no block given (yield)"
+      end
+      @entries.each { |entry| yield entry[0], entry[1] }
+      self
+    end
+
+    def each_pair(&block)
+      each(&block)
+    end
+
+    def each_key
+      unless block_given?
+        return self if @entries.empty?
+        raise LocalJumpError, "no block given (yield)"
+      end
+      @entries.each { |entry| yield entry[0] }
+      self
+    end
+
+    def each_value
+      unless block_given?
+        return self if @entries.empty?
+        raise LocalJumpError, "no block given (yield)"
+      end
+      @entries.each { |entry| yield entry[1] }
+      self
+    end
+
+    # Where a key sits, found by identity rather than by value.
+    def place_of(key)
+      @entries.each_with_index do |entry, place|
+        return place if entry[0].equal?(key)
+      end
+      nil
+    end
+    private :place_of
+  end
+
+  # Keyed by value, and only by something the collector could free, so a
+  # number or a symbol is refused as a key.
+  class WeakKeyMap
+    def initialize
+      @entries = []
+    end
+
+    def []=(key, value)
+      unless collectable?(key)
+        raise ArgumentError, "WeakKeyMap must be garbage collectable"
+      end
+      place = place_of(key)
+      if place.nil?
+        @entries.push([key, value])
+      else
+        @entries[place][1] = value
+      end
+      value
+    end
+
+    def [](key)
+      return nil unless collectable?(key)
+      place = place_of(key)
+      place.nil? ? nil : @entries[place][1]
+    end
+
+    def delete(key)
+      place = collectable?(key) ? place_of(key) : nil
+      if place.nil?
+        return yield(key) if block_given?
+        return nil
+      end
+      @entries.delete_at(place)[1]
+    end
+
+    def getkey(key)
+      return nil unless collectable?(key)
+      place = place_of(key)
+      place.nil? ? nil : @entries[place][0]
+    end
+
+    def key?(key)
+      return false unless collectable?(key)
+      !place_of(key).nil?
+    end
+
+    def clear
+      @entries = []
+      self
+    end
+
+    def size
+      @entries.size
+    end
+
+    def length
+      size
+    end
+
+    def inspect
+      "#<ObjectSpace::WeakKeyMap:0x#{format("%016x", object_id * 2)} size=#{size}>"
+    end
+
+    def to_s
+      inspect
+    end
+
+    # Whether a key is something the collector could free. A number, a
+    # symbol, and the three singletons live for the whole run.
+    def collectable?(key)
+      return false if key.nil? || key == true || key == false
+      return false if key.is_a?(Numeric) || key.is_a?(Symbol)
+      true
+    end
+    private :collectable?
+
+    # Where a key sits. The hash decides which entries are worth comparing,
+    # and the same object is its own match however its `eql?` answers.
+    def place_of(key)
+      wanted = key.__send__(:hash)
+      @entries.each_with_index do |entry, place|
+        held = entry[0]
+        next unless held.__send__(:hash) == wanted
+        return place if held.equal?(key) || key.__send__(:eql?, held)
+      end
+      nil
+    end
+    private :place_of
+  end
+end
+
+# The file questions File answers, gathered as a module so they can be asked
+# without naming File and mixed into anything that wants them.
+module FileTest
+  module_function
+
+  def blockdev?(path)
+    File.blockdev?(path)
+  end
+
+  def chardev?(path)
+    File.chardev?(path)
+  end
+
+  def directory?(path)
+    File.directory?(path)
+  end
+
+  def empty?(path)
+    File.empty?(path)
+  end
+
+  def executable?(path)
+    File.executable?(path)
+  end
+
+  def executable_real?(path)
+    File.executable_real?(path)
+  end
+
+  def exist?(path)
+    File.exist?(path)
+  end
+
+  def file?(path)
+    File.file?(path)
+  end
+
+  def grpowned?(path)
+    File.grpowned?(path)
+  end
+
+  def identical?(path, other)
+    File.identical?(path, other)
+  end
+
+  def owned?(path)
+    File.owned?(path)
+  end
+
+  def pipe?(path)
+    File.pipe?(path)
+  end
+
+  def readable?(path)
+    File.readable?(path)
+  end
+
+  def readable_real?(path)
+    File.readable_real?(path)
+  end
+
+  def setgid?(path)
+    File.setgid?(path)
+  end
+
+  def setuid?(path)
+    File.setuid?(path)
+  end
+
+  def size(path)
+    File.size(path)
+  end
+
+  def size?(path)
+    File.size?(path)
+  end
+
+  def socket?(path)
+    File.socket?(path)
+  end
+
+  def sticky?(path)
+    File.sticky?(path)
+  end
+
+  def symlink?(path)
+    File.symlink?(path)
+  end
+
+  def world_readable?(path)
+    File.world_readable?(path)
+  end
+
+  def world_writable?(path)
+    File.world_writable?(path)
+  end
+
+  def writable?(path)
+    File.writable?(path)
+  end
+
+  def writable_real?(path)
+    File.writable_real?(path)
+  end
+
+  def zero?(path)
+    File.zero?(path)
+  end
+end
+
+class Dir
+  include Enumerable
+
+  def initialize(path, **options)
+    unless path.is_a?(String)
+      unless path.respond_to?(:to_path)
+        raise TypeError, "no implicit conversion of #{path.class} into String"
+      end
+      path = path.to_path
+    end
+    @path = path.to_s
+    unless File.directory?(@path)
+      raise Errno::ENOENT, "No such file or directory @ dir_initialize - #{@path}"
+    end
+    @names = Dir.entries(@path)
+    @position = 0
+    @closed = false
+  end
+
+  def self.open(path, **options, &block)
+    made = Dir.new(path, **options)
+    return made if block.nil?
+    begin
+      block.call(made)
+    ensure
+      made.close
+    end
+  end
+
+  # The path stands whether the directory is still open or not, which is what
+  # Ruby answers for a closed one.
+  def path
+    @path
+  end
+
+  def to_path
+    @path
+  end
+
+  def inspect
+    "#<Dir:#{@path}>"
+  end
+
+  def closed?
+    @closed
+  end
+
+  def close
+    @closed = true
+    nil
+  end
+
+  def fileno
+    self.refuse_closed
+    raise NotImplementedError, "fileno() function is unimplemented on this machine"
+  end
+
+  # Every operation that walks the names needs the directory still open.
+  def refuse_closed
+    raise IOError, "closed directory" if @closed
+  end
+  private :refuse_closed
+
+  def read
+    self.refuse_closed
+    return nil if @position >= @names.length
+    found = @names[@position]
+    @position += 1
+    found
+  end
+
+  def pos
+    self.refuse_closed
+    @position
+  end
+
+  def tell
+    self.pos
+  end
+
+  def seek(position)
+    self.refuse_closed
+    @position = position
+    self
+  end
+
+  def pos=(position)
+    self.seek(position)
+    position
+  end
+
+  def rewind
+    self.refuse_closed
+    @position = 0
+    self
+  end
+
+  # Walking the whole directory starts at the beginning and leaves the
+  # position at the end, which is where a read after it finds nothing.
+  def each(&block)
+    self.refuse_closed
+    return self.to_enum(:each) if block.nil?
+    @position = 0
+    @names.each { |name| block.call(name) }
+    @position = @names.length
+    self
+  end
+
+  def each_child(&block)
+    self.refuse_closed
+    walked = @names.reject { |name| name == "." || name == ".." }
+    return walked.each if block.nil?
+    @position = 0
+    walked.each { |name| block.call(name) }
+    @position = @names.length
+    self
+  end
+
+  def children
+    self.refuse_closed
+    @names.reject { |name| name == "." || name == ".." }
+  end
+
+  def entries
+    self.refuse_closed
+    @names.dup
+  end
+end
+
+module Kernel
+  # `pretty_inspect` is what `pp` writes for an object, which is its own
+  # `inspect` on a line of its own. `require "pp"` is what defines it in
+  # Ruby, and metorex reports pp as already loaded.
+  def pretty_inspect
+    inspect.to_s + "\n"
+  end
+
+  # Ruby calls into the operating system by number here. Metorex does not
+  # reach the system call layer at all, which is what Ruby itself reports on
+  # a platform that cannot.
+  def syscall(*args)
+    raise NotImplementedError, "syscall() function is unimplemented on this machine"
+  end
+  private :syscall
+
+  # Ruby hands each interpreter event to the block set here. Metorex has no
+  # tracing hook for the evaluator to call, so there is nothing to set.
+  def set_trace_func(callable)
+    raise NotImplementedError, "set_trace_func() function is unimplemented on this machine"
+  end
+  private :set_trace_func
+end
+
+# The stream `gets` reads from when a script is handed filenames: each named
+# file in turn, read as though the whole list were one file. `ARGF` is the one
+# the interpreter set up over ARGV, and `ARGF.class.new` builds another over a
+# list of names, which is how the specs read a pair of fixtures.
+ArgfStream = ARGF.class
+
+class ArgfStream
+  def initialize(*names)
+    @names = names.flatten
+    @current = nil
+    @lineno = 0
+    @binmode = false
+    @drained = false
+  end
+
+  def to_s
+    "ARGF"
+  end
+
+  def inspect
+    "ARGF"
+  end
+
+  # The names still to be read. The one being read has already been taken off,
+  # which is what makes `argv` shrink as the walk goes on.
+  def argv
+    self.__names__
+  end
+
+  # The handle now being read. The first name opens on the first ask, so the
+  # file is current before a line has been taken from it.
+  def file
+    self.__open_current__
+    @current
+  end
+
+  def to_io
+    self.file
+  end
+
+  def path
+    self.file.path
+  end
+
+  def filename
+    self.path
+  end
+
+  def fileno
+    raise ArgumentError, "closed stream" if self.__names__.empty? && @current.nil?
+    self.file.fileno
+  end
+
+  def to_i
+    self.fileno
+  end
+
+  def lineno
+    self.__lineno__
+  end
+
+  def lineno=(counted)
+    @lineno = counted
+  end
+
+  def binmode
+    @binmode = true
+    self
+  end
+
+  def binmode?
+    @binmode == true
+  end
+
+  def closed?
+    self.file.closed?
+  end
+
+  def close
+    self.file.close
+    self
+  end
+
+  # Move past whatever is left of the file being read, so the next line comes
+  # from the one after it.
+  def skip
+    @current = nil unless self.__names__.empty?
+    self
+  end
+
+  def gets
+    loop do
+      self.__open_current__
+      return nil if @current.nil?
+      line = @current.gets
+      if line.nil?
+        if self.__names__.empty?
+          @drained = true
+          break
+        end
+        @current = nil
+        next
+      end
+      @lineno = self.__lineno__ + 1
+      return line
+    end
+    nil
+  end
+
+  def readline
+    line = self.gets
+    raise EOFError, "end of file reached" if line.nil?
+    line
+  end
+
+  def each_line(&block)
+    return self if block.nil?
+    while (line = self.gets)
+      block.call(line)
+    end
+    self
+  end
+
+  def each(&block)
+    self.each_line(&block)
+  end
+
+  def readlines(*args)
+    collected = []
+    while (line = self.gets)
+      collected.push line
+    end
+    collected
+  end
+
+  def to_a(*args)
+    self.readlines
+  end
+
+  # `read(length)` stops at the count it was asked for, crossing into the next
+  # file only when the one being read runs out first. With no count it drains
+  # every remaining file.
+  def read(length = nil)
+    collected = ""
+    loop do
+      self.__open_current__
+      break if @current.nil?
+      wanted = length.nil? ? nil : length - collected.length
+      break if !wanted.nil? && wanted <= 0
+      taken = wanted.nil? ? @current.read : @current.read(wanted)
+      collected = collected + taken.to_s
+      break if !wanted.nil? && collected.length >= length
+      if self.__names__.empty?
+        @drained = true
+        break
+      end
+      @current = nil
+    end
+    return nil if !length.nil? && length > 0 && collected.empty?
+    collected
+  end
+
+  def getc
+    loop do
+      self.__open_current__
+      return nil if @current.nil?
+      character = @current.getc
+      return character unless character.nil?
+      return nil if self.__names__.empty?
+      @current = nil
+    end
+  end
+
+  def readchar
+    character = self.getc
+    raise EOFError, "end of file reached" if character.nil?
+    character
+  end
+
+  # Whether the file being read has run out, which is asked per file rather
+  # than of the whole list. A stream whose last file was drained is closed,
+  # and refuses the question.
+  def eof?
+    raise IOError, "closed stream" if @drained
+    self.__open_current__
+    return true if @current.nil?
+    @current.eof?
+  end
+
+  def eof
+    self.eof?
+  end
+
+  # Where the file being read stands. A stream whose last file has been read
+  # to the end is closed, and refuses to report a position at all.
+  def pos
+    raise ArgumentError, "closed stream" if @drained
+    self.file.pos
+  end
+
+  def tell
+    self.pos
+  end
+
+  def pos=(offset)
+    self.file.pos = offset
+    offset
+  end
+
+  def rewind
+    self.file.rewind
+    @lineno = 0
+    @drained = false
+    0
+  end
+
+  # Open the next name when there is no file being read. The name comes off
+  # the list as it opens, which is what `argv` reports on.
+  def __open_current__
+    return if @current
+    return if self.__names__.empty?
+    @current = File.open(self.__names__.shift, "r")
+  end
+  private :__open_current__
+
+  # The names still to be read. The interpreter builds the global ARGF without
+  # running `initialize`, and that one reads ARGV itself, so a name taken off
+  # here is taken off ARGV too.
+  def __names__
+    @names = ARGV if @names.nil?
+    @names
+  end
+  private :__names__
+
+  # How many lines have been read, zero before any have been.
+  def __lineno__
+    @lineno = 0 if @lineno.nil?
+    @lineno
+  end
+  private :__lineno__
+end
+
+# A named set of threads. Ruby starts every thread in the default group and
+# moves it when another group takes it, and an enclosed group refuses to give
+# its threads up.
+class Complex
+  # What `Marshal` writes for a Complex: the two parts, in the order
+  # `Complex(real, imaginary)` takes them.
+  def marshal_dump
+    [real, imaginary]
+  end
+  private :marshal_dump
+end
+
+class Rational
+  # What `Marshal` writes for a Rational: the two parts, in the order
+  # `Rational(numerator, denominator)` takes them.
+  def marshal_dump
+    [numerator, denominator]
+  end
+  private :marshal_dump
+end
+
+class Set
+  # `pp` calls this instead of `pretty_print` for a set that holds itself, so
+  # printing one stops rather than descending forever.
+  def pretty_print_cycle(printer)
+    printer.text("Set[...]")
+  end
+end
+
+class Thread
+  # Ruby reports a deadlock among its threads unless this is switched off.
+  # Metorex runs a thread's block on the thread that made it, so nothing can
+  # deadlock, and the reading is kept because a program may set it.
+  def self.ignore_deadlock
+    @ignore_deadlock == true
+  end
+
+  def self.ignore_deadlock=(ignored)
+    @ignore_deadlock = ignored
+  end
+end
+
+class Regexp
+  # Whether a pattern is matched in time proportional to the subject's length.
+  # Metorex matches with a linear automaton, so every pattern is.
+  def self.linear_time?(pattern, options = nil)
+    true
+  end
+end
+
+class Time
+  # A Time already stands for the moment `to_time` asks for.
+  def to_time
+    self
+  end
+end
+
+# A synchronization object stands for something the running program holds, so
+# Marshal refuses to write one out rather than hand back a copy that locks
+# nothing.
+class ConditionVariable
+  def marshal_dump
+    raise TypeError, "can't dump #{self.class}"
+  end
+end
+
+class Mutex
+  def marshal_dump
+    raise TypeError, "can't dump #{self.class}"
+  end
+end
+
+class Queue
+  def marshal_dump
+    raise TypeError, "can't dump #{self.class}"
+  end
+end
+
+class ThreadGroup
+  def initialize
+    @threads = []
+    @enclosed = false
+  end
+
+  def list
+    @threads.dup
+  end
+
+  def add(thread)
+    held = thread.group
+    if held && held.enclosed? && !held.equal?(self)
+      raise ThreadError, "can't move from the enclosed thread group"
+    end
+    held.__remove__(thread) if held
+    @threads.push thread unless @threads.include?(thread)
+    thread.__set_group__(self)
+    self
+  end
+
+  def enclose
+    @enclosed = true
+    self
+  end
+
+  def enclosed?
+    @enclosed
+  end
+
+  def __remove__(thread)
+    @threads = @threads.reject { |held| held.equal?(thread) }
+    self
+  end
+
+  Default = new
+end
+
+class Thread
+  # The group this thread belongs to, which is the default one until another
+  # group takes it.
+  def group
+    @__thread_group__ = ThreadGroup::Default if @__thread_group__.nil?
+    @__thread_group__
+  end
+
+  def __set_group__(group)
+    @__thread_group__ = group
+    self
+  end
+end
+
+module ObjectSpace
+  # Ruby 4.0 deprecated reading an object back from its id. Metorex keeps no
+  # table of every live object, so only the values whose id is derived from
+  # the value itself can be answered at all.
+  def self._id2ref(id)
+    warn "warning: ObjectSpace._id2ref is deprecated"
+    return nil if id == 4
+    return true if id == 2
+    return false if id == 0
+    return (id - 1) / 2 if id.odd? || id < 0
+    raise RangeError, "#{id} is not an id value"
+  end
+end
+
+module GC
+  # An object that extends GC answers `garbage_collect` the way the module
+  # itself does, and Ruby documents the answer as always nil.
+  def garbage_collect(full_mark: true, immediate_sweep: true)
+    GC.start
+    nil
+  end
+
+  # Metorex frees an object when its last reference goes, so switching the
+  # collector off leaves nothing running differently. The switch is still read
+  # back the way it was written, which is what a program that saves and
+  # restores it depends on.
+  def self.disable
+    was = @disabled == true
+    @disabled = true
+    was
+  end
+
+  def self.enable
+    was = @disabled == true
+    @disabled = false
+    was
+  end
+
+  def self.auto_compact
+    @auto_compact == true
+  end
+
+  def self.auto_compact=(wanted)
+    @auto_compact = wanted
+  end
+
+  def self.measure_total_time
+    @measure_total_time == true
+  end
+
+  def self.measure_total_time=(wanted)
+    @measure_total_time = wanted
+  end
+
+  # Ruby collects on every allocation while this is set, which is a way to
+  # shake out collector bugs. There is no collector here to drive that hard,
+  # so the switch is read back the way it was written and nothing else.
+  def self.stress
+    @stress == true
+  end
+
+  def self.stress=(wanted)
+    @stress = wanted
+  end
+
+  # Ruby's collector reports what each run cost when the profiler is enabled.
+  # There are no runs to report here, so the report stays empty however the
+  # switch is set.
+  module Profiler
+    def self.enabled?
+      @enabled == true
+    end
+
+    def self.enable
+      @enabled = true
+      nil
+    end
+
+    def self.disable
+      @enabled = false
+      nil
+    end
+
+    def self.clear
+      nil
+    end
+
+    def self.result
+      ""
+    end
+
+    def self.report(target = nil)
+      nil
+    end
+
+    def self.total_time
+      0.0
+    end
+  end
+end
+
+module Process
+  # The four processor-time readings `Process.times` reports: this process's
+  # own user and system time, and the totals for the children it waited for.
+  Tms = Struct.new(:utime, :stime, :cutime, :cstime)
+end
+
 "##;
 
 impl VirtualMachine {
@@ -3558,7 +5323,7 @@ impl VirtualMachine {
         };
         let arguments = vec![
             receiver,
-            Object::Symbol(std::rc::Rc::new(method_name.to_string())),
+            Object::symbol(method_name.to_string()),
             Object::Array(std::rc::Rc::new(std::cell::RefCell::new(arguments))),
             match size {
                 Some(size) => Object::Int(size),
@@ -3572,7 +5337,7 @@ impl VirtualMachine {
     /// is a defect in `PRELUDE_SOURCE` itself, so it panics rather than
     /// leaving a half-built VM behind.
     pub(crate) fn load_prelude(&mut self) {
-        let tokens = crate::lexer::Lexer::new(PRELUDE_SOURCE).tokenize();
+        let tokens = crate::lexer::Lexer::for_prelude(PRELUDE_SOURCE).tokenize();
         let statements = crate::parser::Parser::new(tokens)
             .parse()
             .unwrap_or_else(|errors| panic!("prelude failed to parse: {:?}", errors));

@@ -182,8 +182,8 @@ end
 ensure_return_test
 "#);
     assert!(
-        result == Some(Object::String(std::rc::Rc::new("from_ensure".to_string())))
-            || result == Some(Object::String(std::rc::Rc::new("rescued".to_string())))
+        result == Some(Object::string("from_ensure".to_string()))
+            || result == Some(Object::string("rescued".to_string()))
     );
 }
 

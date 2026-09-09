@@ -116,7 +116,7 @@ impl VirtualMachine {
         // generic `respond_to?`. Other names fall through to it.
         if matches!(method_name, "respond_to?" | "respond_to_missing?") {
             let named = match arguments.first() {
-                Some(Object::Symbol(name) | Object::String(name)) => (**name).clone(),
+                Some(Object::Symbol(name) | Object::String(name)) => name.as_str().to_string(),
                 _ => return Ok(None),
             };
             return Ok(match named.as_str() {
@@ -129,7 +129,7 @@ impl VirtualMachine {
         if method_name == "categories" && arguments.is_empty() {
             let categories = WARNING_CATEGORIES
                 .iter()
-                .map(|name| Object::Symbol(Rc::new((*name).to_string())))
+                .map(|name| Object::symbol((*name).to_string()))
                 .collect();
             return Ok(Some(Object::array(categories)));
         }
@@ -175,7 +175,7 @@ impl VirtualMachine {
                 message,
             });
         }
-        Ok((**name).clone())
+        Ok(name.as_str().to_string())
     }
 }
 

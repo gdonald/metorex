@@ -21,6 +21,7 @@ fn pos() -> Position {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     }
 }
 
@@ -30,6 +31,7 @@ fn pos_at(line: usize, column: usize) -> Position {
         line,
         column,
         offset: 0,
+        prelude: false,
     }
 }
 
@@ -188,7 +190,7 @@ fn test_method_call_error_has_location() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("Undefined method"));
+    assert!(error.to_string().contains("undefined method"));
     assert!(error.to_string().contains("10:1"));
 }
 

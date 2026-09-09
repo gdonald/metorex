@@ -44,6 +44,7 @@ fn pos() -> Position {
         line: 1,
         column: 0,
         offset: 0,
+        prelude: false,
     }
 }
 

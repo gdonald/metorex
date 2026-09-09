@@ -32,6 +32,17 @@ pub struct VirtualMachine {
     pub(crate) heap: Rc<RefCell<Heap>>,
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
+    /// The tracepoints switched on, in the order they were. Empty almost
+    /// always, which is what keeps the check on each statement cheap.
+    pub(crate) tracepoints: Vec<Object>,
+    /// The line a `:line` event was last fired for, so one statement does not
+    /// fire twice and a multi-line expression fires once.
+    pub(crate) traced_line: Option<usize>,
+    /// Whether a tracepoint handler is running. Ruby does not call a handler
+    /// from inside its own.
+    pub(crate) tracing: bool,
+    /// The id the next object to be asked for one takes.
+    pub(crate) next_object_id: u64,
     /// The main script's canonical path paired with the path it was named by,
     /// which is what `__FILE__` reports while it is the file running.
     pub(crate) script_path: Option<(PathBuf, PathBuf)>,
@@ -191,7 +202,7 @@ impl VirtualMachine {
 
         let mut globals = GlobalRegistry::new();
         register_builtin_classes(&mut globals, &builtins);
-        register_builtin_modules(&mut globals);
+        register_builtin_modules(&mut globals, &builtins);
         // After the singletons, which create the canonical Object that every
         // exception class descends from.
         register_singletons(&mut globals);
@@ -209,6 +220,10 @@ impl VirtualMachine {
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
             current_file: None,
+            tracepoints: Vec::new(),
+            traced_line: None,
+            tracing: false,
+            next_object_id: 1,
             script_path: None,
             at_exit_handlers: Vec::new(),
             popen_children: HashMap::new(),
@@ -246,6 +261,9 @@ impl VirtualMachine {
             autoload_reload_depth: 0,
             reported_duplicate_keys: std::collections::HashSet::new(),
         };
+        // Ruby always has an ARGV, so a program that reads or replaces it
+        // works whether or not a caller has handed one over.
+        vm.set_argv(Vec::new());
         vm.load_prelude();
         // The prelude's own class and module names are part of the core
         // library, not locals the program declared, so `local_variables` and
@@ -291,7 +309,7 @@ impl VirtualMachine {
                 .map(|trace| {
                     let entries: Vec<Object> = trace
                         .iter()
-                        .map(|line| Object::String(Rc::new(line.clone())))
+                        .map(|line| Object::string(line.clone()))
                         .collect();
                     Object::Array(Rc::new(RefCell::new(entries)))
                 })
@@ -462,10 +480,7 @@ impl VirtualMachine {
 
     /// Set the ARGV global with script arguments.
     pub fn set_argv(&mut self, args: Vec<String>) {
-        let elements: Vec<Object> = args
-            .into_iter()
-            .map(|s| Object::String(Rc::new(s)))
-            .collect();
+        let elements: Vec<Object> = args.into_iter().map(Object::string).collect();
         let argv = Object::Array(Rc::new(RefCell::new(elements)));
         self.globals.set("ARGV", argv.clone());
         self.environment.define("ARGV".to_string(), argv);

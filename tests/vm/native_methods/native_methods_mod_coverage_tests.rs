@@ -183,10 +183,7 @@ t.value
 t.join
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── Thread lifecycle predicates (line 221-222) ──

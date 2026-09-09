@@ -6,7 +6,7 @@ module Base64
   ALPHABET.chars.each_with_index { |letter, slot| SLOTS[letter] = slot }
 
   def self.encode64(text)
-    wrapped(strict_encode64(text))
+    (wrapped(strict_encode64(text))).force_encoding(Encoding::US_ASCII)
   end
 
   def self.strict_encode64(text)
@@ -27,11 +27,26 @@ module Base64
       end
       index += 3
     end
-    written
+    (written).force_encoding(Encoding::US_ASCII)
   end
 
+  # The lenient reading: anything that is not a base64 character is passed
+  # over, and a run that stops short of a full group decodes as far as it
+  # goes rather than being refused.
   def self.decode64(text)
-    strict_decode64(text.gsub(/[^A-Za-z0-9+\/=]/, ""))
+    kept = text.gsub(/[^A-Za-z0-9+\/]/, "")
+    bytes = []
+    held = 0
+    bits = 0
+    kept.each_char do |letter|
+      held = (held << 6) | SLOTS[letter]
+      bits += 6
+      if bits >= 8
+        bits -= 8
+        bytes.push((held >> bits) & 0xff)
+      end
+    end
+    bytes.map { |byte| byte.chr }.join.force_encoding(Encoding::BINARY)
   end
 
   def self.strict_decode64(text)
@@ -54,12 +69,12 @@ module Base64
       end
       index += 4
     end
-    bytes.map { |byte| byte.chr }.join
+    (bytes.map { |byte| byte.chr }.join).force_encoding(Encoding::BINARY)
   end
 
   def self.urlsafe_encode64(text, padding: true)
     written = strict_encode64(text).gsub("+", "-").gsub("/", "_")
-    padding ? written : written.gsub("=", "")
+    (padding ? written : written.gsub("=", "")).force_encoding(Encoding::US_ASCII)
   end
 
   def self.urlsafe_decode64(text)
@@ -67,7 +82,7 @@ module Base64
     unless restored.length % 4 == 0
       restored += "=" * (4 - restored.length % 4)
     end
-    strict_decode64(restored)
+    (strict_decode64(restored)).force_encoding(Encoding::BINARY)
   end
 
   # Base64 written sixty characters to a line, which is what `encode64` and

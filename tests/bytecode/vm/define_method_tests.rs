@@ -154,9 +154,7 @@ fn define_method_with_compiled_function_succeeds_at_top_level() {
     let idx_native = chunk
         .add_constant(Object::NativeFunction("define_method".to_string()))
         .unwrap();
-    let idx_sym = chunk
-        .add_constant(Object::Symbol(Rc::new("m".to_string())))
-        .unwrap();
+    let idx_sym = chunk.add_constant(Object::symbol("m".to_string())).unwrap();
     // An empty inner chunk for the function body.
     let mut inner = Chunk::new();
     let nil_idx = inner.add_constant(Object::Nil).unwrap();

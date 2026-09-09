@@ -7,7 +7,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run_env(code: &str) -> VirtualMachine {
     let tokens = Lexer::new(code).tokenize();
@@ -186,7 +185,7 @@ result = upper[0]"#;
     let vm = run_env(code);
     assert_eq!(
         vm.environment().get("result"),
-        Some(Object::String(Rc::new("HELLO".to_string())))
+        Some(Object::string("HELLO".to_string()))
     );
 }
 
@@ -210,15 +209,15 @@ r3 = classify(99)"#;
     let vm = run_env(code);
     assert_eq!(
         vm.environment().get("r1"),
-        Some(Object::String(Rc::new("zero".to_string())))
+        Some(Object::string("zero".to_string()))
     );
     assert_eq!(
         vm.environment().get("r2"),
-        Some(Object::String(Rc::new("one".to_string())))
+        Some(Object::string("one".to_string()))
     );
     assert_eq!(
         vm.environment().get("r3"),
-        Some(Object::String(Rc::new("other".to_string())))
+        Some(Object::string("other".to_string()))
     );
 }
 

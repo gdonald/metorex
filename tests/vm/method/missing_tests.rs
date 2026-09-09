@@ -32,16 +32,12 @@ end
 c = Catcher.new
 c.anything
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new(
-            "caught: anything".to_string()
-        )))
-    );
+    assert_eq!(result, Some(Object::string("caught: anything".to_string())));
 }
 
 #[test]
 fn method_missing_returns_value() {
+    // Ruby hands the name over as a Symbol.
     let result = run(r#"
 class Echo
   def method_missing(name)
@@ -51,10 +47,7 @@ end
 e = Echo.new
 e.hello
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hello".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("hello".to_string())));
 }
 
 #[test]
@@ -77,10 +70,10 @@ s.real
 // ── method_missing with arguments ───────────────────────────────────
 
 #[test]
-fn method_missing_receives_arguments_as_array() {
+fn method_missing_receives_the_arguments_one_by_one() {
     let result = run(r#"
 class ArgChecker
-  def method_missing(name, args)
+  def method_missing(name, *args)
     args.length
   end
 end
@@ -94,7 +87,7 @@ a.test(1, 2, 3)
 fn method_missing_no_args_gives_empty_array() {
     let result = run(r#"
 class ArgChecker
-  def method_missing(name, args)
+  def method_missing(name, *args)
     args.length
   end
 end
@@ -108,7 +101,7 @@ a.test
 fn method_missing_args_can_be_iterated() {
     let result = run(r#"
 class Summer
-  def method_missing(name, args)
+  def method_missing(name, *args)
     total = 0
     args.each do |n|
       total = total + n
@@ -137,10 +130,7 @@ end
 c = Child.new
 c.foo
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Base: foo".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Base: foo".to_string())));
 }
 
 #[test]
@@ -159,10 +149,7 @@ end
 c = Child.new
 c.bar
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Child: bar".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Child: bar".to_string())));
 }
 
 // ── method_missing with dynamic attribute access ────────────────────
@@ -172,7 +159,7 @@ fn method_missing_dynamic_hash_lookup() {
     let result = run(r#"
 class Record
   def initialize
-    @data = {"name" => "Alice"}
+    @data = {name: "Alice"}
   end
   def method_missing(name)
     @data[name]
@@ -181,10 +168,7 @@ end
 r = Record.new
 r.name
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Alice".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Alice".to_string())));
 }
 
 // ── Error when no method_missing defined ────────────────────────────
@@ -199,14 +183,17 @@ p = Plain.new
 p.nonexistent
 "#,
     );
-    assert!(err.contains("Undefined method 'nonexistent'"));
+    assert!(err.contains("undefined method 'nonexistent'"));
 }
 
 // ── method_missing with one param receives only method name ─────────
 
 #[test]
-fn method_missing_single_param_ignores_call_args() {
-    let result = run(r#"
+fn method_missing_taking_only_a_name_refuses_a_call_carrying_arguments() {
+    // Ruby passes the call's arguments along, so a handler with no room for
+    // them reports the arity it was given.
+    let err = run_err(
+        r#"
 class OneName
   def method_missing(name)
     name
@@ -214,9 +201,7 @@ class OneName
 end
 o = OneName.new
 o.test(1, 2, 3)
-"#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("test".to_string())))
+"#,
     );
+    assert!(err.contains("wrong number of arguments"));
 }

@@ -2,7 +2,6 @@
 
 use metorex::object::Object;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 #[test]
 fn require_relative_is_registered_globally() {
@@ -164,10 +163,7 @@ fn require_relative_makes_variables_accessible() {
 
     // Check that the variable from the helper file is accessible
     let var = vm.environment().get("shared_var");
-    assert_eq!(
-        var,
-        Some(Object::String(Rc::new(String::from("from helper"))))
-    );
+    assert_eq!(var, Some(Object::string(String::from("from helper"))));
 }
 
 // 9.3.5 — Extension auto-detection
@@ -193,7 +189,7 @@ fn require_relative_auto_detects_rb_extension() {
 
     assert!(result.is_ok());
     let var = vm.environment().get("ext_var");
-    assert_eq!(var, Some(Object::String(Rc::new(String::from("found")))));
+    assert_eq!(var, Some(Object::string(String::from("found"))));
 }
 
 #[test]
@@ -217,10 +213,7 @@ fn require_relative_with_explicit_rb_extension() {
 
     assert!(result.is_ok());
     let var = vm.environment().get("ext2_var");
-    assert_eq!(
-        var,
-        Some(Object::String(Rc::new(String::from("found explicit"))))
-    );
+    assert_eq!(var, Some(Object::string(String::from("found explicit"))));
 }
 
 // 9.3.6 — Scope/variable sharing: functions and classes
@@ -249,10 +242,7 @@ fn require_relative_makes_functions_accessible() {
 
     assert!(result.is_ok());
     let var = vm.environment().get("result");
-    assert_eq!(
-        var,
-        Some(Object::String(Rc::new(String::from("from function"))))
-    );
+    assert_eq!(var, Some(Object::string(String::from("from function"))));
 }
 
 #[test]
@@ -283,7 +273,7 @@ fn require_relative_makes_classes_accessible() {
 
     assert!(result.is_ok());
     let var = vm.environment().get("greeting");
-    assert_eq!(var, Some(Object::String(Rc::new(String::from("world")))));
+    assert_eq!(var, Some(Object::string(String::from("world"))));
 }
 
 // 9.3.7 — Nested requires (A → B → C)
@@ -313,15 +303,15 @@ fn require_relative_nested_chain() {
     assert!(result.is_ok());
     assert_eq!(
         vm.environment().get("c_var"),
-        Some(Object::String(Rc::new(String::from("from_c"))))
+        Some(Object::string(String::from("from_c")))
     );
     assert_eq!(
         vm.environment().get("b_var"),
-        Some(Object::String(Rc::new(String::from("from_b"))))
+        Some(Object::string(String::from("from_b")))
     );
     assert_eq!(
         vm.environment().get("a_var"),
-        Some(Object::String(Rc::new(String::from("from_a"))))
+        Some(Object::string(String::from("from_a")))
     );
 }
 
@@ -409,14 +399,14 @@ fn require_relative_diamond_dependency_loads_once() {
     // All variables should be accessible
     assert_eq!(
         vm.environment().get("dia_d_var"),
-        Some(Object::String(Rc::new(String::from("d_value"))))
+        Some(Object::string(String::from("d_value")))
     );
     assert_eq!(
         vm.environment().get("dia_b_var"),
-        Some(Object::String(Rc::new(String::from("b_value"))))
+        Some(Object::string(String::from("b_value")))
     );
     assert_eq!(
         vm.environment().get("dia_c_var"),
-        Some(Object::String(Rc::new(String::from("c_value"))))
+        Some(Object::string(String::from("c_value")))
     );
 }

@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -30,10 +29,7 @@ fn hash_get_missing_with_default_returns_default() {
 h = {"x" => 10}
 h.get("missing", "fallback")
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("fallback".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("fallback".to_string())));
 }
 
 #[test]
@@ -57,10 +53,7 @@ fn hash_fetch_missing_with_default_returns_default() {
 h = {"a" => 1}
 h.fetch("missing", "default_val")
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("default_val".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("default_val".to_string())));
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
@@ -108,7 +101,7 @@ fn hash_bracket_access() {
 h = {"name" => "Alice", "age" => 30}
 h["name"]
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Alice".to_string()))));
+    assert_eq!(result, Some(Object::string("Alice".to_string())));
 }
 
 #[test]

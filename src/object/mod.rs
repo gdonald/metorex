@@ -7,7 +7,10 @@ mod block;
 mod compiled_function;
 mod constructors;
 mod display;
-pub(crate) use display::{begin_rendering, end_rendering, render_guarded, rendering_in_progress};
+pub mod string_value;
+pub(crate) use display::{
+    begin_rendering, end_rendering, inspect_symbol, render_guarded, rendering_in_progress,
+};
 mod exception;
 mod hash;
 mod instance;
@@ -30,3 +33,5 @@ pub use types::Object;
 // Re-export from callable and class modules
 pub use crate::callable::Callable;
 pub use crate::class::Class;
+
+pub use string_value::StringValue;

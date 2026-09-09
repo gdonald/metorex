@@ -68,6 +68,12 @@ impl Object {
             (Some(left), Some(right)) => return left.equals_within(&right, in_flight),
             (None, None) => {}
         }
+        // A Rational equals a number of any other kind when the two stand for
+        // the same value, which is what a Hash or an Array holding one has to
+        // compare by.
+        if let Some(answer) = rational_equals(self, other) {
+            return answer;
+        }
         match (self, other) {
             (Object::Nil, Object::Nil) => true,
             (Object::Bool(a), Object::Bool(b)) => a == b,
@@ -279,4 +285,58 @@ fn backing_hash(value: &Object) -> Option<Object> {
         return None;
     };
     instance.borrow().instance_vars.get("__hash__").cloned()
+}
+
+/// The numerator and denominator a Rational instance holds.
+fn fraction_parts(value: &Object) -> Option<(num_bigint::BigInt, num_bigint::BigInt)> {
+    let Object::Instance(instance) = value else {
+        return None;
+    };
+    let instance = instance.borrow();
+    if instance.class.name() != "Rational" {
+        return None;
+    }
+    let numerator = instance.instance_vars.get("numerator")?.as_big_integer()?;
+    let denominator = instance
+        .instance_vars
+        .get("denominator")?
+        .as_big_integer()?;
+    Some((numerator, denominator))
+}
+
+/// A fraction rounded to the nearest Float, which is how Ruby compares a
+/// Rational against one.
+fn fraction_as_float(
+    numerator: &num_bigint::BigInt,
+    denominator: &num_bigint::BigInt,
+) -> Option<f64> {
+    let numerator = numerator.to_string().parse::<f64>().ok()?;
+    let denominator = denominator.to_string().parse::<f64>().ok()?;
+    Some(numerator / denominator)
+}
+
+/// Whether a pair holds a Rational and something it can be compared against
+/// exactly. Answers None when neither side is a Rational, which leaves the
+/// pair to the comparisons above.
+fn rational_equals(left: &Object, right: &Object) -> Option<bool> {
+    let left_parts = fraction_parts(left);
+    let right_parts = fraction_parts(right);
+    let whole = |value: &Object| match value {
+        Object::Int(_) | Object::BigInt(_) => value
+            .as_big_integer()
+            .map(|held| (held, num_bigint::BigInt::from(1))),
+        _ => None,
+    };
+    match (left_parts, right_parts) {
+        (Some(one), Some(other)) => Some(one.0 * other.1 == other.0 * one.1),
+        (Some(one), None) => match right {
+            Object::Float(number) => Some(fraction_as_float(&one.0, &one.1) == Some(*number)),
+            _ => whole(right).map(|other| one.0 * other.1 == other.0 * one.1),
+        },
+        (None, Some(other)) => match left {
+            Object::Float(number) => Some(fraction_as_float(&other.0, &other.1) == Some(*number)),
+            _ => whole(left).map(|one| one.0 * other.1 == other.0 * one.1),
+        },
+        (None, None) => None,
+    }
 }

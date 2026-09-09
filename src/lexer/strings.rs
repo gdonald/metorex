@@ -55,11 +55,11 @@ impl<'a> Lexer<'a> {
                         self.line
                     ));
                 }
+                // A quoted string may run across lines, so a raw newline is
+                // content rather than the end of the literal.
                 Some('\n') => {
-                    return Err(format!(
-                        "Unterminated string starting at line {}",
-                        self.line
-                    ));
+                    current_text.push('\n');
+                    self.advance();
                 }
                 Some(ch) if ch == quote => {
                     // Found closing quote

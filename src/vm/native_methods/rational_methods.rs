@@ -96,14 +96,33 @@ pub(crate) fn float_fraction(value: f64) -> (num_bigint::BigInt, num_bigint::Big
 /// The exact value of a finite float, which is a fraction over a power of
 /// two. `0.6.to_r` is (5404319552844595/9007199254740992), not (3/5).
 pub(crate) fn float_exact_fraction(value: f64) -> (num_bigint::BigInt, num_bigint::BigInt) {
-    let mut numerator = value;
-    let mut denominator: i64 = 1;
-    while numerator.fract() != 0.0 && denominator <= (1i64 << 61) {
-        numerator *= 2.0;
-        denominator *= 2;
+    use num_bigint::BigInt;
+    if !value.is_finite() || value == 0.0 {
+        return (BigInt::from(0), BigInt::from(1));
     }
-    let numerator = num_bigint::BigInt::from(numerator as i64);
-    let denominator = num_bigint::BigInt::from(denominator);
+    // Every finite f64 is a whole mantissa times a power of two, so reading
+    // the two straight off the bits gives the exact value rather than
+    // whatever a doubling loop can reach before it runs out of precision.
+    let bits = value.to_bits();
+    let negative = bits >> 63 == 1;
+    let raw_exponent = ((bits >> 52) & 0x7ff) as i64;
+    let raw_mantissa = bits & ((1u64 << 52) - 1);
+    // A subnormal carries no implicit leading one.
+    let (mantissa, exponent) = if raw_exponent == 0 {
+        (raw_mantissa, -1074i64)
+    } else {
+        (raw_mantissa | (1u64 << 52), raw_exponent - 1075)
+    };
+    let mut numerator = BigInt::from(mantissa);
+    if negative {
+        numerator = -numerator;
+    }
+    let mut denominator = BigInt::from(1);
+    if exponent >= 0 {
+        numerator <<= exponent as usize;
+    } else {
+        denominator <<= (-exponent) as usize;
+    }
     let divisor = greatest_common_divisor(numerator.clone(), denominator.clone());
     (numerator / &divisor, denominator / &divisor)
 }
@@ -438,12 +457,20 @@ impl VirtualMachine {
                 };
                 // `eql?` is stricter than `==`: it wants another Rational,
                 // where `==` also matches an equal Integer or Float.
-                let equal = match (method_name, as_fraction(other)) {
+                // Ruby compares a Rational against a Float by rounding the
+                // Rational to a Float, so `0.7.to_r == 0.7` holds even though
+                // no fraction with a power-of-ten denominator equals 0.7.
+                let equal = match (method_name, other) {
                     ("eql?", _) if rational_parts(other).is_none() => false,
-                    (_, Some((other_numerator, other_denominator))) => {
-                        numerator * other_denominator == other_numerator * denominator
+                    (_, Object::Float(number)) => {
+                        crate::vm::native_methods::exact_ratio(&numerator, &denominator) == *number
                     }
-                    (_, None) => false,
+                    _ => match as_fraction(other) {
+                        Some((other_numerator, other_denominator)) => {
+                            numerator * other_denominator == other_numerator * denominator
+                        }
+                        None => false,
+                    },
                 };
                 Ok(Some(Object::Bool(if method_name == "!=" {
                     !equal

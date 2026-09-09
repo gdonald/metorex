@@ -71,8 +71,8 @@ fn array_pack_native_long() {
 
 #[test]
 fn array_pack_unsupported_directive_error() {
-    let err = run_err("[1].pack('Z')");
-    assert!(err.contains("unsupported"));
+    let err = run_err("[1].pack('K')");
+    assert!(err.contains("unknown pack directive 'K'"));
 }
 
 #[test]
@@ -163,7 +163,19 @@ fn array_pack_big_j_directive() {
 
 #[test]
 fn array_pack_native_i_directive() {
+    // `i!` asks for the platform's own int, which is four bytes wide where a
+    // long is eight.
     let result = run("[0].pack('i!')");
+    if let Some(Object::String(s)) = result {
+        assert_eq!(s.len(), 4);
+    } else {
+        panic!("expected string");
+    }
+}
+
+#[test]
+fn array_pack_native_l_directive_is_a_platform_long() {
+    let result = run("[0].pack('l!')");
     if let Some(Object::String(s)) = result {
         assert_eq!(s.len(), 8);
     } else {

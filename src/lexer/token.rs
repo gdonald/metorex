@@ -15,6 +15,9 @@ pub struct Position {
     pub line: usize,
     pub column: usize,
     pub offset: usize,
+    /// Whether this came from the core library metorex loads at startup.
+    /// Ruby never traces its own C code, and the prelude stands in for it.
+    pub prelude: bool,
 }
 
 impl Position {
@@ -23,6 +26,7 @@ impl Position {
             line,
             column,
             offset,
+            prelude: false,
         }
     }
 }
@@ -97,52 +101,63 @@ pub enum TokenKind {
     GlobalVar(String),   // $variable
 
     // Operators
-    Plus,         // +
-    Minus,        // -
-    Star,         // *
-    Slash,        // /
-    Percent,      // %
-    Caret,        // ^
-    Equal,        // =
-    Bang,         // !
-    EqualEqual,   // ==
-    TripleEqual,  // ===
-    BangEqual,    // !=
-    Match,        // =~
-    NotMatch,     // !~
-    StarStar,     // ** (double splat / exponent)
-    Less,         // <
-    Greater,      // >
-    LessEqual,    // <=
-    Spaceship,    // <=>
-    Shovel,       // <<
-    Question,     // ? (ternary operator)
-    GreaterEqual, // >=
-    PlusEqual,    // +=
-    MinusEqual,   // -=
-    StarEqual,    // *=
-    SlashEqual,   // /=
+    Plus,            // +
+    Minus,           // -
+    Star,            // *
+    Slash,           // /
+    Percent,         // %
+    Caret,           // ^
+    Equal,           // =
+    Bang,            // !
+    EqualEqual,      // ==
+    TripleEqual,     // ===
+    BangEqual,       // !=
+    Match,           // =~
+    NotMatch,        // !~
+    StarStar,        // ** (double splat / exponent)
+    Less,            // <
+    Greater,         // >
+    LessEqual,       // <=
+    Spaceship,       // <=>
+    Shovel,          // <<
+    Question,        // ? (ternary operator)
+    GreaterEqual,    // >=
+    PlusEqual,       // +=
+    MinusEqual,      // -=
+    StarEqual,       // *=
+    SlashEqual,      // /=
+    PercentEqual,    // %=
+    StarStarEqual,   // **=
+    PipeEqual,       // |=
+    AmpersandEqual,  // &=
+    CaretEqual,      // ^=
+    ShovelEqual,     // <<=
+    RightShiftEqual, // >>=
 
     // Delimiters
-    LParen,           // (
-    RParen,           // )
-    LBrace,           // {
-    RBrace,           // }
-    LBracket,         // [
-    RBracket,         // ]
-    Comma,            // ,
-    Dot,              // .
-    DotDot,           // ..
-    DotDotDot,        // ...
-    Colon,            // :
-    Arrow,            // ->
-    FatArrow,         // =>
-    Pipe,             // |
-    Ampersand,        // &
-    SafeDot,          // &. — a call that answers nil for a nil receiver
-    NotKeyword,       // the word `not`, which takes a parenthesized operand
-    LogicalAnd,       // &&
-    LogicalOr,        // ||
+    LParen,     // (
+    RParen,     // )
+    LBrace,     // {
+    RBrace,     // }
+    LBracket,   // [
+    RBracket,   // ]
+    Comma,      // ,
+    Dot,        // .
+    DotDot,     // ..
+    DotDotDot,  // ...
+    Colon,      // :
+    Arrow,      // ->
+    FatArrow,   // =>
+    Pipe,       // |
+    Ampersand,  // &
+    SafeDot,    // &. — a call that answers nil for a nil receiver
+    NotKeyword, // the word `not`, which takes a parenthesized operand
+    LogicalAnd, // &&
+    LogicalOr,  // ||
+    // `and` and `or` are the same test as `&&` and `||`, but they bind more
+    // loosely than everything else, so `take x and y` calls `take x` first.
+    KeywordAnd,       // and
+    KeywordOr,        // or
     LogicalOrAssign,  // ||=
     LogicalAndAssign, // &&=
     ColonColon,       // ::
@@ -300,6 +315,13 @@ impl fmt::Display for TokenKind {
             TokenKind::MinusEqual => write!(f, "-="),
             TokenKind::StarEqual => write!(f, "*="),
             TokenKind::SlashEqual => write!(f, "/="),
+            TokenKind::PercentEqual => write!(f, "%="),
+            TokenKind::StarStarEqual => write!(f, "**="),
+            TokenKind::PipeEqual => write!(f, "|="),
+            TokenKind::AmpersandEqual => write!(f, "&="),
+            TokenKind::CaretEqual => write!(f, "^="),
+            TokenKind::ShovelEqual => write!(f, "<<="),
+            TokenKind::RightShiftEqual => write!(f, ">>="),
 
             // Delimiters
             TokenKind::LParen => write!(f, "("),
@@ -320,6 +342,8 @@ impl fmt::Display for TokenKind {
             TokenKind::SafeDot => write!(f, "&."),
             TokenKind::NotKeyword => write!(f, "not"),
             TokenKind::LogicalAnd => write!(f, "&&"),
+            TokenKind::KeywordAnd => write!(f, "and"),
+            TokenKind::KeywordOr => write!(f, "or"),
             TokenKind::LogicalOr => write!(f, "||"),
             TokenKind::LogicalOrAssign => write!(f, "||="),
             TokenKind::LogicalAndAssign => write!(f, "&&="),

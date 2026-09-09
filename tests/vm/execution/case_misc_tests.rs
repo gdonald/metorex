@@ -99,10 +99,7 @@ def classify(x)
 end
 classify 1
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("one".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("one".to_string())));
 }
 
 #[test]
@@ -118,10 +115,7 @@ class Classifier
 end
 Classifier.new.classify 1
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("one".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("one".to_string())));
 }
 
 #[test]

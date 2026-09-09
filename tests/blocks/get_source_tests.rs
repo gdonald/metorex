@@ -26,10 +26,7 @@ m = Dog.new.get_source(:speak)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("speak".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("speak".to_string())));
 }
 
 #[test]
@@ -44,10 +41,7 @@ m = Dog.new.get_source("speak")
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("speak".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("speak".to_string())));
 }
 
 #[test]
@@ -90,10 +84,7 @@ m = Dog.new.get_source(:speak)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("speak".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("speak".to_string())));
 }
 
 #[test]
@@ -130,10 +121,7 @@ m = g.get_source(:hello)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("hello".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("hello".to_string())));
 }
 
 #[test]
@@ -146,8 +134,5 @@ m = Foo.new.get_source(:bar)
 m.name
 "#;
     let result = eval(source);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("bar".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("bar".to_string())));
 }

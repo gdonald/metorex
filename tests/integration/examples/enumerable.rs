@@ -63,3 +63,18 @@ fn test_enumerable_lazy_walks_no_parens_execution() {
     let output = run_example("enumerable/lazy_walks_no_parens.rb");
     assert_eq!(output, LAZY_WALKS_OUTPUT);
 }
+
+/// The expected output of both `enumerable/stepping_and_products` variants.
+const STEPPING_AND_PRODUCTS_OUTPUT: &str = "Enumerator::ArithmeticSequence\n[1, 4, 7, 10]\n[1, 10, 3, false]\n\"(1.step(10, 3))\"\n4\n[1, 5, 9]\n[1, 4, 7, 10]\n9\n9\n\"((1..10).step(3))\"\ntrue\nInfinity\n[1, 3, 5, 7, 9]\n\"((1..10).%(2))\"\ntrue\n[[1, :a], [1, :b], [2, :a], [2, :b]]\n4\n\"#<Enumerator::Product: [[1, 2], [:a, :b]]>\"\n4\n[[:a, 1], [:b, 1], [:a, 2], [:b, 2]]\n\"done\"\n[[1, 2], [3]]\nProc\n[1, [2, 3], [4]]\nNoMethodError\n\"undefined method 'each_entry' for an instance of Object\"\n";
+
+#[test]
+fn test_enumerable_stepping_and_products_execution() {
+    let output = run_example("enumerable/stepping_and_products.rb");
+    assert_eq!(output, STEPPING_AND_PRODUCTS_OUTPUT);
+}
+
+#[test]
+fn test_enumerable_stepping_and_products_no_parens_execution() {
+    let output = run_example("enumerable/stepping_and_products_no_parens.rb");
+    assert_eq!(output, STEPPING_AND_PRODUCTS_OUTPUT);
+}

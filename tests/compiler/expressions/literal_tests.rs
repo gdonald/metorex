@@ -133,6 +133,7 @@ fn compile_interpolated_string_empty_parts_via_ast() {
         line: 1,
         column: 1,
         offset: 0,
+        prelude: false,
     };
     let expr = Expression::InterpolatedString {
         parts: vec![],

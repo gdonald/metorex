@@ -58,10 +58,7 @@ class Person
 end
 Person.new(\"Bob\").get_name
 ");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("Bob".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("Bob".to_string())));
 }
 
 #[test]
@@ -138,12 +135,7 @@ fn module_class_self_attr_accessor_in_module() {
 #[test]
 fn module_autoload_query_returns_path() {
     let result = run("module M; end\nM.autoload :Foo, \"path/to/foo.rb\"\nM.autoload?(:Foo)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new(
-            "path/to/foo.rb".to_string()
-        )))
-    );
+    assert_eq!(result, Some(Object::string("path/to/foo.rb".to_string())));
 }
 
 #[test]
@@ -156,29 +148,20 @@ fn module_autoload_query_unknown_returns_nil() {
 fn module_autoload_can_be_overwritten() {
     let result =
         run("module M; end\nM.autoload :X, \"a.rb\"\nM.autoload :X, \"b.rb\"\nM.autoload?(:X)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("b.rb".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("b.rb".to_string())));
 }
 
 #[test]
 fn class_autoload_query_returns_path() {
     let result = run("class K; end\nK.autoload :Bar, \"bar.rb\"\nK.autoload?(:Bar)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("bar.rb".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("bar.rb".to_string())));
 }
 
 #[test]
 fn class_autoload_inherits_from_superclass() {
     let result =
         run("class P; end\nP.autoload :Child, \"child.rb\"\nclass C < P; end\nC.autoload?(:Child)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("child.rb".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("child.rb".to_string())));
 }
 
 #[test]
@@ -245,10 +228,7 @@ fn defined_returns_constant_for_registered_autoload_via_scope() {
     // `defined?(M::X)` should return "constant" without triggering the
     // autoload — even if the file doesn't exist yet.
     let result = run("module M; end\nM.autoload :X, \"nonexistent_file.rb\"\ndefined?(M::X)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("constant".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("constant".to_string())));
 }
 
 #[test]
@@ -263,10 +243,7 @@ fn defined_returns_constant_for_bare_autoload_in_lexical_scope() {
     // constant should return "constant" without triggering the load.
     let result =
         run("module M\n  autoload :R, \"missing.rb\"\n  $checked = defined?(R)\nend\n$checked");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("constant".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("constant".to_string())));
 }
 
 // ── autoload constant-name validation ───────────────────────────────────────
@@ -299,10 +276,7 @@ fn autoload_rejects_name_with_space() {
 #[test]
 fn autoload_accepts_valid_uppercase_name() {
     let result = run("module M; end\nM.autoload :Valid, \"x.rb\"\nM.autoload?(:Valid)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("x.rb".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("x.rb".to_string())));
 }
 
 // ── Module#=== / Object#extend (case equality + singleton mixins) ──────────

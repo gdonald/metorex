@@ -200,7 +200,7 @@ impl VirtualMachine {
                 }
                 let name = exception.borrow().name.clone();
                 Ok(Some(match name {
-                    Some(n) => Object::Symbol(Rc::new(n)),
+                    Some(n) => Object::symbol(n),
                     None => Object::Nil,
                 }))
             }
@@ -217,7 +217,7 @@ impl VirtualMachine {
             "type" | "exception_type" => {
                 // Return the exception type as a String
                 let exception_type = exception.borrow().exception_type.clone();
-                Ok(Some(Object::String(Rc::new(exception_type))))
+                Ok(Some(Object::string(exception_type)))
             }
             // `set_backtrace` accepts nil, a String, or an Array of Strings,
             // and refuses anything else.
@@ -231,13 +231,13 @@ impl VirtualMachine {
                 }
                 let (trace, kept) = match &arguments[0] {
                     Object::Nil => (None, None),
-                    Object::String(line) => (Some(vec![(**line).clone()]), None),
+                    Object::String(line) => (Some(vec![line.as_str().to_string()]), None),
                     Object::Array(entries) => {
                         let mut lines = Vec::with_capacity(entries.borrow().len());
                         let mut sites = Vec::with_capacity(entries.borrow().len());
                         for entry in entries.borrow().iter() {
                             match entry {
-                                Object::String(line) => lines.push((**line).clone()),
+                                Object::String(line) => lines.push(line.as_str().to_string()),
                                 // Ruby 3.4 also accepts Location objects, and
                                 // reports them through both accessors.
                                 Object::Instance(instance)
@@ -246,7 +246,7 @@ impl VirtualMachine {
                                 {
                                     let borrowed = instance.borrow();
                                     let path = match borrowed.get_var("path") {
-                                        Some(Object::String(path)) => (**path).clone(),
+                                        Some(Object::String(path)) => path.as_str().to_string(),
                                         _ => String::new(),
                                     };
                                     let line = match borrowed.get_var("lineno") {
@@ -254,7 +254,7 @@ impl VirtualMachine {
                                         _ => 0,
                                     };
                                     let label = match borrowed.get_var("label") {
-                                        Some(Object::String(label)) => (**label).clone(),
+                                        Some(Object::String(label)) => label.as_str().to_string(),
                                         _ => String::new(),
                                     };
                                     lines.push(if label.is_empty() {
@@ -298,7 +298,7 @@ impl VirtualMachine {
             "inspect" => {
                 let rendered =
                     match self.send_to_object(receiver.clone(), "to_s", vec![], position)? {
-                        Object::String(text) => (*text).clone(),
+                        Object::String(text) => text.as_str().to_string(),
                         other => other.to_string(),
                     };
                 let class_name = {
@@ -325,7 +325,7 @@ impl VirtualMachine {
                 );
                 let bottom_first = matches!(
                     keyword_argument(arguments, "order"),
-                    Some(Object::Symbol(order)) if *order == "bottom"
+                    Some(Object::Symbol(order)) if order.as_str() == "bottom"
                 );
                 // Through `send` so a class that overrides `detailed_message`
                 // decides how its own message reads.
@@ -340,7 +340,7 @@ impl VirtualMachine {
                     detail_arguments,
                     position,
                 )? {
-                    Object::String(text) => (*text).clone(),
+                    Object::String(text) => text.as_str().to_string(),
                     other => other.to_string(),
                 };
                 let trace = exception.borrow().backtrace.clone().unwrap_or_default();
@@ -379,13 +379,13 @@ impl VirtualMachine {
                         vec![],
                         position,
                     )? {
-                        Object::String(text) => (*text).clone(),
+                        Object::String(text) => text.as_str().to_string(),
                         other => other.to_string(),
                     };
                     rendered.push_str(&format!("{}\n", reported));
                     cause = details.borrow().cause.clone();
                 }
-                Ok(Some(Object::String(Rc::new(rendered))))
+                Ok(Some(Object::string(rendered)))
             }
             // Ruby's `#detailed_message` decorates the message with the class
             // name, or stands in for an empty message. `highlight: true` wraps
@@ -432,7 +432,7 @@ impl VirtualMachine {
                 } else {
                     format!("{} ({})", message, class_name)
                 };
-                Ok(Some(Object::String(Rc::new(rendered))))
+                Ok(Some(Object::string(rendered)))
             }
             // `Exception#cause` is the exception a rescue clause was handling
             // when this one was raised, nil when there was none.
@@ -478,13 +478,12 @@ impl VirtualMachine {
                     .map(|(path, line, label)| {
                         let mut instance =
                             crate::object::Instance::new(std::rc::Rc::clone(&location_class));
-                        instance.set_var("path".to_string(), Object::String(Rc::new(path.clone())));
+                        instance.set_var("path".to_string(), Object::string(path.clone()));
                         instance.set_var("lineno".to_string(), Object::Int(*line as i64));
-                        instance
-                            .set_var("label".to_string(), Object::String(Rc::new(label.clone())));
+                        instance.set_var("label".to_string(), Object::string(label.clone()));
                         instance.set_var(
                             "absolute_path".to_string(),
-                            Object::String(Rc::new(absolute_path(path))),
+                            Object::string(absolute_path(path)),
                         );
                         Object::Instance(Rc::new(RefCell::new(instance)))
                     })
@@ -506,7 +505,7 @@ impl VirtualMachine {
                 };
                 let entries: Vec<Object> = trace
                     .iter()
-                    .map(|line| Object::String(Rc::new(line.clone())))
+                    .map(|line| Object::string(line.clone()))
                     .collect();
                 let array = Object::Array(Rc::new(RefCell::new(entries)));
                 exception.borrow_mut().backtrace_array = Some(array.clone());
@@ -522,7 +521,7 @@ impl VirtualMachine {
                 } else {
                     exc.exception_type.clone()
                 };
-                Ok(Some(Object::String(Rc::new(rendered))))
+                Ok(Some(Object::string(rendered)))
             }
             _ => Ok(None), // No native method found, let it fall through
         }

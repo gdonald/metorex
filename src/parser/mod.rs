@@ -67,6 +67,13 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashSet<String> {
                             | TokenKind::MinusEqual
                             | TokenKind::StarEqual
                             | TokenKind::SlashEqual
+                            | TokenKind::PercentEqual
+                            | TokenKind::StarStarEqual
+                            | TokenKind::PipeEqual
+                            | TokenKind::AmpersandEqual
+                            | TokenKind::CaretEqual
+                            | TokenKind::ShovelEqual
+                            | TokenKind::RightShiftEqual
                             | TokenKind::LogicalOrAssign
                             | TokenKind::LogicalAndAssign
                     )

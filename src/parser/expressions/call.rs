@@ -177,6 +177,9 @@ impl Parser {
                 && !self.bracket_starts_array_argument(&expr)
             {
                 self.advance();
+                // A subscript may be written across several lines, so a
+                // newline after the bracket carries no meaning.
+                self.skip_whitespace();
                 // Array indexing or [] method call
                 if self.match_token(&[TokenKind::RBracket]) {
                     // Empty brackets: obj[] — call with no args
@@ -265,7 +268,15 @@ impl Parser {
                         };
                     }
                 }
-            } else if self.match_token(&[TokenKind::ColonColon]) {
+            } else if self.check(&[TokenKind::ColonColon])
+                && !(self.peek().had_leading_space
+                    && matches!(&expr, Expression::Identifier { name, .. } if !self.bound_names.contains(name)))
+            {
+                // `Foo::Bar` reads a name out of Foo, and `take ::Bar` passes
+                // the top-level Bar to `take`. The space before `::` is what
+                // tells them apart, and only for a name the file never binds,
+                // which is the one that can be a paren-less call.
+                self.advance();
                 // Scope resolution (e.g., Math::PI, Foo::Bar)
                 let position = expr.position();
                 let name_token = self.advance();
@@ -644,9 +655,14 @@ impl Parser {
     /// colon, since `condition ? value : -1` puts one there too.
     fn colon_starts_symbol_argument(&mut self) -> bool {
         use crate::parser::expressions::primary::symbols;
+        // A symbol never carries a space between its colon and its name, so
+        // `flag ? held : "text"` is a ternary rather than a call passing the
+        // symbol `:"text"`.
         let next = self.peek_ahead(1);
-        symbols::starts_symbol_literal(&next.kind)
-            || (symbols::starts_operator_symbol(&next.kind) && !next.had_leading_space)
+        if next.had_leading_space {
+            return false;
+        }
+        symbols::starts_symbol_literal(&next.kind) || symbols::starts_operator_symbol(&next.kind)
     }
 
     /// `p [1, 2]` passes an array while `values[0]` indexes one. Ruby tells
@@ -790,6 +806,7 @@ impl Parser {
                 | TokenKind::ClassVar(_)
                 | TokenKind::GlobalVar(_)
                 | TokenKind::Bang
+                | TokenKind::ColonColon
                 | TokenKind::MagicFile
                 | TokenKind::MagicLine
                 | TokenKind::MagicDir
@@ -922,6 +939,7 @@ impl Parser {
                     | TokenKind::GlobalVar(_)
                     | TokenKind::Bang
                     | TokenKind::NotKeyword
+                    | TokenKind::ColonColon
                     | TokenKind::MagicFile
                     | TokenKind::MagicLine
                     | TokenKind::MagicDir
@@ -1026,6 +1044,7 @@ impl Parser {
     fn parse_arguments_without_parens_inner(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut arguments = Vec::new();
         let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
+        let mut rocket_pairs: Vec<(Expression, Expression)> = Vec::new();
         let position = self.peek().position;
 
         self.skip_whitespace();
@@ -1051,13 +1070,24 @@ impl Parser {
         } else {
             // Handle &expr (block-to-proc conversion)
             self.match_token(&[TokenKind::Ampersand]);
-            arguments.push(self.parse_expression()?);
+            let first = self.parse_expression()?;
+            // A `key => value` pair gathers into a Hash the same way a
+            // `name: value` one does, which is what `held.update "a" => 1`
+            // passes.
+            if self.match_token(&[TokenKind::FatArrow]) {
+                self.skip_whitespace();
+                let value = self.parse_expression()?;
+                rocket_pairs.push((first, value));
+            } else {
+                arguments.push(first);
 
-            // After parsing the first positional argument, check if we see a colon
-            // (which would indicate dict syntax, not a function call).
-            if self.check(&[TokenKind::Colon]) {
-                return Err(self
-                    .error_at_current("Expected function call but found dictionary-like syntax"));
+                // After parsing the first positional argument, check if we see a colon
+                // (which would indicate dict syntax, not a function call).
+                if self.check(&[TokenKind::Colon]) {
+                    return Err(self.error_at_current(
+                        "Expected function call but found dictionary-like syntax",
+                    ));
+                }
             }
         }
 
@@ -1112,14 +1142,21 @@ impl Parser {
                     position,
                 });
             } else {
-                arguments.push(self.parse_expression()?);
+                let held = self.parse_expression()?;
+                if self.match_token(&[TokenKind::FatArrow]) {
+                    self.skip_whitespace();
+                    let value = self.parse_expression()?;
+                    rocket_pairs.push((held, value));
+                } else {
+                    arguments.push(held);
+                }
             }
             // Don't skip newlines here — the newline terminates paren-less args
             // and is needed by wrap_with_modifier to prevent consuming the next line
         }
 
         // If there were keyword args, append them as a marked kwargs Dict.
-        if !keyword_pairs.is_empty() {
+        if !keyword_pairs.is_empty() || !rocket_pairs.is_empty() {
             let mut entries: Vec<(Expression, Expression)> = keyword_pairs
                 .into_iter()
                 .map(|(k, v)| {
@@ -1132,6 +1169,7 @@ impl Parser {
                     )
                 })
                 .collect();
+            entries.extend(rocket_pairs);
             entries.push((
                 Expression::StringLiteral {
                     value: "__MX_KWARGS__".to_string(),

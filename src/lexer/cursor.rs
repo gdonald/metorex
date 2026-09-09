@@ -5,7 +5,9 @@ use super::{Lexer, Position};
 impl<'a> Lexer<'a> {
     /// Get the current position
     pub(super) fn current_position(&self) -> Position {
-        Position::new(self.line, self.column, self.offset)
+        let mut position = Position::new(self.line, self.column, self.offset);
+        position.prelude = self.prelude;
+        position
     }
 
     /// Advance to the next character and return it

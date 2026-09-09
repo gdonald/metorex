@@ -149,6 +149,15 @@ impl VirtualMachine {
                 message,
             });
         }
+        // A Thread has nothing to be without the block that gives it something
+        // to run, so Ruby refuses to hand back an uninitialized one.
+        if method_name == "allocate" && class_rc.name() == "Thread" {
+            return Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                "allocator undefined for Thread",
+                position,
+            ));
+        }
         // `allocate` on a class whose instances are primitives answers an
         // empty one of them, since there is no separate uninitialized form.
         if method_name == "allocate" && matches!(class_rc.name(), "Array" | "Hash" | "Set") {
@@ -209,6 +218,11 @@ impl VirtualMachine {
                 location: position_to_location(position),
                 message,
             });
+        }
+        // A class that defines its own `allocate` answers with that, so the
+        // uninitialized instance below is not what it hands back.
+        if method_name == "allocate" && self.class_method_of(class_rc, "allocate").is_some() {
+            return Ok(None);
         }
         if method_name == "allocate" {
             if class_rc.name() == "Class" {
@@ -294,10 +308,7 @@ impl VirtualMachine {
                 if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                     collect_from(&object_class, &mut names);
                 }
-                let names: Vec<Object> = names
-                    .into_iter()
-                    .map(|n| Object::Symbol(Rc::new(n)))
-                    .collect();
+                let names: Vec<Object> = names.into_iter().map(Object::symbol).collect();
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
             }
             // constants(inherit = true): with inherit, include constants
@@ -354,10 +365,7 @@ impl VirtualMachine {
                     }
                 }
             }
-            let names: Vec<Object> = names
-                .into_iter()
-                .map(|n| Object::Symbol(Rc::new(n)))
-                .collect();
+            let names: Vec<Object> = names.into_iter().map(Object::symbol).collect();
             return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
         }
         if method_name == "attached_object" {
@@ -489,8 +497,8 @@ impl VirtualMachine {
         // `autoload?(:CONST, [inherit=true])` returns the registered path.
         if method_name == "autoload" {
             let const_name = match arguments.first() {
-                Some(Object::Symbol(s)) => (**s).clone(),
-                Some(Object::String(s)) => (**s).clone(),
+                Some(Object::Symbol(s)) => s.as_str().to_string(),
+                Some(Object::String(s)) => s.as_str().to_string(),
                 _ => return Ok(Some(Object::Nil)),
             };
             if !is_valid_constant_name(&const_name) {
@@ -516,15 +524,15 @@ impl VirtualMachine {
                 });
             }
             let path = match arguments.get(1) {
-                Some(Object::String(s)) => (**s).clone(),
-                Some(Object::Symbol(s)) => (**s).clone(),
+                Some(Object::String(s)) => s.as_str().to_string(),
+                Some(Object::Symbol(s)) => s.as_str().to_string(),
                 Some(other) => {
                     let other_obj = other.clone();
                     if let Some((cls, method)) = self.lookup_method(&other_obj, "to_path") {
                         let result =
                             self.invoke_method(cls, method, other_obj, Vec::new(), position)?;
                         match result {
-                            Object::String(s) => (*s).clone(),
+                            Object::String(s) => s.as_str().to_string(),
                             _ => {
                                 let msg = "to_path must return a String".to_string();
                                 let exc = Object::exception("TypeError", msg.clone());
@@ -593,10 +601,147 @@ impl VirtualMachine {
                     .unwrap_or(Object::Nil),
             ));
         }
+        // `Encoding.default_internal` names the encoding a string is
+        // converted to on the way in. Metorex converts nothing, so it stays
+        // nil unless a program sets it.
+        if class_rc.name() == "Encoding"
+            && matches!(method_name, "default_internal" | "default_internal=")
+        {
+            if method_name == "default_internal=" {
+                let Some(value) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                self.globals_mut()
+                    .set("__Encoding_default_internal", value.clone());
+                return Ok(Some(value.clone()));
+            }
+            return Ok(Some(
+                self.globals()
+                    .get("__Encoding_default_internal")
+                    .unwrap_or(Object::Nil),
+            ));
+        }
+        // `Encoding.find` answers the encoding a name stands for. The names
+        // that stand for a setting rather than an encoding answer what that
+        // setting holds.
+        // An encoding is a class standing under Encoding, so the readings an
+        // encoding answers are handled here rather than from Encoding's own
+        // instance methods.
+        if class_rc
+            .superclass()
+            .is_some_and(|parent| parent.name() == "Encoding")
+        {
+            match method_name {
+                "dummy?" => {
+                    return Ok(Some(Object::Bool(
+                        crate::vm::init::ENCODING_NAMES
+                            .iter()
+                            .any(|(_, display, dummy)| *dummy && *display == class_rc.name()),
+                    )));
+                }
+                // A dummy encoding converts nothing, so nothing it holds
+                // stands for ASCII either. The wide UTF forms are not ASCII
+                // compatible for the plainer reason that their code units are
+                // more than a byte.
+                "ascii_compatible?" => {
+                    let dummy = crate::vm::init::ENCODING_NAMES
+                        .iter()
+                        .any(|(_, display, dummy)| *dummy && *display == class_rc.name());
+                    return Ok(Some(Object::Bool(
+                        !dummy
+                            && !class_rc.name().starts_with("UTF-16")
+                            && !class_rc.name().starts_with("UTF-32"),
+                    )));
+                }
+                "inspect" => {
+                    // Ruby shows ASCII-8BIT under the name BINARY, with the
+                    // name it reports alongside.
+                    let dummy = crate::vm::init::ENCODING_NAMES
+                        .iter()
+                        .any(|(_, display, dummy)| *dummy && *display == class_rc.name());
+                    let shown = if class_rc.name() == "ASCII-8BIT" {
+                        "BINARY (ASCII-8BIT)".to_string()
+                    } else {
+                        class_rc.name().to_string()
+                    };
+                    let tail = if dummy { " (dummy)" } else { "" };
+                    return Ok(Some(Object::string(format!(
+                        "#<Encoding:{}{}>",
+                        shown, tail
+                    ))));
+                }
+                _ => {}
+            }
+        }
+
+        // Every encoding metorex names, each one listed once however many
+        // constants reach it.
+        if class_rc.name() == "Encoding" && method_name == "list" {
+            return Ok(Some(
+                self.globals()
+                    .get("__Encoding_list")
+                    .unwrap_or_else(|| Object::array(Vec::new())),
+            ));
+        }
+        if class_rc.name() == "Encoding" && matches!(method_name, "find" | "[]") {
+            let wanted = match arguments.first() {
+                Some(Object::String(held)) => held.as_str().to_string(),
+                Some(Object::Symbol(held)) => held.as_str().to_string(),
+                Some(Object::Class(held)) if held.name().contains('-') => {
+                    return Ok(Some(arguments[0].clone()));
+                }
+                _ => return Err(method_argument_error(method_name, 1, 0, position)),
+            };
+            let settled =
+                match wanted.to_ascii_lowercase().as_str() {
+                    "locale" | "external" | "filesystem" => {
+                        return Ok(Some(
+                            self.globals()
+                                .get("__Encoding_default_external")
+                                .or_else(|| self.globals().get("Encoding::UTF_8"))
+                                .unwrap_or(Object::Nil),
+                        ));
+                    }
+                    "internal" => {
+                        return Ok(Some(
+                            self.globals()
+                                .get("__Encoding_default_internal")
+                                .unwrap_or(Object::Nil),
+                        ));
+                    }
+                    "utf8" => "UTF_8",
+                    "ascii" | "ansi_x3.4-1968" => "US_ASCII",
+                    "binary" => "BINARY",
+                    "sjis" => "SHIFT_JIS",
+                    // Every other name is matched against the table the constants
+                    // were built from, so a constant and the name it reports find
+                    // the same encoding.
+                    _ => {
+                        let Some((settled, _, _)) = crate::vm::init::ENCODING_NAMES.iter().find(
+                            |(constant, display, _)| {
+                                constant.eq_ignore_ascii_case(&wanted)
+                                    || display.eq_ignore_ascii_case(&wanted)
+                            },
+                        ) else {
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                &format!("unknown encoding name - {wanted}"),
+                                position,
+                            ));
+                        };
+                        settled
+                    }
+                };
+            return Ok(Some(
+                self.globals()
+                    .get(&format!("Encoding::{settled}"))
+                    .unwrap_or(Object::Nil),
+            ));
+        }
         if method_name == "autoload?" {
             let const_name = match arguments.first() {
-                Some(Object::Symbol(s)) => (**s).clone(),
-                Some(Object::String(s)) => (**s).clone(),
+                Some(Object::Symbol(s)) => s.as_str().to_string(),
+                Some(Object::String(s)) => s.as_str().to_string(),
                 _ => return Ok(Some(Object::Nil)),
             };
             let inherit = !matches!(arguments.get(1), Some(Object::Bool(false)));
@@ -608,7 +753,7 @@ impl VirtualMachine {
                 self.effective_autoload(&class_for_autoload, &const_name)
             };
             return Ok(Some(match path {
-                Some(p) => Object::String(Rc::new(p)),
+                Some(p) => Object::string(p),
                 None => Object::Nil,
             }));
         }
@@ -663,6 +808,19 @@ impl VirtualMachine {
             return Err(crate::vm::errors::argument_count_error(
                 crate::vm::errors::Arity::AtLeast(1),
                 0,
+                position,
+            ));
+        }
+        // A refinement holds methods for one class only, and Ruby removed both
+        // of these from it rather than leave a way to mix into it.
+        if matches!(method_name, "include" | "prepend")
+            && class_rc
+                .get_class_var(crate::vm::native_methods::REFINEMENT_LABEL_KEY)
+                .is_some()
+        {
+            return Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!("Refinement#{} has been removed", method_name),
                 position,
             ));
         }
@@ -735,7 +893,7 @@ impl VirtualMachine {
             && arguments.len() == 1
         {
             let source = self.coerce_name_argument(&arguments[0], position)?;
-            return Ok(Some(Object::String(Rc::new(regex::escape(&source)))));
+            return Ok(Some(Object::string(regex::escape(&source))));
         }
         // `Regexp.last_match` answers the whole MatchData, and with a number
         // the capture that number names.
@@ -791,7 +949,7 @@ impl VirtualMachine {
             let mut sources = Vec::with_capacity(parts.len());
             for part in &parts {
                 sources.push(match part {
-                    Object::Regex(pattern, _) => (**pattern).clone(),
+                    Object::Regex(pattern, _) => pattern.as_str().to_string(),
                     other => regex::escape(&self.coerce_name_argument(other, position)?),
                 });
             }
@@ -841,7 +999,7 @@ impl VirtualMachine {
                             .unwrap_or(".")
                             .to_string();
                         let result = if dir.is_empty() { ".".to_string() } else { dir };
-                        return Ok(Some(Object::String(Rc::new(result))));
+                        return Ok(Some(Object::string(result)));
                     }
                 }
                 "expand_path" | "realpath" | "absolute_path" => {
@@ -850,32 +1008,32 @@ impl VirtualMachine {
                             .ok()
                             .and_then(|p| p.to_str().map(String::from))
                             .unwrap_or_else(|| s.as_str().to_string());
-                        return Ok(Some(Object::String(Rc::new(expanded))));
+                        return Ok(Some(Object::string(expanded)));
                     }
                 }
                 "join" => {
                     let mut parts: Vec<String> = Vec::new();
                     for arg in arguments {
                         match arg {
-                            Object::String(s) => parts.push((**s).clone()),
-                            Object::Symbol(s) => parts.push((**s).clone()),
+                            Object::String(s) => parts.push(s.as_str().to_string()),
+                            Object::Symbol(s) => parts.push(s.as_str().to_string()),
                             Object::Array(arr) => {
                                 for item in arr.borrow().iter() {
                                     if let Object::String(s) = item {
-                                        parts.push((**s).clone());
+                                        parts.push(s.as_str().to_string());
                                     }
                                 }
                             }
                             _ => {}
                         }
                     }
-                    return Ok(Some(Object::String(Rc::new(parts.join("/")))));
+                    return Ok(Some(Object::string(parts.join("/"))));
                 }
                 "respond_to?" => {
                     if let Some(name_arg) = arguments.first() {
                         let name_str = match name_arg {
-                            Object::String(s) => (**s).clone(),
-                            Object::Symbol(s) => (**s).clone(),
+                            Object::String(s) => s.as_str().to_string(),
+                            Object::Symbol(s) => s.as_str().to_string(),
                             _ => return Ok(Some(Object::Bool(false))),
                         };
                         let known = matches!(
@@ -975,8 +1133,8 @@ impl VirtualMachine {
                 "respond_to?" => {
                     if let Some(arg) = arguments.first() {
                         let n = match arg {
-                            Object::String(s) => (**s).clone(),
-                            Object::Symbol(s) => (**s).clone(),
+                            Object::String(s) => s.as_str().to_string(),
+                            Object::Symbol(s) => s.as_str().to_string(),
                             _ => return Ok(Some(Object::Bool(false))),
                         };
                         let known = matches!(
@@ -1021,7 +1179,7 @@ impl VirtualMachine {
                         let Object::String(rendered) = key else {
                             continue;
                         };
-                        built.insert((*rendered).clone(), value);
+                        built.insert(rendered.as_str().to_string(), value);
                     }
                     return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(built)))));
                 }
@@ -1159,7 +1317,10 @@ impl VirtualMachine {
                 if name.is_empty() || class_rc.is_singleton_class() {
                     return Ok(Some(Object::Nil));
                 }
-                return Ok(Some(Object::String(Rc::new(name))));
+                // A class answers one name object, not a fresh string each
+                // time it is asked.
+                let slot = format!("__class_name_{:p}_{}", Rc::as_ptr(class_rc), name);
+                return Ok(Some(self.memoized_text(&slot, &name)));
             }
             // Module#instance_method / Class#instance_method: returns the
             // bound `Method` object so `parameters` and friends work on it.
@@ -1269,7 +1430,7 @@ impl VirtualMachine {
                             .find_own_method(name)
                             .is_some_and(|method| method.is_undefined)
                     })
-                    .map(|name| Object::Symbol(Rc::new(name)))
+                    .map(Object::symbol)
                     .collect();
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                     undefined,
@@ -1443,7 +1604,7 @@ impl VirtualMachine {
                         "instance_methods" => !priv_set.contains(n),
                         _ => true,
                     })
-                    .map(|n| Object::Symbol(Rc::new(n)))
+                    .map(Object::symbol)
                     .collect();
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                     filtered,
@@ -1501,7 +1662,7 @@ impl VirtualMachine {
                             class_rc.set_method_private(attr_name.clone());
                         }
                         class_rc.declare_instance_var(attr_name);
-                        defined.push(Object::Symbol(Rc::new(attr_name.clone())));
+                        defined.push(Object::symbol(attr_name.clone()));
                         newly_defined_names.push(attr_name.clone());
                     }
                     if want_writer {
@@ -1527,7 +1688,7 @@ impl VirtualMachine {
                             class_rc.set_method_private(setter_name.clone());
                         }
                         class_rc.declare_instance_var(attr_name);
-                        defined.push(Object::Symbol(Rc::new(setter_name.clone())));
+                        defined.push(Object::symbol(setter_name.clone()));
                         newly_defined_names.push(setter_name);
                     }
                 }
@@ -1648,11 +1809,16 @@ impl VirtualMachine {
                     // Mirror the method onto the singleton class so
                     // `lookup_method` finds it there (where visibility lives).
                     // The `inherited` hook is inherited from Class's singleton
-                    // table via the `__class__` convention — copy it across
-                    // so we have something to toggle visibility on.
+                    // table via the `__class__` convention, so copy it across
+                    // and we have something to toggle visibility on.
                     if singleton.find_method(&name).is_none() {
                         match self.class_method_of(class_rc, &name) {
                             Some(method) => singleton.define_method(&name, method),
+                            // `new` and `allocate` are answered by the runtime
+                            // rather than a method table, so there is nothing
+                            // to mirror. The marking on the singleton is what
+                            // dispatch consults.
+                            None if matches!(name.as_str(), "new" | "allocate") => {}
                             None => {
                                 let msg = format!(
                                     "undefined method '{}' for {} '{}'",
@@ -1831,10 +1997,7 @@ impl VirtualMachine {
                 }
                 names.sort();
                 names.dedup();
-                let syms: Vec<Object> = names
-                    .into_iter()
-                    .map(|n| Object::Symbol(Rc::new(n)))
-                    .collect();
+                let syms: Vec<Object> = names.into_iter().map(Object::symbol).collect();
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(syms)))));
             }
             // Module#singleton_class?: whether this is the class of exactly
@@ -1991,7 +2154,7 @@ impl VirtualMachine {
                 let loc_array = |loc: Option<(String, i64)>| {
                     let items = match loc {
                         Some((file, line)) => {
-                            vec![Object::String(Rc::new(file)), Object::Int(line)]
+                            vec![Object::string(file), Object::Int(line)]
                         }
                         None => Vec::new(),
                     };
@@ -2209,8 +2372,8 @@ impl VirtualMachine {
                     ));
                 }
                 let const_name = match &arguments[0] {
-                    Object::Symbol(s) => s.as_ref().clone(),
-                    Object::String(s) => s.as_ref().clone(),
+                    Object::Symbol(s) => s.as_str().to_string(),
+                    Object::String(s) => s.as_str().to_string(),
                     other => {
                         return Err(method_argument_type_error(
                             "const_missing",
@@ -2552,7 +2715,7 @@ impl VirtualMachine {
                     class_rc.set_method_private(new_name.clone());
                 }
                 self.invoke_class_hook(class_rc, "method_added", &new_name, position)?;
-                return Ok(Some(Object::Symbol(Rc::new(new_name))));
+                return Ok(Some(Object::symbol(new_name)));
             }
             "module_function" => {
                 // Ruby undefines `module_function` on Class, so a rebound
@@ -2575,7 +2738,7 @@ impl VirtualMachine {
                 for argument in arguments {
                     let name = self.coerce_method_name(argument, method_name, position)?;
                     self.copy_to_module_function(class_rc, &name, position)?;
-                    names.push(Object::Symbol(Rc::new(name)));
+                    names.push(Object::symbol(name));
                 }
                 return Ok(Some(match names.len() {
                     1 => names.remove(0),
@@ -2713,7 +2876,7 @@ impl VirtualMachine {
                 };
                 let symbols: Vec<Object> = names
                     .into_iter()
-                    .map(|n| Object::Symbol(Rc::new(format!("@@{}", n))))
+                    .map(|n| Object::symbol(format!("@@{}", n)))
                     .collect();
                 return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                     symbols,
@@ -2774,8 +2937,8 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         match arg {
-            Object::Symbol(s) => Ok((**s).clone()),
-            Object::String(s) => Ok((**s).clone()),
+            Object::Symbol(s) => Ok(s.as_str().to_string()),
+            Object::String(s) => Ok(s.as_str().to_string()),
             other => {
                 let other_obj = other.clone();
                 let source_class = self.builtins().class_of(other).name().to_string();
@@ -2792,7 +2955,7 @@ impl VirtualMachine {
                         });
                     };
                 match converted {
-                    Object::String(s) => Ok((*s).clone()),
+                    Object::String(s) => Ok(s.as_str().to_string()),
                     other => {
                         let converted_class = self.builtins().class_of(&other).name().to_string();
                         let msg = format!("can't convert {} to String", converted_class);
@@ -2960,7 +3123,7 @@ impl VirtualMachine {
                 holder,
                 method,
                 Object::Class(Rc::clone(module_rc)),
-                vec![Object::Symbol(Rc::new(name.to_string()))],
+                vec![Object::symbol(name.to_string())],
                 position,
             );
         }
@@ -2999,7 +3162,11 @@ impl VirtualMachine {
     /// The class-level method `name` on `class_rc`: one stored under the
     /// `__class__` convention, one on a singleton class along the superclass
     /// chain, or one copied in by `extend`.
-    fn class_method_of(&mut self, class_rc: &Rc<Class>, name: &str) -> Option<Rc<Method>> {
+    pub(crate) fn class_method_of(
+        &mut self,
+        class_rc: &Rc<Class>,
+        name: &str,
+    ) -> Option<Rc<Method>> {
         if let Some(method) = class_rc.find_method(&format!("__class__{}", name)) {
             return Some(method);
         }
@@ -3082,7 +3249,7 @@ impl VirtualMachine {
         if handler.is_undefined {
             return None;
         }
-        let arguments = vec![Object::Symbol(Rc::new(hook.to_string())), argument.clone()];
+        let arguments = vec![Object::symbol(hook.to_string()), argument.clone()];
         Some(self.invoke_method(owner, handler, receiver.clone(), arguments, position))
     }
 
@@ -3102,7 +3269,7 @@ impl VirtualMachine {
         added_name: &str,
         position: Position,
     ) -> Result<(), MetorexError> {
-        let arg = Object::Symbol(Rc::new(added_name.to_string()));
+        let arg = Object::symbol(added_name.to_string());
 
         // A hook that was undefined raises when it would have been called,
         // the same as any other call to a method that is not there. A

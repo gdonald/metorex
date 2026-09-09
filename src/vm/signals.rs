@@ -79,7 +79,7 @@ pub(crate) fn signal_from_object(value: &Object) -> Option<(String, i32)> {
 /// when the argument is a callable to run instead.
 pub(crate) fn handler_name(command: &Object) -> Option<String> {
     let text = match command {
-        Object::Symbol(name) | Object::String(name) => (**name).clone(),
+        Object::Symbol(name) | Object::String(name) => name.as_str().to_string(),
         Object::Nil => "IGNORE".to_string(),
         _ => return None,
     };

@@ -69,6 +69,13 @@ impl Parser {
             TokenKind::MinusEqual,
             TokenKind::StarEqual,
             TokenKind::SlashEqual,
+            TokenKind::PercentEqual,
+            TokenKind::StarStarEqual,
+            TokenKind::PipeEqual,
+            TokenKind::AmpersandEqual,
+            TokenKind::CaretEqual,
+            TokenKind::ShovelEqual,
+            TokenKind::RightShiftEqual,
             TokenKind::LogicalOrAssign,
             TokenKind::LogicalAndAssign,
             TokenKind::Question,
@@ -119,6 +126,16 @@ impl Parser {
         })
     }
 
+    /// Whether a `+` or `-` after a bare `yield` is the infix operator rather
+    /// than the sign on an argument. Ruby tells them apart by the spacing:
+    /// `yield + x` adds to what the block answered, where `yield +x` passes a
+    /// positive x to it.
+    fn signed_operator_after_bare_yield(&mut self) -> bool {
+        self.check(&[TokenKind::Plus, TokenKind::Minus])
+            && self.peek().had_leading_space
+            && self.peek_ahead(1).had_leading_space
+    }
+
     /// Parse a `yield` expression after the `yield` keyword has been consumed.
     pub(super) fn parse_yield_expression(
         &mut self,
@@ -151,10 +168,35 @@ impl Parser {
             TokenKind::End,
             TokenKind::RBrace,
             TokenKind::RParen,
+            TokenKind::RBracket,
+            TokenKind::Comma,
             TokenKind::If,
             TokenKind::Unless,
             TokenKind::Do,
-        ]) && !self.is_at_end()
+            TokenKind::Then,
+            TokenKind::While,
+            TokenKind::Until,
+            TokenKind::Rescue,
+            // An operator that can only sit between two operands means the
+            // yield took no arguments: `while yield == :retry` compares what
+            // the block answered, rather than yielding `== :retry`.
+            TokenKind::EqualEqual,
+            TokenKind::TripleEqual,
+            TokenKind::BangEqual,
+            TokenKind::Match,
+            TokenKind::NotMatch,
+            TokenKind::Less,
+            TokenKind::Greater,
+            TokenKind::LessEqual,
+            TokenKind::GreaterEqual,
+            TokenKind::Spaceship,
+            TokenKind::LogicalAnd,
+            TokenKind::LogicalOr,
+            TokenKind::Question,
+            TokenKind::Dot,
+            TokenKind::Equal,
+        ]) && !self.signed_operator_after_bare_yield()
+            && !self.is_at_end()
         {
             // yield expr, expr — paren-less arguments
             let mut args = vec![self.parse_expression()?];

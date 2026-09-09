@@ -6,7 +6,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -117,7 +116,7 @@ fn is_a_error_non_class_arg() {
 #[test]
 fn superclass_of_integer() {
     let result = run("Integer.superclass.name");
-    assert_eq!(result, Some(Object::String(Rc::new("Numeric".to_string()))));
+    assert_eq!(result, Some(Object::string("Numeric".to_string())));
 }
 
 #[test]
@@ -129,16 +128,13 @@ class Dog < Animal
 end
 Dog.superclass.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Animal".to_string()))));
+    assert_eq!(result, Some(Object::string("Animal".to_string())));
 }
 
 #[test]
 fn superclass_of_object_is_basicobject() {
     let result = run("Object.superclass.name");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("BasicObject".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("BasicObject".to_string())));
 }
 
 #[test]
@@ -202,7 +198,7 @@ class Widget
 end
 Widget.itself.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Widget".to_string()))));
+    assert_eq!(result, Some(Object::string("Widget".to_string())));
 }
 
 #[test]
@@ -244,10 +240,7 @@ class Recipe
 end
 Recipe.new.instance_variables.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:@c, :@a, :@b]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:@c, :@a, :@b]".to_string())));
 }
 
 #[test]
@@ -264,7 +257,7 @@ recipe.instance_variables.inspect
 "#);
     assert_eq!(
         result,
-        Some(Object::String(Rc::new("[:@name, :@rating]".to_string())))
+        Some(Object::string("[:@name, :@rating]".to_string()))
     );
 }
 
@@ -283,7 +276,7 @@ recipe.instance_variables.inspect
 "#);
     assert_eq!(
         result,
-        Some(Object::String(Rc::new("[:@name, :@servings]".to_string())))
+        Some(Object::string("[:@name, :@servings]".to_string()))
     );
 }
 
@@ -308,7 +301,7 @@ end
 p = Person.new("Alice")
 p.instance_variable_get("@name")
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Alice".to_string()))));
+    assert_eq!(result, Some(Object::string("Alice".to_string())));
 }
 
 #[test]
@@ -535,7 +528,7 @@ fn dup_integer_returns_same_value() {
 #[test]
 fn dup_string_returns_same_value() {
     let result = run(r#""hello".dup"#);
-    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 // ============================================================================
@@ -577,7 +570,7 @@ end
 p = Person.new("Alice")
 p.instance_variable_get(:@name)
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Alice".to_string()))));
+    assert_eq!(result, Some(Object::string("Alice".to_string())));
 }
 
 #[test]
@@ -596,10 +589,7 @@ h1.size
 #[test]
 fn local_variables_reports_top_level_locals() {
     let result = run("a = 1\nb = 2\nlocal_variables.inspect");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:a, :b]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:a, :b]".to_string())));
 }
 
 #[test]
@@ -612,7 +602,7 @@ def only_mine
 end
 only_mine().inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("[:mine]".to_string()))));
+    assert_eq!(result, Some(Object::string("[:mine]".to_string())));
 }
 
 #[test]
@@ -626,7 +616,7 @@ def shadowing
 end
 shadowing().inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("[:name]".to_string()))));
+    assert_eq!(result, Some(Object::string("[:name]".to_string())));
 }
 
 #[test]
@@ -641,7 +631,7 @@ eval("local_variables", bound()).inspect
 "#);
     assert_eq!(
         result,
-        Some(Object::String(Rc::new("[:first, :second]".to_string())))
+        Some(Object::string("[:first, :second]".to_string()))
     );
 }
 
@@ -682,7 +672,7 @@ end
 held = method(:answer)
 held.class.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Method".to_string()))));
+    assert_eq!(result, Some(Object::string("Method".to_string())));
 }
 
 // ── File.executable? ─────────────────────────────────────────────────────────
@@ -717,7 +707,7 @@ class Named
 end
 "shout".method(Named.new).call
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("SHOUT".to_string()))));
+    assert_eq!(result, Some(Object::string("SHOUT".to_string())));
 }
 
 #[test]
@@ -757,9 +747,7 @@ Ghost.new.method(:haunt).call(1, 2)
 "#);
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
-            "called haunt with [1, 2]".to_string()
-        )))
+        Some(Object::string("called haunt with [1, 2]".to_string()))
     );
 }
 
@@ -777,10 +765,7 @@ class Ghost
 end
 Ghost.new.method(:whisper).call.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new(":whisper".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":whisper".to_string())));
 }
 
 #[test]
@@ -830,10 +815,7 @@ def widget.polish
 end
 widget.methods(false).inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:polish]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:polish]".to_string())));
 }
 
 #[test]
@@ -852,10 +834,7 @@ widget = Widget.new
 widget.extend(Greeting)
 [widget.methods(false).length, widget.methods.include?(:greet)].inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[0, true]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[0, true]".to_string())));
 }
 
 #[test]
@@ -877,7 +856,7 @@ class << widget
 end
 widget.methods(false).inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("[:buff]".to_string()))));
+    assert_eq!(result, Some(Object::string("[:buff]".to_string())));
 }
 
 #[test]
@@ -895,7 +874,7 @@ end
 singleton.send(:undef_method, :polish)
 widget.methods(false).inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("[]".to_string()))));
+    assert_eq!(result, Some(Object::string("[]".to_string())));
 }
 
 #[test]
@@ -932,7 +911,7 @@ Widget.new.methods.any? { |name| name.to_s.start_with?("__class__") }
 #[test]
 fn a_symbol_reports_the_symbol_class() {
     let result = run(":name.class.name");
-    assert_eq!(result, Some(Object::String(Rc::new("Symbol".to_string()))));
+    assert_eq!(result, Some(Object::string("Symbol".to_string())));
 }
 
 #[test]
@@ -952,16 +931,13 @@ fn a_symbol_keeps_the_character_level_methods() {
 #[test]
 fn array_intersection_keeps_left_order_without_duplicates() {
     let result = run("([1, 2, 3, 2] & [2, 3, 4]).inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("[2, 3]".to_string()))));
+    assert_eq!(result, Some(Object::string("[2, 3]".to_string())));
 }
 
 #[test]
 fn array_union_keeps_first_seen_order_without_duplicates() {
     let result = run("([1, 2, 3, 2] | [2, 3, 4]).inspect");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[1, 2, 3, 4]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[1, 2, 3, 4]".to_string())));
 }
 
 // ── A body ending in `if` under a method-level rescue ────────────────────────
@@ -980,7 +956,7 @@ rescue => error
 end
 choose(true)
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("yes".to_string()))));
+    assert_eq!(result, Some(Object::string("yes".to_string())));
 }
 
 #[test]
@@ -994,7 +970,7 @@ rescue => error
   "rescued"
 end
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("taken".to_string()))));
+    assert_eq!(result, Some(Object::string("taken".to_string())));
 }
 
 // ── Object#private_methods ───────────────────────────────────────────────────
@@ -1042,10 +1018,7 @@ fn secrets(code: &str) -> Option<Object> {
 #[test]
 fn private_methods_without_ancestors_lists_only_the_objects_own() {
     let result = secrets("Child.new.private_methods(false)");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:child_secret]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:child_secret]".to_string())));
 }
 
 #[test]
@@ -1053,19 +1026,16 @@ fn private_methods_with_ancestors_reaches_the_superclass() {
     let result = secrets("Child.new.private_methods");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_secret, :parent_secret]".to_string()
-        )))
+        ))
     );
 }
 
 #[test]
 fn private_methods_treats_nil_like_false() {
     let result = secrets("Child.new.private_methods(nil)");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:child_secret]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:child_secret]".to_string())));
 }
 
 #[test]
@@ -1073,9 +1043,9 @@ fn a_classs_private_methods_come_from_its_singleton_chain() {
     let result = secrets("Child.private_methods(false)");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_class_secret, :parent_class_secret]".to_string()
-        )))
+        ))
     );
 }
 
@@ -1126,7 +1096,7 @@ fn a_symbol_matches_a_regexp_on_the_left() {
 #[test]
 fn a_regexp_that_misses_a_symbol_is_nil() {
     let result = run(r"(/nope\z/ =~ :child_secret).inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("nil".to_string()))));
+    assert_eq!(result, Some(Object::string("nil".to_string())));
 }
 
 #[test]
@@ -1180,10 +1150,7 @@ fn guards(code: &str) -> Option<Object> {
 #[test]
 fn protected_methods_without_ancestors_lists_only_the_objects_own() {
     let result = guards("Child.new.protected_methods(false)");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:child_guard]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:child_guard]".to_string())));
 }
 
 #[test]
@@ -1191,19 +1158,14 @@ fn protected_methods_with_ancestors_reaches_the_superclass() {
     let result = guards("Child.new.protected_methods");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
-            "[:child_guard, :parent_guard]".to_string()
-        )))
+        Some(Object::string("[:child_guard, :parent_guard]".to_string()))
     );
 }
 
 #[test]
 fn protected_methods_treats_nil_like_false() {
     let result = guards("Child.new.protected_methods(nil)");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:child_guard]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:child_guard]".to_string())));
 }
 
 #[test]
@@ -1211,9 +1173,9 @@ fn a_classs_protected_methods_come_from_its_singleton_chain() {
     let result = guards("Child.protected_methods(false)");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_class_guard, :parent_class_guard]".to_string()
-        )))
+        ))
     );
 }
 
@@ -1246,7 +1208,7 @@ widget.protected_methods(false).inspect
 "#);
     assert_eq!(
         result,
-        Some(Object::String(Rc::new("[:singleton_guard]".to_string())))
+        Some(Object::string("[:singleton_guard]".to_string()))
     );
 }
 
@@ -1285,7 +1247,7 @@ fn public_method_returns_a_bound_method_for_a_public_name() {
     let result = run(&format!(
         "{VAULT}\nVault.new.public_method(:open_door).call.inspect"
     ));
-    assert_eq!(result, Some(Object::String(Rc::new(":opened".to_string()))));
+    assert_eq!(result, Some(Object::string(":opened".to_string())));
 }
 
 #[test]
@@ -1293,7 +1255,7 @@ fn public_method_reaches_a_class_method() {
     let result = run(&format!(
         "{VAULT}\nVault.public_method(:build).call.inspect"
     ));
-    assert_eq!(result, Some(Object::String(Rc::new(":built".to_string()))));
+    assert_eq!(result, Some(Object::string(":built".to_string())));
 }
 
 #[test]
@@ -1311,7 +1273,7 @@ fn public_method_refuses_a_protected_name() {
 #[test]
 fn method_still_answers_a_private_name() {
     let result = run(&format!("{VAULT}\nVault.new.method(:hidden).call.inspect"));
-    assert_eq!(result, Some(Object::String(Rc::new(":hidden".to_string()))));
+    assert_eq!(result, Some(Object::string(":hidden".to_string())));
 }
 
 const GHOST: &str = r#"
@@ -1334,9 +1296,7 @@ fn public_method_asks_respond_to_missing_without_private() {
     ));
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
-            "called publicly_handled".to_string()
-        )))
+        Some(Object::string("called publicly_handled".to_string()))
     );
 }
 
@@ -1355,9 +1315,7 @@ fn method_accepts_a_name_claimed_privately() {
     ));
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
-            "called privately_handled".to_string()
-        )))
+        Some(Object::string("called privately_handled".to_string()))
     );
 }
 
@@ -1371,10 +1329,7 @@ class Parent
 end
 Parent.public_method.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new(":its_own".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":its_own".to_string())));
 }
 
 // ── Object#public_methods ────────────────────────────────────────────────────
@@ -1421,10 +1376,7 @@ fn opens(code: &str) -> Option<Object> {
 #[test]
 fn public_methods_without_ancestors_lists_only_the_objects_own() {
     let result = opens("Child.new.public_methods(false)");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:child_open]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:child_open]".to_string())));
 }
 
 #[test]
@@ -1432,19 +1384,16 @@ fn public_methods_with_ancestors_reaches_the_superclass_and_mixins() {
     let result = opens("Child.new.public_methods");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_open, :mixed_in_open, :parent_open]".to_string()
-        )))
+        ))
     );
 }
 
 #[test]
 fn public_methods_treats_nil_like_false() {
     let result = opens("Child.new.public_methods(nil)");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:child_open]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:child_open]".to_string())));
 }
 
 #[test]
@@ -1452,9 +1401,9 @@ fn a_classs_public_methods_are_its_class_methods() {
     let result = opens("Child.public_methods(false)");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_class_open, :parent_class_open]".to_string()
-        )))
+        ))
     );
 }
 
@@ -1487,9 +1436,9 @@ fn divmod_floors_toward_negative_infinity() {
     let result = run("[13.divmod(4), 13.divmod(-4), (-13).divmod(4), (-13).divmod(-4)].inspect");
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[[3, 1], [-4, -3], [-4, 3], [3, -1]]".to_string()
-        )))
+        ))
     );
 }
 
@@ -1533,7 +1482,7 @@ fn remove_instance_variable_answers_the_value_it_took() {
     let result = run(&format!(
         "{GREETER}\nGreeter.new.remove_instance_variable(:@greeting)"
     ));
-    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -1546,10 +1495,7 @@ greeter.remove_instance_variable(:@greeting)
 greeter.instance_variables.inspect
 "#
     ));
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:@name]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:@name]".to_string())));
 }
 
 #[test]
@@ -1558,7 +1504,7 @@ fn remove_instance_variable_accepts_a_string_name() {
         r#"{GREETER}{}"#,
         "\nGreeter.new.remove_instance_variable(\"@name\")"
     ));
-    assert_eq!(result, Some(Object::String(Rc::new("world".to_string()))));
+    assert_eq!(result, Some(Object::string("world".to_string())));
 }
 
 #[test]
@@ -1574,7 +1520,7 @@ end
 Greeter.new.remove_instance_variable(Name.new)
 "#
     ));
-    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -1685,10 +1631,7 @@ class Registry
 end
 [Registry.respond_to?(:lookup), Registry.respond_to?(:missing_entirely)].inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[true, false]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[true, false]".to_string())));
 }
 
 // ── The default respond_to_missing? ──────────────────────────────────────────
@@ -1799,7 +1742,7 @@ def widget.polish
 end
 widget.singleton_method(:polish).call.inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new(":shiny".to_string()))));
+    assert_eq!(result, Some(Object::string(":shiny".to_string())));
 }
 
 #[test]
@@ -1810,7 +1753,7 @@ def widget.polish
 end
 widget.singleton_method(:polish).class.name
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("Method".to_string()))));
+    assert_eq!(result, Some(Object::string("Method".to_string())));
 }
 
 #[test]
@@ -1825,10 +1768,7 @@ widget = Object.new
 widget.singleton_class.include(included)
 widget.singleton_method(:from_include).call.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new(":included".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":included".to_string())));
 }
 
 #[test]
@@ -1843,10 +1783,7 @@ widget = Object.new
 widget.extend(extension)
 widget.singleton_method(:from_extend).call.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new(":extended".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":extended".to_string())));
 }
 
 #[test]
@@ -1859,7 +1796,7 @@ class Registry
 end
 Registry.singleton_method(:lookup).call.inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new(":found".to_string()))));
+    assert_eq!(result, Some(Object::string(":found".to_string())));
 }
 
 #[test]
@@ -1887,7 +1824,7 @@ fn singleton_method_raises_for_a_name_nothing_defines() {
 #[test]
 fn singleton_methods_is_empty_for_a_plain_object() {
     let result = run("Object.new.singleton_methods.inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("[]".to_string()))));
+    assert_eq!(result, Some(Object::string("[]".to_string())));
 }
 
 #[test]
@@ -1898,10 +1835,7 @@ def widget.polish
 end
 widget.singleton_methods.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:polish]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:polish]".to_string())));
 }
 
 #[test]
@@ -1915,10 +1849,7 @@ widget = Object.new
 widget.extend(Greeting)
 widget.singleton_methods.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[:greet]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[:greet]".to_string())));
 }
 
 #[test]
@@ -1932,7 +1863,7 @@ widget = Object.new
 widget.extend(Greeting)
 widget.singleton_methods(false).inspect
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("[]".to_string()))));
+    assert_eq!(result, Some(Object::string("[]".to_string())));
 }
 
 const SINGLETON_CLASSES: &str = r#"
@@ -1964,9 +1895,9 @@ fn singleton_methods_reaches_an_inherited_class_method() {
     ));
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_class_method, :opened_on_child, :parent_class_method]".to_string()
-        )))
+        ))
     );
 }
 
@@ -1977,9 +1908,9 @@ fn singleton_methods_without_ancestors_stops_at_the_class() {
     ));
     assert_eq!(
         result,
-        Some(Object::String(Rc::new(
+        Some(Object::string(
             "[:child_class_method, :opened_on_child]".to_string()
-        )))
+        ))
     );
 }
 
@@ -2005,10 +1936,7 @@ module Helper
 end
 Helper.assist.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new(":assisted".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":assisted".to_string())));
 }
 
 #[test]
@@ -2022,10 +1950,7 @@ end
 extend Helper
 assist.inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new(":assisted".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":assisted".to_string())));
 }
 
 // ── Array slicing with a Range ───────────────────────────────────────────────
@@ -2033,50 +1958,41 @@ assist.inspect
 #[test]
 fn an_array_slices_with_an_inclusive_range() {
     let result = run("[1, 2, 3, 4, 5][1..3].inspect");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[2, 3, 4]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[2, 3, 4]".to_string())));
 }
 
 #[test]
 fn an_array_slices_with_an_exclusive_range() {
     let result = run("[1, 2, 3, 4, 5][1...3].inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("[2, 3]".to_string()))));
+    assert_eq!(result, Some(Object::string("[2, 3]".to_string())));
 }
 
 #[test]
 fn an_array_slices_with_an_endless_range() {
     let result = run("[1, 2, 3, 4, 5][2..].inspect");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[3, 4, 5]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[3, 4, 5]".to_string())));
 }
 
 #[test]
 fn an_array_slices_with_a_beginless_range() {
     let result = run("[1, 2, 3, 4, 5][..2].inspect");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[1, 2, 3]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[1, 2, 3]".to_string())));
 }
 
 #[test]
 fn an_array_slice_counts_a_negative_bound_from_the_end() {
     let result = run("[1, 2, 3, 4, 5][-2..].inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("[4, 5]".to_string()))));
+    assert_eq!(result, Some(Object::string("[4, 5]".to_string())));
 }
 
 #[test]
 fn an_array_slice_past_the_end_is_nil() {
     let result = run("[1, 2, 3][9..].inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("nil".to_string()))));
+    assert_eq!(result, Some(Object::string("nil".to_string())));
 }
 
 #[test]
 fn an_array_slice_at_the_end_is_empty() {
     let result = run("[1, 2, 3][3..].inspect");
-    assert_eq!(result, Some(Object::String(Rc::new("[]".to_string()))));
+    assert_eq!(result, Some(Object::string("[]".to_string())));
 }

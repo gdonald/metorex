@@ -267,10 +267,7 @@ module CompatClass
 end
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── Nested module inside module (lines 963-984) ──────────────────────────────
@@ -339,10 +336,7 @@ module ExtM
 end
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── Alias inside module body (lines 1000-1004) ───────────────────────────────
@@ -566,10 +560,7 @@ module R1
 end
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── apply_block_as_class_body_with_self shared captured_vars (lines 201-205)

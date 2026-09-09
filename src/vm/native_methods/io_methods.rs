@@ -57,7 +57,7 @@ impl VirtualMachine {
                 let shell_command = if merge_stderr {
                     format!("{{ {} ; }} 2>&1", text)
                 } else {
-                    (**text).clone()
+                    text.as_str().to_string()
                 };
                 let mut child = std::process::Command::new("/bin/sh");
                 child.arg("-c").arg(&shell_command);
@@ -68,7 +68,7 @@ impl VirtualMachine {
                 let mut words = Vec::with_capacity(parts.len());
                 for part in parts.iter() {
                     match part {
-                        Object::String(word) => words.push((**word).clone()),
+                        Object::String(word) => words.push(word.as_str().to_string()),
                         other => {
                             return Err(method_argument_type_error(
                                 "popen", "String", other, position,
@@ -130,14 +130,14 @@ impl VirtualMachine {
     /// keep what it wrote. Answers the output, which a later `read` hands out.
     fn finish_popen(&mut self, instance: &Rc<RefCell<Instance>>) -> Result<String, MetorexError> {
         if let Some(Object::String(output)) = instance.borrow().get_var(POPEN_OUTPUT) {
-            return Ok((**output).clone());
+            return Ok(output.as_str().to_string());
         }
         let handle_id = match instance.borrow().get_var(POPEN_HANDLE) {
             Some(Object::Int(id)) => *id as u64,
             _ => return Ok(String::new()),
         };
         let input = match instance.borrow().get_var(POPEN_INPUT) {
-            Some(Object::String(text)) => (**text).clone(),
+            Some(Object::String(text)) => text.as_str().to_string(),
             _ => String::new(),
         };
         let Some(mut child) = self.popen_children.remove(&handle_id) else {
@@ -154,7 +154,7 @@ impl VirtualMachine {
             )
         })?;
         let output = String::from_utf8_lossy(&finished.stdout).to_string();
-        self.record_last_status(&finished.status);
+        self.record_last_status(&finished.status, None);
         instance
             .borrow_mut()
             .set_var(POPEN_OUTPUT.to_string(), Object::string(output.clone()));
@@ -200,7 +200,7 @@ impl VirtualMachine {
                     written.push('\n');
                 }
                 let existing = match instance.borrow().get_var(POPEN_INPUT) {
-                    Some(Object::String(text)) => (**text).clone(),
+                    Some(Object::String(text)) => text.as_str().to_string(),
                     _ => String::new(),
                 };
                 instance.borrow_mut().set_var(
@@ -301,7 +301,11 @@ impl VirtualMachine {
     }
 
     /// Record a finished child's status so `Process.last_status` reads it back.
-    pub(crate) fn record_last_status(&mut self, status: &std::process::ExitStatus) {
+    pub(crate) fn record_last_status(
+        &mut self,
+        status: &std::process::ExitStatus,
+        pid: Option<i64>,
+    ) {
         let (exitstatus, termsig) = match status.code() {
             Some(code) => (Object::Int(code as i64), Object::Nil),
             None => (Object::Nil, Object::Int(terminating_signal(status))),
@@ -315,6 +319,11 @@ impl VirtualMachine {
         instance
             .borrow_mut()
             .set_var(STATUS_TERMSIG.to_string(), termsig);
+        if let Some(pid) = pid {
+            instance
+                .borrow_mut()
+                .set_var(STATUS_PID.to_string(), Object::Int(pid));
+        }
         self.globals_mut()
             .set(LAST_STATUS_GLOBAL, Object::Instance(instance));
     }

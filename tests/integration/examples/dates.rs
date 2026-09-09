@@ -33,3 +33,19 @@ fn test_dates_calendar_days_no_parens_execution() {
     let output = run_example("dates/calendar_days_no_parens.rb");
     assert_eq!(output, CALENDAR_DAYS_OUTPUT);
 }
+
+/// The expected output of both `dates/clock_and_calendar` variants, which
+/// differ only in whether the calls are written with parentheses.
+const CLOCK_AND_CALENDAR_OUTPUT: &str = "2012\n12\n24\n13\n45\n30\n(0/1)\n(1/8)\n\"+03:00\"\n\"2012-12-24T13:45:30+03:00\"\n(1651/2880)\n\"2012-12-24T05:45:30-05:00\"\n\"2012-12-24T10:45:30+00:00\"\n\"2012-12-24\"\nDate\n\"2012-12-24T00:00:00+00:00\"\n\"2012-12-24 13:45:30 +0300\"\n\"01:45 PM\"\n\"Monday, 24 December 2012\"\n\"+03:00:00\"\n\"04:05:06.250000\"\n\"250\"\n\"2012-11-08T15:43:59+00:00\"\n\"2012-11-08T15:43:59+00:00\"\n\"2018-01-01T00:00:00+00:00\"\n\"2012-12-24T19:45:30+03:00\"\n\"2012-12-24T01:45:30+03:00\"\n(1/1)\n(1/4)\ntrue\n25\n0\n\"2012-12-31T23:58:59+00:00\"\n\"2012-12-31\"\n\"2012-12-31 23:58:59 UTC\"\n";
+
+#[test]
+fn test_dates_clock_and_calendar_execution() {
+    let output = run_example("dates/clock_and_calendar.rb");
+    assert_eq!(output, CLOCK_AND_CALENDAR_OUTPUT);
+}
+
+#[test]
+fn test_dates_clock_and_calendar_no_parens_execution() {
+    let output = run_example("dates/clock_and_calendar_no_parens.rb");
+    assert_eq!(output, CLOCK_AND_CALENDAR_OUTPUT);
+}

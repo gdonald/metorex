@@ -3,7 +3,6 @@
 use crate::ast::Expression;
 use crate::error::MetorexError;
 use crate::object::Object;
-use std::rc::Rc;
 
 use crate::vm::core::VirtualMachine;
 
@@ -158,7 +157,7 @@ impl VirtualMachine {
             }
         };
         match result {
-            Some(desc) => Ok(Object::String(Rc::new(desc.to_string()))),
+            Some(desc) => Ok(Object::string(desc.to_string())),
             None => Ok(Object::Nil),
         }
     }

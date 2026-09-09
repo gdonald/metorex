@@ -284,7 +284,7 @@ fn private_with_defined_method_returns_symbol() {
     // `private :foo` after defining `foo` returns :foo and marks it private on Object.
     assert_eq!(
         run("def foo; end\nprivate(:foo)"),
-        Some(Object::Symbol(std::rc::Rc::new("foo".to_string())))
+        Some(Object::symbol("foo".to_string()))
     );
 }
 
@@ -597,10 +597,7 @@ class MyClass
 end
 MyClass.new.greet
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("greet".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("greet".to_string())));
 }
 
 // ── rand with non-Int argument (line 89) ──────────────────────────────────────
@@ -1081,4 +1078,559 @@ fn srand_raises_type_error_for_a_string() {
 fn srand_is_a_private_instance_method_on_kernel() {
     let result = run("Kernel.private_instance_methods(false).include?(:srand)");
     assert_eq!(result, Some(Object::Bool(true)));
+}
+
+// ── Behaviour the examples cannot reach ──────────────────────────────────────
+
+#[test]
+fn a_closed_handle_refuses_to_be_read() {
+    let error = run_err(
+        r#"
+path = "/tmp/metorex_closed_handle_test.txt"
+File.write(path, "abc\n")
+handle = File.open(path)
+handle.close
+begin
+  handle.getc
+ensure
+  File.delete(path)
+end
+"#,
+    );
+    assert!(
+        error.contains("closed stream"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_closed_handle_still_says_what_it_was_opened_on() {
+    let result = run(r#"
+path = "/tmp/metorex_closed_handle_path.txt"
+File.write(path, "abc\n")
+handle = File.open(path)
+handle.close
+answer = [handle.closed?, handle.path, handle.to_io.equal?(handle)]
+File.delete(path)
+answer
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, /tmp/metorex_closed_handle_path.txt, true]".to_string())
+    );
+}
+
+#[test]
+fn reading_a_directory_is_refused_as_a_directory() {
+    let error = run_err(r#"File.read("/tmp")"#);
+    assert!(
+        error.contains("Is a directory"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_missing_name_has_no_link_to_read() {
+    let error = run_err(r#"File.readlink("/tmp/metorex_no_such_link_here")"#);
+    assert!(
+        error.contains("No such file or directory"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_thread_belongs_to_the_default_group_until_another_takes_it() {
+    let result = run(r#"
+group = ThreadGroup.new
+before = Thread.main.group.equal?(ThreadGroup::Default)
+group.add(Thread.main)
+[before, Thread.main.group.equal?(group), group.list.include?(Thread.main)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true, true]".to_string())
+    );
+}
+
+#[test]
+fn an_enclosed_group_refuses_to_give_a_thread_up() {
+    let error = run_err(
+        r#"
+held = ThreadGroup.new
+held.add(Thread.main)
+held.enclose
+ThreadGroup.new.add(Thread.main)
+"#,
+    );
+    assert!(
+        error.contains("enclosed thread group"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_refinement_refuses_to_have_a_module_mixed_into_it() {
+    let error = run_err(
+        r#"
+Module.new do
+  refine String do
+    include Module.new
+  end
+end
+"#,
+    );
+    assert!(
+        error.contains("Refinement#include has been removed"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn syscall_and_set_trace_func_are_private_kernel_methods() {
+    let result = run(r#"
+[Kernel.private_instance_methods(false).include?(:syscall),
+ Kernel.private_instance_methods(false).include?(:set_trace_func)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true]".to_string())
+    );
+}
+
+#[test]
+fn a_hash_subclass_keeps_its_class_through_merge() {
+    let result = run(r#"
+class MergeKeepsClass < Hash; end
+held = MergeKeepsClass.new
+held[1] = 2
+merged = held.merge({ 3 => 4 })
+[merged.class.name, merged[1], merged[3]]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[MergeKeepsClass, 2, 4]".to_string())
+    );
+}
+
+#[test]
+fn coerce_refuses_a_string_and_a_numeric_that_is_not_real() {
+    let refused_string = run_err(r#"Complex(1, 0).coerce("20")"#);
+    assert!(
+        refused_string.contains("can't be coerced into Complex"),
+        "unexpected error: {}",
+        refused_string
+    );
+}
+
+#[test]
+fn mkfifo_reads_a_name_through_to_path() {
+    let result = run(r#"
+class FifoName
+  def initialize(path)
+    @path = path
+  end
+  def to_path
+    @path
+  end
+end
+path = "/tmp/metorex_fifo_to_path"
+File.delete(path) if File.exist?(path)
+File.mkfifo(FifoName.new(path))
+answer = File.pipe?(path)
+File.delete(path)
+answer
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn mkfifo_refuses_a_name_it_cannot_read() {
+    let error = run_err(r#"File.mkfifo(:"/tmp/metorex_fifo_symbol")"#);
+    assert!(error.contains("String"), "unexpected error: {}", error);
+}
+
+#[test]
+fn mkfifo_reports_a_directory_that_is_not_there() {
+    let error = run_err(r#"File.mkfifo("/metorex_no_such_directory/fifo")"#);
+    assert!(
+        error.contains("No such file or directory"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn mkfifo_reports_a_directory_it_may_not_write() {
+    // A directory with no write bit refuses the name, which is a different
+    // refusal from a missing directory.
+    let error = run_err(
+        r#"
+holder = "/tmp/metorex_fifo_unwritable"
+Dir.mkdir(holder) unless Dir.exist?(holder)
+File.chmod(0555, holder)
+begin
+  File.mkfifo(holder + "/fifo")
+ensure
+  File.chmod(0755, holder)
+  Dir.rmdir(holder)
+end
+"#,
+    );
+    assert!(
+        error.contains("Permission denied"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn coerce_refuses_a_numeric_that_says_it_is_not_real() {
+    let error = run_err(
+        r#"
+class NotReal < Numeric
+  def real?
+    false
+  end
+end
+Complex(1, 0).coerce(NotReal.new)
+"#,
+    );
+    assert!(
+        error.contains("can't be coerced into Complex"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn lgamma_grows_without_bound_at_infinity() {
+    let result = run("Math.lgamma(Float::INFINITY)");
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[Infinity, 1]".to_string())
+    );
+}
+
+#[test]
+fn lgamma_approaches_the_pole_at_zero_from_either_side() {
+    let result = run("[Math.lgamma(0.0)[1], Math.lgamma(-0.0)[1]]");
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, -1]".to_string())
+    );
+}
+
+#[test]
+fn waitall_takes_no_arguments() {
+    let error = run_err("Process.waitall(0)");
+    assert!(
+        error.contains("wrong number of arguments"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn mkfifo_takes_the_mode_it_is_given() {
+    let result = run(r#"
+path = "/tmp/metorex_fifo_mode"
+File.delete(path) if File.exist?(path)
+File.mkfifo(path, 0644)
+answer = File.pipe?(path)
+File.delete(path)
+answer
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn mkfifo_refuses_a_to_path_that_is_not_a_name() {
+    let error = run_err(
+        r#"
+class NotAName
+  def to_path
+    42
+  end
+end
+File.mkfifo(NotAName.new)
+"#,
+    );
+    assert!(error.contains("String"), "unexpected error: {}", error);
+}
+
+#[test]
+fn an_unknown_pack_directive_is_named_in_the_refusal() {
+    let error = run_err(r#"[1].pack("K")"#);
+    assert!(
+        error.contains("unknown pack directive 'K'"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn an_unknown_unpack_directive_is_named_in_the_refusal() {
+    let error = run_err(r#""abc".unpack("K")"#);
+    assert!(
+        error.contains("unknown unpack directive 'K'"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_width_modifier_is_refused_where_the_directive_has_no_platform_width() {
+    let error = run_err(r#""abcdefgh".unpack("a!")"#);
+    assert!(
+        error.contains("unknown unpack directive '!'"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn packing_fewer_items_than_the_format_asks_for_is_refused() {
+    let error = run_err(r#"[].pack("N")"#);
+    assert!(
+        error.contains("too few arguments"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn skipping_past_the_end_of_the_string_is_refused() {
+    let error = run_err(r#""ab".unpack("x4C")"#);
+    assert!(
+        error.contains("outside of string"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn stepping_back_further_than_the_string_reaches_is_refused() {
+    let error = run_err(r#""abcd".unpack("CX*C")"#);
+    assert!(
+        error.contains("outside of string"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_trace_reads_nothing_outside_a_handler() {
+    let error = run_err("TracePoint.new(:line) {}.lineno");
+    assert!(
+        error.contains("access from outside"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_trace_refuses_an_event_it_does_not_know() {
+    let error = run_err("TracePoint.new(:nowhere) {}");
+    assert!(
+        error.contains("unknown event"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_trace_needs_a_handler() {
+    let error = run_err("TracePoint.new(:line)");
+    assert!(
+        error.contains("must be called with a block"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn allow_reentry_is_refused_outside_a_handler() {
+    let error = run_err("TracePoint.allow_reentry { 1 }");
+    assert!(
+        error.contains("allow_reentry"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+#[test]
+fn a_trace_passes_over_the_core_library_it_runs_through() {
+    // `upcase` is answered from the core library, whose statements a trace
+    // never sees, so only the program's own lines are counted.
+    let result = run(r#"
+seen = 0
+tracer = TracePoint.new(:line) { |point| seen += 1 }
+tracer.enable
+held = "quiet".upcase
+tracer.disable
+seen
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("1".to_string()));
+}
+
+// ── The encoding a string is tagged with ─────────────────────────────────────
+
+#[test]
+fn force_encoding_changes_what_a_string_says_it_is() {
+    let result = run(r#"
+held = "text"
+before = held.encoding.name
+held.force_encoding("EUC-JP")
+[before, held.encoding.name, held]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[UTF-8, EUC-JP, text]".to_string())
+    );
+}
+
+#[test]
+fn every_reference_to_a_string_sees_the_encoding_it_was_given() {
+    let result = run(r#"
+held = "text"
+alias_of_it = held
+held.force_encoding("EUC-JP")
+alias_of_it.encoding.name
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("EUC-JP".to_string())
+    );
+}
+
+#[test]
+fn packing_answers_a_run_of_bytes_and_an_empty_format_answers_ascii() {
+    let result = run(r#"[[65].pack("C").encoding.name, [].pack("").encoding.name]"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[ASCII-8BIT, US-ASCII]".to_string())
+    );
+}
+
+#[test]
+fn encode_tags_ascii_text_and_leaves_the_rest_alone() {
+    // Text that is nothing but ASCII reads the same in every ASCII-compatible
+    // encoding, so tagging it converts nothing. Text that is not needs a
+    // conversion metorex does not carry out.
+    let result = run(r#"
+[ "plain".encode("US-ASCII").encoding.name,
+  "é".encode("US-ASCII").encoding.name ]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[US-ASCII, UTF-8]".to_string())
+    );
+}
+
+#[test]
+fn two_strings_holding_the_same_text_are_two_strings() {
+    let result = run(r#"
+first = "same"
+second = "same"
+[first == second, first.equal?(second), first.equal?(first)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, false, true]".to_string())
+    );
+}
+
+#[test]
+fn a_string_answers_the_same_id_every_time_it_is_asked() {
+    let result = run(r#"
+held = "same"
+other = "same"
+[held.object_id == held.object_id, held.object_id == other.object_id]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, false]".to_string())
+    );
+}
+
+#[test]
+fn the_values_that_write_themselves_answer_one_unchanging_string() {
+    let result = run(r#"
+module NamedOnce; end
+[nil.to_s.equal?(nil.to_s),
+ true.to_s.equal?(true.to_s),
+ false.to_s.equal?(false.to_s),
+ :held.name.equal?(:held.name),
+ NamedOnce.name.equal?(NamedOnce.name),
+ :held.id2name.equal?(:held.id2name)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true, true, true, true, false]".to_string())
+    );
+}
+
+#[test]
+fn a_module_that_gains_a_name_answers_the_new_one() {
+    let result = run(r#"
+made = Module.new
+before = made.name
+Gained = made
+[before, made.name]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[nil, Gained]".to_string())
+    );
+}
+
+#[test]
+fn a_tie_answers_the_one_that_came_first() {
+    let result = run(r#"
+first = "2"
+second = "2"
+held = [first, second]
+[held.max_by { |value| value.to_i }.equal?(first),
+ held.min_by { |value| value.to_i }.equal?(first)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true]".to_string())
+    );
+}
+
+#[test]
+fn a_string_value_hashes_and_compares_by_the_text_it_holds() {
+    // Two strings holding the same text are one hash key, even though they
+    // are two objects.
+    let result = run(r#"
+held = {}
+held["same"] = 1
+held["same"] = 2
+[held.size, held["same"], "same" == "same".dup]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, 2, true]".to_string())
+    );
+}
+
+#[test]
+fn a_wide_character_packs_as_the_bytes_its_encoding_needs() {
+    let result = run(r#"[[960].pack("U").length, [960].pack("U").unpack("U")]"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[2, [960]]".to_string())
+    );
 }

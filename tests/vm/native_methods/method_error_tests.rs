@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -38,7 +37,7 @@ end
 m = method(:greet)
 m.name
 "#);
-    assert_eq!(result, Some(Object::Symbol(Rc::new("greet".to_string()))));
+    assert_eq!(result, Some(Object::symbol("greet".to_string())));
 }
 
 #[test]

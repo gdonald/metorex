@@ -77,7 +77,7 @@ impl VirtualMachine {
             return Ok(Object::Symbol(Rc::clone(name)));
         }
         if let Object::String(text) = value {
-            return Ok(Object::Symbol(Rc::new((**text).clone())));
+            return Ok(Object::symbol(text.as_str().to_string()));
         }
         if self.responds_to(value, "to_sym") {
             let converted = self.send_to_object(value.clone(), "to_sym", vec![], position)?;
@@ -244,7 +244,7 @@ impl VirtualMachine {
             other => {
                 let rendered = self.send_to_object(other.clone(), "to_s", vec![], position)?;
                 match rendered {
-                    Object::String(text) => Ok((*text).clone()),
+                    Object::String(text) => Ok(text.as_str().to_string()),
                     other => Ok(other.to_string()),
                 }
             }

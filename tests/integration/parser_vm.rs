@@ -7,7 +7,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -78,7 +77,7 @@ fn mixed_int_float_arithmetic() {
 fn string_concatenation() {
     assert_eq!(
         run("\"hello\" + \" world\""),
-        Some(Object::String(Rc::new("hello world".to_string())))
+        Some(Object::string("hello world".to_string()))
     );
 }
 
@@ -87,7 +86,7 @@ fn string_interpolation_executes() {
     let vm = run_env("name = \"world\"\nresult = \"hello #{name}\"");
     assert_eq!(
         vm.environment().get("result"),
-        Some(Object::String(Rc::new("hello world".to_string())))
+        Some(Object::string("hello world".to_string()))
     );
 }
 
@@ -131,7 +130,7 @@ fn function_with_default_params() {
     let vm = run_env("def greet(name = \"world\")\n  name\nend\nresult = greet(\"hello\")");
     assert_eq!(
         vm.environment().get("result"),
-        Some(Object::String(Rc::new("hello".to_string())))
+        Some(Object::string("hello".to_string()))
     );
 }
 
@@ -166,7 +165,7 @@ result = d.name"#;
     let vm = run_env(code);
     assert_eq!(
         vm.environment().get("result"),
-        Some(Object::String(Rc::new("Rex".to_string())))
+        Some(Object::string("Rex".to_string()))
     );
 }
 
@@ -186,7 +185,7 @@ result = Cat.new.speak"#;
     let vm = run_env(code);
     assert_eq!(
         vm.environment().get("result"),
-        Some(Object::String(Rc::new("meow".to_string())))
+        Some(Object::string("meow".to_string()))
     );
 }
 

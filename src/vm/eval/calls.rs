@@ -19,6 +19,28 @@ impl VirtualMachine {
         trailing_block: Option<&Expression>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // `Mod::name(args)` is a method call on the module whenever it
+        // answers that name, which is how `Kernel::URI(text)` reaches the
+        // method rather than looking for a constant.
+        if let Expression::ScopeResolution {
+            namespace, name, ..
+        } = callee
+        {
+            let owner = self.evaluate_expression(namespace)?;
+            if matches!(
+                self.lookup_method(&owner, name),
+                Some((_, found)) if !found.is_undefined
+            ) {
+                return self.evaluate_method_call(
+                    namespace,
+                    name,
+                    arguments,
+                    trailing_block,
+                    position,
+                );
+            }
+        }
+
         // If callee is a bare identifier and it's not a local variable,
         // dispatch as a method call with the supplied arguments.
         // Also prefer self-method dispatch when the env binding is a global
@@ -178,6 +200,26 @@ impl VirtualMachine {
         }
 
         let callable = self.evaluate_expression(callee);
+        // A method may share its name with a constant, the way `URI(text)`
+        // shares one with the URI module. A call form reaches the method
+        // rather than trying to call what the constant holds.
+        if let Expression::Identifier { name, .. } = callee
+            && let Ok(Object::Class(_) | Object::Module(_)) = &callable
+        {
+            let current = self.evaluate_expression(&Expression::SelfExpr { position })?;
+            if matches!(
+                self.lookup_method(&current, name),
+                Some((_, found)) if !found.is_undefined
+            ) {
+                return self.evaluate_method_call(
+                    &Expression::SelfExpr { position },
+                    name,
+                    arguments,
+                    trailing_block,
+                    position,
+                );
+            }
+        }
         let evaluated_args = self.evaluate_arguments(arguments)?;
         let has_block = trailing_block.is_some();
         if let Some(block_expr) = trailing_block {

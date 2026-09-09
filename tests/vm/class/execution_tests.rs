@@ -222,9 +222,7 @@ Foo.class_method
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "class".to_string()
-        )))
+        Some(metorex::object::Object::string("class".to_string()))
     );
 }
 
@@ -274,9 +272,7 @@ Foo.title + Foo.version
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "Bar1.0".to_string()
-        )))
+        Some(metorex::object::Object::string("Bar1.0".to_string()))
     );
 }
 
@@ -328,9 +324,7 @@ M.hello
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "world".to_string()
-        )))
+        Some(metorex::object::Object::string("world".to_string()))
     );
 }
 
@@ -368,9 +362,7 @@ Foo.instance_variable_get("@title")
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "hello".to_string()
-        )))
+        Some(metorex::object::Object::string("hello".to_string()))
     );
 }
 
@@ -386,9 +378,7 @@ Mx.instance_variable_get("@label")
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "world".to_string()
-        )))
+        Some(metorex::object::Object::string("world".to_string()))
     );
 }
 
@@ -406,9 +396,7 @@ M::VERSION
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "1.0".to_string()
-        )))
+        Some(metorex::object::Object::string("1.0".to_string()))
     );
 }
 

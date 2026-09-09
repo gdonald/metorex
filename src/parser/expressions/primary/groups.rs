@@ -116,6 +116,11 @@ impl Parser {
             (TokenKind::MinusEqual, crate::ast::BinaryOp::Subtract),
             (TokenKind::StarEqual, crate::ast::BinaryOp::Multiply),
             (TokenKind::SlashEqual, crate::ast::BinaryOp::Divide),
+            (TokenKind::PercentEqual, crate::ast::BinaryOp::Modulo),
+            (TokenKind::StarStarEqual, crate::ast::BinaryOp::Power),
+            (TokenKind::PipeEqual, crate::ast::BinaryOp::BitwiseOr),
+            (TokenKind::AmpersandEqual, crate::ast::BinaryOp::BitwiseAnd),
+            (TokenKind::CaretEqual, crate::ast::BinaryOp::Xor),
             (TokenKind::LogicalOrAssign, crate::ast::BinaryOp::Or),
             (TokenKind::LogicalAndAssign, crate::ast::BinaryOp::And),
         ]

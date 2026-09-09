@@ -33,6 +33,7 @@ mod warn;
 pub(crate) use native_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 pub(crate) mod statement;
 pub(crate) mod system_call_error;
+mod tracepoint;
 pub(crate) mod utils;
 
 pub use call_frame::{CallFrame, FrameKind};

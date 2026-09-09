@@ -12,7 +12,6 @@ use crate::bytecode::opcode::OpCode;
 use crate::error::{MetorexError, SourceLocation};
 use crate::lexer::token::Position;
 use crate::object::Object;
-use std::rc::Rc;
 
 /// A local variable tracked during compilation.
 #[derive(Debug, Clone)]
@@ -275,7 +274,7 @@ impl Compiler {
     fn identifier_constant(&mut self, name: &str) -> Result<u8, MetorexError> {
         let index = self
             .chunk
-            .add_constant(Object::String(Rc::new(name.to_string())))
+            .add_constant(Object::string(name.to_string()))
             .ok_or_else(|| {
                 MetorexError::runtime_error(
                     "Too many constants in one chunk",

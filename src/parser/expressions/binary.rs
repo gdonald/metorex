@@ -8,10 +8,19 @@ use crate::parser::Parser;
 
 impl Parser {
     /// Parse logical OR (||)
+    ///
+    /// `or` tests what `||` tests, but it binds more loosely than a paren-less
+    /// call's arguments: `check x or fallback` calls `check x` and tests what
+    /// it answered, where `check x || fallback` passes the whole test as the
+    /// argument. So an argument list leaves `or` for the call to be folded
+    /// into afterwards.
     pub(crate) fn parse_logical_or(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_logical_and()?;
 
-        while self.check(&[TokenKind::LogicalOr]) {
+        let keyword_binds_here = self.paren_less_arg_depth == 0;
+        while self.check(&[TokenKind::LogicalOr])
+            || (keyword_binds_here && self.check(&[TokenKind::KeywordOr]))
+        {
             let op_token = self.advance();
             self.skip_whitespace();
             let right = self.parse_logical_and()?;
@@ -26,11 +35,15 @@ impl Parser {
         Ok(expr)
     }
 
-    /// Parse logical AND (&&)
+    /// Parse logical AND (&&). `and` binds the way `or` does, and stops at
+    /// the edge of a paren-less argument list for the same reason.
     pub(crate) fn parse_logical_and(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_equality()?;
 
-        while self.check(&[TokenKind::LogicalAnd]) {
+        let keyword_binds_here = self.paren_less_arg_depth == 0;
+        while self.check(&[TokenKind::LogicalAnd])
+            || (keyword_binds_here && self.check(&[TokenKind::KeywordAnd]))
+        {
             let op_token = self.advance();
             self.skip_whitespace();
             let right = self.parse_equality()?;

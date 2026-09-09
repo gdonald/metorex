@@ -4,7 +4,7 @@
 # 1. Basic method_missing — dynamic attribute access
 class DynamicRecord
   def initialize
-    @attributes = {"name" => "Alice", "age" => 30, "role" => "engineer"}
+    @attributes = {name: "Alice", age: 30, role: "engineer"}
   end
 
   def method_missing(name)
@@ -25,7 +25,7 @@ puts record.email()
 
 # 2. method_missing with arguments
 class Ghost
-  def method_missing(name, args)
+  def method_missing(name, *args)
     puts "Called #{name} with #{args.length} arg(s)"
   end
 end
@@ -39,8 +39,8 @@ ghost.greet("Alice", "Bob", "Charlie")
 
 # 3. method_missing with arguments used for computation
 class FlexibleCalc
-  def method_missing(name, args)
-    if name == "sum"
+  def method_missing(name, *args)
+    if name == :sum
       total = 0
       args.each do |n|
         total = total + n

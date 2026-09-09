@@ -230,8 +230,6 @@ fn define_method_closure_capture() {
     );
     assert_eq!(
         result,
-        Some(metorex::object::Object::String(std::rc::Rc::new(
-            "hello world".to_string()
-        )))
+        Some(metorex::object::Object::string("hello world".to_string()))
     );
 }

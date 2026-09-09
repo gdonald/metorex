@@ -353,10 +353,7 @@ class Foo
 end
 Foo.new.test
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("hi world".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("hi world".to_string())));
 }
 
 // ── Variadic insufficient args ─────────────────────────────────────────────

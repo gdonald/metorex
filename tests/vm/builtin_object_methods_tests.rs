@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -114,29 +113,26 @@ Dog.new.class
 #[test]
 fn array_to_s() {
     let result = run("[1, 2, 3].to_s");
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("[1, 2, 3]".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("[1, 2, 3]".to_string())));
 }
 
 #[test]
 fn integer_to_s() {
     let result = run("42.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
+    assert_eq!(result, Some(Object::string("42".to_string())));
 }
 
 #[test]
 fn nil_to_s() {
     // Ruby semantics: nil.to_s == "". Use nil.inspect for the literal "nil".
     let result = run("nil.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("".to_string()))));
+    assert_eq!(result, Some(Object::string("".to_string())));
 }
 
 #[test]
 fn bool_to_s() {
     let result = run("true.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("true".to_string()))));
+    assert_eq!(result, Some(Object::string("true".to_string())));
 }
 
 // ── .respond_to? on built-in types ──────────────────────────────────────
@@ -290,7 +286,7 @@ result
 "#);
     assert_eq!(
         result,
-        Some(Object::String(Rc::new("caught: FrozenError".to_string())))
+        Some(Object::string("caught: FrozenError".to_string()))
     );
 }
 
@@ -380,9 +376,9 @@ fn dup_with_args_errors() {
 // ── object_methods.rs: to_s with arguments error (lines 44-49) ─────────────
 
 #[test]
-fn object_to_s_with_args_error() {
-    let err = run_err("42.to_s(10)");
-    assert!(err.contains("argument"));
+fn object_to_s_writes_an_integer_in_the_base_it_is_given() {
+    assert_eq!(run("42.to_s(10)"), Some(Object::string("42")));
+    assert_eq!(run("255.to_s(16)"), Some(Object::string("ff")));
 }
 
 // ── object_methods.rs: respond_to? with non-String/Symbol arg error (line 78) ─
@@ -449,7 +445,7 @@ fn object_send_dispatches_native_method() {
 #[test]
 fn object_send_dispatches_object_method() {
     let result = run(r#"42.send("to_s")"#);
-    assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
+    assert_eq!(result, Some(Object::string("42".to_string())));
 }
 
 #[test]
@@ -583,10 +579,7 @@ class Overridden
 end
 (Overridden.new !~ :anything).inspect
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new(":custom".to_string())))
-    );
+    assert_eq!(result, Some(Object::string(":custom".to_string())));
 }
 
 #[test]

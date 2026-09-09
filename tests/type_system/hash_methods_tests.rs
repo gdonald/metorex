@@ -199,10 +199,7 @@ fn hash_get_error_too_many_args() {
 #[test]
 fn hash_get_with_integer_key() {
     let result = run(r#"{1 => "one"}.get(1)"#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("one".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("one".to_string())));
 }
 
 // ── fetch ───────────────────────────────────────────────────────────────────

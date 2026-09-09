@@ -109,17 +109,36 @@ pub(super) fn undefined_method_error(
     args: &[Object],
     position: Position,
 ) -> MetorexError {
-    let class_info = if let Object::Instance(inst) = receiver {
-        format!("Instance({})", inst.borrow().class.name())
-    } else {
-        receiver.type_name().to_string()
-    };
-    let message = format!("Undefined method '{}' for type '{}'", method, class_info);
+    let message = format!(
+        "undefined method '{}' for {}",
+        method,
+        receiver_wording(receiver)
+    );
     let exc = no_method_error(&message, method, receiver, args);
     MetorexError::UncaughtException {
         exception: exc,
         location: position_to_location(position),
         message,
+    }
+}
+
+/// How Ruby names the receiver in a NoMethodError message: `nil`, `true`,
+/// `false`, and the classes and modules by name, everything else as an
+/// instance of its class.
+fn receiver_wording(receiver: &Object) -> String {
+    match receiver {
+        Object::Nil => "nil".to_string(),
+        Object::Bool(true) => "true".to_string(),
+        Object::Bool(false) => "false".to_string(),
+        Object::Class(class_rc) => format!("class {}", class_rc.ruby_name()),
+        Object::Module(module_rc) => format!("module {}", module_rc.ruby_name()),
+        Object::Instance(instance) => {
+            format!("an instance of {}", instance.borrow().class.ruby_name())
+        }
+        Object::Int(_) | Object::BigInt(_) => "an instance of Integer".to_string(),
+        Object::Dict(_) => "an instance of Hash".to_string(),
+        Object::Block(_) => "an instance of Proc".to_string(),
+        other => format!("an instance of {}", other.type_name()),
     }
 }
 

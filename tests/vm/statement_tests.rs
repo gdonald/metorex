@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -718,16 +717,14 @@ run_block { break }
 }
 
 #[test]
-fn continue_inside_block_call_error() {
-    let err = run_err(
-        r#"
+fn next_inside_a_called_block_ends_that_call_with_its_value() {
+    let result = run(r#"
 def run_block(&b)
   b.call
 end
-run_block { continue }
-"#,
-    );
-    assert!(err.contains("continue") || err.contains("loop") || err.contains("outside"));
+run_block { next 5 }
+"#);
+    assert_eq!(result, Some(Object::Int(5)));
 }
 
 // ── standalone do |x| ... end block with parameters (primary.rs lines 243-265) ─
@@ -792,10 +789,7 @@ def test_ensure
 end
 test_ensure
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("from ensure".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("from ensure".to_string())));
 }
 
 // ── exception_matches with non-exception object (exceptions.rs line 227) ──
@@ -815,7 +809,7 @@ rescue CustomError => e
 end
 result
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("custom".to_string()))));
+    assert_eq!(result, Some(Object::string("custom".to_string())));
 }
 
 // ── Float#round coverage (builtin_classes.rs lines 265-272) ──
@@ -867,10 +861,7 @@ def check(x)
 end
 check true
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("was true".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("was true".to_string())));
 }
 
 // ── Index assignment on Class/Module via __class__[]= (statement.rs 395-413)
@@ -934,7 +925,7 @@ end
 NsA::Greeting = "hello"
 NsA::Greeting
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("hello".to_string()))));
+    assert_eq!(result, Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -945,10 +936,7 @@ end
 NsB::Widget = Class.new
 NsB::Widget.name
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(Rc::new("NsB::Widget".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("NsB::Widget".to_string())));
 }
 
 #[test]

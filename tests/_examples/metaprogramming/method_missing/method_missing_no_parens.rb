@@ -2,7 +2,7 @@
 
 class DynamicRecord
   def initialize
-    @attributes = {"name" => "Alice", "age" => 30, "role" => "engineer"}
+    @attributes = {name: "Alice", age: 30, role: "engineer"}
   end
 
   def method_missing(name)
@@ -22,7 +22,7 @@ puts record.role
 puts record.email
 
 class Ghost
-  def method_missing(name, args)
+  def method_missing(name, *args)
     puts "Called #{name} with #{args.length} arg(s)"
   end
 end
@@ -35,8 +35,8 @@ ghost.add(1, 2)
 ghost.greet("Alice", "Bob", "Charlie")
 
 class FlexibleCalc
-  def method_missing(name, args)
-    if name == "sum"
+  def method_missing(name, *args)
+    if name == :sum
       total = 0
       args.each do |n|
         total = total + n

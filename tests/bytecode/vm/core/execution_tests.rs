@@ -6,7 +6,6 @@ use metorex::compiler::Compiler;
 use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
-use std::rc::Rc;
 
 fn run(source: &str) -> Result<Object, String> {
     let tokens = Lexer::new(source).tokenize();
@@ -55,7 +54,7 @@ fn execute_return_float() {
 #[test]
 fn execute_return_string() {
     let result = run_ok("return \"hello\"");
-    assert_eq!(result, Object::String(Rc::new("hello".to_string())));
+    assert_eq!(result, Object::string("hello".to_string()));
 }
 
 #[test]
@@ -115,7 +114,7 @@ fn execute_float_arithmetic() {
 #[test]
 fn execute_string_concatenation() {
     let result = run_ok("return \"hello\" + \" world\"");
-    assert_eq!(result, Object::String(Rc::new("hello world".to_string())));
+    assert_eq!(result, Object::string("hello world".to_string()));
 }
 
 #[test]

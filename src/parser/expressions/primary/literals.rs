@@ -13,9 +13,9 @@ impl Parser {
         filled: bool,
         position: Position,
     ) -> Expression {
-        let elements: Vec<Expression> = value
-            .split_whitespace()
-            .map(|word| percent_word(word, filled, position))
+        let elements: Vec<Expression> = split_percent_words(&value)
+            .into_iter()
+            .map(|word| percent_word(&word, filled, position))
             .collect();
         Expression::Array { elements, position }
     }
@@ -27,9 +27,9 @@ impl Parser {
         filled: bool,
         position: Position,
     ) -> Expression {
-        let elements: Vec<Expression> = value
-            .split_whitespace()
-            .map(|word| match percent_word(word, filled, position) {
+        let elements: Vec<Expression> = split_percent_words(&value)
+            .into_iter()
+            .map(|word| match percent_word(&word, filled, position) {
                 Expression::StringLiteral { value, position } => {
                     Expression::Symbol { value, position }
                 }
@@ -213,4 +213,35 @@ fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
         parts: built,
         position,
     }
+}
+
+/// The words a percent list holds. Whitespace separates them unless a
+/// backslash escapes it, and the backslash before any character is dropped
+/// once the word it belongs to is settled.
+fn split_percent_words(value: &str) -> Vec<String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut current = String::new();
+    let mut escaped = false;
+    for character in value.chars() {
+        if escaped {
+            current.push(character);
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if character.is_whitespace() {
+            if !current.is_empty() {
+                words.push(std::mem::take(&mut current));
+            }
+            continue;
+        }
+        current.push(character);
+    }
+    if !current.is_empty() {
+        words.push(current);
+    }
+    words
 }

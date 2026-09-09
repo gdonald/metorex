@@ -472,10 +472,10 @@ fn optimize_full_pipeline() {
 fn fold_no_change_on_non_foldable() {
     let mut chunk = metorex::bytecode::chunk::Chunk::new();
     let a = chunk
-        .add_constant(Object::String(std::rc::Rc::new("hello".to_string())))
+        .add_constant(Object::string("hello".to_string()))
         .unwrap();
     let b = chunk
-        .add_constant(Object::String(std::rc::Rc::new("world".to_string())))
+        .add_constant(Object::string("world".to_string()))
         .unwrap();
     chunk.write_constant(a, 1);
     chunk.write_constant(b, 1);
@@ -541,7 +541,7 @@ fn negate_string_not_folded() {
     // Can't negate a string — should be left as-is
     let mut chunk = metorex::bytecode::chunk::Chunk::new();
     let idx = chunk
-        .add_constant(Object::String(std::rc::Rc::new("hello".to_string())))
+        .add_constant(Object::string("hello".to_string()))
         .unwrap();
     chunk.write_constant(idx, 1);
     chunk.write_opcode(OpCode::Negate, 1);

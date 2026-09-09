@@ -4,7 +4,6 @@ use metorex::ast::{BinaryOp, Expression, Statement};
 use metorex::lexer::Position;
 use metorex::object::Object;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 // Helper function to create a test position
 fn pos(line: usize, column: usize) -> Position {
@@ -121,7 +120,7 @@ fn test_unless_with_else_condition_false() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("then".to_string())));
+    assert_eq!(result, Object::string("then".to_string()));
 }
 
 #[test]
@@ -161,7 +160,7 @@ fn test_unless_with_else_condition_true() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("else".to_string())));
+    assert_eq!(result, Object::string("else".to_string()));
 }
 
 #[test]
@@ -212,7 +211,7 @@ fn test_unless_with_comparison() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("not greater".to_string())));
+    assert_eq!(result, Object::string("not greater".to_string()));
 }
 
 #[test]
@@ -254,7 +253,7 @@ fn test_unless_with_nil_is_falsy() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("x is nil".to_string())));
+    assert_eq!(result, Object::string("x is nil".to_string()));
 }
 
 #[test]
@@ -297,7 +296,7 @@ fn test_unless_with_false_literal() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("flag is false".to_string())));
+    assert_eq!(result, Object::string("flag is false".to_string()));
 }
 
 #[test]
@@ -360,7 +359,7 @@ fn test_unless_nested_in_if() {
     vm.execute_program(&program).unwrap();
 
     let result = vm.environment().get("result").unwrap();
-    assert_eq!(result, Object::String(Rc::new("nested".to_string())));
+    assert_eq!(result, Object::string("nested".to_string()));
 }
 
 #[test]

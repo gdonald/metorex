@@ -30,7 +30,7 @@ impl VirtualMachine {
                 Object::Exception(_) => value,
                 Object::String(message) => {
                     // Create a RuntimeError exception with the string message
-                    Object::exception("RuntimeError", (*message).clone())
+                    Object::exception("RuntimeError", message.as_str().to_string())
                 }
                 Object::Class(class) => {
                     // Instantiated the way `raise` does it, so the class
@@ -99,11 +99,13 @@ impl VirtualMachine {
             Some(Object::Exception(cell)) => {
                 let existing = Object::Exception(Rc::clone(cell));
                 if let Some(Object::String(text)) = &message {
-                    cell.borrow_mut().message = (**text).clone();
+                    cell.borrow_mut().message = text.as_str().to_string();
                 }
                 existing
             }
-            Some(Object::String(text)) => Object::exception("RuntimeError", (**text).clone()),
+            Some(Object::String(text)) => {
+                Object::exception("RuntimeError", text.as_str().to_string())
+            }
             // An exception class is instantiated with the message.
             Some(value @ Object::Class(_)) => {
                 let call_arguments = message.into_iter().collect();
@@ -249,6 +251,7 @@ impl VirtualMachine {
                     line: location.line,
                     column: location.column,
                     offset: 0,
+                    prelude: false,
                 },
             });
         }
@@ -264,6 +267,7 @@ impl VirtualMachine {
                     line: location.line,
                     column: location.column,
                     offset: 0,
+                    prelude: false,
                 };
                 Some((Object::exception("RuntimeError", msg), pos))
             }
@@ -275,6 +279,7 @@ impl VirtualMachine {
                     line: location.line,
                     column: location.column,
                     offset: 0,
+                    prelude: false,
                 };
                 Some((Object::exception("TypeError", msg), pos))
             }

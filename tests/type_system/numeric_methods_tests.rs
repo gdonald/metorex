@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -87,13 +86,13 @@ fn int_to_i_returns_self() {
 #[test]
 fn int_to_s() {
     let result = run("42.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("42".to_string()))));
+    assert_eq!(result, Some(Object::string("42".to_string())));
 }
 
 #[test]
 fn int_to_s_negative() {
     let result = run("x = -7\nx.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("-7".to_string()))));
+    assert_eq!(result, Some(Object::string("-7".to_string())));
 }
 
 // ============================================================================
@@ -288,7 +287,7 @@ fn float_to_f_returns_self() {
 #[test]
 fn float_to_s() {
     let result = run("3.14.to_s");
-    assert_eq!(result, Some(Object::String(Rc::new("3.14".to_string()))));
+    assert_eq!(result, Some(Object::string("3.14".to_string())));
 }
 
 #[test]
@@ -308,9 +307,10 @@ fn int_to_i_error_with_args() {
 }
 
 #[test]
-fn int_to_s_error_with_args() {
-    let err = run_err("42.to_s(1)");
-    assert!(err.contains("argument"));
+fn int_to_s_refuses_a_base_it_cannot_write() {
+    assert!(run_err("42.to_s(1)").contains("invalid radix"));
+    assert!(run_err("42.to_s(37)").contains("invalid radix"));
+    assert!(run_err("42.to_s(10, 2)").contains("argument"));
 }
 
 #[test]

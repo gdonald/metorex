@@ -33,10 +33,7 @@ m = ME.module_eval {
 }
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── refine (lines 31-58) ─────────────────────────────────────────────────────
@@ -53,10 +50,7 @@ module Refinement
 end
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 #[test]
@@ -216,10 +210,7 @@ end
 AM5.send(:alias_method, :initialize, :start)
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── autoload on module ───────────────────────────────────────────────────────
@@ -333,10 +324,7 @@ end
 ExtMod.send(:extend_object, ExtTgt)
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 #[test]
@@ -352,10 +340,7 @@ end
 ExtMod2.send(:extend_object, ExtTgt2)
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── Module.instance_method synthesizes stubs for module-private hooks (lines 240-256) ──
@@ -418,10 +403,7 @@ end
 AfMod.send(:append_features, AfHost)
 AfHost.new.af_helper
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("from-af-mod".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("from-af-mod".to_string())));
 }
 
 #[test]
@@ -449,8 +431,5 @@ end
 PfMod.send(:prepend_features, PfHost)
 PfHost.new.pf_helper
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("from-pf-mod".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("from-pf-mod".to_string())));
 }

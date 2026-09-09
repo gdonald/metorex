@@ -23,17 +23,11 @@ fn test_define_multiple_variables() {
     let mut scope = Scope::new();
     scope.define("x".to_string(), Object::Int(42));
     scope.define("y".to_string(), Object::Bool(true));
-    scope.define(
-        "z".to_string(),
-        Object::String(Rc::new("hello".to_string())),
-    );
+    scope.define("z".to_string(), Object::string("hello".to_string()));
 
     assert_eq!(scope.get("x"), Some(Object::Int(42)));
     assert_eq!(scope.get("y"), Some(Object::Bool(true)));
-    assert_eq!(
-        scope.get("z"),
-        Some(Object::String(Rc::new("hello".to_string())))
-    );
+    assert_eq!(scope.get("z"), Some(Object::string("hello".to_string())));
 }
 
 #[test]
@@ -220,7 +214,7 @@ fn test_complex_scope_chain() {
     let mut global = Scope::new();
     global.define(
         "global_var".to_string(),
-        Object::String(Rc::new("global".to_string())),
+        Object::string("global".to_string()),
     );
     let global_rc = Rc::new(RefCell::new(global));
 
@@ -234,7 +228,7 @@ fn test_complex_scope_chain() {
     // Test accessing variables from all levels
     assert_eq!(
         block_scope.get("global_var"),
-        Some(Object::String(Rc::new("global".to_string())))
+        Some(Object::string("global".to_string()))
     );
     assert_eq!(block_scope.get("func_var"), Some(Object::Int(42)));
     assert_eq!(block_scope.get("block_var"), Some(Object::Bool(true)));
@@ -244,7 +238,7 @@ fn test_complex_scope_chain() {
     assert_eq!(block_scope.get_at(1, "func_var"), Some(Object::Int(42)));
     assert_eq!(
         block_scope.get_at(2, "global_var"),
-        Some(Object::String(Rc::new("global".to_string())))
+        Some(Object::string("global".to_string()))
     );
 }
 

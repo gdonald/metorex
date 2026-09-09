@@ -1,7 +1,5 @@
 // Arithmetic helper functions for bytecode VM binary operations
 
-use std::rc::Rc;
-
 use crate::object::Object;
 
 pub fn binary_add(a: &Object, b: &Object) -> Result<Object, String> {
@@ -10,9 +8,7 @@ pub fn binary_add(a: &Object, b: &Object) -> Result<Object, String> {
         (Object::Float(a), Object::Float(b)) => Ok(Object::Float(a + b)),
         (Object::Int(a), Object::Float(b)) => Ok(Object::Float(*a as f64 + b)),
         (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + *b as f64)),
-        (Object::String(a), Object::String(b)) => {
-            Ok(Object::String(Rc::new(format!("{}{}", a, b))))
-        }
+        (Object::String(a), Object::String(b)) => Ok(Object::string(format!("{}{}", a, b))),
         _ => Err(format!(
             "Cannot add {} and {}",
             a.type_name(),

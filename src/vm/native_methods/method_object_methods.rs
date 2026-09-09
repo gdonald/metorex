@@ -87,14 +87,14 @@ impl VirtualMachine {
                 // A method names itself with a Symbol, and `original_name`
                 // gives the name it was cut from when it was aliased.
                 "name" => {
-                    return Ok(Some(Object::Symbol(Rc::new(method_obj.name.clone()))));
+                    return Ok(Some(Object::symbol(method_obj.name.clone())));
                 }
                 "original_name" => {
                     let original = method_obj
                         .original_name
                         .clone()
                         .unwrap_or_else(|| method_obj.name.clone());
-                    return Ok(Some(Object::Symbol(Rc::new(original))));
+                    return Ok(Some(Object::symbol(original)));
                 }
                 "receiver" => {
                     return Ok(Some(
@@ -175,7 +175,7 @@ impl VirtualMachine {
                     {
                         return Ok(Some(owner));
                     }
-                    return Ok(Some(Object::String(Rc::new(owner_name.to_string()))));
+                    return Ok(Some(Object::string(owner_name.to_string())));
                 }
                 // Ruby answers `[path, lineno]`, or nil for a method with no
                 // Ruby source behind it.
@@ -193,7 +193,7 @@ impl VirtualMachine {
                         })
                         .unwrap_or_default();
                     return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(vec![
-                        Object::String(Rc::new(path)),
+                        Object::string(path),
                         Object::Int(location.line as i64),
                     ])))));
                 }
@@ -242,13 +242,13 @@ fn declared_parameter_name(name: &str) -> Option<Object> {
     if name == ANONYMOUS_SPLAT || name == ANONYMOUS_KWREST || name == ANONYMOUS_BLOCK {
         return None;
     }
-    Some(Object::Symbol(Rc::new(name.to_string())))
+    Some(Object::symbol(name.to_string()))
 }
 
 /// One `[kind, name]` pair of a parameter list, where an unnamed parameter
 /// reports its kind alone.
 fn parameter_pair(kind: &str, name: &str) -> Object {
-    let mut pair = vec![Object::Symbol(Rc::new(kind.to_string()))];
+    let mut pair = vec![Object::symbol(kind.to_string())];
     if let Some(named) = declared_parameter_name(name) {
         pair.push(named);
     }
@@ -383,9 +383,9 @@ fn block_parameter_list(block_obj: &crate::object::BlockStatement) -> Object {
             BlockParameterKind::KeywordRest => "keyrest",
             BlockParameterKind::Block => "block",
         };
-        let mut pair = vec![Object::Symbol(Rc::new(label.to_string()))];
+        let mut pair = vec![Object::symbol(label.to_string())];
         if !declared.is_empty() {
-            pair.push(Object::Symbol(Rc::new(declared)));
+            pair.push(Object::symbol(declared));
         }
         listed.push(Object::array(pair));
     }

@@ -3,7 +3,6 @@
 use metorex::bytecode::chunk::Chunk;
 use metorex::bytecode::opcode::OpCode;
 use metorex::object::Object;
-use std::rc::Rc;
 
 // ── Construction ────────────────────────────────────────────────────────
 
@@ -88,7 +87,7 @@ fn add_constant_returns_index() {
     let mut chunk = Chunk::new();
     let idx0 = chunk.add_constant(Object::Int(42));
     let idx1 = chunk.add_constant(Object::Float(3.14));
-    let idx2 = chunk.add_constant(Object::String(Rc::new("hello".to_string())));
+    let idx2 = chunk.add_constant(Object::string("hello".to_string()));
 
     assert_eq!(idx0, Some(0));
     assert_eq!(idx1, Some(1));
@@ -204,9 +203,7 @@ fn realistic_instruction_sequence() {
 
     let c1 = chunk.add_constant(Object::Int(1)).unwrap();
     let c2 = chunk.add_constant(Object::Int(2)).unwrap();
-    let name = chunk
-        .add_constant(Object::String(Rc::new("x".to_string())))
-        .unwrap();
+    let name = chunk.add_constant(Object::string("x".to_string())).unwrap();
 
     // Load 1
     chunk.write_constant(c1, 1);

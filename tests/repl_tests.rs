@@ -303,7 +303,7 @@ fn format_object_primitives() {
     assert_eq!(ReplCore::format_object(&Object::Int(42)), "42");
     assert_eq!(ReplCore::format_object(&Object::Float(3.14)), "3.14");
     assert_eq!(
-        ReplCore::format_object(&Object::String(Rc::new("hello".to_string()))),
+        ReplCore::format_object(&Object::string("hello".to_string())),
         "\"hello\""
     );
 }
@@ -316,7 +316,7 @@ fn format_object_float_whole_number() {
 #[test]
 fn format_object_symbol() {
     assert_eq!(
-        ReplCore::format_object(&Object::Symbol(Rc::new("foo".to_string()))),
+        ReplCore::format_object(&Object::symbol("foo".to_string())),
         ":foo"
     );
 }
@@ -404,7 +404,7 @@ fn format_object_result_ok() {
 
 #[test]
 fn format_object_result_err() {
-    let r = Object::Result(Err(Box::new(Object::String(Rc::new("oops".to_string())))));
+    let r = Object::Result(Err(Box::new(Object::string("oops".to_string()))));
     assert_eq!(ReplCore::format_object(&r), "<Err: \"oops\">");
 }
 

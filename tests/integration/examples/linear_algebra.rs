@@ -18,3 +18,18 @@ fn test_linear_algebra_matrices_and_vectors_no_parens_execution() {
     let output = run_example("linear_algebra/matrices_and_vectors_no_parens.rb");
     assert_eq!(output, MATRICES_AND_VECTORS_OUTPUT);
 }
+
+/// The expected output of both `linear_algebra/matrix_shapes` variants.
+const MATRIX_SHAPES_OUTPUT: &str = "2\n3\n\"Matrix.empty(0, 3)\"\n0\n3\n\"Matrix.empty(3, 0)\"\nfalse\n[0, 1]\n\"Matrix[[1, 2]]\"\n\"Matrix[[5]]\"\n\"Matrix.empty(0, 2)\"\nnil\n[1, 1]\n[1, 5]\n[1, 1]\n\"Matrix[[0, 1, 2], [3, 4, 5]]\"\n3\n[0, 4]\n[[1, 7], [2, 8], [3, 9]]\n(11+2i)\nfalse\nNoMethodError\n";
+
+#[test]
+fn test_linear_algebra_matrix_shapes_execution() {
+    let output = run_example("linear_algebra/matrix_shapes.rb");
+    assert_eq!(output, MATRIX_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_linear_algebra_matrix_shapes_no_parens_execution() {
+    let output = run_example("linear_algebra/matrix_shapes_no_parens.rb");
+    assert_eq!(output, MATRIX_SHAPES_OUTPUT);
+}

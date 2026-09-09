@@ -3,7 +3,6 @@ use metorex::error::MetorexError;
 use metorex::lexer::Position;
 use metorex::object::Object;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn pos(line: usize, column: usize) -> Position {
     Position::new(line, column, 0)
@@ -95,7 +94,7 @@ fn concatenates_strings_with_addition() {
     vm.execute_program(&[assignment]).expect("execution failed");
     assert_eq!(
         vm.environment().get("text"),
-        Some(Object::String(Rc::new("Hello, world".to_string())))
+        Some(Object::string("Hello, world".to_string()))
     );
 }
 
@@ -183,7 +182,7 @@ fn creates_dictionary_literal_with_entries() {
             let dict = dict_rc.borrow();
             assert_eq!(
                 dict.get("name"),
-                Some(&Object::String(Rc::new("Metorex".to_string())))
+                Some(&Object::string("Metorex".to_string()))
             );
             assert_eq!(dict.get("count"), Some(&Object::Int(3)));
         }
@@ -262,7 +261,7 @@ fn indexes_into_dictionary_literal() {
     vm.execute_program(&statements).expect("execution failed");
     assert_eq!(
         vm.environment().get("result"),
-        Some(Object::String(Rc::new("value".to_string())))
+        Some(Object::string("value".to_string()))
     );
 }
 
@@ -344,10 +343,8 @@ fn division_by_zero_raises_zero_division_error() {
 #[test]
 fn evaluates_interpolated_string() {
     let mut vm = VirtualMachine::new();
-    vm.environment_mut().define(
-        "name".to_string(),
-        Object::String(Rc::new("Metorex".to_string())),
-    );
+    vm.environment_mut()
+        .define("name".to_string(), Object::string("Metorex".to_string()));
 
     let assignment = Statement::Assignment {
         target: Expression::Identifier {
@@ -371,7 +368,7 @@ fn evaluates_interpolated_string() {
     vm.execute_program(&[assignment]).expect("execution failed");
     assert_eq!(
         vm.environment().get("message"),
-        Some(Object::String(Rc::new("Hello, Metorex!".to_string())))
+        Some(Object::string("Hello, Metorex!".to_string()))
     );
 }
 

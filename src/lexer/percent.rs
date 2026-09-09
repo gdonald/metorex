@@ -32,6 +32,12 @@ impl<'a> Lexer<'a> {
             self.advance(); // consume Q
             return self.lex_percent_string(position);
         }
+        // `x %= 1` divides and assigns, which only a value before the `%`
+        // makes possible.
+        if self.peek() == Some('=') && follows_a_value(&self.prev_significant) {
+            self.advance();
+            return Token::new(TokenKind::PercentEqual, position);
+        }
         // Any other punctuation may delimit a `%` string, so long as the `%`
         // is not dividing what came before it.
         let opener = self.peek();
@@ -100,16 +106,31 @@ impl<'a> Lexer<'a> {
         let close = matching_close(open);
         self.advance(); // consume opening delimiter
         let mut content = String::new();
+        // A paired delimiter nests, so `%w[a [ b ] c]` reads its brackets as
+        // words rather than ending the list at the first one.
+        let mut depth = 1;
         while let Some(ch) = self.peek() {
             if ch == '\\' {
+                // The backslash stays, so the parser can tell an escaped
+                // space inside a word from the spaces between words.
                 self.advance();
                 if let Some(esc) = self.peek() {
+                    content.push('\\');
                     content.push(esc);
                     self.advance();
                 }
-            } else if ch == close {
+            } else if ch == open && open != close {
+                depth += 1;
+                content.push(ch);
                 self.advance();
-                break;
+            } else if ch == close {
+                depth -= 1;
+                if depth == 0 {
+                    self.advance();
+                    break;
+                }
+                content.push(ch);
+                self.advance();
             } else {
                 content.push(ch);
                 self.advance();

@@ -48,7 +48,7 @@ fn class_of_string() {
 #[test]
 fn class_of_symbol() {
     let builtins = BuiltinClasses::new();
-    let class = builtins.class_of(&Object::Symbol(Rc::new("foo".to_string())));
+    let class = builtins.class_of(&Object::symbol("foo".to_string()));
     assert_eq!(class.name(), "Symbol");
 }
 

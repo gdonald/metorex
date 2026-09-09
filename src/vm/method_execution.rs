@@ -201,6 +201,7 @@ impl VirtualMachine {
         // defined, not the scopes open at the call site.
         self.method_nesting_stack
             .push(method.captured_nesting.clone());
+        self.fire_method_event("call", &method_name, &method, &class, None, position)?;
         let execution_result = self.with_call_frame(
             CallFrame::method(
                 frame_name.clone(),
@@ -224,7 +225,17 @@ impl VirtualMachine {
         self.user_def_nesting = self.user_def_nesting.saturating_sub(1);
 
         match execution_result {
-            Ok(value) => Ok(value),
+            Ok(value) => {
+                self.fire_method_event(
+                    "return",
+                    &method_name,
+                    &method,
+                    &class,
+                    Some(&value),
+                    position,
+                )?;
+                Ok(value)
+            }
             Err(error) => Err(error.with_stack_frame(StackFrame::new(frame_name, frame_location))),
         }
     }

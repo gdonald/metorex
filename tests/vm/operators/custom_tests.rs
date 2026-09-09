@@ -51,8 +51,5 @@ a = "hello"
 x = a.length > 10 ? "long" : a.length > 3 ? "medium" : "short"
 x
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("medium".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("medium".to_string())));
 }

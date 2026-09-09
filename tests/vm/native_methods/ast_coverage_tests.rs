@@ -22,7 +22,7 @@ fn binary_op_of(code: &str) -> String {
             if let Some(Object::Dict(d)) = arr.first() {
                 let d = d.borrow();
                 if let Some(Object::String(s)) = d.get("op") {
-                    return s.as_ref().clone();
+                    return s.as_str().to_string();
                 }
             }
             "no_op".to_string()

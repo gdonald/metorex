@@ -676,10 +676,7 @@ class AutoHost
 end
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 #[test]
@@ -718,10 +715,7 @@ class Vari
 end
 :defined
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("defined".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("defined".to_string())));
 }
 
 #[test]
@@ -735,10 +729,7 @@ class BlockParam
 end
 :defined
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("defined".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("defined".to_string())));
 }
 
 #[test]
@@ -969,10 +960,7 @@ f = Foo.new
 f.instance_variable_set(:@name, "alice")
 f.name
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("alice".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("alice".to_string())));
 }
 
 #[test]

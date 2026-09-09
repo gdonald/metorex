@@ -4,7 +4,6 @@ use metorex::lexer::Lexer;
 use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
-use std::rc::Rc;
 
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
@@ -159,7 +158,7 @@ fn array_join_with_separator() {
     let result = run(r#"
 [1, 2, 3].join(", ")
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("1, 2, 3".to_string()))));
+    assert_eq!(result, Some(Object::string("1, 2, 3".to_string())));
 }
 
 #[test]
@@ -167,7 +166,7 @@ fn array_join_without_separator() {
     let result = run(r#"
 [1, 2, 3].join
 "#);
-    assert_eq!(result, Some(Object::String(Rc::new("123".to_string()))));
+    assert_eq!(result, Some(Object::string("123".to_string())));
 }
 
 #[test]
@@ -245,26 +244,41 @@ fn array_inject_more_than_two_arguments_errors() {
 // ── pack with non-Int values in various directives (lines 839, 847, 855, 863) ─
 
 #[test]
-fn array_pack_j_with_non_int_defaults_to_zero() {
-    // 'q' is 64-bit signed — non-Int defaults to 0
-    let result = run(r#"["not_an_int"].pack("q")"#);
-    assert!(result.is_some());
+fn array_pack_q_refuses_a_value_that_is_not_a_number() {
+    let error = run_err(r#"["not_an_int"].pack("q")"#);
+    assert!(
+        error.contains("no implicit conversion of String into Integer"),
+        "unexpected error: {}",
+        error
+    );
 }
 
 #[test]
-fn array_pack_l_with_non_int_defaults_to_zero() {
-    let result = run(r#"["string"].pack("l")"#);
-    assert!(result.is_some());
+fn array_pack_l_refuses_a_value_that_is_not_a_number() {
+    let error = run_err(r#"["string"].pack("l")"#);
+    assert!(
+        error.contains("no implicit conversion of String into Integer"),
+        "unexpected error: {}",
+        error
+    );
 }
 
 #[test]
-fn array_pack_s_with_non_int_defaults_to_zero() {
-    let result = run(r#"["string"].pack("s")"#);
-    assert!(result.is_some());
+fn array_pack_s_refuses_a_value_that_is_not_a_number() {
+    let error = run_err(r#"["string"].pack("s")"#);
+    assert!(
+        error.contains("no implicit conversion of String into Integer"),
+        "unexpected error: {}",
+        error
+    );
 }
 
 #[test]
-fn array_pack_c_with_non_int_defaults_to_zero() {
-    let result = run(r#"["string"].pack("c")"#);
-    assert!(result.is_some());
+fn array_pack_c_refuses_a_value_that_is_not_a_number() {
+    let error = run_err(r#"["string"].pack("c")"#);
+    assert!(
+        error.contains("no implicit conversion of String into Integer"),
+        "unexpected error: {}",
+        error
+    );
 }

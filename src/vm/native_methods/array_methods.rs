@@ -898,7 +898,7 @@ impl VirtualMachine {
                     String::new()
                 } else {
                     match &arguments[0] {
-                        Object::String(s) => s.as_ref().clone(),
+                        Object::String(s) => s.as_str().to_string(),
                         // A nil separator joins with nothing between.
                         Object::Nil => String::new(),
                         _ => {
@@ -917,7 +917,7 @@ impl VirtualMachine {
                     .borrow()
                     .iter()
                     .map(|element| match element {
-                        Object::Symbol(name) => (**name).clone(),
+                        Object::Symbol(name) => name.as_str().to_string(),
                         other => format!("{other}"),
                     })
                     .collect();
@@ -1889,6 +1889,7 @@ impl VirtualMachine {
                 };
                 Ok(Some(Object::Bool(value)))
             }
+            // `pack` writes the items out as the directives describe them.
             "pack" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -1898,77 +1899,32 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let Object::String(format) = &arguments[0] else {
-                    return Err(method_argument_type_error(
-                        method_name,
-                        "String",
-                        &arguments[0],
-                        position,
-                    ));
+                let format = match &arguments[0] {
+                    Object::String(format) => format.as_str().to_string(),
+                    other if self.responds_to(other, "to_str") => {
+                        match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                            Object::String(format) => format.as_str().to_string(),
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    method_name,
+                                    "String",
+                                    other,
+                                    position,
+                                ));
+                            }
+                        }
+                    }
+                    other => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            other,
+                            position,
+                        ));
+                    }
                 };
-                let array = array_rc.borrow();
-                let mut out: Vec<u8> = Vec::new();
-                let mut idx = 0usize;
-                let chars: Vec<char> = format.chars().collect();
-                let mut i = 0;
-                while i < chars.len() {
-                    let ch = chars[i];
-                    let native = i + 1 < chars.len() && chars[i + 1] == '!';
-                    if native {
-                        i += 1;
-                    }
-                    i += 1;
-                    let val = array.get(idx).cloned().unwrap_or(Object::Int(0));
-                    let effective = if native && (ch == 'l' || ch == 'L' || ch == 'i' || ch == 'I')
-                    {
-                        'j'
-                    } else {
-                        ch
-                    };
-                    match effective {
-                        'j' | 'J' | 'q' | 'Q' => {
-                            let n = match val {
-                                Object::Int(i) => i,
-                                _ => 0,
-                            };
-                            out.extend_from_slice(&n.to_le_bytes());
-                            idx += 1;
-                        }
-                        'l' | 'L' | 'i' | 'I' | 'V' => {
-                            let n = match val {
-                                Object::Int(i) => i as i32,
-                                _ => 0,
-                            };
-                            out.extend_from_slice(&n.to_le_bytes());
-                            idx += 1;
-                        }
-                        's' | 'S' | 'v' => {
-                            let n = match val {
-                                Object::Int(i) => i as i16,
-                                _ => 0,
-                            };
-                            out.extend_from_slice(&n.to_le_bytes());
-                            idx += 1;
-                        }
-                        'c' | 'C' => {
-                            let n = match val {
-                                Object::Int(i) => i as u8,
-                                _ => 0,
-                            };
-                            out.push(n);
-                            idx += 1;
-                        }
-                        _ => {
-                            return Err(MetorexError::runtime_error(
-                                format!("Array#pack: unsupported directive '{}'", ch),
-                                position_to_location(position),
-                            ));
-                        }
-                    }
-                }
-                let s: String = out.iter().map(|&b| b as char).collect();
-                let _ = idx;
-                Ok(Some(Object::String(Rc::new(s))))
+                let items = array_rc.borrow().clone();
+                self.array_pack(&items, &format, position).map(Some)
             }
             // `to_a` and `entries` answer the array itself, which is what
             // Ruby returns for an Array that is not a subclass instance.
@@ -2271,7 +2227,7 @@ fn inspect_nested(nested: &Rc<RefCell<Vec<Object>>>) -> String {
 pub(crate) fn inspect_element(element: &Object) -> String {
     match element {
         Object::String(s) => format!("{:?}", s.as_str()),
-        Object::Symbol(s) => format!(":{}", s.as_str()),
+        Object::Symbol(s) => crate::object::inspect_symbol(s.as_str()),
         Object::Nil => "nil".to_string(),
         Object::Array(nested) => inspect_nested(nested),
         other => other.to_string(),

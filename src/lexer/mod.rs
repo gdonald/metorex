@@ -48,12 +48,23 @@ pub struct Lexer<'a> {
     /// from `prepend`; this puts the counter back at the line following the
     /// heredoc terminator afterwards.
     pub(super) restore_line: Option<usize>,
+    /// Whether this lexer is reading the core library rather than a program.
+    pub(super) prelude: bool,
 }
 
 impl<'a> Lexer<'a> {
     /// Create a new lexer for the given source code
     pub fn new(source: &'a str) -> Self {
         Self::with_start_line(source, 1)
+    }
+
+    /// A lexer over the core library metorex loads at startup. Every position
+    /// it hands out says so, which is how a tracepoint knows to pass over the
+    /// library's own statements the way Ruby passes over its C code.
+    pub fn for_prelude(source: &'a str) -> Self {
+        let mut made = Self::with_start_line(source, 1);
+        made.prelude = true;
+        made
     }
 
     /// Create a lexer whose first line is numbered `start_line`. Used by
@@ -69,6 +80,7 @@ impl<'a> Lexer<'a> {
             prev_significant: None,
             prev_significant_end: 0,
             restore_line: None,
+            prelude: false,
         }
     }
 

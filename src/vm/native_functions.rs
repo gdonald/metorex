@@ -74,7 +74,7 @@ impl VirtualMachine {
                         let name =
                             self.coerce_method_name(argument, "module_function", position)?;
                         self.copy_to_module_function(&class, &name, position)?;
-                        names.push(Object::Symbol(Rc::new(name)));
+                        names.push(Object::symbol(name));
                     }
                     return Ok(match names.len() {
                         1 => names.remove(0),
@@ -260,7 +260,7 @@ impl VirtualMachine {
                     } else {
                         defined
                     };
-                    Object::Symbol(std::rc::Rc::new(chosen))
+                    Object::symbol(chosen)
                 }
                 None => Object::Nil,
             }),
@@ -282,7 +282,7 @@ impl VirtualMachine {
                             _ => Object::Nil,
                         };
                         let path = match read("path") {
-                            Object::String(path) => (*path).clone(),
+                            Object::String(path) => path.as_str().to_string(),
                             _ => String::new(),
                         };
                         let line = match read("lineno") {
@@ -290,7 +290,7 @@ impl VirtualMachine {
                             _ => 0,
                         };
                         let label = match read("label") {
-                            Object::String(label) => (*label).clone(),
+                            Object::String(label) => label.as_str().to_string(),
                             _ => String::new(),
                         };
                         Object::string(if label.is_empty() {
@@ -393,7 +393,7 @@ impl VirtualMachine {
                 if let Some(class) = target {
                     class.define_method(method_name.clone(), method_rc);
                 }
-                Ok(Object::Symbol(Rc::new(method_name)))
+                Ok(Object::symbol(method_name))
             }
             // Kernel#rand — a Float in [0, 1) with no argument, an Integer
             // below the given bound, or a value drawn from a Range.
@@ -540,13 +540,13 @@ impl VirtualMachine {
                     let Some(receiver) = self.environment().get("self") else {
                         return Err(not_a_method);
                     };
-                    let name = Object::Symbol(std::rc::Rc::new(method_name.to_string()));
+                    let name = Object::symbol(method_name.to_string());
                     self.send_to_object(receiver, "method", vec![name], position)
                         .map_err(|_| not_a_method)
                 } else if let Some(receiver) = self.environment().get("self") {
                     // Inside an instance method a bare `method(:name)` means
                     // `self.method(:name)`, and the name is not a local.
-                    let name = Object::Symbol(std::rc::Rc::new(method_name.to_string()));
+                    let name = Object::symbol(method_name.to_string());
                     self.send_to_object(receiver, "method", vec![name], position)
                 } else {
                     Err(MetorexError::runtime_error(
@@ -589,14 +589,24 @@ impl VirtualMachine {
                     ));
                 };
                 let command = self.coerce_command_argument(argument, position)?;
-                let output = std::process::Command::new("/bin/sh")
+                // Spawn rather than run to completion in one step, so the
+                // child's process id is read before it is waited for and
+                // `$?.pid` can report it.
+                let spawned = std::process::Command::new("/bin/sh")
                     .arg("-c")
                     .arg(&command)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::inherit())
-                    .output();
-                let output = match output {
-                    Ok(output) => output,
+                    .spawn();
+                let output = match spawned {
+                    Ok(child) => {
+                        let child_pid = child.id() as i64;
+                        child.wait_with_output().map(|output| (output, child_pid))
+                    }
+                    Err(error) => Err(error),
+                };
+                let (output, child_pid) = match output {
+                    Ok(pair) => pair,
                     Err(error) => {
                         let message =
                             format!("No such file or directory - {} ({})", command, error);
@@ -607,7 +617,7 @@ impl VirtualMachine {
                         });
                     }
                 };
-                self.record_last_status(&output.status);
+                self.record_last_status(&output.status, Some(child_pid));
                 // A command the shell could not find ends with status 127,
                 // which Ruby reports as Errno::ENOENT from the spawn itself.
                 if output.status.code() == Some(127) {
@@ -626,13 +636,13 @@ impl VirtualMachine {
             // is the line `-n` read. `chomp` takes the separator from `$/`.
             "chomp" | "chop" => {
                 let line = match self.globals().get("_") {
-                    Some(Object::String(text)) => (*text).clone(),
+                    Some(Object::String(text)) => text.as_str().to_string(),
                     _ => String::new(),
                 };
                 let separator = match arguments.first() {
-                    Some(Object::String(text)) => Some((**text).clone()),
+                    Some(Object::String(text)) => Some(text.as_str().to_string()),
                     _ => match self.globals().get("/") {
-                        Some(Object::String(text)) => Some((*text).clone()),
+                        Some(Object::String(text)) => Some(text.as_str().to_string()),
                         _ => None,
                     },
                 };
@@ -812,7 +822,7 @@ impl VirtualMachine {
                     Some(Object::Array(features)) => features
                         .borrow()
                         .iter()
-                        .any(|feature| matches!(feature, Object::String(name) if **name == canonical_str)),
+                        .any(|feature| matches!(feature, Object::String(name) if name.as_str() == canonical_str)),
                     _ => self.is_file_loaded(&canonical_path),
                 };
 
@@ -967,7 +977,7 @@ impl VirtualMachine {
                 )));
                 let rendered = self.evaluate_string_format(format, values, position)?;
                 let text = match &rendered {
-                    Object::String(text) => (**text).clone(),
+                    Object::String(text) => text.as_str().to_string(),
                     other => other.to_string(),
                 };
                 match target {
@@ -1289,7 +1299,7 @@ impl VirtualMachine {
                 let names: Vec<Object> = self
                     .globals()
                     .variable_names()
-                    .map(|name| Object::Symbol(std::rc::Rc::new(format!("${}", name))))
+                    .map(|name| Object::symbol(format!("${}", name)))
                     .collect();
                 Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     names,
@@ -1325,10 +1335,7 @@ impl VirtualMachine {
                     .collect();
                 names.sort();
                 names.dedup();
-                let names: Vec<Object> = names
-                    .into_iter()
-                    .map(|name| Object::Symbol(std::rc::Rc::new(name)))
-                    .collect();
+                let names: Vec<Object> = names.into_iter().map(Object::symbol).collect();
                 Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     names,
                 ))))
@@ -1838,18 +1845,12 @@ impl VirtualMachine {
         // counts it as the innermost location, which is what level 0 names.
         let mut here = Instance::new(Rc::clone(&loc_class));
         here.set_var("lineno".to_string(), Object::Int(position.line as i64));
-        here.set_var(
-            "path".to_string(),
-            Object::String(Rc::new(current_file.clone())),
-        );
+        here.set_var("path".to_string(), Object::string(current_file.clone()));
         let here_absolute = std::path::Path::new(&current_file)
             .canonicalize()
             .map(|resolved| resolved.display().to_string())
             .unwrap_or_else(|_| current_file.clone());
-        here.set_var(
-            "absolute_path".to_string(),
-            Object::String(Rc::new(here_absolute)),
-        );
+        here.set_var("absolute_path".to_string(), Object::string(here_absolute));
         let frames: Vec<_> = stack.iter().rev().collect();
         // A frame's own name labels the location it is running at, and Ruby
         // names a block by the scope holding it: `block in <main>`.
@@ -1867,7 +1868,7 @@ impl VirtualMachine {
                 .unwrap_or_else(|| "<main>".to_string());
             format!("block in {}", holder)
         };
-        here.set_var("label".to_string(), Object::String(Rc::new(label_at(0))));
+        here.set_var("label".to_string(), Object::string(label_at(0)));
         locations.push(Object::Instance(Rc::new(RefCell::new(here))));
         for (index, frame) in frames.iter().enumerate() {
             // A frame with no recorded call site was never called from
@@ -1908,20 +1909,14 @@ impl VirtualMachine {
                 .canonicalize()
                 .map(|resolved| resolved.display().to_string())
                 .unwrap_or_else(|_| path.clone());
-            inst.set_var("path".to_string(), Object::String(Rc::new(path)));
-            inst.set_var(
-                "absolute_path".to_string(),
-                Object::String(Rc::new(absolute)),
-            );
+            inst.set_var("path".to_string(), Object::string(path));
+            inst.set_var("absolute_path".to_string(), Object::string(absolute));
             // A frame records where it was called from, so its location pairs
             // with the name of the frame below it: the one that made the call.
             // A frame records where it was called from, so its location
             // pairs with the name of the frame below it: the one that made
             // the call.
-            inst.set_var(
-                "label".to_string(),
-                Object::String(Rc::new(label_at(index + 1))),
-            );
+            inst.set_var("label".to_string(), Object::string(label_at(index + 1)));
             locations.push(Object::Instance(Rc::new(RefCell::new(inst))));
         }
         locations
@@ -2049,7 +2044,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         if let Object::String(path) = argument {
-            return Ok((**path).clone());
+            return Ok(path.as_str().to_string());
         }
         let refuse = |vm: &mut Self, value: &Object| {
             let message = format!(
@@ -2066,7 +2061,7 @@ impl VirtualMachine {
         if self.responds_to(&value, "to_path") {
             value = self.invoke_named_conversion(&value, "to_path", position)?;
             if let Object::String(path) = &value {
-                return Ok((**path).clone());
+                return Ok(path.as_str().to_string());
             }
         }
         if !self.responds_to(&value, "to_str") {
@@ -2074,7 +2069,7 @@ impl VirtualMachine {
         }
         let converted = self.invoke_named_conversion(&value, "to_str", position)?;
         match converted {
-            Object::String(path) => Ok((*path).clone()),
+            Object::String(path) => Ok(path.as_str().to_string()),
             other => Err(refuse(self, &other)),
         }
     }
@@ -2143,7 +2138,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         if let Object::String(text) = argument {
-            return Ok((**text).clone());
+            return Ok(text.as_str().to_string());
         }
         let source = self.builtins().class_of(argument).name().to_string();
         let Some((class, method)) = self.lookup_method(argument, "to_str") else {
@@ -2157,7 +2152,7 @@ impl VirtualMachine {
         let converted =
             self.invoke_method(class, method, argument.clone(), Vec::new(), position)?;
         match converted {
-            Object::String(text) => Ok((*text).clone()),
+            Object::String(text) => Ok(text.as_str().to_string()),
             other => {
                 let produced = self.builtins().class_of(&other).name().to_string();
                 let message = format!(
@@ -2179,7 +2174,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         if let Object::String(text) = argument {
-            return Ok((**text).clone());
+            return Ok(text.as_str().to_string());
         }
         if let Some((class, method)) = self.lookup_method(argument, "to_str")
             && !method.is_undefined
@@ -2187,7 +2182,7 @@ impl VirtualMachine {
             let converted =
                 self.invoke_method(class, method, argument.clone(), vec![], position)?;
             if let Object::String(text) = converted {
-                return Ok((*text).clone());
+                return Ok(text.as_str().to_string());
             }
         }
         let source_class = self.builtins().class_of(argument).name().to_string();
@@ -2208,7 +2203,7 @@ impl VirtualMachine {
         // First try to_s, then inspect, then fall back to Display
         match obj {
             // `:name.to_s` is the bare name; only `inspect` keeps the colon.
-            Object::Symbol(name) => Ok((**name).clone()),
+            Object::Symbol(name) => Ok(name.as_str().to_string()),
             Object::Instance(_) => {
                 // Try to_s first
                 if let Some((class, method)) = self.lookup_method(obj, "to_s") {
@@ -2576,12 +2571,9 @@ impl VirtualMachine {
 
         // Return first symbol argument (Ruby returns single sym or array for multi).
         match flat.len() {
-            1 => Ok(Object::Symbol(std::rc::Rc::new(names[0].clone()))),
+            1 => Ok(Object::symbol(names[0].clone())),
             _ => Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
-                names
-                    .into_iter()
-                    .map(|n| Object::Symbol(std::rc::Rc::new(n)))
-                    .collect(),
+                names.into_iter().map(Object::symbol).collect(),
             )))),
         }
     }
@@ -2619,7 +2611,7 @@ fn numeric_value(object: &Object) -> Option<f64> {
 /// The global's name without its `$`, however it was named.
 fn global_name_from(named: &Object) -> String {
     let text = match named {
-        Object::Symbol(name) | Object::String(name) => (**name).clone(),
+        Object::Symbol(name) | Object::String(name) => name.as_str().to_string(),
         other => other.to_string(),
     };
     text.strip_prefix('$').unwrap_or(&text).to_string()
@@ -2662,7 +2654,7 @@ impl VirtualMachine {
                 crate::vm::utils::position_to_location(position),
             ));
         };
-        let name = (**name).clone();
+        let name = name.as_str().to_string();
         let mut values = Vec::new();
         for (index, argument) in arguments[1..].iter().enumerate() {
             // `ldexp` scales by a whole number of powers of two, so its second
@@ -2835,6 +2827,31 @@ impl VirtualMachine {
                 if first.is_infinite() && first < 0.0 {
                     return Err(out_of_domain("lgamma"));
                 }
+                // The gamma function grows without bound, so its logarithm
+                // does too.
+                if first.is_infinite() {
+                    return Ok(Object::array(vec![
+                        Object::Float(f64::INFINITY),
+                        Object::Int(1),
+                    ]));
+                }
+                // It has a pole at every whole number at or below zero, so
+                // its magnitude there has no logarithm short of infinity. The
+                // sign alternates from one pole to the next, and negative
+                // zero approaches the pole at zero from the other side.
+                if first <= 0.0 && first.fract() == 0.0 {
+                    let sign = if first == 0.0 {
+                        if first.is_sign_negative() { -1 } else { 1 }
+                    } else if (first / 2.0).fract() != 0.0 {
+                        1
+                    } else {
+                        -1
+                    };
+                    return Ok(Object::array(vec![
+                        Object::Float(f64::INFINITY),
+                        Object::Int(sign),
+                    ]));
+                }
                 let value = gamma_function(first);
                 return Ok(Object::array(vec![
                     Object::Float(value.abs().ln()),
@@ -2950,15 +2967,15 @@ fn split_float(value: f64) -> (f64, i64) {
 /// fraction, so `Math.log2(2 ** 10001)` is 10001.0 rather than an infinity.
 fn exact_log2(value: &Object) -> Option<f64> {
     let value = match value {
-        Object::BigInt(number) => (**number).clone(),
+        Object::BigInt(number) => (*number).clone(),
         _ => return None,
     };
-    if value <= num_bigint::BigInt::from(0) {
+    if *value <= num_bigint::BigInt::from(0) {
         return None;
     }
     let bits = value.bits() as i64;
     // Keep the leading bits as a Float and let the rest count as the exponent.
     let kept = 64.min(bits);
-    let leading = crate::vm::operators::big_to_float(&(&value >> (bits - kept) as u32));
+    let leading = crate::vm::operators::big_to_float(&(&*value >> (bits - kept) as u32));
     Some(leading.log2() + (bits - kept) as f64)
 }

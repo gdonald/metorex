@@ -398,9 +398,11 @@ fn string_slice_past_end_returns_empty() {
 }
 
 #[test]
-fn string_slice_error_wrong_arg_count() {
-    let err = run_err(r#""hello".slice(1)"#);
-    assert!(err.contains("argument"));
+fn string_slice_reads_one_argument_the_way_a_subscript_does() {
+    assert_eq!(run(r#""hello".slice(1)"#), Some(Object::string("e")));
+    assert_eq!(run(r#""hello".slice("ell")"#), Some(Object::string("ell")));
+    assert_eq!(run(r#""hello".slice(/l+/)"#), Some(Object::string("ll")));
+    assert_eq!(run(r#""hello".slice(/xy/)"#), Some(Object::Nil));
 }
 
 #[test]
@@ -537,9 +539,12 @@ fn string_to_i_leading_digits() {
 }
 
 #[test]
-fn string_to_i_error_with_args() {
-    let err = run_err(r#""42".to_i(10)"#);
-    assert!(err.contains("argument"));
+fn string_to_i_reads_the_base_it_is_given() {
+    assert_eq!(run(r#""42".to_i(10)"#), Some(Object::Int(42)));
+    assert_eq!(run(r#""ff".to_i(16)"#), Some(Object::Int(255)));
+    assert_eq!(run(r#""-1010".to_i(2)"#), Some(Object::Int(-10)));
+    assert!(run_err(r#""42".to_i(1)"#).contains("invalid radix"));
+    assert!(run_err(r#""42".to_i(10, 2)"#).contains("argument"));
 }
 
 // ── to_f ────────────────────────────────────────────────────────────────────

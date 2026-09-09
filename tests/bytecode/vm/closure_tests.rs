@@ -49,7 +49,7 @@ fn upvalue_close() {
 
 #[test]
 fn upvalue_clone() {
-    let uv = UpvalueObj::new_open(0, Object::String(Rc::new("hello".to_string())));
+    let uv = UpvalueObj::new_open(0, Object::string("hello".to_string()));
     let cloned = uv.clone();
     assert_eq!(cloned.stack_index, 0);
 }

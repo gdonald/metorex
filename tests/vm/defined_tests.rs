@@ -17,12 +17,7 @@ fn run(code: &str) -> Option<Object> {
 #[test]
 fn defined_local_variable() {
     let result = run(r#"x = 1; defined?(x)"#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new(
-            "local-variable".to_string()
-        )))
-    );
+    assert_eq!(result, Some(Object::string("local-variable".to_string())));
 }
 
 #[test]
@@ -33,17 +28,14 @@ fn defined_undefined() {
 #[test]
 fn defined_method() {
     let result = run("def foo; end; defined?(foo)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("method".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("method".to_string())));
 }
 
 #[test]
 fn defined_constant() {
     assert_eq!(
         run("defined?(String)"),
-        Some(Object::String(std::rc::Rc::new("constant".to_string())))
+        Some(Object::string("constant".to_string()))
     );
 }
 
@@ -51,19 +43,14 @@ fn defined_constant() {
 fn defined_literal() {
     assert_eq!(
         run("defined?(42)"),
-        Some(Object::String(std::rc::Rc::new("expression".to_string())))
+        Some(Object::string("expression".to_string()))
     );
 }
 
 #[test]
 fn defined_global_variable() {
     let result = run("$test_def = 1; defined?($test_def)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new(
-            "global-variable".to_string()
-        )))
-    );
+    assert_eq!(result, Some(Object::string("global-variable".to_string())));
 }
 
 #[test]
@@ -73,19 +60,14 @@ fn defined_instance_var() {
     );
     assert_eq!(
         result,
-        Some(Object::String(std::rc::Rc::new(
-            "instance-variable".to_string()
-        )))
+        Some(Object::string("instance-variable".to_string()))
     );
 }
 
 #[test]
 fn defined_yield_with_block() {
     let result = run("def test\n  defined?(yield)\nend\ntest { 1 }");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("yield".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("yield".to_string())));
 }
 
 #[test]
@@ -113,7 +95,7 @@ fn defined_self_in_method() {
 fn defined_method_call() {
     assert_eq!(
         run(r#"defined?(puts("hi"))"#),
-        Some(Object::String(std::rc::Rc::new("method".to_string())))
+        Some(Object::string("method".to_string()))
     );
 }
 
@@ -143,10 +125,7 @@ fn defined_class_var_with_existing() {
 #[test]
 fn defined_scope_resolution_existing() {
     let result = run("class Foo\n  VERSION = 42\nend\ndefined?(Foo::VERSION)");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("constant".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("constant".to_string())));
 }
 
 #[test]
@@ -154,10 +133,7 @@ fn defined_super_returns_super() {
     let result = run(
         "class Parent\n  def hi\n    \"p\"\n  end\nend\nclass Child < Parent\n  def hi\n    defined?(super)\n  end\nend\nChild.new.hi",
     );
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("super".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("super".to_string())));
 }
 
 #[test]
@@ -170,7 +146,7 @@ fn defined_self_returns_string() {
 fn defined_array_literal() {
     assert_eq!(
         run("defined?([1, 2, 3])"),
-        Some(Object::String(std::rc::Rc::new("expression".to_string())))
+        Some(Object::string("expression".to_string()))
     );
 }
 
@@ -178,7 +154,7 @@ fn defined_array_literal() {
 fn defined_dictionary_literal() {
     assert_eq!(
         run("defined?({a: 1})"),
-        Some(Object::String(std::rc::Rc::new("expression".to_string())))
+        Some(Object::string("expression".to_string()))
     );
 }
 

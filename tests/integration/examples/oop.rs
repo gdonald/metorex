@@ -482,14 +482,16 @@ fn test_oop_include_multiple_modules_parens_execution() {
 
 #[test]
 fn test_oop_include_nested_modules_execution() {
-    let expected = "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name]\n[Seedling, Sapling, Leaf]\n";
+    let expected =
+        "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name, :pretty_inspect]\n[Seedling, Sapling, Leaf]\n";
     let output = run_example("oop/include_nested_modules.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_include_nested_modules_parens_execution() {
-    let expected = "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name]\n[Seedling, Sapling, Leaf]\n";
+    let expected =
+        "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name, :pretty_inspect]\n[Seedling, Sapling, Leaf]\n";
     let output = run_example("oop/include_nested_modules_parens.rb");
     assert_eq!(output, expected);
 }
@@ -636,14 +638,14 @@ fn test_oop_module_function_parens_execution() {
 
 #[test]
 fn test_oop_module_name_execution() {
-    let expected = "nil\n\"Outer::Inner\"\nnil\nnil\ntrue\ntrue\n\"Outer::Inner::Bound\"\n\"Outer::Inner::Bound::Nested\"\n\"Outer::Conditional\"\n\"Outer::AlsoConditional\"\ntrue\ntrue\nUTF-8\n";
+    let expected = "nil\n\"Outer::Inner\"\nnil\nnil\ntrue\ntrue\n\"Outer::Inner::Bound\"\n\"Outer::Inner::Bound::Nested\"\n\"Outer::Conditional\"\n\"Outer::AlsoConditional\"\ntrue\ntrue\n#<Encoding:UTF-8>\n";
     let output = run_example("oop/module_name.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_module_name_parens_execution() {
-    let expected = "nil\n\"Outer::Inner\"\nnil\nnil\ntrue\ntrue\n\"Outer::Inner::Bound\"\n\"Outer::Inner::Bound::Nested\"\n\"Outer::Conditional\"\n\"Outer::AlsoConditional\"\ntrue\ntrue\nUTF-8\n";
+    let expected = "nil\n\"Outer::Inner\"\nnil\nnil\ntrue\ntrue\n\"Outer::Inner::Bound\"\n\"Outer::Inner::Bound::Nested\"\n\"Outer::Conditional\"\n\"Outer::AlsoConditional\"\ntrue\ntrue\n#<Encoding:UTF-8>\n";
     let output = run_example("oop/module_name_parens.rb");
     assert_eq!(output, expected);
 }
@@ -1238,6 +1240,20 @@ fn test_oop_prepend_ancestry_parens_execution() {
         "super: no superclass method 'describe' for an instance of Alone\n",
     );
     let output = run_example("oop/prepend_ancestry_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_reopened_core_operator_execution() {
+    let expected = concat!("3\n", "3\n", "[2]\n", "\"hello\"\n");
+    let output = run_example("oop/reopened_core_operator.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_reopened_core_operator_parens_execution() {
+    let expected = concat!("3\n", "3\n", "[2]\n", "\"hello\"\n");
+    let output = run_example("oop/reopened_core_operator_parens.rb");
     assert_eq!(output, expected);
 }
 

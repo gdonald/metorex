@@ -62,10 +62,7 @@ fn define_method_with_string_name() {
     let result = run(
         "class Greeter\n  define_method(\"hello\") do\n    \"world\"\n  end\nend\nGreeter.new.hello",
     );
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("world".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("world".to_string())));
 }
 
 // ── attributes.rs lines 90, 93, 95-97: attr with keyword names ──────────────
@@ -82,10 +79,7 @@ c = Config.new
 c.include = "test"
 c.include
 "#);
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("test".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("test".to_string())));
 }
 
 #[test]

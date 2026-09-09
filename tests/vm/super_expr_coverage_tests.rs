@@ -91,10 +91,7 @@ class Derived < Watcher
 end
 :ok
 "#);
-    assert_eq!(
-        result,
-        Some(Object::Symbol(std::rc::Rc::new("ok".to_string())))
-    );
+    assert_eq!(result, Some(Object::symbol("ok".to_string())));
 }
 
 // ── Class-method super when no match found → error (line 85-92) ──────────────
@@ -417,4 +414,152 @@ end
 Source.new.take(1, 2).inspect
 "#);
     assert_eq!(result, Some(Object::string("[0, 1, 2]")));
+}
+
+// ── super from a method on a reopened core class ─────────────────────────────
+
+#[test]
+fn super_from_a_prepended_module_reaches_the_native_operator() {
+    let result = run(r#"
+module Doubling; end
+class Integer
+  prepend Doubling
+end
+Doubling.module_eval do
+  def +(other)
+    super(other) * 10
+  end
+end
+1 + 2
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("30".to_string())
+    );
+}
+
+#[test]
+fn super_from_a_singleton_method_on_a_core_value_reaches_the_native_method() {
+    let result = run(r#"
+value = "quiet"
+class << value
+  def upcase
+    super() + "!"
+  end
+end
+value.upcase
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("QUIET!".to_string())
+    );
+}
+
+#[test]
+fn super_from_a_prepended_module_reaches_the_class_own_method() {
+    let result = run(r#"
+module Shouting; end
+class String
+  prepend Shouting
+  def label
+    "quiet"
+  end
+end
+Shouting.module_eval do
+  def label
+    super.upcase
+  end
+end
+"anything".label
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("QUIET".to_string())
+    );
+}
+
+#[test]
+fn super_from_a_singleton_method_on_a_core_value_reaches_the_class_method() {
+    let result = run(r#"
+class String
+  def label
+    "class"
+  end
+end
+value = "anything"
+class << value
+  def label
+    super() + " and singleton"
+  end
+end
+value.label
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("class and singleton".to_string())
+    );
+}
+
+#[test]
+fn super_from_a_reopened_core_class_reports_a_method_nothing_answers() {
+    let error = run_err(
+        r#"
+class Integer
+  def missing_upstream
+    super
+  end
+end
+7.missing_upstream
+"#,
+    );
+    assert!(
+        error.contains("super: no superclass method 'missing_upstream'"),
+        "unexpected error: {}",
+        error
+    );
+}
+
+// ── operator dispatch to a reopened core class ───────────────────────────────
+
+#[test]
+fn a_reopened_core_class_operator_answers_the_syntax_form() {
+    let result = run(r#"
+class String
+  def -(other)
+    sub(other, "")
+  end
+end
+"hello world" - " world"
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("hello".to_string())
+    );
+}
+
+#[test]
+fn a_singleton_operator_on_a_core_value_answers_the_syntax_form() {
+    let result = run(r#"
+value = "hello"
+class << value
+  def +(other)
+    "joined"
+  end
+end
+value + " world"
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("joined".to_string())
+    );
+}
+
+#[test]
+fn an_operator_written_on_an_ancestor_leaves_the_native_arithmetic_in_place() {
+    let error = run_err(r#"42 % "not a number""#);
+    assert!(
+        error.contains("Cannot apply operator 'Modulo' to types 'Int' and 'String'"),
+        "unexpected error: {}",
+        error
+    );
 }

@@ -25,7 +25,7 @@ impl Compiler {
 
             Expression::StringLiteral { value, position } => {
                 let line = Self::pos_line(position);
-                self.emit_constant(Object::String(Rc::new(value.clone())), line)
+                self.emit_constant(Object::string(value.clone()), line)
             }
 
             Expression::BoolLiteral { value, position } => {
@@ -45,14 +45,14 @@ impl Compiler {
 
             Expression::Symbol { value, position } => {
                 let line = Self::pos_line(position);
-                self.emit_constant(Object::Symbol(Rc::new(value.clone())), line)
+                self.emit_constant(Object::symbol(value.clone()), line)
             }
 
             // ── String interpolation ────────────────────────────────────
             Expression::InterpolatedString { parts, position } => {
                 let line = Self::pos_line(position);
                 if parts.is_empty() {
-                    return self.emit_constant(Object::String(Rc::new(String::new())), line);
+                    return self.emit_constant(Object::string(String::new()), line);
                 }
 
                 // Compile each part, then concatenate with Add
@@ -60,7 +60,7 @@ impl Compiler {
                 for part in parts {
                     match part {
                         InterpolationPart::Text(text) => {
-                            self.emit_constant(Object::String(Rc::new(text.clone())), line)?;
+                            self.emit_constant(Object::string(text.clone()), line)?;
                         }
                         InterpolationPart::Expression(expr) => {
                             self.compile_expression(expr)?;

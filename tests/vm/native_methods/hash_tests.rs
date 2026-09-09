@@ -275,19 +275,13 @@ fn hash_merge_method_edge() {
 #[test]
 fn int_as_hash_key_misc() {
     let result = run("h = { 1 => \"one\" }; h[1]");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("one".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("one".to_string())));
 }
 
 #[test]
 fn bool_as_hash_key_misc() {
     let result = run("h = { true => \"yes\" }; h[true]");
-    assert_eq!(
-        result,
-        Some(Object::String(std::rc::Rc::new("yes".to_string())))
-    );
+    assert_eq!(result, Some(Object::string("yes".to_string())));
 }
 
 // ── compare_by_identity ─────────────────────────────────────────────────────
