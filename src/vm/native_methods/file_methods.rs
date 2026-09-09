@@ -258,11 +258,22 @@ impl VirtualMachine {
                     ));
                 }
             };
-            let _ = if method_name == "mkdir" {
-                std::fs::create_dir_all(&path)
+            if method_name == "mkdir" {
+                let made = std::fs::create_dir_all(&path);
+                // `Dir.mkdir` takes the mode the directory is created with,
+                // which is where a sticky or setgid bit comes from.
+                if made.is_ok()
+                    && let Some(Object::Int(mode)) = arguments.get(1)
+                {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    let _ = std::fs::set_permissions(
+                        &path,
+                        std::fs::Permissions::from_mode(*mode as u32),
+                    );
+                }
             } else {
-                std::fs::remove_dir(&path)
-            };
+                let _ = std::fs::remove_dir(&path);
+            }
             return Ok(Some(Object::Int(0)));
         }
         // Dir.entries(path) — every name the directory holds, with the two

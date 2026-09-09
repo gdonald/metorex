@@ -611,6 +611,11 @@ pub(super) fn register_special_globals(globals: &mut GlobalRegistry) {
     globals.set_variable("stderr", Object::string("$stderr".to_string()));
     globals.set_variable("stdin", Object::string("$stdin".to_string()));
 
+    // $. — how many lines have been read, and $FILENAME — the file they came
+    // from. Both follow ARGF as it walks the files it was handed.
+    globals.set_variable(".", Object::Int(0));
+    globals.set_variable("FILENAME", Object::Nil);
+
     // $$ — this process's own id, which a script prints to say which one it
     // is running as.
     globals.set_variable("$", Object::Int(std::process::id() as i64));

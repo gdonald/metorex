@@ -65,6 +65,65 @@ impl VirtualMachine {
         self.globals_mut().set_variable("_", Object::string(line));
     }
 
+    /// Split the line just read into `$F`, which is what `-a` asks for. The
+    /// pattern `-F` named does the splitting, and whitespace does it
+    /// otherwise.
+    pub fn set_split_fields(&mut self, line: &str, separator: Option<&str>) {
+        let parts: Vec<Object> = match separator {
+            Some(pattern) if !pattern.is_empty() => line
+                .trim_end_matches('\n')
+                .split(pattern)
+                .map(Object::string)
+                .collect(),
+            _ => line.split_whitespace().map(Object::string).collect(),
+        };
+        self.globals_mut().set_variable("F", Object::array(parts));
+    }
+
+    /// Write out the line just read, which is what `-p` adds to the loop.
+    pub fn print_current_line(&mut self) {
+        // `print` writes whatever `$_` holds, which the program may have
+        // replaced with something that is not a string.
+        match self.globals().get("_") {
+            Some(Object::Nil) | None => {}
+            Some(Object::String(line)) => print!("{}", line.as_str()),
+            Some(other) => print!("{other}"),
+        }
+    }
+
+    /// Whether the run was asked to be verbose, which `$VERBOSE` reports.
+    pub fn set_verbose(&mut self, verbose: bool) {
+        self.globals_mut()
+            .set_variable("VERBOSE", Object::Bool(verbose));
+    }
+
+    /// Record whether a command line flag was written, under the name Ruby
+    /// reports it by: `-a` reads back as `$-a`.
+    pub fn set_flag_global(&mut self, flag: &str, written: bool) {
+        self.globals_mut()
+            .set_variable(format!("-{flag}"), Object::Bool(written));
+    }
+
+    /// The separator `$/` reads lines by, named by its octal code. A bare
+    /// `-0` names the null byte, and `-00` asks for paragraph mode.
+    pub fn set_line_separator(&mut self, written: &str) {
+        let separator = if written.is_empty() {
+            "\0".to_string()
+        } else if written == "0" {
+            "\n\n".to_string()
+        } else {
+            match u32::from_str_radix(written, 8) {
+                Ok(code) => char::from_u32(code).map(String::from).unwrap_or_default(),
+                Err(_) => "\n".to_string(),
+            }
+        };
+        self.globals_mut()
+            .set_variable("/", Object::string(separator.clone()));
+        // Ruby reports the separator the flag named under the flag's own name.
+        self.globals_mut()
+            .set_variable("-0", Object::string(separator));
+    }
+
     /// Record the main script's canonical path and the path it was named by.
     pub fn set_script_path(&mut self, canonical: PathBuf, as_given: PathBuf) {
         self.script_path = Some((canonical, as_given));

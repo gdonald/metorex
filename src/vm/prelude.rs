@@ -4883,6 +4883,7 @@ class ArgfStream
 
   def lineno=(counted)
     @lineno = counted
+    $. = counted
   end
 
   def binmode
@@ -4910,10 +4911,16 @@ class ArgfStream
     self
   end
 
+  # Reading a line records which file it came from and how many have been
+  # read, which is what `$FILENAME` and `$.` report.
   def gets
     loop do
       self.__open_current__
-      return nil if @current.nil?
+      if @current.nil?
+        $FILENAME = nil
+        return nil
+      end
+      $FILENAME = @current.path
       line = @current.gets
       if line.nil?
         if self.__names__.empty?
@@ -4924,6 +4931,7 @@ class ArgfStream
         next
       end
       @lineno = self.__lineno__ + 1
+      $. = @lineno
       return line
     end
     nil
@@ -5029,10 +5037,13 @@ class ArgfStream
     offset
   end
 
+  # A stream whose last file has been read to the end is closed, and closed
+  # streams cannot be put back to the start.
   def rewind
+    raise ArgumentError, "closed stream" if @drained
     self.file.rewind
     @lineno = 0
-    @drained = false
+    $. = 0
     0
   end
 

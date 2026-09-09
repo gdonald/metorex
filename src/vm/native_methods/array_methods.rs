@@ -913,15 +913,10 @@ impl VirtualMachine {
                 };
                 // Each element joins as its `to_s`, so a Symbol contributes
                 // the name it is spelled with rather than the leading colon.
-                let parts: Vec<String> = array_rc
-                    .borrow()
-                    .iter()
-                    .map(|element| match element {
-                        Object::Symbol(name) => name.as_str().to_string(),
-                        other => format!("{other}"),
-                    })
-                    .collect();
-                Ok(Some(Object::string(parts.join(&sep))))
+                // An element that is itself an array is joined with the same
+                // separator, however deeply they nest.
+                let parts = joined_parts(&array_rc.borrow(), &sep);
+                Ok(Some(Object::string(parts)))
             }
             "dup" | "clone" => {
                 if !arguments.is_empty() {
@@ -2733,4 +2728,18 @@ fn identical(left: &Object, right: &Object) -> bool {
         (Object::Dict(one), Object::Dict(other)) => Rc::ptr_eq(one, other),
         _ => false,
     }
+}
+
+/// The elements written out and joined, with a nested array joined the same
+/// way rather than rendered as one.
+fn joined_parts(elements: &[Object], separator: &str) -> String {
+    let mut written = Vec::with_capacity(elements.len());
+    for element in elements {
+        written.push(match element {
+            Object::Symbol(name) => name.as_str().to_string(),
+            Object::Array(nested) => joined_parts(&nested.borrow(), separator),
+            other => format!("{other}"),
+        });
+    }
+    written.join(separator)
 }

@@ -70,6 +70,22 @@ struct Cli {
     #[arg(long = "disable-all", hide = true, action = clap::ArgAction::SetTrue)]
     _disable_all: bool,
 
+    /// Ruby -p (the -n loop, printing the line after each pass)
+    #[arg(short = 'p', hide = true, action = clap::ArgAction::SetTrue)]
+    print_loop: bool,
+
+    /// Ruby -a (split each line into $F, alongside -n or -p)
+    #[arg(short = 'a', hide = true, action = clap::ArgAction::SetTrue)]
+    split_lines: bool,
+
+    /// Ruby -F (the pattern -a splits on)
+    #[arg(short = 'F', hide = true)]
+    field_separator: Option<String>,
+
+    /// Ruby -0 (the octal code of the line separator $/ reads by)
+    #[arg(short = '0', hide = true)]
+    line_separator: Option<String>,
+
     /// Ruby -r (require library before executing)
     #[arg(short = 'r', hide = true)]
     require_libs: Vec<String>,
@@ -95,14 +111,27 @@ struct Cli {
     _ruby_debug: bool,
 }
 
-/// Run a program, either once or, under `-n`, once for each line of standard
-/// input with that line in `$_`.
+/// How the line-reading options were set, which decides what the loop around
+/// the program does with each line.
+struct LineLoop {
+    /// `-n` or `-p`: run the program once for each line.
+    each_line: bool,
+    /// `-p`: write the line out after each pass.
+    printing: bool,
+    /// `-a`: split each line into `$F`.
+    splitting: bool,
+    /// `-F`: the pattern `-a` splits on, where one was named.
+    field_separator: Option<String>,
+}
+
+/// Run a program, either once or, under `-n` and `-p`, once for each line of
+/// standard input with that line in `$_`.
 fn run_program(
     vm: &mut VirtualMachine,
     program: &[metorex::ast::Statement],
-    each_line: bool,
+    reading: &LineLoop,
 ) -> Result<(), metorex::error::MetorexError> {
-    if !each_line {
+    if !reading.each_line {
         vm.execute_program(program)?;
         return Ok(());
     }
@@ -114,9 +143,25 @@ fn run_program(
             Ok(_) => {}
         }
         vm.set_current_line(line.clone());
+        if reading.splitting {
+            vm.set_split_fields(&line, reading.field_separator.as_deref());
+        }
         vm.execute_program(program)?;
+        if reading.printing {
+            vm.print_current_line();
+        }
     }
     Ok(())
+}
+
+/// How the line-reading flags were written on the command line.
+fn line_loop_from(cli: &Cli) -> LineLoop {
+    LineLoop {
+        each_line: cli.each_line || cli.print_loop,
+        printing: cli.print_loop,
+        splitting: cli.split_lines,
+        field_separator: cli.field_separator.clone(),
+    }
 }
 
 /// Apply `-I` (include paths), `-r` (require libraries) and `-w` (warnings)
@@ -125,6 +170,22 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     // Ruby's `-w` turns on the deprecation warnings a plain run keeps quiet.
     if cli.warnings {
         vm.enable_warning_category("deprecated");
+    }
+    // Ruby reports which of the line-reading flags were written, under the
+    // name of the flag itself.
+    vm.set_flag_global("a", cli.split_lines);
+    vm.set_flag_global("n", cli.each_line);
+    vm.set_flag_global("p", cli.print_loop);
+    vm.set_flag_global("w", cli.warnings);
+    // `-w` is the switch `$VERBOSE` reports.
+    if cli.warnings {
+        vm.set_verbose(true);
+    }
+
+    // `-0` names the line separator by its octal code, and a bare `-0` means
+    // paragraph mode, which reads a blank line as the separator.
+    if let Some(written) = &cli.line_separator {
+        vm.set_line_separator(written);
     }
     for path in &cli.include_paths {
         vm.prepend_load_path(path.clone());
@@ -152,18 +213,7 @@ fn real_main() {
     // Ruby lets `-r`, `-I`, and `-W` carry their value attached (`-rfoo`),
     // which the argument parser only understands as two words.
     let arguments: Vec<String> = std::env::args()
-        .flat_map(|argument| match argument.as_str() {
-            attached
-                if attached.len() > 2
-                    && (attached.starts_with("-r")
-                        || attached.starts_with("-I")
-                        || attached.starts_with("-W")) =>
-            {
-                let (flag, value) = attached.split_at(2);
-                vec![flag.to_string(), value.to_string()]
-            }
-            _ => vec![argument],
-        })
+        .flat_map(metorex::split_short_flags)
         .collect();
     let cli = Cli::parse_from(arguments);
 
@@ -194,7 +244,7 @@ fn real_main() {
         };
         let mut vm = VirtualMachine::new();
         apply_cli_flags(&mut vm, &cli);
-        if let Err(err) = run_program(&mut vm, &program, cli.each_line) {
+        if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
             eprintln!("Runtime error: {}", err);
             process::exit(1);
         }
@@ -307,7 +357,7 @@ fn real_main() {
     vm.mark_file_loaded(absolute_path);
     vm.set_argv(script_args);
 
-    if let Err(err) = run_program(&mut vm, &program, cli.each_line) {
+    if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
         // `abort` and `exit` raise SystemExit: it ends the program with the
         // status it carries, having already reported anything it wanted to.
         if let metorex::error::MetorexError::UncaughtException {

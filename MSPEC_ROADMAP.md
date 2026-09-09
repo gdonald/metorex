@@ -1934,7 +1934,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.41.43. core/env/value_spec
   - [ ] 4.41.44. core/env/values_at_spec
   - [x] 4.41.45. core/env/values_spec - 1 file, 2 examples, 73 expectations, 0 failures, 0 errors
-- [ ] 4.42. core/argf - 11 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.42. core/argf - 15 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.42.1. core/argf/argf_spec
   - [x] 4.42.2. core/argf/argv_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.3. core/argf/binmode_spec
@@ -1947,12 +1947,12 @@ Parser fixes during Phase 4 work:
   - [ ] 4.42.10. core/argf/each_spec
   - [x] 4.42.11. core/argf/eof_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.42.12. core/argf/file_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
-  - [ ] 4.42.13. core/argf/filename_spec
+  - [x] 4.42.13. core/argf/filename_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.14. core/argf/fileno_spec
   - [ ] 4.42.15. core/argf/getc_spec
   - [ ] 4.42.16. core/argf/gets_spec
-  - [ ] 4.42.17. core/argf/lineno_spec
-  - [ ] 4.42.18. core/argf/path_spec
+  - [x] 4.42.17. core/argf/lineno_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.42.18. core/argf/path_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.42.19. core/argf/pos_spec - 1 file, 3 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.42.20. core/argf/read_nonblock_spec
   - [ ] 4.42.21. core/argf/read_spec
@@ -1960,7 +1960,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.42.23. core/argf/readline_spec
   - [x] 4.42.24. core/argf/readlines_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.25. core/argf/readpartial_spec
-  - [ ] 4.42.26. core/argf/rewind_spec
+  - [x] 4.42.26. core/argf/rewind_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.42.27. core/argf/seek_spec
   - [ ] 4.42.28. core/argf/set_encoding_spec
   - [x] 4.42.29. core/argf/skip_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
@@ -2373,7 +2373,7 @@ different reported release would open, without committing metorex to it.
 
 ## Phase 5: Specs outside `core/`
 
-- [ ] 5.1. language - 9 pass, and the rest are enabled in the runner one file at a time
+- [ ] 5.1. language - 10 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.1.1. language/comment_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 5.1.2. language/line_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [x] 5.1.3. language/range_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
@@ -2383,6 +2383,7 @@ different reported release would open, without committing metorex to it.
   - [x] 5.1.7. language/not_spec - 1 file, 10 examples, 16 expectations, 0 failures, 0 errors
   - [x] 5.1.8. language/private_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [x] 5.1.9. language/order_spec - 1 file, 5 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 5.1.10. language/source_encoding_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
 - [ ] 5.2. library - 560 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
   - [x] 5.2.1. library/abbrev/abbrev_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 5.2.2. library/base64/urlsafe_decode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
@@ -2944,9 +2945,14 @@ different reported release would open, without committing metorex to it.
   - [x] 5.2.558. library/base64/strict_encode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.559. library/securerandom/bytes_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 5.2.560. library/securerandom/random_bytes_spec - 1 file, 10 examples, 396 expectations, 0 failures, 0 errors
-- [ ] 5.3. command_line - 2 pass, and the rest are enabled in the runner one file at a time
+- [ ] 5.3. command_line - 7 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.3.1. command_line/dash_r_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
   - [x] 5.3.2. command_line/error_message_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.3.3. command_line/dash_0_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.3.4. command_line/dash_a_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.3.5. command_line/dash_p_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.3.6. command_line/dash_upper_f_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.3.7. command_line/dash_w_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
 - [ ] 5.4. security - 3 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.4.1. security/cve_2018_16396_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 5.4.2. security/cve_2020_10663_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors

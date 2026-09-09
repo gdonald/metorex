@@ -71,6 +71,9 @@ impl<'a> Lexer<'a> {
     /// `eval`/`class_eval`/`module_eval` so `__LINE__` reflects the optional
     /// `lineno` argument (e.g. `class_eval("...", "file", 102)`).
     pub fn with_start_line(source: &'a str, start_line: usize) -> Self {
+        // A file written with a byte order mark opens with one, and it names
+        // the encoding rather than anything the program says.
+        let source = source.strip_prefix('\u{feff}').unwrap_or(source);
         Self {
             chars: source.chars().peekable(),
             prepend: Vec::new(),

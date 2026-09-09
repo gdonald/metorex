@@ -52,3 +52,38 @@ pub fn reported_ruby_version() -> String {
         _ => DEFAULT_RUBY_VERSION.to_string(),
     }
 }
+
+/// Ruby lets short flags cluster and lets a value ride on the end of the one
+/// that takes it, so `-naF:` is `-n -a -F:` and `-rfoo` is `-r foo`. The
+/// argument parser only understands them written out.
+pub fn split_short_flags(argument: String) -> Vec<String> {
+    /// The flags that take a value, which ends the cluster they sit in.
+    const TAKES_A_VALUE: &str = "rIWFe0";
+
+    if argument.len() < 3 || !argument.starts_with('-') || argument.starts_with("--") {
+        return vec![argument];
+    }
+    /// The valueless flags that may sit in a cluster.
+    const ON_ITS_OWN: &str = "napwd";
+
+    let characters: Vec<char> = argument.chars().skip(1).collect();
+    let mut written = Vec::new();
+    for (at, flag) in characters.iter().enumerate() {
+        if TAKES_A_VALUE.contains(*flag) {
+            // Everything after this flag is its value, whatever it looks like.
+            let value: String = characters[at + 1..].iter().collect();
+            written.push(format!("-{flag}"));
+            if !value.is_empty() {
+                written.push(value);
+            }
+            return written;
+        }
+        if !ON_ITS_OWN.contains(*flag) {
+            // Something metorex does not read as a flag, so the whole
+            // argument stands as it was written.
+            return vec![argument];
+        }
+        written.push(format!("-{flag}"));
+    }
+    written
+}

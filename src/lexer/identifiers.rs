@@ -79,6 +79,14 @@ impl<'a> Lexer<'a> {
     pub(super) fn read_global_variable(&mut self) -> TokenKind {
         // Skip the $
         self.advance();
+        // The flags a command line wrote read back under their own letter,
+        // so `-a` is `$-a`.
+        if self.peek() == Some('-') {
+            self.advance();
+            let flag = self.peek().unwrap_or('-');
+            self.advance();
+            return TokenKind::GlobalVar(format!("-{flag}"));
+        }
         if let Some(ch) = self.peek() {
             // Special single-character globals: $: $; $, $/ $\ $! $@ $~ $& $' $` $+ $. $< $> $" $_ $* $$ $? $0-$9
             if !Self::is_identifier_start(ch) {

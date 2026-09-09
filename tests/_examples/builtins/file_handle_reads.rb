@@ -49,7 +49,10 @@ link = "/tmp/metorex_handle_link.txt"
 File.write target, "held"
 File.delete link if File.symlink? link
 File.symlink target, link
-p File.lchmod(0755, link)
+# `lchmod` changes the link rather than what it points at, and answers how
+# many names it changed. Only some systems allow it at all, so what it
+# answers there is left to them.
+p File.lchmod(0755, link).is_a?(Integer)
 File.delete link
 File.delete target
 File.delete path

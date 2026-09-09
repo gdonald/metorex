@@ -791,7 +791,7 @@ fn test_builtins_file_handle_reads_execution() {
         "true\n",
         "\"fifo\"\n",
         "Errno::EEXIST\n",
-        "1\n",
+        "true\n",
     );
     let output = run_example("builtins/file_handle_reads.rb");
     assert_eq!(output, expected);
@@ -817,7 +817,7 @@ fn test_builtins_file_handle_reads_parens_execution() {
         "true\n",
         "\"fifo\"\n",
         "Errno::EEXIST\n",
-        "1\n",
+        "true\n",
     );
     let output = run_example("builtins/file_handle_reads_parens.rb");
     assert_eq!(output, expected);
@@ -1216,5 +1216,39 @@ fn test_builtins_string_encodings_parens_execution() {
         "#<Encoding:US-ASCII>\n",
     );
     let output = run_example("builtins/string_encodings_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_line_loop_options_execution() {
+    let expected = concat!(
+        "\"a b c d\"\n",
+        "\"1-2-3\"\n",
+        "\"1,2\"\n",
+        "\"\"\n",
+        "0\n",
+        "1\n",
+        "2\n",
+        "0\n",
+        "\"closed stream\"\n",
+    );
+    let output = run_example("builtins/line_loop_options.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_line_loop_options_parens_execution() {
+    let expected = concat!(
+        "\"a b c d\"\n",
+        "\"1-2-3\"\n",
+        "\"1,2\"\n",
+        "\"\"\n",
+        "0\n",
+        "1\n",
+        "2\n",
+        "0\n",
+        "\"closed stream\"\n",
+    );
+    let output = run_example("builtins/line_loop_options_parens.rb");
     assert_eq!(output, expected);
 }
