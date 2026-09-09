@@ -711,7 +711,22 @@ impl VirtualMachine {
                             let (class, method_obj) = {
                                 let instance = instance_rc.borrow();
                                 let class = instance.class.clone();
-                                let method_obj = instance.class.find_method(&setter_method);
+                                // A writer written on this one object with
+                                // `def obj.name=` answers before the one its
+                                // class carries, whether it was recorded on
+                                // the instance or on its singleton class.
+                                let method_obj = instance
+                                    .find_singleton_method(&setter_method)
+                                    .or_else(|| {
+                                        instance
+                                            .singleton_class
+                                            .borrow()
+                                            .as_ref()
+                                            .and_then(|singleton| {
+                                                singleton.find_method(&setter_method)
+                                            })
+                                    })
+                                    .or_else(|| instance.class.find_method(&setter_method));
                                 (class, method_obj)
                             }; // Borrow is dropped here
 
@@ -786,7 +801,16 @@ impl VirtualMachine {
                             }
                         }
                         Object::Class(class_rc) => {
-                            if let Some(method) = class_rc.find_method(&setter_method) {
+                            // `def self.name=` is stored the way every other
+                            // module-level method is, so the writer is looked
+                            // up there before a plain instance method.
+                            if let Some(method) =
+                                crate::vm::method_lookup::module_level_method(
+                                    &class_rc,
+                                    &setter_method,
+                                )
+                                .or_else(|| class_rc.find_method(&setter_method))
+                            {
                                 self.invoke_method(
                                     Rc::clone(&class_rc),
                                     method,
@@ -805,7 +829,13 @@ impl VirtualMachine {
                             }
                         }
                         Object::Module(module_rc) => {
-                            if let Some(method) = module_rc.find_method(&setter_method) {
+                            if let Some(method) =
+                                crate::vm::method_lookup::module_level_method(
+                                    &module_rc,
+                                    &setter_method,
+                                )
+                                .or_else(|| module_rc.find_method(&setter_method))
+                            {
                                 self.invoke_method(
                                     Rc::clone(&module_rc),
                                     method,

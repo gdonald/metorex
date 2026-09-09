@@ -62,6 +62,7 @@ fn super_expression_position() {
     let expr = Expression::Super {
         arguments: vec![],
         forward_args: false,
+        trailing_block: None,
         position: pos(),
     };
     let _ = expr.position();

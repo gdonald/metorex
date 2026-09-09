@@ -1613,7 +1613,7 @@ Parser fixes during Phase 4 work:
 
 ### IO and Filesystem
 
-- [ ] 4.37. core/io - 10 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.37. core/io - 9 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.37.1. core/io/advise_spec
   - [ ] 4.37.2. core/io/autoclose_spec
   - [ ] 4.37.3. core/io/binmode_spec
@@ -1669,7 +1669,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.37.53. core/io/inspect_spec
   - [ ] 4.37.54. core/io/internal_encoding_spec
   - [x] 4.37.55. core/io/io_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
-  - [x] 4.37.56. core/io/ioctl_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [ ] 4.37.56. core/io/ioctl_spec
   - [ ] 4.37.57. core/io/isatty_spec
   - [ ] 4.37.58. core/io/lineno_spec
   - [ ] 4.37.59. core/io/new_spec

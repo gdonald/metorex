@@ -18,8 +18,16 @@ impl VirtualMachine {
         &mut self,
         arguments: &[Expression],
         forward_args: bool,
+        trailing_block: Option<&Expression>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // A block written on the super call stands in for the one the caller
+        // supplied, and it is evaluated once no matter which branch below
+        // ends up reaching the parent method.
+        let super_block = match trailing_block {
+            Some(block) => Some(self.evaluate_expression(block)?),
+            None => None,
+        };
         // Get the current method name from the call stack.
         // The call stack stores method names as "Class#method".
         let current_frame = self.get_current_method_name().ok_or_else(|| {
@@ -60,6 +68,7 @@ impl VirtualMachine {
             } else {
                 self.evaluate_arguments(arguments)?
             };
+            self.pending_block = super_block.clone();
             // A module extended with another module reaches that module's
             // copy through `super`: the extended copy sits just above the
             // receiver's own module-level method in the singleton chain.
@@ -153,6 +162,7 @@ impl VirtualMachine {
                     &method_name,
                     arguments,
                     forward_args,
+                    super_block,
                     position,
                 );
             }
@@ -232,6 +242,7 @@ impl VirtualMachine {
             } else {
                 self.evaluate_arguments(arguments)?
             };
+            self.pending_block = super_block.clone();
             drop(instance_borrowed);
             return self.invoke_method(
                 owner,
@@ -313,6 +324,7 @@ impl VirtualMachine {
                 } else {
                     self.evaluate_arguments(arguments)?
                 };
+                self.pending_block = super_block.clone();
                 let self_val = self.environment().get("self").unwrap_or(Object::Nil);
                 if let Some(result) =
                     self.call_object_method(&self_val, &method_name, &evaluated_args, position)?
@@ -378,6 +390,7 @@ impl VirtualMachine {
         } else {
             self.evaluate_arguments(arguments)?
         };
+        self.pending_block = super_block.clone();
 
         // Drop the borrow before invoking the method
         drop(instance_borrowed);
@@ -404,6 +417,7 @@ impl VirtualMachine {
         method_name: &str,
         arguments: &[Expression],
         forward_args: bool,
+        super_block: Option<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
         let receiver_class = self.builtins().class_of(&receiver);
@@ -429,6 +443,7 @@ impl VirtualMachine {
         } else {
             self.evaluate_arguments(arguments)?
         };
+        self.pending_block = super_block.clone();
 
         if let Some(defining_class) = &defining_class
             && let Some(index) = chain.iter().position(|c| Rc::ptr_eq(c, defining_class))

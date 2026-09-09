@@ -32,6 +32,10 @@ impl Parser {
             TokenKind::RParen,
             TokenKind::RBracket,
             TokenKind::Comma,
+            // A brace after `super` opens a block, so there is no argument
+            // list to read here and the enclosing method's own arguments
+            // travel on.
+            TokenKind::LBrace,
             TokenKind::If,
             TokenKind::Unless,
             TokenKind::Do,
@@ -101,9 +105,18 @@ impl Parser {
             args
         };
 
+        let trailing_block = if self.check(&[TokenKind::Do]) {
+            Some(Box::new(self.parse_block()?))
+        } else if self.check(&[TokenKind::LBrace]) {
+            Some(Box::new(self.parse_brace_block()?))
+        } else {
+            None
+        };
+
         Ok(Expression::Super {
             arguments,
             forward_args,
+            trailing_block,
             position,
         })
     }

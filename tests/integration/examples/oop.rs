@@ -1342,3 +1342,55 @@ fn test_oop_inspect_instance_variables_parens_execution() {
     let output = run_example("oop/inspect_instance_variables_parens.rb");
     assert_eq!(output, expected);
 }
+
+#[test]
+fn test_oop_super_forms_execution() {
+    let expected = concat!(
+        "[:nested]\n",
+        "[:explicit]\n",
+        "true\n",
+        "[:archived]\n",
+        "15\n",
+    );
+    let output = run_example("oop/super_forms.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_super_forms_parens_execution() {
+    let expected = concat!(
+        "[:nested]\n",
+        "[:explicit]\n",
+        "true\n",
+        "[:archived]\n",
+        "15\n",
+    );
+    let output = run_example("oop/super_forms_parens.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_writer_methods_execution() {
+    let expected = concat!(
+        "12\n",
+        "24\n",
+        "36\n",
+        "[:total, :total=]\n",
+        "[:doubled, :initialize, :reading, :reading=, :scaled=]\n",
+    );
+    let output = run_example("oop/writer_methods.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_oop_writer_methods_parens_execution() {
+    let expected = concat!(
+        "12\n",
+        "24\n",
+        "36\n",
+        "[:total, :total=]\n",
+        "[:doubled, :initialize, :reading, :reading=, :scaled=]\n",
+    );
+    let output = run_example("oop/writer_methods_parens.rb");
+    assert_eq!(output, expected);
+}

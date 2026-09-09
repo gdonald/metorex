@@ -50,18 +50,28 @@ impl VirtualMachine {
         let mut child = match &arguments[0] {
             Object::String(text) => {
                 let merge_stderr = arguments.iter().skip(1).any(child_out_redirect);
-                // Merging through the shell keeps the child's two streams
-                // interleaved as they were written, which capturing them
-                // separately would lose. The whole command is grouped so the
-                // redirect applies to it as a unit.
-                let shell_command = if merge_stderr {
-                    format!("{{ {} ; }} 2>&1", text)
+                // A plain command runs without a shell, which is what Ruby
+                // does and what makes this process the child's parent rather
+                // than a shell standing between them.
+                if !merge_stderr && let Some(words) = shell_free_words(text.as_str()) {
+                    let (program, rest) = words.split_first().expect("a non-empty word list");
+                    let mut child = std::process::Command::new(program);
+                    child.args(rest);
+                    child
                 } else {
-                    text.as_str().to_string()
-                };
-                let mut child = std::process::Command::new("/bin/sh");
-                child.arg("-c").arg(&shell_command);
-                child
+                    // Merging through the shell keeps the child's two streams
+                    // interleaved as they were written, which capturing them
+                    // separately would lose. The whole command is grouped so
+                    // the redirect applies to it as a unit.
+                    let shell_command = if merge_stderr {
+                        format!("{{ {} ; }} 2>&1", text)
+                    } else {
+                        text.as_str().to_string()
+                    };
+                    let mut child = std::process::Command::new("/bin/sh");
+                    child.arg("-c").arg(&shell_command);
+                    child
+                }
             }
             Object::Array(parts) => {
                 let parts = parts.borrow();
@@ -350,6 +360,30 @@ impl VirtualMachine {
             .set(global, Object::Class(Rc::clone(&class)));
         class
     }
+}
+
+/// The commands the shell answers itself, which have no program to run and so
+/// have to go through `/bin/sh` however plainly they are written.
+const SHELL_BUILTINS: &[&str] = &[
+    "!", ".", ":", "break", "case", "continue", "do", "done", "elif", "else", "esac", "eval",
+    "exec", "exit", "export", "fi", "for", "if", "in", "readonly", "return", "set", "shift",
+    "then", "times", "trap", "unset", "until", "while",
+];
+
+/// The words of a command that needs no shell to run, or None when the shell
+/// has to read it. Anything the shell would treat as more than a plain word
+/// sends the command back through `/bin/sh`.
+fn shell_free_words(command: &str) -> Option<Vec<String>> {
+    const SHELL_CHARACTERS: &str = "*?{}[]<>()~&|\\$;'\"`\n#=";
+    if command.contains(|character| SHELL_CHARACTERS.contains(character)) {
+        return None;
+    }
+    let words: Vec<String> = command.split_whitespace().map(str::to_string).collect();
+    let first = words.first()?;
+    if SHELL_BUILTINS.contains(&first.as_str()) {
+        return None;
+    }
+    Some(words)
 }
 
 /// True when an `IO.popen` options hash asks for the child's stderr to join

@@ -87,11 +87,22 @@ impl Parser {
             }
             _ => return Err(self.error_at_previous("Expected method name after '.'")),
         };
-        if self.check(&[TokenKind::Equal]) && matches!(self.peek_ahead(1).kind, TokenKind::LParen) {
+        if self.writer_equal_follows(&method_name)
+            || (self.check(&[TokenKind::Equal])
+                && matches!(self.peek_ahead(1).kind, TokenKind::LParen))
+        {
             self.advance(); // consume =
             return Ok(format!("{}=", method_name));
         }
         Ok(method_name)
+    }
+
+    /// True when the `=` at the cursor is joined to the name just read, with
+    /// no space between them. That spacing is how Ruby tells the writer
+    /// method `def total= amount` from the endless `def total = amount`.
+    fn writer_equal_follows(&self, name: &str) -> bool {
+        self.check(&[TokenKind::Equal])
+            && self.peek().position.offset == self.previous().position.offset + name.len()
     }
 
     /// Parse a function definition
@@ -110,10 +121,11 @@ impl Parser {
                     self.advance(); // consume .
                     _singleton_receiver = Some(name);
                     self.parse_singleton_method_name()?
-                } else if self.check(&[TokenKind::Equal])
-                    && matches!(self.peek_ahead(1).kind, TokenKind::LParen)
+                } else if self.writer_equal_follows(&name)
+                    || (self.check(&[TokenKind::Equal])
+                        && matches!(self.peek_ahead(1).kind, TokenKind::LParen))
                 {
-                    // Setter method: def name=(value)
+                    // Setter method: `def name=(value)` or `def name= value`.
                     self.advance(); // consume =
                     format!("{}=", name)
                 } else {

@@ -83,12 +83,22 @@ impl Parser {
             // A superclass written as a call rather than a name, such as
             // `class Point < Struct.new(:x)`, is kept as an expression and
             // evaluated when the class is defined.
-            let call_form = matches!(self.peek().kind, TokenKind::Ident(_))
-                && matches!(self.peek_ahead(1).kind, TokenKind::Dot | TokenKind::LParen);
+            // A leading `::` only says the name starts at the top level, so
+            // look past it when deciding which of the two forms follows.
+            let named_from_root = matches!(self.peek().kind, TokenKind::ColonColon);
+            let name_at = usize::from(named_from_root);
+            let call_form = matches!(self.peek_ahead(name_at).kind, TokenKind::Ident(_))
+                && matches!(
+                    self.peek_ahead(name_at + 1).kind,
+                    TokenKind::Dot | TokenKind::LParen
+                );
             if call_form {
                 superclass_expression = Some(Box::new(self.parse_expression()?));
                 None
             } else {
+                // Metorex resolves a bare constant at the top level anyway,
+                // so a leading `::` needs nothing beyond being consumed.
+                self.match_token(&[TokenKind::ColonColon]);
                 let mut parent = match self.advance().kind {
                     TokenKind::Ident(parent) => parent,
                     _ => return Err(self.error_at_previous("Expected superclass name")),

@@ -411,8 +411,14 @@ impl VirtualMachine {
             Expression::Super {
                 arguments,
                 forward_args,
+                trailing_block,
                 position,
-            } => self.eval_super(arguments, *forward_args, *position),
+            } => self.eval_super(
+                arguments,
+                *forward_args,
+                trailing_block.as_ref().map(|block| block.as_ref()),
+                *position,
+            ),
             Expression::Yield {
                 arguments,
                 position,

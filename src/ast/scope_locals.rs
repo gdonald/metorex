@@ -281,9 +281,16 @@ fn walk_expression(expr: &Expression, names: &mut Vec<String>) {
             // walk it. The target expression is evaluated in our scope.
             walk_expression(target, names);
         }
-        Expression::Super { arguments, .. } => {
+        Expression::Super {
+            arguments,
+            trailing_block,
+            ..
+        } => {
             for arg in arguments {
                 walk_expression(arg, names);
+            }
+            if let Some(block) = trailing_block {
+                walk_expression(block, names);
             }
         }
         Expression::Yield { arguments, .. } => {

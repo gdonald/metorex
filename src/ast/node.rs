@@ -210,6 +210,9 @@ pub enum Expression {
         /// Ruby forwards the enclosing method's arguments in that case.
         /// `super()` has this false (explicit zero args).
         forward_args: bool,
+        /// A `do`/`{` block written on the super call, which the parent
+        /// method receives in place of the one the caller supplied.
+        trailing_block: Option<Box<Expression>>,
         position: Position,
     },
 
