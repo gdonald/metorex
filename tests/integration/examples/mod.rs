@@ -31,6 +31,7 @@ mod sets;
 mod signals;
 mod stdlib;
 mod stdlib_libraries;
+mod strings;
 mod structs;
 mod symbols_and_ranges;
 mod syntax;

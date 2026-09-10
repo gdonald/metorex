@@ -301,7 +301,7 @@ impl VirtualMachine {
             // `Rational("1/3")` and `Rational(".52")` are exact; text that is
             // not wholly a rational is refused rather than read leniently the
             // way `String#to_r` reads it.
-            Object::String(text) => parse_strict_rational_text(text).ok_or_else(|| {
+            Object::String(text) => parse_strict_rational_text(&text.as_str()).ok_or_else(|| {
                 argument_error(
                     format!("invalid value for convert(): {:?}", text.as_str()),
                     position,
@@ -369,12 +369,6 @@ impl VirtualMachine {
             if let Some(parts) = super::rational_methods::rational_parts(&converted) {
                 return Ok(parts);
             }
-            if let Object::Int(_) | Object::BigInt(_) = converted {
-                return Ok((
-                    converted.as_big_integer().expect("integer-kinded"),
-                    num_bigint::BigInt::from(1),
-                ));
-            }
             let produced = self.conversion_class_name(&converted, position);
             return Err(type_error(
                 format!(
@@ -433,7 +427,7 @@ impl VirtualMachine {
         };
 
         match &positional[0] {
-            Object::String(text) => match parse_integer_literal(text, base) {
+            Object::String(text) => match parse_integer_literal(&text.as_str(), base) {
                 Ok(value) => Ok(Object::integer(value)),
                 Err(ParseFailure::Malformed) => Err(argument_error(
                     format!("invalid value for Integer(): {:?}", text.as_str()),
@@ -641,7 +635,7 @@ impl VirtualMachine {
                 ));
             }
             Object::String(text) => {
-                return match parse_strict_float_text(text) {
+                return match parse_strict_float_text(&text.as_str()) {
                     Some(number) => Ok(Object::Float(number)),
                     None => refuse(
                         self,

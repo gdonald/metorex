@@ -116,7 +116,7 @@ fn defined_class_var_with_existing() {
     let result =
         run("class Foo\n  @@x = 1\n  def check\n    defined?(@@x)\n  end\nend\nFoo.new.check");
     if let Some(Object::String(s)) = result {
-        assert!(s.contains("class") || s.contains("variable"));
+        assert!(s.as_str().contains("class") || s.as_str().contains("variable"));
     } else {
         panic!("expected String, got {:?}", result);
     }

@@ -142,7 +142,7 @@ impl VirtualMachine {
                 let Some(Object::String(name)) = arguments.first() else {
                     return Ok(Some(Object::Nil));
                 };
-                let Ok(held) = CString::new(name.as_str()) else {
+                let Ok(held) = CString::new(name.as_str().as_bytes().to_vec()) else {
                     return Ok(Some(Object::Nil));
                 };
                 // SAFETY: as above, with a name that lives across the call.
@@ -173,7 +173,7 @@ impl VirtualMachine {
                 let Some(Object::String(name)) = arguments.first() else {
                     return Ok(Some(Object::Nil));
                 };
-                let Ok(held) = CString::new(name.as_str()) else {
+                let Ok(held) = CString::new(name.as_str().as_bytes().to_vec()) else {
                     return Ok(Some(Object::Nil));
                 };
                 // SAFETY: as above, with a name that lives across the call.

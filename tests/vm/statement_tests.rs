@@ -823,7 +823,7 @@ fn float_round_method() {
 #[test]
 fn float_round_zero_precision() {
     let result = run("3.7.round(0)");
-    assert_eq!(result, Some(Object::Float(4.0)));
+    assert_eq!(result, Some(Object::Int(4)));
 }
 
 // ── Class equality comparison (class.rs lines 143, 150-153) ──

@@ -232,7 +232,11 @@ impl VirtualMachine {
                     return Ok(None);
                 };
                 let utc = matches!(arguments[2], Object::Bool(true));
-                Ok(Some(Object::string(formatted(template, *seconds, utc))))
+                Ok(Some(Object::string(formatted(
+                    &template.as_str(),
+                    *seconds,
+                    utc,
+                ))))
             }
             _ => Ok(None),
         }

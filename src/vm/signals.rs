@@ -65,8 +65,17 @@ pub(crate) fn name_for_number(number: i32) -> Option<&'static str> {
 /// names the same signal.
 pub(crate) fn signal_from_object(value: &Object) -> Option<(String, i32)> {
     match value {
-        Object::Symbol(name) | Object::String(name) => number_for_name(name)
-            .map(|number| (name.strip_prefix("SIG").unwrap_or(name).to_string(), number)),
+        Object::Symbol(name) | Object::String(name) => {
+            number_for_name(&name.as_str()).map(|number| {
+                (
+                    name.as_str()
+                        .strip_prefix("SIG")
+                        .unwrap_or(&*name.as_str())
+                        .to_string(),
+                    number,
+                )
+            })
+        }
         Object::Int(number) => {
             let number = number.unsigned_abs() as i32;
             name_for_number(number).map(|name| (name.to_string(), number))
@@ -207,11 +216,51 @@ impl crate::vm::VirtualMachine {
         let own_pid = std::process::id() as i64;
         let mut delivered = 0;
         for target in &arguments[1..] {
+            let Object::Int(pid) = target else {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!(
+                        "no implicit conversion of {} into Integer",
+                        self.builtins().class_of(target).name()
+                    ),
+                    position,
+                ));
+            };
             delivered += 1;
-            if !matches!(target, Object::Int(pid) if *pid == own_pid) {
+            // A signal the program can answer for itself runs whatever
+            // `Signal.trap` left in force. Everything else, and every signal
+            // sent to another process, goes to the operating system.
+            if *pid == own_pid && !matches!(name.as_str(), "KILL" | "STOP") {
+                self.run_signal_handler(&name, number, position)?;
                 continue;
             }
-            self.run_signal_handler(&name, number, position)?;
+            // A signal this process sends to itself is delivered before the
+            // call returns, so the program never runs on past it.
+            if *pid == own_pid {
+                // SAFETY: `raise` delivers the signal to this process, which
+                // an uncatchable one ends before returning.
+                unsafe { libc::raise(number) };
+                loop {
+                    // SAFETY: `pause` waits for a signal and nothing else.
+                    unsafe { libc::pause() };
+                }
+            }
+            // SAFETY: `kill` sends one signal to one process and touches
+            // nothing else.
+            if unsafe { libc::kill(*pid as libc::pid_t, number) } < 0 {
+                let code = std::io::Error::last_os_error();
+                let named = match code.raw_os_error() {
+                    Some(number) if number == libc::ESRCH => "Errno::ESRCH",
+                    Some(number) if number == libc::EPERM => "Errno::EPERM",
+                    Some(number) if number == libc::EINVAL => "Errno::EINVAL",
+                    _ => "SystemCallError",
+                };
+                return Err(crate::vm::errors::simple_exception(
+                    named,
+                    &format!("{code} - kill(2)"),
+                    position,
+                ));
+            }
         }
         Ok(Object::Int(delivered))
     }
@@ -226,7 +275,7 @@ impl crate::vm::VirtualMachine {
     ) -> Result<(), crate::error::MetorexError> {
         let handler = self.signal_handlers.get(name).cloned();
         match handler {
-            Some(Object::String(disposition)) => match disposition.as_str() {
+            Some(Object::String(disposition)) => match &*disposition.as_str() {
                 "IGNORE" => Ok(()),
                 _ => Err(self.signal_exception(name, number, position)),
             },
@@ -276,7 +325,10 @@ impl crate::vm::VirtualMachine {
         // reported with its `SIG` prefix.
         let named = match given {
             Object::Symbol(name) | Object::String(name) => {
-                format!("SIG{}", name.strip_prefix("SIG").unwrap_or(name))
+                format!(
+                    "SIG{}",
+                    name.as_str().strip_prefix("SIG").unwrap_or(&*name.as_str())
+                )
             }
             other => other.to_string(),
         };
@@ -292,3 +344,22 @@ impl crate::vm::VirtualMachine {
 /// Where a signal exception keeps its number. Not an `@` name, so a program's
 /// own instance variables cannot collide with it.
 pub(crate) const SIGNO_KEY: &str = "__signo__";
+
+/// The signal number a SignalException carries, and None for an exception
+/// that names no signal.
+pub fn signal_number_of(details: &crate::object::Exception) -> Option<libc::c_int> {
+    if !matches!(
+        details.exception_type.as_str(),
+        "SignalException" | "Interrupt"
+    ) {
+        return None;
+    }
+    if let Some(crate::object::Object::Int(number)) = details.instance_vars.get(SIGNO_KEY) {
+        return Some(*number as libc::c_int);
+    }
+    // An exception raised by the program names its signal in the message,
+    // with or without the `SIG` in front.
+    let named = details.message.trim();
+    let named = named.strip_prefix("SIG").unwrap_or(named);
+    number_for_name(named)
+}

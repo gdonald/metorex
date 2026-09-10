@@ -256,7 +256,9 @@ pub(crate) fn write_integer(
 /// how metorex holds a run of bytes, and the result carries no character
 /// meaning, which is what ASCII-8BIT says.
 pub(crate) fn bytes_to_string(bytes: &[u8]) -> Object {
-    Object::binary_string(bytes.iter().map(|byte| *byte as char).collect::<String>())
+    Object::String(std::rc::Rc::new(crate::object::StringValue::from_bytes(
+        bytes.iter().map(|byte| *byte as char).collect::<String>(),
+    )))
 }
 
 /// The bytes a String stands for, one per character.
@@ -274,6 +276,14 @@ pub(crate) fn string_to_bytes(text: &str) -> Vec<u8> {
 }
 
 /// Read base64, ignoring anything that is not one of its characters.
+/// Whether text holds only what strict base64 allows, which is the alphabet,
+/// its padding, and the line breaks between them.
+fn is_strict_base64(text: &str) -> bool {
+    text.bytes().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, b'+' | b'/' | b'=' | b'\n' | b'\r')
+    })
+}
+
 fn decode_base64(text: &str) -> Vec<u8> {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = Vec::new();
@@ -471,7 +481,7 @@ impl VirtualMachine {
                         let held: String =
                             bytes[at..end].iter().map(|byte| *byte as char).collect();
                         at = (end + 1).min(bytes.len());
-                        out.push(Object::string(held));
+                        out.push(Object::binary_string(held));
                         continue;
                     }
                     let taken = match directive.count {
@@ -490,7 +500,7 @@ impl VirtualMachine {
                         },
                         _ => held,
                     };
-                    out.push(Object::string(settled));
+                    out.push(Object::binary_string(settled));
                 }
                 // Bits, most or least significant first.
                 'b' | 'B' => {
@@ -512,7 +522,7 @@ impl VirtualMachine {
                         written.push(if bit == 1 { '1' } else { '0' });
                     }
                     at += taken.div_ceil(8);
-                    out.push(Object::string(written));
+                    out.push(ascii_string(written));
                 }
                 // Nibbles, high or low half first.
                 'h' | 'H' => {
@@ -536,7 +546,7 @@ impl VirtualMachine {
                         written.push(char::from_digit(u32::from(nibble), 16).unwrap_or('0'));
                     }
                     at += taken.div_ceil(2);
-                    out.push(Object::string(written));
+                    out.push(ascii_string(written));
                 }
                 // A UTF-8 character read back as its code point.
                 'U' => {
@@ -697,6 +707,16 @@ impl VirtualMachine {
                 'm' => {
                     let held: String = bytes[at..].iter().map(|byte| *byte as char).collect();
                     at = bytes.len();
+                    // `m0` reads strict base64, where anything outside the
+                    // alphabet is a fault rather than something to skip.
+                    if directive.count == Count::Exactly(0) && !is_strict_base64(&held) {
+                        let message = "invalid base64".to_string();
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("ArgumentError", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        });
+                    }
                     out.push(bytes_to_string(&decode_base64(&held)));
                 }
                 // Quoted printable.
@@ -1068,4 +1088,12 @@ impl VirtualMachine {
             position,
         ))
     }
+}
+
+/// Text tagged US-ASCII, which is how `unpack` answers the bit and nibble
+/// directives.
+fn ascii_string(text: String) -> Object {
+    Object::String(std::rc::Rc::new(crate::object::StringValue::with_encoding(
+        text, "US-ASCII",
+    )))
 }

@@ -121,6 +121,54 @@ impl VirtualMachine {
 
     /// Match a pattern against a value and collect variable bindings.
     /// Returns true if the pattern matches, false otherwise.
+    /// The value a constant named in a pattern stands for. The lexical scope
+    /// answers first, and then the class the running method belongs to, which
+    /// is where a class's own constants live.
+    fn constant_for_pattern(&self, name: &str) -> Option<Object> {
+        if let Some(found) = self.resolve_constant_in_scope(name) {
+            return Some(found);
+        }
+        // `Socket::SOCK_DGRAM` names a constant the namespace reaches through
+        // a module it includes, which no lookup by full path finds.
+        if let Some((namespace, last)) = name.rsplit_once("::") {
+            let holder = self.resolve_constant_in_scope(namespace)?;
+            let (Object::Class(class_rc) | Object::Module(class_rc)) = holder else {
+                return None;
+            };
+            let mut cursor = Some(class_rc);
+            while let Some(current) = cursor {
+                if let Some(found) = current.get_class_var(last) {
+                    return Some(found);
+                }
+                for mixin in current.transitive_mixins() {
+                    if let Some(found) = mixin.get_class_var(last) {
+                        return Some(found);
+                    }
+                }
+                cursor = current.superclass();
+            }
+            return None;
+        }
+        let holder = self.environment().get("self")?;
+        let mut cursor = match &holder {
+            Object::Class(class_rc) | Object::Module(class_rc) => Some(Rc::clone(class_rc)),
+            Object::Instance(instance) => Some(Rc::clone(&instance.borrow().class)),
+            _ => None,
+        };
+        while let Some(current) = cursor {
+            if let Some(found) = current.get_class_var(name) {
+                return Some(found);
+            }
+            for mixin in current.transitive_mixins() {
+                if let Some(found) = mixin.get_class_var(name) {
+                    return Some(found);
+                }
+            }
+            cursor = current.superclass();
+        }
+        None
+    }
+
     pub(crate) fn match_pattern(
         &self,
         pattern: &crate::ast::MatchPattern,
@@ -192,6 +240,14 @@ impl VirtualMachine {
 
             // Type pattern - match based on object type
             MatchPattern::Type(type_name) => {
+                // A constant that names something other than a class stands
+                // for that value, so `when ROUND_FLOOR` compares against the
+                // number rather than asking what class the value is.
+                if let Some(named) = self.constant_for_pattern(type_name)
+                    && !matches!(named, Object::Class(_) | Object::Module(_))
+                {
+                    return Ok(named == *value);
+                }
                 let actual_type = value.type_name();
 
                 // Support both Ruby-style names (Integer, Hash) and internal names (Int, Dict)
@@ -200,7 +256,9 @@ impl VirtualMachine {
                     name if name == actual_type => true,
 
                     // Ruby-style aliases
-                    "Integer" => matches!(value, Object::Int(_)),
+                    // A number too wide for a machine word is an Integer
+                    // just the same, so both spellings answer here.
+                    "Integer" => matches!(value, Object::Int(_) | Object::BigInt(_)),
                     "Float" => matches!(value, Object::Float(_)),
                     "String" => matches!(value, Object::String(_)),
                     "Array" => matches!(value, Object::Array(_)),

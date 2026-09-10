@@ -173,14 +173,14 @@ fn test_stdlib_regex_literals_parens_execution() {
 
 #[test]
 fn test_stdlib_string_slice_edge_execution() {
-    let expected = "ell\nhe\nll\n\ndone\nfoobar\n";
+    let expected = "ell\nhe\nll\nnil\n\"\"\ndone\nfoobar\n";
     let output = run_example("stdlib/string/slice_edge.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_string_slice_edge_parens_execution() {
-    let expected = "ell\nhe\nll\n\ndone\nfoobar\n";
+    let expected = "ell\nhe\nll\nnil\n\"\"\ndone\nfoobar\n";
     let output = run_example("stdlib/string/slice_edge_parens.rb");
     assert_eq!(output, expected);
 }
@@ -262,7 +262,7 @@ fn test_stdlib_string_new_methods_parens_execution() {
 
 #[test]
 fn test_stdlib_error_paths_test_execution() {
-    let expected = "3.14\n3.14\n4\n3\n4.0\n3\n3.14\n42.0\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
+    let expected = "3.14\n3.14\n4\n3\n4\n3\n3.14\n42.0\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
     let output = run_example("stdlib/error_paths_test.rb");
     assert_eq!(output, expected);
 }
@@ -767,4 +767,34 @@ fn test_stdlib_math_functions_parens_execution() {
     );
     let output = run_example("stdlib/math/functions_parens.rb");
     assert_eq!(output, expected);
+}
+
+/// The expected output of both `stdlib/string/character_sets` variants.
+const STRING_CHARACTER_SETS_OUTPUT: &str = "3\n1\n3\n\"heo word\"\n\"abc\"\n\"abbbccc\"\n\"hippo\"\n\"ifmmp\"\n\"*e**o\"\n\"hero\"\n\"invalid range \\\"h-e\\\" in string transliteration\"\n\"hello\"\n\"hello\"\n\"llo\"\n\"hel\"\n[\"he\", \"l\", \"lo\"]\n[\"hel\", \"l\", \"o\"]\n[\"he\", \"ll\", \"o\"]\n:hello\n294\n6\n\"   hi    \"\n\"121hi1212\"\n0\ntrue\nnil\n\"x\"\nnil\n[\"a\", \"b\", \"c\", \"d\", \"e\"]\n[\"9\", \":\", \";\", \"<\", \"=\", \">\", \"?\", \"@\", \"A\"]\n[\"8\", \"9\", \"10\", \"11\"]\n[\"a\", \"b\", \"c\"]\n[]\n";
+
+#[test]
+fn test_stdlib_string_character_sets_execution() {
+    let output = run_example("stdlib/string/character_sets.rb");
+    assert_eq!(output, STRING_CHARACTER_SETS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_string_character_sets_no_parens_execution() {
+    let output = run_example("stdlib/string/character_sets_no_parens.rb");
+    assert_eq!(output, STRING_CHARACTER_SETS_OUTPUT);
+}
+
+/// The expected output of both `stdlib/dir/reading_a_directory` variants.
+const READING_A_DIRECTORY_OUTPUT: &str = "true\nfalse\nfalse\n[\".\", \"..\", \"held.txt\"]\n[\"held.txt\"]\n[\".\", \"..\", \"held.txt\"]\n[\"held.txt\"]\nEnumerator\nnil\nErrno::ENOTEMPTY\nErrno::ENOENT\n0\nfalse\ntrue\n";
+
+#[test]
+fn test_stdlib_dir_reading_a_directory_execution() {
+    let output = run_example("stdlib/dir/reading_a_directory.rb");
+    assert_eq!(output, READING_A_DIRECTORY_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_dir_reading_a_directory_no_parens_execution() {
+    let output = run_example("stdlib/dir/reading_a_directory_no_parens.rb");
+    assert_eq!(output, READING_A_DIRECTORY_OUTPUT);
 }

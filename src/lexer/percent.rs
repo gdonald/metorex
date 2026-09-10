@@ -17,6 +17,17 @@ impl<'a> Lexer<'a> {
         if matches!(self.prev_significant, Some(TokenKind::Def)) {
             return Token::new(TokenKind::Percent, position);
         }
+        // `:%` and `obj.%` name the method, so a `%` written against a
+        // symbol's colon or a call's dot is that name rather than the opening
+        // of a literal. A space before it makes it a literal again, which is
+        // how `a ? b : %(text)` still reads as one.
+        if matches!(
+            self.prev_significant,
+            Some(TokenKind::Colon) | Some(TokenKind::Dot) | Some(TokenKind::SafeDot)
+        ) && !spaced_before
+        {
+            return Token::new(TokenKind::Percent, position);
+        }
         if matches!(self.peek(), Some('w') | Some('i') | Some('W') | Some('I')) {
             return self.lex_percent_list(position);
         }
@@ -172,16 +183,61 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 if let Some(esc) = self.peek() {
                     match esc {
-                        'n' => content.push('\n'),
-                        't' => content.push('\t'),
-                        '\\' => content.push('\\'),
-                        other if other == close || other == open => content.push(other),
+                        'n' => {
+                            content.push('\n');
+                            self.advance();
+                        }
+                        't' => {
+                            content.push('\t');
+                            self.advance();
+                        }
+                        'r' => {
+                            content.push('\r');
+                            self.advance();
+                        }
+                        'e' => {
+                            content.push('\u{1b}');
+                            self.advance();
+                        }
+                        's' => {
+                            content.push(' ');
+                            self.advance();
+                        }
+                        'a' => {
+                            content.push('\u{7}');
+                            self.advance();
+                        }
+                        'b' => {
+                            content.push('\u{8}');
+                            self.advance();
+                        }
+                        'f' => {
+                            content.push('\u{c}');
+                            self.advance();
+                        }
+                        'v' => {
+                            content.push('\u{b}');
+                            self.advance();
+                        }
+                        '\\' => {
+                            content.push('\\');
+                            self.advance();
+                        }
+                        'x' => {
+                            self.advance();
+                            self.read_escaped_bytes(&mut content, 16);
+                        }
+                        '0'..='7' => self.read_escaped_bytes(&mut content, 8),
+                        other if other == close || other == open => {
+                            content.push(other);
+                            self.advance();
+                        }
                         _ => {
                             content.push('\\');
                             content.push(esc);
+                            self.advance();
                         }
                     }
-                    self.advance();
                 }
             } else if ch == '#' && ch != close {
                 self.advance();
@@ -316,5 +372,52 @@ impl<'a> Lexer<'a> {
             }
         }
         Token::new(TokenKind::String(content), position)
+    }
+}
+
+impl super::Lexer<'_> {
+    /// The bytes a run of `\xNN` or `\NNN` escapes names, decoded together so
+    /// that the bytes of one character spell that character. A run that is
+    /// not text keeps each byte as its own character.
+    fn read_escaped_bytes(&mut self, content: &mut String, radix: u32) {
+        let wanted = if radix == 16 { 2 } else { 3 };
+        let mut bytes = Vec::new();
+        loop {
+            let mut digits = String::new();
+            while digits.len() < wanted
+                && self
+                    .peek()
+                    .is_some_and(|digit| digit.is_digit(radix) && (radix == 16 || digit <= '7'))
+            {
+                digits.push(self.peek().expect("a digit was seen"));
+                self.advance();
+            }
+            if digits.is_empty() {
+                break;
+            }
+            bytes.push(u32::from_str_radix(&digits, radix).unwrap_or(0) as u8);
+            if self.peek() != Some('\\') {
+                break;
+            }
+            self.advance();
+            let next = self.peek();
+            if radix == 16 && next == Some('x') {
+                self.advance();
+                continue;
+            }
+            if radix == 8 && next.is_some_and(|digit| ('0'..='7').contains(&digit)) {
+                continue;
+            }
+            self.push_back('\\');
+            break;
+        }
+        match super::strings::binary_run(self.binary_source, &bytes) {
+            Ok(text) => content.push_str(&text),
+            Err(_) => {
+                for byte in bytes {
+                    content.push(byte as char);
+                }
+            }
+        }
     }
 }

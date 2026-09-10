@@ -5,11 +5,14 @@
 
 pub(crate) mod array_methods;
 pub(crate) mod ast_methods;
-mod class_methods;
+pub(crate) mod class_methods;
 pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
 pub(crate) use class_methods::is_native_kernel_method;
 pub(crate) use class_methods::native_module_method_stub;
 pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
+mod binding_methods;
+mod socket_addresses;
+pub(crate) use socket_addresses::OpenSockets;
 mod complex_methods;
 mod constant_visibility;
 pub(crate) mod define_method;
@@ -27,6 +30,8 @@ mod module_methods;
 mod object_methods;
 mod range_methods;
 pub(crate) mod rational_methods;
+mod syslog_write;
+mod zlib_streams;
 pub(crate) use object_methods::binary_op_for_method_name;
 pub(crate) use rational_methods::{complex_parts, rational_parts};
 mod regexp_methods;
@@ -34,7 +39,9 @@ pub(crate) use regexp_methods::{
     LAST_MATCH, capture_reference, comparable_flags, compile, subject_text,
 };
 mod set_methods;
-mod string_methods;
+pub(crate) mod string_methods;
+mod string_mutation;
+mod string_sets;
 pub(crate) mod struct_methods;
 mod time_methods;
 pub(crate) use struct_methods::struct_members;
@@ -125,22 +132,11 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
-        // Binding receiver
         if let Object::Binding(binding) = receiver
-            && method_name == "receiver"
+            && let Some(answered) =
+                self.call_binding_methods(binding, method_name, arguments, position)?
         {
-            return Ok(Some(binding.receiver.clone().unwrap_or(Object::Nil)));
-        }
-
-        // Binding#eval — minimal implementation: handles `eval("self")`
-        // (returns the binding's receiver). Anything else returns Nil; full
-        // re-parse-in-binding-scope is substantial and not needed here.
-        if let Object::Binding(binding) = receiver
-            && method_name == "eval"
-            && let Some(Object::String(s)) = arguments.first()
-            && s.as_str().trim() == "self"
-        {
-            return Ok(Some(binding.receiver.clone().unwrap_or(Object::Nil)));
+            return Ok(Some(answered));
         }
 
         // `define_singleton_method` works on any receiver, so it is handled
@@ -364,37 +360,62 @@ impl VirtualMachine {
                 self.call_object_method(receiver, method_name, arguments, position)
             }
             "String" => {
+                if let Some(answer) =
+                    self.call_string_mutation(receiver, method_name, arguments, position)?
+                {
+                    return Ok(Some(answer));
+                }
                 let answer = self.call_string_method(receiver, method_name, arguments, position)?;
-                Ok(carry_string_encoding(receiver, answer))
+                Ok(carry_string_encoding(receiver, method_name, answer))
             }
             // Symbol shares String's character-level methods (`length`,
             // `upcase`, `start_with?`, comparison). Object's come first so
             // `class`, `inspect`, and friends report Symbol.
             "Symbol" => {
-                if let Some(result) =
-                    self.call_object_method(receiver, method_name, arguments, position)?
-                {
-                    return Ok(Some(result));
-                }
-                // The rest of Symbol's surface is String's, applied to the
-                // characters the symbol is named with.
+                // The names a symbol answers for itself come first, since
+                // Object answers `to_s` for anything at all.
                 let Object::Symbol(text) = receiver else {
                     return Ok(None);
                 };
                 // The names a Symbol answers for itself: `id2name` and `name`
                 // give its characters, and `intern` and `to_sym` give it back.
+                // A symbol named in ASCII is written in ASCII, and one with
+                // any other character is written in UTF-8.
+                let named_in = if text.as_str().is_ascii() {
+                    "US-ASCII"
+                } else {
+                    "UTF-8"
+                };
                 match method_name {
                     // `name` answers one frozen string per symbol, where
                     // `id2name` hands back a fresh one each time.
                     "name" => {
                         let slot = format!("__symbol_name_{}", text.as_str());
-                        return Ok(Some(self.memoized_text(&slot, text.as_str())));
+                        let held = self.memoized_text(&slot, &text.as_str());
+                        if let Object::String(made) = &held {
+                            made.set_encoding(named_in);
+                            made.freeze();
+                        }
+                        return Ok(Some(held));
                     }
-                    "id2name" => {
-                        return Ok(Some(Object::string(text.as_str())));
+                    "id2name" | "to_s" => {
+                        return Ok(Some(Object::String(Rc::new(
+                            crate::object::StringValue::with_encoding(text.to_text(), named_in),
+                        ))));
+                    }
+                    "encoding" => {
+                        let named = Object::String(Rc::new(
+                            crate::object::StringValue::with_encoding(text.to_text(), named_in),
+                        ));
+                        return self.call_string_method(&named, method_name, arguments, position);
                     }
                     "intern" | "to_sym" => return Ok(Some(receiver.clone())),
                     _ => {}
+                }
+                if let Some(result) =
+                    self.call_object_method(receiver, method_name, arguments, position)?
+                {
+                    return Ok(Some(result));
                 }
                 let as_string = Object::String(Rc::clone(text));
                 let answered =
@@ -450,7 +471,7 @@ impl VirtualMachine {
         let stderr_obj = self.globals().get("stderr");
         let placeholder = matches!(
             &stderr_obj,
-            Some(Object::String(s)) if s.as_str() == "$stderr"
+            Some(Object::String(s)) if *s.as_str() == *"$stderr"
         );
         if !placeholder && let Some(obj) = stderr_obj {
             let line = format!("{}\n", msg);
@@ -801,6 +822,34 @@ impl VirtualMachine {
                 }
             }
             "read" => {
+                // A character device such as /dev/urandom never reaches an
+                // end, so a bounded read has to stop at the count asked for
+                // rather than draining the name.
+                if let Some(Object::Int(length)) = arguments.first()
+                    && !std::fs::metadata(&path)
+                        .map(|found| found.is_file())
+                        .unwrap_or(false)
+                {
+                    use std::io::Read;
+                    let wanted = (*length).max(0) as u64;
+                    let mut held = Vec::new();
+                    let opened = std::fs::File::open(&path).map_err(|error| {
+                        MetorexError::runtime_error(
+                            format!("Failed to read '{}': {}", path, error),
+                            crate::error::SourceLocation::new(0, 0, 0),
+                        )
+                    })?;
+                    opened
+                        .take(wanted)
+                        .read_to_end(&mut held)
+                        .map_err(|error| {
+                            MetorexError::runtime_error(
+                                format!("Failed to read '{}': {}", path, error),
+                                crate::error::SourceLocation::new(0, 0, 0),
+                            )
+                        })?;
+                    return Ok(Some(pack_format::bytes_to_string(&held)));
+                }
                 let contents = std::fs::read_to_string(&path).map_err(|error| {
                     MetorexError::runtime_error(
                         format!("Failed to read '{}': {}", path, error),
@@ -909,6 +958,9 @@ impl VirtualMachine {
                     .set_var("__file_lineno".to_string(), Object::Int(0));
                 Ok(Some(Object::Int(0)))
             }
+            // Metorex writes each `write` straight through to the file, so
+            // there is nothing held back for `flush` to send on.
+            "flush" => Ok(Some(receiver.clone())),
             "lineno" => Ok(Some(match inst.borrow().get_var("__file_lineno") {
                 Some(Object::Int(counted)) => Object::Int(*counted),
                 _ => Object::Int(0),
@@ -1231,7 +1283,16 @@ fn set_handle_offset(instance: &Rc<std::cell::RefCell<crate::object::Instance>>,
 /// A string cut from another is in the same encoding, so an answer still
 /// carrying the encoding a fresh literal gets is retagged with the
 /// receiver's. A method that named an encoding of its own keeps it.
-fn carry_string_encoding(receiver: &Object, answer: Option<Object>) -> Option<Object> {
+fn carry_string_encoding(
+    receiver: &Object,
+    method_name: &str,
+    answer: Option<Object>,
+) -> Option<Object> {
+    // A method that pads with a string of its own works out which encoding
+    // the two have in common, so its answer is already tagged.
+    if matches!(method_name, "center") {
+        return answer;
+    }
     let Object::String(source) = receiver else {
         return answer;
     };
@@ -1245,4 +1306,10 @@ fn carry_string_encoding(receiver: &Object, answer: Option<Object>) -> Option<Ob
         derived.set_encoding(held);
     }
     answer
+}
+
+/// Whether a name is one of the functions Kernel carries, which are reachable
+/// both without a receiver and through `Kernel` itself.
+pub(crate) fn is_kernel_private_function(name: &str) -> bool {
+    class_methods::KERNEL_PRIVATE_FUNCTIONS.contains(&name)
 }

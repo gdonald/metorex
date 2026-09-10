@@ -24,6 +24,7 @@ impl Parser {
             let op_token = self.advance();
             self.skip_whitespace();
             let right = self.parse_logical_and()?;
+            let right = self.fold_assignment(right)?;
             expr = Expression::BinaryOp {
                 op: BinaryOp::Or,
                 left: Box::new(expr),
@@ -47,6 +48,7 @@ impl Parser {
             let op_token = self.advance();
             self.skip_whitespace();
             let right = self.parse_equality()?;
+            let right = self.fold_assignment(right)?;
             expr = Expression::BinaryOp {
                 op: BinaryOp::And,
                 left: Box::new(expr),
@@ -96,6 +98,7 @@ impl Parser {
             };
             self.skip_whitespace();
             let right = self.parse_comparison()?;
+            let right = self.fold_assignment(right)?;
             expr = Expression::BinaryOp {
                 op,
                 left: Box::new(expr),
@@ -154,7 +157,11 @@ impl Parser {
                 TokenKind::Ampersand => BinaryOp::BitwiseAnd,
                 _ => unreachable!(),
             };
+            // A comparison or bitwise operator at the end of a line carries
+            // the expression onto the next one.
+            self.skip_whitespace();
             let right = self.parse_range()?;
+            let right = self.fold_assignment(right)?;
             expr = Expression::BinaryOp {
                 op,
                 left: Box::new(expr),

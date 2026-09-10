@@ -676,7 +676,7 @@ fn file_expand_path_on_nonexistent_path_returns_input() {
     // canonicalize fails on nonexistent paths; we fall back to the input.
     let result = run(r#"File.expand_path("/this/path/does/not/exist/abc123")"#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("abc123")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("abc123")),
         _ => panic!("expected string"),
     }
 }

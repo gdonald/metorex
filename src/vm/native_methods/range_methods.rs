@@ -658,14 +658,14 @@ impl VirtualMachine {
                 })
                 .collect());
         }
-        let end_length = name_of(end).map(|text| text.chars().count());
+        let end_length = name_of(end).map(|text| text.as_str().chars().count());
         let mut walked = Vec::new();
         let mut current = start.clone();
         loop {
             // A name longer than the end's has passed it, whatever the
             // characters say: "Z".succ is "AA", which is past "z".
             if let (Some(limit), Some(text)) = (end_length, name_of(&current))
-                && text.chars().count() > limit
+                && text.as_str().chars().count() > limit
             {
                 break;
             }
@@ -702,7 +702,8 @@ fn name_of(value: &Object) -> Option<Rc<crate::object::StringValue>> {
 /// The code point of a name that is one ASCII character, or None otherwise.
 fn single_ascii(value: &Object) -> Option<u32> {
     let text = name_of(value)?;
-    let mut letters = text.chars();
+    let held = text.to_text();
+    let mut letters = held.chars();
     let only = letters.next()?;
     if letters.next().is_some() || !only.is_ascii() {
         return None;

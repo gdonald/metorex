@@ -2168,3 +2168,1646 @@ fn a_digest_asked_for_without_an_algorithm_and_a_message_is_refused() {
     let error = run_err("require 'digest'\nDigest.__digest__(\"MD5\")");
     assert!(error.contains("wrong number of arguments"), "{error}");
 }
+
+#[test]
+fn a_bang_method_answers_for_the_operator_written_in_front_of_it() {
+    let result = run(r#"
+class Negated
+  def !
+    :flipped
+  end
+
+  def ~
+    :complemented
+  end
+end
+
+[!Negated.new, ~Negated.new, Negated.new.!]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:flipped, :complemented, :flipped]".to_string())
+    );
+}
+
+#[test]
+fn a_pattern_can_name_a_constant_from_the_top_level() {
+    let result = run(r#"
+answers = []
+["a", 1].each do |held|
+  case held
+  when ::String then answers << :string
+  when ::Integer then answers << :integer
+  end
+end
+answers
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:string, :integer]".to_string())
+    );
+}
+
+#[test]
+fn a_global_variable_is_not_answered_as_a_constant_of_the_same_name() {
+    let result = run(r#"
+class Level
+  DEBUG = 3
+
+  def named
+    DEBUG
+  end
+
+  def defaulted(held: DEBUG)
+    held
+  end
+end
+
+[Level.new.named, Level.new.defaulted, $DEBUG]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[3, 3, false]".to_string())
+    );
+}
+
+#[test]
+fn a_yield_with_no_block_behind_it_is_a_jump_with_nowhere_to_land() {
+    let result = run(r#"
+def needs_one
+  yield
+end
+
+begin
+  needs_one
+rescue LocalJumpError => problem
+  [problem.class, problem.message]
+end
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[LocalJumpError, no block given (yield)]".to_string())
+    );
+}
+
+#[test]
+fn methods_reports_what_an_included_module_supplies() {
+    let result = run(r#"
+module Carried
+  def carried_name
+    :carried
+  end
+end
+
+class Holder
+  include Carried
+
+  def own_name
+    :own
+  end
+end
+
+held = Holder.new.methods
+[held.include?(:carried_name), held.include?(:own_name)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true]".to_string())
+    );
+}
+
+#[test]
+fn indexing_reaches_method_missing_when_no_index_is_defined() {
+    let result = run(r#"
+class Asked
+  def method_missing(name, *arguments)
+    [name, arguments]
+  end
+
+  def respond_to_missing?(_name, _private = false)
+    true
+  end
+end
+
+Asked.new[7]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:[], [7]]".to_string())
+    );
+}
+
+#[test]
+fn a_double_splat_reaches_a_call_written_without_parentheses() {
+    let result = run(r#"
+def take(first, **rest)
+  [first, rest]
+end
+
+extra = {second: 2}
+take 1, **extra
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, {second: 2}]".to_string())
+    );
+}
+
+#[test]
+fn a_string_formatted_in_place_of_nil_says_nothing_at_all() {
+    let result = run(r#"["[%s]" % [nil], "[%s]" % ["held"]]"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[[], [held]]".to_string())
+    );
+}
+
+#[test]
+fn an_open_handle_says_it_answers_to_what_it_can_do() {
+    let result = run(r#"
+held = "/tmp/metorex_handle_answers_test.txt"
+handle = File.open(held, "w+")
+answered = [
+  handle.respond_to?(:write),
+  handle.respond_to?(:readlines),
+  handle.respond_to?(:no_such_thing)
+]
+handle.close
+File.delete(held)
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true, false]".to_string())
+    );
+}
+
+#[test]
+fn a_name_may_be_moved_onto_another_one() {
+    let result = run(r#"
+from = "/tmp/metorex_rename_from.txt"
+to = "/tmp/metorex_rename_to.txt"
+File.write(from, "held")
+File.rename(from, to)
+answered = [File.exist?(from), File.read(to)]
+File.delete(to)
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[false, held]".to_string())
+    );
+}
+
+#[test]
+fn moving_a_name_no_file_answers_to_is_refused() {
+    let error =
+        run_err(r#"File.rename("/tmp/metorex_no_such_source.txt", "/tmp/metorex_dest.txt")"#);
+    assert!(error.contains("No such file or directory"), "{error}");
+}
+
+#[test]
+fn the_permissions_on_a_file_can_be_set_by_name() {
+    let result = run(r#"
+held = "/tmp/metorex_chmod_test.txt"
+File.write(held, "x")
+changed = File.chmod(0600, held)
+mode = "%o" % File.stat(held).mode
+File.delete(held)
+[changed, mode]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, 100600]".to_string())
+    );
+}
+
+#[test]
+fn setting_permissions_counts_only_the_names_a_file_answers_to() {
+    let result = run(r#"File.chmod(0600, "/tmp/metorex_no_such_chmod_target.txt")"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("0".to_string()));
+}
+
+#[test]
+fn the_scratch_directory_is_named_without_a_trailing_separator() {
+    let result = run(r#"[Dir.tmpdir.end_with?("/"), Dir.exist?(Dir.tmpdir)]"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[false, true]".to_string())
+    );
+}
+
+#[test]
+fn digits_too_wide_for_a_machine_word_still_name_a_number() {
+    let result = run(r#"
+held = "33333333333333333333"
+[held.to_i.to_s, "9223372036854775808".to_i.to_s, "ff".to_i(16)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[33333333333333333333, 9223372036854775808, 255]".to_string())
+    );
+}
+
+#[test]
+fn a_protected_method_answers_another_object_of_its_own_class() {
+    let result = run(r#"
+class Pair
+  def initialize(value)
+    @value = value
+  end
+
+  def bigger_than?(other)
+    held > other.held
+  end
+
+  protected
+
+  def held
+    @value
+  end
+end
+
+Pair.new(2).bigger_than? Pair.new(1)
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn a_protected_method_is_refused_from_outside_and_named_as_protected() {
+    let error = run_err(
+        r#"
+class Pair
+  protected
+
+  def held
+    1
+  end
+end
+
+Pair.new.held
+"#,
+    );
+    assert!(error.contains("protected method 'held'"), "{error}");
+}
+
+#[test]
+fn a_constant_that_names_a_value_is_compared_against_it() {
+    let result = run(r#"
+class Level
+  LOW = 1
+  HIGH = 2
+
+  def named(value)
+    case value
+    when LOW then :low
+    when HIGH then :high
+    when String then :text
+    else :other
+    end
+  end
+end
+
+held = Level.new
+[held.named(1), held.named(2), held.named("a"), held.named(9)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:low, :high, :text, :other]".to_string())
+    );
+}
+
+#[test]
+fn a_number_too_wide_for_a_machine_word_matches_the_integer_pattern() {
+    let result = run(r#"
+def named(value)
+  case value
+  when Integer then :whole
+  else :other
+  end
+end
+
+[named(1), named(12345678901234567890123), named("a")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:whole, :whole, :other]".to_string())
+    );
+}
+
+#[test]
+fn a_number_written_in_exponent_notation_carries_a_signed_power() {
+    let result = run(r#"["%e" % [1234.5678], "%.2e" % [0.000123], "%E" % [-5.0]]"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1.234568e+03, 1.23e-04, -5.000000E+00]".to_string())
+    );
+}
+
+#[test]
+fn the_percent_method_is_named_by_a_symbol_and_reached_through_a_dot() {
+    let result = run(r#"
+class Divided
+  def %(other)
+    [:remainder, other]
+  end
+end
+
+held = Divided.new
+[:%, held.%(3), held.send(:%, 4)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:%, [:remainder, 3], [:remainder, 4]]".to_string())
+    );
+}
+
+#[test]
+fn a_percent_literal_after_a_ternary_colon_is_still_a_literal() {
+    let result = run(r#"[true ? 1 : %w[a b], false ? 1 : %(text)]"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, text]".to_string())
+    );
+}
+
+#[test]
+fn reopening_the_class_of_an_immediate_adds_a_method_it_answers_to() {
+    let result = run(r#"
+class NilClass
+  def held
+    :from_nil
+  end
+end
+
+class TrueClass
+  def held
+    :from_true
+  end
+end
+
+[nil.held, true.held]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:from_nil, :from_true]".to_string())
+    );
+}
+
+#[test]
+fn a_handle_sends_what_was_written_through_it_on_when_asked_to_flush() {
+    let result = run(r#"
+held = "/tmp/metorex_flush_test.txt"
+handle = File.open(held, "w+")
+handle.write "kept"
+handle.flush
+size = File.size(held)
+handle.close
+File.delete(held)
+size
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("4".to_string()));
+}
+
+#[test]
+fn a_protected_method_answers_a_class_method_of_the_same_class() {
+    let result = run(r#"
+class Counted
+  def self.compare(left, right)
+    left.held <=> right.held
+  end
+
+  def initialize(value)
+    @value = value
+  end
+
+  protected
+
+  def held
+    @value
+  end
+end
+
+Counted.compare Counted.new(2), Counted.new(1)
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("1".to_string()));
+}
+
+#[test]
+fn a_protected_method_answers_a_subclass_of_the_class_that_defines_it() {
+    let result = run(r#"
+class Base
+  def initialize(value)
+    @value = value
+  end
+
+  def sees(other)
+    other.held
+  end
+
+  protected
+
+  def held
+    @value
+  end
+end
+
+class Grown < Base
+end
+
+Grown.new(7).sees Grown.new(9)
+"#);
+    assert_eq!(result.map(|value| value.to_string()), Some("9".to_string()));
+}
+
+#[test]
+fn a_protected_method_an_included_module_supplies_answers_the_including_class() {
+    let result = run(r#"
+module Carried
+  def sees(other)
+    other.held
+  end
+
+  protected
+
+  def held
+    :carried
+  end
+end
+
+class Holder
+  include Carried
+end
+
+Holder.new.sees Holder.new
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some(":carried".to_string())
+    );
+}
+
+#[test]
+fn a_protected_method_answers_a_value_of_a_reopened_core_class() {
+    let result = run(r#"
+class Integer
+  def sees(other)
+    other.doubled
+  end
+
+  protected
+
+  def doubled
+    self * 2
+  end
+end
+
+3.sees 5
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("10".to_string())
+    );
+}
+
+#[test]
+fn a_constant_an_included_module_supplies_is_compared_against_in_a_pattern() {
+    let result = run(r#"
+module Levels
+  QUIET = 5
+end
+
+class Reader
+  include Levels
+
+  def named(value)
+    case value
+    when QUIET then :quiet
+    else :other
+    end
+  end
+end
+
+[Reader.new.named(5), Reader.new.named(6)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:quiet, :other]".to_string())
+    );
+}
+
+#[test]
+fn a_constant_a_superclass_supplies_is_compared_against_in_a_pattern() {
+    let result = run(r#"
+class Above
+  MARK = 4
+end
+
+class Below < Above
+  def named(value)
+    case value
+    when MARK then :marked
+    else :other
+    end
+  end
+end
+
+[Below.new.named(4), Below.new.named(5)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:marked, :other]".to_string())
+    );
+}
+
+#[test]
+fn a_constant_named_in_a_pattern_from_a_class_method_is_compared_against() {
+    let result = run(r#"
+class Gauge
+  STEP = 3
+
+  def self.named(value)
+    case value
+    when STEP then :step
+    else :other
+    end
+  end
+end
+
+[Gauge.named(3), Gauge.named(4)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:step, :other]".to_string())
+    );
+}
+
+#[test]
+fn a_pattern_naming_a_class_nothing_defines_matches_nothing() {
+    let result = run(r#"
+def named(value)
+  case value
+  when NoSuchClassAnywhere then :found
+  else :other
+  end
+end
+
+named 1
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some(":other".to_string())
+    );
+}
+
+#[test]
+fn each_checksum_answers_the_value_its_definition_gives() {
+    let result = run(r#"
+require 'zlib'
+[Zlib.crc32(""), Zlib.crc32(" "), Zlib.crc32("123456789"),
+ Zlib.adler32(""), Zlib.adler32("123456789")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[0, 3916222277, 3421780262, 1, 152961502]".to_string())
+    );
+}
+
+#[test]
+fn a_checksum_carries_on_from_the_value_it_is_given() {
+    let result = run(r#"
+require 'zlib'
+held = "This is a test string! How exciting!%?"
+[Zlib.crc32(held, 0), Zlib.crc32(held, 1), Zlib.crc32("p", -305419897)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[3864990561, 1809313411, 4046865307]".to_string())
+    );
+}
+
+#[test]
+fn a_checksum_refuses_a_starting_value_too_wide_to_be_one() {
+    let error = run_err(
+        r#"
+require 'zlib'
+Zlib.crc32("held", 2 ** 128)
+"#,
+    );
+    assert!(error.contains("bignum too big"), "{error}");
+}
+
+#[test]
+fn a_stream_another_zlib_wrote_reads_back_here() {
+    let result = run(r#"
+require 'zlib'
+written = [120, 156, 99, 96, 128, 1, 0, 0, 10, 0, 1].pack("C*")
+Zlib.inflate(written) == "\000" * 10
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn a_stream_this_writes_reads_back_as_what_it_was_given() {
+    let result = run(r#"
+require 'zlib'
+held = "the quick brown fox " * 40
+[Zlib.inflate(Zlib.deflate(held)) == held, Zlib.gunzip(Zlib.gzip(held)) == held]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true]".to_string())
+    );
+}
+
+#[test]
+fn a_stream_that_is_not_one_is_refused() {
+    let error = run_err(
+        r#"
+require 'zlib'
+Zlib.gunzip("not a member")
+"#,
+    );
+    assert!(error.contains("not a stream this can read"), "{error}");
+}
+
+#[test]
+fn a_gzip_member_names_what_it_holds_and_when_it_was_written() {
+    let result = run(r#"
+require 'zlib'
+require 'stringio'
+member = [31, 139, 8, 0, 44, 220, 209, 71, 0, 3, 51, 52, 50, 54, 49, 77,
+          76, 74, 78, 73, 5, 0, 157, 5, 0, 36, 10, 0, 0, 0].pack("C*")
+reader = Zlib::GzipReader.new(StringIO.new(member))
+held = reader.read
+finished = reader.eof?
+reader.close
+[held, finished]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[12345abcde, true]".to_string())
+    );
+}
+
+#[test]
+fn a_closed_member_has_nothing_left_to_say_about_itself() {
+    let result = run(r#"
+require 'zlib'
+require 'stringio'
+reader = Zlib::GzipReader.new(StringIO.new(Zlib.gzip("held")))
+reader.close
+begin
+  reader.orig_name
+rescue Zlib::GzipFile::Error => problem
+  problem.message
+end
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("closed gzip stream".to_string())
+    );
+}
+
+#[test]
+fn a_template_stands_for_the_text_its_tags_build() {
+    let result = run(r#"
+require 'erb'
+list = %w[a b c]
+ERB.new("<% list.each do |item| %><%= item %>;<% end %>").result(binding)
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("a;b;c;".to_string())
+    );
+}
+
+#[test]
+fn what_a_template_puts_into_a_page_is_escaped_for_it() {
+    let result = run(r#"
+require 'erb'
+[ERB::Util.html_escape("<a href='x'>&</a>"), ERB::Util.url_encode("a b/c")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[&lt;a href=&#39;x&#39;&gt;&amp;&lt;/a&gt;, a%20b%2Fc]".to_string())
+    );
+}
+
+#[test]
+fn a_template_can_be_written_onto_a_class_as_a_method() {
+    let result = run(r#"
+require 'erb'
+built = ERB.new("<%= @held %> is here").def_class(Object, "render")
+made = built.new
+made.instance_variable_set(:@held, "metorex")
+made.render
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("metorex is here".to_string())
+    );
+}
+
+#[test]
+fn a_command_answers_what_it_wrote_and_how_it_ended() {
+    let result = run(r#"
+require 'open3'
+output, status = Open3.capture2("echo written")
+[output, status.exitstatus]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[written\n, 0]".to_string())
+    );
+}
+
+#[test]
+fn a_command_keeps_its_two_streams_apart_when_asked_to() {
+    let result = run(r#"
+require 'open3'
+out, errors, _status = Open3.capture3("sh -c 'echo out; echo err 1>&2'")
+[out, errors]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[out\n, err\n]".to_string())
+    );
+}
+
+#[test]
+fn a_stream_that_names_its_own_code_reads_back_here() {
+    // A dynamic block carries the code it was written with, which the
+    // decoder has to read before it can read anything else.
+    let result = run(r#"
+require 'zlib'
+written = ([120, 156, 237, 193, 1, 1, 0, 0] +
+           [0, 128, 144, 254, 175, 238, 8, 10] +
+           Array.new(31, 0) +
+           [24, 128, 0, 0, 1]).pack("C*")
+Zlib.inflate(written) == "\000" * 32 * 1024
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn a_stream_with_no_header_in_front_of_it_reads_back_too() {
+    let result = run(r#"
+require 'zlib'
+held = "a stream with no header"
+written = Zlib.deflate(held)
+raw = written[2, written.length - 6]
+Zlib::Inflate.new(-Zlib::MAX_WBITS).inflate(raw)
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("a stream with no header".to_string())
+    );
+}
+
+#[test]
+fn a_stream_of_nothing_reads_back_as_nothing() {
+    let result = run(r#"
+require 'zlib'
+[Zlib.inflate(Zlib.deflate("")), Zlib.gunzip(Zlib.gzip(""))]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[, ]".to_string())
+    );
+}
+
+#[test]
+fn a_gzip_member_carries_the_name_it_was_written_with() {
+    let result = run(r#"
+require 'zlib'
+require 'stringio'
+holder = StringIO.new(+"")
+writer = Zlib::GzipWriter.new(holder)
+writer.orig_name = "held.txt"
+writer.mtime = 1234567
+writer.write("what it holds")
+writer.close
+reader = Zlib::GzipReader.new(StringIO.new(holder.string))
+answered = [reader.read, reader.orig_name, reader.mtime.to_i]
+reader.close
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[what it holds, held.txt, 1234567]".to_string())
+    );
+}
+
+#[test]
+fn a_stream_action_nothing_answers_to_is_refused() {
+    let error = run_err(
+        r#"
+require 'zlib'
+Zlib.__stream__("no_such_action", "held", 0)
+"#,
+    );
+    assert!(error.contains("unknown stream action"), "{error}");
+}
+
+#[test]
+fn a_stream_asked_for_with_nothing_to_act_on_is_refused() {
+    let error = run_err(
+        r#"
+require 'zlib'
+Zlib.__stream__
+"#,
+    );
+    assert!(error.contains("wrong number of arguments"), "{error}");
+}
+
+#[test]
+fn a_stream_that_is_cut_short_is_refused() {
+    let error = run_err(
+        r#"
+require 'zlib'
+Zlib.inflate([120, 156, 99].pack("C*"))
+"#,
+    );
+    assert!(error.contains("not a stream this can read"), "{error}");
+}
+
+#[test]
+fn an_assignment_made_through_a_binding_stays_in_it() {
+    let result = run(r#"
+held = binding
+eval "added = 7", held
+[held.local_variable_get(:added), eval("added", held)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[7, 7]".to_string())
+    );
+}
+
+#[test]
+fn a_binding_names_the_locals_in_force_where_it_was_taken() {
+    let result = run(r#"
+def holding
+  first = 1
+  second = 2
+  binding
+end
+
+held = holding
+[held.local_variables.sort, held.local_variable_get(:first)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[[:first, :second], 1]".to_string())
+    );
+}
+
+#[test]
+fn a_binding_takes_a_local_it_did_not_have() {
+    let result = run(r#"
+held = binding
+answered = [held.local_variable_defined?(:added)]
+held.local_variable_set :added, 3
+answered << held.local_variable_defined?(:added)
+answered << held.local_variable_get(:added)
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[false, true, 3]".to_string())
+    );
+}
+
+#[test]
+fn a_binding_refuses_a_local_nothing_bound() {
+    let error = run_err(r#"binding.local_variable_get(:no_such_local)"#);
+    assert!(error.contains("is not defined"), "{error}");
+}
+
+#[test]
+fn a_binding_names_a_local_by_symbol_or_string_and_nothing_else() {
+    let error = run_err(r#"binding.local_variable_get(7)"#);
+    assert!(error.contains("is not a symbol nor a string"), "{error}");
+}
+
+#[test]
+fn a_binding_says_where_it_was_taken() {
+    let result = run(r#"
+held = binding
+answered = held.source_location
+[answered.class, answered.last > 0]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[Array, true]".to_string())
+    );
+}
+
+#[test]
+fn a_copy_of_a_binding_is_written_to_on_its_own() {
+    let result = run(r#"
+held = binding
+held.local_variable_set :counted, 1
+copied = held.dup
+copied.local_variable_set :counted, 2
+[held.local_variable_get(:counted), copied.local_variable_get(:counted)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, 2]".to_string())
+    );
+}
+
+#[test]
+fn a_binding_runs_code_where_it_was_taken() {
+    let result = run(r#"
+first = 4
+held = binding
+held.eval "first * 3"
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("12".to_string())
+    );
+}
+
+#[test]
+fn a_writer_written_in_a_singleton_class_body_answers_an_assignment() {
+    let result = run(r#"
+module Held
+  class << self
+    def level
+      @level
+    end
+
+    def level=(value)
+      @level = value * 2
+    end
+  end
+end
+
+Held.level = 5
+Held.level
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("10".to_string())
+    );
+}
+
+#[test]
+fn a_keyed_digest_answers_the_value_its_definition_gives() {
+    let result = run(r#"
+require 'openssl'
+OpenSSL::HMAC.hexdigest OpenSSL::Digest.new("SHA1"), "key",
+                        "The quick brown fox jumps over the lazy dog"
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9".to_string())
+    );
+}
+
+#[test]
+fn a_key_derived_from_a_password_is_the_same_every_time() {
+    let result = run(r#"
+require 'openssl'
+settings = {salt: "salt", iterations: 50, length: 20, hash: "sha1"}
+first = OpenSSL::KDF.pbkdf2_hmac("secret", **settings)
+[first.length, first == OpenSSL::KDF.pbkdf2_hmac("secret", **settings)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[20, true]".to_string())
+    );
+}
+
+#[test]
+fn a_derived_key_asked_for_without_all_its_parts_is_refused() {
+    let error = run_err(
+        r#"
+require 'openssl'
+Digest.__pbkdf2__("SHA1")
+"#,
+    );
+    assert!(error.contains("wrong number of arguments"), "{error}");
+}
+
+#[test]
+fn a_derived_key_of_an_algorithm_nothing_answers_to_is_refused() {
+    let error = run_err(
+        r#"
+require 'openssl'
+Digest.__pbkdf2__("SHA3", "pass", "salt", 2, 16)
+"#,
+    );
+    assert!(error.contains("unknown digest algorithm"), "{error}");
+}
+
+#[test]
+fn comparing_without_saying_where_two_strings_differ() {
+    let result = run(r#"
+require 'openssl'
+[OpenSSL.fixed_length_secure_compare("abc", "abc"),
+ OpenSSL.fixed_length_secure_compare("abc", "abd"),
+ OpenSSL.secure_compare("held", "held")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, false, true]".to_string())
+    );
+}
+
+#[test]
+fn comparing_two_strings_of_different_lengths_is_refused() {
+    let error = run_err(
+        r#"
+require 'openssl'
+OpenSSL.fixed_length_secure_compare("ab", "abc")
+"#,
+    );
+    assert!(error.contains("must be of equal length"), "{error}");
+}
+
+#[test]
+fn text_written_into_a_url_carries_only_what_a_url_may_carry() {
+    let result = run(r#"
+require 'cgi/escape'
+[CGI.escape("a b&c~"), CGI.unescape("a+b%26c"),
+ CGI.escapeURIComponent("a b/c"), CGI.unescapeURIComponent("a%20b%2Fc")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[a+b%26c~, a b&c, a%20b%2Fc, a b/c]".to_string())
+    );
+}
+
+#[test]
+fn text_written_into_a_page_spells_out_what_the_page_reads_as_markup() {
+    let result = run(r#"
+require 'cgi/escape'
+[CGI.escapeHTML(%[& < > " ']), CGI.unescapeHTML("&amp;&lt;&gt;&quot;&#99;&#x41;")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[&amp; &lt; &gt; &quot; &#39;, &<>\"cA]".to_string())
+    );
+}
+
+#[test]
+fn only_the_tags_of_the_elements_named_are_spelled_out() {
+    let result = run(r#"
+require 'cgi/escape'
+held = CGI.escapeElement('<BR><A HREF="url"></A>', "A")
+[held, CGI.unescapeElement(held, "A")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some(
+            "[<BR>&lt;A HREF=&quot;url&quot;&gt;&lt;/A&gt;, <BR><A HREF=\"url\"></A>]".to_string()
+        )
+    );
+}
+
+#[test]
+fn text_written_into_a_url_has_to_be_text() {
+    let error = run_err(
+        r#"
+require 'cgi/escape'
+CGI.escape(:held)
+"#,
+    );
+    assert!(error.contains("no implicit conversion"), "{error}");
+}
+
+#[test]
+fn the_system_log_is_opened_under_a_name_and_closed_again() {
+    let result = run(r#"
+require 'syslog'
+answered = [Syslog.opened?]
+Syslog.open "metorex_test", Syslog::LOG_PID
+answered << Syslog.opened? << Syslog.ident << (Syslog.options == Syslog::LOG_PID)
+answered << Syslog.mask
+Syslog.close
+answered << Syslog.opened? << Syslog.mask
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[false, true, metorex_test, true, 255, false, nil]".to_string())
+    );
+}
+
+#[test]
+fn a_log_nobody_has_opened_cannot_be_closed() {
+    let error = run_err(
+        r#"
+require 'syslog'
+Syslog.close
+"#,
+    );
+    assert!(error.contains("syslog not opened"), "{error}");
+}
+
+#[test]
+fn a_log_handed_to_a_block_is_not_closed_from_inside_it() {
+    let result = run(r#"
+require 'syslog'
+answered = nil
+begin
+  Syslog.open { |held| held.close }
+rescue RuntimeError => problem
+  answered = problem.message
+end
+[answered, Syslog.opened?]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[syslog opened with a block, false]".to_string())
+    );
+}
+
+#[test]
+fn the_mask_a_log_carries_names_the_severities_it_lets_through() {
+    let result = run(r#"
+require 'syslog'
+Syslog.open "metorex_mask_test"
+Syslog.mask = Syslog::Constants.LOG_UPTO(Syslog::LOG_WARNING)
+answered = [Syslog.mask, Syslog::Constants.LOG_MASK(Syslog::LOG_DEBUG)]
+Syslog.close
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[31, 128]".to_string())
+    );
+}
+
+#[test]
+fn a_mask_that_is_not_a_number_is_refused() {
+    let error = run_err(
+        r#"
+require 'syslog'
+Syslog.open "metorex_bad_mask"
+begin
+  Syslog.mask = "held"
+ensure
+  Syslog.close
+end
+"#,
+    );
+    assert!(error.contains("no implicit conversion"), "{error}");
+}
+
+#[test]
+fn a_message_written_to_the_log_reaches_the_error_stream_when_asked() {
+    let result = run(r#"
+require 'syslog'
+Syslog.open "metorex_write_test", Syslog::LOG_PERROR
+answered = Syslog.info("held %s", "message")
+Syslog.close
+answered == Syslog
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("true".to_string())
+    );
+}
+
+#[test]
+fn a_binding_with_no_source_behind_it_says_so() {
+    let result = run(r#"
+held = proc { }.binding
+held.source_location
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("nil".to_string())
+    );
+}
+
+#[test]
+fn a_binding_asked_about_no_local_at_all_is_refused() {
+    let error = run_err(r#"binding.local_variable_get"#);
+    assert!(error.contains("wrong number of arguments"), "{error}");
+}
+
+#[test]
+fn a_message_written_without_all_its_parts_is_refused() {
+    let error = run_err(
+        r#"
+require 'syslog'
+Syslog.__write__("held")
+"#,
+    );
+    assert!(error.contains("wrong number of arguments"), "{error}");
+}
+
+#[test]
+fn a_keyed_digest_of_the_wider_algorithms_folds_over_a_wider_block() {
+    let result = run(r#"
+require 'openssl'
+[OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new("SHA512"), "key", "held").length,
+ OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new("SHA384"), "key", "held").length]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[128, 96]".to_string())
+    );
+}
+
+#[test]
+fn a_keyed_digest_shortens_a_key_wider_than_its_block() {
+    let result = run(r#"
+require 'openssl'
+long = "k" * 200
+held = OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new("SHA1"), long, "message")
+[held.length, held == OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new("SHA1"), long, "message")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[40, true]".to_string())
+    );
+}
+
+#[test]
+fn an_address_says_which_family_it_belongs_to() {
+    let result = run(r#"
+require 'socket'
+[Addrinfo.tcp("127.0.0.1", 80).afamily == Socket::AF_INET,
+ Addrinfo.tcp("::1", 80).afamily == Socket::AF_INET6,
+ Addrinfo.unix("/tmp/held").afamily == Socket::AF_UNIX]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true, true]".to_string())
+    );
+}
+
+#[test]
+fn an_address_is_shown_the_way_ruby_shows_one() {
+    let result = run(r#"
+require 'socket'
+[Addrinfo.tcp("127.0.0.1", 80).inspect, Addrinfo.tcp("::1", 80).inspect,
+ Addrinfo.udp("127.0.0.1", 80).inspect, Addrinfo.ip("127.0.0.1").inspect]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some(
+            "[#<Addrinfo: 127.0.0.1:80 TCP>, #<Addrinfo: [::1]:80 TCP>, \
+             #<Addrinfo: 127.0.0.1:80 UDP>, #<Addrinfo: 127.0.0.1>]"
+                .to_string()
+        )
+    );
+}
+
+#[test]
+fn an_address_says_what_kind_of_address_it_is() {
+    let result = run(r#"
+require 'socket'
+[Addrinfo.ip("127.0.0.1").ipv4_loopback?, Addrinfo.ip("10.0.0.1").ipv4_private?,
+ Addrinfo.ip("224.0.0.1").ipv4_multicast?, Addrinfo.ip("::1").ipv6_loopback?,
+ Addrinfo.ip("ff02::1").ipv6_mc_linklocal?, Addrinfo.ip("fe80::1").ipv6_linklocal?,
+ Addrinfo.ip("::ffff:127.0.0.1").ipv6_v4mapped?, Addrinfo.ip("8.8.8.8").ipv4_private?]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[true, true, true, true, true, true, true, false]".to_string())
+    );
+}
+
+#[test]
+fn an_address_reads_back_out_of_the_struct_it_is_carried_in() {
+    let result = run(r#"
+require 'socket'
+held = Socket.sockaddr_in(80, "127.0.0.1")
+[Socket.unpack_sockaddr_in(held), Addrinfo.new(held).ip_address,
+ Socket.unpack_sockaddr_in(Socket.sockaddr_in(443, "::1"))]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[[80, 127.0.0.1], 127.0.0.1, [443, ::1]]".to_string())
+    );
+}
+
+#[test]
+fn an_address_that_names_nothing_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Addrinfo.tcp("no.such.host.metorex.invalid", 80)
+"#,
+    );
+    assert!(error.contains("getaddrinfo"), "{error}");
+}
+
+#[test]
+fn a_path_too_long_for_the_struct_that_holds_it_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.sockaddr_un("/" + "a" * 200)
+"#,
+    );
+    assert!(error.contains("too long unix socket path"), "{error}");
+}
+
+#[test]
+fn a_connection_made_to_a_socket_carries_what_is_written_through_it() {
+    let result = run(r#"
+require 'socket'
+server = TCPServer.new("127.0.0.1", 0)
+port = server.addr[1]
+client = TCPSocket.new("127.0.0.1", port)
+client.write("held")
+accepted = server.accept
+answered = [accepted.read(4), accepted.peeraddr[2], server.addr[0], port > 0]
+accepted.close
+client.close
+server.close
+answered << server.closed?
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[held, 127.0.0.1, AF_INET, true, true]".to_string())
+    );
+}
+
+#[test]
+fn reaching_a_port_nothing_is_listening_on_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+TCPSocket.new("127.0.0.1", 1)
+"#,
+    );
+    assert!(error.contains("connect"), "{error}");
+}
+
+#[test]
+fn writing_through_a_connection_that_was_closed_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+server = TCPServer.new("127.0.0.1", 0)
+held = TCPSocket.new("127.0.0.1", server.addr[1])
+held.close
+begin
+  held.write("held")
+ensure
+  server.close
+end
+"#,
+    );
+    assert!(error.contains("closed connection"), "{error}");
+}
+
+#[test]
+fn this_machine_says_what_name_it_answers_to() {
+    let result = run(r#"
+require 'socket'
+held = Socket.gethostname
+[held.class, held.empty?]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[String, false]".to_string())
+    );
+}
+
+#[test]
+fn an_address_action_nothing_answers_to_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__address__("no_such_action", "127.0.0.1", 0)
+"#,
+    );
+    assert!(error.contains("unknown address action"), "{error}");
+}
+
+#[test]
+fn a_socket_action_nothing_answers_to_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__net__("no_such_action", 0, "", 0)
+"#,
+    );
+    assert!(error.contains("unknown socket action"), "{error}");
+}
+
+#[test]
+fn a_qualified_constant_names_a_value_in_a_when_clause() {
+    let result = run(r#"
+module Held
+  LOW = 1
+  HIGH = 2
+end
+
+def named(value)
+  case value
+  when Held::LOW then :low
+  when Held::HIGH then :high
+  else :other
+  end
+end
+
+[named(1), named(2), named(3)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[:low, :high, :other]".to_string())
+    );
+}
+
+#[test]
+fn a_host_name_stands_for_every_address_it_answers_to() {
+    let result = run(r#"
+require 'socket'
+found = Socket.resolved("localhost")
+[found.class, found.empty?, found.include?("127.0.0.1")]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[Array, false, true]".to_string())
+    );
+}
+
+#[test]
+fn a_name_that_stands_for_no_address_is_refused_when_read() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__address__("normalize", "not an address", 0)
+"#,
+    );
+    assert!(error.contains("Name or service not known"), "{error}");
+}
+
+#[test]
+fn the_bytes_of_a_name_that_stands_for_no_address_are_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__address__("bytes", "not an address", 0)
+"#,
+    );
+    assert!(error.contains("Name or service not known"), "{error}");
+}
+
+#[test]
+fn a_struct_asked_for_of_a_name_that_names_no_address_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.sockaddr_in(80, "not an address")
+"#,
+    );
+    assert!(
+        error.contains("nodename nor servname provided, or not known"),
+        "{error}"
+    );
+}
+
+#[test]
+fn a_struct_that_carries_no_address_is_refused_when_read_back() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.unpack_sockaddr_in("held")
+"#,
+    );
+    assert!(error.contains("not an IP address struct"), "{error}");
+}
+
+#[test]
+fn an_address_read_out_of_a_struct_of_an_unknown_family_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.unpack_sockaddr_in(["10630000000000000000"].pack("H*"))
+"#,
+    );
+    assert!(error.contains("not an IP address struct"), "{error}");
+}
+
+#[test]
+fn an_address_asked_for_with_nothing_to_act_on_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__address__
+"#,
+    );
+    assert!(error.contains("wrong number of arguments"), "{error}");
+}
+
+#[test]
+fn a_socket_asked_for_with_nothing_to_act_on_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__net__
+"#,
+    );
+    assert!(error.contains("wrong number of arguments"), "{error}");
+}
+
+#[test]
+fn a_connection_says_where_its_own_end_sits() {
+    let result = run(r#"
+require 'socket'
+server = TCPServer.new("127.0.0.1", 0)
+held = TCPSocket.new("127.0.0.1", server.addr[1])
+answered = [held.addr[0], held.local_address.ip_address]
+held.close
+server.close
+answered
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[AF_INET, 127.0.0.1]".to_string())
+    );
+}
+
+#[test]
+fn a_closed_socket_says_nothing_about_where_it_sat() {
+    let result = run(r#"
+require 'socket'
+server = TCPServer.new("127.0.0.1", 0)
+held = server.handle
+server.close
+[Socket.__net__("address", held, "", 0), Socket.__net__("peer", held, "", 0)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[nil, nil]".to_string())
+    );
+}
+
+#[test]
+fn a_name_that_stands_for_no_address_at_all_is_not_named_a_family() {
+    let result = run(r#"
+require 'socket'
+[Socket.__address__("family", "127.0.0.1", 0), Socket.__address__("family", "::1", 0),
+ Socket.__address__("family", "held", 0)]
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[4, 6, nil]".to_string())
+    );
+}
+
+#[test]
+fn taking_a_connection_from_a_listener_that_was_closed_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+server = TCPServer.new("127.0.0.1", 0)
+held = server.handle
+server.close
+Socket.__net__("accept", held, "", 0)
+"#,
+    );
+    assert!(error.contains("closed listener"), "{error}");
+}
+
+#[test]
+fn reading_through_a_connection_that_was_closed_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+server = TCPServer.new("127.0.0.1", 0)
+held = TCPSocket.new("127.0.0.1", server.addr[1])
+held.close
+begin
+  held.read(4)
+ensure
+  server.close
+end
+"#,
+    );
+    assert!(error.contains("closed connection"), "{error}");
+}
+
+#[test]
+fn listening_on_a_name_this_machine_does_not_answer_to_is_refused() {
+    let error = run_err(
+        r#"
+require 'socket'
+Socket.__net__("listen", 0, "203.0.113.1", 0)
+"#,
+    );
+    assert!(error.contains("bind"), "{error}");
+}

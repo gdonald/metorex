@@ -22,8 +22,10 @@ module Etc
     Group.new(fields[:name], fields[:passwd], fields[:gid], fields[:mem])
   end
 
-  def getpwuid(uid = nil)
-    uid = Process.uid if uid.nil?
+  # Called with nothing at all, the user is the one this process runs as.
+  # A nil handed in names no user and is refused.
+  def getpwuid(*given)
+    uid = given.empty? ? Process.uid : given.first
     unless uid.is_a?(Integer)
       raise TypeError, "no implicit conversion of #{uid.class} into Integer"
     end
@@ -41,8 +43,10 @@ module Etc
     found
   end
 
-  def getgrgid(gid = nil)
-    gid = Process.gid if gid.nil?
+  # Called with nothing at all, the group is the one this process runs as.
+  # A nil handed in names no group and is refused.
+  def getgrgid(*given)
+    gid = given.empty? ? Process.gid : given.first
     unless gid.is_a?(Integer)
       raise TypeError, "no implicit conversion of #{gid.class} into Integer"
     end

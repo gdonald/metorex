@@ -55,6 +55,7 @@ impl Parser {
             TokenKind::Spaceship => "<=>".to_string(),
             TokenKind::Shovel => "<<".to_string(),
             TokenKind::RightShift => ">>".to_string(),
+            TokenKind::Bang => "!".to_string(),
             TokenKind::Tilde => "~".to_string(),
             TokenKind::Caret => "^".to_string(),
             TokenKind::Pipe => "|".to_string(),
@@ -166,6 +167,7 @@ impl Parser {
             TokenKind::Ampersand => "&".to_string(),
             TokenKind::Shovel => "<<".to_string(),
             TokenKind::RightShift => ">>".to_string(),
+            TokenKind::Bang => "!".to_string(),
             TokenKind::Tilde => "~".to_string(),
             TokenKind::Caret => "^".to_string(),
             // Allow keywords as method names

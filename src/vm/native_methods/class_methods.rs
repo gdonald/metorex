@@ -77,6 +77,21 @@ impl VirtualMachine {
         {
             return Ok(Some(result));
         }
+        // A refinement names the class it refines.
+        if matches!(method_name, "target" | "refined_class")
+            && let Some(found) =
+                class_rc.get_class_var(super::module_methods::REFINEMENT_TARGET_KEY)
+        {
+            return Ok(Some(found));
+        }
+        // The shape of a network address belongs to the operating system, so
+        // the socket library reads and writes them here.
+        if class_rc.name() == "Socket" && method_name == "__address__" {
+            return self.socket_address(arguments, position).map(Some);
+        }
+        if class_rc.name() == "Socket" && method_name == "__net__" {
+            return self.socket_net(arguments, position).map(Some);
+        }
         // A class that defines `new` of its own builds its instances that
         // way, rather than through the allocate-and-initialize every class
         // is given.
@@ -97,6 +112,18 @@ impl VirtualMachine {
             return self
                 .integer_class_method(method_name, &arguments[0], position)
                 .map(Some);
+        }
+        // `String.try_convert` belongs to the class rather than to a string.
+        if class_rc.name() == "String" && method_name == "try_convert" {
+            if arguments.len() != 1 {
+                return Err(method_argument_error(
+                    method_name,
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            return self.string_try_convert(&arguments[0], position).map(Some);
         }
         // The top-level `self` is Object, so a `using` sent to it is
         // `main.using`. Ruby permits that only at the top level, which a
@@ -151,6 +178,13 @@ impl VirtualMachine {
         }
         // A Thread has nothing to be without the block that gives it something
         // to run, so Ruby refuses to hand back an uninitialized one.
+        // An allocated String holds nothing and is read as bytes until it is
+        // told otherwise.
+        if method_name == "allocate" && class_rc.name() == "String" {
+            return Ok(Some(Object::String(Rc::new(
+                crate::object::StringValue::from_bytes(String::new()),
+            ))));
+        }
         if method_name == "allocate" && class_rc.name() == "Thread" {
             return Err(crate::vm::errors::simple_exception(
                 "TypeError",
@@ -683,6 +717,20 @@ impl VirtualMachine {
                     .unwrap_or_else(|| Object::array(Vec::new())),
             ));
         }
+        // The names that stand for an encoding already listed under another
+        // name, each paired with the name it stands for.
+        if class_rc.name() == "Encoding" && method_name == "aliases" {
+            let mut seen: Vec<&str> = Vec::new();
+            let mut pairs: indexmap::IndexMap<String, Object> = indexmap::IndexMap::new();
+            for (constant, display, _) in crate::vm::init::ENCODING_NAMES {
+                if seen.contains(&display) {
+                    pairs.insert(constant.to_string(), Object::string(display.to_string()));
+                } else {
+                    seen.push(display);
+                }
+            }
+            return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(pairs)))));
+        }
         if class_rc.name() == "Encoding" && matches!(method_name, "find" | "[]") {
             let wanted = match arguments.first() {
                 Some(Object::String(held)) => held.as_str().to_string(),
@@ -992,7 +1040,8 @@ impl VirtualMachine {
             match method_name {
                 "dirname" => {
                     if let Some(Object::String(s)) = arguments.first() {
-                        let p = std::path::Path::new(s.as_str());
+                        let held = s.to_text();
+                        let p = std::path::Path::new(held.as_str());
                         let dir = p
                             .parent()
                             .and_then(|d| d.to_str())
@@ -1002,9 +1051,87 @@ impl VirtualMachine {
                         return Ok(Some(Object::string(result)));
                     }
                 }
+                // The last part of a path, with a suffix taken off when one
+                // is named. `".*"` means whatever extension the name carries.
+                "basename" => {
+                    if arguments.is_empty() || arguments.len() > 2 {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Range(1, 2),
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let path = self.path_name_argument("basename", &arguments[0], position)?;
+                    let trimmed = path.trim_end_matches('/');
+                    let held = if trimmed.is_empty() {
+                        if path.is_empty() { "" } else { "/" }
+                    } else {
+                        trimmed.rsplit('/').next().unwrap_or(trimmed)
+                    };
+                    let mut name = held.to_string();
+                    if let Some(Object::String(suffix)) = arguments.get(1) {
+                        let suffix = suffix.to_text();
+                        if suffix == ".*" {
+                            if let Some(dot) = name.rfind('.')
+                                && dot > 0
+                            {
+                                name.truncate(dot);
+                            }
+                        } else if name.len() > suffix.len() && name.ends_with(&*suffix) {
+                            name.truncate(name.len() - suffix.len());
+                        }
+                    }
+                    return Ok(Some(Object::string(name)));
+                }
+                // The extension a name carries, and the empty string for a
+                // name that carries none.
+                "extname" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let path = self.path_name_argument("extname", &arguments[0], position)?;
+                    let held = path.trim_end_matches('/').rsplit('/').next().unwrap_or("");
+                    // A dot at the front of a name is part of the name rather
+                    // than the start of an extension, so a name of nothing but
+                    // dots has no extension at all. A name that ends in a dot
+                    // carries that dot as its extension.
+                    let stripped = held.trim_start_matches('.');
+                    let leading = held.len() - stripped.len();
+                    let found = match stripped.rfind('.') {
+                        Some(dot) if dot + 1 == stripped.len() => ".",
+                        Some(dot) => &held[leading + dot..],
+                        None => "",
+                    };
+                    return Ok(Some(Object::string(found.to_string())));
+                }
+                // The directory and the name a path is made of, as a pair.
+                "split" => {
+                    if arguments.len() != 1 {
+                        return Err(method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let path = self.path_name_argument("split", &arguments[0], position)?;
+                    let arguments = &[Object::string(path)];
+                    let directory = self
+                        .call_class_methods(class_rc, "dirname", arguments, position)?
+                        .unwrap_or(Object::Nil);
+                    let name = self
+                        .call_class_methods(class_rc, "basename", arguments, position)?
+                        .unwrap_or(Object::Nil);
+                    return Ok(Some(Object::array(vec![directory, name])));
+                }
                 "expand_path" | "realpath" | "absolute_path" => {
                     if let Some(Object::String(s)) = arguments.first() {
-                        let expanded = std::fs::canonicalize(s.as_str())
+                        let expanded = std::fs::canonicalize(&*s.as_str())
                             .ok()
                             .and_then(|p| p.to_str().map(String::from))
                             .unwrap_or_else(|| s.as_str().to_string());
@@ -1181,7 +1308,7 @@ impl VirtualMachine {
                         };
                         built.insert(rendered.as_str().to_string(), value);
                     }
-                    return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(built)))));
+                    return Ok(Some(hash_of_class(class_rc, built)));
                 }
                 [Object::Array(rows)] => {
                     for row in rows.borrow().iter() {
@@ -1213,7 +1340,7 @@ impl VirtualMachine {
                 let rendered = crate::vm::utils::object_to_dict_key(&key).unwrap_or_default();
                 built.insert(rendered, value);
             }
-            return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(built)))));
+            return Ok(Some(hash_of_class(class_rc, built)));
         }
         // `Array[1, 2, 3]` and the same form on a subclass build a value from
         // the arguments directly, without running `initialize`.
@@ -2667,6 +2794,7 @@ impl VirtualMachine {
                             "Kernel".to_string(),
                         );
                         stub.variadic_param = Some((0, "args".to_string()));
+                        stub.native_alias = Some(old_name.clone());
                         class_rc.define_method(&new_name, Rc::new(stub));
                         found = true;
                     }
@@ -2686,6 +2814,7 @@ impl VirtualMachine {
                         );
                         stub.variadic_param = Some((0, "args".to_string()));
                         stub.original_name = Some(old_name.clone());
+                        stub.native_alias = Some(old_name.clone());
                         class_rc.define_method(&new_name, Rc::new(stub));
                         found = true;
                     }
@@ -3412,7 +3541,7 @@ pub(super) const BASIC_OBJECT_PRIVATE_METHODS: &[&str] = &[
     "singleton_method_undefined",
 ];
 
-pub(super) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
+pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "`",
     "abort",
     "caller",
@@ -3733,6 +3862,43 @@ fn is_valid_class_variable_ident(name: &str) -> bool {
 
 /// Kernel methods that `call_object_method` implements natively, so a
 /// body-less stub can stand in for them in `Object.instance_method`.
+/// The names an open IO handle answers to. Their bodies live in the native
+/// dispatch tables rather than in the handle class's method map, so this is
+/// what `respond_to?` has to consult for one.
+pub(crate) fn is_native_io_method(name: &str) -> bool {
+    matches!(
+        name,
+        "<<" | "each"
+            | "each_line"
+            | "eof"
+            | "eof?"
+            | "fileno"
+            | "flush"
+            | "getc"
+            | "gets"
+            | "lineno"
+            | "lineno="
+            | "path"
+            | "pos"
+            | "pos="
+            | "print"
+            | "putc"
+            | "puts"
+            | "read"
+            | "readbyte"
+            | "readchar"
+            | "readline"
+            | "readlines"
+            | "rewind"
+            | "seek"
+            | "sync"
+            | "sync="
+            | "tell"
+            | "to_io"
+            | "write"
+    )
+}
+
 pub(crate) fn is_native_kernel_method(name: &str) -> bool {
     // Kernel's private functions are native too, so an UnboundMethod for one
     // is available the same way.
@@ -3777,4 +3943,61 @@ pub(crate) fn is_native_kernel_method(name: &str) -> bool {
             | "__id__"
             | "__send__"
     )
+}
+
+/// The hash `Hash[...]` answers: a plain one from Hash itself, and an
+/// instance of the subclass when the call was made on one.
+fn hash_of_class(
+    class_rc: &Rc<crate::class::Class>,
+    entries: indexmap::IndexMap<String, Object>,
+) -> Object {
+    let held = Object::Dict(Rc::new(std::cell::RefCell::new(entries)));
+    if class_rc.name() == "Hash" {
+        return held;
+    }
+    let mut instance = crate::object::Instance::new(Rc::clone(class_rc));
+    instance.set_var(
+        crate::vm::native_methods::HASH_SUBCLASS_VAR.to_string(),
+        held,
+    );
+    Object::Instance(Rc::new(std::cell::RefCell::new(instance)))
+}
+
+impl VirtualMachine {
+    /// The path an argument names, taking `to_path` from an object that
+    /// answers one and refusing anything else.
+    fn path_name_argument(
+        &mut self,
+        method_name: &str,
+        argument: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match argument {
+            Object::String(path) => Ok(path.as_str().to_string()),
+            // A path may be named by an object that answers `to_path`, and
+            // by one that answers `to_str` the way any String argument may.
+            other if self.responds_to(other, "to_path") || self.responds_to(other, "to_str") => {
+                let asked = if self.responds_to(other, "to_path") {
+                    "to_path"
+                } else {
+                    "to_str"
+                };
+                match self.send_to_object(other.clone(), asked, vec![], position)? {
+                    Object::String(path) => Ok(path.as_str().to_string()),
+                    converted => Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        &converted,
+                        position,
+                    )),
+                }
+            }
+            other => Err(method_argument_type_error(
+                method_name,
+                "String",
+                other,
+                position,
+            )),
+        }
+    }
 }

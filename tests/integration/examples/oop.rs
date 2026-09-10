@@ -72,7 +72,7 @@ fn test_oop_attr_dynamic_arg_execution() {
 
 #[test]
 fn test_oop_attr_protected_visibility_execution() {
-    let expected = "OK reader raised: private method 'foo' called for an instance of \nOK writer raised: private method 'foo=' called for an instance of \n";
+    let expected = "OK reader raised: protected method 'foo' called for an instance of \nOK writer raised: protected method 'foo=' called for an instance of \n";
     let output = run_example("oop/attr/protected_attr.rb");
     assert_eq!(output, expected);
 }
@@ -1393,4 +1393,30 @@ fn test_oop_writer_methods_parens_execution() {
     );
     let output = run_example("oop/writer_methods_parens.rb");
     assert_eq!(output, expected);
+}
+
+/// The expected output of both `oop/refinement_names/target` variants.
+const REFINEMENT_NAMES_OUTPUT: &str = concat!(
+    "Held\n",
+    "Held\n",
+    "Module\n",
+    "\"counted\"\n",
+    "nil\n",
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:UTF-8>\n",
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "\"あ\"\n"
+);
+
+#[test]
+fn test_oop_refinement_names_target_execution() {
+    let output = run_example("oop/refinement_names/target.rb");
+    assert_eq!(output, REFINEMENT_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_oop_refinement_names_target_parens_execution() {
+    let output = run_example("oop/refinement_names/target_parens.rb");
+    assert_eq!(output, REFINEMENT_NAMES_OUTPUT);
 }

@@ -282,6 +282,11 @@ impl VirtualMachine {
                     }
                     return Ok(Object::Nil);
                 }
+                if method_name == "initialize" {
+                    drop(instance_borrowed);
+                    let evaluated_args = self.evaluate_arguments(arguments)?;
+                    return Self::object_initialize(&evaluated_args, position);
+                }
                 // A prepended module whose class does not define the method
                 // has nothing left above it, which Ruby reports as a
                 // NoMethodError naming the method.
@@ -372,6 +377,12 @@ impl VirtualMachine {
                         location: position_to_location(position),
                         message,
                     });
+                }
+                // `super` from an `initialize` that nothing above defines
+                // reaches Object's, which takes no arguments and does
+                // nothing at all.
+                if method_name == "initialize" {
+                    return Self::object_initialize(&evaluated_args, position);
                 }
                 // Nothing above the defining class answers the call, which
                 // Ruby reports as a NoMethodError naming the method.
@@ -500,6 +511,10 @@ impl VirtualMachine {
             );
         }
 
+        if method_name == "initialize" {
+            return Self::object_initialize(&evaluated_args, position);
+        }
+
         let message = format!(
             "super: no superclass method '{}' for an instance of {}",
             method_name,
@@ -512,6 +527,26 @@ impl VirtualMachine {
                 &receiver,
                 &evaluated_args,
             ),
+            location: position_to_location(position),
+            message,
+        })
+    }
+
+    /// Object#initialize, which every `super` from a constructor with nothing
+    /// above it reaches. It takes no arguments and answers nil.
+    fn object_initialize(
+        arguments: &[Object],
+        position: crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        if arguments.is_empty() {
+            return Ok(Object::Nil);
+        }
+        let message = format!(
+            "wrong number of arguments (given {}, expected 0)",
+            arguments.len()
+        );
+        Err(MetorexError::UncaughtException {
+            exception: Object::exception("ArgumentError", message.clone()),
             location: position_to_location(position),
             message,
         })

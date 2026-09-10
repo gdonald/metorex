@@ -17,3 +17,49 @@ fn test_syntax_reading_forms_no_parens_execution() {
     let output = run_example("syntax/reading_forms_no_parens.rb");
     assert_eq!(output, READING_FORMS_OUTPUT);
 }
+
+/// The expected output of both `syntax/splat_assignment` variants.
+const SPLAT_ASSIGNMENT_OUTPUT: &str = "1\n[2, 3]\n1\n[]\n[1, 2]\n3\n1\n[2, 3, 4]\n5\n1\n[]\n2\n[1, 2]\n9\n[]\n1\n[2, 3]\n\"first\"\n[\"second\", \"third\"]\n";
+
+#[test]
+fn test_syntax_splat_assignment_execution() {
+    let output = run_example("syntax/splat_assignment.rb");
+    assert_eq!(output, SPLAT_ASSIGNMENT_OUTPUT);
+}
+
+#[test]
+fn test_syntax_splat_assignment_no_parens_execution() {
+    let output = run_example("syntax/splat_assignment_no_parens.rb");
+    assert_eq!(output, SPLAT_ASSIGNMENT_OUTPUT);
+}
+
+/// The expected output of both `syntax/escape_runs/bytes` variants.
+const ESCAPE_RUNS_OUTPUT: &str =
+    "\"ロ\"\n\"ロ\"\n[227, 131, 173]\n[0]\n\"aAb\"\n5\n\"tab\\there\"\n\"ロ\"\n[27, 91, 49, 109]\n";
+
+#[test]
+fn test_syntax_escape_runs_bytes_execution() {
+    let output = run_example("syntax/escape_runs/bytes.rb");
+    assert_eq!(output, ESCAPE_RUNS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_escape_runs_bytes_parens_execution() {
+    let output = run_example("syntax/escape_runs/bytes_parens.rb");
+    assert_eq!(output, ESCAPE_RUNS_OUTPUT);
+}
+
+/// The expected output of both `syntax/binary_source/bytes` variants.
+const BINARY_SOURCE_OUTPUT: &str = "3\n3\n3\n";
+
+#[test]
+fn test_syntax_binary_source_bytes_execution() {
+    let output = run_example("syntax/binary_source/bytes.rb");
+    assert_eq!(output, BINARY_SOURCE_OUTPUT);
+}
+
+#[test]
+fn test_syntax_binary_source_bytes_parens_execution() {
+    let output = run_example("syntax/binary_source/bytes_parens.rb");
+    assert_eq!(output, BINARY_SOURCE_OUTPUT);
+}

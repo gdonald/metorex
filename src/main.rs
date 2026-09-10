@@ -408,15 +408,27 @@ fn real_main() {
             let ending = exception.clone();
             process::exit(vm.run_at_exit_handlers(status, Some(ending)));
         }
+        // A SignalException nothing caught ends the program the way the
+        // signal itself would have, so the exit status names the signal
+        // rather than a plain failure.
+        if let metorex::error::MetorexError::UncaughtException {
+            exception: metorex::object::Object::Exception(exc),
+            ..
+        } = &err
+            && let Some(number) = metorex::vm::signals::signal_number_of(&exc.borrow())
+        {
+            let ending = err_exception(&err);
+            vm.run_at_exit_handlers(1, ending);
+            // SAFETY: the default disposition is restored and the signal is
+            // sent to this process, which then ends before returning.
+            unsafe {
+                libc::signal(number, libc::SIG_DFL);
+                libc::raise(number);
+            }
+        }
         // The `at_exit` handlers run before the error is reported, so one
         // that calls `exit!` replaces both the report and the status.
-        let ending = match &err {
-            metorex::error::MetorexError::UncaughtException { exception, .. } => {
-                Some(exception.clone())
-            }
-            _ => None,
-        };
-        let status = vm.run_at_exit_handlers(1, ending);
+        let status = vm.run_at_exit_handlers(1, err_exception(&err));
         eprintln!("Runtime error: {}", err);
         if let metorex::error::MetorexError::RuntimeError { stack_trace, .. } = &err
             && !stack_trace.is_empty()
@@ -429,4 +441,15 @@ fn real_main() {
         process::exit(status);
     }
     process::exit(vm.run_at_exit_handlers(0, None));
+}
+
+/// The exception an error carries, which the `at_exit` handlers are told
+/// about so one of them can report or replace it.
+fn err_exception(err: &metorex::error::MetorexError) -> Option<metorex::object::Object> {
+    match err {
+        metorex::error::MetorexError::UncaughtException { exception, .. } => {
+            Some(exception.clone())
+        }
+        _ => None,
+    }
 }

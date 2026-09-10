@@ -388,7 +388,7 @@ fn float_round_with_zero_precision() {
     };
 
     vm.execute_program(&[assign]).expect("execution failed");
-    assert_eq!(vm.environment().get("rounded"), Some(Object::Float(4.0)));
+    assert_eq!(vm.environment().get("rounded"), Some(Object::Int(4)));
 }
 
 #[test]
@@ -415,7 +415,7 @@ fn float_round_with_two_decimals() {
 }
 
 #[test]
-fn float_round_with_negative_precision_fails() {
+fn float_round_with_negative_precision_answers_a_whole_number() {
     let mut vm = VirtualMachine::new();
 
     let statements = vec![Statement::Assignment {
@@ -424,17 +424,17 @@ fn float_round_with_negative_precision_fails() {
             position: pos(1, 1),
         },
         value: Expression::MethodCall {
-            receiver: Box::new(float_literal(3.7, pos(1, 1))),
+            receiver: Box::new(float_literal(1234.5, pos(1, 1))),
             method: "round".to_string(),
-            arguments: vec![int_literal(-1, pos(1, 20))],
+            arguments: vec![int_literal(-2, pos(1, 20))],
             trailing_block: None,
             position: pos(1, 15),
         },
         position: pos(1, 1),
     }];
 
-    let result = vm.execute_program(&statements);
-    assert!(matches!(result, Err(MetorexError::RuntimeError { .. })));
+    vm.execute_program(&statements).expect("execution failed");
+    assert_eq!(vm.environment().get("rounded"), Some(Object::Int(1200)));
 }
 
 #[test]

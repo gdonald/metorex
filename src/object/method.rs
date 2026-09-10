@@ -26,6 +26,10 @@ pub struct Method {
     /// The name this method was defined under, when it is reachable by a
     /// different name because `alias_method` renamed a copy.
     pub original_name: Option<String>,
+    /// The native method this is a stub for. `alias_method` copying a method
+    /// that lives in the native tables has no body to copy, so the stub
+    /// records the name to dispatch under instead.
+    pub native_alias: Option<String>,
     /// Optional block parameter name (from `&block` syntax)
     pub block_parameter: Option<String>,
     /// Variadic (splat) parameter: (positional_index, name) for `*args`
@@ -81,6 +85,7 @@ impl Method {
             keyword_parameters: vec![],
             keyword_rest_parameter: None,
             original_name: None,
+            native_alias: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -113,6 +118,7 @@ impl Method {
             keyword_parameters: vec![],
             keyword_rest_parameter: None,
             original_name: None,
+            native_alias: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -145,6 +151,7 @@ impl Method {
             keyword_parameters: vec![],
             keyword_rest_parameter: None,
             original_name: None,
+            native_alias: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -178,6 +185,7 @@ impl Method {
             keyword_parameters: vec![],
             keyword_rest_parameter: None,
             original_name: None,
+            native_alias: None,
             block_parameter: None,
             variadic_param: None,
             body,
@@ -205,6 +213,7 @@ impl Method {
             keyword_parameters: vec![],
             keyword_rest_parameter: None,
             original_name: None,
+            native_alias: None,
             block_parameter: None,
             variadic_param: None,
             body: vec![],
@@ -232,6 +241,7 @@ impl Method {
             keyword_parameters: self.keyword_parameters.clone(),
             keyword_rest_parameter: self.keyword_rest_parameter.clone(),
             original_name: self.original_name.clone(),
+            native_alias: self.native_alias.clone(),
             block_parameter: self.block_parameter.clone(),
             variadic_param: self.variadic_param.clone(),
             body: self.body.clone(),

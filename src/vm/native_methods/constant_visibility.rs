@@ -167,7 +167,7 @@ impl VirtualMachine {
                 message,
             });
         };
-        if !WARNING_CATEGORIES.contains(&name.as_str()) {
+        if !WARNING_CATEGORIES.contains(&&*name.as_str()) {
             let message = format!("unknown category: {}", name);
             return Err(MetorexError::UncaughtException {
                 exception: Object::exception("ArgumentError", message.clone()),

@@ -50,14 +50,35 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashSet<String> {
     let mut names = std::collections::HashSet::new();
     let mut in_parameters = false;
     let mut in_block_parameters = false;
+    // The name a `def` is defining, and any receiver written before it, name
+    // a method rather than a variable, so they are stepped over before the
+    // parameter list starts.
+    let mut naming_a_method = false;
     for (index, token) in tokens.iter().enumerate() {
         match &token.kind {
-            TokenKind::Def => in_parameters = true,
+            TokenKind::Def => {
+                naming_a_method = true;
+                in_parameters = false;
+            }
             TokenKind::Newline | TokenKind::Semicolon => {
+                naming_a_method = false;
                 in_parameters = false;
                 in_block_parameters = false;
             }
+            TokenKind::Dot | TokenKind::ColonColon if naming_a_method => {}
             TokenKind::Pipe => in_block_parameters = !in_block_parameters,
+            TokenKind::Ident(name) if naming_a_method => {
+                // A name followed by `.` is the receiver, so the name after
+                // it is the one being defined.
+                if !matches!(
+                    tokens.get(index + 1).map(|next| &next.kind),
+                    Some(TokenKind::Dot | TokenKind::ColonColon)
+                ) {
+                    naming_a_method = false;
+                    in_parameters = true;
+                }
+                let _ = name;
+            }
             TokenKind::Ident(name) => {
                 let assigned = matches!(
                     tokens.get(index + 1).map(|next| &next.kind),
@@ -84,7 +105,14 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashSet<String> {
                     names.insert(name.clone());
                 }
             }
-            _ => {}
+            _ => {
+                // An operator name (`def <=>`) is not an Ident, and the
+                // parameter list starts right after it.
+                if naming_a_method {
+                    naming_a_method = false;
+                    in_parameters = true;
+                }
+            }
         }
     }
     names

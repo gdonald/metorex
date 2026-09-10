@@ -58,7 +58,7 @@ pub(super) fn is_primitive_key(value: &Object) -> bool {
     // A String that reads back as some other kind is not reconstructible from
     // its text, so `{"1" => x}` keeps the key object beside the entry.
     if let Object::String(text) = value {
-        return !reads_as_another_kind(text);
+        return !reads_as_another_kind(&text.as_str());
     }
     matches!(
         value,

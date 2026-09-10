@@ -29,6 +29,9 @@ pub struct VirtualMachine {
     pub(crate) environment: Environment,
     pub(crate) call_stack: Vec<CallFrame>,
     pub(crate) globals: GlobalRegistry,
+    /// The second names globals have been given, each pointing at the one
+    /// it stands for. `alias $ERROR_INFO $!` records one here.
+    pub(crate) global_aliases: std::collections::HashMap<String, String>,
     pub(crate) heap: Rc<RefCell<Heap>>,
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
@@ -53,6 +56,8 @@ pub struct VirtualMachine {
     /// Children spawned by `IO.popen` that have not been waited for, keyed by
     /// the id their handle carries.
     pub(crate) popen_children: HashMap<u64, std::process::Child>,
+    /// The listeners and connections a program holds open.
+    pub(crate) open_sockets: crate::vm::native_methods::OpenSockets,
     /// The id the next `IO.popen` handle takes.
     pub(crate) next_popen_id: u64,
     /// The file whose code is running right now, which differs from
@@ -123,6 +128,10 @@ pub struct VirtualMachine {
     /// value keeps the collection alive, so its address cannot be recycled by
     /// a later one and read back as frozen.
     pub(crate) frozen_collections: HashMap<usize, Object>,
+    /// The instance variables set on an Array, Hash, or Set. A collection has
+    /// nowhere of its own to keep them, so the VM records them against the
+    /// address it lives at.
+    pub(crate) collection_variables: HashMap<usize, HashMap<String, Object>>,
     /// Handlers `Signal.trap` installed, keyed by signal name without its
     /// `SIG` prefix. A String value names a built-in disposition; anything
     /// else is a callable `Process.kill` runs in place of raising.
@@ -214,6 +223,7 @@ impl VirtualMachine {
         let seeded_global_names = environment.current_scope_vars().into_keys().collect();
 
         let mut vm = Self {
+            global_aliases: std::collections::HashMap::new(),
             environment,
             call_stack: Vec::new(),
             globals,
@@ -227,6 +237,7 @@ impl VirtualMachine {
             script_path: None,
             at_exit_handlers: Vec::new(),
             popen_children: HashMap::new(),
+            open_sockets: Default::default(),
             next_popen_id: 0,
             current_source_file: None,
             current_method_frame: Some(TOP_LEVEL_FRAME),
@@ -245,6 +256,7 @@ impl VirtualMachine {
             random_seed: seed_from_clock() as i64,
             rendering_frozen_error: false,
             frozen_collections: HashMap::new(),
+            collection_variables: HashMap::new(),
             signal_handlers: HashMap::new(),
             traced_globals: HashMap::new(),
             seeded_global_names,

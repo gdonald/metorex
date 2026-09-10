@@ -34,7 +34,7 @@ impl VirtualMachine {
                     // Interpolation uses #to_s semantics: a Symbol renders
                     // as its bare name, not the `:name` inspect form.
                     match &value {
-                        Object::Symbol(s) => buffer.push_str(s),
+                        Object::Symbol(s) => buffer.push_str(&s.as_str()),
                         // `nil.to_s` is the empty string, so `"#{nil}"` adds
                         // nothing rather than the `nil` inspect form.
                         Object::Nil => {}
@@ -48,7 +48,7 @@ impl VirtualMachine {
                                 expr.position(),
                             )?;
                             match written {
-                                Object::String(text) => buffer.push_str(&text),
+                                Object::String(text) => buffer.push_str(&text.as_str()),
                                 other => buffer.push_str(&other.to_string()),
                             }
                         }
@@ -70,10 +70,24 @@ impl VirtualMachine {
         for element in elements {
             // `[first, *rest]` splices the splatted array in place rather
             // than nesting it as one element.
-            if let Expression::Splat { expression, .. } = element {
+            if let Expression::Splat {
+                expression,
+                position: splat_at,
+            } = element
+            {
                 match self.evaluate_expression(expression)? {
                     Object::Array(items) => evaluated.extend(items.borrow().iter().cloned()),
                     Object::Nil => {}
+                    // A Range spreads into the values it covers, which is
+                    // what `[*"a".."z"]` names.
+                    held @ Object::Range { .. } => {
+                        match self.send_to_object(held.clone(), "to_a", vec![], *splat_at)? {
+                            Object::Array(items) => {
+                                evaluated.extend(items.borrow().iter().cloned())
+                            }
+                            other => evaluated.push(other),
+                        }
+                    }
                     other => evaluated.push(other),
                 }
                 continue;
@@ -265,7 +279,7 @@ impl VirtualMachine {
 
             Object::String(s) => match key {
                 Object::Int(i) => {
-                    let chars: Vec<char> = s.chars().collect();
+                    let chars: Vec<char> = s.as_str().chars().collect();
                     let len = chars.len() as i64;
                     let idx = if i < 0 { len + i } else { i };
                     if idx < 0 || idx >= len {
@@ -279,7 +293,7 @@ impl VirtualMachine {
                     end,
                     exclusive,
                 } => {
-                    let chars: Vec<char> = s.chars().collect();
+                    let chars: Vec<char> = s.as_str().chars().collect();
                     let len = chars.len() as i64;
                     let s_idx = match start.as_ref() {
                         Object::Int(n) => {
@@ -309,7 +323,7 @@ impl VirtualMachine {
                 // `text[other]` answers the other string when it appears,
                 // which is how Ruby looks a substring up.
                 Object::String(ref wanted) => {
-                    if s.contains(wanted.as_str()) {
+                    if s.as_str().contains(&*wanted.as_str()) {
                         Ok(Object::string(wanted.as_str().to_string()))
                     } else {
                         Ok(Object::Nil)
@@ -333,7 +347,7 @@ impl VirtualMachine {
                             position_to_location(position),
                         )
                     })?;
-                    match compiled.find(s.as_str()) {
+                    match compiled.find(&s.as_str()) {
                         Some(found) => Ok(Object::string(found.as_str().to_string())),
                         None => Ok(Object::Nil),
                     }
@@ -371,6 +385,20 @@ impl VirtualMachine {
                     position,
                 )? {
                     Some(val) => Ok(val),
+                    // A class that answers what it was not asked for decides
+                    // what indexing means, the same as it does for any other
+                    // name it carries no method for.
+                    None if self
+                        .lookup_method(&collection, "method_missing")
+                        .is_some_and(|(_, method)| !method.is_undefined) =>
+                    {
+                        self.send_to_object(
+                            collection,
+                            "method_missing",
+                            vec![Object::symbol("[]"), key],
+                            position,
+                        )
+                    }
                     None => Err(MetorexError::type_error(
                         format!("Cannot index into type '{}'", collection.type_name()),
                         position_to_location(position),

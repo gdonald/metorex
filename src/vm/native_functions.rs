@@ -320,7 +320,27 @@ impl VirtualMachine {
             // so an assignment through the binding is visible to both) and the
             // `self` in force there.
             "binding_kernel" => {
-                let variables = self.environment().current_scope_var_refs();
+                // Only the locals in force where the call sits belong to a
+                // binding. The builtins the root scope holds are constants
+                // and methods, which `local_variables` does not name.
+                let named = self.environment().local_variable_names();
+                let mut variables = std::collections::HashMap::new();
+                for name in named {
+                    // At the top level the root scope also holds the builtins,
+                    // which are constants and methods rather than locals of
+                    // the program, so the globals settle which is which.
+                    if self.globals().get(&name).is_some() {
+                        continue;
+                    }
+                    // A local is named the way Ruby lets one be named, which
+                    // rules out the globals and constants sharing the scope.
+                    if !name.starts_with(|held: char| held == '_' || held.is_lowercase()) {
+                        continue;
+                    }
+                    if let Some(cell) = self.environment().get_ref(&name) {
+                        variables.insert(name, cell);
+                    }
+                }
                 // At file scope there is no `self` binding; Ruby's top-level
                 // self is `main`, which is what TOPLEVEL_BINDING holds.
                 let receiver = self
@@ -331,9 +351,16 @@ impl VirtualMachine {
                         _ => None,
                     })
                     .unwrap_or(Object::Nil);
-                Ok(Object::Binding(std::rc::Rc::new(
-                    crate::object::Binding::with_receiver(variables, receiver),
-                )))
+                let held = crate::object::Binding::with_receiver(variables, receiver);
+                // Where the call sits, which `source_location` reports.
+                *held.source.borrow_mut() = Some((
+                    self.current_file
+                        .as_ref()
+                        .map(|file| file.display().to_string())
+                        .unwrap_or_default(),
+                    position.line,
+                ));
+                Ok(Object::Binding(std::rc::Rc::new(held)))
             }
             "top_level_to_s" => Ok(Object::string("main".to_string())),
             "define_method" => {
@@ -526,7 +553,7 @@ impl VirtualMachine {
                 };
 
                 // Look up the method in the current environment
-                if let Some(obj) = self.environment().get(method_name) {
+                if let Some(obj) = self.environment().get(&method_name) {
                     if let Object::Method(_) = obj {
                         return Ok(obj);
                     }
@@ -822,7 +849,7 @@ impl VirtualMachine {
                     Some(Object::Array(features)) => features
                         .borrow()
                         .iter()
-                        .any(|feature| matches!(feature, Object::String(name) if name.as_str() == canonical_str)),
+                        .any(|feature| matches!(feature, Object::String(name) if *name.as_str() == *canonical_str)),
                     _ => self.is_file_loaded(&canonical_path),
                 };
 
@@ -872,18 +899,20 @@ impl VirtualMachine {
                 })?;
 
                 // Resolve the relative path
-                let resolved_path =
-                    crate::file_loader::resolve_relative_path(current_file, relative_path)
-                        .map_err(|e| {
-                            MetorexError::runtime_error(
-                                format!(
-                                    "require_relative('{}') — cannot resolve path: {}",
-                                    relative_path,
-                                    e.message()
-                                ),
-                                crate::vm::utils::position_to_location(position),
-                            )
-                        })?;
+                let resolved_path = crate::file_loader::resolve_relative_path(
+                    current_file,
+                    &relative_path.as_str(),
+                )
+                .map_err(|e| {
+                    MetorexError::runtime_error(
+                        format!(
+                            "require_relative('{}') — cannot resolve path: {}",
+                            relative_path,
+                            e.message()
+                        ),
+                        crate::vm::utils::position_to_location(position),
+                    )
+                })?;
 
                 // Find the actual file path with extension auto-detection. A
                 // missing file is a LoadError, the way Ruby reports one.
@@ -1205,18 +1234,23 @@ impl VirtualMachine {
                 let statements = crate::parser::Parser::new(tokens)
                     .parse()
                     .map_err(|errors| {
-                        crate::vm::errors::syntax_error(
-                            format!(
-                                "eval: parse error: {}",
-                                errors
-                                    .iter()
-                                    .map(|e| e.to_string())
-                                    .collect::<Vec<_>>()
-                                    .join("; ")
-                            ),
-                            filename.as_deref(),
-                            position,
-                        )
+                        // Ruby names the file in front of the message, so
+                        // code eval'd on behalf of a template points at the
+                        // template rather than at the eval.
+                        let reported = errors
+                            .iter()
+                            .map(|e| e.to_string())
+                            .collect::<Vec<_>>()
+                            .join("; ");
+                        let at = errors
+                            .first()
+                            .and_then(|held| held.location())
+                            .map_or(lineno.max(1), |held| held.line.max(1));
+                        let message = match &filename {
+                            Some(named) => format!("{named}:{at}: {reported}"),
+                            None => format!("eval: parse error: {reported}"),
+                        };
+                        crate::vm::errors::syntax_error(message, filename.as_deref(), position)
                     })?;
                 // A Binding argument re-establishes the frame it captured:
                 // its locals (shared cells, so assignment through the eval is
@@ -1227,7 +1261,7 @@ impl VirtualMachine {
                 };
                 if let Some(b) = &binding {
                     self.environment_mut().push_isolated_scope();
-                    for (name, cell) in &b.variables {
+                    for (name, cell) in b.variables.borrow().iter() {
                         self.environment_mut()
                             .define_shared(name.clone(), std::rc::Rc::clone(cell));
                     }
@@ -1271,7 +1305,15 @@ impl VirtualMachine {
                     _ => None,
                 };
                 let result = self.execute_program(&statements);
-                if binding.is_some() {
+                if let Some(held) = &binding {
+                    // A local the code named that the binding did not have is
+                    // added to it, which is how `eval("x = 1", b)` leaves `x`
+                    // behind for the next look through `b`.
+                    for (name, cell) in self.environment().current_scope_var_refs() {
+                        if !held.has(&name) {
+                            held.set(&name, cell);
+                        }
+                    }
                     self.environment_mut().pop_scope();
                 }
                 if let Some((class, visibility)) = enclosing {
@@ -1725,18 +1767,53 @@ impl VirtualMachine {
                     ));
                 };
                 let program = self.get_string_representation(command, position)?;
+                // A trailing Hash names where the child's streams go rather
+                // than another argument to run it with.
+                let mut given = &arguments[1..];
+                let mut options = None;
+                if let Some(Object::Dict(entries)) = given.last() {
+                    options = Some(entries.borrow().clone());
+                    given = &given[..given.len() - 1];
+                }
                 let mut rest = Vec::new();
-                for arg in arguments.iter().skip(1) {
+                for arg in given {
                     rest.push(self.get_string_representation(arg, position)?);
                 }
-                let status = if rest.is_empty() {
-                    std::process::Command::new("/bin/sh")
-                        .arg("-c")
-                        .arg(&program)
-                        .status()
+                let mut running = if rest.is_empty() {
+                    let mut shell = std::process::Command::new("/bin/sh");
+                    shell.arg("-c").arg(&program);
+                    shell
                 } else {
-                    std::process::Command::new(&program).args(&rest).status()
+                    let mut named = std::process::Command::new(&program);
+                    named.args(&rest);
+                    named
                 };
+                if let Some(options) = options {
+                    for (name, target) in options.iter() {
+                        let Object::String(path) = target else {
+                            continue;
+                        };
+                        let Some(opened) = std::fs::OpenOptions::new()
+                            .write(true)
+                            .create(true)
+                            .truncate(false)
+                            .open(&*path.as_str())
+                            .ok()
+                        else {
+                            continue;
+                        };
+                        match name.trim_start_matches(':') {
+                            "out" => {
+                                running.stdout(opened);
+                            }
+                            "err" => {
+                                running.stderr(opened);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+                let status = running.status();
                 Ok(match status {
                     Ok(status) => Object::Bool(status.success()),
                     Err(_) => Object::Nil,
@@ -2266,6 +2343,12 @@ impl VirtualMachine {
         match given {
             Object::Int(seed) => Ok(*seed),
             Object::Float(seed) => Ok(*seed as i64),
+            // A seed wider than a machine word keeps its low bits, which is
+            // all the generator reads.
+            Object::BigInt(seed) => {
+                let (_, digits) = seed.to_u64_digits();
+                Ok(digits.first().copied().unwrap_or(0) as i64)
+            }
             other => {
                 let Some((class, method)) = self.lookup_method(other, "to_int") else {
                     let message = format!(
@@ -2299,7 +2382,7 @@ impl VirtualMachine {
         for hook in hooks {
             match hook {
                 Object::String(code) => {
-                    let tokens = crate::lexer::Lexer::new(&code).tokenize();
+                    let tokens = crate::lexer::Lexer::new(&code.as_str()).tokenize();
                     let statements =
                         crate::parser::Parser::new(tokens)
                             .parse()
@@ -2413,12 +2496,7 @@ impl VirtualMachine {
             return Ok(Object::Int(low + self.next_random_int(span)));
         }
         let (Some(low), Some(high)) = (numeric_value(start), numeric_value(end)) else {
-            let message = "bad value for range";
-            return Err(MetorexError::UncaughtException {
-                exception: Object::exception("ArgumentError", message.to_string()),
-                location: crate::vm::utils::position_to_location(position),
-                message: message.to_string(),
-            });
+            return self.random_across_width(start, end, exclusive, position);
         };
         if high < low || (exclusive && high == low) {
             return Ok(Object::Nil);
@@ -2427,6 +2505,54 @@ impl VirtualMachine {
             return Ok(Object::Float(low));
         }
         Ok(Object::Float(low + self.next_random_float() * (high - low)))
+    }
+
+    /// A range whose ends are neither Integers nor Floats. Ruby measures the
+    /// width between them with `-` and adds a number of that size back onto
+    /// the start, so any type that subtracts and adds can bound a draw.
+    fn random_across_width(
+        &mut self,
+        start: &Object,
+        end: &Object,
+        exclusive: bool,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let width = self
+            .apply_named_method(end, "-", vec![start.clone()], position)
+            .map_err(|_| bad_range_value(position))?;
+        let drawn = match &width {
+            Object::Float(measured) => Object::Float(self.next_random_float() * measured),
+            _ => {
+                let counted = match &width {
+                    Object::Int(counted) => *counted,
+                    _ => match self.apply_named_method(&width, "to_int", vec![], position) {
+                        Ok(Object::Int(counted)) => counted,
+                        _ => return Err(bad_range_value(position)),
+                    },
+                };
+                let counted = if exclusive { counted } else { counted + 1 };
+                if counted <= 0 {
+                    return Err(bad_range_value(position));
+                }
+                Object::Int(self.next_random_int(counted))
+            }
+        };
+        self.apply_named_method(start, "+", vec![drawn], position)
+    }
+
+    /// Call one method on a receiver by name, which native code needs when
+    /// the operation belongs to whatever type the program handed over.
+    fn apply_named_method(
+        &mut self,
+        receiver: &Object,
+        name: &str,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Some((class, method)) = self.lookup_method(receiver, name) else {
+            return Err(bad_range_value(position));
+        };
+        self.invoke_method(class, method, receiver.clone(), arguments, position)
     }
 
     /// Write `text` where `$stdout` points. The default is the process's own
@@ -2978,4 +3104,14 @@ fn exact_log2(value: &Object) -> Option<f64> {
     let kept = 64.min(bits);
     let leading = crate::vm::operators::big_to_float(&(&*value >> (bits - kept) as u32));
     Some(leading.log2() + (bits - kept) as f64)
+}
+
+/// The ArgumentError Ruby raises for a range whose ends cannot bound a draw.
+fn bad_range_value(position: Position) -> MetorexError {
+    let message = "bad value for range".to_string();
+    MetorexError::UncaughtException {
+        exception: Object::exception("ArgumentError", message.clone()),
+        location: crate::vm::utils::position_to_location(position),
+        message,
+    }
 }

@@ -18,6 +18,10 @@ pub(crate) const REFINEMENT_KEY_PREFIX: &str = "__refine__";
 /// Class-variable key holding a refinement's display label, `Target@Module`.
 pub(crate) const REFINEMENT_LABEL_KEY: &str = "__refinement_label__";
 
+/// Where a refinement keeps the class it refines, which is what `target` and
+/// `refined_class` answer.
+pub(crate) const REFINEMENT_TARGET_KEY: &str = "__refinement_target__";
+
 impl VirtualMachine {
     pub(crate) fn call_module_methods(
         &mut self,
@@ -27,6 +31,12 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        // A refinement names the class it refines.
+        if matches!(method_name, "target" | "refined_class")
+            && let Some(found) = module_rc.get_class_var(REFINEMENT_TARGET_KEY)
+        {
+            return Ok(Some(found));
+        }
         if method_name == "module_eval" || method_name == "class_eval" {
             let result = self.class_eval_with_args(
                 module_rc,
@@ -109,6 +119,7 @@ impl VirtualMachine {
                     // constant names it. Its display comes from the label
                     // instead, which never changes.
                     let holder = Rc::new(Class::new_module(""));
+                    holder.set_class_var(REFINEMENT_TARGET_KEY, Object::Class(Rc::clone(&target)));
                     holder.set_class_var(
                         REFINEMENT_LABEL_KEY,
                         Object::string(format!(
@@ -219,6 +230,27 @@ impl VirtualMachine {
         if module_rc.name() == "Digest" && method_name == "__digest__" {
             return self.compute_digest(arguments, position).map(Some);
         }
+        if module_rc.name() == "Digest" && method_name == "__pbkdf2__" {
+            return self.compute_pbkdf2(arguments, position).map(Some);
+        }
+
+        // The compressed stream formats are read and written here for the
+        // same reason.
+        if module_rc.name() == "Zlib" && method_name == "__stream__" {
+            return self.zlib_stream(arguments, position).map(Some);
+        }
+
+        // The system log is written through the C library, which only the
+        // interpreter can reach.
+        if module_rc.name() == "Syslog" && method_name == "__write__" {
+            return self.syslog_write(arguments, position).map(Some);
+        }
+
+        // The shape of a network address belongs to the operating system, so
+        // the socket library reads and writes them here.
+        if module_rc.name() == "Socket" && method_name == "__address__" {
+            return self.socket_address(arguments, position).map(Some);
+        }
 
         if module_rc.name() == "Process" {
             match method_name {
@@ -238,18 +270,191 @@ impl VirtualMachine {
                 // The supplementary groups this process belongs to, which is
                 // what decides whether a file it does not own is still one of
                 // its group's.
-                "groups" => {
-                    let mut held = [0 as libc::gid_t; 64];
-                    // SAFETY: `getgroups` fills at most the count it is given
-                    // and reports how many it wrote.
-                    let written = unsafe { libc::getgroups(held.len() as i32, held.as_mut_ptr()) };
-                    let counted = if written < 0 { 0 } else { written as usize };
-                    return Ok(Some(Object::array(
-                        held[..counted]
-                            .iter()
-                            .map(|group| Object::Int(*group as i64))
-                            .collect(),
-                    )));
+                "groups" => return Ok(Some(current_groups())),
+                // The process group and session a process belongs to, which
+                // decide which processes a signal reaches together.
+                // SAFETY: each of these reads or sets one process id and
+                // touches nothing else.
+                "getpgrp" => return Ok(Some(Object::Int(unsafe { libc::getpgrp() } as i64))),
+                "setpgrp" => {
+                    let answered = unsafe { libc::setpgid(0, 0) };
+                    return self.process_result(answered, "setpgrp", position).map(Some);
+                }
+                "getpgid" => {
+                    let pid = self.process_id_argument(arguments.first(), position)?;
+                    let answered = unsafe { libc::getpgid(pid) };
+                    return self.process_result(answered, "getpgid", position).map(Some);
+                }
+                "setpgid" => {
+                    let pid = self.process_id_argument(arguments.first(), position)?;
+                    let group = self.process_id_argument(arguments.get(1), position)?;
+                    let answered = unsafe { libc::setpgid(pid, group) };
+                    return self.process_result(answered, "setpgid", position).map(Some);
+                }
+                "getsid" => {
+                    let pid = self.process_id_argument(arguments.first(), position)?;
+                    let answered = unsafe { libc::getsid(pid) };
+                    return self.process_result(answered, "getsid", position).map(Some);
+                }
+                "setsid" => {
+                    let answered = unsafe { libc::setsid() };
+                    return self.process_result(answered, "setsid", position).map(Some);
+                }
+                // How much of the processor a process is given before the
+                // ones around it, where a lower number means more.
+                "getpriority" => {
+                    let which = self.process_id_argument(arguments.first(), position)?;
+                    let who = self.process_id_argument(arguments.get(1), position)?;
+                    // SAFETY: `getpriority` reads a setting and touches
+                    // nothing else. A priority of -1 is a real answer, so
+                    // errno is cleared first to tell it from a failure.
+                    let answered = unsafe {
+                        *libc::__error() = 0;
+                        libc::getpriority(which, who as u32)
+                    };
+                    if answered == -1 && unsafe { *libc::__error() } != 0 {
+                        return Err(self.errno_error("getpriority", position));
+                    }
+                    return Ok(Some(Object::Int(answered as i64)));
+                }
+                "setpriority" => {
+                    let which = self.process_id_argument(arguments.first(), position)?;
+                    let who = self.process_id_argument(arguments.get(1), position)?;
+                    let level = self.process_id_argument(arguments.get(2), position)?;
+                    let answered = unsafe { libc::setpriority(which, who as u32, level) };
+                    return self
+                        .process_result(answered, "setpriority", position)
+                        .map(Some);
+                }
+                // The supplementary groups a named user belongs to, which
+                // only a process running as root may take on.
+                "initgroups" => {
+                    let Some(Object::String(user)) = arguments.first() else {
+                        return Err(method_argument_type_error(
+                            "initgroups",
+                            "String",
+                            arguments.first().unwrap_or(&Object::Nil),
+                            position,
+                        ));
+                    };
+                    let group = self.process_id_argument(arguments.get(1), position)?;
+                    let Ok(named) = std::ffi::CString::new(user.as_str().as_bytes().to_vec())
+                    else {
+                        return Err(method_argument_type_error(
+                            "initgroups",
+                            "String",
+                            &arguments[0],
+                            position,
+                        ));
+                    };
+                    // SAFETY: `initgroups` reads the name across the call and
+                    // sets this process's group list.
+                    let answered = unsafe { libc::initgroups(named.as_ptr(), group) };
+                    if answered < 0 {
+                        return Err(self.errno_error("initgroups", position));
+                    }
+                    return Ok(Some(current_groups()));
+                }
+                "groups=" => {
+                    let Some(Object::Array(wanted)) = arguments.first() else {
+                        return Err(method_argument_type_error(
+                            "groups=",
+                            "Array",
+                            arguments.first().unwrap_or(&Object::Nil),
+                            position,
+                        ));
+                    };
+                    let held: Vec<libc::gid_t> = wanted
+                        .borrow()
+                        .iter()
+                        .filter_map(|group| match group {
+                            Object::Int(number) => Some(*number as libc::gid_t),
+                            _ => None,
+                        })
+                        .collect();
+                    // SAFETY: `setgroups` reads the list across the call.
+                    let answered = unsafe { libc::setgroups(held.len() as i32, held.as_ptr()) };
+                    if answered < 0 {
+                        return Err(self.errno_error("setgroups", position));
+                    }
+                    return Ok(Some(arguments[0].clone()));
+                }
+                // The name this process shows under in a process listing,
+                // which Ruby keeps apart from `$0`.
+                "setproctitle" => {
+                    let title = match arguments.first() {
+                        Some(Object::String(text)) => text.as_str().to_string(),
+                        other => {
+                            return Err(method_argument_type_error(
+                                "setproctitle",
+                                "String",
+                                other.unwrap_or(&Object::Nil),
+                                position,
+                            ));
+                        }
+                    };
+                    self.set_process_title(&title);
+                    return Ok(Some(Object::string(title)));
+                }
+                // `_fork` is the hook `fork` runs through, and an
+                // implementation without `fork` has none.
+                "_fork" => {
+                    let message = "fork() function is unimplemented on this machine".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("NotImplementedError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+                // A user or a group may be named rather than numbered, and
+                // setting either needs the right to do so.
+                "uid=" | "gid=" | "euid=" | "egid=" => {
+                    let wanted = self.account_id_argument(
+                        method_name,
+                        arguments.first(),
+                        method_name.starts_with('u') || method_name == "euid=",
+                        position,
+                    )?;
+                    // SAFETY: each of these sets one id and touches nothing
+                    // else.
+                    let answered = unsafe {
+                        match method_name {
+                            "uid=" => libc::setuid(wanted as libc::uid_t),
+                            "euid=" => libc::seteuid(wanted as libc::uid_t),
+                            "gid=" => libc::setgid(wanted as libc::gid_t),
+                            _ => libc::setegid(wanted as libc::gid_t),
+                        }
+                    };
+                    if answered < 0 {
+                        return Err(self.errno_error(method_name, position));
+                    }
+                    return Ok(Some(Object::Int(wanted as i64)));
+                }
+                // How much processor time this program and the children it
+                // waited for have used, in seconds.
+                "times" => {
+                    let mut held: libc::tms = unsafe { std::mem::zeroed() };
+                    // SAFETY: `times` writes through the struct pointer given
+                    // and touches nothing else.
+                    unsafe { libc::times(&mut held) };
+                    // SAFETY: `sysconf` reads one setting.
+                    let ticks = unsafe { libc::sysconf(libc::_SC_CLK_TCK) } as f64;
+                    let ticks = if ticks > 0.0 { ticks } else { 100.0 };
+                    let seconds = |count: libc::clock_t| Object::Float(count as f64 / ticks);
+                    let tms = module_rc.get_class_var("Tms").unwrap_or(Object::Nil);
+                    return self
+                        .send_to_object(
+                            tms,
+                            "new",
+                            vec![
+                                seconds(held.tms_utime),
+                                seconds(held.tms_stime),
+                                seconds(held.tms_cutime),
+                                seconds(held.tms_cstime),
+                            ],
+                            position,
+                        )
+                        .map(Some);
                 }
                 "last_status" => return Ok(Some(self.process_last_status())),
                 // Ruby documents `warmup` as a hint the implementation is
@@ -617,5 +822,153 @@ impl VirtualMachine {
         self.globals_mut().set("__gc_count", Object::Int(count));
         self.globals_mut()
             .set("__gc_total_time", Object::Int(spent));
+    }
+}
+
+impl VirtualMachine {
+    /// A process, group, or priority number an argument names, taking
+    /// `to_int` from an object that answers one. A missing argument means
+    /// this process.
+    fn process_id_argument(
+        &mut self,
+        argument: Option<&Object>,
+        position: Position,
+    ) -> Result<i32, MetorexError> {
+        match argument {
+            None | Some(Object::Nil) => Ok(0),
+            Some(Object::Int(number)) => Ok(*number as i32),
+            Some(other) if self.responds_to(other, "to_int") => {
+                match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                    Object::Int(number) => Ok(number as i32),
+                    converted => Err(method_argument_type_error(
+                        "Process", "Integer", &converted, position,
+                    )),
+                }
+            }
+            Some(other) => Err(method_argument_type_error(
+                "Process", "Integer", other, position,
+            )),
+        }
+    }
+
+    /// What a process call answered: the number itself, or the errno the
+    /// operating system left behind when it failed.
+    fn process_result(
+        &mut self,
+        answered: i32,
+        called: &str,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if answered < 0 {
+            return Err(self.errno_error(called, position));
+        }
+        Ok(Object::Int(answered as i64))
+    }
+
+    /// The exception the last failed system call names.
+    fn errno_error(&mut self, called: &str, position: Position) -> MetorexError {
+        let code = std::io::Error::last_os_error();
+        let named = errno_constant(code.raw_os_error().unwrap_or(0));
+        crate::vm::errors::simple_exception(named, &format!("{code} - {called}(2)"), position)
+    }
+
+    /// Rename this process so a listing shows the new name.
+    fn set_process_title(&mut self, title: &str) {
+        // SAFETY: `setprogname` keeps the pointer, so the name is leaked to
+        // live as long as the process does.
+        #[cfg(target_os = "macos")]
+        unsafe {
+            if let Ok(held) = std::ffi::CString::new(title) {
+                libc::setprogname(held.into_raw());
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            let _ = title;
+        }
+    }
+}
+
+/// The Errno class a number stands for, named the way Ruby names it.
+fn errno_constant(code: i32) -> &'static str {
+    match code {
+        libc::EPERM => "Errno::EPERM",
+        libc::ESRCH => "Errno::ESRCH",
+        libc::EACCES => "Errno::EACCES",
+        libc::EINVAL => "Errno::EINVAL",
+        libc::ENOENT => "Errno::ENOENT",
+        libc::ECHILD => "Errno::ECHILD",
+        _ => "SystemCallError",
+    }
+}
+
+/// The supplementary groups this process belongs to, which is what decides
+/// whether a file it does not own is still one of its group's.
+fn current_groups() -> Object {
+    let mut held = [0 as libc::gid_t; 64];
+    // SAFETY: `getgroups` fills at most the count it is given and reports how
+    // many it wrote.
+    let written = unsafe { libc::getgroups(held.len() as i32, held.as_mut_ptr()) };
+    let counted = if written < 0 { 0 } else { written as usize };
+    Object::array(
+        held[..counted]
+            .iter()
+            .map(|group| Object::Int(*group as i64))
+            .collect(),
+    )
+}
+
+impl VirtualMachine {
+    /// The user or group an argument names: a number outright, a name looked
+    /// up in the account database, or an object with `to_int`.
+    fn account_id_argument(
+        &mut self,
+        method_name: &str,
+        argument: Option<&Object>,
+        is_user: bool,
+        position: Position,
+    ) -> Result<i32, MetorexError> {
+        if let Some(Object::String(name)) = argument {
+            let Ok(held) = std::ffi::CString::new(name.as_str().as_bytes().to_vec()) else {
+                return Err(method_argument_type_error(
+                    method_name,
+                    "String",
+                    &argument.cloned().unwrap_or(Object::Nil),
+                    position,
+                ));
+            };
+            // SAFETY: both calls answer a pointer the C library owns, read
+            // before any other call to it.
+            let found = unsafe {
+                if is_user {
+                    let entry = libc::getpwnam(held.as_ptr());
+                    if entry.is_null() {
+                        None
+                    } else {
+                        Some((*entry).pw_uid as i32)
+                    }
+                } else {
+                    let entry = libc::getgrnam(held.as_ptr());
+                    if entry.is_null() {
+                        None
+                    } else {
+                        Some((*entry).gr_gid as i32)
+                    }
+                }
+            };
+            return match found {
+                Some(id) => Ok(id),
+                None => Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    &format!(
+                        "can't find {} for {}",
+                        if is_user { "user" } else { "group" },
+                        name.as_str()
+                    ),
+                    position,
+                )),
+            };
+        }
+        self.process_id_argument(argument, position)
     }
 }

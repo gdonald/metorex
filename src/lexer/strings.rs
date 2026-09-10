@@ -114,19 +114,38 @@ impl<'a> Lexer<'a> {
                             self.advance();
                         }
                         // An octal escape runs to three digits, so `\000` is
-                        // one NUL rather than a NUL followed by two zeros.
+                        // one NUL rather than a NUL followed by two zeros. A
+                        // run of them names bytes, which together may spell
+                        // one character.
                         Some(digit) if ('0'..='7').contains(&digit) => {
-                            let mut digits = String::new();
-                            while digits.len() < 3
-                                && self.peek().is_some_and(|next| ('0'..='7').contains(&next))
-                            {
-                                digits.push(self.peek().expect("a digit was seen"));
+                            let mut bytes = Vec::new();
+                            loop {
+                                let mut digits = String::new();
+                                while digits.len() < 3
+                                    && self.peek().is_some_and(|next| ('0'..='7').contains(&next))
+                                {
+                                    digits.push(self.peek().expect("a digit was seen"));
+                                    self.advance();
+                                }
+                                bytes.push(u32::from_str_radix(&digits, 8).unwrap_or(0) as u8);
+                                if self.peek() != Some('\\') {
+                                    break;
+                                }
                                 self.advance();
+                                if !self.peek().is_some_and(|next| ('0'..='7').contains(&next)) {
+                                    // The backslash opened some other escape,
+                                    // so it is handed back to the main loop.
+                                    self.push_back('\\');
+                                    break;
+                                }
                             }
-                            let value = u32::from_str_radix(&digits, 8).unwrap_or(0);
-                            match char::from_u32(value) {
-                                Some(letter) => current_text.push(letter),
-                                None => current_text.push('\0'),
+                            match binary_run(self.binary_source, &bytes) {
+                                Ok(text) => current_text.push_str(&text),
+                                Err(_) => {
+                                    for byte in bytes {
+                                        current_text.push(byte as char);
+                                    }
+                                }
                             }
                         }
                         Some('s') => {
@@ -183,7 +202,7 @@ impl<'a> Lexer<'a> {
                                     break;
                                 }
                             }
-                            match String::from_utf8(bytes.clone()) {
+                            match binary_run(self.binary_source, &bytes) {
                                 Ok(text) => current_text.push_str(&text),
                                 Err(_) => {
                                     for byte in bytes {
@@ -237,8 +256,14 @@ impl<'a> Lexer<'a> {
                             }
                         }
                         Some(ch) => {
-                            // For unrecognized escape sequences, include the backslash
-                            current_text.push('\\');
+                            // A backslash before something that opens no escape
+                            // stands for the character alone, which is how
+                            // `"a\{b"` names three characters. A single-quoted
+                            // string keeps the backslash, since only `\'` and
+                            // `\\` mean anything inside one.
+                            if quote == '\'' {
+                                current_text.push('\\');
+                            }
                             current_text.push(ch);
                             self.advance();
                         }
@@ -315,4 +340,14 @@ impl<'a> Lexer<'a> {
             }
         }
     }
+}
+
+/// The text a run of numeric escapes spells. In a source written in bytes
+/// each byte stands alone, and elsewhere bytes that spell a character in
+/// UTF-8 read back as that character.
+pub(super) fn binary_run(binary_source: bool, bytes: &[u8]) -> Result<String, ()> {
+    if binary_source {
+        return Err(());
+    }
+    String::from_utf8(bytes.to_vec()).map_err(|_| ())
 }

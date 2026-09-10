@@ -53,7 +53,7 @@ fn stabby_lambda_postfix_class_method() {
     // reaching line 219's `TokenKind::Class` arm inside parse_postfix_calls.
     let result = run("-> { 1 }.class.name");
     match result {
-        Some(Object::String(s)) => assert_eq!(s.as_str(), "Proc"),
+        Some(Object::String(s)) => assert_eq!(&*s.as_str(), "Proc"),
         other => panic!("expected 'Proc', got {:?}", other),
     }
 }
@@ -109,7 +109,7 @@ fn stabby_lambda_postfix_bad_method_errors() {
 fn stabby_lambda_chained_postfix_calls() {
     let result = run("-> { 5 }.call.class.name");
     match result {
-        Some(Object::String(s)) => assert_eq!(s.as_str(), "Integer"),
+        Some(Object::String(s)) => assert_eq!(&*s.as_str(), "Integer"),
         other => panic!("expected 'Integer', got {:?}", other),
     }
 }

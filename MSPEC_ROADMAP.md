@@ -385,7 +385,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.8.78. core/kernel/putc_spec
   - [ ] 4.8.79. core/kernel/puts_spec
   - [ ] 4.8.80. core/kernel/raise_spec
-  - [ ] 4.8.81. core/kernel/rand_spec
+  - [x] 4.8.81. core/kernel/rand_spec - 1 file, 27 examples, 18032 expectations, 0 failures, 0 errors
   - [x] 4.8.82. core/kernel/readline_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.8.83. core/kernel/readlines_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.8.84. core/kernel/remove_instance_variable_spec - 1 file, 11 examples, 14 expectations, 0 failures, 0 errors
@@ -441,7 +441,7 @@ Parser fixes during Phase 4 work:
 
 ### Exceptions and Signals
 
-- [ ] 4.10. core/exception - 39 files; 35 pass, the other 4 are enabled one at a time in the runner with a reason each. full_message_spec is at 20 examples, 39 expectations, 4 failures, 6 errors
+- [ ] 4.10. core/exception - 39 files; 36 pass, the other 4 are enabled one at a time in the runner with a reason each. full_message_spec is at 20 examples, 39 expectations, 4 failures, 6 errors
   - [x] 4.10.1. core/exception/backtrace_locations_spec - 1 file, 5 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.10.2. core/exception/backtrace_spec - 1 file, 13 examples, 47 expectations, 0 failures, 0 errors
   - [x] 4.10.3. core/exception/case_compare_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
@@ -469,7 +469,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.10.25. core/exception/receiver_spec - 1 file, 8 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.10.26. core/exception/result_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.10.27. core/exception/set_backtrace_spec - 1 file, 11 examples, 123 expectations, 0 failures, 0 errors
-  - [ ] 4.10.28. core/exception/signal_exception_spec - 12 of its 16 examples pass; the other 4 need ruby_exe and IO.popen subprocess support
+  - [x] 4.10.28. core/exception/signal_exception_spec - 1 file, 16 examples, 31 expectations, 0 failures, 0 errors
   - [x] 4.10.29. core/exception/signm_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.10.30. core/exception/signo_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.10.31. core/exception/standard_error_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
@@ -616,7 +616,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.15.48. core/float/uminus_spec - 1 file, 5 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.15.49. core/float/uplus_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
   - [x] 4.15.50. core/float/zero_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
-- [ ] 4.16. core/numeric - 46 files; 32 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.16. core/numeric - 46 files; 33 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.16.1. core/numeric/abs2_spec
   - [x] 4.16.2. core/numeric/abs_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.16.3. core/numeric/angle_spec
@@ -655,7 +655,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.16.36. core/numeric/rectangular_spec
   - [ ] 4.16.37. core/numeric/remainder_spec
   - [x] 4.16.38. core/numeric/round_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.16.39. core/numeric/singleton_method_added_spec
+  - [x] 4.16.39. core/numeric/singleton_method_added_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [ ] 4.16.40. core/numeric/step_spec
   - [ ] 4.16.41. core/numeric/to_c_spec
   - [x] 4.16.42. core/numeric/to_int_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
@@ -736,7 +736,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.18.26. core/rational/round_spec - 1 file, 12 examples, 51 expectations, 0 failures, 0 errors
   - [x] 4.18.27. core/rational/to_f_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.18.28. core/rational/to_i_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.18.29. core/rational/to_r_spec
+  - [x] 4.18.29. core/rational/to_r_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.18.30. core/rational/to_s_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
   - [x] 4.18.31. core/rational/truncate_spec - 1 file, 10 examples, 23 expectations, 0 failures, 0 errors
   - [x] 4.18.32. core/rational/zero_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
@@ -773,10 +773,10 @@ Parser fixes during Phase 4 work:
 
 ### Collections
 
-- [ ] 4.20. core/array - 90 pass, and the rest are enabled in the runner one file at a time
-  - [ ] 4.20.1. core/array/all_spec
+- [ ] 4.20. core/array - 94 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.20.1. core/array/all_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.20.2. core/array/allocate_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
-  - [ ] 4.20.3. core/array/any_spec
+  - [x] 4.20.3. core/array/any_spec - 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.20.4. core/array/append_spec - 1 file, 8 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.20.5. core/array/array_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.20.6. core/array/assoc_spec - 1 file, 4 examples, 17 expectations, 0 failures, 0 errors
@@ -836,8 +836,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.20.60. core/array/minus_spec - 1 file, 11 examples, 22 expectations, 0 failures, 0 errors
   - [ ] 4.20.61. core/array/multiply_spec
   - [ ] 4.20.62. core/array/new_spec
-  - [ ] 4.20.63. core/array/none_spec
-  - [ ] 4.20.64. core/array/one_spec
+  - [x] 4.20.63. core/array/none_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.20.64. core/array/one_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.20.65. core/array/pack/a_spec - 1 file, 46 examples, 56 expectations, 0 failures, 0 errors
   - [x] 4.20.66. core/array/pack/at_spec - 1 file, 13 examples, 16 expectations, 0 failures, 0 errors
   - [ ] 4.20.67. core/array/pack/b_spec
@@ -859,9 +859,9 @@ Parser fixes during Phase 4 work:
   - [x] 4.20.83. core/array/pack/percent_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.20.84. core/array/pack/q_spec - 1 file, 76 examples, 90 expectations, 0 failures, 0 errors
   - [x] 4.20.85. core/array/pack/r_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.20.86. core/array/pack/s_spec
+  - [x] 4.20.86. core/array/pack/s_spec - 1 file, 236 examples, 270 expectations, 0 failures, 0 errors
   - [ ] 4.20.87. core/array/pack/u_spec
-  - [ ] 4.20.88. core/array/pack/v_spec
+  - [x] 4.20.88. core/array/pack/v_spec - 1 file, 48 examples, 58 expectations, 0 failures, 0 errors
   - [x] 4.20.89. core/array/pack/w_spec - 1 file, 18 examples, 23 expectations, 0 failures, 0 errors
   - [x] 4.20.90. core/array/pack/x_spec - 1 file, 28 examples, 35 expectations, 0 failures, 0 errors
   - [x] 4.20.91. core/array/pack/z_spec - 1 file, 24 examples, 29 expectations, 0 failures, 0 errors
@@ -873,7 +873,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.20.97. core/array/product_spec - 1 file, 10 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.20.98. core/array/push_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.20.99. core/array/rassoc_spec - 1 file, 5 examples, 14 expectations, 0 failures, 0 errors
-  - [ ] 4.20.100. core/array/reject_spec
+  - [x] 4.20.100. core/array/reject_spec - 1 file, 22 examples, 49 expectations, 0 failures, 0 errors
   - [x] 4.20.101. core/array/repeated_combination_spec - 1 file, 12 examples, 24 expectations, 0 failures, 0 errors
   - [x] 4.20.102. core/array/repeated_permutation_spec - 1 file, 11 examples, 24 expectations, 0 failures, 0 errors
   - [x] 4.20.103. core/array/replace_spec - 1 file, 7 examples, 15 expectations, 0 failures, 0 errors
@@ -903,7 +903,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.20.127. core/array/unshift_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.20.128. core/array/values_at_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
   - [ ] 4.20.129. core/array/zip_spec
-- [ ] 4.21. core/hash - 48 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.21. core/hash - 49 pass, and the rest are enabled in the runner one file at a time
   - [x] 4.21.1. core/hash/allocate_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.21.2. core/hash/any_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.21.3. core/hash/assoc_spec
@@ -948,7 +948,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.21.42. core/hash/lt_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.21.43. core/hash/lte_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.21.44. core/hash/member_spec - 1 file, 5 examples, 12 expectations, 0 failures, 0 errors
-  - [ ] 4.21.45. core/hash/merge_spec
+  - [x] 4.21.45. core/hash/merge_spec - 1 file, 25 examples, 41 expectations, 0 failures, 0 errors
   - [x] 4.21.46. core/hash/new_spec - 1 file, 9 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.21.47. core/hash/rassoc_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.21.48. core/hash/rehash_spec
@@ -1254,42 +1254,42 @@ Parser fixes during Phase 4 work:
 
 ### Strings and Patterns
 
-- [ ] 4.28. core/string - 31 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
-  - [ ] 4.28.1. core/string/allocate_spec
+- [ ] 4.28. core/string - 38 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+  - [x] 4.28.1. core/string/allocate_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.28.2. core/string/append_as_bytes_spec
   - [ ] 4.28.3. core/string/append_spec
-  - [ ] 4.28.4. core/string/ascii_only_spec
+  - [x] 4.28.4. core/string/ascii_only_spec - 1 file, 13 examples, 146 expectations, 0 failures, 0 errors
   - [x] 4.28.5. core/string/b_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.28.6. core/string/byteindex_spec
   - [ ] 4.28.7. core/string/byterindex_spec
-  - [ ] 4.28.8. core/string/bytes_spec
+  - [x] 4.28.8. core/string/bytes_spec - 1 file, 8 examples, 34 expectations, 0 failures, 0 errors
   - [ ] 4.28.9. core/string/bytesize_spec
   - [ ] 4.28.10. core/string/byteslice_spec
   - [ ] 4.28.11. core/string/bytesplice_spec
-  - [ ] 4.28.12. core/string/capitalize_spec
+  - [x] 4.28.12. core/string/capitalize_spec - 1 file, 34 examples, 53 expectations, 0 failures, 0 errors
   - [ ] 4.28.13. core/string/case_compare_spec
   - [ ] 4.28.14. core/string/casecmp_spec
   - [ ] 4.28.15. core/string/center_spec
   - [ ] 4.28.16. core/string/chars_spec
   - [ ] 4.28.17. core/string/chilled_string_spec
   - [ ] 4.28.18. core/string/chomp_spec
-  - [ ] 4.28.19. core/string/chop_spec
+  - [x] 4.28.19. core/string/chop_spec - 1 file, 26 examples, 26 expectations, 0 failures, 0 errors
   - [x] 4.28.20. core/string/chr_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
-  - [ ] 4.28.21. core/string/clear_spec
+  - [x] 4.28.21. core/string/clear_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
   - [ ] 4.28.22. core/string/clone_spec
   - [ ] 4.28.23. core/string/codepoints_spec
   - [ ] 4.28.24. core/string/comparison_spec
   - [ ] 4.28.25. core/string/concat_spec
-  - [ ] 4.28.26. core/string/count_spec
+  - [x] 4.28.26. core/string/count_spec - 1 file, 8 examples, 48 expectations, 0 failures, 0 errors
   - [ ] 4.28.27. core/string/crypt_spec
   - [ ] 4.28.28. core/string/dedup_spec
   - [ ] 4.28.29. core/string/delete_prefix_spec
   - [ ] 4.28.30. core/string/delete_spec
   - [ ] 4.28.31. core/string/delete_suffix_spec
-  - [ ] 4.28.32. core/string/downcase_spec
+  - [x] 4.28.32. core/string/downcase_spec - 1 file, 32 examples, 44 expectations, 0 failures, 0 errors
   - [ ] 4.28.33. core/string/dump_spec
   - [ ] 4.28.34. core/string/dup_spec
-  - [ ] 4.28.35. core/string/each_byte_spec
+  - [x] 4.28.35. core/string/each_byte_spec - 1 file, 5 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.28.36. core/string/each_char_spec
   - [ ] 4.28.37. core/string/each_codepoint_spec
   - [ ] 4.28.38. core/string/each_grapheme_cluster_spec
@@ -1321,19 +1321,19 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.64. core/string/lstrip_spec
   - [ ] 4.28.65. core/string/match_spec
   - [ ] 4.28.66. core/string/modulo_spec
-  - [ ] 4.28.67. core/string/multiply_spec
+  - [x] 4.28.67. core/string/multiply_spec - 1 file, 8 examples, 18 expectations, 0 failures, 0 errors
   - [ ] 4.28.68. core/string/new_spec
-  - [ ] 4.28.69. core/string/next_spec
+  - [x] 4.28.69. core/string/next_spec - 1 file, 10 examples, 44 expectations, 0 failures, 0 errors
   - [x] 4.28.70. core/string/oct_spec - 1 file, 17 examples, 26 expectations, 0 failures, 0 errors
   - [ ] 4.28.71. core/string/ord_spec
-  - [ ] 4.28.72. core/string/partition_spec
+  - [x] 4.28.72. core/string/partition_spec - 1 file, 12 examples, 33 expectations, 0 failures, 0 errors
   - [ ] 4.28.73. core/string/plus_spec
-  - [ ] 4.28.74. core/string/prepend_spec
-  - [ ] 4.28.75. core/string/replace_spec
+  - [x] 4.28.74. core/string/prepend_spec - 1 file, 8 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.28.75. core/string/replace_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.28.76. core/string/reverse_spec
   - [ ] 4.28.77. core/string/rindex_spec
   - [ ] 4.28.78. core/string/rjust_spec
-  - [ ] 4.28.79. core/string/rpartition_spec
+  - [x] 4.28.79. core/string/rpartition_spec - 1 file, 14 examples, 34 expectations, 0 failures, 0 errors
   - [ ] 4.28.80. core/string/rstrip_spec
   - [ ] 4.28.81. core/string/scan_spec
   - [ ] 4.28.82. core/string/scrub_spec
@@ -1341,14 +1341,14 @@ Parser fixes during Phase 4 work:
   - [ ] 4.28.84. core/string/size_spec
   - [ ] 4.28.85. core/string/slice_spec
   - [ ] 4.28.86. core/string/split_spec
-  - [ ] 4.28.87. core/string/squeeze_spec
+  - [x] 4.28.87. core/string/squeeze_spec - 1 file, 13 examples, 46 expectations, 0 failures, 0 errors
   - [x] 4.28.88. core/string/start_with_spec - 1 file, 13 examples, 34 expectations, 0 failures, 0 errors
   - [x] 4.28.89. core/string/string_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.28.90. core/string/strip_spec
+  - [x] 4.28.90. core/string/strip_spec - 1 file, 10 examples, 20 expectations, 0 failures, 0 errors
   - [ ] 4.28.91. core/string/sub_spec
-  - [ ] 4.28.92. core/string/succ_spec
-  - [ ] 4.28.93. core/string/sum_spec
-  - [ ] 4.28.94. core/string/swapcase_spec
+  - [x] 4.28.92. core/string/succ_spec - 1 file, 10 examples, 44 expectations, 0 failures, 0 errors
+  - [x] 4.28.93. core/string/sum_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.28.94. core/string/swapcase_spec - 1 file, 32 examples, 45 expectations, 0 failures, 0 errors
   - [ ] 4.28.95. core/string/to_c_spec
   - [ ] 4.28.96. core/string/to_f_spec
   - [ ] 4.28.97. core/string/to_i_spec
@@ -1356,16 +1356,16 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.99. core/string/to_s_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.28.100. core/string/to_str_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.28.101. core/string/to_sym_spec
-  - [ ] 4.28.102. core/string/tr_s_spec
-  - [ ] 4.28.103. core/string/tr_spec
-  - [ ] 4.28.104. core/string/try_convert_spec
+  - [x] 4.28.102. core/string/tr_s_spec - 1 file, 16 examples, 52 expectations, 0 failures, 0 errors
+  - [x] 4.28.103. core/string/tr_spec - 1 file, 17 examples, 49 expectations, 0 failures, 0 errors
+  - [x] 4.28.104. core/string/try_convert_spec - 1 file, 8 examples, 13 expectations, 0 failures, 0 errors
   - [ ] 4.28.105. core/string/uminus_spec
   - [ ] 4.28.106. core/string/undump_spec
   - [ ] 4.28.107. core/string/unicode_normalize_spec
   - [ ] 4.28.108. core/string/unicode_normalized_spec
-  - [ ] 4.28.109. core/string/unpack/a_spec
+  - [x] 4.28.109. core/string/unpack/a_spec - 1 file, 33 examples, 39 expectations, 0 failures, 0 errors
   - [x] 4.28.110. core/string/unpack/at_spec - 1 file, 10 examples, 13 expectations, 0 failures, 0 errors
-  - [ ] 4.28.111. core/string/unpack/b_spec
+  - [x] 4.28.111. core/string/unpack/b_spec - 1 file, 32 examples, 38 expectations, 0 failures, 0 errors
   - [x] 4.28.112. core/string/unpack/c_spec - 1 file, 26 examples, 32 expectations, 0 failures, 0 errors
   - [x] 4.28.113. core/string/unpack/carret_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.28.114. core/string/unpack/comment_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
@@ -1373,11 +1373,11 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.116. core/string/unpack/e_spec - 1 file, 32 examples, 38 expectations, 0 failures, 0 errors
   - [x] 4.28.117. core/string/unpack/f_spec - 1 file, 32 examples, 38 expectations, 0 failures, 0 errors
   - [x] 4.28.118. core/string/unpack/g_spec - 1 file, 32 examples, 38 expectations, 0 failures, 0 errors
-  - [ ] 4.28.119. core/string/unpack/h_spec
+  - [x] 4.28.119. core/string/unpack/h_spec - 1 file, 32 examples, 38 expectations, 0 failures, 0 errors
   - [x] 4.28.120. core/string/unpack/i_spec - 1 file, 266 examples, 272 expectations, 0 failures, 0 errors
   - [x] 4.28.121. core/string/unpack/j_spec - 1 file, 216 examples, 216 expectations, 0 failures, 0 errors
   - [x] 4.28.122. core/string/unpack/l_spec - 1 file, 246 examples, 252 expectations, 0 failures, 0 errors
-  - [ ] 4.28.123. core/string/unpack/m_spec
+  - [x] 4.28.123. core/string/unpack/m_spec - 1 file, 34 examples, 42 expectations, 0 failures, 0 errors
   - [x] 4.28.124. core/string/unpack/n_spec - 1 file, 30 examples, 36 expectations, 0 failures, 0 errors
   - [ ] 4.28.125. core/string/unpack/p_spec
   - [x] 4.28.126. core/string/unpack/percent_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
@@ -1391,10 +1391,10 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.134. core/string/unpack/z_spec - 1 file, 15 examples, 19 expectations, 0 failures, 0 errors
   - [ ] 4.28.135. core/string/unpack1_spec
   - [ ] 4.28.136. core/string/unpack_spec
-  - [ ] 4.28.137. core/string/upcase_spec
+  - [x] 4.28.137. core/string/upcase_spec - 1 file, 32 examples, 42 expectations, 0 failures, 0 errors
   - [ ] 4.28.138. core/string/uplus_spec
-  - [ ] 4.28.139. core/string/upto_spec
-  - [ ] 4.28.140. core/string/valid_encoding/utf_8_spec
+  - [x] 4.28.139. core/string/upto_spec - 1 file, 17 examples, 22 expectations, 0 failures, 0 errors
+  - [x] 4.28.140. core/string/valid_encoding/utf_8_spec - 1 file, 28 examples, 102 expectations, 0 failures, 0 errors
   - [ ] 4.28.141. core/string/valid_encoding_spec
 - [ ] 4.29. core/symbol - 19 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.29.1. core/symbol/all_symbols_spec
@@ -1406,7 +1406,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.29.7. core/symbol/dup_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.29.8. core/symbol/element_reference_spec
   - [x] 4.29.9. core/symbol/empty_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
-  - [ ] 4.29.10. core/symbol/encoding_spec
+  - [x] 4.29.10. core/symbol/encoding_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.29.11. core/symbol/end_with_spec
   - [x] 4.29.12. core/symbol/equal_value_spec - 1 file, 1 example, 7 expectations, 0 failures, 0 errors
   - [ ] 4.29.13. core/symbol/id2name_spec
@@ -1457,22 +1457,22 @@ Parser fixes during Phase 4 work:
   - [ ] 4.31.3. core/encoding/aliases_spec
   - [x] 4.31.4. core/encoding/ascii_compatible_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.31.5. core/encoding/compatible_spec
-  - [ ] 4.31.6. core/encoding/converter/asciicompat_encoding_spec
-  - [ ] 4.31.7. core/encoding/converter/constants_spec
+  - [x] 4.31.6. core/encoding/converter/asciicompat_encoding_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.31.7. core/encoding/converter/constants_spec - 1 file, 26 examples, 26 expectations, 0 failures, 0 errors
   - [ ] 4.31.8. core/encoding/converter/convert_spec
-  - [ ] 4.31.9. core/encoding/converter/convpath_spec
-  - [ ] 4.31.10. core/encoding/converter/destination_encoding_spec
+  - [x] 4.31.9. core/encoding/converter/convpath_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.31.10. core/encoding/converter/destination_encoding_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [ ] 4.31.11. core/encoding/converter/finish_spec
-  - [ ] 4.31.12. core/encoding/converter/insert_output_spec
-  - [ ] 4.31.13. core/encoding/converter/inspect_spec
+  - [x] 4.31.12. core/encoding/converter/insert_output_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 4.31.13. core/encoding/converter/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.31.14. core/encoding/converter/last_error_spec
-  - [ ] 4.31.15. core/encoding/converter/new_spec
+  - [x] 4.31.15. core/encoding/converter/new_spec - 1 file, 19 examples, 24 expectations, 0 failures, 0 errors
   - [ ] 4.31.16. core/encoding/converter/primitive_convert_spec
   - [ ] 4.31.17. core/encoding/converter/primitive_errinfo_spec
   - [ ] 4.31.18. core/encoding/converter/putback_spec
   - [ ] 4.31.19. core/encoding/converter/replacement_spec
-  - [ ] 4.31.20. core/encoding/converter/search_convpath_spec
-  - [ ] 4.31.21. core/encoding/converter/source_encoding_spec
+  - [x] 4.31.20. core/encoding/converter/search_convpath_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.31.21. core/encoding/converter/source_encoding_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [ ] 4.31.22. core/encoding/default_external_spec
   - [ ] 4.31.23. core/encoding/default_internal_spec
   - [ ] 4.31.24. core/encoding/dummy_spec
@@ -1523,7 +1523,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.32.23. core/matchdata/pre_match_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.32.24. core/matchdata/regexp_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.32.25. core/matchdata/size_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
-  - [ ] 4.32.26. core/matchdata/string_spec
+  - [x] 4.32.26. core/matchdata/string_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.32.27. core/matchdata/to_a_spec - 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.32.28. core/matchdata/to_s_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.32.29. core/matchdata/values_at_spec - 1 file, 15 examples, 16 expectations, 0 failures, 0 errors
@@ -1600,7 +1600,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.35.17. core/unboundmethod/source_location_spec
   - [x] 4.35.18. core/unboundmethod/super_method_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.35.19. core/unboundmethod/to_s_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
-- [ ] 4.36. core/binding - 1 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.36. core/binding - 3 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.36.1. core/binding/clone_spec
   - [ ] 4.36.2. core/binding/dup_spec
   - [ ] 4.36.3. core/binding/eval_spec
@@ -1609,11 +1609,11 @@ Parser fixes during Phase 4 work:
   - [ ] 4.36.6. core/binding/local_variable_set_spec
   - [ ] 4.36.7. core/binding/local_variables_spec
   - [x] 4.36.8. core/binding/receiver_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
-  - [ ] 4.36.9. core/binding/source_location_spec
+  - [x] 4.36.9. core/binding/source_location_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
 
 ### IO and Filesystem
 
-- [ ] 4.37. core/io - 9 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.37. core/io - 10 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.37.1. core/io/advise_spec
   - [ ] 4.37.2. core/io/autoclose_spec
   - [ ] 4.37.3. core/io/binmode_spec
@@ -1669,7 +1669,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.37.53. core/io/inspect_spec
   - [ ] 4.37.54. core/io/internal_encoding_spec
   - [x] 4.37.55. core/io/io_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
-  - [ ] 4.37.56. core/io/ioctl_spec
+  - [x] 4.37.56. core/io/ioctl_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.37.57. core/io/isatty_spec
   - [ ] 4.37.58. core/io/lineno_spec
   - [ ] 4.37.59. core/io/new_spec
@@ -1715,7 +1715,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.37.99. core/io/ungetc_spec
   - [ ] 4.37.100. core/io/write_nonblock_spec
   - [ ] 4.37.101. core/io/write_spec
-- [ ] 4.38. core/file - 70 pass, 6 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [ ] 4.38. core/file - 75 pass, 6 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
   - [ ] 4.38.1. core/file/absolute_path_spec
   - [ ] 4.38.2. core/file/atime_spec
   - [ ] 4.38.3. core/file/basename_spec
@@ -1728,14 +1728,14 @@ Parser fixes during Phase 4 work:
   - [ ] 4.38.10. core/file/constants_spec
   - [ ] 4.38.11. core/file/ctime_spec
   - [ ] 4.38.12. core/file/delete_spec
-  - [ ] 4.38.13. core/file/directory_spec
+  - [x] 4.38.13. core/file/directory_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.38.14. core/file/dirname_spec
   - [x] 4.38.15. core/file/empty_spec - 1 file, 9 examples, 12 expectations, 0 failures, 0 errors
   - [x] 4.38.16. core/file/executable_real_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.38.17. core/file/executable_spec - 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
   - [x] 4.38.18. core/file/exist_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.38.19. core/file/expand_path_spec
-  - [ ] 4.38.20. core/file/extname_spec
+  - [x] 4.38.20. core/file/extname_spec - 1 file, 9 examples, 33 expectations, 0 failures, 0 errors
   - [x] 4.38.21. core/file/file_spec - 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.38.22. core/file/flock_spec
   - [ ] 4.38.23. core/file/fnmatch_spec
@@ -1765,13 +1765,13 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.47. core/file/readlink_spec - 1 file, 7 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.38.48. core/file/realdirpath_spec
   - [ ] 4.38.49. core/file/realpath_spec
-  - [ ] 4.38.50. core/file/rename_spec
+  - [x] 4.38.50. core/file/rename_spec - 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.38.51. core/file/reopen_spec
   - [x] 4.38.52. core/file/setgid_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.38.53. core/file/setuid_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.38.54. core/file/size_spec
-  - [ ] 4.38.55. core/file/socket_spec
-  - [ ] 4.38.56. core/file/split_spec
+  - [x] 4.38.55. core/file/socket_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.38.56. core/file/split_spec - 1 file, 9 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.38.57. core/file/stat/atime_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.38.58. core/file/stat/birthtime_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.38.59. core/file/stat/blksize_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
@@ -1787,11 +1787,11 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.69. core/file/stat/executable_real_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.38.70. core/file/stat/executable_spec - 1 file, 5 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.38.71. core/file/stat/file_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
-  - [ ] 4.38.72. core/file/stat/ftype_spec
+  - [x] 4.38.72. core/file/stat/ftype_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.38.73. core/file/stat/gid_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.38.74. core/file/stat/grpowned_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.38.75. core/file/stat/ino_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
-  - [ ] 4.38.76. core/file/stat/inspect_spec
+  - [x] 4.38.76. core/file/stat/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.38.77. core/file/stat/mode_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.38.78. core/file/stat/mtime_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.38.79. core/file/stat/new_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
@@ -1806,7 +1806,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.88. core/file/stat/setgid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.38.89. core/file/stat/setuid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [ ] 4.38.90. core/file/stat/size_spec
-  - [ ] 4.38.91. core/file/stat/socket_spec
+  - [x] 4.38.91. core/file/stat/socket_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.38.92. core/file/stat/sticky_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.38.93. core/file/stat/symlink_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.38.94. core/file/stat/uid_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
@@ -1817,7 +1817,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.99. core/file/stat/zero_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.38.100. core/file/stat_spec
   - [x] 4.38.101. core/file/sticky_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
-  - [ ] 4.38.102. core/file/symlink_spec
+  - [x] 4.38.102. core/file/symlink_spec - 1 file, 9 examples, 16 expectations, 0 failures, 0 errors
   - [ ] 4.38.103. core/file/to_path_spec
   - [ ] 4.38.104. core/file/truncate_spec
   - [ ] 4.38.105. core/file/umask_spec
@@ -1828,26 +1828,26 @@ Parser fixes during Phase 4 work:
   - [x] 4.38.110. core/file/writable_real_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.38.111. core/file/writable_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.38.112. core/file/zero_spec - 1 file, 9 examples, 12 expectations, 0 failures, 0 errors
-- [ ] 4.39. core/dir - 15 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [ ] 4.39. core/dir - 24 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
   - [ ] 4.39.1. core/dir/chdir_spec
-  - [ ] 4.39.2. core/dir/children_spec
+  - [x] 4.39.2. core/dir/children_spec - 1 file, 13 examples, 21 expectations, 0 failures, 0 errors
   - [ ] 4.39.3. core/dir/chroot_spec
   - [ ] 4.39.4. core/dir/close_spec
-  - [ ] 4.39.5. core/dir/delete_spec
+  - [x] 4.39.5. core/dir/delete_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.39.6. core/dir/dir_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.39.7. core/dir/each_child_spec
+  - [x] 4.39.7. core/dir/each_child_spec - 1 file, 12 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.39.8. core/dir/each_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.39.9. core/dir/element_reference_spec
-  - [ ] 4.39.10. core/dir/empty_spec
-  - [ ] 4.39.11. core/dir/entries_spec
-  - [ ] 4.39.12. core/dir/exist_spec
+  - [x] 4.39.10. core/dir/empty_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.39.11. core/dir/entries_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 4.39.12. core/dir/exist_spec - 1 file, 12 examples, 15 expectations, 0 failures, 0 errors
   - [ ] 4.39.13. core/dir/fchdir_spec
   - [x] 4.39.14. core/dir/fileno_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.39.15. core/dir/for_fd_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.39.16. core/dir/foreach_spec
+  - [x] 4.39.16. core/dir/foreach_spec - 1 file, 8 examples, 22 expectations, 0 failures, 0 errors
   - [x] 4.39.17. core/dir/getwd_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.39.18. core/dir/glob_spec
-  - [ ] 4.39.19. core/dir/home_spec
+  - [x] 4.39.19. core/dir/home_spec - 1 file, 9 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.39.20. core/dir/initialize_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.39.21. core/dir/inspect_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.39.22. core/dir/mkdir_spec
@@ -1857,16 +1857,16 @@ Parser fixes during Phase 4 work:
   - [x] 4.39.26. core/dir/pwd_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.39.27. core/dir/read_spec
   - [x] 4.39.28. core/dir/rewind_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
-  - [ ] 4.39.29. core/dir/rmdir_spec
+  - [x] 4.39.29. core/dir/rmdir_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.39.30. core/dir/scan_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.39.31. core/dir/seek_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.39.32. core/dir/tell_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.39.33. core/dir/to_path_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.39.34. core/dir/unlink_spec
-- [ ] 4.40. core/filetest - 22 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.39.34. core/dir/unlink_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+- [ ] 4.40. core/filetest - 23 pass, and the rest are enabled in the runner one file at a time
   - [x] 4.40.1. core/filetest/blockdev_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.40.2. core/filetest/chardev_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.40.3. core/filetest/directory_spec
+  - [x] 4.40.3. core/filetest/directory_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.40.4. core/filetest/executable_real_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.40.5. core/filetest/executable_spec - 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
   - [x] 4.40.6. core/filetest/exist_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
@@ -1880,7 +1880,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.40.14. core/filetest/setgid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.40.15. core/filetest/setuid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.40.16. core/filetest/size_spec - 1 file, 12 examples, 16 expectations, 0 failures, 0 errors
-  - [ ] 4.40.17. core/filetest/socket_spec
+  - [x] 4.40.17. core/filetest/socket_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.40.18. core/filetest/sticky_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.40.19. core/filetest/symlink_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.40.20. core/filetest/world_readable_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
@@ -1888,12 +1888,12 @@ Parser fixes during Phase 4 work:
   - [x] 4.40.22. core/filetest/writable_real_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.40.23. core/filetest/writable_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.40.24. core/filetest/zero_spec - 1 file, 9 examples, 12 expectations, 0 failures, 0 errors
-- [ ] 4.41. core/env - 23 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
-  - [ ] 4.41.1. core/env/assoc_spec
+- [ ] 4.41. core/env - 25 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+  - [x] 4.41.1. core/env/assoc_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.41.2. core/env/clear_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
-  - [ ] 4.41.3. core/env/clone_spec
+  - [x] 4.41.3. core/env/clone_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.41.4. core/env/delete_if_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
-  - [ ] 4.41.5. core/env/delete_spec
+  - [x] 4.41.5. core/env/delete_spec - 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.41.6. core/env/dup_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.41.7. core/env/each_key_spec - 1 file, 4 examples, 78 expectations, 0 failures, 0 errors
   - [ ] 4.41.8. core/env/each_pair_spec
@@ -1903,21 +1903,21 @@ Parser fixes during Phase 4 work:
   - [ ] 4.41.12. core/env/element_set_spec
   - [x] 4.41.13. core/env/empty_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.41.14. core/env/except_spec - 1 file, 6 examples, 222 expectations, 0 failures, 0 errors
-  - [ ] 4.41.15. core/env/fetch_spec
+  - [x] 4.41.15. core/env/fetch_spec - 1 file, 13 examples, 16 expectations, 0 failures, 0 errors
   - [x] 4.41.16. core/env/fetch_values_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.41.17. core/env/filter_spec - 1 file, 10 examples, 10 expectations, 0 failures, 0 errors
-  - [ ] 4.41.18. core/env/has_key_spec
-  - [ ] 4.41.19. core/env/has_value_spec
-  - [ ] 4.41.20. core/env/include_spec
+  - [x] 4.41.18. core/env/has_key_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.41.19. core/env/has_value_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.41.20. core/env/include_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.41.21. core/env/inspect_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
   - [x] 4.41.22. core/env/invert_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.41.23. core/env/keep_if_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
-  - [ ] 4.41.24. core/env/key_spec
+  - [x] 4.41.24. core/env/key_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
   - [x] 4.41.25. core/env/keys_spec - 1 file, 2 examples, 73 expectations, 0 failures, 0 errors
   - [x] 4.41.26. core/env/length_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
-  - [ ] 4.41.27. core/env/member_spec
+  - [x] 4.41.27. core/env/member_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [ ] 4.41.28. core/env/merge_spec
-  - [ ] 4.41.29. core/env/rassoc_spec
+  - [x] 4.41.29. core/env/rassoc_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.41.30. core/env/rehash_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.41.31. core/env/reject_spec - 1 file, 12 examples, 18 expectations, 0 failures, 0 errors
   - [ ] 4.41.32. core/env/replace_spec
@@ -1931,8 +1931,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.41.40. core/env/to_hash_spec - 1 file, 4 examples, 220 expectations, 0 failures, 0 errors
   - [x] 4.41.41. core/env/to_s_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.41.42. core/env/update_spec
-  - [ ] 4.41.43. core/env/value_spec
-  - [ ] 4.41.44. core/env/values_at_spec
+  - [x] 4.41.43. core/env/value_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.41.44. core/env/values_at_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.41.45. core/env/values_spec - 1 file, 2 examples, 73 expectations, 0 failures, 0 errors
 - [ ] 4.42. core/argf - 15 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.42.1. core/argf/argf_spec
@@ -1949,14 +1949,14 @@ Parser fixes during Phase 4 work:
   - [x] 4.42.12. core/argf/file_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
   - [x] 4.42.13. core/argf/filename_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.14. core/argf/fileno_spec
-  - [ ] 4.42.15. core/argf/getc_spec
+  - [x] 4.42.15. core/argf/getc_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.16. core/argf/gets_spec
   - [x] 4.42.17. core/argf/lineno_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.42.18. core/argf/path_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.42.19. core/argf/pos_spec - 1 file, 3 examples, 11 expectations, 0 failures, 0 errors
   - [ ] 4.42.20. core/argf/read_nonblock_spec
   - [ ] 4.42.21. core/argf/read_spec
-  - [ ] 4.42.22. core/argf/readchar_spec
+  - [x] 4.42.22. core/argf/readchar_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.23. core/argf/readline_spec
   - [x] 4.42.24. core/argf/readlines_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [ ] 4.42.25. core/argf/readpartial_spec
@@ -2144,17 +2144,17 @@ Parser fixes during Phase 4 work:
   - [x] 4.51.27. core/objectspace/weakmap/size_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [x] 4.51.28. core/objectspace/weakmap/values_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [x] 4.51.29. core/objectspace/weakmap_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-- [ ] 4.52. core/random
-  - [ ] 4.52.1. core/random/bytes_spec
-  - [ ] 4.52.2. core/random/default_spec
-  - [ ] 4.52.3. core/random/equal_value_spec
-  - [ ] 4.52.4. core/random/new_seed_spec
-  - [ ] 4.52.5. core/random/new_spec
-  - [ ] 4.52.6. core/random/rand_spec
-  - [ ] 4.52.7. core/random/random_number_spec
-  - [ ] 4.52.8. core/random/seed_spec
-  - [ ] 4.52.9. core/random/srand_spec
-  - [ ] 4.52.10. core/random/urandom_spec
+- [x] 4.52. core/random - 10 files passing
+  - [x] 4.52.1. core/random/bytes_spec - 1 file, 11 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.52.2. core/random/default_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.52.3. core/random/equal_value_spec - 1 file, 5 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 4.52.4. core/random/new_seed_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.52.5. core/random/new_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 4.52.6. core/random/rand_spec - 1 file, 39 examples, 64 expectations, 0 failures, 0 errors
+  - [x] 4.52.7. core/random/random_number_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.52.8. core/random/seed_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 4.52.9. core/random/srand_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.52.10. core/random/urandom_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
 - [ ] 4.53. core/time - 52 pass, and the rest are enabled in the runner one file at a time
   - [ ] 4.53.1. core/time/_dump_spec
   - [ ] 4.53.2. core/time/_load_spec
@@ -2221,24 +2221,24 @@ Parser fixes during Phase 4 work:
   - [x] 4.53.63. core/time/xmlschema_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.53.64. core/time/yday_spec - 1 file, 3 examples, 368 expectations, 0 failures, 0 errors
   - [x] 4.53.65. core/time/year_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
-  - [ ] 4.53.66. core/time/zone_spec
-- [ ] 4.54. core/process - 51 pass, 4 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
-  - [ ] 4.54.1. core/process/_fork_spec
+  - [x] 4.53.66. core/time/zone_spec - 1 file, 8 examples, 31 expectations, 0 failures, 0 errors
+- [ ] 4.54. core/process - 72 pass, 4 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+  - [x] 4.54.1. core/process/_fork_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.2. core/process/abort_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [ ] 4.54.3. core/process/argv0_spec
   - [ ] 4.54.4. core/process/clock_getres_spec
   - [ ] 4.54.5. core/process/clock_gettime_spec
-  - [ ] 4.54.6. core/process/constants_spec - no examples on this platform at ruby 4.0.1
+  - [x] 4.54.6. core/process/constants_spec - 1 file, 2 examples, 36 expectations, 0 failures, 0 errors
   - [ ] 4.54.7. core/process/daemon_spec
   - [ ] 4.54.8. core/process/detach_spec
-  - [ ] 4.54.9. core/process/egid_spec
-  - [ ] 4.54.10. core/process/euid_spec
+  - [x] 4.54.9. core/process/egid_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.54.10. core/process/euid_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
   - [ ] 4.54.11. core/process/exec_spec
   - [ ] 4.54.12. core/process/exit_spec
   - [x] 4.54.13. core/process/fork_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
-  - [ ] 4.54.14. core/process/getpgid_spec
+  - [x] 4.54.14. core/process/getpgid_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.54.15. core/process/getpgrp_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.16. core/process/getpriority_spec
+  - [x] 4.54.16. core/process/getpriority_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [ ] 4.54.17. core/process/getrlimit_spec
   - [x] 4.54.18. core/process/gid/change_privilege_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.19. core/process/gid/eid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
@@ -2248,9 +2248,9 @@ Parser fixes during Phase 4 work:
   - [x] 4.54.23. core/process/gid/rid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.24. core/process/gid/sid_available_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.25. core/process/gid/switch_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.26. core/process/gid_spec
+  - [x] 4.54.26. core/process/gid_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.54.27. core/process/groups_spec
-  - [ ] 4.54.28. core/process/initgroups_spec
+  - [x] 4.54.28. core/process/initgroups_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [ ] 4.54.29. core/process/kill_spec
   - [ ] 4.54.30. core/process/last_status_spec
   - [x] 4.54.31. core/process/maxgroups_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
@@ -2259,24 +2259,24 @@ Parser fixes during Phase 4 work:
   - [ ] 4.54.34. core/process/set_proctitle_spec - no examples on this platform at ruby 4.0.1
   - [ ] 4.54.35. core/process/setpgid_spec
   - [ ] 4.54.36. core/process/setpgrp_spec
-  - [ ] 4.54.37. core/process/setpriority_spec
+  - [x] 4.54.37. core/process/setpriority_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [ ] 4.54.38. core/process/setrlimit_spec
-  - [ ] 4.54.39. core/process/setsid_spec
+  - [x] 4.54.39. core/process/setsid_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
   - [ ] 4.54.40. core/process/spawn_spec
   - [x] 4.54.41. core/process/status/bit_and_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.42. core/process/status/coredump_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.43. core/process/status/equal_value_spec
-  - [ ] 4.54.44. core/process/status/exited_spec
-  - [ ] 4.54.45. core/process/status/exitstatus_spec
+  - [x] 4.54.43. core/process/status/equal_value_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 4.54.44. core/process/status/exited_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 4.54.45. core/process/status/exitstatus_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.46. core/process/status/inspect_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.47. core/process/status/pid_spec
+  - [x] 4.54.47. core/process/status/pid_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.54.48. core/process/status/right_shift_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.49. core/process/status/signaled_spec
+  - [x] 4.54.49. core/process/status/signaled_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.50. core/process/status/stopped_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.51. core/process/status/stopsig_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.52. core/process/status/success_spec
-  - [ ] 4.54.53. core/process/status/termsig_spec
-  - [ ] 4.54.54. core/process/status/to_i_spec
+  - [x] 4.54.52. core/process/status/success_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.54.53. core/process/status/termsig_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.54.54. core/process/status/to_i_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.55. core/process/status/to_int_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.56. core/process/status/to_s_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [ ] 4.54.57. core/process/status/wait_spec
@@ -2295,7 +2295,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.54.70. core/process/sys/setrgid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.71. core/process/sys/setruid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.72. core/process/sys/setuid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.73. core/process/times_spec
+  - [x] 4.54.73. core/process/times_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.74. core/process/tms/cstime_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.75. core/process/tms/cutime_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 4.54.76. core/process/tms/stime_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
@@ -2308,10 +2308,10 @@ Parser fixes during Phase 4 work:
   - [x] 4.54.83. core/process/uid/rid_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.84. core/process/uid/sid_available_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 4.54.85. core/process/uid/switch_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
-  - [ ] 4.54.86. core/process/uid_spec
+  - [x] 4.54.86. core/process/uid_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.54.87. core/process/wait2_spec
   - [ ] 4.54.88. core/process/wait_spec
-  - [ ] 4.54.89. core/process/waitall_spec
+  - [x] 4.54.89. core/process/waitall_spec - 1 file, 4 examples, 19 expectations, 0 failures, 0 errors
   - [x] 4.54.90. core/process/waitpid2_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [ ] 4.54.91. core/process/waitpid_spec
   - [x] 4.54.92. core/process/warmup_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
@@ -2343,14 +2343,14 @@ Parser fixes during Phase 4 work:
   - [ ] 4.56.18. core/tracepoint/self_spec
   - [x] 4.56.19. core/tracepoint/trace_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
 - [ ] 4.57. core/refinement - 3 pass, and the rest are enabled in the runner one file at a time
-  - [ ] 4.57.1. core/refinement/append_features_spec
-  - [ ] 4.57.2. core/refinement/extend_object_spec
+  - [x] 4.57.1. core/refinement/append_features_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 4.57.2. core/refinement/extend_object_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.57.3. core/refinement/import_methods_spec
   - [x] 4.57.4. core/refinement/include_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.57.5. core/refinement/prepend_features_spec
+  - [x] 4.57.5. core/refinement/prepend_features_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.57.6. core/refinement/prepend_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 4.57.7. core/refinement/refined_class_spec - 1 file, 1 example, 1 expectations, 0 failures, 0 errors
-  - [ ] 4.57.8. core/refinement/target_spec
+  - [x] 4.57.8. core/refinement/target_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
 - [ ] 4.58. core/builtin_constants
   - [ ] 4.58.1. core/builtin_constants/builtin_constants_spec
 
@@ -2384,7 +2384,7 @@ different reported release would open, without committing metorex to it.
   - [x] 5.1.8. language/private_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [x] 5.1.9. language/order_spec - 1 file, 5 examples, 25 expectations, 0 failures, 0 errors
   - [x] 5.1.10. language/source_encoding_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
-- [ ] 5.2. library - 628 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
+- [ ] 5.2. library - 1151 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
   - [x] 5.2.1. library/abbrev/abbrev_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 5.2.2. library/base64/urlsafe_decode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.3. library/base64/urlsafe_encode64_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
@@ -3013,6 +3013,529 @@ different reported release would open, without committing metorex to it.
   - [x] 5.2.626. library/digest/sha512/size_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 5.2.627. library/digest/sha512/to_s_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
   - [x] 5.2.628. library/digest/sha512/update_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.629. library/delegate/delegate_class/instance_method_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.630. library/delegate/delegate_class/instance_methods_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.631. library/delegate/delegate_class/private_instance_methods_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.632. library/delegate/delegate_class/protected_instance_methods_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.633. library/delegate/delegate_class/public_instance_methods_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.634. library/delegate/delegate_class/respond_to_missing_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.635. library/delegate/delegator/case_compare_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.636. library/delegate/delegator/compare_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.637. library/delegate/delegator/complement_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.638. library/delegate/delegator/eql_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.639. library/delegate/delegator/equal_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.640. library/delegate/delegator/equal_value_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.641. library/delegate/delegator/frozen_spec - 1 file, 7 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.642. library/delegate/delegator/hash_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.643. library/delegate/delegator/method_spec - 1 file, 9 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 5.2.644. library/delegate/delegator/methods_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.645. library/delegate/delegator/not_equal_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.646. library/delegate/delegator/not_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.647. library/delegate/delegator/private_methods_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.648. library/delegate/delegator/protected_methods_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.649. library/delegate/delegator/public_methods_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.650. library/delegate/delegator/send_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.651. library/delegate/delegator/taint_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.652. library/delegate/delegator/tap_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.653. library/delegate/delegator/trust_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.654. library/delegate/delegator/untaint_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.655. library/delegate/delegator/untrust_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.656. library/logger/device/close_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.657. library/logger/device/new_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.658. library/logger/device/write_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.659. library/logger/logger/add_spec - 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 5.2.660. library/logger/logger/close_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.661. library/logger/logger/datetime_format_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.662. library/logger/logger/debug_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.663. library/logger/logger/error_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.664. library/logger/logger/fatal_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.665. library/logger/logger/info_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.666. library/logger/logger/unknown_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.667. library/logger/logger/warn_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.668. library/logger/severity_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.669. library/monitor/exit_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.670. library/monitor/mon_initialize_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.671. library/monitor/new_cond_spec - 1 file, 4 examples, 31 expectations, 0 failures, 0 errors
+  - [x] 5.2.672. library/monitor/try_enter_spec - 1 file, 2 examples, 30 expectations, 0 failures, 0 errors
+  - [x] 5.2.673. library/tempfile/close_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.674. library/tempfile/delete_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.675. library/tempfile/path_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.676. library/tempfile/unlink_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.677. library/weakref/allocate_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.678. library/weakref/new_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.679. library/weakref/send_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.680. library/bigdecimal/abs_spec - 1 file, 2 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 5.2.681. library/bigdecimal/case_compare_spec - 1 file, 6 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 5.2.682. library/bigdecimal/ceil_spec - 1 file, 6 examples, 98 expectations, 0 failures, 0 errors
+  - [x] 5.2.683. library/bigdecimal/clone_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.684. library/bigdecimal/coerce_spec - 1 file, 1 example, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.685. library/bigdecimal/comparison_spec - 1 file, 5 examples, 93 expectations, 0 failures, 0 errors
+  - [x] 5.2.686. library/bigdecimal/constants_spec - 1 file, 25 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 5.2.687. library/bigdecimal/divide_spec - 1 file, 8 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 5.2.688. library/bigdecimal/double_fig_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.689. library/bigdecimal/dup_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.690. library/bigdecimal/eql_spec - 1 file, 6 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 5.2.691. library/bigdecimal/equal_value_spec - 1 file, 6 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 5.2.692. library/bigdecimal/finite_spec - 1 file, 2 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 5.2.693. library/bigdecimal/fix_spec - 1 file, 5 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 5.2.694. library/bigdecimal/floor_spec - 1 file, 4 examples, 108 expectations, 0 failures, 0 errors
+  - [x] 5.2.695. library/bigdecimal/frac_spec - 1 file, 5 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 5.2.696. library/bigdecimal/gt_spec - 1 file, 5 examples, 267 expectations, 0 failures, 0 errors
+  - [x] 5.2.697. library/bigdecimal/gte_spec - 1 file, 5 examples, 269 expectations, 0 failures, 0 errors
+  - [x] 5.2.698. library/bigdecimal/hash_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.699. library/bigdecimal/infinite_spec - 1 file, 4 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.700. library/bigdecimal/inspect_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.701. library/bigdecimal/lt_spec - 1 file, 5 examples, 267 expectations, 0 failures, 0 errors
+  - [x] 5.2.702. library/bigdecimal/lte_spec - 1 file, 5 examples, 269 expectations, 0 failures, 0 errors
+  - [x] 5.2.703. library/bigdecimal/minus_spec - 1 file, 5 examples, 28 expectations, 0 failures, 0 errors
+  - [x] 5.2.704. library/bigdecimal/mult_spec - 1 file, 6 examples, 226 expectations, 0 failures, 0 errors
+  - [x] 5.2.705. library/bigdecimal/multiply_spec - 1 file, 8 examples, 231 expectations, 0 failures, 0 errors
+  - [x] 5.2.706. library/bigdecimal/nan_spec - 1 file, 2 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 5.2.707. library/bigdecimal/nonzero_spec - 1 file, 2 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.708. library/bigdecimal/plus_spec - 1 file, 5 examples, 16 expectations, 0 failures, 0 errors
+  - [x] 5.2.709. library/bigdecimal/quo_spec - 1 file, 8 examples, 26 expectations, 0 failures, 0 errors
+  - [x] 5.2.710. library/bigdecimal/remainder_spec - 1 file, 7 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.711. library/bigdecimal/round_spec - 1 file, 22 examples, 247 expectations, 0 failures, 0 errors
+  - [x] 5.2.712. library/bigdecimal/sign_spec - 1 file, 6 examples, 21 expectations, 0 failures, 0 errors
+  - [x] 5.2.713. library/bigdecimal/split_spec - 1 file, 7 examples, 43 expectations, 0 failures, 0 errors
+  - [x] 5.2.714. library/bigdecimal/sqrt_spec - 1 file, 16 examples, 215 expectations, 0 failures, 0 errors
+  - [x] 5.2.715. library/bigdecimal/sub_spec - 1 file, 5 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 5.2.716. library/bigdecimal/to_d_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.717. library/bigdecimal/to_f_spec - 1 file, 4 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 5.2.718. library/bigdecimal/to_i_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.719. library/bigdecimal/to_int_spec - 1 file, 2 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.720. library/bigdecimal/to_r_spec - 1 file, 4 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.721. library/bigdecimal/truncate_spec - 1 file, 7 examples, 44 expectations, 0 failures, 0 errors
+  - [x] 5.2.722. library/bigdecimal/uminus_spec - 1 file, 2 examples, 33 expectations, 0 failures, 0 errors
+  - [x] 5.2.723. library/bigdecimal/uplus_spec - 1 file, 1 example, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.724. library/bigdecimal/util_spec - 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.725. library/bigdecimal/zero_spec - 1 file, 2 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 5.2.726. library/tempfile/_close_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.727. library/tempfile/length_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.728. library/tempfile/size_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.729. library/tmpdir/dir/tmpdir_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.730. library/bigdecimal/div_spec - 1 file, 17 examples, 161 expectations, 0 failures, 0 errors
+  - [x] 5.2.731. library/bigdecimal/exponent_spec - 1 file, 11 examples, 34 expectations, 0 failures, 0 errors
+  - [x] 5.2.732. library/bigdecimal/limit_spec - 1 file, 4 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 5.2.733. library/bigdecimal/power_spec - 1 file, 8 examples, 27 expectations, 0 failures, 0 errors
+  - [x] 5.2.734. library/erb/def_class_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.735. library/erb/def_method_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.736. library/erb/def_module_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.737. library/erb/src_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.738. library/erb/util/h_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.739. library/erb/util/html_escape_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.740. library/open3/capture2_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.741. library/open3/capture2e_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.742. library/open3/capture3_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.743. library/open3/pipeline_r_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.744. library/open3/pipeline_rw_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.745. library/open3/pipeline_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.746. library/open3/pipeline_start_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.747. library/open3/pipeline_w_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.748. library/open3/popen2_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.749. library/open3/popen2e_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.750. library/zlib/adler32_spec - 1 file, 5 examples, 23 expectations, 0 failures, 0 errors
+  - [x] 5.2.751. library/zlib/crc32_spec - 1 file, 5 examples, 25 expectations, 0 failures, 0 errors
+  - [x] 5.2.752. library/zlib/crc_table_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.753. library/zlib/gunzip_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.754. library/zlib/gzipfile/closed_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.755. library/zlib/gzipfile/comment_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.756. library/zlib/gzipfile/orig_name_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.757. library/zlib/gzipreader/each_byte_spec - 1 file, 3 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.758. library/zlib/gzipreader/each_char_spec - 1 file, 3 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.759. library/zlib/gzipreader/each_line_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.760. library/zlib/gzipreader/each_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.761. library/zlib/gzipreader/eof_spec - 1 file, 5 examples, 31 expectations, 0 failures, 0 errors
+  - [x] 5.2.762. library/zlib/gzipreader/getc_spec - 1 file, 3 examples, 19 expectations, 0 failures, 0 errors
+  - [x] 5.2.763. library/zlib/gzipreader/gets_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.764. library/zlib/gzipreader/mtime_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.765. library/zlib/gzipreader/pos_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.766. library/zlib/gzipreader/readpartial_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.767. library/zlib/gzipreader/rewind_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.768. library/zlib/gzipreader/ungetbyte_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.769. library/zlib/gzipwriter/append_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.770. library/zlib/gzipwriter/mtime_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.771. library/zlib/inflate_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.772. library/zlib/zlib_version_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.773. library/zlib/zstream/adler_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.774. library/zlib/zstream/avail_in_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.775. library/zlib/zstream/avail_out_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.776. library/zlib/zstream/data_type_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.777. library/zlib/zstream/flush_next_out_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.778. library/cgi/cookie/domain_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.779. library/cgi/cookie/expires_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.780. library/cgi/cookie/initialize_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.781. library/cgi/cookie/name_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.782. library/cgi/cookie/parse_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.783. library/cgi/cookie/path_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.784. library/cgi/cookie/secure_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.785. library/cgi/cookie/to_s_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.786. library/cgi/cookie/value_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.787. library/cgi/escapeElement_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.788. library/cgi/htmlextension/a_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.789. library/cgi/htmlextension/base_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.790. library/cgi/htmlextension/blockquote_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.791. library/cgi/htmlextension/br_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.792. library/cgi/htmlextension/caption_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.793. library/cgi/htmlextension/checkbox_group_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.794. library/cgi/htmlextension/checkbox_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.795. library/cgi/htmlextension/doctype_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.796. library/cgi/htmlextension/file_field_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.797. library/cgi/htmlextension/form_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.798. library/cgi/htmlextension/frame_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.799. library/cgi/htmlextension/frameset_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.800. library/cgi/htmlextension/hidden_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.801. library/cgi/htmlextension/html_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.802. library/cgi/htmlextension/image_button_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.803. library/cgi/htmlextension/img_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.804. library/cgi/htmlextension/multipart_form_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.805. library/cgi/htmlextension/password_field_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.806. library/cgi/htmlextension/popup_menu_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.807. library/cgi/htmlextension/radio_button_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.808. library/cgi/htmlextension/radio_group_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.809. library/cgi/htmlextension/reset_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.810. library/cgi/htmlextension/scrolling_list_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.811. library/cgi/htmlextension/submit_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.812. library/cgi/htmlextension/text_field_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.813. library/cgi/htmlextension/textarea_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.814. library/cgi/http_header_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.815. library/cgi/initialize_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.816. library/cgi/out_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.817. library/cgi/parse_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.818. library/cgi/pretty_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.819. library/cgi/print_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.820. library/cgi/queryextension/accept_charset_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.821. library/cgi/queryextension/accept_encoding_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.822. library/cgi/queryextension/accept_language_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.823. library/cgi/queryextension/accept_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.824. library/cgi/queryextension/auth_type_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.825. library/cgi/queryextension/cache_control_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.826. library/cgi/queryextension/content_length_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.827. library/cgi/queryextension/content_type_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.828. library/cgi/queryextension/cookies_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.829. library/cgi/queryextension/element_reference_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.830. library/cgi/queryextension/from_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.831. library/cgi/queryextension/gateway_interface_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.832. library/cgi/queryextension/has_key_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.833. library/cgi/queryextension/host_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.834. library/cgi/queryextension/include_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.835. library/cgi/queryextension/key_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.836. library/cgi/queryextension/keys_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.837. library/cgi/queryextension/multipart_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.838. library/cgi/queryextension/negotiate_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.839. library/cgi/queryextension/params_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.840. library/cgi/queryextension/path_info_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.841. library/cgi/queryextension/path_translated_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.842. library/cgi/queryextension/pragma_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.843. library/cgi/queryextension/query_string_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.844. library/cgi/queryextension/raw_cookie2_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.845. library/cgi/queryextension/raw_cookie_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.846. library/cgi/queryextension/referer_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.847. library/cgi/queryextension/remote_addr_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.848. library/cgi/queryextension/remote_host_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.849. library/cgi/queryextension/remote_ident_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.850. library/cgi/queryextension/remote_user_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.851. library/cgi/queryextension/request_method_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.852. library/cgi/queryextension/script_name_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.853. library/cgi/queryextension/server_name_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.854. library/cgi/queryextension/server_port_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.855. library/cgi/queryextension/server_protocol_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.856. library/cgi/queryextension/server_software_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.857. library/cgi/queryextension/user_agent_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.858. library/cgi/rfc1123_date_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.859. library/cgi/unescapeElement_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.860. library/cgi/unescapeHTML_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.861. library/cgi/unescape_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.862. library/erb/result_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.863. library/openssl/digest/append_spec - 1 file, 16 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.864. library/openssl/digest/block_length_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.865. library/openssl/digest/digest_length_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.866. library/openssl/digest/digest_spec - 1 file, 12 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.867. library/openssl/digest/name_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.868. library/openssl/digest/reset_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.869. library/openssl/digest/update_spec - 1 file, 16 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.870. library/openssl/fixed_length_secure_compare_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.871. library/openssl/hmac/digest_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.872. library/openssl/hmac/hexdigest_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.873. library/openssl/random/pseudo_bytes_spec - 1 file, 3 examples, 385 expectations, 0 failures, 0 errors
+  - [x] 5.2.874. library/openssl/random/random_bytes_spec - 1 file, 3 examples, 385 expectations, 0 failures, 0 errors
+  - [x] 5.2.875. library/openssl/secure_compare_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.876. library/syslog/alert_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.877. library/syslog/close_spec - 1 file, 6 examples, 24 expectations, 0 failures, 0 errors
+  - [x] 5.2.878. library/syslog/constants_spec - 1 file, 3 examples, 38 expectations, 0 failures, 0 errors
+  - [x] 5.2.879. library/syslog/crit_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.880. library/syslog/debug_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.881. library/syslog/emerg_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.882. library/syslog/err_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.883. library/syslog/facility_spec - 1 file, 4 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 5.2.884. library/syslog/ident_spec - 1 file, 3 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.885. library/syslog/info_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.886. library/syslog/inspect_spec - 1 file, 3 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 5.2.887. library/syslog/instance_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.888. library/syslog/log_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.889. library/syslog/notice_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.890. library/syslog/open_spec - 1 file, 14 examples, 53 expectations, 0 failures, 0 errors
+  - [x] 5.2.891. library/syslog/opened_spec - 1 file, 3 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.892. library/syslog/options_spec - 1 file, 4 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 5.2.893. library/syslog/reopen_spec - 1 file, 4 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 5.2.894. library/syslog/warning_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.895. library/socket/addrinfo/afamily_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.896. library/socket/addrinfo/canonname_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.897. library/socket/addrinfo/foreach_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.898. library/socket/addrinfo/inspect_sockaddr_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.899. library/socket/addrinfo/ip_address_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.900. library/socket/addrinfo/ip_port_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.901. library/socket/addrinfo/ip_spec - 1 file, 15 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 5.2.902. library/socket/addrinfo/ip_unpack_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.903. library/socket/addrinfo/ipv4_loopback_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.904. library/socket/addrinfo/ipv4_multicast_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.905. library/socket/addrinfo/ipv4_private_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.906. library/socket/addrinfo/ipv4_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.907. library/socket/addrinfo/ipv6_linklocal_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.908. library/socket/addrinfo/ipv6_loopback_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.909. library/socket/addrinfo/ipv6_mc_global_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.910. library/socket/addrinfo/ipv6_mc_linklocal_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.911. library/socket/addrinfo/ipv6_mc_nodelocal_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.912. library/socket/addrinfo/ipv6_mc_orglocal_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.913. library/socket/addrinfo/ipv6_mc_sitelocal_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.914. library/socket/addrinfo/ipv6_multicast_spec - 1 file, 5 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.915. library/socket/addrinfo/ipv6_sitelocal_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.916. library/socket/addrinfo/ipv6_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.917. library/socket/addrinfo/ipv6_to_ipv4_spec - 1 file, 9 examples, 19 expectations, 0 failures, 0 errors
+  - [x] 5.2.918. library/socket/addrinfo/ipv6_unique_local_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.919. library/socket/addrinfo/ipv6_unspecified_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.920. library/socket/addrinfo/ipv6_v4compat_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.921. library/socket/addrinfo/ipv6_v4mapped_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.922. library/socket/addrinfo/protocol_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.923. library/socket/addrinfo/socktype_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.924. library/socket/addrinfo/tcp_spec - 1 file, 14 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 5.2.925. library/socket/addrinfo/to_s_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.926. library/socket/addrinfo/to_sockaddr_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.927. library/socket/addrinfo/udp_spec - 1 file, 14 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 5.2.928. library/socket/addrinfo/unix_path_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.929. library/socket/addrinfo/unix_spec - 1 file, 10 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.930. library/socket/ancillarydata/cmsg_is_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.931. library/socket/ancillarydata/data_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.932. library/socket/ancillarydata/family_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.933. library/socket/ancillarydata/initialize_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.934. library/socket/ancillarydata/int_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.935. library/socket/ancillarydata/ip_pktinfo_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.936. library/socket/ancillarydata/ipv6_pktinfo_addr_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.937. library/socket/ancillarydata/ipv6_pktinfo_ifindex_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.938. library/socket/ancillarydata/ipv6_pktinfo_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.939. library/socket/ancillarydata/level_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.940. library/socket/ancillarydata/type_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.941. library/socket/ancillarydata/unix_rights_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.942. library/socket/basicsocket/ioctl_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.943. library/socket/socket/gethostname_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.944. library/socket/socket/pack_sockaddr_un_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.945. library/socket/socket/sockaddr_un_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.946. library/socket/tcpsocket/gethostbyname_spec - 1 file, 18 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 5.2.947. library/net-http/httpgenericrequest/body_exist_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.948. library/net-http/httpgenericrequest/body_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.949. library/net-http/httpgenericrequest/body_stream_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.950. library/net-http/httpgenericrequest/inspect_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.951. library/net-http/httpgenericrequest/method_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.952. library/net-http/httpgenericrequest/path_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.953. library/net-http/httpgenericrequest/request_body_permitted_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.954. library/net-http/httpgenericrequest/response_body_permitted_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.955. library/net-http/httpgenericrequest/set_body_internal_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.956. library/net-http/httpheader/add_field_spec - 1 file, 2 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.957. library/net-http/httpheader/basic_auth_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.958. library/net-http/httpheader/canonical_each_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.959. library/net-http/httpheader/chunked_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.960. library/net-http/httpheader/content_length_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.961. library/net-http/httpheader/content_range_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.962. library/net-http/httpheader/content_type_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.963. library/net-http/httpheader/delete_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.964. library/net-http/httpheader/each_capitalized_name_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.965. library/net-http/httpheader/each_capitalized_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.966. library/net-http/httpheader/each_header_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.967. library/net-http/httpheader/each_key_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.968. library/net-http/httpheader/each_name_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.969. library/net-http/httpheader/each_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.970. library/net-http/httpheader/each_value_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.971. library/net-http/httpheader/element_reference_spec - 1 file, 4 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.972. library/net-http/httpheader/element_set_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.973. library/net-http/httpheader/fetch_spec - 1 file, 7 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.974. library/net-http/httpheader/form_data_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.975. library/net-http/httpheader/get_fields_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.976. library/net-http/httpheader/initialize_http_header_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.977. library/net-http/httpheader/key_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.978. library/net-http/httpheader/length_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.979. library/net-http/httpheader/main_type_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.980. library/net-http/httpheader/proxy_basic_auth_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.981. library/net-http/httpheader/range_length_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.982. library/net-http/httpheader/range_spec - 1 file, 15 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 5.2.983. library/net-http/httpheader/set_content_type_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.984. library/net-http/httpheader/set_form_data_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.985. library/net-http/httpheader/set_range_spec - 1 file, 11 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.986. library/net-http/httpheader/size_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.987. library/net-http/httpheader/sub_type_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.988. library/net-http/httpheader/to_hash_spec - 1 file, 2 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.989. library/net-http/httpheader/type_params_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.990. library/net-http/httprequest/initialize_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.991. library/net-http/httpresponse/body_permitted_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.992. library/net-http/httpresponse/body_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.993. library/net-http/httpresponse/code_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.994. library/net-http/httpresponse/code_type_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.995. library/net-http/httpresponse/entity_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.996. library/net-http/httpresponse/error_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.997. library/net-http/httpresponse/error_type_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.998. library/net-http/httpresponse/exception_type_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.999. library/net-http/httpresponse/header_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1000. library/net-http/httpresponse/http_version_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1001. library/net-http/httpresponse/initialize_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1002. library/net-http/httpresponse/inspect_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1003. library/net-http/httpresponse/message_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1004. library/net-http/httpresponse/msg_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1005. library/net-http/httpresponse/read_header_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1006. library/net-http/httpresponse/read_new_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1007. library/net-http/httpresponse/reading_body_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.1008. library/net-http/httpresponse/response_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1009. library/net-http/httpresponse/value_spec - 1 file, 1 example, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1010. library/net-ftp/FTPError_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1011. library/net-ftp/FTPPermError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1012. library/net-ftp/FTPProtoError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1013. library/net-ftp/FTPReplyError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1014. library/net-ftp/FTPTempError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1015. library/net-ftp/binary_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1016. library/net-ftp/close_spec - 1 file, 3 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1017. library/net-ftp/closed_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1018. library/net-ftp/debug_mode_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1019. library/net-ftp/default_passive_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1020. library/net-ftp/getdir_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.1021. library/net-ftp/initialize_spec - 1 file, 41 examples, 69 expectations, 0 failures, 0 errors
+  - [x] 5.2.1022. library/net-ftp/open_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.1023. library/net-ftp/passive_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.1024. library/net-ftp/resume_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1025. library/net-ftp/return_code_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1026. library/net-ftp/set_socket_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.1027. library/net-http/HTTPBadResponse_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1028. library/net-http/HTTPClientExcepton_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1029. library/net-http/HTTPError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1030. library/net-http/HTTPFatalError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1031. library/net-http/HTTPHeaderSyntaxError_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1032. library/net-http/HTTPRetriableError_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1033. library/net-http/http/Proxy_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.1034. library/net-http/http/address_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1035. library/net-http/http/close_on_empty_response_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.1036. library/net-http/http/default_port_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1037. library/net-http/http/http_default_port_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1038. library/net-http/http/https_default_port_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1039. library/net-http/http/initialize_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.1040. library/net-http/http/is_version_1_1_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1041. library/net-http/http/is_version_1_2_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1042. library/net-http/http/new_spec - 1 file, 10 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 5.2.1043. library/net-http/http/newobj_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.1044. library/net-http/http/open_timeout_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1045. library/net-http/http/port_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1046. library/net-http/http/proxy_address_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1047. library/net-http/http/proxy_class_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1048. library/net-http/http/proxy_pass_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1049. library/net-http/http/proxy_port_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1050. library/net-http/http/proxy_user_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1051. library/net-http/http/read_timeout_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1052. library/net-http/http/request_types_spec - 1 file, 56 examples, 56 expectations, 0 failures, 0 errors
+  - [x] 5.2.1053. library/net-http/http/socket_type_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1054. library/net-http/http/use_ssl_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1055. library/net-http/http/version_1_1_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1056. library/net-http/http/version_1_2_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1057. library/net-http/httpexceptions/initialize_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1058. library/net-http/httpexceptions/response_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1059. library/socket/basicsocket/getpeereid_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1060. library/socket/basicsocket/getpeername_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1061. library/socket/socket/ip_address_list_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.1062. library/socket/tcpserver/listen_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1063. library/socket/tcpsocket/recv_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1064. library/socket/tcpsocket/setsockopt_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.1065. library/socket/unixserver/listen_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1066. library/socket/unixserver/open_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1067. library/socket/unixsocket/addr_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.1068. library/socket/unixsocket/partially_closable_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1069. library/socket/unixsocket/remote_address_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1070. library/socket/addrinfo/inspect_spec - 1 file, 9 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.1071. library/socket/addrinfo/pfamily_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1072. library/socket/basicsocket/getsockname_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.1073. library/socket/option/bool_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.1074. library/socket/option/initialize_spec - 1 file, 9 examples, 21 expectations, 0 failures, 0 errors
+  - [x] 5.2.1075. library/socket/option/inspect_spec - 1 file, 1 example, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1076. library/socket/option/int_spec - 1 file, 4 examples, 14 expectations, 0 failures, 0 errors
+  - [x] 5.2.1077. library/socket/option/linger_spec - 1 file, 7 examples, 19 expectations, 0 failures, 0 errors
+  - [x] 5.2.1078. library/socket/option/new_spec - 1 file, 5 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.1079. library/socket/socket/ipv6only_bang_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1080. library/socket/socket/pack_sockaddr_in_spec - 1 file, 4 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.1081. library/socket/socket/sockaddr_in_spec - 1 file, 4 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.1082. library/socket/socket/udp_server_recv_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1083. library/socket/tcpserver/gets_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1084. library/socket/udpsocket/connect_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1085. library/socket/udpsocket/initialize_spec - 1 file, 8 examples, 9 expectations, 0 failures, 0 errors
+  - [x] 5.2.1086. library/socket/udpsocket/inspect_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1087. library/socket/udpsocket/new_spec - 1 file, 6 examples, 7 expectations, 0 failures, 0 errors
+  - [x] 5.2.1088. library/socket/udpsocket/open_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1089. library/socket/udpsocket/write_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1090. library/socket/unixserver/initialize_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1091. library/socket/unixserver/new_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1092. library/socket/unixsocket/inspect_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1093. library/socket/unixsocket/new_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1094. library/socket/unixsocket/open_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1095. library/socket/unixsocket/path_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1096. library/socket/unixsocket/peeraddr_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1097. library/etc/getgrgid_spec - 1 file, 6 examples, 2011 expectations, 0 failures, 0 errors
+  - [x] 5.2.1098. library/openssl/cipher_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1099. library/optionparser/order_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1100. library/optionparser/parse_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1101. library/random/formatter/alphanumeric_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.1102. library/rbconfig/sizeof/limits_spec - 1 file, 7 examples, 81 expectations, 0 failures, 0 errors
+  - [x] 5.2.1103. library/rbconfig/sizeof/sizeof_spec - 1 file, 5 examples, 57 expectations, 0 failures, 0 errors
+  - [x] 5.2.1104. library/rbconfig/unicode_emoji_version_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1105. library/rbconfig/unicode_version_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1106. library/resolv/get_address_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1107. library/resolv/get_addresses_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1108. library/resolv/get_name_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1109. library/resolv/get_names_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1110. library/rubygems/gem/bin_path_spec - 1 file, 1 example, 0 expectations, 0 failures, 0 errors
+  - [x] 5.2.1111. library/syslog/mask_spec - 1 file, 7 examples, 28 expectations, 0 failures, 0 errors
+  - [x] 5.2.1112. library/yaml/dump_spec - 1 file, 8 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.1113. library/yaml/dump_stream_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1114. library/yaml/load_file_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1115. library/yaml/load_spec - 1 file, 10 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 5.2.1116. library/yaml/load_stream_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1117. library/yaml/parse_file_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1118. library/yaml/parse_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
+  - [x] 5.2.1119. library/yaml/to_yaml_spec - 1 file, 21 examples, 32 expectations, 0 failures, 0 errors
+  - [x] 5.2.1120. library/yaml/unsafe_load_spec - 1 file, 15 examples, 34 expectations, 0 failures, 0 errors
+  - [x] 5.2.1121. library/erb/util/u_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.1122. library/erb/util/url_encode_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
+  - [x] 5.2.1123. library/cgi/escape_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1124. library/cgi/escapeHTML_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
+  - [x] 5.2.1125. library/securerandom/base64_spec - 1 file, 7 examples, 605 expectations, 0 failures, 0 errors
+  - [x] 5.2.1126. library/stringscanner/pos_spec - 1 file, 8 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.1127. library/stringscanner/pointer_spec - 1 file, 8 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.1128. library/stringscanner/get_byte_spec - 1 file, 4 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 5.2.1129. library/bigdecimal/add_spec - 1 file, 13 examples, 102 expectations, 0 failures, 0 errors
+  - [x] 5.2.1130. library/stringio/binmode_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 5.2.1131. library/stringio/getch_spec - 1 file, 7 examples, 20 expectations, 0 failures, 0 errors
+  - [x] 5.2.1132. library/stringio/seek_spec - 1 file, 8 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 5.2.1133. library/stringio/external_encoding_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1134. library/socket/addrinfo/getaddrinfo_spec - 1 file, 16 examples, 17 expectations, 0 failures, 0 errors
+  - [x] 5.2.1135. library/date/constants_spec - 1 file, 8 examples, 49 expectations, 0 failures, 0 errors
+  - [x] 5.2.1136. library/etc/getlogin_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 5.2.1137. library/etc/struct_group_spec - 1 file, 5 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 5.2.1138. library/net-http/httpgenericrequest/exec_spec - 1 file, 5 examples, 44 expectations, 0 failures, 0 errors
+  - [x] 5.2.1139. library/net-http/httpresponse/read_body_spec - 1 file, 9 examples, 10 expectations, 0 failures, 0 errors
+  - [x] 5.2.1140. library/rbconfig/rbconfig_spec - 1 file, 11 examples, 86 expectations, 0 failures, 0 errors
+  - [x] 5.2.1141. library/stringio/each_line_spec - 1 file, 23 examples, 33 expectations, 0 failures, 0 errors
+  - [x] 5.2.1142. library/stringio/each_spec - 1 file, 25 examples, 35 expectations, 0 failures, 0 errors
+  - [x] 5.2.1143. library/stringio/gets_spec - 1 file, 30 examples, 77 expectations, 0 failures, 0 errors
+  - [x] 5.2.1144. library/stringio/read_nonblock_spec - 1 file, 21 examples, 29 expectations, 0 failures, 0 errors
+  - [x] 5.2.1145. library/stringio/read_spec - 1 file, 24 examples, 34 expectations, 0 failures, 0 errors
+  - [x] 5.2.1146. library/stringio/readline_spec - 1 file, 30 examples, 73 expectations, 0 failures, 0 errors
+  - [x] 5.2.1147. library/stringio/readlines_spec - 1 file, 17 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 5.2.1148. library/stringio/set_encoding_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
+  - [x] 5.2.1149. library/stringio/sysread_spec - 1 file, 25 examples, 36 expectations, 0 failures, 0 errors
+  - [x] 5.2.1150. library/stringio/truncate_spec - 1 file, 9 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.2.1151. library/zlib/deflate/params_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
 - [ ] 5.3. command_line - 7 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.3.1. command_line/dash_r_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
   - [x] 5.3.2. command_line/error_message_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors

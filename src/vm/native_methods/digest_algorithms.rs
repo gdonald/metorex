@@ -406,8 +406,8 @@ impl VirtualMachine {
                 position,
             ));
         };
-        let bytes = super::pack_format::string_to_bytes(message.as_str());
-        match digest_named(algorithm.as_str(), &bytes) {
+        let bytes = super::pack_format::string_to_bytes(&message.as_str());
+        match digest_named(&algorithm.as_str(), &bytes) {
             Some(digested) => Ok(super::pack_format::bytes_to_string(&digested)),
             None => Err(MetorexError::runtime_error(
                 format!("unknown digest algorithm {}", algorithm.as_str()),
@@ -415,4 +415,105 @@ impl VirtualMachine {
             )),
         }
     }
+
+    /// `Digest.__pbkdf2__(algorithm, pass, salt, rounds, length)` — the
+    /// derived key, computed here because the rounds number in the tens of
+    /// thousands and each one is a pair of digests.
+    pub(crate) fn compute_pbkdf2(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let (
+            Some(Object::String(algorithm)),
+            Some(Object::String(pass)),
+            Some(Object::String(salt)),
+            Some(Object::Int(rounds)),
+            Some(Object::Int(length)),
+        ) = (
+            arguments.first(),
+            arguments.get(1),
+            arguments.get(2),
+            arguments.get(3),
+            arguments.get(4),
+        )
+        else {
+            return Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::Exact(5),
+                arguments.len(),
+                position,
+            ));
+        };
+        let derived = pbkdf2(
+            &algorithm.as_str(),
+            &super::pack_format::string_to_bytes(&pass.as_str()),
+            &super::pack_format::string_to_bytes(&salt.as_str()),
+            (*rounds).max(1) as u32,
+            (*length).max(0) as usize,
+        );
+        match derived {
+            Some(held) => Ok(super::pack_format::bytes_to_string(&held)),
+            None => Err(MetorexError::runtime_error(
+                format!("unknown digest algorithm {}", algorithm.as_str()),
+                crate::vm::utils::position_to_location(position),
+            )),
+        }
+    }
+}
+
+/// The keyed digest: the key brought to one block, then the message digested
+/// once inside a padded block and once outside it.
+pub(crate) fn hmac(algorithm: &str, key: &[u8], message: &[u8]) -> Option<Vec<u8>> {
+    let block = match algorithm {
+        "MD5" | "SHA1" | "SHA256" => 64,
+        "SHA384" | "SHA512" => 128,
+        _ => return None,
+    };
+    let mut shortened = if key.len() > block {
+        digest_named(algorithm, key)?
+    } else {
+        key.to_vec()
+    };
+    shortened.resize(block, 0);
+    let inner: Vec<u8> = shortened.iter().map(|byte| byte ^ 0x36).collect();
+    let outer: Vec<u8> = shortened.iter().map(|byte| byte ^ 0x5c).collect();
+    let mut first = inner;
+    first.extend_from_slice(message);
+    let once = digest_named(algorithm, &first)?;
+    let mut second = outer;
+    second.extend_from_slice(&once);
+    digest_named(algorithm, &second)
+}
+
+/// A key derived from a password by keying it against a salt over and over,
+/// so that guessing the password one try at a time takes as many rounds.
+pub(crate) fn pbkdf2(
+    algorithm: &str,
+    pass: &[u8],
+    salt: &[u8],
+    rounds: u32,
+    length: usize,
+) -> Option<Vec<u8>> {
+    let width = digest_named(algorithm, &[])?.len();
+    let mut out = Vec::with_capacity(length);
+    let mut index = 1u32;
+    while out.len() < length {
+        let mut seeded = salt.to_vec();
+        seeded.extend_from_slice(&index.to_be_bytes());
+        let mut held = hmac(algorithm, pass, &seeded)?;
+        let mut folded = held.clone();
+        for _ in 1..rounds {
+            held = hmac(algorithm, pass, &held)?;
+            for (slot, byte) in folded.iter_mut().zip(&held) {
+                *slot ^= byte;
+            }
+        }
+        out.extend_from_slice(&folded);
+        index += 1;
+        if width == 0 {
+            return None;
+        }
+    }
+    out.truncate(length);
+    Some(out)
 }

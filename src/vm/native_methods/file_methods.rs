@@ -37,6 +37,25 @@ impl VirtualMachine {
             }
             _ => arguments,
         };
+        let coerced_second;
+        let arguments = match arguments.get(1) {
+            Some(second)
+                if !matches!(second, Object::String(_))
+                    && class_rc.name() == "File"
+                    && names_a_second_path(method_name) =>
+            {
+                match self.path_naming_answer(second, position)? {
+                    Some(named) => {
+                        let mut rest = arguments.to_vec();
+                        rest[1] = named;
+                        coerced_second = rest;
+                        coerced_second.as_slice()
+                    }
+                    None => arguments,
+                }
+            }
+            _ => arguments,
+        };
         // ── Dir methods ─────────────────────────────────────────────────────
         if class_rc.name() == "Dir" && (method_name == "pwd" || method_name == "getwd") {
             let cwd = std::env::current_dir()
@@ -68,7 +87,7 @@ impl VirtualMachine {
                 };
                 use std::os::unix::fs::PermissionsExt as _;
                 let permissions = std::fs::Permissions::from_mode(*mode as u32);
-                if std::fs::set_permissions(path.as_str(), permissions).is_ok() {
+                if std::fs::set_permissions(&*path.as_str(), permissions).is_ok() {
                     changed += 1;
                 }
             }
@@ -115,12 +134,13 @@ impl VirtualMachine {
                 Some(Object::Int(mode)) => *mode as libc::mode_t,
                 _ => 0o666,
             };
-            let named = std::ffi::CString::new(path.as_str()).map_err(|_| {
-                MetorexError::runtime_error(
-                    format!("Invalid path - {}", path.as_str()),
-                    position_to_location(position),
-                )
-            })?;
+            let named =
+                std::ffi::CString::new(path.as_str().as_bytes().to_vec()).map_err(|_| {
+                    MetorexError::runtime_error(
+                        format!("Invalid path - {}", path.as_str()),
+                        position_to_location(position),
+                    )
+                })?;
             // SAFETY: `mkfifo` reads the name and the mode and touches
             // nothing else.
             let made = unsafe { libc::mkfifo(named.as_ptr(), mode) };
@@ -161,12 +181,13 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                let named = std::ffi::CString::new(path.as_str()).map_err(|_| {
-                    MetorexError::runtime_error(
-                        format!("Invalid path - {}", path.as_str()),
-                        position_to_location(position),
-                    )
-                })?;
+                let named =
+                    std::ffi::CString::new(path.as_str().as_bytes().to_vec()).map_err(|_| {
+                        MetorexError::runtime_error(
+                            format!("Invalid path - {}", path.as_str()),
+                            position_to_location(position),
+                        )
+                    })?;
                 // SAFETY: `fchmodat` reads the name and the mode and touches
                 // nothing else. AT_SYMLINK_NOFOLLOW is what makes it change
                 // the link rather than what the link points at.
@@ -236,8 +257,108 @@ impl VirtualMachine {
             };
             return Ok(Some(Object::Bool(std::path::Path::new(&path).is_dir())));
         }
+        // `Dir.tmpdir` names the directory the system sets aside for scratch
+        // files, which is what the tmpdir library answers.
+        if class_rc.name() == "Dir" && method_name == "tmpdir" {
+            let named = std::env::var("TMPDIR")
+                .ok()
+                .filter(|held| !held.is_empty())
+                .unwrap_or_else(|| "/tmp".to_string());
+            let trimmed = named.strip_suffix('/').unwrap_or(&named);
+            return Ok(Some(Object::string(trimmed.to_string())));
+        }
+        // Dir.empty?(path) — whether the directory holds no names of its own.
+        if class_rc.name() == "Dir" && method_name == "empty?" {
+            if arguments.len() != 1 {
+                return Err(method_argument_error(
+                    method_name,
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let path = self.directory_path_argument(method_name, &arguments[0], position)?;
+            let Ok(details) = std::fs::metadata(&path) else {
+                return Err(crate::vm::errors::simple_exception(
+                    "Errno::ENOENT",
+                    &format!("No such file or directory - {path}"),
+                    position,
+                ));
+            };
+            // A path that names something other than a directory is not empty,
+            // whatever it holds.
+            if !details.is_dir() {
+                return Ok(Some(Object::Bool(false)));
+            }
+            let empty = std::fs::read_dir(&path)
+                .map(|mut reading| reading.next().is_none())
+                .unwrap_or(false);
+            return Ok(Some(Object::Bool(empty)));
+        }
+        // Dir.home(user = nil) — where the named user's files live, and where
+        // the current user's do when no name is given.
+        if class_rc.name() == "Dir" && method_name == "home" {
+            if arguments.len() > 1 {
+                return Err(method_argument_error(
+                    method_name,
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let named = match arguments.first() {
+                None | Some(Object::Nil) => None,
+                Some(Object::String(name)) => Some(name.as_str().to_string()),
+                Some(other) => {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        other,
+                        position,
+                    ));
+                }
+            };
+            return self.directory_home(named, position).map(Some);
+        }
+        // Dir.foreach(path) and Dir.each_child(path) — every name the
+        // directory holds, handed to the block one at a time.
+        if class_rc.name() == "Dir" && (method_name == "foreach" || method_name == "each_child") {
+            let named: Vec<Object> = arguments
+                .iter()
+                .filter(|held| !matches!(held, Object::Dict(_)))
+                .cloned()
+                .collect();
+            if named.len() != 1 {
+                return Err(method_argument_error(method_name, 1, named.len(), position));
+            }
+            let block = self.pending_block.take();
+            // Without a block the walk is handed back as an Enumerator, and
+            // the path is left untouched so `to_path` is asked for once.
+            let Some(Object::Block(block)) = block else {
+                return self
+                    .build_enumerator(
+                        Object::Class(Rc::clone(class_rc)),
+                        method_name,
+                        arguments.to_vec(),
+                        None,
+                        position,
+                    )
+                    .map(Some);
+            };
+            let path = self.directory_path_argument(method_name, &named[0], position)?;
+            let encoding = self.named_encoding(arguments, position);
+            let listing =
+                self.directory_names(&path, method_name == "foreach", encoding, position)?;
+            for name in listing {
+                self.execute_block_body(&block, vec![name])?;
+            }
+            return Ok(Some(Object::Nil));
+        }
         if class_rc.name() == "Dir"
-            && (method_name == "mkdir" || method_name == "delete" || method_name == "rmdir")
+            && (method_name == "mkdir"
+                || method_name == "delete"
+                || method_name == "rmdir"
+                || method_name == "unlink")
         {
             if arguments.is_empty() {
                 return Err(method_argument_error(
@@ -247,17 +368,7 @@ impl VirtualMachine {
                     position,
                 ));
             }
-            let path = match &arguments[0] {
-                Object::String(s) => s.as_str().to_string(),
-                other => {
-                    return Err(method_argument_type_error(
-                        method_name,
-                        "String",
-                        other,
-                        position,
-                    ));
-                }
-            };
+            let path = self.directory_path_argument(method_name, &arguments[0], position)?;
             if method_name == "mkdir" {
                 let made = std::fs::create_dir_all(&path);
                 // `Dir.mkdir` takes the mode the directory is created with,
@@ -271,8 +382,12 @@ impl VirtualMachine {
                         std::fs::Permissions::from_mode(*mode as u32),
                     );
                 }
-            } else {
-                let _ = std::fs::remove_dir(&path);
+            } else if let Err(problem) = std::fs::remove_dir(&path) {
+                return Err(crate::vm::errors::simple_exception(
+                    directory_removal_errno(&path, &problem),
+                    &format!("{problem} - {path}"),
+                    position,
+                ));
             }
             return Ok(Some(Object::Int(0)));
         }
@@ -307,23 +422,9 @@ impl VirtualMachine {
                     }
                 }
             };
-            let reading = std::fs::read_dir(&path).map_err(|problem| {
-                crate::vm::errors::simple_exception(
-                    "Errno::ENOENT",
-                    &format!("No such file or directory @ dir_initialize - {path}: {problem}"),
-                    position,
-                )
-            })?;
-            let mut names: Vec<Object> = Vec::new();
-            if method_name == "entries" {
-                names.push(Object::string(".".to_string()));
-                names.push(Object::string("..".to_string()));
-            }
-            for entry in reading.flatten() {
-                names.push(Object::string(
-                    entry.file_name().to_string_lossy().to_string(),
-                ));
-            }
+            let encoding = self.named_encoding(arguments, position);
+            let names =
+                self.directory_names(&path, method_name == "entries", encoding, position)?;
             return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(names)))));
         }
         if class_rc.name() == "Dir" && (method_name == "[]" || method_name == "glob") {
@@ -476,7 +577,7 @@ impl VirtualMachine {
                             position,
                         ));
                     };
-                    let Ok(name) = std::ffi::CString::new(path.as_str()) else {
+                    let Ok(name) = std::ffi::CString::new(path.as_str().as_bytes().to_vec()) else {
                         continue;
                     };
                     // SAFETY: `chown` and `lchown` read the name and the two
@@ -518,7 +619,7 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                std::fs::hard_link(existing.as_str(), added.as_str()).map_err(|problem| {
+                std::fs::hard_link(&*existing.as_str(), &*added.as_str()).map_err(|problem| {
                     crate::vm::errors::simple_exception(
                         "Errno::EEXIST",
                         &format!("File exists @ rb_file_s_link - {added}: {problem}"),
@@ -565,7 +666,7 @@ impl VirtualMachine {
                             tv_usec: ((modified.fract() * 1_000_000.0) as libc::suseconds_t).abs(),
                         },
                     ];
-                    let Ok(name) = std::ffi::CString::new(path.as_str()) else {
+                    let Ok(name) = std::ffi::CString::new(path.as_str().as_bytes().to_vec()) else {
                         continue;
                     };
                     // SAFETY: `utimes` reads the name and the two times, and
@@ -601,14 +702,14 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                if std::path::Path::new(path.as_str()).is_dir() {
+                if std::path::Path::new(&*path.as_str()).is_dir() {
                     return Err(crate::vm::errors::simple_exception(
                         "Errno::EISDIR",
                         &format!("Is a directory @ io_fread - {path}"),
                         position,
                     ));
                 }
-                let held = std::fs::read(path.as_str()).map_err(|problem| {
+                let held = std::fs::read(&*path.as_str()).map_err(|problem| {
                     crate::vm::errors::simple_exception(
                         "Errno::ENOENT",
                         &format!("No such file or directory @ rb_sysopen - {path}: {problem}"),
@@ -637,14 +738,14 @@ impl VirtualMachine {
                 };
                 // A directory opens but reads as the wrong kind of thing,
                 // which Ruby reports separately from a missing name.
-                if std::path::Path::new(path.as_str()).is_dir() {
+                if std::path::Path::new(&*path.as_str()).is_dir() {
                     return Err(crate::vm::errors::simple_exception(
                         "Errno::EISDIR",
                         &format!("Is a directory @ io_fread - {path}"),
                         position,
                     ));
                 }
-                let held = std::fs::read_to_string(path.as_str()).map_err(|problem| {
+                let held = std::fs::read_to_string(&*path.as_str()).map_err(|problem| {
                     crate::vm::errors::simple_exception(
                         "Errno::ENOENT",
                         &format!("No such file or directory @ rb_sysopen - {path}: {problem}"),
@@ -672,7 +773,7 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                let held = std::fs::read_to_string(path.as_str()).map_err(|problem| {
+                let held = std::fs::read_to_string(&*path.as_str()).map_err(|problem| {
                     crate::vm::errors::simple_exception(
                         "Errno::ENOENT",
                         &format!("No such file or directory @ rb_sysopen - {path}: {problem}"),
@@ -712,9 +813,9 @@ impl VirtualMachine {
                 };
                 let follow = arguments[1].is_truthy();
                 let held = if follow {
-                    std::fs::metadata(path.as_str())
+                    std::fs::metadata(&*path.as_str())
                 } else {
-                    std::fs::symlink_metadata(path.as_str())
+                    std::fs::symlink_metadata(&*path.as_str())
                 };
                 let held = held.map_err(|problem| {
                     crate::vm::errors::simple_exception(
@@ -857,13 +958,15 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                std::os::unix::fs::symlink(target.as_str(), link.as_str()).map_err(|problem| {
-                    crate::vm::errors::simple_exception(
-                        "Errno::EEXIST",
-                        &format!("File exists @ rb_file_s_symlink - {link}: {problem}"),
-                        position,
-                    )
-                })?;
+                std::os::unix::fs::symlink(&*target.as_str(), &*link.as_str()).map_err(
+                    |problem| {
+                        crate::vm::errors::simple_exception(
+                            "Errno::EEXIST",
+                            &format!("File exists @ rb_file_s_symlink - {link}: {problem}"),
+                            position,
+                        )
+                    },
+                )?;
                 Ok(Some(Object::Int(0)))
             }
             // File.readlink(path) answers what a symbolic link points at.
@@ -887,7 +990,7 @@ impl VirtualMachine {
                 // A name nothing stands for is reported as missing, and a
                 // name that stands for something other than a link is
                 // reported as the wrong kind of argument.
-                let target = std::fs::read_link(path.as_str()).map_err(|problem| {
+                let target = std::fs::read_link(&*path.as_str()).map_err(|problem| {
                     if problem.kind() == std::io::ErrorKind::NotFound {
                         crate::vm::errors::simple_exception(
                             "Errno::ENOENT",
@@ -925,16 +1028,45 @@ impl VirtualMachine {
                 };
                 // A symbolic link is what `symlink_metadata` reports without
                 // following it, so a link to a missing file is still one.
-                let answer = std::fs::symlink_metadata(path.as_str())
+                let answer = std::fs::symlink_metadata(&*path.as_str())
                     .map(|held| held.file_type().is_symlink())
                     .unwrap_or(false);
                 Ok(Some(Object::Bool(answer)))
+            }
+            // File.rename(from, to) moves a name onto another, which is how
+            // a log is rotated.
+            "rename" => {
+                if arguments.len() != 2 {
+                    return Err(method_argument_error(
+                        "rename",
+                        2,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let (Object::String(from), Object::String(to)) = (&arguments[0], &arguments[1])
+                else {
+                    return Err(method_argument_type_error(
+                        "rename",
+                        "String",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                std::fs::rename(&*from.as_str(), &*to.as_str()).map_err(|problem| {
+                    crate::vm::errors::simple_exception(
+                        "Errno::ENOENT",
+                        &format!("No such file or directory @ rb_file_s_rename - ({from}, {to}): {problem}"),
+                        position,
+                    )
+                })?;
+                Ok(Some(Object::Int(0)))
             }
             "delete" | "unlink" => {
                 let mut deleted = 0i64;
                 for arg in arguments {
                     if let Object::String(s) = arg {
-                        let _ = std::fs::remove_file(s.as_str());
+                        let _ = std::fs::remove_file(&*s.as_str());
                         deleted += 1;
                     }
                 }
@@ -965,7 +1097,7 @@ impl VirtualMachine {
                     other => format!("{}", other),
                 };
                 let bytes = super::pack_format::string_to_bytes(&content);
-                std::fs::write(path.as_str(), &bytes).map_err(|problem| {
+                std::fs::write(&*path.as_str(), &bytes).map_err(|problem| {
                     crate::vm::errors::simple_exception(
                         "Errno::ENOENT",
                         &format!("No such file or directory @ rb_sysopen - {path}: {problem}"),
@@ -1224,6 +1356,9 @@ impl VirtualMachine {
                         .to_string_lossy()
                         .to_string()
                 };
+                // A leading `~` names the home directory.
+                let path_str = expanded_home(&path_str);
+                let base = expanded_home(&base);
                 // A relative base expands against the working directory, so
                 // the answer is always an absolute path, as Ruby's is.
                 let base_path = std::path::PathBuf::from(&base);
@@ -1271,6 +1406,14 @@ impl VirtualMachine {
                 }
             }
         }
+        // A stream stands for the file it is open on, which is what the
+        // predicates read when they are handed one.
+        if self.responds_to(candidate, "to_io") {
+            let named = self.send_to_object(candidate.clone(), "to_io", vec![], position)?;
+            if matches!(named, Object::String(_) | Object::Instance(_)) {
+                return Ok(Some(named));
+            }
+        }
         Ok(None)
     }
 }
@@ -1307,5 +1450,189 @@ fn names_a_path(method_name: &str) -> bool {
             | "readlink"
             | "size"
             | "size?"
+            | "symlink"
+            | "link"
+            | "rename"
     )
+}
+
+/// The methods that take a second path, which is named the same way the
+/// first one is.
+fn names_a_second_path(method_name: &str) -> bool {
+    matches!(method_name, "symlink" | "link" | "rename")
+}
+
+/// The Errno a failed `rmdir` reports, named from what the operating system
+/// answered.
+fn directory_removal_errno(path: &str, problem: &std::io::Error) -> &'static str {
+    match problem.raw_os_error() {
+        Some(code) if code == libc::ENOTEMPTY || code == libc::EEXIST => "Errno::ENOTEMPTY",
+        Some(code) if code == libc::ENOTDIR => "Errno::ENOTDIR",
+        Some(code) if code == libc::EACCES => "Errno::EACCES",
+        Some(code) if code == libc::EPERM => {
+            // A path that names a file rather than a directory reports EPERM
+            // on some systems, which Ruby still calls ENOTDIR.
+            if std::path::Path::new(path).is_file() {
+                "Errno::ENOTDIR"
+            } else {
+                "Errno::EPERM"
+            }
+        }
+        _ => "Errno::ENOENT",
+    }
+}
+
+impl VirtualMachine {
+    /// The path an argument names, taking `to_path` from an object that
+    /// answers one.
+    fn directory_path_argument(
+        &mut self,
+        method_name: &str,
+        argument: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match argument {
+            Object::String(path) => Ok(path.as_str().to_string()),
+            other if self.responds_to(other, "to_path") => {
+                match self.send_to_object(other.clone(), "to_path", vec![], position)? {
+                    Object::String(path) => Ok(path.as_str().to_string()),
+                    _ => Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        other,
+                        position,
+                    )),
+                }
+            }
+            other => Err(method_argument_type_error(
+                method_name,
+                "String",
+                other,
+                position,
+            )),
+        }
+    }
+
+    /// The encoding an `encoding:` keyword names, which the entries a
+    /// directory answers are tagged with.
+    fn named_encoding(&mut self, arguments: &[Object], position: Position) -> Option<String> {
+        let named = match arguments.last() {
+            Some(Object::Dict(options)) => options.borrow().get(":encoding").cloned(),
+            _ => None,
+        };
+        // Without a keyword the entries take the internal encoding, which is
+        // what the program asked every string read from outside to be in.
+        let named = match named {
+            Some(named) => named,
+            None => match self.globals().get("Encoding") {
+                Some(encoding) => {
+                    match self.send_to_object(encoding, "default_internal", vec![], position) {
+                        Ok(Object::Nil) | Err(_) => return None,
+                        Ok(found) => found,
+                    }
+                }
+                None => return None,
+            },
+        };
+        self.encoding_name_argument(&named, position).ok()
+    }
+
+    /// Every name a directory holds, with `.` and `..` when they are wanted.
+    fn directory_names(
+        &mut self,
+        path: &str,
+        with_dots: bool,
+        encoding: Option<String>,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        let reading = std::fs::read_dir(path).map_err(|problem| {
+            crate::vm::errors::simple_exception(
+                "Errno::ENOENT",
+                &format!("No such file or directory @ dir_initialize - {path}: {problem}"),
+                position,
+            )
+        })?;
+        let tagged = |name: String| match &encoding {
+            Some(encoding) => Object::String(Rc::new(crate::object::StringValue::with_encoding(
+                name,
+                encoding.clone(),
+            ))),
+            None => Object::string(name),
+        };
+        let mut names: Vec<Object> = Vec::new();
+        if with_dots {
+            names.push(tagged(".".to_string()));
+            names.push(tagged("..".to_string()));
+        }
+        for entry in reading.flatten() {
+            names.push(tagged(entry.file_name().to_string_lossy().to_string()));
+        }
+        Ok(names)
+    }
+
+    /// Where a user's files live: `$HOME` when no user is named, and the
+    /// password database otherwise.
+    fn directory_home(
+        &mut self,
+        user: Option<String>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Some(user) = user else {
+            if let Ok(held) = std::env::var("HOME")
+                && !held.is_empty()
+            {
+                return Ok(Object::string(held));
+            }
+            let found = self.passwd_home_for(None);
+            return match found {
+                Some(home) => Ok(Object::string(home)),
+                None => Ok(Object::string("/".to_string())),
+            };
+        };
+        match self.passwd_home_for(Some(&user)) {
+            Some(home) => Ok(Object::string(home)),
+            None => Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("user {user} doesn't exist"),
+                position,
+            )),
+        }
+    }
+
+    /// The home directory the password database records, for the named user
+    /// or for the one running the program.
+    fn passwd_home_for(&mut self, user: Option<&str>) -> Option<String> {
+        // SAFETY: both calls answer a pointer the C library owns, read before
+        // any other call to it.
+        let entry = unsafe {
+            match user {
+                Some(name) => {
+                    let held = std::ffi::CString::new(name).ok()?;
+                    libc::getpwnam(held.as_ptr())
+                }
+                None => libc::getpwuid(libc::getuid()),
+            }
+        };
+        if entry.is_null() {
+            return None;
+        }
+        // SAFETY: the entry is non-null, and its `pw_dir` is a C string the
+        // library owns.
+        let home = unsafe { std::ffi::CStr::from_ptr((*entry).pw_dir) };
+        Some(home.to_string_lossy().to_string())
+    }
+}
+
+/// A path whose leading `~` has been replaced by the home directory it names.
+fn expanded_home(path: &str) -> String {
+    if path == "~" {
+        return std::env::var("HOME").unwrap_or_else(|_| path.to_string());
+    }
+    match path.strip_prefix("~/") {
+        Some(rest) => match std::env::var("HOME") {
+            Ok(home) => format!("{}/{}", home.trim_end_matches('/'), rest),
+            Err(_) => path.to_string(),
+        },
+        None => path.to_string(),
+    }
 }

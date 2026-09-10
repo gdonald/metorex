@@ -39,6 +39,10 @@ impl<'a> Lexer<'a> {
                     | TokenKind::GlobalVar(_)
                     | TokenKind::MagicFile
                     | TokenKind::MagicLine
+                    // A number written with a suffix is a value too, so the
+                    // `/` after `9999r` divides rather than opening a regex.
+                    | TokenKind::Rational(_, _)
+                    | TokenKind::Imaginary(_)
                     // After `def`, / is an operator method name, not regex
                     | TokenKind::Def
             ),

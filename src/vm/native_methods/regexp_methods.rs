@@ -348,7 +348,7 @@ impl VirtualMachine {
             }
             "==" | "eql?" => {
                 let same = matches!(arguments.first(), Some(Object::Regex(other, other_flags))
-                    if other.as_str() == pattern
+                    if *other.as_str() == *pattern
                         && comparable_flags(other_flags) == comparable_flags(flags));
                 Ok(Some(Object::Bool(same)))
             }

@@ -117,11 +117,14 @@ impl VirtualMachine {
                 Err(_) => "\n".to_string(),
             }
         };
-        self.globals_mut()
-            .set_variable("/", Object::string(separator.clone()));
+        // The separator the flag named cannot be changed afterwards.
+        let held = Object::string(separator);
+        if let Object::String(text) = &held {
+            text.freeze();
+        }
+        self.globals_mut().set_variable("/", held.clone());
         // Ruby reports the separator the flag named under the flag's own name.
-        self.globals_mut()
-            .set_variable("-0", Object::string(separator));
+        self.globals_mut().set_variable("-0", held);
     }
 
     /// Record the main script's canonical path and the path it was named by.
@@ -164,7 +167,7 @@ impl VirtualMachine {
         let path_str = path.to_string_lossy().into_owned();
         if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow_mut()
-                .retain(|o| !matches!(o, Object::String(s) if s.as_str() == path_str));
+                .retain(|o| !matches!(o, Object::String(s) if *s.as_str() == *path_str));
         }
     }
 
@@ -270,7 +273,7 @@ impl VirtualMachine {
         if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow()
                 .iter()
-                .any(|o| matches!(o, Object::String(s) if s.as_str() == canonical))
+                .any(|o| matches!(o, Object::String(s) if *s.as_str() == *canonical))
         } else {
             false
         }
@@ -352,7 +355,7 @@ impl VirtualMachine {
             }
             if let Some(Object::Array(arr)) = self.globals().get("\"") {
                 arr.borrow_mut()
-                    .retain(|o| !matches!(o, Object::String(s) if s.as_str() == path));
+                    .retain(|o| !matches!(o, Object::String(s) if *s.as_str() == *path));
             }
             reloading = true;
         }
@@ -594,7 +597,7 @@ impl VirtualMachine {
         let already_in_features = if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow()
                 .iter()
-                .any(|o| matches!(o, Object::String(s) if s.as_str() == canonical_str))
+                .any(|o| matches!(o, Object::String(s) if *s.as_str() == *canonical_str))
         } else {
             false
         };
@@ -742,7 +745,16 @@ impl VirtualMachine {
                     SourceLocation::new(0, 0, 0),
                 )
             })?;
-        self.execute_program(&statements)?;
+        // A library metorex carries runs at top level however deep the
+        // `require` was written, so a `module Foo` at its top names ::Foo
+        // rather than nesting inside the class or module body it was asked
+        // for from.
+        let caller_def_scope = std::mem::take(&mut self.def_scope_stack);
+        let caller_nesting = std::mem::take(&mut self.method_nesting_stack);
+        let result = self.execute_program(&statements);
+        self.method_nesting_stack = caller_nesting;
+        self.def_scope_stack = caller_def_scope;
+        result?;
         Ok(true)
     }
 }

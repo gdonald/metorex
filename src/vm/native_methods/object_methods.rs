@@ -305,7 +305,8 @@ impl VirtualMachine {
             && let Object::Symbol(name) = receiver
         {
             return Ok(Some(Object::Block(std::rc::Rc::new(symbol_to_proc_block(
-                name, position,
+                &name.as_str(),
+                position,
             )))));
         }
 
@@ -479,6 +480,7 @@ impl VirtualMachine {
                     Object::Class(c) | Object::Module(c) => {
                         c.freeze();
                     }
+                    Object::String(text) => text.freeze(),
                     Object::Instance(inst) => {
                         inst.borrow_mut().frozen = true;
                         // Freezing an object freezes its singleton class, so
@@ -645,7 +647,7 @@ impl VirtualMachine {
                     Object::Bool(true) => 2,
                     Object::Bool(false) => 0,
                     Object::Nil => 4,
-                    Object::Symbol(name) => value_object_id("symbol", name),
+                    Object::Symbol(name) => value_object_id("symbol", &name.as_str()),
                     Object::Float(value) => value_object_id("float", &value.to_bits().to_string()),
                     other => value_object_id("other", &other.to_string()),
                 };
@@ -911,7 +913,7 @@ impl VirtualMachine {
                     return Ok(Some(Object::string(if method_name == "to_s" {
                         s.as_str().to_string()
                     } else {
-                        crate::object::inspect_symbol(s)
+                        crate::object::inspect_symbol(&s.as_str())
                     })));
                 }
                 if method_name == "inspect"
@@ -1368,6 +1370,13 @@ impl VirtualMachine {
                             .get_class_var(&format!("@{}", clean_name))
                             .unwrap_or(Object::Nil),
                     )),
+                    Object::Array(_) | Object::Dict(_) | Object::Set(_) => Ok(Some(
+                        Self::collection_address(receiver)
+                            .and_then(|address| self.collection_variables.get(&address))
+                            .and_then(|held| held.get(clean_name))
+                            .cloned()
+                            .unwrap_or(Object::Nil),
+                    )),
                     Object::Module(module_rc) => Ok(Some(
                         module_rc
                             .get_class_var(&format!("@{}", clean_name))
@@ -1462,6 +1471,20 @@ impl VirtualMachine {
                     }
                     Object::Module(module_rc) => {
                         module_rc.set_class_var(format!("@{}", var_name), value.clone());
+                        Ok(Some(value))
+                    }
+                    // A collection has nowhere of its own to keep an instance
+                    // variable, so the VM records it against the collection.
+                    Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                        if self.object_is_frozen(receiver) {
+                            return Err(self.frozen_modification_error(receiver, position));
+                        }
+                        if let Some(address) = Self::collection_address(receiver) {
+                            self.collection_variables
+                                .entry(address)
+                                .or_default()
+                                .insert(var_name, value.clone());
+                        }
                         Ok(Some(value))
                     }
                     // Immediates (true/false/nil/integers/symbols/floats) are
@@ -1589,23 +1612,29 @@ impl VirtualMachine {
                         current = parent.superclass();
                     }
                 }
-                // For instances, also include methods from the instance's class
+                // For instances, also include methods from the instance's
+                // class. The ancestor walk covers the modules it includes and
+                // prepends as well as its superclasses, which is the same
+                // chain a call travels.
                 if let Object::Instance(inst_rc) = receiver {
-                    let inst = inst_rc.borrow();
-                    for name in inst.class.method_names() {
-                        if !names.contains(&name) {
-                            names.push(name);
-                        }
-                    }
+                    let own_class = std::rc::Rc::clone(&inst_rc.borrow().class);
+                    let mut chain = Vec::new();
+                    let mut seen = Vec::new();
                     if include_super {
-                        let mut parent = inst.class.superclass();
-                        while let Some(p) = parent {
-                            for name in p.method_names() {
-                                if !names.contains(&name) {
-                                    names.push(name);
-                                }
+                        crate::vm::native_methods::class_methods::push_class_ancestors(
+                            &own_class, &mut chain, &mut seen,
+                        );
+                    } else {
+                        chain.push(Object::Class(own_class));
+                    }
+                    for ancestor in &chain {
+                        let (Object::Class(carrier) | Object::Module(carrier)) = ancestor else {
+                            continue;
+                        };
+                        for name in carrier.method_names() {
+                            if !names.contains(&name) {
+                                names.push(name);
                             }
-                            parent = p.superclass();
                         }
                     }
                 }

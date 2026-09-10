@@ -354,8 +354,13 @@ fn int_frozen() {
 }
 
 #[test]
-fn string_frozen() {
-    assert_eq!(run("'hi'.frozen?"), Some(Object::Bool(true)));
+fn string_not_frozen() {
+    assert_eq!(run("'hi'.frozen?"), Some(Object::Bool(false)));
+}
+
+#[test]
+fn frozen_string_says_so() {
+    assert_eq!(run("'hi'.freeze.frozen?"), Some(Object::Bool(true)));
 }
 
 #[test]

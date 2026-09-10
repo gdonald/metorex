@@ -583,7 +583,7 @@ impl VirtualMachine {
                 Ok(Some((value.clone(), Object::Int(0))))
             }
             Object::String(text) => {
-                if text.contains('\0') {
+                if text.as_str().contains('\0') {
                     if !raise {
                         return Ok(None);
                     }
@@ -594,7 +594,7 @@ impl VirtualMachine {
                         message,
                     });
                 }
-                let Some(parsed) = parse_complex_text(text) else {
+                let Some(parsed) = parse_complex_text(&text.as_str()) else {
                     if !raise {
                         return Ok(None);
                     }

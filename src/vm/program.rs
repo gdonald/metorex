@@ -186,10 +186,21 @@ impl VirtualMachine {
                         }
                     }
                 }
-                Expression::KeywordSplat { expression, .. } => {
+                Expression::KeywordSplat {
+                    expression,
+                    position: splat_position,
+                } => {
                     // `**hash`: an empty Hash contributes no argument, so
                     // `f(**{})` calls `f` with nothing at all.
-                    let value = self.evaluate_expression(expression)?;
+                    let splat_position = *splat_position;
+                    let mut value = self.evaluate_expression(expression)?;
+                    // Anything else is asked for a Hash of its own, which is
+                    // how an object stands in for keyword arguments.
+                    if !matches!(value, Object::Dict(_))
+                        && self.lookup_method(&value, "to_hash").is_some()
+                    {
+                        value = self.send_to_object(value, "to_hash", vec![], splat_position)?;
+                    }
                     match &value {
                         Object::Dict(entries) if entries.borrow().is_empty() => {}
                         Object::Dict(entries) => {
@@ -222,8 +233,9 @@ impl VirtualMachine {
                             // `|x| x.send(:method)`. The block has no captured
                             // vars and a one-statement body that calls .send
                             // on the parameter.
-                            self.pending_block =
-                                Some(Object::Block(std::rc::Rc::new(symbol_to_proc_block(&sym))));
+                            self.pending_block = Some(Object::Block(std::rc::Rc::new(
+                                symbol_to_proc_block(&sym.as_str()),
+                            )));
                             self.pending_block_from_ampersand = true;
                         }
                         // `&some_method` hands the method over as the block,

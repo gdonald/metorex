@@ -30,10 +30,14 @@ impl VirtualMachine {
         let block = match block {
             Some(Object::Block(b)) => b,
             _ => {
-                return Err(MetorexError::runtime_error(
-                    "no block given (yield)".to_string(),
-                    position_to_location(position),
-                ));
+                // Ruby names this a jump with nowhere to land rather than a
+                // plain runtime failure.
+                let message = "no block given (yield)".to_string();
+                return Err(MetorexError::UncaughtException {
+                    exception: crate::object::Object::exception("LocalJumpError", message.clone()),
+                    location: position_to_location(position),
+                    message,
+                });
             }
         };
 

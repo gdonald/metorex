@@ -241,8 +241,8 @@ fn resolve_member(
             }
             Ok(members[resolved as usize].clone())
         }
-        Object::Symbol(name) => resolve_named_member(members, name, class_rc, position),
-        Object::String(name) => resolve_named_member(members, name, class_rc, position),
+        Object::Symbol(name) => resolve_named_member(members, &name.as_str(), class_rc, position),
+        Object::String(name) => resolve_named_member(members, &name.as_str(), class_rc, position),
         other => Err(MetorexError::type_error(
             format!(
                 "no implicit conversion of {} into Integer",
@@ -322,7 +322,11 @@ impl VirtualMachine {
         let mut index = 0;
         let mut constant_name = None;
         if let Object::String(first) = &positional[0]
-            && first.chars().next().is_some_and(|c| c.is_uppercase())
+            && first
+                .as_str()
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_uppercase())
         {
             constant_name = Some(first.as_str().to_string());
             index = 1;

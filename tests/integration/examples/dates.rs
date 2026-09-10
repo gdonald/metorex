@@ -49,3 +49,28 @@ fn test_dates_clock_and_calendar_no_parens_execution() {
     let output = run_example("dates/clock_and_calendar_no_parens.rb");
     assert_eq!(output, CLOCK_AND_CALENDAR_OUTPUT);
 }
+
+/// The expected output of both `dates/zone_names/utc` variants.
+const ZONE_NAMES_OUTPUT: &str = concat!(
+    "\"UTC\"\n",
+    "\"UTC\"\n",
+    "\"UTC\"\n",
+    "\"UTC\"\n",
+    "\"UTC\"\n",
+    "\"UTC\"\n",
+    "#<Encoding:US-ASCII>\n",
+    "true\n",
+    "nil\n"
+);
+
+#[test]
+fn test_dates_zone_names_utc_execution() {
+    let output = run_example("dates/zone_names/utc.rb");
+    assert_eq!(output, ZONE_NAMES_OUTPUT);
+}
+
+#[test]
+fn test_dates_zone_names_utc_parens_execution() {
+    let output = run_example("dates/zone_names/utc_parens.rb");
+    assert_eq!(output, ZONE_NAMES_OUTPUT);
+}

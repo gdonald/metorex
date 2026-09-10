@@ -500,7 +500,7 @@ fn string_format_modulo() {
     // Exercises line 60 (Modulo on String).
     let result = run(r#""%d apples" % 5"#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("5")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("5")),
         other => panic!("expected string, got {:?}", other),
     }
 }

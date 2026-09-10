@@ -18,7 +18,42 @@ use std::rc::Rc;
 /// underscores into dashes, and the ones that break that rule carry their own
 /// spelling here. A dummy encoding is one Ruby names and tags strings with but
 /// cannot convert through.
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 43] = [
+/// The waiting, scheduling, and resource-limit settings the operating system
+/// names by number, which Ruby carries as constants on Process.
+pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 22] = [
+    ("WNOHANG", libc::WNOHANG as i64),
+    ("WUNTRACED", libc::WUNTRACED as i64),
+    ("PRIO_PROCESS", libc::PRIO_PROCESS as i64),
+    ("PRIO_PGRP", libc::PRIO_PGRP as i64),
+    ("PRIO_USER", libc::PRIO_USER as i64),
+    ("RLIM_INFINITY", libc::RLIM_INFINITY as i64),
+    // Both names stand for "no limit at all" on the systems that
+    // carry them, which is the value RLIM_INFINITY holds.
+    ("RLIM_SAVED_MAX", libc::RLIM_INFINITY as i64),
+    ("RLIM_SAVED_CUR", libc::RLIM_INFINITY as i64),
+    ("RLIMIT_CPU", libc::RLIMIT_CPU as i64),
+    ("RLIMIT_FSIZE", libc::RLIMIT_FSIZE as i64),
+    ("RLIMIT_DATA", libc::RLIMIT_DATA as i64),
+    ("RLIMIT_STACK", libc::RLIMIT_STACK as i64),
+    ("RLIMIT_CORE", libc::RLIMIT_CORE as i64),
+    ("RLIMIT_AS", libc::RLIMIT_AS as i64),
+    ("RLIMIT_MEMLOCK", libc::RLIMIT_MEMLOCK as i64),
+    ("RLIMIT_NPROC", libc::RLIMIT_NPROC as i64),
+    ("RLIMIT_NOFILE", libc::RLIMIT_NOFILE as i64),
+    ("RLIMIT_RSS", libc::RLIMIT_RSS as i64),
+    ("CLOCK_REALTIME", libc::CLOCK_REALTIME as i64),
+    ("CLOCK_MONOTONIC", libc::CLOCK_MONOTONIC as i64),
+    (
+        "CLOCK_PROCESS_CPUTIME_ID",
+        libc::CLOCK_PROCESS_CPUTIME_ID as i64,
+    ),
+    (
+        "CLOCK_THREAD_CPUTIME_ID",
+        libc::CLOCK_THREAD_CPUTIME_ID as i64,
+    ),
+];
+
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 48] = [
     ("UTF_8", "UTF-8", false),
     ("US_ASCII", "US-ASCII", false),
     ("ASCII_8BIT", "ASCII-8BIT", false),
@@ -54,6 +89,9 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 43] = [
     ("KOI8_R", "KOI8-R", false),
     ("KOI8_U", "KOI8-U", false),
     ("Big5", "Big5", false),
+    ("BIG5", "Big5", false),
+    ("Emacs_Mule", "Emacs-Mule", false),
+    ("EMACS_MULE", "Emacs-Mule", false),
     ("GB18030", "GB18030", false),
     ("GBK", "GBK", false),
     ("IBM437", "IBM437", false),
@@ -64,6 +102,8 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 43] = [
     ("ISO_2022_JP", "ISO-2022-JP", true),
     ("ISO_2022_JP_2", "ISO-2022-JP-2", true),
     ("UTF_7", "UTF-7", true),
+    ("Stateless_ISO_2022_JP", "stateless-ISO-2022-JP", true),
+    ("STATELESS_ISO_2022_JP", "stateless-ISO-2022-JP", true),
 ];
 
 /// The flags `File.open` accepts in `flags:`, and the ones a glob or fnmatch
@@ -126,7 +166,27 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     );
     globals.set(
         "RUBY_DESCRIPTION",
-        Object::string("metorex (ruby-compatible)".to_string()),
+        Object::string(format!(
+            "metorex {} (ruby-compatible) [{}]",
+            crate::reported_ruby_version(),
+            crate::reported_ruby_platform()
+        )),
+    );
+    // The patch number the version carries, which Ruby reports apart from
+    // the version itself.
+    globals.set(
+        "RUBY_PATCHLEVEL",
+        Object::Int(
+            crate::reported_ruby_version()
+                .split('.')
+                .nth(2)
+                .and_then(|held| held.parse::<i64>().ok())
+                .unwrap_or(0),
+        ),
+    );
+    globals.set(
+        "RUBY_ENGINE_VERSION",
+        Object::string(crate::reported_ruby_version()),
     );
     // Standard IO stream placeholders (used as constants like STDOUT/STDERR/STDIN)
     globals.set("STDOUT", Object::string("STDOUT".to_string()));
@@ -192,6 +252,12 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
             numeric
         }
     };
+    // A refinement is a module of its own kind, and Ruby gives it a class so
+    // one can be told apart from an ordinary module.
+    if let Some(Object::Class(module_class)) = globals.get("Module") {
+        let refinement = Rc::new(Class::new("Refinement", Some(module_class)));
+        globals.set("Refinement", Object::Class(refinement));
+    }
     let rational_class = Rc::new(Class::new("Rational", Some(Rc::clone(&numeric))));
     globals.set("Rational", Object::Class(rational_class));
     let complex_class = Rc::new(Class::new("Complex", Some(Rc::clone(&numeric))));
@@ -418,6 +484,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     if let Some(Object::Class(standard_error)) = globals.get("StandardError") {
         for name in [
             "CompatibilityError",
+            "ConverterNotFoundError",
             "UndefinedConversionError",
             "InvalidByteSequenceError",
         ] {
@@ -493,6 +560,19 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     process.set_class_var("Status", Object::Class(Rc::clone(&process_status)));
     globals.set("Process::Status", Object::Class(Rc::clone(&process_status)));
     globals.set("__Process_Status_class", Object::Class(process_status));
+    // The numbers the operating system names its waiting, scheduling, and
+    // resource settings by, which Ruby carries as constants on Process.
+    for (name, value) in PROCESS_CONSTANTS {
+        process.set_class_var(name, Object::Int(value));
+        globals.set(format!("Process::{}", name), Object::Int(value));
+    }
+    // `Process::GID`, `Process::UID`, and `Process::Sys` name the same ids
+    // Process itself does, gathered under the words Ruby gathers them under.
+    for named in ["GID", "UID", "Sys"] {
+        let holder = Rc::new(Class::new_module(format!("Process::{}", named)));
+        process.set_class_var(named, Object::Module(Rc::clone(&holder)));
+        globals.set(format!("Process::{}", named), Object::Module(holder));
+    }
     globals.set("Process", Object::Module(process));
 
     // Math — stub module (constants will be added later if needed)
@@ -803,6 +883,12 @@ pub(super) fn seed_environment_with_globals(
     globals: &GlobalRegistry,
 ) {
     for (name, value) in globals.iter() {
+        // A global variable is held under its name with the `$` dropped, so
+        // seeding it here would put `$DEBUG` in front of a program's own
+        // `DEBUG` constant. The two are different names in Ruby.
+        if globals.constant(name).is_none() {
+            continue;
+        }
         environment.define(name.clone(), value.clone());
     }
 }

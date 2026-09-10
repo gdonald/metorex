@@ -149,7 +149,7 @@ fn compile_interpolated_string_empty_parts_via_ast() {
     let mut found_empty_string = false;
     for i in 0..chunk.constants_count() {
         if let Object::String(s) = chunk.get_constant(i)
-            && s.is_empty()
+            && s.as_str().is_empty()
         {
             found_empty_string = true;
             break;

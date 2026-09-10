@@ -21,7 +21,7 @@ impl VirtualMachine {
         };
         match method_name {
             "round" => {
-                if arguments.len() != 1 {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
                         1,
@@ -29,30 +29,35 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let precision = match &arguments[0] {
-                    Object::Int(p) => *p,
-                    _ => {
+                let precision = match arguments.first() {
+                    None => 0,
+                    Some(Object::Int(digits)) => *digits,
+                    Some(other) => {
                         return Err(method_argument_type_error(
                             method_name,
                             "Integer",
-                            &arguments[0],
+                            other,
                             position,
                         ));
                     }
                 };
-
-                if precision < 0 {
-                    return Err(MetorexError::runtime_error(
-                        format!(
-                            "Float.round precision must be non-negative, got {}",
-                            precision
-                        ),
-                        position_to_location(position),
-                    ));
-                }
-
                 let multiplier = 10_f64.powi(precision as i32);
                 let rounded = (f * multiplier).round() / multiplier;
+                // Rounding to the digits left of the point, or to none at
+                // all, answers a whole number.
+                if precision <= 0 {
+                    if !rounded.is_finite() {
+                        let message = "Infinity".to_string();
+                        return Err(MetorexError::UncaughtException {
+                            exception: Object::exception("FloatDomainError", message.clone()),
+                            location: position_to_location(position),
+                            message,
+                        });
+                    }
+                    return Ok(Some(Object::integer(num_bigint::BigInt::from(
+                        rounded as i128,
+                    ))));
+                }
                 Ok(Some(Object::Float(rounded)))
             }
             "nan?" => {
@@ -315,7 +320,7 @@ impl VirtualMachine {
                 }
                 // Ruby reads a String here the way `Float()` reads one.
                 let other = match &arguments[0] {
-                    Object::String(text) => text.trim().parse::<f64>().map_err(|_| {
+                    Object::String(text) => text.as_str().trim().parse::<f64>().map_err(|_| {
                         let message = format!("invalid value for Float(): {:?}", text.as_str());
                         MetorexError::UncaughtException {
                             exception: Object::exception("ArgumentError", message.clone()),

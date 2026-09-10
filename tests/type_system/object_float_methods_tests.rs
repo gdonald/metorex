@@ -158,13 +158,13 @@ fn float_round_two_places() {
 #[test]
 fn float_round_zero_places() {
     let result = run("3.7.round(0)");
-    assert_eq!(result, Some(Object::Float(4.0)));
+    assert_eq!(result, Some(Object::Int(4)));
 }
 
 #[test]
-fn float_round_error_no_args() {
-    let err = run_err("3.14.round");
-    assert!(err.contains("argument"));
+fn float_round_without_an_argument_answers_a_whole_number() {
+    assert_eq!(run("3.14.round"), Some(Object::Int(3)));
+    assert_eq!(run("3.7.round"), Some(Object::Int(4)));
 }
 
 #[test]
@@ -174,9 +174,8 @@ fn float_round_error_wrong_type() {
 }
 
 #[test]
-fn float_round_error_negative_precision() {
-    let err = run_err("3.14.round(-1)");
-    assert!(err.contains("non-negative"));
+fn float_round_to_the_digits_left_of_the_point() {
+    assert_eq!(run("1234.5.round(-2)"), Some(Object::Int(1200)));
 }
 
 // ── Exception methods ────────────────────────────────────────────────────────

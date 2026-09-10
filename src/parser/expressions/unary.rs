@@ -101,7 +101,9 @@ impl Parser {
             // operand in a Splat expression that the VM evaluates to an
             // Array (the operand itself if it's already an Array).
             let star_token = self.advance();
-            let operand = self.parse_unary()?;
+            // `*"a".."z"` spreads the whole range, so the operand is read as
+            // far as a range rather than stopping at the first value.
+            let operand = self.parse_range()?;
             Ok(Expression::Splat {
                 expression: Box::new(operand),
                 position: star_token.position,

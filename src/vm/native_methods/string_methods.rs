@@ -31,7 +31,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(string_value.chars().count() as i64)))
+                Ok(Some(Object::Int(
+                    string_value.as_str().chars().count() as i64
+                )))
             }
             // `dump` renders the string as source that reads back as itself.
             // It escapes what `inspect` does, plus every non-printable and
@@ -46,9 +48,10 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let mut out = String::with_capacity(string_value.len() + 2);
+                let mut out = String::with_capacity(string_value.as_str().len() + 2);
                 out.push('"');
-                let mut characters = string_value.chars().peekable();
+                let held_characters = string_value.to_text();
+                let mut characters = held_characters.as_str().chars().peekable();
                 while let Some(character) = characters.next() {
                     match character {
                         '"' => out.push_str("\\\""),
@@ -79,7 +82,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::binary_string(string_value.as_str())))
+                Ok(Some(Object::binary_string(string_value.to_text())))
             }
             "inspect" => {
                 if !arguments.is_empty() {
@@ -92,9 +95,9 @@ impl VirtualMachine {
                 }
                 // Render with double-quotes and minimal escaping. Mirrors
                 // Ruby's String#inspect output for the common cases.
-                let mut out = String::with_capacity(string_value.len() + 2);
+                let mut out = String::with_capacity(string_value.as_str().len() + 2);
                 out.push('"');
-                for c in string_value.chars() {
+                for c in string_value.as_str().chars() {
                     match c {
                         '"' => out.push_str("\\\""),
                         '\\' => out.push_str("\\\\"),
@@ -196,7 +199,7 @@ impl VirtualMachine {
                 let subject = string_value.as_ref();
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => {
-                        let length = subject.chars().count() as i64;
+                        let length = subject.as_str().chars().count() as i64;
                         let resolved = if *offset < 0 {
                             offset + length
                         } else {
@@ -206,15 +209,16 @@ impl VirtualMachine {
                             return Ok(Some(Object::Bool(false)));
                         }
                         subject
+                            .as_str()
                             .char_indices()
                             .nth(resolved as usize)
                             .map(|(index, _)| index)
-                            .unwrap_or(subject.len())
+                            .unwrap_or(subject.as_str().len())
                     }
                     _ => 0,
                 };
                 let matched = super::compile(&pattern, &flags)
-                    .map(|compiled| compiled.find_at(subject, start).is_some())
+                    .map(|compiled| compiled.find_at(&subject.as_str(), start).is_some())
                     .unwrap_or(false);
                 Ok(Some(Object::Bool(matched)))
             }
@@ -226,7 +230,7 @@ impl VirtualMachine {
             // needs a conversion metorex does not carry out, and the copy
             // keeps the encoding it had.
             "encode" => {
-                let copy = Object::string(string_value.as_str());
+                let copy = Object::string(string_value.to_text());
                 if string_value.as_str().is_ascii()
                     && let Some(named) = arguments.first()
                     && let Ok(wanted) = self.encoding_name_argument(named, position)
@@ -246,7 +250,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let letters: Vec<char> = string_value.chars().collect();
+                let letters: Vec<char> = string_value.as_str().chars().collect();
                 let from_end = method_name == "rindex";
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => {
@@ -269,14 +273,16 @@ impl VirtualMachine {
                     }
                 };
                 let found = match &arguments[0] {
-                    Object::String(needle) => character_index(&letters, needle, start, from_end),
+                    Object::String(needle) => {
+                        character_index(&letters, &needle.as_str(), start, from_end)
+                    }
                     Object::Regex(pattern, flags) => {
                         let Some(compiled) = super::compile(pattern, flags) else {
                             return Ok(Some(Object::Nil));
                         };
                         let places: Vec<usize> = compiled
-                            .find_iter(string_value)
-                            .map(|found| string_value[..found.start()].chars().count())
+                            .find_iter(&string_value.as_str())
+                            .map(|found| string_value.as_str()[..found.start()].chars().count())
                             .collect();
                         if from_end {
                             places.into_iter().rev().find(|place| *place <= start)
@@ -299,15 +305,12 @@ impl VirtualMachine {
                 }))
             }
             "upcase" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                Ok(Some(Object::string(string_value.to_uppercase())))
+                let wanted = case_options(method_name, arguments, position)?;
+                Ok(Some(Object::string(mapped_case(
+                    &string_value.as_str(),
+                    CaseWanted::Up,
+                    &wanted,
+                ))))
             }
             // String#succ / String#next — Ruby's "next string" successor.
             // For digit-only strings (e.g. "0" → "1", "9" → "10") this
@@ -385,63 +388,32 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let next = successor_of(string_value.as_ref().as_str());
+                let next = successor_of(&string_value.as_ref().as_str());
                 Ok(Some(Object::string(next)))
             }
             "downcase" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                Ok(Some(Object::string(string_value.to_lowercase())))
+                let wanted = case_options(method_name, arguments, position)?;
+                Ok(Some(Object::string(mapped_case(
+                    &string_value.as_str(),
+                    CaseWanted::Down,
+                    &wanted,
+                ))))
             }
             // `capitalize` raises the first letter and lowers the rest, and
             // `swapcase` turns each letter the other way.
             "capitalize" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let mut letters = string_value.chars();
-                let capitalized = match letters.next() {
-                    None => String::new(),
-                    Some(first) => first
-                        .to_uppercase()
-                        .chain(letters.flat_map(|letter| letter.to_lowercase()))
-                        .collect(),
-                };
-                Ok(Some(Object::string(capitalized)))
+                let wanted = case_options(method_name, arguments, position)?;
+                Ok(Some(Object::string(capitalized_case(
+                    &string_value.as_str(),
+                    &wanted,
+                ))))
             }
             "swapcase" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let swapped: String = string_value
-                    .chars()
-                    .flat_map(|letter| {
-                        if letter.is_uppercase() {
-                            letter.to_lowercase().collect::<Vec<_>>()
-                        } else if letter.is_lowercase() {
-                            letter.to_uppercase().collect::<Vec<_>>()
-                        } else {
-                            vec![letter]
-                        }
-                    })
-                    .collect();
-                Ok(Some(Object::string(swapped)))
+                let wanted = case_options(method_name, arguments, position)?;
+                Ok(Some(Object::string(swapped_case(
+                    &string_value.as_str(),
+                    &wanted,
+                ))))
             }
             "+" => {
                 if arguments.len() != 1 {
@@ -455,7 +427,7 @@ impl VirtualMachine {
                 match &arguments[0] {
                     Object::String(rhs) => {
                         let mut combined = string_value.as_str().to_string();
-                        combined.push_str(rhs);
+                        combined.push_str(&rhs.as_str());
                         Ok(Some(Object::string(combined)))
                     }
                     _ => Err(method_argument_type_error(
@@ -475,7 +447,12 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::string(string_value.trim().to_string())))
+                Ok(Some(Object::string(
+                    string_value
+                        .as_str()
+                        .trim_matches(|letter: char| letter.is_whitespace() || letter == '\0')
+                        .to_string(),
+                )))
             }
             // `lstrip` and `rstrip` trim one end. Ruby counts a NUL as
             // whitespace at the right end, which `trim_end` does not.
@@ -503,7 +480,8 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let text = string_value.as_ref().as_str();
+                let held = string_value.to_text();
+                let text = held.as_str();
                 let pieces: Vec<Object> = if separator.is_empty() {
                     if text.is_empty() {
                         Vec::new()
@@ -546,7 +524,12 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::string(string_value.trim_start().to_string())))
+                Ok(Some(Object::string(
+                    string_value
+                        .as_str()
+                        .trim_start_matches(|letter: char| letter.is_whitespace() || letter == '\0')
+                        .to_string(),
+                )))
             }
             "rstrip" => {
                 if !arguments.is_empty() {
@@ -559,6 +542,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::string(
                     string_value
+                        .as_str()
                         .trim_end_matches(|letter: char| letter.is_whitespace() || letter == '\0')
                         .to_string(),
                 )))
@@ -572,11 +556,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let reversed: String = string_value.chars().rev().collect();
+                let reversed: String = string_value.as_str().chars().rev().collect();
                 Ok(Some(Object::string(reversed)))
             }
             "last" => {
-                let chars: Vec<char> = string_value.chars().collect();
+                let chars: Vec<char> = string_value.as_str().chars().collect();
                 if chars.is_empty() {
                     Ok(Some(Object::Nil))
                 } else {
@@ -594,7 +578,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                match string_value.chars().next() {
+                match string_value.as_str().chars().next() {
                     Some(character) => Ok(Some(Object::Int(character as i64))),
                     None => {
                         let message = "empty string".to_string();
@@ -617,7 +601,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(string_value.len() as i64)))
+                Ok(Some(Object::Int(binary_bytes(string_value).len() as i64)))
             }
             "bytes" | "each_byte" => {
                 if !arguments.is_empty() {
@@ -628,11 +612,13 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let bytes: Vec<Object> = string_value
-                    .bytes()
+                let bytes: Vec<Object> = binary_bytes(string_value)
+                    .into_iter()
                     .map(|byte| Object::Int(byte as i64))
                     .collect();
-                if method_name == "bytes" {
+                // `bytes` with a block yields the same way `each_byte`
+                // does, and answers the string rather than the Array.
+                if method_name == "bytes" && !matches!(self.pending_block, Some(Object::Block(_))) {
                     return Ok(Some(Object::Array(Rc::new(RefCell::new(bytes)))));
                 }
                 let Some(Object::Block(block)) = self.pending_block.take() else {
@@ -647,7 +633,16 @@ impl VirtualMachine {
                         )
                         .map(Some);
                 };
-                for byte in bytes {
+                // The string may change while it is being walked, and the walk
+                // carries on from where it stood into whatever is there now.
+                let mut at = 0usize;
+                loop {
+                    let held = binary_bytes(string_value);
+                    let Some(byte) = held.get(at) else {
+                        break;
+                    };
+                    let byte = Object::Int(*byte as i64);
+                    at += 1;
                     self.execute_block_callable(&block, vec![byte], position)?;
                 }
                 Ok(Some(receiver.clone()))
@@ -669,14 +664,13 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                let length = string_value.len() as i64;
+                let bytes = binary_bytes(string_value);
+                let length = bytes.len() as i64;
                 let resolved = if *index < 0 { index + length } else { *index };
                 if resolved < 0 || resolved >= length {
                     return Ok(Some(Object::Nil));
                 }
-                Ok(Some(Object::Int(
-                    string_value.as_bytes()[resolved as usize] as i64,
-                )))
+                Ok(Some(Object::Int(bytes[resolved as usize] as i64)))
             }
             // The first character, or an empty String when there is none.
             "chr" => {
@@ -690,6 +684,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(Object::string(
                     string_value
+                        .as_str()
                         .chars()
                         .next()
                         .map(String::from)
@@ -698,6 +693,9 @@ impl VirtualMachine {
             }
             // Metorex strings are UTF-8 throughout, so every one of them is
             // valid, and whether it is ASCII is a question about its bytes.
+            // A string is valid in the encoding it is tagged with when its
+            // bytes spell characters there. Anything read as bytes is valid
+            // whatever those bytes are.
             "valid_encoding?" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -707,7 +705,21 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Bool(true)))
+                let named = string_value.encoding_name();
+                let valid = match named.as_str() {
+                    "ASCII-8BIT" | "BINARY" => true,
+                    "US-ASCII" => string_value.as_str().is_ascii(),
+                    // Text read as text is already spelled in characters, so
+                    // only a run of bytes tagged as text can be broken.
+                    "UTF-8" if string_value.holds_bytes() => String::from_utf8(
+                        super::pack_format::string_to_bytes(&string_value.as_str()),
+                    )
+                    .is_ok(),
+                    // Every other encoding maps each byte to a character, so
+                    // nothing written in it can be broken.
+                    _ => true,
+                };
+                Ok(Some(Object::Bool(valid)))
             }
             "ascii_only?" => {
                 if !arguments.is_empty() {
@@ -718,7 +730,15 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Bool(string_value.is_ascii())))
+                // An encoding that spells even the ASCII letters in more
+                // than one byte holds nothing ASCII-only, empty or not.
+                let compatible = !matches!(
+                    string_value.encoding_name().as_str(),
+                    "UTF-16" | "UTF-16BE" | "UTF-16LE" | "UTF-32" | "UTF-32BE" | "UTF-32LE"
+                );
+                Ok(Some(Object::Bool(
+                    compatible && string_value.as_str().is_ascii(),
+                )))
             }
             // `hex` and `oct` read a number off the front of the string, in
             // base 16 and base 8, with `oct` honoring a base prefix.
@@ -733,7 +753,7 @@ impl VirtualMachine {
                 }
                 let default_radix = if method_name == "hex" { 16 } else { 8 };
                 Ok(Some(Object::Int(leading_radix_number(
-                    string_value,
+                    &string_value.as_str(),
                     default_radix,
                 ))))
             }
@@ -762,6 +782,7 @@ impl VirtualMachine {
                     ));
                 }
                 let points: Vec<Object> = string_value
+                    .as_str()
                     .chars()
                     .map(|character| Object::Int(character as i64))
                     .collect();
@@ -795,6 +816,7 @@ impl VirtualMachine {
                     ));
                 }
                 let chars: Vec<Object> = string_value
+                    .as_str()
                     .chars()
                     .map(|c| Object::string(c.to_string()))
                     .collect();
@@ -880,14 +902,16 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(string_value.chars().count() as i64)))
+                Ok(Some(Object::Int(
+                    string_value.as_str().chars().count() as i64
+                )))
             }
             // Stream-like predicates so STDOUT/STDERR (stored as String) can be checked
             "tty?" | "isatty" => Ok(Some(Object::Bool(false))),
             "flush" | "sync" | "sync=" | "fsync" => Ok(Some(Object::Nil)),
             // STDOUT/STDERR stream methods (receiver is the "STDOUT"/"STDERR" string).
             "puts" | "print" | "write" => {
-                let to_stderr = string_value.as_str() == "STDERR";
+                let to_stderr = *string_value.as_str() == *"STDERR";
                 let newline = method_name == "puts";
                 let mut out = String::new();
                 for arg in arguments.iter() {
@@ -932,7 +956,7 @@ impl VirtualMachine {
                 };
                 let pad = if arguments.len() == 2 {
                     match &arguments[1] {
-                        Object::String(s) if !s.is_empty() => s.as_str().to_string(),
+                        Object::String(s) if !s.as_str().is_empty() => s.as_str().to_string(),
                         Object::String(_) => {
                             return Err(MetorexError::runtime_error(
                                 format!("zero width padding for {}", method_name),
@@ -951,7 +975,7 @@ impl VirtualMachine {
                 } else {
                     " ".to_string()
                 };
-                let current_len = string_value.chars().count() as i64;
+                let current_len = string_value.as_str().chars().count() as i64;
                 if width <= current_len {
                     return Ok(Some(Object::string(string_value.to_string())));
                 }
@@ -977,7 +1001,12 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::string(string_value.trim().to_string())))
+                Ok(Some(Object::string(
+                    string_value
+                        .as_str()
+                        .trim_matches(|letter: char| letter.is_whitespace() || letter == '\0')
+                        .to_string(),
+                )))
             }
             // chomp([sep]) — strips a trailing separator. With no arg,
             // strips a final \n, \r\n, or \r. With a string arg, strips
@@ -993,7 +1022,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let s: &str = string_value.as_ref();
+                let s: &str = &string_value.as_ref().as_str();
                 let result: String = match arguments.first() {
                     None => {
                         if let Some(stripped) = s.strip_suffix("\r\n") {
@@ -1008,7 +1037,7 @@ impl VirtualMachine {
                     }
                     Some(Object::Nil) => s.to_string(),
                     Some(Object::String(sep)) => s
-                        .strip_suffix(sep.as_ref().as_str())
+                        .strip_suffix(&*sep.as_ref().as_str())
                         .map(|x| x.to_string())
                         .unwrap_or_else(|| s.to_string()),
                     Some(other) => {
@@ -1049,17 +1078,20 @@ impl VirtualMachine {
                 };
                 let mut parts: Vec<String> = if arguments.is_empty() {
                     string_value
+                        .as_str()
                         .split_whitespace()
                         .map(|piece| piece.to_string())
                         .collect()
                 } else {
                     match &arguments[0] {
                         Object::String(separator) if limit > 0 => string_value
-                            .splitn(limit as usize, separator.as_str())
+                            .as_str()
+                            .splitn(limit as usize, &*separator.as_str())
                             .map(|piece| piece.to_string())
                             .collect(),
                         Object::String(separator) => string_value
-                            .split(separator.as_str())
+                            .as_str()
+                            .split(&*separator.as_str())
                             .map(|piece| piece.to_string())
                             .collect(),
                         Object::Regex(pattern, flags) => {
@@ -1078,11 +1110,11 @@ impl VirtualMachine {
                             }
                             match builder.build() {
                                 Ok(re) if limit > 0 => re
-                                    .splitn(string_value.as_str(), limit as usize)
+                                    .splitn(&string_value.as_str(), limit as usize)
                                     .map(|piece| piece.to_string())
                                     .collect(),
                                 Ok(re) => re
-                                    .split(string_value.as_str())
+                                    .split(&string_value.as_str())
                                     .map(|piece| piece.to_string())
                                     .collect(),
                                 Err(e) => {
@@ -1138,19 +1170,24 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let chars: Vec<char> = string_value.chars().collect();
+                let chars: Vec<char> = string_value.as_str().chars().collect();
                 let char_count = chars.len() as i64;
+                // A start past the end names no substring at all, where a
+                // start exactly at the end names the empty one.
+                if start > char_count || (start < 0 && char_count + start < 0) {
+                    return Ok(Some(Object::Nil));
+                }
                 let start_idx = if start < 0 {
                     (char_count + start).max(0) as usize
                 } else {
                     start.min(char_count) as usize
                 };
                 let end_idx = (start_idx as i64 + len).min(char_count).max(0) as usize;
-                if start_idx > chars.len() {
+                if start_idx > chars.len() || len < 0 {
                     Ok(Some(Object::Nil))
                 } else {
-                    let sliced: String =
-                        chars[start_idx..end_idx.min(chars.len())].iter().collect();
+                    let end_idx = end_idx.clamp(start_idx, chars.len());
+                    let sliced: String = chars[start_idx..end_idx].iter().collect();
                     Ok(Some(Object::string(sliced)))
                 }
             }
@@ -1164,9 +1201,9 @@ impl VirtualMachine {
                     ));
                 }
                 match &arguments[0] {
-                    Object::String(substr) => {
-                        Ok(Some(Object::Bool(string_value.contains(substr.as_str()))))
-                    }
+                    Object::String(substr) => Ok(Some(Object::Bool(
+                        string_value.as_str().contains(&*substr.as_str()),
+                    ))),
                     _ => Err(method_argument_type_error(
                         method_name,
                         "String",
@@ -1192,11 +1229,11 @@ impl VirtualMachine {
                     match arg {
                         Object::String(s) => {
                             if method_name == "start_with?" {
-                                if string_value.starts_with(s.as_str()) {
+                                if string_value.as_str().starts_with(&*s.as_str()) {
                                     result = true;
                                     break;
                                 }
-                            } else if string_value.ends_with(s.as_str()) {
+                            } else if string_value.as_str().ends_with(&*s.as_str()) {
                                 result = true;
                                 break;
                             }
@@ -1237,7 +1274,7 @@ impl VirtualMachine {
                 }
                 match &arguments[0] {
                     Object::String(prefix) => Ok(Some(Object::Bool(
-                        string_value.starts_with(prefix.as_str()),
+                        string_value.as_str().starts_with(&*prefix.as_str()),
                     ))),
                     _ => Err(method_argument_type_error(
                         method_name,
@@ -1257,9 +1294,9 @@ impl VirtualMachine {
                     ));
                 }
                 match &arguments[0] {
-                    Object::String(suffix) => {
-                        Ok(Some(Object::Bool(string_value.ends_with(suffix.as_str()))))
-                    }
+                    Object::String(suffix) => Ok(Some(Object::Bool(
+                        string_value.as_str().ends_with(&*suffix.as_str()),
+                    ))),
                     _ => Err(method_argument_type_error(
                         method_name,
                         "String",
@@ -1288,7 +1325,7 @@ impl VirtualMachine {
                         ));
                     }
                     None => {
-                        let size = string_value.chars().count() as i64;
+                        let size = string_value.as_str().chars().count() as i64;
                         return self
                             .build_enumerator(
                                 receiver.clone(),
@@ -1300,7 +1337,7 @@ impl VirtualMachine {
                             .map(Some);
                     }
                 };
-                for ch in string_value.chars() {
+                for ch in string_value.as_str().chars() {
                     let char_str = Object::string(ch.to_string());
                     let args = vec![char_str];
                     self.execute_block_body(&block, args)?;
@@ -1337,19 +1374,27 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let trimmed = string_value.trim();
+                let held_trimmed = string_value.to_text();
+                let trimmed = held_trimmed.as_str().trim();
                 let digits: String = trimmed
                     .chars()
                     .take_while(|held| held.is_digit(base) || *held == '-' || *held == '+')
                     .collect();
-                let n = i64::from_str_radix(&digits, base).unwrap_or(0);
-                Ok(Some(Object::Int(n)))
+                // Digits that do not fit a machine word still name a number,
+                // so the wider type carries them rather than answering zero.
+                match i64::from_str_radix(&digits, base) {
+                    Ok(held) => Ok(Some(Object::Int(held))),
+                    Err(_) => match num_bigint::BigInt::parse_bytes(digits.as_bytes(), base) {
+                        Some(held) => Ok(Some(Object::integer(held))),
+                        None => Ok(Some(Object::Int(0))),
+                    },
+                }
             }
             // `to_r` reads the leading rational value and answers (0/1) when
             // the string does not start with one.
             "to_r" => {
                 let (numerator, denominator) =
-                    super::rational_methods::parse_rational_text(string_value);
+                    super::rational_methods::parse_rational_text(&string_value.as_str());
                 self.make_rational(numerator, denominator, position)
                     .map(Some)
             }
@@ -1362,7 +1407,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Float(leading_float(string_value.as_ref()))))
+                Ok(Some(Object::Float(leading_float(
+                    &string_value.as_ref().as_str(),
+                ))))
             }
             "dup" => {
                 if !arguments.is_empty() {
@@ -1388,7 +1435,7 @@ impl VirtualMachine {
                     ));
                 }
                 let (pattern, flags) = match &arguments[0] {
-                    Object::String(text) => (regex::escape(text.as_str()), String::new()),
+                    Object::String(text) => (regex::escape(&text.as_str()), String::new()),
                     Object::Regex(pattern, flags) => {
                         (pattern.as_str().to_string(), flags.as_str().to_string())
                     }
@@ -1454,7 +1501,7 @@ impl VirtualMachine {
                     && let Some(Object::Block(block)) = self.pending_block.take()
                 {
                     let (pattern, flags) = match &arguments[0] {
-                        Object::String(text) => (regex::escape(text.as_str()), String::new()),
+                        Object::String(text) => (regex::escape(&text.as_str()), String::new()),
                         Object::Regex(pattern, flags) => {
                             (pattern.as_str().to_string(), flags.as_str().to_string())
                         }
@@ -1500,7 +1547,7 @@ impl VirtualMachine {
                             vec![Object::string(found.as_str().to_string())],
                         )?;
                         match &answered {
-                            Object::String(text) => built.push_str(text),
+                            Object::String(text) => built.push_str(&text.as_str()),
                             other => built.push_str(&other.to_string()),
                         }
                         cut = found.end();
@@ -1537,9 +1584,11 @@ impl VirtualMachine {
                         let subject = string_value.as_str().to_string();
                         self.regexp_match_data(&escaped, "", &subject, 0, position)?;
                         let result = if limit == 0 {
-                            string_value.replace(&pattern, &replacement)
+                            string_value.as_str().replace(&pattern, &replacement)
                         } else {
-                            string_value.replacen(&pattern, &replacement, limit)
+                            string_value
+                                .as_str()
+                                .replacen(&pattern, &replacement, limit)
                         };
                         Ok(Some(Object::string(result)))
                     }
@@ -1561,11 +1610,18 @@ impl VirtualMachine {
                         match regex::Regex::new(&re_pattern) {
                             Ok(re) => {
                                 let result = if limit == 0 {
-                                    re.replace_all(string_value.as_ref(), replacement.as_str())
-                                        .into_owned()
+                                    re.replace_all(
+                                        &string_value.as_ref().as_str(),
+                                        replacement.as_str(),
+                                    )
+                                    .into_owned()
                                 } else {
-                                    re.replacen(string_value.as_ref(), limit, replacement.as_str())
-                                        .into_owned()
+                                    re.replacen(
+                                        &string_value.as_ref().as_str(),
+                                        limit,
+                                        replacement.as_str(),
+                                    )
+                                    .into_owned()
                                 };
                                 Ok(Some(Object::string(result)))
                             }
@@ -1589,9 +1645,9 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Bool(string_value.is_empty())))
+                Ok(Some(Object::Bool(string_value.as_str().is_empty())))
             }
-            _ => Ok(None),
+            _ => self.call_string_set_method(receiver, method_name, arguments, position),
         }
     }
 }
@@ -1599,7 +1655,7 @@ impl VirtualMachine {
 /// Ruby's `String#succ`: the rightmost alphanumeric character is bumped, and a
 /// carry moves left, growing the string when the leftmost one wraps. A string
 /// with no alphanumeric character bumps its last byte instead.
-fn successor_of(text: &str) -> String {
+pub(crate) fn successor_of(text: &str) -> String {
     if text.is_empty() {
         return String::new();
     }
@@ -1611,6 +1667,26 @@ fn successor_of(text: &str) -> String {
         .map(|(index, _)| index)
         .collect();
     if alphanumeric.is_empty() {
+        // With no letters or digits the characters count up as the bytes
+        // they stand for, carrying from the end. A carry past the front puts
+        // one more character there.
+        if letters.iter().all(|letter| (*letter as u32) < 256) {
+            let mut at = letters.len();
+            loop {
+                if at == 0 {
+                    letters.insert(0, '\u{1}');
+                    break;
+                }
+                at -= 1;
+                if letters[at] == '\u{ff}' {
+                    letters[at] = '\0';
+                    continue;
+                }
+                letters[at] = char::from_u32(letters[at] as u32 + 1).unwrap_or(letters[at]);
+                break;
+            }
+            return letters.into_iter().collect();
+        }
         let last = letters.len() - 1;
         let bumped = (letters[last] as u32).wrapping_add(1);
         if let Some(letter) = char::from_u32(bumped) {
@@ -1819,7 +1895,7 @@ impl VirtualMachine {
                 let found = self.send_to_object(
                     self.globals().get("Encoding").unwrap_or(Object::Nil),
                     "find",
-                    vec![Object::string(named.as_str())],
+                    vec![Object::string(named.to_text())],
                     position,
                 )?;
                 match found {
@@ -1848,4 +1924,156 @@ impl VirtualMachine {
         }
         self.globals().get("Encoding::UTF_8").unwrap_or(Object::Nil)
     }
+}
+
+/// The bytes a string stands for. A string tagged binary holds one character
+/// per byte, so its characters are its bytes rather than their UTF-8 form.
+fn binary_bytes(string_value: &crate::object::StringValue) -> Vec<u8> {
+    match string_value.encoding_name().as_str() {
+        "ASCII-8BIT" | "BINARY" => super::pack_format::string_to_bytes(&string_value.as_str()),
+        _ => string_value.as_str().as_bytes().to_vec(),
+    }
+}
+
+/// Which way a case mapping runs.
+#[derive(Clone, Copy, PartialEq)]
+enum CaseWanted {
+    Up,
+    Down,
+}
+
+/// The options a case mapping was asked for.
+struct CaseOptions {
+    ascii_only: bool,
+    turkic: bool,
+    folding: bool,
+}
+
+/// Read the Symbols naming how a case mapping should run. Ruby allows one
+/// option, and allows Turkic and Lithuanian together.
+fn case_options(
+    method_name: &str,
+    arguments: &[Object],
+    position: Position,
+) -> Result<CaseOptions, MetorexError> {
+    let mut named = Vec::new();
+    for argument in arguments {
+        let Object::Symbol(name) = argument else {
+            let message = format!("invalid option {}", argument);
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &message,
+                position,
+            ));
+        };
+        let name = name.as_str().to_string();
+        if !matches!(
+            name.as_str(),
+            "ascii" | "turkic" | "lithuanian" | "fold" | "downcase"
+        ) || (name == "fold" && !method_name.starts_with("downcase"))
+        {
+            let message = format!("invalid option :{}", name);
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &message,
+                position,
+            ));
+        }
+        named.push(name);
+    }
+    // Turkic and Lithuanian are the only pair that go together.
+    if named.len() > 2
+        || (named.len() == 2
+            && !named
+                .iter()
+                .all(|name| name == "turkic" || name == "lithuanian"))
+    {
+        let message = "too many options".to_string();
+        return Err(crate::vm::errors::simple_exception(
+            "ArgumentError",
+            &message,
+            position,
+        ));
+    }
+    Ok(CaseOptions {
+        ascii_only: named.iter().any(|name| name == "ascii"),
+        turkic: named.iter().any(|name| name == "turkic"),
+        folding: named.iter().any(|name| name == "fold"),
+    })
+}
+
+/// Text with its letters mapped the way the options ask for.
+fn mapped_case(text: &str, wanted: CaseWanted, options: &CaseOptions) -> String {
+    if options.ascii_only {
+        return match wanted {
+            CaseWanted::Up => text.chars().map(|held| held.to_ascii_uppercase()).collect(),
+            CaseWanted::Down => text.chars().map(|held| held.to_ascii_lowercase()).collect(),
+        };
+    }
+    if options.turkic {
+        // Turkish keeps the dot of an `i` apart from the letter itself, so
+        // the two `i`s map to their own pairs.
+        return text
+            .chars()
+            .flat_map(|held| match (wanted, held) {
+                (CaseWanted::Down, '\u{130}') => vec!['i'],
+                (CaseWanted::Down, 'I') => vec!['\u{131}'],
+                (CaseWanted::Up, 'i') => vec!['\u{130}'],
+                (CaseWanted::Up, '\u{131}') => vec!['I'],
+                (CaseWanted::Up, _) => held.to_uppercase().collect(),
+                (CaseWanted::Down, _) => held.to_lowercase().collect(),
+            })
+            .collect();
+    }
+    let mapped = match wanted {
+        CaseWanted::Up => text.to_uppercase(),
+        CaseWanted::Down => text.to_lowercase(),
+    };
+    // Folding maps a letter onto the letters it compares equal to, which is
+    // where a sharp s becomes two of them.
+    if options.folding {
+        return mapped.replace('\u{df}', "ss");
+    }
+    mapped
+}
+
+/// The first letter raised and the rest lowered. Raising one letter may give
+/// several, and only the first of those stays raised.
+fn capitalized_case(text: &str, options: &CaseOptions) -> String {
+    let mut letters = text.chars();
+    let Some(first) = letters.next() else {
+        return String::new();
+    };
+    let raised = mapped_case(&first.to_string(), CaseWanted::Up, options);
+    let mut made = String::new();
+    let mut raised_letters = raised.chars();
+    if let Some(leading) = raised_letters.next() {
+        made.push(leading);
+    }
+    let rest: String = raised_letters.collect();
+    made.push_str(&mapped_case(&rest, CaseWanted::Down, options));
+    let remainder: String = letters.collect();
+    made.push_str(&mapped_case(&remainder, CaseWanted::Down, options));
+    made
+}
+
+/// Each letter turned the other way.
+fn swapped_case(text: &str, options: &CaseOptions) -> String {
+    text.chars()
+        .flat_map(|letter| {
+            if options.ascii_only && !letter.is_ascii() {
+                return vec![letter];
+            }
+            let wanted = if letter.is_uppercase() {
+                CaseWanted::Down
+            } else if letter.is_lowercase() {
+                CaseWanted::Up
+            } else {
+                return vec![letter];
+            };
+            mapped_case(&letter.to_string(), wanted, options)
+                .chars()
+                .collect()
+        })
+        .collect()
 }

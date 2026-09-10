@@ -65,38 +65,51 @@ impl VirtualMachine {
                 values,
                 position: _,
             } => {
-                if values.len() == 1 {
-                    // Single value on right side — try to splat an array
-                    let evaluated = self.evaluate_expression(&values[0])?;
-                    match evaluated {
-                        Object::Array(arr) => {
-                            let elements = arr.borrow();
-                            for (i, target) in targets.iter().enumerate() {
-                                let val = elements.get(i).cloned().unwrap_or(Object::Nil);
-                                self.assign_value(target, val)?;
-                            }
-                        }
-                        _ => {
-                            // Assign first target, rest get nil
-                            for (i, target) in targets.iter().enumerate() {
-                                let val = if i == 0 {
-                                    evaluated.clone()
-                                } else {
-                                    Object::Nil
-                                };
-                                self.assign_value(target, val)?;
-                            }
-                        }
+                // One value on the right is spread across the targets when it
+                // is an Array, and otherwise reaches the first target alone.
+                let source: Vec<Object> = if values.len() == 1 {
+                    match self.evaluate_expression(&values[0])? {
+                        Object::Array(elements) => elements.borrow().clone(),
+                        single => vec![single],
                     }
                 } else {
-                    // Multiple values — evaluate all RHS first, then assign
-                    let evaluated: Vec<Object> = values
+                    values
                         .iter()
-                        .map(|v| self.evaluate_expression(v))
-                        .collect::<Result<Vec<_>, _>>()?;
-                    for (i, target) in targets.iter().enumerate() {
-                        let val = evaluated.get(i).cloned().unwrap_or(Object::Nil);
-                        self.assign_value(target, val)?;
+                        .map(|value| self.evaluate_expression(value))
+                        .collect::<Result<Vec<_>, _>>()?
+                };
+                let splat_at = targets
+                    .iter()
+                    .position(|target| matches!(target, Expression::Splat { .. }));
+                match splat_at {
+                    None => {
+                        for (index, target) in targets.iter().enumerate() {
+                            let value = source.get(index).cloned().unwrap_or(Object::Nil);
+                            self.assign_value(target, value)?;
+                        }
+                    }
+                    Some(splat_at) => {
+                        for (index, target) in targets[..splat_at].iter().enumerate() {
+                            let value = source.get(index).cloned().unwrap_or(Object::Nil);
+                            self.assign_value(target, value)?;
+                        }
+                        // The splat takes what the targets on either side of
+                        // it do not, which is none at all when there are
+                        // fewer values than named targets.
+                        let after = targets.len() - splat_at - 1;
+                        let taken = source.len().saturating_sub(splat_at + after);
+                        let collected: Vec<Object> =
+                            source.iter().skip(splat_at).take(taken).cloned().collect();
+                        if let Expression::Splat { expression, .. } = &targets[splat_at] {
+                            self.assign_value(expression, Object::array(collected))?;
+                        }
+                        for (offset, target) in targets[splat_at + 1..].iter().enumerate() {
+                            let value = source
+                                .get(splat_at + taken + offset)
+                                .cloned()
+                                .unwrap_or(Object::Nil);
+                            self.assign_value(target, value)?;
+                        }
                     }
                 }
                 Ok(ControlFlow::Next)
@@ -733,10 +746,18 @@ impl VirtualMachine {
                                 let is_explicit_receiver =
                                     !crate::vm::method_lookup::names_self(receiver.as_ref());
                                 if is_explicit_receiver
-                                    && class.is_method_restricted(&setter_method)
+                                    && self.refuses_explicit_receiver(&class, &setter_method)
                                 {
+                                    let marking = if class.is_method_protected(&setter_method)
+                                        && !class.is_method_private(&setter_method)
+                                    {
+                                        "protected"
+                                    } else {
+                                        "private"
+                                    };
                                     let msg = format!(
-                                        "private method '{}' called for an instance of {}",
+                                        "{} method '{}' called for an instance of {}",
+                                        marking,
                                         setter_method,
                                         class.name()
                                     );
@@ -798,12 +819,20 @@ impl VirtualMachine {
                         }
                         Object::Class(class_rc) => {
                             // `def self.name=` is stored the way every other
-                            // module-level method is, so the writer is looked
-                            // up there before a plain instance method.
+                            // module-level method is, and one written in a
+                            // `class << self` body sits on the singleton
+                            // class, so both are looked in before a plain
+                            // instance method.
                             if let Some(method) = crate::vm::method_lookup::module_level_method(
                                 &class_rc,
                                 &setter_method,
                             )
+                            .or_else(|| {
+                                class_rc
+                                    .singleton_class_slot()
+                                    .clone()
+                                    .and_then(|singleton| singleton.find_method(&setter_method))
+                            })
                             .or_else(|| class_rc.find_method(&setter_method))
                             {
                                 self.invoke_method(
@@ -815,6 +844,20 @@ impl VirtualMachine {
                                 )?;
                                 Ok(())
                             } else {
+                                // A writer the class carries natively, such as
+                                // `Encoding.default_internal=`, answers before
+                                // the assignment falls back to storing state.
+                                if self
+                                    .call_class_methods(
+                                        &class_rc,
+                                        &setter_method,
+                                        std::slice::from_ref(&value),
+                                        *position,
+                                    )?
+                                    .is_some()
+                                {
+                                    return Ok(());
+                                }
                                 // Store as class variable
                                 class_rc.set_class_var(
                                     format!("@{}", setter_method.trim_end_matches('=')),
@@ -824,10 +867,19 @@ impl VirtualMachine {
                             }
                         }
                         Object::Module(module_rc) => {
+                            // A writer written in a `class << self` body sits
+                            // on the singleton class, which is a third place
+                            // an assignment has to look.
                             if let Some(method) = crate::vm::method_lookup::module_level_method(
                                 &module_rc,
                                 &setter_method,
                             )
+                            .or_else(|| {
+                                module_rc
+                                    .singleton_class_slot()
+                                    .clone()
+                                    .and_then(|singleton| singleton.find_method(&setter_method))
+                            })
                             .or_else(|| module_rc.find_method(&setter_method))
                             {
                                 self.invoke_method(
@@ -937,6 +989,12 @@ impl VirtualMachine {
                 }
             }
             Expression::GlobalVariable { name, .. } => {
+                // A global given a second name writes through to the first.
+                let name = self
+                    .global_aliases
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
                 self.globals_mut().set_variable(name.clone(), value.clone());
                 // A `trace_var` hook on this global runs with the new value.
                 let name = name.clone();

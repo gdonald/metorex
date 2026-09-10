@@ -137,6 +137,22 @@ impl Object {
                 }
                 set_a.iter().all(|item| set_b.contains(item))
             }
+            (
+                Object::Range {
+                    start: left_start,
+                    end: left_end,
+                    exclusive: left_exclusive,
+                },
+                Object::Range {
+                    start: right_start,
+                    end: right_end,
+                    exclusive: right_exclusive,
+                },
+            ) => {
+                left_exclusive == right_exclusive
+                    && left_start.equals_within(right_start, in_flight)
+                    && left_end.equals_within(right_end, in_flight)
+            }
             (Object::Result(a), Object::Result(b)) => match (a, b) {
                 (Ok(a_val), Ok(b_val)) => a_val.equals(b_val),
                 (Err(a_err), Err(b_err)) => a_err.equals(b_err),

@@ -982,16 +982,16 @@ fn test_builtins_pack_directives_execution() {
         "[\"ab\", \"cd\"]\n",
         "[\"ab\"]\n",
         "[\"ab\", \"d\"]\n",
-        "[194, 160]\n",
+        "[160]\n",
         "[5]\n",
-        "[194, 143]\n",
-        "[194, 143]\n",
+        "[143]\n",
+        "[143]\n",
         "[\"1010\"]\n",
         "[\"0000\"]\n",
         "[\"8f\"]\n",
         "[\"f8\"]\n",
         "[1, 2]\n",
-        "[195, 191]\n",
+        "[255]\n",
         "[1, 2]\n",
         "[2, 1]\n",
         "[0, 0, 1, 2]\n",
@@ -1015,7 +1015,7 @@ fn test_builtins_pack_directives_execution() {
         "[1.5]\n",
         "2\n",
         "[233]\n",
-        "[194, 130, 44]\n",
+        "[130, 44]\n",
         "[300]\n",
         "3\n",
         "[2]\n",
@@ -1070,16 +1070,16 @@ fn test_builtins_pack_directives_parens_execution() {
         "[\"ab\", \"cd\"]\n",
         "[\"ab\"]\n",
         "[\"ab\", \"d\"]\n",
-        "[194, 160]\n",
+        "[160]\n",
         "[5]\n",
-        "[194, 143]\n",
-        "[194, 143]\n",
+        "[143]\n",
+        "[143]\n",
         "[\"1010\"]\n",
         "[\"0000\"]\n",
         "[\"8f\"]\n",
         "[\"f8\"]\n",
         "[1, 2]\n",
-        "[195, 191]\n",
+        "[255]\n",
         "[1, 2]\n",
         "[2, 1]\n",
         "[0, 0, 1, 2]\n",
@@ -1103,7 +1103,7 @@ fn test_builtins_pack_directives_parens_execution() {
         "[1.5]\n",
         "2\n",
         "[233]\n",
-        "[194, 130, 44]\n",
+        "[130, 44]\n",
         "[300]\n",
         "3\n",
         "[2]\n",
@@ -1251,4 +1251,127 @@ fn test_builtins_line_loop_options_parens_execution() {
     );
     let output = run_example("builtins/line_loop_options_parens.rb");
     assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_random_source_generator_execution() {
+    let expected = concat!(
+        "\"\\x14\\\\\"\n",
+        "\"_\\x91\"\n",
+        "0.1915194503788923\n",
+        "37.454011884736246\n",
+        "true\n",
+        "42\n",
+        "8\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "\"bad value for range\"\n"
+    );
+    let output = run_example("builtins/random_source/generator.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builtins_random_source_generator_parens_execution() {
+    let expected = concat!(
+        "\"\\x14\\\\\"\n",
+        "\"_\\x91\"\n",
+        "0.1915194503788923\n",
+        "37.454011884736246\n",
+        "true\n",
+        "42\n",
+        "8\n",
+        "true\n",
+        "true\n",
+        "true\n",
+        "\"bad value for range\"\n"
+    );
+    let output = run_example("builtins/random_source/generator_parens.rb");
+    assert_eq!(output, expected);
+}
+
+/// The expected output of both `builtins/encoding_converter/paths` variants.
+const ENCODING_CONVERTER_OUTPUT: &str = concat!(
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:UTF-8>\n",
+    "\"#<Encoding::Converter: US-ASCII to UTF-8>\"\n",
+    "[[#<Encoding:US-ASCII>, #<Encoding:UTF-8>]]\n",
+    "\"�\"\n",
+    "[[#<Encoding:US-ASCII>, #<Encoding:UTF-8>], [#<Encoding:UTF-8>, #<Encoding:Big5>]]\n",
+    "\"crlf_newline\"\n",
+    "#<Encoding:UTF-8>\n",
+    "nil\n",
+    "true\n",
+    "Encoding::ConverterNotFoundError\n",
+    "\"fubar\"\n",
+    "\"spelled out\"\n"
+);
+
+#[test]
+fn test_builtins_encoding_converter_paths_execution() {
+    let output = run_example("builtins/encoding_converter/paths.rb");
+    assert_eq!(output, ENCODING_CONVERTER_OUTPUT);
+}
+
+#[test]
+fn test_builtins_encoding_converter_paths_parens_execution() {
+    let output = run_example("builtins/encoding_converter/paths_parens.rb");
+    assert_eq!(output, ENCODING_CONVERTER_OUTPUT);
+}
+
+/// The expected output of both `builtins/environment_lookup/coercion` variants.
+const ENVIRONMENT_LOOKUP_OUTPUT: &str = concat!(
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "true\n",
+    "\"metorex_example\"\n",
+    "[\"metorex_example\", \"held\"]\n",
+    "[\"metorex_example\", \"held\"]\n",
+    "nil\n",
+    "nil\n",
+    "\"no implicit conversion of Object into String\"\n",
+    "nil\n"
+);
+
+#[test]
+fn test_builtins_environment_lookup_coercion_execution() {
+    let output = run_example("builtins/environment_lookup/coercion.rb");
+    assert_eq!(output, ENVIRONMENT_LOOKUP_OUTPUT);
+}
+
+#[test]
+fn test_builtins_environment_lookup_coercion_parens_execution() {
+    let output = run_example("builtins/environment_lookup/coercion_parens.rb");
+    assert_eq!(output, ENVIRONMENT_LOOKUP_OUTPUT);
+}
+
+/// The expected output of both `builtins/byte_views/reading` variants.
+const BYTE_VIEWS_OUTPUT: &str = concat!(
+    "1\n",
+    "3\n",
+    "11\n",
+    "#<Encoding:UTF-8>\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "#<Encoding:EUC-JP>\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:US-ASCII>\n",
+    "255\n",
+    "\"can't convert Whole into Rational (Whole#to_r gives Integer)\"\n"
+);
+
+#[test]
+fn test_builtins_byte_views_reading_execution() {
+    let output = run_example("builtins/byte_views/reading.rb");
+    assert_eq!(output, BYTE_VIEWS_OUTPUT);
+}
+
+#[test]
+fn test_builtins_byte_views_reading_parens_execution() {
+    let output = run_example("builtins/byte_views/reading_parens.rb");
+    assert_eq!(output, BYTE_VIEWS_OUTPUT);
 }

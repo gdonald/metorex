@@ -91,7 +91,7 @@ fn a_string_io_reads_lines_and_counts_them() {
 fn a_string_io_reads_a_paragraph_for_a_blank_separator() {
     assert_eq!(
         run("require 'stringio'\nStringIO.new(\"a\\n\\nb\\n\").each_line(\"\").to_a.inspect"),
-        Some(Object::string("[\"a\\n\", \"b\\n\"]"))
+        Some(Object::string("[\"a\\n\\n\", \"b\\n\"]"))
     );
 }
 

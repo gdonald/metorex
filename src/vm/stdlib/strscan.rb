@@ -43,22 +43,37 @@ class StringScanner
 
   # ── Where the cursor stands ──────────────────────────────────────────────
 
+  # The cursor is reported in bytes, so a multi-byte character counts for
+  # every byte it is made of.
   def pos
-    @position
+    @string[0, @position].bytesize
   end
 
   def pointer
-    @position
+    pos
   end
 
   def pos=(offset)
-    landing = offset < 0 ? offset + @string.length : offset
-    if landing < 0 || landing > @string.length
+    counted = @string.bytesize
+    landing = offset < 0 ? offset + counted : offset
+    if landing < 0 || landing > counted
       raise RangeError, "index out of range"
     end
-    @position = landing
+    @position = characters_before landing
     offset
   end
+
+  # The number of characters standing before a byte offset.
+  def characters_before(counted)
+    at = 0
+    seen = 0
+    while seen < counted && at < @string.length
+      seen += @string[at].bytesize
+      at += 1
+    end
+    at
+  end
+  private :characters_before
 
   def pointer=(offset)
     self.pos = offset
@@ -309,7 +324,7 @@ class StringScanner
     letter = @string[@position]
     @match_start = @position
     @match_text = letter
-    @match = letter.match(/\A/)
+    @match = letter.match(/\A./m)
     @position = @position + 1
     letter
   end

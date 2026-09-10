@@ -603,8 +603,14 @@ fn int_is_always_frozen() {
 }
 
 #[test]
-fn string_is_frozen() {
+fn string_is_not_frozen_until_it_is_frozen() {
     let result = run(r#""hi".frozen?"#);
+    assert_eq!(result, Some(Object::Bool(false)));
+}
+
+#[test]
+fn string_is_frozen_once_frozen() {
+    let result = run(r#""hi".freeze.frozen?"#);
     assert_eq!(result, Some(Object::Bool(true)));
 }
 

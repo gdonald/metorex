@@ -163,7 +163,7 @@ impl VirtualMachine {
 
         // Constants (uppercase) resolve from globals regardless of scope.
         if name.chars().next().is_some_and(|c| c.is_ascii_uppercase())
-            && let Some(val) = self.globals().get(name)
+            && let Some(val) = self.globals().constant(name)
         {
             return Ok(val);
         }
@@ -184,7 +184,7 @@ impl VirtualMachine {
                 }
                 // The file may have defined the constant globally rather than
                 // on the autoload owner — fall back to globals before moving on.
-                if let Some(val) = self.globals().get(name) {
+                if let Some(val) = self.globals().constant(name) {
                     return Ok(val);
                 }
             }
@@ -193,7 +193,7 @@ impl VirtualMachine {
             {
                 return Ok(val);
             }
-            if let Some(val) = self.globals().get(name) {
+            if let Some(val) = self.globals().constant(name) {
                 return Ok(val);
             }
         }

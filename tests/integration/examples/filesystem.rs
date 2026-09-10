@@ -48,3 +48,18 @@ fn test_filesystem_asking_about_a_file_no_parens_execution() {
     let output = run_example("filesystem/asking_about_a_file_no_parens.rb");
     assert_eq!(output, ASKING_ABOUT_A_FILE_OUTPUT);
 }
+
+/// The expected output of both `filesystem/stream_paths/coercion` variants.
+const STREAM_PATHS_OUTPUT: &str = "true\ntrue\nfalse\ntrue\n\"held\"\n";
+
+#[test]
+fn test_filesystem_stream_paths_coercion_execution() {
+    let output = run_example("filesystem/stream_paths/coercion.rb");
+    assert_eq!(output, STREAM_PATHS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_stream_paths_coercion_parens_execution() {
+    let output = run_example("filesystem/stream_paths/coercion_parens.rb");
+    assert_eq!(output, STREAM_PATHS_OUTPUT);
+}

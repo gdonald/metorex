@@ -1430,6 +1430,26 @@ impl VirtualMachine {
                     singleton.define_method(name, Rc::clone(&function));
                     self.invoke_class_hook(&singleton, "singleton_method_added", name, position)?;
                 }
+                // A number, a symbol, and the like are the same object
+                // wherever they turn up, so none of them can carry a method
+                // of its own.
+                Some(
+                    receiver @ (Object::Int(_)
+                    | Object::BigInt(_)
+                    | Object::Float(_)
+                    | Object::Symbol(_)),
+                ) => {
+                    let message = format!(
+                        "can't define singleton method \"{}\" for {}",
+                        name,
+                        self.builtins().class_of(&receiver).name()
+                    );
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", message.clone()),
+                        location: position_to_location(position),
+                        message,
+                    });
+                }
                 _ => {}
             }
             return Ok(ControlFlow::Next);
@@ -1993,7 +2013,7 @@ impl VirtualMachine {
         }
         self.environment()
             .get(name)
-            .or_else(|| self.globals().get(name))
+            .or_else(|| self.globals().constant(name))
     }
 
     /// Like `resolve_constant_in_scope`, but triggers autoload on any
@@ -2465,8 +2485,10 @@ impl VirtualMachine {
             | Object::Int(_)
             | Object::BigInt(_)
             | Object::Float(_)
-            | Object::Symbol(_)
-            | Object::String(_) => true,
+            | Object::Symbol(_) => true,
+            // A string changes unless it has been frozen, so it carries the
+            // flag itself rather than always answering yes.
+            Object::String(text) => text.is_frozen(),
             Object::Class(c) | Object::Module(c) => c.is_frozen(),
             Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
                 Self::collection_address(receiver)
@@ -2488,6 +2510,15 @@ impl VirtualMachine {
         old_name: &str,
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
+        // `alias $ERROR_INFO $!` gives one global a second name, which reads
+        // and writes the same value the first one does.
+        if let (Some(new_global), Some(old_global)) =
+            (new_name.strip_prefix('$'), old_name.strip_prefix('$'))
+        {
+            self.global_aliases
+                .insert(new_global.to_string(), old_global.to_string());
+            return Ok(ControlFlow::Next);
+        }
         if let Some(enclosing) = self.def_scope_stack.last().cloned() {
             enclosing.alias_method(new_name, old_name);
             self.invoke_class_hook(&enclosing, "method_added", new_name, position)?;

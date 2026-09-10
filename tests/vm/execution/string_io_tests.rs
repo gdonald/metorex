@@ -52,9 +52,10 @@ fn string_index_with_invalid_type_errors() {
 }
 
 #[test]
-fn string_slice_start_beyond_length_returns_empty() {
+fn string_slice_start_beyond_length_returns_nil() {
     let result = run(r#""ab"[5, 2]"#);
-    assert_eq!(result, Some(Object::string("")));
+    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(run(r#""ab"[2, 2]"#), Some(Object::string("")));
 }
 
 #[test]

@@ -499,6 +499,9 @@ impl Parser {
         }
         match self.advance().kind {
             TokenKind::Ident(name) => Ok(name),
+            // `alias $ERROR_INFO $!` renames a global rather than a method,
+            // which the leading `$` is what marks it out as.
+            TokenKind::GlobalVar(name) => Ok(format!("${}", name)),
             // `alias :'a' :'b'` names its methods with quoted symbols.
             TokenKind::String(name) => Ok(name),
             TokenKind::Include => Ok("include".to_string()),

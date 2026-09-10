@@ -38,6 +38,24 @@ fn reconstruct_key(dict: &indexmap::IndexMap<String, Object>, key_str: &str) -> 
     crate::vm::utils::dict_key_to_object(key_str)
 }
 
+/// The environment methods whose one argument names a variable or a value,
+/// which is written as text however it arrives.
+const ENVIRONMENT_TEXT_ARGUMENT: &[&str] = &[
+    "delete",
+    "has_key?",
+    "key?",
+    "include?",
+    "member?",
+    "key",
+    "assoc",
+    "has_value?",
+    "value?",
+    "rassoc",
+];
+
+/// The subset of those whose argument is a value rather than a name.
+const ENVIRONMENT_VALUE_ARGUMENT: &[&str] = &["has_value?", "value?", "rassoc"];
+
 impl VirtualMachine {
     /// Execute native methods for the Hash class.
     pub(crate) fn call_hash_method(
@@ -57,8 +75,31 @@ impl VirtualMachine {
                 "to_s" => return Ok(Some(Object::string("ENV"))),
                 "rehash" => return Ok(Some(Object::Nil)),
                 // A copy of ENV would stop tracking the environment, so Ruby
-                // refuses and points at the hash it will make instead.
+                // refuses and points at the hash it will make instead. The
+                // keywords are read first, so a bad one is reported as such.
                 "dup" | "clone" => {
+                    if let Some(Object::Dict(entries)) = arguments.first() {
+                        for (name, value) in entries.borrow().iter() {
+                            let name = name.trim_start_matches(':');
+                            if name.starts_with("__MX_") {
+                                continue;
+                            }
+                            let refused =
+                                name != "freeze" || !matches!(value, Object::Bool(_) | Object::Nil);
+                            if refused {
+                                let message = if name == "freeze" {
+                                    "unexpected value for freeze: Integer".to_string()
+                                } else {
+                                    format!("unknown keyword: :{}", name)
+                                };
+                                return Err(crate::vm::errors::simple_exception(
+                                    "ArgumentError",
+                                    &message,
+                                    position,
+                                ));
+                            }
+                        }
+                    }
                     return Err(crate::vm::errors::simple_exception(
                         "TypeError",
                         &format!(
@@ -72,6 +113,55 @@ impl VirtualMachine {
                 "to_h" | "to_hash" if self.pending_block.is_none() => {
                     let copied = dict_rc.borrow().clone();
                     return Ok(Some(Object::Dict(Rc::new(RefCell::new(copied)))));
+                }
+                // Every key the environment is asked about names a variable,
+                // so anything that is not a String is refused outright. Only
+                // the keys are checked: `fetch` takes a default after them.
+                "fetch" | "values_at" => {
+                    let keys = if method_name == "fetch" {
+                        arguments.get(..1).unwrap_or(&[])
+                    } else {
+                        arguments
+                    };
+                    for argument in keys {
+                        if !matches!(argument, Object::String(_))
+                            && !self.responds_to(argument, "to_str")
+                        {
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                &format!(
+                                    "no implicit conversion of {} into String",
+                                    self.builtins().class_of(argument).name()
+                                ),
+                                position,
+                            ));
+                        }
+                    }
+                }
+                // What the environment is looked up by names a String, so
+                // anything that reads as one is asked for its text. A name
+                // that reads as nothing is refused, while a value that reads
+                // as nothing simply matches nothing.
+                name if ENVIRONMENT_TEXT_ARGUMENT.contains(&name)
+                    && arguments.len() == 1
+                    && !matches!(arguments[0], Object::String(_)) =>
+                {
+                    if self.responds_to(&arguments[0], "to_str") {
+                        let named =
+                            self.send_to_object(arguments[0].clone(), "to_str", vec![], position)?;
+                        return self.call_hash_method(receiver, method_name, &[named], position);
+                    }
+                    if ENVIRONMENT_VALUE_ARGUMENT.contains(&name) {
+                        return Ok(Some(Object::Nil));
+                    }
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!(
+                            "no implicit conversion of {} into String",
+                            self.builtins().class_of(&arguments[0]).name()
+                        ),
+                        position,
+                    ));
                 }
                 _ => {}
             }
@@ -393,6 +483,14 @@ impl VirtualMachine {
                 for argument in arguments {
                     let other = match argument {
                         Object::Dict(_) => argument.clone(),
+                        // An instance of a Hash subclass is merged by the
+                        // entries it holds, without `to_hash` being asked for.
+                        other
+                            if crate::vm::native_methods::hash_subclass_value(other).is_some() =>
+                        {
+                            crate::vm::native_methods::hash_subclass_value(other)
+                                .expect("a hash subclass carries its entries")
+                        }
                         other if self.responds_to(other, "to_hash") => {
                             self.send_to_object(other.clone(), "to_hash", vec![], position)?
                         }
@@ -1001,6 +1099,12 @@ impl VirtualMachine {
                 }
                 let other = match &arguments[0] {
                     Object::Dict(_) => arguments[0].clone(),
+                    // An instance of a Hash subclass is read by the entries it
+                    // holds, whatever `to_hash` it was given.
+                    other if crate::vm::native_methods::hash_subclass_value(other).is_some() => {
+                        crate::vm::native_methods::hash_subclass_value(other)
+                            .expect("a hash subclass carries its entries")
+                    }
                     other if self.responds_to(other, "to_hash") => {
                         self.send_to_object(other.clone(), "to_hash", vec![], position)?
                     }
@@ -1390,10 +1494,11 @@ impl VirtualMachine {
         let rendered_value = self.get_inspect_representation(value, position)?;
         if let Object::Symbol(name) = key
             && name
+                .as_str()
                 .chars()
                 .next()
                 .is_some_and(|first| first.is_alphabetic() || first == '_')
-            && name.chars().all(|letter| {
+            && name.as_str().chars().all(|letter| {
                 letter.is_alphanumeric() || letter == '_' || letter == '?' || letter == '!'
             })
         {
@@ -1546,7 +1651,7 @@ impl VirtualMachine {
         let Object::String(name) = key else {
             return;
         };
-        let Ok(name) = std::ffi::CString::new(name.as_str()) else {
+        let Ok(name) = std::ffi::CString::new(name.as_str().as_bytes().to_vec()) else {
             return;
         };
         // Ruby removes the entry outright when a name is set to nil, so the
@@ -1563,7 +1668,8 @@ impl VirtualMachine {
                     libc::unsetenv(name.as_ptr());
                 }
                 Object::String(text) => {
-                    let Ok(setting) = std::ffi::CString::new(text.as_str()) else {
+                    let Ok(setting) = std::ffi::CString::new(text.as_str().as_bytes().to_vec())
+                    else {
                         return;
                     };
                     libc::setenv(name.as_ptr(), setting.as_ptr(), 1);

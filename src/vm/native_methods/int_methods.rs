@@ -398,7 +398,12 @@ impl VirtualMachine {
                     ));
                 }
                 Ok(Some(match method_name {
-                    "-@" => Object::Int(-*n),
+                    // Negating the smallest Integer needs the wider type,
+                    // since its opposite does not fit in the narrow one.
+                    "-@" => match n.checked_neg() {
+                        Some(negated) => Object::Int(negated),
+                        None => Object::integer(-num_bigint::BigInt::from(*n)),
+                    },
                     _ => Object::Int(*n),
                 }))
             }
@@ -437,11 +442,14 @@ impl VirtualMachine {
                 Ok(Some(Object::Int(8)))
             }
             // `chr` names the character a code point stands for.
+            // `chr` names the character a number stands for. With no
+            // encoding, a number under 128 is ASCII and one up to 255 is a
+            // byte of its own, and anything wider needs an encoding named.
             "chr" => {
-                if !arguments.is_empty() {
+                if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
-                        0,
+                        1,
                         arguments.len(),
                         position,
                     ));
@@ -449,15 +457,37 @@ impl VirtualMachine {
                 let Object::Int(code) = receiver else {
                     return Ok(None);
                 };
-                let Some(letter) = u32::try_from(*code).ok().and_then(char::from_u32) else {
+                let out_of_range = || {
                     let message = format!("{} out of char range", code);
-                    return Err(crate::vm::errors::simple_exception(
-                        "RangeError",
-                        &message,
-                        position,
-                    ));
+                    crate::vm::errors::simple_exception("RangeError", &message, position)
                 };
-                Ok(Some(Object::string(letter.to_string())))
+                if arguments.is_empty() {
+                    if !(0..=255).contains(code) {
+                        return Err(out_of_range());
+                    }
+                    let byte = *code as u8;
+                    let named = if byte.is_ascii() {
+                        "US-ASCII"
+                    } else {
+                        "ASCII-8BIT"
+                    };
+                    return Ok(Some(Object::String(std::rc::Rc::new(
+                        crate::object::StringValue::with_encoding(
+                            (byte as char).to_string(),
+                            named,
+                        ),
+                    ))));
+                }
+                let named = match &arguments[0] {
+                    Object::String(text) => text.to_text(),
+                    other => self.get_string_representation(other, position)?,
+                };
+                let Some(letter) = u32::try_from(*code).ok().and_then(char::from_u32) else {
+                    return Err(out_of_range());
+                };
+                Ok(Some(Object::String(std::rc::Rc::new(
+                    crate::object::StringValue::with_encoding(letter.to_string(), named),
+                ))))
             }
             "to_s" | "inspect" if !arguments.is_empty() => {
                 if arguments.len() != 1 {
@@ -1479,7 +1509,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<f64, MetorexError> {
         if let Object::String(text) = argument {
-            return text.trim().parse::<f64>().map_err(|_| {
+            return text.as_str().trim().parse::<f64>().map_err(|_| {
                 let message = format!("invalid value for Float(): {:?}", text.as_str());
                 MetorexError::UncaughtException {
                     exception: Object::exception("ArgumentError", message.clone()),

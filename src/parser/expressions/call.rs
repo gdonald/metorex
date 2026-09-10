@@ -127,6 +127,8 @@ impl Parser {
                     TokenKind::Shovel => "<<".to_string(),
                     TokenKind::Pipe => "|".to_string(),
                     TokenKind::Ampersand => "&".to_string(),
+                    TokenKind::Bang => "!".to_string(),
+                    TokenKind::Tilde => "~".to_string(),
                     TokenKind::Match => "=~".to_string(),
                     TokenKind::NotMatch => "!~".to_string(),
                     _ => return Err(self.error_at_previous("Expected method name after '.'")),
@@ -963,6 +965,13 @@ impl Parser {
             return false;
         }
 
+        // `obj.foo::Bar` reads Bar out of what `foo` answers, while
+        // `obj.foo ::Bar` passes the top-level Bar to `foo`. The space
+        // before `::` is what tells the two apart.
+        if self.peek().kind == TokenKind::ColonColon && !self.peek().had_leading_space {
+            return false;
+        }
+
         if !can_be_arg {
             return false;
         }
@@ -1131,6 +1140,23 @@ impl Parser {
                 let position = self.previous().position;
                 let expr = self.parse_expression()?;
                 arguments.push(Expression::Splat {
+                    expression: Box::new(expr),
+                    position,
+                });
+            } else if self.match_token(&[TokenKind::StarStar]) {
+                // Double-splat: `**held` passes a Hash as keyword arguments,
+                // and a bare `**` forwards what `def name(**)` bound.
+                let position = self.previous().position;
+                let expr =
+                    if self.check(&[TokenKind::Comma, TokenKind::Newline]) || self.is_at_end() {
+                        Expression::Identifier {
+                            name: crate::parser::ANONYMOUS_KWREST.to_string(),
+                            position,
+                        }
+                    } else {
+                        self.parse_expression()?
+                    };
+                arguments.push(Expression::KeywordSplat {
                     expression: Box::new(expr),
                     position,
                 });

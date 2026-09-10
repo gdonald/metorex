@@ -413,13 +413,22 @@ fn lexer_string_escape_null() {
 }
 
 #[test]
-fn lexer_string_escape_unrecognized_keeps_backslash() {
-    // Unknown escape sequences keep the backslash literally (e.g. \q -> \q).
+fn lexer_string_escape_unrecognized_names_the_character_alone() {
+    // A backslash before something that opens no escape stands for the
+    // character alone in a double-quoted string, so `"a\qb"` is three
+    // characters. A single-quoted string keeps the backslash.
     let tokens = Lexer::new(r#""a\qb""#).tokenize();
     assert!(
         tokens
             .iter()
-            .any(|t| matches!(&t.kind, TokenKind::String(s) if s.contains('\\')))
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == "aqb")),
+        "{tokens:?}"
+    );
+    let held = Lexer::new(r#"'a\qb'"#).tokenize();
+    assert!(
+        held.iter()
+            .any(|t| matches!(&t.kind, TokenKind::String(s) if s == r"a\qb")),
+        "{held:?}"
     );
 }
 

@@ -34,6 +34,16 @@ impl GlobalRegistry {
         self.objects.insert(name, object);
     }
 
+    /// The object a bare constant name stands for. A global variable is held
+    /// here under its name with the `$` dropped, so one is never answered as
+    /// a constant: `$DEBUG` and `DEBUG` are two different names in Ruby.
+    pub fn constant(&self, name: &str) -> Option<Object> {
+        if self.variable_names.contains(name) {
+            return None;
+        }
+        self.objects.get(name).cloned()
+    }
+
     /// The global variable names, without their `$` sigil, in sorted order.
     pub fn variable_names(&self) -> impl Iterator<Item = &String> {
         self.variable_names.iter()

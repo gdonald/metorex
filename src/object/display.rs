@@ -148,7 +148,7 @@ impl fmt::Display for Object {
                         .iter()
                         .map(|element| match element {
                             Object::String(text) => format!("{:?}", text.as_str()),
-                            Object::Symbol(name) => inspect_symbol(name.as_str()),
+                            Object::Symbol(name) => inspect_symbol(&name.as_str()),
                             Object::Nil => "nil".to_string(),
                             other => other.to_string(),
                         })
@@ -177,7 +177,7 @@ impl fmt::Display for Object {
                 }
             }
             Object::Binding(binding) => {
-                write!(f, "<Binding with {} vars>", binding.variables.len())
+                write!(f, "<Binding with {} vars>", binding.variable_count())
             }
             Object::CompiledFunction(func) => write!(f, "{}", func),
             Object::Regex(pattern, flags) => {

@@ -53,7 +53,7 @@ impl VirtualMachine {
                 // A plain command runs without a shell, which is what Ruby
                 // does and what makes this process the child's parent rather
                 // than a shell standing between them.
-                if !merge_stderr && let Some(words) = shell_free_words(text.as_str()) {
+                if !merge_stderr && let Some(words) = shell_free_words(&text.as_str()) {
                     let (program, rest) = words.split_first().expect("a non-empty word list");
                     let mut child = std::process::Command::new(program);
                     child.args(rest);
@@ -157,6 +157,9 @@ impl VirtualMachine {
             use std::io::Write as _;
             let _ = stdin.write_all(input.as_bytes());
         }
+        // The child's id is read before waiting, since waiting consumes the
+        // handle it is read from.
+        let child_pid = child.id() as i64;
         let finished = child.wait_with_output().map_err(|error| {
             MetorexError::runtime_error(
                 format!("Failed to wait for the command: {}", error),
@@ -164,7 +167,7 @@ impl VirtualMachine {
             )
         })?;
         let output = String::from_utf8_lossy(&finished.stdout).to_string();
-        self.record_last_status(&finished.status, None);
+        self.record_last_status(&finished.status, Some(child_pid));
         instance
             .borrow_mut()
             .set_var(POPEN_OUTPUT.to_string(), Object::string(output.clone()));
@@ -290,7 +293,34 @@ impl VirtualMachine {
                     .unwrap_or(Object::Nil),
             )),
             "termsig" => Ok(Some(termsig)),
-            "success?" => Ok(Some(Object::Bool(matches!(exitstatus, Object::Int(0))))),
+            // A child that a signal ended did not succeed or fail, so there
+            // is nothing to report either way.
+            "success?" => Ok(Some(match exitstatus {
+                Object::Int(code) => Object::Bool(code == 0),
+                _ => Object::Nil,
+            })),
+            "==" => {
+                let Some(other) = _arguments.first() else {
+                    return Ok(Some(Object::Bool(false)));
+                };
+                let held = match &exitstatus {
+                    Object::Int(code) => code << 8,
+                    _ => match &termsig {
+                        Object::Int(signal) => *signal,
+                        _ => 0,
+                    },
+                };
+                Ok(Some(Object::Bool(match other {
+                    Object::Int(number) => *number == held,
+                    Object::Instance(_) => {
+                        matches!(
+                            self.call_process_status_method(other, "to_i", &[], _position)?,
+                            Some(Object::Int(number)) if number == held
+                        )
+                    }
+                    _ => false,
+                })))
+            }
             "to_i" => Ok(Some(match exitstatus {
                 Object::Int(code) => Object::Int(code << 8),
                 _ => match termsig {
@@ -320,8 +350,11 @@ impl VirtualMachine {
             Some(code) => (Object::Int(code as i64), Object::Nil),
             None => (Object::Nil, Object::Int(terminating_signal(status))),
         };
-        let status_class =
-            self.memoized_class("__Process_Status_class", "Process::Status", &["exited?"]);
+        let status_class = self.memoized_class(
+            "__Process_Status_class",
+            "Process::Status",
+            &["exited?", "=="],
+        );
         let instance = Rc::new(RefCell::new(Instance::new(status_class)));
         instance
             .borrow_mut()
@@ -400,8 +433,8 @@ fn child_out_redirect(options: &Object) -> bool {
     };
     let items = items.borrow();
     items.len() == 2
-        && matches!(&items[0], Object::Symbol(name) if name.as_str() == "child")
-        && matches!(&items[1], Object::Symbol(name) if name.as_str() == "out")
+        && matches!(&items[0], Object::Symbol(name) if *name.as_str() == *"child")
+        && matches!(&items[1], Object::Symbol(name) if *name.as_str() == *"out")
 }
 
 /// The signal that ended a child, on platforms that report one.
@@ -453,8 +486,11 @@ impl VirtualMachine {
 
     /// A Process::Status carrying the parts a wait reported.
     fn build_process_status(&mut self, exitstatus: Object, termsig: Object, pid: i64) -> Object {
-        let status_class =
-            self.memoized_class("__Process_Status_class", "Process::Status", &["exited?"]);
+        let status_class = self.memoized_class(
+            "__Process_Status_class",
+            "Process::Status",
+            &["exited?", "=="],
+        );
         let instance = Rc::new(RefCell::new(Instance::new(status_class)));
         {
             let mut borrowed = instance.borrow_mut();

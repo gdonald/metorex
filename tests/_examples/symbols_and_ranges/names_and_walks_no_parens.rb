@@ -22,7 +22,7 @@ p "\xC3\x9Cber".length
 p "a\sb"
 p "\u{48 49}"
 p 65.chr
-p 0x3042.chr
+p 0x3042.chr("UTF-8")
 
 p "az".succ
 p "zz".succ

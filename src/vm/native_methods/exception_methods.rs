@@ -325,7 +325,7 @@ impl VirtualMachine {
                 );
                 let bottom_first = matches!(
                     keyword_argument(arguments, "order"),
-                    Some(Object::Symbol(order)) if order.as_str() == "bottom"
+                    Some(Object::Symbol(order)) if *order.as_str() == *"bottom"
                 );
                 // Through `send` so a class that overrides `detailed_message`
                 // decides how its own message reads.

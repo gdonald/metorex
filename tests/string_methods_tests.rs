@@ -392,9 +392,10 @@ fn string_each_char_enumerator_reports_the_character_count() {
 // ── slice ────────────────────────────────────────────────────────────────────
 
 #[test]
-fn string_slice_past_end_returns_empty() {
+fn string_slice_past_end_returns_nil() {
     let result = run(r#""hi".slice(10, 5)"#);
-    assert_eq!(result, Some(Object::string("")));
+    assert_eq!(result, Some(Object::Nil));
+    assert_eq!(run(r#""hi".slice(2, 5)"#), Some(Object::string("")));
 }
 
 #[test]
@@ -422,13 +423,13 @@ fn string_length_error_with_args() {
 #[test]
 fn string_upcase_error_with_args() {
     let err = run_err(r#""hello".upcase(1)"#);
-    assert!(err.contains("argument"));
+    assert!(err.contains("invalid option"));
 }
 
 #[test]
 fn string_downcase_error_with_args() {
     let err = run_err(r#""hello".downcase(1)"#);
-    assert!(err.contains("argument"));
+    assert!(err.contains("invalid option"));
 }
 
 #[test]

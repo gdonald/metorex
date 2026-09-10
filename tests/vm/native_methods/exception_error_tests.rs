@@ -65,7 +65,7 @@ result
     assert!(result.is_some());
     if let Some(Object::String(s)) = result {
         assert!(
-            s.contains("test error"),
+            s.as_str().contains("test error"),
             "Expected to contain 'test error', got: {}",
             s
         );

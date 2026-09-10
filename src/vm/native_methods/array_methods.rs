@@ -25,7 +25,7 @@ fn compare_for_sort(a: &Object, b: &Object) -> std::cmp::Ordering {
         (Object::Float(x), Object::Int(y)) => x
             .partial_cmp(&(*y as f64))
             .unwrap_or(std::cmp::Ordering::Equal),
-        (Object::String(x), Object::String(y)) => x.as_str().cmp(y.as_str()),
+        (Object::String(x), Object::String(y)) => x.as_str().cmp(&y.as_str()),
         _ => a.to_string().cmp(&b.to_string()),
     }
 }
@@ -1848,13 +1848,32 @@ impl VirtualMachine {
                 // With a pattern argument each element is tested with
                 // `pattern === element` and any block is ignored.
                 let pattern = arguments.first().cloned();
+                // A pattern is what decides the answer, so a block handed in
+                // alongside one is unused and Ruby says so.
+                if pattern.is_some() {
+                    self.warn_unused_block(position)?;
+                }
                 let block = self.pending_block.take();
-                let array = array_rc.borrow();
                 let truthy = |v: &Object| !matches!(v, Object::Bool(false) | Object::Nil);
                 let mut any_true = false;
                 let mut all_true = true;
                 let mut true_count = 0usize;
-                for element in array.iter() {
+                let mut was_empty = true;
+                // The block is free to grow the array it is walking, so each
+                // element is read by index rather than through a borrow held
+                // across the call.
+                let mut index = 0usize;
+                loop {
+                    let element = {
+                        let array = array_rc.borrow();
+                        was_empty = was_empty && array.is_empty();
+                        match array.get(index) {
+                            Some(element) => element.clone(),
+                            None => break,
+                        }
+                    };
+                    index += 1;
+                    let element = &element;
                     let result = match (&pattern, &block) {
                         (Some(pattern), _) => self.evaluate_binary_operation(
                             &crate::ast::BinaryOp::CaseEqual,
@@ -1877,7 +1896,7 @@ impl VirtualMachine {
                 }
                 let value = match method_name {
                     "any?" => any_true,
-                    "all?" => array.is_empty() || all_true,
+                    "all?" => was_empty || all_true,
                     "none?" => !any_true,
                     "one?" => true_count == 1,
                     _ => unreachable!(),
@@ -2222,7 +2241,7 @@ fn inspect_nested(nested: &Rc<RefCell<Vec<Object>>>) -> String {
 pub(crate) fn inspect_element(element: &Object) -> String {
     match element {
         Object::String(s) => format!("{:?}", s.as_str()),
-        Object::Symbol(s) => crate::object::inspect_symbol(s.as_str()),
+        Object::Symbol(s) => crate::object::inspect_symbol(&s.as_str()),
         Object::Nil => "nil".to_string(),
         Object::Array(nested) => inspect_nested(nested),
         other => other.to_string(),

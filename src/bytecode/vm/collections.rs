@@ -16,7 +16,7 @@ pub fn index_get(collection: &Object, index: &Object) -> Result<Object, MetorexE
         }
         (Object::Dict(dict), Object::String(key)) => {
             let dict = dict.borrow();
-            Ok(dict.get(key.as_str()).cloned().unwrap_or(Object::Nil))
+            Ok(dict.get(&*key.as_str()).cloned().unwrap_or(Object::Nil))
         }
         _ => Err(MetorexError::runtime_error(
             format!(

@@ -46,7 +46,7 @@ impl VirtualMachine {
         // A warning in a category that is switched off never reaches
         // `Warning.warn` at all.
         if let Object::Symbol(name) = &category
-            && !self.warning_category_enabled(name)
+            && !self.warning_category_enabled(&name.as_str())
         {
             return Ok(Object::Nil);
         }

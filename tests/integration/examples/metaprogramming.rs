@@ -396,7 +396,7 @@ true
 false
 
 === methods ===
-2
+3
 
 === send ===
 Woof!
@@ -436,7 +436,7 @@ true
 false
 
 === methods ===
-2
+3
 
 === send ===
 Woof!

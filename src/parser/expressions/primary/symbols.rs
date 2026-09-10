@@ -146,6 +146,7 @@ impl Parser {
             TokenKind::Until => Ok(symbol("until", symbol_position)),
             TokenKind::Then => Ok(symbol("then", symbol_position)),
             TokenKind::Elsif => Ok(symbol("elsif", symbol_position)),
+            TokenKind::In => Ok(symbol("in", symbol_position)),
 
             // :[] and :[]= operator symbols
             TokenKind::LBracket => {

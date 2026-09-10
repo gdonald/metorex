@@ -239,7 +239,7 @@ fn caller_returns_empty_array() {
 fn top_level_to_s_returns_main() {
     let result = run(r#"to_s"#);
     match result {
-        Some(Object::String(s)) => assert_eq!(s.as_str(), "main"),
+        Some(Object::String(s)) => assert_eq!(&*s.as_str(), "main"),
         other => panic!("expected 'main', got {:?}", other),
     }
 }
@@ -250,7 +250,7 @@ fn top_level_to_s_returns_main() {
 fn format_with_args() {
     let result = run(r#"format("%d", 42)"#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("42")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("42")),
         other => panic!("expected String, got {:?}", other),
     }
 }
@@ -259,7 +259,7 @@ fn format_with_args() {
 fn format_with_multi_args_as_array() {
     let result = run(r#"format("%d-%d", 1, 2)"#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("1") && s.contains("2")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("1") && s.as_str().contains("2")),
         other => panic!("expected String, got {:?}", other),
     }
 }

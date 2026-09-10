@@ -498,10 +498,14 @@ impl Resolver {
                     self.resolve_expression(value);
                 }
                 for target in targets {
-                    if let Expression::Identifier { name, position } = target {
+                    let named = match target {
+                        Expression::Splat { expression, .. } => expression.as_ref(),
+                        other => other,
+                    };
+                    if let Expression::Identifier { name, position } = named {
                         self.declare(name.clone(), *position);
                     }
-                    self.resolve_expression(target);
+                    self.resolve_expression(named);
                 }
             }
         }

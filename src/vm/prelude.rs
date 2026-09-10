@@ -1418,18 +1418,34 @@ class StringIO
     @string.length
   end
 
+  # The cursor is reported in bytes, so a character made of several bytes
+  # moves it by that many.
   def pos
-    @position
+    beyond = @position - @string.length
+    beyond = 0 if beyond < 0
+    @string[0, @position].bytesize + beyond
   end
 
   def tell
-    @position
+    pos
   end
 
   def pos=(offset)
     raise Errno::EINVAL, "Invalid argument" if offset < 0
-    @position = offset
+    @position = characters_before offset
   end
+
+  # The number of characters standing before a byte offset.
+  def characters_before(counted)
+    at = 0
+    seen = 0
+    while seen < counted && at < @string.length
+      seen += @string[at].bytesize
+      at += 1
+    end
+    at + (counted - seen)
+  end
+  private :characters_before
 
   def lineno
     @lineno
@@ -1446,21 +1462,23 @@ class StringIO
   end
 
   def seek(amount, whence = 0)
+    raise IOError, "closed stream" if closed?
+    amount = amount.to_int if !amount.is_a?(Integer) && amount.respond_to?(:to_int)
     unless amount.is_a?(Integer)
       raise TypeError, "no implicit conversion of #{amount.class} into Integer"
     end
     base = if whence == 0
       0
     elsif whence == 1
-      @position
+      pos
     elsif whence == 2
-      @string.length
+      @string.bytesize
     else
       raise Errno::EINVAL, "Invalid argument"
     end
     landing = base + amount
     raise Errno::EINVAL, "Invalid argument" if landing < 0
-    @position = landing
+    self.pos = landing
     0
   end
 
@@ -1479,10 +1497,12 @@ class StringIO
     end
     wanted = length.is_a?(Integer) ? length : length.to_int
     raise Errno::EINVAL, "Invalid argument" if wanted < 0
+    # The buffer itself is cut or padded, so whoever handed it over sees the
+    # change.
     if wanted <= @string.length
-      @string = @string[0, wanted]
+      @string.replace @string[0, wanted]
     else
-      @string = @string + "\0" * (wanted - @string.length)
+      @string.replace(@string + "\0" * (wanted - @string.length))
     end
     0
   end
@@ -1552,20 +1572,52 @@ class StringIO
 
   # ── Reading ──────────────────────────────────────────────────────────────
 
+  # A buffer handed in is filled with what was read and answered in place of
+  # a string of its own.
   def read(length = nil, buffer = nil)
     reading_allowed
     remaining = @string[@position..-1] || ""
     if length.nil?
       @position = @string.length
-      return remaining
+      return filled(buffer, remaining)
     end
-    wanted = length.is_a?(Integer) ? length : length.to_int
+    wanted = StringIO.whole_number length
     raise ArgumentError, "negative length #{wanted} given" if wanted < 0
-    return nil if remaining.empty? && wanted > 0
+    if remaining.empty? && wanted > 0
+      filled buffer, "" unless buffer.nil?
+      return nil
+    end
     taken = remaining[0, wanted]
     @position = @position + taken.length
-    taken
+    # A read of so many characters answers bytes rather than text.
+    filled buffer, taken.b
   end
+
+  # The number an argument stands for, refusing anything that names none.
+  def self.whole_number(held)
+    return held if held.is_a? Integer
+    unless held.respond_to? :to_int
+      raise TypeError, "no implicit conversion of #{held.class} into Integer"
+    end
+    held.to_int
+  end
+
+  # A buffer keeps the encoding it was tagged with, whatever the text put
+  # into it was tagged with.
+  def filled(buffer, text)
+    return text if buffer.nil?
+    unless buffer.is_a? String
+      unless buffer.respond_to? :to_str
+        raise TypeError, "no implicit conversion of #{buffer.class} into String"
+      end
+      buffer = buffer.to_str
+    end
+    kept = buffer.encoding
+    buffer.replace text
+    buffer.force_encoding kept
+    buffer
+  end
+  private :filled
 
   def sysread(length = nil, buffer = nil)
     reading_allowed
@@ -1630,8 +1682,38 @@ class StringIO
     self.ungetc(byte.is_a?(Integer) ? (byte % 256).chr : byte.to_s)
   end
 
-  def gets(separator = "\n", limit = nil)
+  def gets(separator = $/, limit = nil, chomp: false)
+    separator, limit = StringIO.line_arguments separator, limit
+    line = read_line separator, limit, chomp
+    $_ = line
+    line
+  end
+
+  # What a line reader's first two arguments stand for. A lone number in the
+  # separator's place is a limit, and anything that reads as a String is a
+  # separator.
+  def self.line_arguments(separator, limit)
+    if !separator.nil? && !separator.is_a?(String)
+      if separator.respond_to? :to_str
+        separator = separator.to_str
+      else
+        limit = separator
+        separator = $/
+      end
+    end
+    unless limit.nil?
+      limit = whole_number limit
+      # A negative limit is no limit at all.
+      limit = nil if limit < 0
+    end
+    [separator, limit]
+  end
+
+  # One line, without touching `$_`, which is what every reader but `gets`
+  # and `readline` does. The arguments arrive already read.
+  def read_line(separator, limit, chomp)
     reading_allowed
+    return "" if limit == 0
     remaining = @string[@position..-1] || ""
     return nil if remaining.empty?
     line = if separator.nil?
@@ -1645,7 +1727,14 @@ class StringIO
       @position = @position + skipped
       return nil if remaining.empty?
       cut = remaining.index("\n\n")
-      cut.nil? ? remaining : remaining[0, cut + 1]
+      if cut.nil?
+        remaining
+      else
+        # A paragraph keeps every blank line that closes it.
+        ending = cut + 1
+        ending += 1 while ending < remaining.length && remaining[ending] == "\n"
+        remaining[0, ending]
+      end
     else
       cut = remaining.index(separator)
       cut.nil? ? remaining : remaining[0, cut + separator.length]
@@ -1654,32 +1743,56 @@ class StringIO
     return nil if line.empty?
     @position = @position + line.length
     @lineno = @lineno + 1
+    if chomp
+      return separator == "\n" || separator.nil? ? line.chomp : line.chomp(separator)
+    end
     line
   end
+  private :read_line
 
-  def readline(separator = "\n", limit = nil)
-    line = self.gets(separator, limit)
+  def readline(separator = $/, limit = nil, chomp: false)
+    line = self.gets(separator, limit, chomp: chomp)
     raise EOFError, "end of file reached" if line.nil?
     line
   end
 
-  def each_line(separator = "\n")
+  def each_line(separator = $/, limit = nil, chomp: false)
     reading_allowed
-    return sized_enum(:each_line, separator) unless block_given?
-    while (line = self.gets(separator))
+    separator, limit = StringIO.line_arguments separator, limit
+    return each_line_enumerator(separator, limit, chomp) unless block_given?
+    while (line = read_line(separator, limit, chomp))
+      # A limit of zero reads nothing, so there is no next line to reach.
+      break if line.empty?
       yield line
     end
     self
   end
 
-  def each(separator = "\n", &block)
-    each_line(separator, &block)
+  # Without a block the lines are handed over one at a time, already read the
+  # way the arguments ask for.
+  def each_line_enumerator(separator, limit, chomp)
+    collected = []
+    while (line = read_line(separator, limit, chomp))
+      # A limit of zero reads nothing, so there is no next line to reach.
+      break if line.empty?
+      collected.push line
+    end
+    collected.each
+  end
+  private :each_line_enumerator
+
+  def each(separator = $/, limit = nil, chomp: false, &block)
+    each_line(separator, limit, chomp: chomp, &block)
   end
 
-  def readlines(separator = "\n", limit = nil)
+  def readlines(separator = $/, limit = nil, chomp: false)
     reading_allowed
+    separator, limit = StringIO.line_arguments separator, limit
+    raise ArgumentError, "invalid limit: 0 for readlines" if limit == 0
     collected = []
-    while (line = self.gets(separator, limit))
+    while (line = read_line(separator, limit, chomp))
+      # A limit of zero reads nothing, so there is no next line to reach.
+      break if line.empty?
       collected.push(line)
     end
     collected
@@ -1837,19 +1950,29 @@ class StringIO
     false
   end
 
+  # Reading in binary tags what comes back as bytes rather than as text.
   def binmode
+    @binary = true
     self
   end
 
   def external_encoding
-    Encoding::UTF_8
+    return Encoding::BINARY if @binary
+    return @encoding unless @encoding.nil?
+    @string.encoding
   end
 
   def internal_encoding
     nil
   end
 
+  # The encoding a stream reads its text as. The buffer keeps whatever it was
+  # tagged with, so a frozen string is left alone.
   def set_encoding(external, internal = nil)
+    @encoding = external.is_a?(String) ? Encoding.find(external) : external
+    @binary = false
+    # The buffer is tagged along with the stream unless it refuses to change.
+    @string.force_encoding @encoding unless @string.frozen?
     self
   end
 
@@ -3362,14 +3485,18 @@ class Time
   NANOSECONDS_IN_SECOND = 1000000000
   MONTH_NAMES = %w[jan feb mar apr may jun jul aug sep oct nov dec]
 
-  def self.now
+  def self.now(**options)
     counted = Time.__now__
-    from_exact(counted[0].to_r + Rational(counted[1], NANOSECONDS_IN_SECOND), false, nil)
+    made = from_exact(counted[0].to_r + Rational(counted[1], NANOSECONDS_IN_SECOND), false, nil)
+    zone = options[:in]
+    return made if zone.nil?
+    return made.utc if names_utc?(zone)
+    made.localtime zone
   end
 
-  def self.new(*args)
-    return now if args.empty?
-    zone = args.size > 6 ? args[6] : nil
+  def self.new(*args, **options)
+    return now(**options) if args.empty?
+    zone = args.size > 6 ? args[6] : options[:in]
     fields = args[0, 6]
     return from_exact(calendar_seconds(fields, false), false, nil) if zone.nil?
     # A zone may be an object that converts between local and UTC readings,
@@ -3381,14 +3508,23 @@ class Time
       made.instance_variable_set(:@zone_object, zone)
       return made
     end
+    return from_exact(calendar_seconds(fields, true), true, nil) if names_utc?(zone)
     offset = offset_seconds(zone)
     from_exact(calendar_seconds(fields, true) - offset, false, offset)
   end
 
-  def self.at(seconds, extra = nil)
-    return from_exact(seconds.to_r, seconds.utc?, nil) if seconds.is_a?(Time)
-    return from_exact(seconds.to_r, false, nil) if extra.nil?
-    from_exact(seconds.to_r + extra.to_r / MICROSECONDS_IN_SECOND, false, nil)
+  def self.at(seconds, extra = nil, **options)
+    made = if seconds.is_a? Time
+      from_exact(seconds.to_r, seconds.utc?, nil)
+    elsif extra.nil?
+      from_exact(seconds.to_r, false, nil)
+    else
+      from_exact(seconds.to_r + extra.to_r / MICROSECONDS_IN_SECOND, false, nil)
+    end
+    zone = options[:in]
+    return made if zone.nil?
+    return made.utc if names_utc?(zone)
+    made.localtime zone
   end
 
   def self.utc(*args)
@@ -3445,6 +3581,16 @@ class Time
 
   # The seconds an offset stands for, given either as a count of seconds or
   # as the `"+05:00"` spelling.
+  # Whether a zone names UTC rather than an offset from it.
+  def self.names_utc?(zone)
+    return false if zone.nil? || zone.is_a?(Numeric)
+    return false if zone.respond_to? :local_to_utc
+    text = zone.to_s
+    # A zone written as a negative zero offset is UTC itself rather than a
+    # place that happens to sit on it.
+    text == "UTC" || text == "Z" || text == "-00:00" || text == "-0000"
+  end
+
   def self.offset_seconds(offset)
     return offset if offset.is_a?(Integer)
     return offset.to_r if offset.is_a?(Numeric)
@@ -3530,11 +3676,14 @@ class Time
     utc_offset
   end
 
+  # The name the zone goes by, which is written in ASCII whatever the text
+  # of the program is written in.
   def zone
     return @zone_object unless @zone_object.nil?
     return nil unless @offset.nil?
-    return "UTC" if @utc
-    calendar[10]
+    return "UTC".force_encoding(Encoding::US_ASCII) if @utc
+    named = calendar[10]
+    named.nil? ? nil : named.force_encoding(Encoding::US_ASCII)
   end
 
   def sunday?
@@ -3630,6 +3779,7 @@ class Time
   end
 
   def localtime(offset = nil)
+    return utc if Time.names_utc? offset
     @utc = false
     @offset = offset.nil? ? nil : Time.offset_seconds(offset)
     @calendar = nil
@@ -3637,6 +3787,7 @@ class Time
   end
 
   def getlocal(offset = nil)
+    return getutc if Time.names_utc? offset
     Time.from_exact(to_r, false, offset.nil? ? nil : Time.offset_seconds(offset))
   end
 
@@ -3819,10 +3970,349 @@ class Time
 end
 
 
+class Random
+  # The Mersenne Twister, which is the generator Ruby's own numbers come
+  # from, so a seed gives the same sequence here as it does there.
+  N = 624
+  M = 397
+  MATRIX_A = 0x9908b0df
+  UPPER_MASK = 0x80000000
+  LOWER_MASK = 0x7fffffff
+  MASK32 = 0xffffffff
+
+  def initialize seed = nil
+    @seed = seed.nil? ? Random.new_seed : Random.seed_number(seed)
+    @state = Array.new N, 0
+    @index = N + 1
+    seed_with Random.seed_words(@seed)
+  end
+
+  attr_reader :seed
+
+  # A seed may be written as any number, and its whole part is what seeds.
+  def self.seed_number held
+    return held if held.is_a? Integer
+    return held.to_i if held.is_a?(Float) || held.is_a?(Rational)
+    if held.is_a? Complex
+      unless held.imaginary == 0
+        raise RangeError, "can't convert #{held} into Integer"
+      end
+      return held.real.to_i
+    end
+    unless held.respond_to? :to_int
+      raise TypeError, "no implicit conversion of #{held.class} into Integer"
+    end
+    held.to_int
+  end
+
+  # The 32-bit words a seed is made of, smallest first.
+  def self.seed_words held
+    held = held.abs
+    return [0] if held == 0
+    words = []
+    while held > 0
+      words << (held & MASK32)
+      held = held >> 32
+    end
+    words
+  end
+
+  def self.new_seed
+    # A seed of its own is drawn from the operating system rather than from
+    # the shared generator, so `srand` never decides it.
+    bytes = Random.urandom 8
+    bytes.each_char.each_with_index.inject(0) do |held, (character, at)|
+      held | (character.ord << (at * 8))
+    end
+  end
+
+  def self.urandom count
+    count = count.to_int if !count.is_a?(Integer) && count.respond_to?(:to_int)
+    unless count.is_a? Integer
+      raise TypeError, "no implicit conversion of #{count.class} into Integer"
+    end
+    if count < 0
+      raise ArgumentError, "negative string size (or size too big)"
+    end
+    held = File.open("/dev/urandom", "rb") { |source| source.read count }
+    held.force_encoding Encoding::BINARY
+  end
+
+  def self.srand number = nil
+    held = @last_seed.nil? ? Random.new_seed : @last_seed
+    @last_seed = number.nil? ? Random.new_seed : Random.seed_number(number)
+    @shared = Random.new @last_seed
+    # The seedless `rand` draws from the same seed, so seeding here settles
+    # both what Random answers and what Kernel does.
+    Kernel.srand @last_seed
+    held
+  end
+
+  def self.shared
+    @shared = Random.new if @shared.nil?
+    @shared
+  end
+
+  def self.rand limit = nil
+    shared.rand limit
+  end
+
+  def self.random_number limit = nil
+    shared.random_number limit
+  end
+
+  def self.bytes count
+    shared.bytes count
+  end
+
+  # The words the state holds, which two generators share when they were
+  # seeded the same way.
+  def state
+    @seed
+  end
+  private :state
+
+  def == other
+    other.is_a?(Random) && other.seed == @seed
+  end
+
+  # A run of bytes, four to each word the generator answers.
+  def bytes count
+    held = ""
+    taken = 0
+    while taken < count
+      word = next_word
+      4.times do
+        break if taken >= count
+        held = held + ((word >> ((taken % 4) * 8)) & 0xff).chr
+        taken += 1
+      end
+    end
+    held.force_encoding Encoding::BINARY
+  end
+
+  # A Float in [0, 1) when nothing bounds it, and a number under the bound
+  # otherwise.
+  def rand limit = nil
+    return next_real if limit.nil?
+    return rand_in_range limit if limit.is_a? Range
+    if limit.is_a? Float
+      raise ArgumentError, "invalid argument - #{limit}" unless limit > 0
+      return next_real * limit
+    end
+    held = Random.seed_number limit
+    raise ArgumentError, "invalid argument - #{limit}" unless held > 0
+    (next_real * held).floor
+  end
+
+  def random_number limit = nil
+    limit.nil? || limit == 0 ? next_real : rand(limit)
+  end
+
+  # A number drawn from a Range, which Ruby settles by the width between the
+  # two ends rather than by what the ends themselves are. A width that counts
+  # gives a whole number, and one that measures gives a Float.
+  def rand_in_range span
+    first = span.begin
+    last = span.end
+    if first.nil? || last.nil?
+      raise ArgumentError, "cannot get the random number from an endless range"
+    end
+    width = begin
+      last - first
+    rescue StandardError
+      raise ArgumentError, "bad value for range"
+    end
+    return first + next_real * width.to_f if width.is_a?(Numeric) && !width.is_a?(Integer)
+    unless width.is_a?(Integer) || width.respond_to?(:to_int)
+      raise ArgumentError, "bad value for range"
+    end
+    width = width.to_int unless width.is_a? Integer
+    count = span.exclude_end? ? width : width + 1
+    raise ArgumentError, "invalid argument - #{span}" unless count > 0
+    first + rand(count)
+  end
+  private :rand_in_range
+
+  # A seed of one word is spread by multiplying it out, and a wider one is
+  # mixed in word by word, which is the split Ruby makes as well.
+  def seed_with words
+    if words.length <= 1
+      seed_one words[0]
+      return
+    end
+    words = words[0, words.length - 1] if words[words.length - 1] == 1
+    if words.length <= 1
+      seed_one words[0]
+      return
+    end
+    seed_one 19650218
+    at = 1
+    from = 0
+    count = N > words.length ? N : words.length
+    while count > 0
+      previous = @state[at - 1]
+      @state[at] = ((@state[at] ^ ((previous ^ (previous >> 30)) * 1664525)) +
+                    words[from] + from) & MASK32
+      at += 1
+      from += 1
+      if at >= N
+        @state[0] = @state[N - 1]
+        at = 1
+      end
+      from = 0 if from >= words.length
+      count -= 1
+    end
+    count = N - 1
+    while count > 0
+      previous = @state[at - 1]
+      @state[at] = ((@state[at] ^ ((previous ^ (previous >> 30)) * 1566083941)) - at) & MASK32
+      at += 1
+      if at >= N
+        @state[0] = @state[N - 1]
+        at = 1
+      end
+      count -= 1
+    end
+    @state[0] = UPPER_MASK
+    @index = N
+  end
+  private :seed_with
+
+  def seed_one number
+    @state[0] = number & MASK32
+    at = 1
+    while at < N
+      previous = @state[at - 1]
+      @state[at] = ((previous ^ (previous >> 30)) * 1812433253 + at) & MASK32
+      at += 1
+    end
+    @index = N
+  end
+  private :seed_one
+
+  def twist
+    at = 0
+    while at < N
+      held = (@state[at] & UPPER_MASK) | (@state[(at + 1) % N] & LOWER_MASK)
+      mixed = @state[(at + M) % N] ^ (held >> 1)
+      mixed = mixed ^ MATRIX_A if held.odd?
+      @state[at] = mixed & MASK32
+      at += 1
+    end
+    @index = 0
+  end
+  private :twist
+
+  def next_word
+    twist if @index >= N
+    held = @state[@index]
+    @index += 1
+    held = held ^ (held >> 11)
+    held = held ^ ((held << 7) & 0x9d2c5680)
+    held = held ^ ((held << 15) & 0xefc60000)
+    (held ^ (held >> 18)) & MASK32
+  end
+  private :next_word
+
+  # Ruby draws a Float from two words, keeping the 53 bits a double holds.
+  def next_real
+    high = next_word >> 5
+    low = next_word >> 6
+    (high * 67108864.0 + low) / 9007199254740992.0
+  end
+  private :next_real
+end
+
+module Process
+  # The same ids Process itself answers, gathered under the words Ruby
+  # gathers them under.
+  module GID
+    def self.rid
+      Process.gid
+    end
+
+    def self.eid
+      Process.egid
+    end
+
+    def self.eid= wanted
+      Process.egid = wanted
+    end
+
+    def self.change_privilege wanted
+      Process.gid = wanted
+      wanted
+    end
+  end
+
+  module UID
+    def self.rid
+      Process.uid
+    end
+
+    def self.eid
+      Process.euid
+    end
+
+    def self.eid= wanted
+      Process.euid = wanted
+    end
+
+    def self.change_privilege wanted
+      Process.uid = wanted
+      wanted
+    end
+  end
+
+  module Sys
+    def self.getgid
+      Process.gid
+    end
+
+    def self.getuid
+      Process.uid
+    end
+
+    def self.getegid
+      Process.egid
+    end
+
+    def self.geteuid
+      Process.euid
+    end
+
+    def self.setgid wanted
+      Process.gid = wanted
+    end
+
+    def self.setuid wanted
+      Process.uid = wanted
+    end
+
+    def self.setegid wanted
+      Process.egid = wanted
+    end
+
+    def self.seteuid wanted
+      Process.euid = wanted
+    end
+  end
+end
+
 class IO
   SEEK_SET = 0
   SEEK_CUR = 1
   SEEK_END = 2
+  # The name of the stream that keeps nothing it is given and reads back as
+  # empty, which every system carries under this name.
+  NULL = "/dev/null"
+
+  # Metorex runs one thing at a time, so nothing it is asked to wait on is
+  # ever busy: every reader and writer handed in is ready straight away.
+  def self.select(readers = nil, writers = nil, errored = nil, _timeout = nil)
+    [readers || [], writers || [], errored || []]
+  end
 end
 
 # The numbers the operating system keeps about a file, presented the way Ruby
@@ -4169,6 +4659,13 @@ class File
 
   def lstat
     File::Stat.new(self.path, false)
+  end
+
+  # A handle that was never opened has nothing behind it, so every reading
+  # of it is refused rather than answered.
+  def read(*)
+    raise IOError, "uninitialized stream" if @__file_path.nil?
+    super
   end
 
   # The name the handle was opened under. An IO that never came from a name
@@ -4681,7 +5178,7 @@ class Dir
     unless File.directory?(@path)
       raise Errno::ENOENT, "No such file or directory @ dir_initialize - #{@path}"
     end
-    @names = Dir.entries(@path)
+    @names = options.key?(:encoding) ? Dir.entries(@path, encoding: options[:encoding]) : Dir.entries(@path)
     @position = 0
     @closed = false
   end
@@ -4778,7 +5275,7 @@ class Dir
   def each_child(&block)
     self.refuse_closed
     walked = @names.reject { |name| name == "." || name == ".." }
-    return walked.each if block.nil?
+    return self.to_enum(:each_child) if block.nil?
     @position = 0
     walked.each { |name| block.call(name) }
     @position = @names.length
@@ -5310,6 +5807,153 @@ module Process
   Tms = Struct.new(:utime, :stime, :cutime, :cstime)
 end
 
+
+class Encoding
+  # A conversion from one encoding to another, along with the flags saying
+  # what to do with what the destination cannot spell.
+  class Converter
+    INVALID_MASK = 0x0f
+    INVALID_REPLACE = 0x02
+    UNDEF_MASK = 0xf0
+    UNDEF_REPLACE = 0x20
+    UNDEF_HEX_CHARREF = 0x30
+    PARTIAL_INPUT = 0x10000
+    AFTER_OUTPUT = 0x20000
+    UNIVERSAL_NEWLINE_DECORATOR = 0x100
+    CRLF_NEWLINE_DECORATOR = 0x1000
+    CR_NEWLINE_DECORATOR = 0x2000
+    XML_TEXT_DECORATOR = 0x4000
+    XML_ATTR_CONTENT_DECORATOR = 0x8000
+    XML_ATTR_QUOTE_DECORATOR = 0x10000
+
+    def initialize source, destination, options = 0
+      @source = Encoding::Converter.named source
+      @destination = Encoding::Converter.named destination
+      if @source == @destination
+        raise Encoding::ConverterNotFoundError,
+              "code converter not found (#{@source.name} to #{@destination.name})"
+      end
+      @options = options
+      @convpath = Encoding::Converter.search_convpath @source, @destination, options
+      @replacement = Encoding::Converter.replacement_for @destination, options
+    end
+
+    # What stands in for a character the destination cannot spell. UTF-8 has
+    # a character of its own for that, and everything else uses a question
+    # mark.
+    def self.replacement_for destination, options
+      standard = if destination == Encoding::UTF_8
+        "\u{fffd}"
+      else
+        "?".force_encoding Encoding::US_ASCII
+      end
+      return standard unless options.is_a? Hash
+      return standard unless options.key? :replace
+      held = options[:replace]
+      return standard if held.nil?
+      return held if held.is_a? String
+      unless held.respond_to? :to_str
+        raise TypeError, "no implicit conversion of #{held.class} into String"
+      end
+      held = held.to_str
+      unless held.is_a? String
+        raise TypeError, "can't convert #{held.class} to String"
+      end
+      held
+    end
+
+    def source_encoding
+      @source
+    end
+
+    def destination_encoding
+      @destination
+    end
+
+    def convpath
+      @convpath
+    end
+
+    def options
+      @options.is_a?(Integer) ? @options : 0
+    end
+
+    def replacement
+      @replacement
+    end
+
+    def replacement= held
+      unless held.is_a? String
+        raise TypeError, "no implicit conversion of #{held.class} into String"
+      end
+      @replacement = held
+    end
+
+    def inspect
+      "#<Encoding::Converter: #{@source.name} to #{@destination.name}>"
+    end
+
+    def to_s
+      inspect
+    end
+
+    # The encoding a name stands for, which may be written as an Encoding, a
+    # String, or anything that reads as one.
+    def self.named held
+      name = if held.is_a? String
+        held
+      elsif held.respond_to? :to_str
+        held.to_str
+      elsif held.respond_to? :name
+        held.name
+      else
+        raise TypeError, "no implicit conversion of #{held.class} into String"
+      end
+      found = Encoding.find name
+      if found.nil?
+        raise Encoding::ConverterNotFoundError, "code converter not found (#{name})"
+      end
+      found
+    end
+
+    # The steps a conversion takes. Anything that is not already UTF-8 on one
+    # side passes through UTF-8 on the way.
+    def self.search_convpath source, destination, options = 0
+      from = Encoding::Converter.named source
+      to = Encoding::Converter.named destination
+      if from.name == "ASCII-8BIT" && to.name != "ASCII-8BIT"
+        raise Encoding::ConverterNotFoundError,
+              "code converter not found (#{from.name} to #{to.name})"
+      end
+      path = if from == to || from == Encoding::UTF_8 || to == Encoding::UTF_8
+        [[from, to]]
+      else
+        [[from, Encoding::UTF_8], [Encoding::UTF_8, to]]
+      end
+      path = path + ["crlf_newline"] if Encoding::Converter.crlf_wanted options
+      path
+    end
+
+    def self.crlf_wanted options
+      return false unless options.is_a? Hash
+      options[:crlf_newline] ? true : false
+    end
+
+    # The ASCII-compatible encoding that stands in for one that is not, and
+    # nil for one that already is.
+    def self.asciicompat_encoding held
+      found = begin
+        Encoding::Converter.named held
+      rescue Encoding::ConverterNotFoundError, ArgumentError
+        nil
+      end
+      return nil if found.nil?
+      return nil if found.ascii_compatible?
+      return Encoding.find "stateless-ISO-2022-JP" if found.name.start_with? "ISO-2022-JP"
+      Encoding::UTF_8
+    end
+  end
+end
 "##;
 
 impl VirtualMachine {

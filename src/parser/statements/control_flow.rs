@@ -875,10 +875,32 @@ impl Parser {
                 self.advance();
                 Ok(MatchPattern::Wildcard)
             }
+            // A constant named from the top level, `when ::String`. Metorex
+            // resolves a bare constant there anyway, so the leading `::` only
+            // says where to start looking.
+            TokenKind::ColonColon
+                if matches!(&self.peek_ahead(1).kind,
+                    TokenKind::Ident(name) if name.chars().next().is_some_and(char::is_uppercase)) =>
+            {
+                self.advance();
+                self.parse_case_pattern()
+            }
             // Type pattern (capitalized identifiers like Integer, String, Hash, Array)
             TokenKind::Ident(name) if name.chars().next().is_some_and(|c| c.is_uppercase()) => {
-                let type_name = name.clone();
+                let mut type_name = name.clone();
                 self.advance();
+                // A constant may be reached through the module holding it, as
+                // `when Socket::SOCK_STREAM`, so the whole path is the name.
+                while self.check(&[TokenKind::ColonColon]) {
+                    let TokenKind::Ident(segment) = &self.peek_ahead(1).kind else {
+                        break;
+                    };
+                    let segment = segment.clone();
+                    self.advance();
+                    self.advance();
+                    type_name.push_str("::");
+                    type_name.push_str(&segment);
+                }
                 Ok(MatchPattern::Type(type_name))
             }
             // Variable binding pattern

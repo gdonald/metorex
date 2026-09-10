@@ -60,11 +60,11 @@ fn string_slice_basic() {
 }
 
 #[test]
-fn string_slice_beyond_end_returns_empty() {
+fn string_slice_beyond_end_returns_nil() {
     let result = run(r#"
 "hi".slice(10, 2)
 "#);
-    assert_eq!(result, Some(Object::string("")));
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]

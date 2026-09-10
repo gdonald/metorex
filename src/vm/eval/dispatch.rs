@@ -55,7 +55,16 @@ impl VirtualMachine {
                 if let Some(group) = crate::vm::native_methods::capture_reference(name) {
                     return self.last_match_part(group, *position);
                 }
-                Ok(self.globals().get(name).unwrap_or(Object::Nil))
+                // A global given a second name reads what the first holds.
+                let name = self
+                    .global_aliases
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_else(|| name.clone());
+                if name == "?" {
+                    return Ok(self.process_last_status());
+                }
+                Ok(self.globals().get(&name).unwrap_or(Object::Nil))
             }
             Expression::MagicFile { .. } => {
                 // The file the code was written in, which is not the file
@@ -151,14 +160,14 @@ impl VirtualMachine {
                 position,
             } => {
                 let value = self.evaluate_expression(operand)?;
-                // An object that defines `-@` or `+@` names what the sign in
-                // front of it does, which is how a number a program writes
-                // negates.
+                // An object that defines `-@`, `+@`, or `!` names what the
+                // operator in front of it does, which is how a number a
+                // program writes negates and how a delegator passes `!` on.
                 if let Object::Instance(_) = &value
                     && let Some(name) = match op {
                         crate::ast::UnaryOp::Minus => Some("-@"),
                         crate::ast::UnaryOp::Plus => Some("+@"),
-                        _ => None,
+                        crate::ast::UnaryOp::Not => Some("!"),
                     }
                     && (self.responds_to(&value, name)
                         || crate::vm::native_methods::rational_parts(&value).is_some()

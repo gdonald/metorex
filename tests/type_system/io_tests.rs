@@ -66,7 +66,7 @@ fn file_read_existing_file() {
     // Read our own test fixture
     let result = run(r#"File.read("tests/_examples/require/bad_runtime.rb")"#);
     if let Some(Object::String(s)) = result {
-        assert!(s.contains("raise"));
+        assert!(s.as_str().contains("raise"));
     } else {
         panic!("Expected string content");
     }
@@ -203,7 +203,7 @@ fn print_with_no_args_returns_nil() {
 fn file_realpath_for_existing_file() {
     let result = run(r#"File.realpath("Cargo.toml")"#);
     match result {
-        Some(Object::String(s)) => assert!(s.ends_with("Cargo.toml")),
+        Some(Object::String(s)) => assert!(s.as_str().ends_with("Cargo.toml")),
         other => panic!("expected canonical path string, got {:?}", other),
     }
 }
@@ -212,7 +212,7 @@ fn file_realpath_for_existing_file() {
 fn file_realpath_with_base_dir() {
     let result = run(r#"File.realpath("Cargo.toml", ".")"#);
     match result {
-        Some(Object::String(s)) => assert!(s.ends_with("Cargo.toml")),
+        Some(Object::String(s)) => assert!(s.as_str().ends_with("Cargo.toml")),
         other => panic!("expected canonical path string, got {:?}", other),
     }
 }

@@ -53,6 +53,36 @@ impl VirtualMachine {
             return Ok(result);
         }
 
+        // A stub standing in for a native method dispatches under the name it
+        // was cut from, even when the alias has been put back under that same
+        // name. There is no body to run either way.
+        if let Some(target) = method.native_alias.clone() {
+            for owner in [Rc::clone(&class), self.builtins().class_of(&receiver)] {
+                if let Some(result) = self.call_native_method(
+                    owner.as_ref(),
+                    &receiver,
+                    &target,
+                    &arguments,
+                    position,
+                )? {
+                    return Ok(result);
+                }
+            }
+            // `new` on a class is the constructor rather than an entry in any
+            // native table, so it is reached through the class itself.
+            if target == "new"
+                && let Object::Class(constructed) = &receiver
+            {
+                let constructed = Rc::clone(constructed);
+                return self.invoke_class(constructed, arguments, position);
+            }
+            if let Some(result) =
+                self.call_object_method(&receiver, &target, &arguments, position)?
+            {
+                return Ok(result);
+            }
+        }
+
         // A stub copied under a new name (`define_singleton_method(:other,
         // method(:constants))`) still means the native method it was cut from.
         // The receiver's own class is what dispatches it, since the stub may

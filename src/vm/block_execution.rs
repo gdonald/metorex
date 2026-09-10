@@ -192,20 +192,9 @@ impl VirtualMachine {
         // Variadic params accept any number of args; skip strict arity check.
         // Only a lambda checks arity at all: a proc pads missing arguments
         // with nil and drops extras.
-        if block.is_lambda
-            && !has_variadic
-            && !has_block_param
-            && !destructured
-            && (found < required || found > expected)
-        {
-            let accepted = if required == expected {
-                crate::vm::errors::Arity::Exact(expected)
-            } else {
-                crate::vm::errors::Arity::Range(required, expected)
-            };
-            return Err(crate::vm::errors::argument_count_error(
-                accepted, found, position,
-            ));
+        if !destructured {
+            let _ = (has_variadic, has_block_param, required, expected);
+            strict_arity_check(block, found, position)?;
         }
 
         let frame_name = block.name().to_string();
@@ -546,6 +535,9 @@ impl VirtualMachine {
             }
             _ => arguments,
         };
+        // A lambda takes its arguments the way a method does, so a yield that
+        // does not match its parameters is refused rather than padded.
+        strict_arity_check(block, arguments.len(), Position::new(0, 0, 0))?;
         self.environment_mut().push_isolated_scope();
         // The body belongs to the file the block was written in.
         let body_source_file = block
@@ -669,5 +661,37 @@ fn check_lambda_arity(
     };
     Err(crate::vm::errors::argument_count_error(
         accepted, given, position,
+    ))
+}
+
+/// A lambda counts its arguments the way a method does. A proc pads what is
+/// missing with nil and drops what is extra, so nothing is checked for one.
+fn strict_arity_check(
+    block: &BlockStatement,
+    found: usize,
+    position: Position,
+) -> Result<(), MetorexError> {
+    if !block.is_lambda {
+        return Ok(());
+    }
+    let parameters = block.binding_parameters();
+    if parameters
+        .iter()
+        .any(|name| name.starts_with('*') || name.starts_with('&'))
+    {
+        return Ok(());
+    }
+    let expected = parameters.len();
+    let required = expected.saturating_sub(block.parameter_defaults.len());
+    if found >= required && found <= expected {
+        return Ok(());
+    }
+    let accepted = if required == expected {
+        crate::vm::errors::Arity::Exact(expected)
+    } else {
+        crate::vm::errors::Arity::Range(required, expected)
+    };
+    Err(crate::vm::errors::argument_count_error(
+        accepted, found, position,
     ))
 }

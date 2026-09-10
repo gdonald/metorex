@@ -380,7 +380,7 @@ fn hash_index_assign_symbol_key() {
 fn hash_index_assign_integer_key() {
     let result = run(r#"h = {}; h[42] = "answer"; h[42]"#);
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.as_str(), "answer");
+        assert_eq!(&*s.as_str(), "answer");
     } else {
         panic!("expected string, got {:?}", result);
     }
@@ -390,7 +390,7 @@ fn hash_index_assign_integer_key() {
 fn hash_index_assign_bool_key() {
     let result = run(r#"h = {}; h[true] = "yes"; h[true]"#);
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.as_str(), "yes");
+        assert_eq!(&*s.as_str(), "yes");
     } else {
         panic!("expected string, got {:?}", result);
     }
@@ -400,7 +400,7 @@ fn hash_index_assign_bool_key() {
 fn hash_index_assign_nil_key() {
     let result = run(r#"h = {}; h[nil] = "nothing"; h[nil]"#);
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.as_str(), "nothing");
+        assert_eq!(&*s.as_str(), "nothing");
     } else {
         panic!("expected string, got {:?}", result);
     }
@@ -410,7 +410,7 @@ fn hash_index_assign_nil_key() {
 fn hash_index_assign_float_key() {
     let result = run(r#"h = {}; h[1.5] = "f"; h[1.5]"#);
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.as_str(), "f");
+        assert_eq!(&*s.as_str(), "f");
     } else {
         panic!("expected string, got {:?}", result);
     }

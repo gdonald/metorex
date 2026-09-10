@@ -4,7 +4,7 @@ Target = Class.new do
   end
 end
 
-Refinement = Module.new do
+Adjustment = Module.new do
   refine Target do
     def describe
       "refined"
@@ -14,7 +14,7 @@ end
 
 returned = nil
 host = Module.new do
-  returned = using Refinement
+  returned = using Adjustment
 end
 puts (returned == host).inspect
 
@@ -23,7 +23,7 @@ Module.new do
     object.describe
   end
 
-  using Refinement
+  using Adjustment
 
   puts defined_before(Target.new).inspect
 

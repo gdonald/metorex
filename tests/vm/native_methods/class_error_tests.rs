@@ -185,7 +185,7 @@ fn file_expand_path_non_string_base_errors() {
 fn file_expand_path_with_absolute_base() {
     let result = run(r#"File.expand_path("a.txt", "/tmp")"#);
     if let Some(Object::String(s)) = result {
-        assert!(s.contains("a.txt"));
+        assert!(s.as_str().contains("a.txt"));
     } else {
         panic!("expected string, got {:?}", result);
     }
@@ -300,7 +300,7 @@ fn dir_mkdir_non_string_arg_errors() {
 fn dir_pwd_returns_string() {
     let result = run("Dir.pwd");
     match result {
-        Some(Object::String(s)) => assert!(!s.is_empty()),
+        Some(Object::String(s)) => assert!(!s.as_str().is_empty()),
         other => panic!("expected String, got {:?}", other),
     }
 }
@@ -309,7 +309,7 @@ fn dir_pwd_returns_string() {
 fn dir_getwd_returns_string() {
     let result = run("Dir.getwd");
     match result {
-        Some(Object::String(s)) => assert!(!s.is_empty()),
+        Some(Object::String(s)) => assert!(!s.as_str().is_empty()),
         other => panic!("expected String, got {:?}", other),
     }
 }
@@ -432,7 +432,7 @@ fn objectspace_each_object_returns_nil() {
 fn file_expand_path_nonexistent_path() {
     let result = run(r#"File.expand_path("/tmp/nonexistent_xyz_abc/subdir")"#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("nonexistent_xyz_abc")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("nonexistent_xyz_abc")),
         other => panic!("expected String, got {:?}", other),
     }
 }
@@ -565,7 +565,7 @@ fn file_expand_path_with_curdir_component() {
     // A path containing "." exercises the CurDir match arm in expand_path.
     let result = run(r#"File.expand_path("./foo.txt", "/tmp")"#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("foo.txt")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("foo.txt")),
         other => panic!("expected String, got {:?}", other),
     }
 }

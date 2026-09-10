@@ -81,7 +81,7 @@ fn class_name_in_constant_pool() {
         let constant =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| chunk.get_constant(i)));
         match constant {
-            Ok(Object::String(s)) if s.as_str() == "MyClass" => {
+            Ok(Object::String(s)) if *s.as_str() == *"MyClass" => {
                 found = true;
                 break;
             }

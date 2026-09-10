@@ -188,9 +188,8 @@ impl VirtualMachine {
                 if class.has_public_override(method_name) {
                     is_private = false;
                 } else if let Some(owner) = prepended_owner {
-                    is_private = !owner.has_public_override(method_name)
-                        && owner.is_method_restricted(method_name);
-                } else if class.is_method_restricted(method_name) {
+                    is_private = self.refuses_explicit_receiver(&owner, method_name);
+                } else if self.refuses_explicit_receiver(&class, method_name) {
                     is_private = true;
                 } else if !is_private {
                     let mut current = class.superclass();
@@ -200,7 +199,7 @@ impl VirtualMachine {
                             break;
                         }
                         if sc.find_method(method_name).is_some() {
-                            is_private = sc.is_method_restricted(method_name);
+                            is_private = self.refuses_explicit_receiver(&sc, method_name);
                             break;
                         }
                         current = sc.superclass();
@@ -216,7 +215,8 @@ impl VirtualMachine {
                         return handled;
                     }
                     let msg = format!(
-                        "private method '{}' called for an instance of {}",
+                        "{} method '{}' called for an instance of {}",
+                        self.visibility_word(&receiver, method_name),
                         method_name,
                         class.name()
                     );
@@ -293,6 +293,16 @@ impl VirtualMachine {
             && let Some(method) = object_class.find_method(method_name)
         {
             return self.invoke_method(object_class, method, receiver, arguments, position);
+        }
+
+        // Kernel carries its functions as module functions as well as
+        // private instance methods, so `Kernel.rand` reaches the same
+        // implementation a bare `rand` does.
+        if let Object::Module(module_rc) = &receiver
+            && module_rc.ruby_name() == "Kernel"
+            && crate::vm::native_methods::is_kernel_private_function(method_name)
+        {
+            return self.call_native_function(method_name, arguments, position);
         }
 
         // Try method_missing as a final fallback
@@ -382,7 +392,11 @@ impl VirtualMachine {
             // in any class's method map, so they are checked separately.
             return match self.lookup_method(receiver, name) {
                 Some((_, method)) => !method.is_undefined,
-                None => crate::vm::native_methods::is_native_kernel_method(name),
+                None => {
+                    crate::vm::native_methods::is_native_kernel_method(name)
+                        || (self.builtins().class_of(receiver).name() == "File"
+                            && crate::vm::native_methods::class_methods::is_native_io_method(name))
+                }
             };
         };
         if let Some(method) = module_level_method(class_rc, name) {
@@ -500,9 +514,60 @@ impl VirtualMachine {
             return false;
         }
         match owner {
-            Some(owner) => !owner.has_public_override(name) && owner.is_method_restricted(name),
+            Some(owner) => self.refuses_explicit_receiver(&owner, name),
             None => false,
         }
+    }
+
+    /// How a refused call names the marking that refused it, which Ruby
+    /// spells out as either private or protected.
+    fn visibility_word(&self, receiver: &Object, name: &str) -> &'static str {
+        match self.visibility_owner(receiver, name) {
+            Some(owner) if owner.is_method_protected(name) && !owner.is_method_private(name) => {
+                "protected"
+            }
+            _ => "private",
+        }
+    }
+
+    /// Whether `owner`'s marking on `name` refuses an explicit-receiver call
+    /// from where this call is being made. A private method always refuses;
+    /// a protected one refuses only from outside the class.
+    pub(crate) fn refuses_explicit_receiver(&self, owner: &Rc<Class>, name: &str) -> bool {
+        if owner.has_public_override(name) {
+            return false;
+        }
+        if owner.is_method_private(name) {
+            return true;
+        }
+        owner.is_method_protected(name) && !self.calling_from_within(owner)
+    }
+
+    /// Whether the code making this call is running as an object the given
+    /// class or module answers for, which is what a protected method asks.
+    fn calling_from_within(&self, owner: &Rc<Class>) -> bool {
+        let Some(caller) = self.environment().get("self") else {
+            return false;
+        };
+        let mut cursor = match &caller {
+            Object::Class(class_rc) | Object::Module(class_rc) => Some(Rc::clone(class_rc)),
+            Object::Instance(instance) => Some(Rc::clone(&instance.borrow().class)),
+            other => Some(self.builtins().class_of(other)),
+        };
+        while let Some(current) = cursor {
+            if Rc::ptr_eq(&current, owner) || current.name() == owner.name() {
+                return true;
+            }
+            if current
+                .transitive_mixins()
+                .iter()
+                .any(|mixin| Rc::ptr_eq(mixin, owner))
+            {
+                return true;
+            }
+            cursor = current.superclass();
+        }
+        false
     }
 
     /// The class or module that actually defines `name` for `receiver`, which
@@ -636,8 +701,11 @@ impl VirtualMachine {
                 }
                 // A class renders as its own name, so an `inspect` or `to_s`
                 // written for its instances does not answer for the class
-                // object itself.
+                // object itself. The same holds for every name Kernel gives
+                // an object: `UNIXSocket.send(:open, path)` is Object#send,
+                // not the `send` its instances answer.
                 if !matches!(method_name, "inspect" | "to_s")
+                    && !crate::vm::native_methods::is_native_kernel_method(method_name)
                     && let Some(method) = class_rc.find_method(method_name)
                 {
                     return Some((Rc::clone(class_rc), method));
@@ -691,6 +759,16 @@ impl VirtualMachine {
                 {
                     return Some((singleton, method));
                 }
+                // A program that reopens `NilClass` or one of the other
+                // immediate classes makes a class of its own in globals,
+                // which is where the method it wrote lives.
+                if let Some(named) = reopened_class_name(receiver)
+                    && let Some(Object::Class(reopened)) = self.globals().get(named)
+                    && let Some(method) = reopened.find_method(method_name)
+                    && !method.body.is_empty()
+                {
+                    return Some((reopened, method));
+                }
                 // An exception built from a user-defined subclass looks the
                 // method up on that class, which `class_of` cannot report.
                 if let Object::Exception(details) = receiver
@@ -706,6 +784,18 @@ impl VirtualMachine {
                 class.find_method(method_name).map(|method| (class, method))
             }
         }
+    }
+}
+
+/// The class name a program writes to reopen one of the immediate values,
+/// whose methods live in a class of their own rather than on the builtin.
+fn reopened_class_name(receiver: &Object) -> Option<&'static str> {
+    match receiver {
+        Object::Nil => Some("NilClass"),
+        Object::Bool(true) => Some("TrueClass"),
+        Object::Bool(false) => Some("FalseClass"),
+        Object::Symbol(_) => Some("Symbol"),
+        _ => None,
     }
 }
 

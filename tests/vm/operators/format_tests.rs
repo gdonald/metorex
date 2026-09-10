@@ -33,7 +33,7 @@ fn string_format_percent_d_with_space_sign() {
 #[test]
 fn string_format_percent_d_with_width() {
     if let Some(Object::String(s)) = run(r#""%5d" % 42"#) {
-        assert!(s.contains("42"));
+        assert!(s.as_str().contains("42"));
     } else {
         panic!("expected String");
     }
@@ -80,7 +80,7 @@ fn string_format_percent_with_array_args() {
 #[test]
 fn string_format_percent_f_basic() {
     if let Some(Object::String(s)) = run(r#""%f" % 3.14"#) {
-        assert!(s.starts_with("3.14"));
+        assert!(s.as_str().starts_with("3.14"));
     } else {
         panic!("expected String");
     }
@@ -97,21 +97,21 @@ fn string_format_percent_f_with_precision() {
 #[test]
 fn string_format_percent_f_from_int() {
     if let Some(Object::String(s)) = run(r#""%.1f" % 5"#) {
-        assert!(s.starts_with("5.0"));
+        assert!(s.as_str().starts_with("5.0"));
     }
 }
 
 #[test]
 fn string_format_percent_f_with_plus_sign() {
     if let Some(Object::String(s)) = run(r#""%+.1f" % 3.5"#) {
-        assert!(s.starts_with("+3.5"));
+        assert!(s.as_str().starts_with("+3.5"));
     }
 }
 
 #[test]
 fn string_format_percent_f_with_space_sign() {
     if let Some(Object::String(s)) = run(r#""% .1f" % 3.5"#) {
-        assert!(s.starts_with(" 3.5"));
+        assert!(s.as_str().starts_with(" 3.5"));
     }
 }
 
@@ -191,7 +191,7 @@ fn string_format_percent_literal_double() {
 #[test]
 fn string_format_left_align() {
     if let Some(Object::String(s)) = run(r#""[%-5s]" % "hi""#) {
-        assert_eq!(s.as_str(), "[hi   ]");
+        assert_eq!(&*s.as_str(), "[hi   ]");
     } else {
         panic!("expected String");
     }
@@ -208,8 +208,8 @@ fn string_format_zero_pad() {
 #[test]
 fn string_format_left_align_coverage() {
     if let Some(Object::String(s)) = run("'%-10s' % 'hi'") {
-        assert!(s.starts_with("hi"));
-        assert_eq!(s.len(), 10);
+        assert!(s.as_str().starts_with("hi"));
+        assert_eq!(s.as_str().len(), 10);
     } else {
         panic!("expected string");
     }
@@ -240,7 +240,7 @@ fn string_format_incomplete_specifier_errors() {
 #[test]
 fn string_format_trailing_percent_kept() {
     if let Some(Object::String(s)) = run(r#""abc%" % []"#) {
-        assert!(s.contains("abc"));
+        assert!(s.as_str().contains("abc"));
     }
 }
 

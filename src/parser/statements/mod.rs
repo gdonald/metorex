@@ -115,6 +115,14 @@ impl Parser {
             TokenKind::Alias => self.parse_alias(),
             TokenKind::Ident(name) if name == "undef" => self.parse_undef(),
             _ => {
+                // `*rest, last = value` opens with the splat, which no
+                // expression can start with, so the target list is read
+                // before anything else is tried.
+                if matches!(token.kind, TokenKind::Star) && self.scans_assignment_targets(0, false)
+                {
+                    let stmt = self.finish_multiple_assignment(None, token.position)?;
+                    return self.wrap_with_modifier(stmt);
+                }
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;
 
@@ -128,25 +136,9 @@ impl Parser {
                         | Expression::ClassVariable { .. }
                         | Expression::GlobalVariable { .. }
                 ) && self.check(&[TokenKind::Comma])
-                    && self.is_multiple_assignment()
+                    && self.scans_assignment_targets(1, true)
                 {
-                    let mut targets = vec![expr];
-                    while self.match_token(&[TokenKind::Comma]) {
-                        self.skip_whitespace();
-                        targets.push(self.parse_expression_with_lambda()?);
-                    }
-                    self.expect(TokenKind::Equal, "Expected '=' in multiple assignment")?;
-                    self.skip_whitespace();
-                    let mut values = vec![self.parse_expression_with_lambda()?];
-                    while self.match_token(&[TokenKind::Comma]) {
-                        self.skip_whitespace();
-                        values.push(self.parse_expression_with_lambda()?);
-                    }
-                    let stmt = Statement::MultipleAssignment {
-                        targets,
-                        values,
-                        position: token.position,
-                    };
+                    let stmt = self.finish_multiple_assignment(Some(expr), token.position)?;
                     return self.wrap_with_modifier(stmt);
                 }
 
@@ -280,8 +272,8 @@ impl Parser {
 
     /// Look ahead to check if this is a multiple assignment (a, b = ...)
     /// by scanning comma-separated identifiers until we find = or something else.
-    fn is_multiple_assignment(&self) -> bool {
-        let mut offset = 1; // start after the first comma
+    fn scans_assignment_targets(&self, mut offset: usize, had_first: bool) -> bool {
+        let mut seen = had_first;
         loop {
             // Skip whitespace tokens
             let tok = self.peek_ahead(offset);
@@ -292,6 +284,18 @@ impl Parser {
                 offset += 1;
                 continue;
             }
+            // `first, = pair` names one target and destructures anyway, so
+            // the list may end on the comma that opened this step.
+            if matches!(tok.kind, TokenKind::Equal) {
+                return seen;
+            }
+            // `*rest` takes whatever the targets around it leave.
+            let tok = if matches!(tok.kind, TokenKind::Star) {
+                offset += 1;
+                self.peek_ahead(offset)
+            } else {
+                tok
+            };
             // Expect an identifier (or @ivar, @@cvar, $gvar)
             if !matches!(
                 tok.kind,
@@ -334,11 +338,60 @@ impl Parser {
                 return true;
             }
             if matches!(next.kind, TokenKind::Comma) {
+                seen = true;
                 offset += 1;
                 continue;
             }
             return false;
         }
+    }
+
+    /// One target in a multiple assignment, which may carry a leading `*`
+    /// marking it as the one that takes everything the others leave.
+    fn parse_assignment_target(&mut self) -> Result<Expression, MetorexError> {
+        if self.check(&[TokenKind::Star]) {
+            let star = self.advance();
+            let expression = self.parse_expression_with_lambda()?;
+            return Ok(Expression::Splat {
+                expression: Box::new(expression),
+                position: star.position,
+            });
+        }
+        self.parse_expression_with_lambda()
+    }
+
+    /// The rest of a multiple assignment, given the first target when one has
+    /// already been read as an expression.
+    fn finish_multiple_assignment(
+        &mut self,
+        first: Option<Expression>,
+        position: crate::lexer::Position,
+    ) -> Result<Statement, MetorexError> {
+        let first = match first {
+            Some(first) => first,
+            None => self.parse_assignment_target()?,
+        };
+        let mut targets = vec![first];
+        while self.match_token(&[TokenKind::Comma]) {
+            self.skip_whitespace();
+            // A trailing comma before the `=` names no further target.
+            if self.check(&[TokenKind::Equal]) {
+                break;
+            }
+            targets.push(self.parse_assignment_target()?);
+        }
+        self.expect(TokenKind::Equal, "Expected '=' in multiple assignment")?;
+        self.skip_whitespace();
+        let mut values = vec![self.parse_expression_with_lambda()?];
+        while self.match_token(&[TokenKind::Comma]) {
+            self.skip_whitespace();
+            values.push(self.parse_expression_with_lambda()?);
+        }
+        Ok(Statement::MultipleAssignment {
+            targets,
+            values,
+            position,
+        })
     }
 
     /// Check for postfix if/unless modifiers and wrap the statement.

@@ -308,7 +308,7 @@ impl ReplCore {
                 Err(e) => format!("<Err: {}>", Self::format_object(e)),
             },
             Object::Binding(binding) => {
-                format!("<Binding with {} vars>", binding.variables.len())
+                format!("<Binding with {} vars>", binding.variable_count())
             }
             Object::CompiledFunction(func) => format!("{}", func),
             Object::Regex(pattern, flags) => {

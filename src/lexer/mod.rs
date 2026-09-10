@@ -50,6 +50,10 @@ pub struct Lexer<'a> {
     pub(super) restore_line: Option<usize>,
     /// Whether this lexer is reading the core library rather than a program.
     pub(super) prelude: bool,
+    /// Whether the source says it is written in bytes rather than in text. A
+    /// run of numeric escapes then names those bytes one by one instead of
+    /// spelling a character between them.
+    pub(super) binary_source: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -74,6 +78,7 @@ impl<'a> Lexer<'a> {
         // A file written with a byte order mark opens with one, and it names
         // the encoding rather than anything the program says.
         let source = source.strip_prefix('\u{feff}').unwrap_or(source);
+        let binary_source = names_binary_encoding(source);
         Self {
             chars: source.chars().peekable(),
             prepend: Vec::new(),
@@ -84,6 +89,7 @@ impl<'a> Lexer<'a> {
             prev_significant_end: 0,
             restore_line: None,
             prelude: false,
+            binary_source,
         }
     }
 
@@ -163,4 +169,26 @@ impl<'a> Iterator for Lexer<'a> {
             Some(token)
         }
     }
+}
+
+/// Whether a magic comment on one of the first two lines says the source is
+/// written in bytes. Ruby reads such a file as bytes, so what a numeric
+/// escape names is a byte rather than part of a character.
+fn names_binary_encoding(source: &str) -> bool {
+    for line in source.lines().take(2) {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with('#') {
+            continue;
+        }
+        let lowered = trimmed.to_ascii_lowercase();
+        let Some(at) = lowered.find("coding") else {
+            continue;
+        };
+        let named = lowered[at + "coding".len()..].trim_start();
+        let named = named.strip_prefix(':').unwrap_or(named).trim_start();
+        if named.starts_with("binary") || named.starts_with("ascii-8bit") {
+            return true;
+        }
+    }
+    false
 }

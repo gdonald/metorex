@@ -65,7 +65,7 @@ end
 InspMod.inspect
 "#);
     match result {
-        Some(Object::String(s)) => assert!(s.contains("InspMod")),
+        Some(Object::String(s)) => assert!(s.as_str().contains("InspMod")),
         other => panic!("expected String, got {:?}", other),
     }
 }

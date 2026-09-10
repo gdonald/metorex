@@ -100,6 +100,12 @@ impl Parser {
     /// both answer what they assigned.
     pub(crate) fn parse_expression_with_assignment(&mut self) -> Result<Expression, MetorexError> {
         let expr = self.parse_expression()?;
+        self.fold_assignment(expr)
+    }
+
+    /// Fold an assignment onto an expression already parsed, which is what
+    /// makes `count.should == held += 1` read the increment as the operand.
+    pub(crate) fn fold_assignment(&mut self, expr: Expression) -> Result<Expression, MetorexError> {
         // `a[1, 3] = x` parses its target as a call to `[]`, which is
         // assignable the same way a single-index one is.
         let assignable = matches!(

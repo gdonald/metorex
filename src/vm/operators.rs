@@ -22,6 +22,22 @@ thread_local! {
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
+/// A number in exponent notation: one digit, a point, `precision` digits, and
+/// the signed power of ten written with at least two figures.
+fn exponent_notation(value: f64, precision: usize) -> String {
+    let written = format!("{:.precision$e}", value);
+    match written.split_once('e') {
+        Some((mantissa, power)) => {
+            let (sign, digits) = match power.strip_prefix('-') {
+                Some(rest) => ("-", rest),
+                None => ("+", power),
+            };
+            format!("{mantissa}e{sign}{:0>2}", digits)
+        }
+        None => written,
+    }
+}
+
 impl VirtualMachine {
     /// Evaluate a unary operation (`+` or `-`).
     pub(crate) fn evaluate_unary_operation(
@@ -34,9 +50,19 @@ impl VirtualMachine {
             UnaryOp::Plus => match value {
                 // Numeric `+x` is a no-op identity.
                 Object::Int(_) | Object::BigInt(_) | Object::Float(_) => Ok(value),
-                // Ruby's `+"str"` returns a mutable copy of the string. We
-                // don't track frozenness, so this is just an identity op.
-                Object::String(_) => Ok(value),
+                // `+str` asks for a string that changes, so a frozen one
+                // answers a copy and any other answers itself.
+                Object::String(ref text) => {
+                    if !text.is_frozen() {
+                        return Ok(value.clone());
+                    }
+                    Ok(Object::String(std::rc::Rc::new(
+                        crate::object::StringValue::with_encoding(
+                            text.to_text(),
+                            text.encoding_name(),
+                        ),
+                    )))
+                }
                 _ => Err(unary_type_error(op, &value, position)),
             },
             UnaryOp::Minus => match value {
@@ -44,10 +70,20 @@ impl VirtualMachine {
                 Object::Int(v) => Ok(Object::integer(-num_bigint::BigInt::from(v))),
                 Object::BigInt(v) => Ok(Object::integer(-(*v).clone())),
                 Object::Float(v) => Ok(Object::Float(-v)),
-                // Ruby's `-"str"` answers a frozen, deduplicated string.
-                // Metorex's strings are already shared and report frozen, so
-                // this is an identity op the way `+"str"` is.
-                Object::String(_) => Ok(value),
+                // `-str` asks for a string that does not change, so one
+                // already frozen answers itself and any other answers a
+                // frozen copy.
+                Object::String(ref text) => {
+                    if text.is_frozen() {
+                        return Ok(value.clone());
+                    }
+                    let copy = crate::object::StringValue::with_encoding(
+                        text.to_text(),
+                        text.encoding_name(),
+                    );
+                    copy.freeze();
+                    Ok(Object::String(std::rc::Rc::new(copy)))
+                }
                 _ => Err(unary_type_error(op, &value, position)),
             },
             UnaryOp::Not => Ok(Object::Bool(matches!(
@@ -338,6 +374,19 @@ impl VirtualMachine {
                         };
                     }
                 }
+                // A Process::Status compares by the number it stands for, so
+                // it answers `==` against that number as well as against
+                // another status.
+                if matches!(&left, Object::Instance(held) if held.borrow().class.name() == "Process::Status")
+                    && let Some(answer) = self.call_process_status_method(
+                        &left,
+                        "==",
+                        std::slice::from_ref(&right),
+                        position,
+                    )?
+                {
+                    return Ok(Object::Bool(answer.is_truthy()));
+                }
                 // A Set decides equality itself, since it counts anything
                 // that says it is one, however that value is built.
                 if matches!(left, Object::Set(_))
@@ -350,6 +399,51 @@ impl VirtualMachine {
                     )?
                 {
                     return Ok(Object::Bool(answer.is_truthy()));
+                }
+                // Two hashes holding objects of the program's own are equal
+                // when those objects say so, so each value is asked with `==`
+                // rather than compared as data.
+                if let (Object::Dict(one), Object::Dict(other)) = (&left, &right) {
+                    if Rc::ptr_eq(one, other) {
+                        return Ok(Object::Bool(true));
+                    }
+                    let held: Vec<(String, Object)> = one
+                        .borrow()
+                        .iter()
+                        .filter(|(key, _)| !key.starts_with("__MX_"))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect();
+                    let against: Vec<(String, Object)> = other
+                        .borrow()
+                        .iter()
+                        .filter(|(key, _)| !key.starts_with("__MX_"))
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect();
+                    if held.iter().chain(against.iter()).any(|(_, value)| {
+                        matches!(value, Object::Instance(_))
+                            || matches!(value, Object::Array(items) if items.borrow().iter().any(|item| matches!(item, Object::Instance(_))))
+                    }) {
+                        if held.len() != against.len() {
+                            return Ok(Object::Bool(false));
+                        }
+                        for (key, value) in &held {
+                            let Some((_, counterpart)) =
+                                against.iter().find(|(other_key, _)| other_key == key)
+                            else {
+                                return Ok(Object::Bool(false));
+                            };
+                            let answer = self.evaluate_binary_operation(
+                                &BinaryOp::Equal,
+                                value.clone(),
+                                counterpart.clone(),
+                                position,
+                            )?;
+                            if !answer.is_truthy() {
+                                return Ok(Object::Bool(false));
+                            }
+                        }
+                        return Ok(Object::Bool(true));
+                    }
                 }
                 // Two arrays holding objects of the program's own are equal
                 // when those objects say so, so each pair is asked with `==`
@@ -727,7 +821,7 @@ impl VirtualMachine {
             (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + (b as f64))),
             (Object::String(a), Object::String(b)) => {
                 let mut combined = a.as_str().to_string();
-                combined.push_str(b.as_ref());
+                combined.push_str(&b.as_ref().as_str());
                 Ok(Object::string(combined))
             }
             (Object::Array(a), Object::Array(b)) => {
@@ -747,6 +841,14 @@ impl VirtualMachine {
         right: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // An instance of a String subclass repeats the characters it holds,
+        // answering a plain String the way Ruby's does.
+        if matches!(op, BinaryOp::Multiply)
+            && matches!(left, Object::Instance(_))
+            && let Some(text) = crate::vm::native_methods::string_subclass_value(&left)
+        {
+            return self.evaluate_numeric_binary(op, text, right, position);
+        }
         match (left, right) {
             // Array difference: elements of the left array not present in
             // the right one, preserving left order.
@@ -821,7 +923,14 @@ impl VirtualMachine {
             },
             // `"ab" * 3` repeats the string, and a negative count is an
             // ArgumentError rather than an empty string.
-            (Object::String(text), Object::Int(count)) if matches!(op, BinaryOp::Multiply) => {
+            (
+                Object::String(text),
+                given @ (Object::Int(_)
+                | Object::Float(_)
+                | Object::BigInt(_)
+                | Object::Instance(_)),
+            ) if matches!(op, BinaryOp::Multiply) => {
+                let count = self.repeat_count(&given, position)?;
                 let Ok(count) = usize::try_from(count) else {
                     return Err(crate::vm::errors::simple_exception(
                         "ArgumentError",
@@ -829,7 +938,29 @@ impl VirtualMachine {
                         position,
                     ));
                 };
-                Ok(Object::string(text.repeat(count)))
+                // An empty string repeats to nothing however many times it is
+                // asked for, so the width of the count never matters there.
+                if text.as_str().is_empty() {
+                    return Ok(Object::String(std::rc::Rc::new(
+                        crate::object::StringValue::with_encoding(
+                            String::new(),
+                            text.encoding_name(),
+                        ),
+                    )));
+                }
+                if text.as_str().len().checked_mul(count).is_none() {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "argument too big",
+                        position,
+                    ));
+                }
+                Ok(Object::String(std::rc::Rc::new(
+                    crate::object::StringValue::with_encoding(
+                        text.as_str().repeat(count),
+                        text.encoding_name(),
+                    ),
+                )))
             }
             // `[1, 2] * 3` repeats the array, and `[1, 2] * ", "` joins it
             // with that separator.
@@ -856,7 +987,7 @@ impl VirtualMachine {
                     .iter()
                     .map(|element| format!("{}", element))
                     .collect::<Vec<_>>()
-                    .join(&separator);
+                    .join(&*separator.as_str());
                 Ok(Object::string(joined))
             }
             (lhs, rhs) => Err(binary_type_error(op.clone(), &lhs, &rhs, position)),
@@ -1267,9 +1398,11 @@ impl VirtualMachine {
                 let formatted = match specifier {
                     's' => {
                         // `%s` renders with `to_s`, so a Symbol loses its
-                        // leading colon the way `puts` drops it.
+                        // leading colon the way `puts` drops it and nil
+                        // renders as nothing at all.
                         let s = match &arg {
                             Object::Symbol(name) => name.as_str().to_string(),
+                            Object::Nil => String::new(),
                             other => format!("{}", other),
                         };
                         if let Some(prec) = precision {
@@ -1323,6 +1456,38 @@ impl VirtualMachine {
                             format!("{:.prec$}", val)
                         }
                     }
+                    // `%e` and `%E` write a number in exponent notation, with
+                    // one digit before the point and a signed two-digit power.
+                    'e' | 'E' => {
+                        let val = match arg {
+                            Object::Float(held) => *held,
+                            Object::Int(held) => *held as f64,
+                            Object::BigInt(held) => held.to_string().parse().unwrap_or(0.0),
+                            _ => {
+                                return Err(MetorexError::runtime_error(
+                                    format!(
+                                        "%%{} requires numeric argument, got {}",
+                                        specifier,
+                                        arg.type_name()
+                                    ),
+                                    crate::vm::utils::position_to_location(position),
+                                ));
+                            }
+                        };
+                        let written = exponent_notation(val, precision.unwrap_or(6));
+                        let written = if specifier == 'E' {
+                            written.to_uppercase()
+                        } else {
+                            written
+                        };
+                        if plus_sign && val >= 0.0 {
+                            format!("+{}", written)
+                        } else if space_sign && val >= 0.0 {
+                            format!(" {}", written)
+                        } else {
+                            written
+                        }
+                    }
                     'x' => match arg {
                         Object::Int(n) => format!("{:x}", n),
                         _ => format!("{}", arg),
@@ -1352,9 +1517,11 @@ impl VirtualMachine {
                                 format!("{}", n)
                             }
                         }
-                        Object::String(s) => {
-                            s.chars().next().map_or(String::new(), |c| c.to_string())
-                        }
+                        Object::String(s) => s
+                            .as_str()
+                            .chars()
+                            .next()
+                            .map_or(String::new(), |c| c.to_string()),
                         _ => format!("{}", arg),
                     },
                     other => {
@@ -1784,5 +1951,42 @@ fn set_operator_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::Greater => Some("proper_superset?"),
         BinaryOp::Spaceship => Some("<=>"),
         _ => None,
+    }
+}
+
+impl VirtualMachine {
+    /// How many times `"ab" * count` repeats the string: a Float loses its
+    /// fraction, an object gives its `to_int`, and a number too wide to hold
+    /// is a RangeError the way Ruby reports one.
+    fn repeat_count(
+        &mut self,
+        count: &Object,
+        position: crate::lexer::Position,
+    ) -> Result<i64, MetorexError> {
+        match count {
+            Object::Int(number) => Ok(*number),
+            Object::Float(number) => Ok(*number as i64),
+            Object::BigInt(_) => Err(crate::vm::errors::simple_exception(
+                "RangeError",
+                "bignum too big to convert into `long'",
+                position,
+            )),
+            other => match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                Object::Int(number) => Ok(number),
+                Object::BigInt(_) => Err(crate::vm::errors::simple_exception(
+                    "RangeError",
+                    "bignum too big to convert into `long'",
+                    position,
+                )),
+                converted => Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!(
+                        "no implicit conversion of {} into Integer",
+                        self.builtins().class_of(&converted).name()
+                    ),
+                    position,
+                )),
+            },
+        }
     }
 }

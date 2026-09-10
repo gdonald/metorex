@@ -407,7 +407,7 @@ fn array_pack_format_l() {
     assert!(result.is_some());
     // 1 as i32 little-endian = [1, 0, 0, 0]
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.len(), 4);
+        assert_eq!(s.as_str().len(), 4);
     }
 }
 
@@ -419,7 +419,7 @@ fn array_pack_format_s() {
     let result = run(r#"[1].pack("s")"#);
     assert!(result.is_some());
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.len(), 2);
+        assert_eq!(s.as_str().len(), 2);
     }
 }
 
@@ -431,7 +431,7 @@ fn array_pack_format_c() {
     let result = run(r#"[65].pack("c")"#);
     assert!(result.is_some());
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.len(), 1);
+        assert_eq!(s.as_str().len(), 1);
     }
 }
 
@@ -443,7 +443,7 @@ fn array_pack_format_q() {
     let result = run(r#"[1].pack("q")"#);
     assert!(result.is_some());
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.len(), 8);
+        assert_eq!(s.as_str().len(), 8);
     }
 }
 
@@ -455,7 +455,7 @@ fn array_pack_format_j() {
     let result = run(r#"[42].pack("j")"#);
     assert!(result.is_some());
     if let Some(Object::String(s)) = result {
-        assert_eq!(s.len(), 8);
+        assert_eq!(s.as_str().len(), 8);
     }
 }
 

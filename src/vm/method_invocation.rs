@@ -124,12 +124,18 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let Some(number) = number_for_name(given) else {
+                let Some(number) = number_for_name(&given.as_str()) else {
                     return Err(invalid(format!("invalid signal name {}", given)));
                 };
                 (
                     number,
-                    format!("SIG{}", given.strip_prefix("SIG").unwrap_or(given)),
+                    format!(
+                        "SIG{}",
+                        given
+                            .as_str()
+                            .strip_prefix("SIG")
+                            .unwrap_or(&*given.as_str())
+                    ),
                 )
             }
             other => {
@@ -243,7 +249,7 @@ impl VirtualMachine {
 
     /// Handle class invocation: instantiation, kernel conversion functions,
     /// and exception class construction.
-    fn invoke_class(
+    pub(crate) fn invoke_class(
         &mut self,
         class: Rc<Class>,
         arguments: Vec<Object>,
@@ -555,6 +561,17 @@ impl VirtualMachine {
                 match &arguments[0] {
                     Object::String(text) => text.as_str().to_string(),
                     other => self.coerce_name_argument(other, position)?,
+                }
+            } else if class
+                .find_method("initialize")
+                .is_some_and(|initialize| !initialize.is_undefined && !initialize.body.is_empty())
+            {
+                // A subclass writing its own `initialize` decides what the
+                // extra arguments mean. What it passes to `super` is the
+                // message, and the first argument is what that reaches for.
+                match &arguments[0] {
+                    Object::String(text) => text.as_str().to_string(),
+                    _ => String::new(),
                 }
             } else {
                 return Err(MetorexError::runtime_error(
