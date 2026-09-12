@@ -40,6 +40,7 @@ fn add(names: &mut Vec<String>, name: &str) {
 
 fn walk_statement(stmt: &Statement, names: &mut Vec<String>) {
     match stmt {
+        Statement::Retry { .. } => {}
         Statement::Expression { expression, .. } => walk_expression(expression, names),
         Statement::DeclareLocals {
             names: declared, ..

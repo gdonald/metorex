@@ -286,3 +286,19 @@ fn test_require_relative_keeps_exception_class_parens_execution() {
     let output = run_example("require/exception_class_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `require/autoload_in_a_module` variants, which
+/// differ only in whether the calls are written with parentheses.
+const AUTOLOAD_IN_A_MODULE_OUTPUT: &str = "true\ntrue\nnil\ntrue\nnil\nfrom_a_module_method\n";
+
+#[test]
+fn test_require_autoload_in_a_module_execution() {
+    let output = run_example("require/autoload_in_a_module.rb");
+    assert_eq!(output, AUTOLOAD_IN_A_MODULE_OUTPUT);
+}
+
+#[test]
+fn test_require_autoload_in_a_module_parens_execution() {
+    let output = run_example("require/autoload_in_a_module_parens.rb");
+    assert_eq!(output, AUTOLOAD_IN_A_MODULE_OUTPUT);
+}

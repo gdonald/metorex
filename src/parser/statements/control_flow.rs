@@ -354,6 +354,20 @@ impl Parser {
     }
 
     /// Parse a redo statement, which re-runs the enclosing body from the top.
+    /// `retry` runs the begin body its rescue clause belongs to again. It is
+    /// only written inside a rescue body, and Ruby refuses it anywhere else
+    /// while the source is still being read.
+    pub(crate) fn parse_retry_statement(&mut self) -> Result<Statement, MetorexError> {
+        let pos = self.expect(TokenKind::Retry, "Expected 'retry'")?.position;
+        if self.rescue_depth == 0 && !self.in_defined_argument {
+            return Err(MetorexError::syntax_error(
+                "Invalid retry without rescue",
+                crate::error::SourceLocation::new(pos.line, pos.column, pos.offset),
+            ));
+        }
+        self.wrap_with_modifier(Statement::Retry { position: pos })
+    }
+
     pub(crate) fn parse_redo_statement(&mut self) -> Result<Statement, MetorexError> {
         let pos = self.expect(TokenKind::Redo, "Expected 'redo'")?.position;
         self.wrap_with_modifier(Statement::Redo { position: pos })

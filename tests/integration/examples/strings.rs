@@ -50,3 +50,19 @@ fn test_strings_byte_sets_parens_execution() {
     let output = run_example("strings/byte_sets_parens.rb");
     assert_eq!(output, BYTE_SETS_OUTPUT);
 }
+
+/// The expected output of both `strings/unpack_offsets` variants, which differ only in whether
+/// the calls are written with parentheses.
+const UNPACK_OFFSETS_OUTPUT: &str = "68\n[\"ABCD\"]\n\"hogefuga\"\n[216, 136]\n136\nnil\n\"offset can't be negative\"\n\"offset outside of string\"\n";
+
+#[test]
+fn test_strings_unpack_offsets_execution() {
+    let output = run_example("strings/unpack_offsets.rb");
+    assert_eq!(output, UNPACK_OFFSETS_OUTPUT);
+}
+
+#[test]
+fn test_strings_unpack_offsets_parens_execution() {
+    let output = run_example("strings/unpack_offsets_parens.rb");
+    assert_eq!(output, UNPACK_OFFSETS_OUTPUT);
+}

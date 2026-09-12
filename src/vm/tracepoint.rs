@@ -28,6 +28,24 @@ impl VirtualMachine {
         self.tracing
     }
 
+    /// Switch tracing off and answer what it was, so a block can fire events
+    /// of its own from inside a handler. The line already reported is carried
+    /// along too: the lines the block runs are its own, and the line the
+    /// handler was called from still counts as reported.
+    pub(crate) fn take_tracing(&mut self) -> (bool, Option<(String, usize)>) {
+        (
+            std::mem::replace(&mut self.tracing, false),
+            self.traced_line.take(),
+        )
+    }
+
+    /// Put the tracing flag and the reported line back to what
+    /// `take_tracing` found.
+    pub(crate) fn restore_tracing(&mut self, held: (bool, Option<(String, usize)>)) {
+        self.tracing = held.0;
+        self.traced_line = held.1;
+    }
+
     /// Fire a `:line` event for the statement about to run. A statement on a
     /// line already traced fires nothing, so one line is one event however
     /// many statements share it.

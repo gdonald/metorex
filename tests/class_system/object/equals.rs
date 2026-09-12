@@ -253,10 +253,15 @@ fn test_equals_block() {
         is_lambda: false,
         source_file: None,
         home_frame: None,
+        opened_at: None,
+        from_symbol: None,
     });
     let block2 = Rc::clone(&block1);
+    // A block written differently is a different block. Two written the same
+    // way, closing over the same cells, are a copy of one another, which is
+    // what Ruby calls equal.
     let block3 = Rc::new(BlockStatement {
-        parameters: vec![],
+        parameters: vec!["held".to_string()],
         parameter_defaults: Vec::new(),
         body: vec![],
         captured_vars: HashMap::new(),
@@ -265,14 +270,19 @@ fn test_equals_block() {
         is_lambda: false,
         source_file: None,
         home_frame: None,
+        opened_at: None,
+        from_symbol: None,
     });
+    let block4 = Rc::new((*block1).clone());
 
     let obj1 = Object::Block(block1);
     let obj2 = Object::Block(block2);
     let obj3 = Object::Block(block3);
+    let obj4 = Object::Block(block4);
 
     assert!(obj1.equals(&obj2)); // Same reference
-    assert!(!obj1.equals(&obj3)); // Different reference
+    assert!(!obj1.equals(&obj3)); // Written differently
+    assert!(obj1.equals(&obj4)); // A copy of the same block
 }
 
 #[test]

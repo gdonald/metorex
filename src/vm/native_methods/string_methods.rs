@@ -895,6 +895,36 @@ impl VirtualMachine {
             // `unpack` reads the bytes back as the directives describe them,
             // and `unpack1` answers the first of them.
             "unpack" | "unpack1" => {
+                // `offset:` names where in the bytes the unpacking starts.
+                let mut positional = arguments;
+                let mut from = 0usize;
+                if let Some(Object::Dict(options)) = arguments.last() {
+                    let named = options.borrow().get(":offset").cloned();
+                    if let Some(held) = named {
+                        let counted: i64 = self
+                            .coerce_integer_argument(&held, position)?
+                            .try_into()
+                            .unwrap_or(i64::MAX);
+                        if counted < 0 {
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                "offset can't be negative",
+                                position,
+                            ));
+                        }
+                        let bytes = binary_bytes(string_value).len() as i64;
+                        if counted > bytes {
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                "offset outside of string",
+                                position,
+                            ));
+                        }
+                        from = counted as usize;
+                    }
+                    positional = &arguments[..arguments.len() - 1];
+                }
+                let arguments = positional;
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         method_name,
@@ -927,7 +957,17 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let held = string_value.as_str().to_string();
+                let held = if from == 0 {
+                    string_value.as_str().to_string()
+                } else {
+                    // The offset counts bytes, so the run left is taken from
+                    // the bytes rather than from the characters.
+                    let bytes = binary_bytes(string_value);
+                    match super::pack_format::bytes_to_string(&bytes[from..]) {
+                        Object::String(rest) => rest.as_str().to_string(),
+                        _ => String::new(),
+                    }
+                };
                 let read = self.string_unpack(&held, &format, position)?;
                 if method_name == "unpack1" {
                     return Ok(Some(read.into_iter().next().unwrap_or(Object::Nil)));
@@ -1530,6 +1570,39 @@ impl VirtualMachine {
                     },
                 }
             }
+            // `to_c` reads the leading complex value and answers (0+0i)
+            // when the string does not start with one.
+            "to_c" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let named = string_value.encoding_name();
+                if wide_encoding(&named).is_some() {
+                    return Err(crate::vm::errors::simple_exception(
+                        "Encoding::CompatibilityError",
+                        &format!("ASCII incompatible encoding: {named}"),
+                        position,
+                    ));
+                }
+                let held = string_value.as_str().to_string();
+                let Some(parsed) = super::complex_methods::leading_complex_text(&held) else {
+                    return self
+                        .make_complex(Object::Int(0), Object::Int(0), position)
+                        .map(Some);
+                };
+                let real = self.component_object(parsed.real, position)?;
+                let imaginary = self.component_object(parsed.imaginary, position)?;
+                if parsed.polar {
+                    let (real, imaginary) = self.polar_parts(real, imaginary, position)?;
+                    return self.make_complex(real, imaginary, position).map(Some);
+                }
+                self.make_complex(real, imaginary, position).map(Some)
+            }
             // `to_r` reads the leading rational value and answers (0/1) when
             // the string does not start with one.
             "to_r" => {
@@ -1751,6 +1824,9 @@ impl VirtualMachine {
                         let escaped = regex::escape(&pattern);
                         let subject = string_value.as_str().to_string();
                         self.regexp_match_data(&escaped, "", &subject, 0, position)?;
+                        // The whole match is all a literal pattern can name,
+                        // so `\0` and `\&` stand for the pattern itself.
+                        let replacement = expand_whole_match(&replacement, &pattern);
                         let result = if limit == 0 {
                             string_value.as_str().replace(&pattern, &replacement)
                         } else {
@@ -1763,11 +1839,10 @@ impl VirtualMachine {
                     // Regexp pattern: compile, honour the `i` flag, and apply
                     // either a single substitution (`sub`) or a global one
                     // (`gsub`). `\Z` / `\z` come from Ruby; the `regex` crate
-                    // accepts them. Replacement string back-refs (`\1`, etc.)
-                    // are preserved by `regex`'s default replace semantics.
+                    // accepts them.
                     Object::Regex(pattern, flags) => {
                         let written =
-                            super::regexp_methods::uniquify_group_names(&pattern.as_str()).0;
+                            super::regexp_methods::uniquify_group_names(pattern.as_str()).0;
                         let re_pattern = if flags.contains('i') {
                             format!("(?i){}", written)
                         } else {
@@ -1779,17 +1854,18 @@ impl VirtualMachine {
                         self.regexp_match_data(&source, &flags, &subject, 0, position)?;
                         match regex::Regex::new(&re_pattern) {
                             Ok(re) => {
+                                let written = replacement_for_regex(&replacement);
                                 let result = if limit == 0 {
                                     re.replace_all(
                                         &string_value.as_ref().as_str(),
-                                        replacement.as_str(),
+                                        written.as_str(),
                                     )
                                     .into_owned()
                                 } else {
                                     re.replacen(
                                         &string_value.as_ref().as_str(),
                                         limit,
-                                        replacement.as_str(),
+                                        written.as_str(),
                                     )
                                     .into_owned()
                                 };
@@ -2506,4 +2582,69 @@ pub(crate) fn clashing_encodings_error(
         right.encoding_name()
     );
     crate::vm::errors::simple_exception("Encoding::CompatibilityError", &message, position)
+}
+
+/// Ruby writes a back-reference in a replacement as `\1`, the whole match as
+/// `\&` or `\0`, and a named group as `\k<name>`. The regex crate reads
+/// `${1}` and `${name}` instead, and takes a bare `$` as the start of one.
+pub(crate) fn replacement_for_regex(written: &str) -> String {
+    let mut out = String::new();
+    let mut letters = written.chars().peekable();
+    while let Some(letter) = letters.next() {
+        match letter {
+            '$' => out.push_str("$$"),
+            '\\' => match letters.next() {
+                Some(digit) if digit.is_ascii_digit() => {
+                    out.push_str("${");
+                    out.push(digit);
+                    out.push('}');
+                }
+                Some('&') => out.push_str("${0}"),
+                Some('k') if letters.peek() == Some(&'<') => {
+                    letters.next();
+                    let mut name = String::new();
+                    for letter in letters.by_ref() {
+                        if letter == '>' {
+                            break;
+                        }
+                        name.push(letter);
+                    }
+                    out.push_str("${");
+                    out.push_str(&name);
+                    out.push('}');
+                }
+                Some('\\') => out.push('\\'),
+                Some(other) => {
+                    out.push('\\');
+                    out.push(other);
+                }
+                None => out.push('\\'),
+            },
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// The replacement a literal pattern takes, where the only back-reference
+/// that can be named is the whole match.
+fn expand_whole_match(written: &str, matched: &str) -> String {
+    let mut out = String::new();
+    let mut letters = written.chars().peekable();
+    while let Some(letter) = letters.next() {
+        if letter != '\\' {
+            out.push(letter);
+            continue;
+        }
+        match letters.next() {
+            Some('&') | Some('0') => out.push_str(matched),
+            Some('\\') => out.push('\\'),
+            Some(other) => {
+                out.push('\\');
+                out.push(other);
+            }
+            None => out.push('\\'),
+        }
+    }
+    out
 }

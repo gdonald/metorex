@@ -142,7 +142,7 @@ fn assembled(
         let stamp = plain as libc::time_t;
         let mut local = empty_tm();
         libc::localtime_r(&stamp, &mut local);
-        plain - local.tm_gmtoff as i64
+        plain - local.tm_gmtoff
     }
 }
 

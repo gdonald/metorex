@@ -382,16 +382,39 @@ impl VirtualMachine {
         }
 
         // `Range.new(first, last, exclusive)` builds the same value a literal
-        // does. A subclass builds one too, since a Range is a primitive here
-        // rather than something a subclass can carry state on.
+        // does. A subclass holds one in an instance variable, since a plain
+        // Range is a primitive rather than something a subclass carries state
+        // on, and unlike a plain one it is not frozen.
         if descends_from(&class, "Range") && (2..=3).contains(&arguments.len()) {
             self.pending_block.take();
             self.check_range_ends(&arguments[0], &arguments[1], position)?;
-            return Ok(Object::Range {
+            let made = Object::Range {
                 start: Box::new(arguments[0].clone()),
                 end: Box::new(arguments[1].clone()),
                 exclusive: arguments.get(2).is_some_and(|flag| flag.is_truthy()),
-            });
+            };
+            if class.name() == "Range" {
+                return Ok(made);
+            }
+            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.set_var(
+                crate::vm::native_methods::RANGE_SUBCLASS_VAR.to_string(),
+                made,
+            );
+            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            if let Some(initialize) = class.find_method("initialize")
+                && !initialize.is_undefined
+                && !initialize.body.is_empty()
+            {
+                self.invoke_method(
+                    Rc::clone(&class),
+                    initialize,
+                    object.clone(),
+                    arguments,
+                    position,
+                )?;
+            }
+            return Ok(object);
         }
 
         // A subclass of Hash holds its entries in an instance variable, since

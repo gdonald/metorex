@@ -98,8 +98,17 @@ impl Parser {
         // One statement stands on its own here only when reading it as a
         // plain expression would lose it, which is what a multiple assignment
         // written inside a group does.
-        let holds_one_assignment =
-            body.len() == 1 && matches!(body[0], crate::ast::Statement::MultipleAssignment { .. });
+        // `(args = 1, 2, 3)` assigns the whole list, which reading the group
+        // as one expression would cut short at the first comma.
+        let holds_one_assignment = body.len() == 1
+            && matches!(
+                body[0],
+                crate::ast::Statement::MultipleAssignment { .. }
+                    | crate::ast::Statement::Assignment {
+                        value: crate::ast::Expression::Array { .. },
+                        ..
+                    }
+            );
         if body.len() < 2 && !holds_one_assignment {
             return Err(self.error_at_previous("Expected ')' after expression"));
         }

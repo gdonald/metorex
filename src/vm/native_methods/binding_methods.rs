@@ -85,9 +85,6 @@ impl VirtualMachine {
                 }
                 None => Object::Nil,
             })),
-            // A copy names the same locals, and writing through one is not
-            // seen by the other.
-            "dup" | "clone" => Ok(Some(Object::Binding(Rc::new(binding.copied())))),
             _ => Ok(None),
         }
     }

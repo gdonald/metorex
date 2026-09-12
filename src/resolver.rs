@@ -207,6 +207,7 @@ impl Resolver {
     /// Resolves a statement
     fn resolve_statement(&mut self, statement: &Statement) {
         match statement {
+            Statement::Retry { .. } => {}
             Statement::Expression { expression, .. } => {
                 self.resolve_expression(expression);
             }

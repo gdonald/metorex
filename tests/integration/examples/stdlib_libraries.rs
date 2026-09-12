@@ -614,3 +614,20 @@ fn test_stdlib_libraries_log_rotation_parens_execution() {
     let output = run_example("stdlib_libraries/log_rotation_parens.rb");
     assert_eq!(output, LOG_ROTATION_OUTPUT);
 }
+
+/// The expected output of both `stdlib_libraries/time_limits` variants, which show
+/// a block given a limit on how long it may run and differ only in whether the calls are
+/// written with parentheses.
+const TIME_LIMITS_OUTPUT: &str = "42\n[Timeout::Error, \"execution expired\"]\n\"took too long\"\n\"Timeout sec must be a non-negative number\"\ntrue\ntrue\n";
+
+#[test]
+fn test_stdlib_libraries_time_limits_execution() {
+    let output = run_example("stdlib_libraries/time_limits.rb");
+    assert_eq!(output, TIME_LIMITS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_time_limits_no_parens_execution() {
+    let output = run_example("stdlib_libraries/time_limits_no_parens.rb");
+    assert_eq!(output, TIME_LIMITS_OUTPUT);
+}

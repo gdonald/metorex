@@ -202,9 +202,7 @@ fn other_bitwise_and_with_bool() {
 fn bitwise_and_type_error() {
     let err = run_err(r#""a" & "b""#);
     assert!(
-        err.contains("TypeError")
-            || err.contains("type")
-            || err.contains("unsupported")
+        err.contains("undefined method '&' for an instance of String")
             || err.contains("no implicit")
     );
 }

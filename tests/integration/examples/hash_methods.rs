@@ -31,3 +31,20 @@ fn test_hash_keys_and_merging_no_parens_execution() {
     let output = run_example("hash_methods/keys_and_merging_no_parens.rb");
     assert_eq!(output, KEYS_AND_MERGING_OUTPUT);
 }
+
+/// The expected output of both `hash_methods/resetting_defaults` variants, which show
+/// setting a hash's default again after it was built and differ only in whether the calls are
+/// written with parentheses.
+const RESETTING_DEFAULTS_OUTPUT: &str = "nil\n[0, 0, [[\"one\", 1]]]\n[nil, \"abab\", [[\"one\", 1], [\"ab\", \"abab\"]]]\n[nil, nil]\n[3, true]\n\"value must be enumerable\"\n";
+
+#[test]
+fn test_hash_methods_resetting_defaults_execution() {
+    let output = run_example("hash_methods/resetting_defaults.rb");
+    assert_eq!(output, RESETTING_DEFAULTS_OUTPUT);
+}
+
+#[test]
+fn test_hash_methods_resetting_defaults_no_parens_execution() {
+    let output = run_example("hash_methods/resetting_defaults_no_parens.rb");
+    assert_eq!(output, RESETTING_DEFAULTS_OUTPUT);
+}

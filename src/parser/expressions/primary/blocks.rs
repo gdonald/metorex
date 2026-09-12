@@ -32,6 +32,18 @@ impl Parser {
             None
         };
 
+        // `lambda = value` writes a local of that name, and a bare `lambda`
+        // afterwards reads it. Every other form stays a call, which is what
+        // reaches Kernel#lambda or a method of the program's own.
+        if arguments.is_empty()
+            && trailing_block.is_none()
+            && (self.check(&[TokenKind::Equal]) || self.bound_names.contains("lambda"))
+        {
+            return Ok(Expression::Identifier {
+                name: "lambda".to_string(),
+                position: token_position,
+            });
+        }
         Ok(Expression::Call {
             callee: Box::new(Expression::Identifier {
                 name: "lambda".to_string(),

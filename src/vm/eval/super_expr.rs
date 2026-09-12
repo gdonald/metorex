@@ -50,8 +50,15 @@ impl VirtualMachine {
             )
         })?;
 
-        // Extract the class name and method name (format: "Class#method")
-        let (class_name, method_name) = if let Some(pos) = current_frame.rfind('#') {
+        // Extract the class name and method name. An instance method is
+        // named `Class#method` and one on a class object `Class.method`,
+        // which is how a backtrace writes each.
+        let separator = current_frame
+            .rfind('#')
+            .into_iter()
+            .chain(current_frame.rfind('.'))
+            .max();
+        let (class_name, method_name) = if let Some(pos) = separator {
             (
                 current_frame[..pos].to_string(),
                 current_frame[pos + 1..].to_string(),

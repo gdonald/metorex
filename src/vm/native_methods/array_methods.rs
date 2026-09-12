@@ -353,6 +353,7 @@ impl VirtualMachine {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Retry { .. }
                         | super::super::ControlFlow::Continue { .. } => continue,
                         super::super::ControlFlow::Break { value, .. } => {
                             return Ok(Some(value));
@@ -415,6 +416,7 @@ impl VirtualMachine {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Retry { .. }
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
@@ -922,23 +924,6 @@ impl VirtualMachine {
                 // separator, however deeply they nest.
                 let parts = joined_parts(&array_rc.borrow(), &sep);
                 Ok(Some(Object::string(parts)))
-            }
-            "dup" | "clone" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
-                        position,
-                    ));
-                }
-                let copied = Object::Array(Rc::new(RefCell::new(array_rc.borrow().clone())));
-                // `clone` carries the methods the object was given of its own
-                // across to the copy, where `dup` leaves them behind.
-                if method_name == "clone" {
-                    self.copy_singleton_methods(receiver, &copied);
-                }
-                Ok(Some(copied))
             }
             // `flatten` walks all the way down by default, or as many levels
             // as the argument names. `flatten!` writes the result back and
@@ -1729,10 +1714,13 @@ impl VirtualMachine {
                 }
                 let value = arguments[arguments.len() - 1].clone();
                 let length = array_rc.borrow().len() as i64;
+                // An instance of a Range subclass names a span the same way a
+                // plain Range does.
+                let first = super::as_range(&arguments[0]).unwrap_or_else(|| arguments[0].clone());
                 // A Range start before the front is a RangeError, while the
                 // other forms report an IndexError.
                 let out_of_range_error =
-                    if arguments.len() == 2 && matches!(&arguments[0], Object::Range { .. }) {
+                    if arguments.len() == 2 && matches!(&first, Object::Range { .. }) {
                         "RangeError"
                     } else {
                         "IndexError"
@@ -1752,8 +1740,8 @@ impl VirtualMachine {
                         ));
                     }
                     (start, Some(span))
-                } else if let Object::Range { .. } = &arguments[0] {
-                    let (start, span) = self.range_bounds(&arguments[0], length, position)?;
+                } else if let Object::Range { .. } = &first {
+                    let (start, span) = self.range_bounds(&first, length, position)?;
                     (start, Some(span))
                 } else {
                     (self.index_from(&arguments[0], length, position)?, None)
@@ -2351,10 +2339,12 @@ impl VirtualMachine {
                 // A class with no `<=>` at all cannot be ordered, and Ruby
                 // reports the missing method rather than a failed comparison.
                 if matches!(left, Object::Instance(_)) && !self.responds_to(left, "<=>") {
-                    return Err(crate::vm::errors::undefined_method_error(
+                    let wording = self.receiver_wording_for(left, position);
+                    return Err(crate::vm::errors::undefined_method_error_worded(
                         "<=>",
                         left,
                         std::slice::from_ref(right),
+                        wording,
                         position,
                     ));
                 }
@@ -2711,15 +2701,14 @@ impl VirtualMachine {
                 vec![Object::symbol("each".to_string())],
                 position,
             )?;
-            let mut taken = Vec::new();
-            for _ in 0..wanted {
-                match self.send_to_object(walk.clone(), "next", Vec::new(), position) {
-                    Ok(held) => taken.push(held),
-                    // The walk ran out, and the rest of the row is nothing.
-                    Err(_) => break,
-                }
+            // `first` stops the walk as soon as it has enough, which is what
+            // lets an endless walk be zipped against a finite array.
+            let taken =
+                self.send_to_object(walk, "first", vec![Object::Int(wanted as i64)], position)?;
+            if let Object::Array(elements) = taken {
+                return Ok(elements.borrow().clone());
             }
-            return Ok(taken);
+            return Ok(Vec::new());
         }
         let named = match value {
             Object::Bool(true) => "TrueClass".to_string(),
@@ -2728,37 +2717,6 @@ impl VirtualMachine {
             held => self.builtins().class_of(held).ruby_name().to_string(),
         };
         let message = format!("wrong argument type {} (must respond to :each)", named);
-        Err(crate::vm::errors::simple_exception(
-            "TypeError",
-            &message,
-            position,
-        ))
-    }
-
-    fn coerce_to_walkable(
-        &mut self,
-        value: &Object,
-        position: Position,
-    ) -> Result<Vec<Object>, MetorexError> {
-        if let Object::Array(elements) = value {
-            return Ok(elements.borrow().clone());
-        }
-        if self.responds_to(value, "to_ary")
-            && let Object::Array(elements) =
-                self.send_to_object(value.clone(), "to_ary", vec![], position)?
-        {
-            return Ok(elements.borrow().clone());
-        }
-        if self.responds_to(value, "each") {
-            let collected = self.send_to_object(value.clone(), "to_a", vec![], position)?;
-            if let Object::Array(elements) = collected {
-                return Ok(elements.borrow().clone());
-            }
-        }
-        let message = format!(
-            "wrong argument type {} (must respond to :each)",
-            self.builtins().class_of(value).ruby_name()
-        );
         Err(crate::vm::errors::simple_exception(
             "TypeError",
             &message,

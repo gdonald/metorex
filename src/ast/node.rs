@@ -696,6 +696,11 @@ pub enum Statement {
         position: Position,
     },
 
+    /// `retry` inside a rescue body, which runs the begin body again.
+    Retry {
+        position: Position,
+    },
+
     // Block statement
     Block {
         statements: Vec<Statement>,
@@ -871,6 +876,7 @@ impl Statement {
             | Statement::Break { position, .. }
             | Statement::Continue { position, .. }
             | Statement::Redo { position }
+            | Statement::Retry { position }
             | Statement::Block { position, .. }
             | Statement::Begin { position, .. }
             | Statement::Raise { position, .. }
@@ -911,6 +917,7 @@ impl Statement {
                 | Statement::Break { .. }
                 | Statement::Continue { .. }
                 | Statement::Redo { .. }
+                | Statement::Retry { .. }
                 | Statement::Begin { .. }
                 | Statement::Raise { .. }
         )

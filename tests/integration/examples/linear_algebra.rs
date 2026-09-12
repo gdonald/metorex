@@ -33,3 +33,35 @@ fn test_linear_algebra_matrix_shapes_no_parens_execution() {
     let output = run_example("linear_algebra/matrix_shapes_no_parens.rb");
     assert_eq!(output, MATRIX_SHAPES_OUTPUT);
 }
+
+/// The expected output of both `linear_algebra/eigenvalues` variants.
+const EIGENVALUES_OUTPUT: &str = "[6, 2]\nMatrix[[6, 0], [0, 2]]\n[(1+1i), (1-1i)]\nMatrix[[(1+1i), 0], [0, (1-1i)]]\na larger matrix is not worked out\n";
+
+#[test]
+fn test_linear_algebra_eigenvalues_execution() {
+    let output = run_example("linear_algebra/eigenvalues.rb");
+    assert_eq!(output, EIGENVALUES_OUTPUT);
+}
+
+#[test]
+fn test_linear_algebra_eigenvalues_no_parens_execution() {
+    let output = run_example("linear_algebra/eigenvalues_no_parens.rb");
+    assert_eq!(output, EIGENVALUES_OUTPUT);
+}
+
+/// The expected output of both `linear_algebra/eigenvectors` variants, which show
+/// the eigenvectors of a matrix and the factorization they take part in and differ only in whether the calls are
+/// written with parentheses.
+const EIGENVECTORS_OUTPUT: &str = "[-1, 3]\n[Vector[0.7071067811865475, -0.7071067811865475], Vector[0.7071067811865475, 0.7071067811865475]]\nMatrix[[0.7071067811865475, 0.7071067811865475], [-0.7071067811865475, 0.7071067811865475]]\n[Vector[1, (0+1i)], Vector[1, (0-1i)]]\nMatrix[[(14/1), (16/1)], [(-6/1), (-6/1)]]\nMatrix[[(5/1), (4/1)], [(4/1), (5/1)]]\n";
+
+#[test]
+fn test_linear_algebra_eigenvectors_execution() {
+    let output = run_example("linear_algebra/eigenvectors.rb");
+    assert_eq!(output, EIGENVECTORS_OUTPUT);
+}
+
+#[test]
+fn test_linear_algebra_eigenvectors_no_parens_execution() {
+    let output = run_example("linear_algebra/eigenvectors_no_parens.rb");
+    assert_eq!(output, EIGENVECTORS_OUTPUT);
+}

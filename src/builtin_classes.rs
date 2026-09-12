@@ -464,6 +464,11 @@ pub fn init_string_methods(string_class: &Class) {
     let length_method = Rc::new(Method::new("length".to_string(), vec![], vec![]));
     string_class.define_method("length", length_method);
 
+    // `size` is the other name for the same count, and a String answers to
+    // it the same way.
+    let size_method = Rc::new(Method::new("size".to_string(), vec![], vec![]));
+    string_class.define_method("size", size_method);
+
     // String#upcase
     let upcase_method = Rc::new(Method::new("upcase".to_string(), vec![], vec![]));
     string_class.define_method("upcase", upcase_method);

@@ -52,7 +52,11 @@ fn test_undefined_variable_error_has_location() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("Undefined variable"));
+    assert!(
+        error
+            .to_string()
+            .contains("undefined local variable or method")
+    );
     assert!(error.to_string().contains("5:10"));
 }
 
@@ -313,7 +317,7 @@ fn test_nested_method_call_shows_stack_trace() {
     eprintln!("Error output: {}", error_string);
 
     // Should contain the error message
-    assert!(error_string.contains("Undefined variable"));
+    assert!(error_string.contains("undefined local variable or method"));
 
     // Should show nested method calls in stack trace
     // Note: Stack traces might not show all nested calls depending on implementation
@@ -653,7 +657,7 @@ fn test_error_in_deeply_nested_calls() {
     eprintln!("Deep error output: {}", error_string);
 
     // Should contain the error message
-    assert!(error_string.contains("Undefined variable"));
+    assert!(error_string.contains("undefined local variable or method"));
 
     // Error occurred inside nested method calls
     // The actual error location will be where undefined_var is referenced

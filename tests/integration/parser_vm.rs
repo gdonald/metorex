@@ -222,7 +222,7 @@ fn hash_operations() {
 #[test]
 fn undefined_variable_error() {
     let err = run_err("puts undefined_xyz");
-    assert!(err.contains("Undefined variable"));
+    assert!(err.contains("undefined local variable or method"));
 }
 
 #[test]

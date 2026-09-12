@@ -15,3 +15,18 @@ fn test_struct_member_methods_no_parens_execution() {
     let output = run_example("struct/member_methods_no_parens.rb");
     assert_eq!(output, MEMBER_METHODS_OUTPUT);
 }
+
+/// The expected output of both `struct/shaped_by_initialize` variants.
+const SHAPED_BY_INITIALIZE_OUTPUT: &str = "true\n[3, 4]\n[5, nil]\n[\"held\", :tagged]\ntrue\n";
+
+#[test]
+fn test_struct_shaped_by_initialize_execution() {
+    let output = run_example("struct/shaped_by_initialize.rb");
+    assert_eq!(output, SHAPED_BY_INITIALIZE_OUTPUT);
+}
+
+#[test]
+fn test_struct_shaped_by_initialize_parens_execution() {
+    let output = run_example("struct/shaped_by_initialize_parens.rb");
+    assert_eq!(output, SHAPED_BY_INITIALIZE_OUTPUT);
+}

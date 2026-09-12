@@ -53,7 +53,17 @@ pub(super) fn undefined_variable_error(
     receiver: Option<Object>,
     position: Position,
 ) -> MetorexError {
-    let msg = format!("Undefined variable '{name}'");
+    // Ruby tells a constant apart from a name that could be either a local
+    // or a method, and names the object the lookup ran against.
+    let msg = if name.starts_with(char::is_uppercase) {
+        format!("uninitialized constant {name}")
+    } else {
+        let named = match &receiver {
+            Some(Object::Nil) | None => "main".to_string(),
+            Some(held) => receiver_wording(held),
+        };
+        format!("undefined local variable or method '{name}' for {named}")
+    };
     let exc = crate::object::Object::exception("NameError", msg.clone());
     if let Object::Exception(details) = &exc {
         let mut details = details.borrow_mut();
@@ -109,11 +119,19 @@ pub(super) fn undefined_method_error(
     args: &[Object],
     position: Position,
 ) -> MetorexError {
-    let message = format!(
-        "undefined method '{}' for {}",
-        method,
-        receiver_wording(receiver)
-    );
+    undefined_method_error_worded(method, receiver, args, receiver_wording(receiver), position)
+}
+
+/// The same error, told how to name the receiver. A caller with the machine
+/// at hand asks a class that wrote its own `name` what it is called.
+pub(super) fn undefined_method_error_worded(
+    method: &str,
+    receiver: &Object,
+    args: &[Object],
+    wording: String,
+    position: Position,
+) -> MetorexError {
+    let message = format!("undefined method '{}' for {}", method, wording);
     let exc = no_method_error(&message, method, receiver, args);
     MetorexError::UncaughtException {
         exception: exc,
@@ -124,22 +142,96 @@ pub(super) fn undefined_method_error(
 
 /// How Ruby names the receiver in a NoMethodError message: `nil`, `true`,
 /// `false`, and the classes and modules by name, everything else as an
-/// instance of its class.
+/// instance of its class. A class with no name of its own is named by the
+/// form it writes itself in.
 fn receiver_wording(receiver: &Object) -> String {
     match receiver {
         Object::Nil => "nil".to_string(),
         Object::Bool(true) => "true".to_string(),
         Object::Bool(false) => "false".to_string(),
-        Object::Class(class_rc) => format!("class {}", class_rc.ruby_name()),
-        Object::Module(module_rc) => format!("module {}", module_rc.ruby_name()),
+        Object::Class(class_rc) => format!("class {}", named_or_written(class_rc, receiver)),
+        Object::Module(module_rc) => format!("module {}", named_or_written(module_rc, receiver)),
         Object::Instance(instance) => {
-            format!("an instance of {}", instance.borrow().class.ruby_name())
+            // An object carrying methods of its own is named as itself, since
+            // its class is a singleton the program never wrote down.
+            if instance.borrow().singleton_class.borrow().is_some()
+                || !instance.borrow().singleton_methods.borrow().is_empty()
+            {
+                return receiver.to_string();
+            }
+            let class = std::rc::Rc::clone(&instance.borrow().class);
+            let written = Object::Class(std::rc::Rc::clone(&class));
+            format!("an instance of {}", named_or_written(&class, &written))
         }
         Object::Int(_) | Object::BigInt(_) => "an instance of Integer".to_string(),
         Object::Dict(_) => "an instance of Hash".to_string(),
         Object::Block(_) => "an instance of Proc".to_string(),
         other => format!("an instance of {}", other.type_name()),
     }
+}
+
+impl crate::vm::VirtualMachine {
+    /// How a NoMethodError names its receiver, asking a class that wrote a
+    /// `name` of its own what it is called. A class named the ordinary way
+    /// answers through `receiver_wording`.
+    pub(crate) fn receiver_wording_for(&mut self, receiver: &Object, position: Position) -> String {
+        let named = match receiver {
+            Object::Class(class) | Object::Module(class) => {
+                self.written_class_name(class, position)
+            }
+            Object::Instance(instance) => {
+                let has_singleton = instance.borrow().singleton_class.borrow().is_some()
+                    || !instance.borrow().singleton_methods.borrow().is_empty();
+                if has_singleton {
+                    None
+                } else {
+                    let class = std::rc::Rc::clone(&instance.borrow().class);
+                    self.written_class_name(&class, position)
+                }
+            }
+            _ => None,
+        };
+        match (receiver, named) {
+            (Object::Class(_), Some(name)) => format!("class {}", name),
+            (Object::Module(_), Some(name)) => format!("module {}", name),
+            (Object::Instance(_), Some(name)) => format!("an instance of {}", name),
+            _ => receiver_wording(receiver),
+        }
+    }
+
+    /// The name a class with none of its own answers from a `name` method the
+    /// program wrote for it, or None when there is no such method.
+    fn written_class_name(
+        &mut self,
+        class: &std::rc::Rc<crate::class::Class>,
+        position: Position,
+    ) -> Option<String> {
+        if !class.ruby_name().is_empty() {
+            return None;
+        }
+        let receiver = Object::Class(std::rc::Rc::clone(class));
+        let holds_name = matches!(
+            self.lookup_method(&receiver, "name"),
+            Some((_, method)) if !method.is_undefined && !method.body.is_empty()
+        );
+        if !holds_name {
+            return None;
+        }
+        match self.send_to_object(receiver, "name", Vec::new(), position) {
+            Ok(Object::String(text)) => Some(text.as_str().to_string()),
+            _ => None,
+        }
+    }
+}
+
+/// The name a class or module goes by, or the form it writes itself in when
+/// it has none.
+fn named_or_written(class: &std::rc::Rc<crate::class::Class>, written: &Object) -> String {
+    let named = class.ruby_name();
+    if named.is_empty() {
+        return written.to_string();
+    }
+    named.to_string()
 }
 
 /// A NoMethodError carrying the name it was raised for and the object it was
@@ -264,8 +356,14 @@ pub(super) fn binary_type_error(
     position: Position,
 ) -> MetorexError {
     // A value with no arithmetic of its own has no such method, which is what
-    // Ruby reports rather than a mismatch of types.
-    if matches!(left, Object::Nil | Object::Bool(_))
+    // Ruby reports rather than a mismatch of types. Text carries none of the
+    // number operators either, so the same goes for a String.
+    let bitwise = matches!(
+        op,
+        BinaryOp::BitwiseOr | BinaryOp::BitwiseAnd | BinaryOp::Xor
+    );
+    if (matches!(left, Object::Nil | Object::Bool(_))
+        || (bitwise && matches!(left, Object::String(_))))
         && let Some(named) = crate::vm::eval::binary_op_method_name(&op)
     {
         return undefined_method_error(named, left, std::slice::from_ref(right), position);

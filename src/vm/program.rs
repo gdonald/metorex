@@ -20,9 +20,11 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
                 name: "x".to_string(),
                 position: pos,
             }),
-            // `__send__` rather than `send`, since a class of the program's
-            // own may name `send` for something else, as a socket does.
-            method: "__send__".to_string(),
+            // `public_send` is what Ruby's symbol proc uses, so a name the
+            // receiver keeps to itself is refused rather than reached. It is
+            // also not `send`, which a class of the program's own may name
+            // for something else, as a socket does.
+            method: "public_send".to_string(),
             arguments: vec![Expression::Symbol {
                 value: sym.to_string(),
                 position: pos,
@@ -32,11 +34,15 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
         },
         position: pos,
     }];
-    BlockStatement::new(
+    let mut made = BlockStatement::new(
         vec!["x".to_string()],
         body,
         std::collections::HashMap::new(),
-    )
+    );
+    // What the callable stands for, which is what it says of itself in place
+    // of a file and a line.
+    made.from_symbol = Some(sym.to_string());
+    made
 }
 
 /// Build the block `&some_method` hands over: `{ |*args| target.call(*args) }`,
@@ -162,6 +168,11 @@ impl VirtualMachine {
                     ControlFlow::Break { position, .. } => {
                         return Err(loop_control_error("break", position));
                     }
+                    ControlFlow::Retry { position } => {
+                        return Err(MetorexError::BlockRetry {
+                            location: position_to_location(position),
+                        });
+                    }
                     ControlFlow::Redo { position } => {
                         return Err(loop_control_error("redo", position));
                     }
@@ -191,6 +202,11 @@ impl VirtualMachine {
                 }
                 ControlFlow::Break { position, .. } => {
                     return Err(loop_control_error("break", position));
+                }
+                ControlFlow::Retry { position } => {
+                    return Err(MetorexError::BlockRetry {
+                        location: position_to_location(position),
+                    });
                 }
                 ControlFlow::Redo { position } => {
                     return Err(loop_control_error("redo", position));

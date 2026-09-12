@@ -149,6 +149,21 @@ impl VirtualMachine {
                 // the method came from when that differs, the name, the
                 // parameters, and where it was written.
                 "inspect" | "to_s" => {
+                    // A Method handed over as a callable describes itself the
+                    // way a callable does, in bytes rather than in text.
+                    if method_obj.bound_self.is_some() {
+                        let where_written = self.method_source_label(method_obj);
+                        return Ok(Some(Object::String(Rc::new(
+                            crate::object::StringValue::with_encoding(
+                                format!(
+                                    "#<Proc:0x{:016x}{} (lambda)>",
+                                    Rc::as_ptr(method_obj) as usize,
+                                    where_written
+                                ),
+                                "ASCII-8BIT",
+                            ),
+                        ))));
+                    }
                     // A module with no name of its own is written the way it
                     // writes itself, which names the address it stands at.
                     let owner = match &method_obj.owner_class {
@@ -211,17 +226,10 @@ impl VirtualMachine {
                                 _ => String::new(),
                             };
                             if on_singleton {
-                                if matches!(bound, Object::Class(_) | Object::Module(_)) {
-                                    format!(
-                                        "#<Method: {}.{}{}{}>",
-                                        shown, method_obj.name, shape, where_written
-                                    )
-                                } else {
-                                    format!(
-                                        "#<Method: {}.{}{}{}>",
-                                        shown, method_obj.name, shape, where_written
-                                    )
-                                }
+                                format!(
+                                    "#<Method: {}.{}{}{}>",
+                                    shown, method_obj.name, shape, where_written
+                                )
                             } else {
                                 // A class or module is reached through its own
                                 // singleton class, which is what a method
@@ -348,10 +356,38 @@ impl VirtualMachine {
                     return Ok(Some(Object::Int(block_arity(block_obj))));
                 }
                 "parameters" => {
-                    return Ok(Some(block_parameter_list(block_obj)));
+                    // A curried callable takes whatever it is given, under no
+                    // name of its own.
+                    if self.carried_variable(receiver, "__curried").is_some() {
+                        return Ok(Some(Object::array(vec![Object::array(vec![
+                            Object::symbol("rest".to_string()),
+                        ])])));
+                    }
+                    // `parameters(lambda: true)` counts the named arguments
+                    // the way a lambda does, whatever this proc is.
+                    let strict = match arguments.first() {
+                        Some(Object::Dict(entries)) => match entries.borrow().get(":lambda") {
+                            Some(Object::Nil) | None => None,
+                            Some(held) => Some(held.is_truthy()),
+                        },
+                        _ => None,
+                    };
+                    return Ok(Some(block_parameter_list_as(block_obj, strict)));
                 }
                 "lambda?" => {
                     return Ok(Some(Object::Bool(block_obj.is_lambda)));
+                }
+                // Where the callable was written: the file and the line the
+                // block was opened on.
+                "source_location" => {
+                    let (Some(file), Some(line)) = (&block_obj.source_file, block_obj.opened_at)
+                    else {
+                        return Ok(Some(Object::Nil));
+                    };
+                    return Ok(Some(Object::array(vec![
+                        Object::string(file.clone()),
+                        Object::Int(line as i64),
+                    ])));
                 }
                 _ => {}
             }
@@ -460,6 +496,8 @@ enum BlockParameterKind {
     Keyword,
     KeywordRest,
     Block,
+    /// `**nil`, which declares that no keyword argument is taken.
+    NoKeywords,
 }
 
 /// The kind and declared name of one block parameter, or None for the marker
@@ -467,6 +505,9 @@ enum BlockParameterKind {
 fn block_parameter_parts(name: &str) -> Option<(BlockParameterKind, String)> {
     if name == crate::object::TRAILING_COMMA_PARAM {
         return None;
+    }
+    if name == crate::object::NO_KEYWORDS_PARAM {
+        return Some((BlockParameterKind::NoKeywords, String::new()));
     }
     if let Some(rest) = name.strip_prefix("**") {
         return Some((BlockParameterKind::KeywordRest, rest.to_string()));
@@ -488,7 +529,35 @@ fn block_parameter_parts(name: &str) -> Option<(BlockParameterKind, String)> {
 
 /// The parameter list a Proc reports. A proc that is not a lambda takes what
 /// it is handed, so it reports its positional parameters as optional.
+/// The parameter list a Proc reports. `lambda` overrides how a named
+/// parameter with no default is counted: a lambda calls it required where a
+/// proc calls it optional.
+pub(crate) fn block_parameter_list_as(
+    block_obj: &crate::object::BlockStatement,
+    lambda: Option<bool>,
+) -> Object {
+    match lambda {
+        None => block_parameter_list(block_obj),
+        Some(strict) => {
+            let mut shaped = block_obj.clone();
+            shaped.is_lambda = strict;
+            block_parameter_list(&shaped)
+        }
+    }
+}
+
 pub(crate) fn block_parameter_list(block_obj: &crate::object::BlockStatement) -> Object {
+    // The proc a Symbol answers takes a receiver and the rest, and Ruby
+    // reports the pair with no names.
+    if block_obj.parameters.len() == 2
+        && block_obj.parameters[0] == super::object_methods::SYMBOL_PROC_RECEIVER
+        && block_obj.parameters[1] == format!("*{}", super::object_methods::SYMBOL_PROC_ARGS)
+    {
+        return Object::array(vec![
+            Object::array(vec![Object::symbol("req".to_string())]),
+            Object::array(vec![Object::symbol("rest".to_string())]),
+        ]);
+    }
     let required_kind = if block_obj.is_lambda { "req" } else { "opt" };
     let mut listed = Vec::new();
     for (index, name) in block_obj.parameters.iter().enumerate() {
@@ -507,10 +576,23 @@ pub(crate) fn block_parameter_list(block_obj: &crate::object::BlockStatement) ->
             BlockParameterKind::Keyword => "keyreq",
             BlockParameterKind::KeywordRest => "keyrest",
             BlockParameterKind::Block => "block",
+            BlockParameterKind::NoKeywords => "nokey",
         };
         let mut pair = vec![Object::symbol(label.to_string())];
-        if !declared.is_empty() {
-            pair.push(Object::symbol(declared));
+        // An argument written with no name of its own is reported under the
+        // mark that stands for it.
+        let named = if declared.is_empty() {
+            match kind {
+                BlockParameterKind::Rest => "*".to_string(),
+                BlockParameterKind::KeywordRest => "**".to_string(),
+                BlockParameterKind::Block => "&".to_string(),
+                _ => String::new(),
+            }
+        } else {
+            declared
+        };
+        if !named.is_empty() {
+            pair.push(Object::symbol(named));
         }
         listed.push(Object::array(pair));
     }
@@ -518,7 +600,7 @@ pub(crate) fn block_parameter_list(block_obj: &crate::object::BlockStatement) ->
 }
 
 /// A Proc's arity, counted the same way a method's is.
-fn block_arity(block_obj: &crate::object::BlockStatement) -> i64 {
+pub(crate) fn block_arity(block_obj: &crate::object::BlockStatement) -> i64 {
     let mut required = 0i64;
     let mut optional_positional = false;
     let mut splat = false;
@@ -539,7 +621,7 @@ fn block_arity(block_obj: &crate::object::BlockStatement) -> i64 {
             BlockParameterKind::Keyword if defaulted => optional_keyword = true,
             BlockParameterKind::Keyword => required_keyword = true,
             BlockParameterKind::KeywordRest => optional_keyword = true,
-            BlockParameterKind::Block => {}
+            BlockParameterKind::Block | BlockParameterKind::NoKeywords => {}
         }
     }
     if required_keyword {

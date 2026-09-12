@@ -68,6 +68,11 @@ impl VirtualMachine {
                         Some(Object::Class(_)) | Some(Object::Module(_))
                     )
                 }
+                // A `def` registers its name in the environment as a Method
+                // so the function is reachable. A call form written with
+                // arguments names that method, so it dispatches rather than
+                // calling whatever the bare name would answer.
+                Some(held) if self.name_is_a_definition(name, held) => true,
                 _ => false,
             };
             if dispatch_to_self {
@@ -145,6 +150,65 @@ impl VirtualMachine {
             return self.call_native_function(&native_name, evaluated_args, position);
         }
 
+        // A call form written with arguments or a block names a method. A
+        // local of that name holding something that cannot be called is not
+        // what the call meant: Ruby reads `name(...)` as a method call
+        // whatever locals are in scope, which is what lets an example write
+        // `mock = mock("held")`.
+        if let Expression::Identifier { name, .. } = callee
+            && (!arguments.is_empty() || trailing_block.is_some())
+            && !arguments
+                .iter()
+                .any(|argument| matches!(argument, Expression::KeywordSplat { .. }))
+            && matches!(
+                self.environment().get(name),
+                Some(held)
+                    if !matches!(
+                        held,
+                        Object::Block(_)
+                            | Object::Method(_)
+                            | Object::NativeFunction(_)
+                            // A name holding a class or a module is the name
+                            // of that class, and a call form on it builds one.
+                            | Object::Class(_)
+                            | Object::Module(_)
+                    )
+            )
+        {
+            return self.evaluate_method_call(
+                &Expression::SelfExpr { position },
+                name,
+                arguments,
+                trailing_block,
+                position,
+            );
+        }
+
+        // A `def` registers its name in the environment as a Method so the
+        // function is reachable. A call form naming it dispatches as a method
+        // call, whatever the bare name on its own would answer. At the top
+        // level nothing binds `self`, so the case is taken here.
+        if let Expression::Identifier { name, .. } = callee
+            && self.environment().get("self").is_none()
+            // A `**held` argument is passed as keywords by the callable
+            // itself, so a call carrying one keeps the route that knows that.
+            && !arguments
+                .iter()
+                .any(|argument| matches!(argument, Expression::KeywordSplat { .. }))
+            && match self.environment().get(name) {
+                None => true,
+                Some(held) => self.name_is_a_definition(name, &held),
+            }
+        {
+            return self.evaluate_method_call(
+                &Expression::SelfExpr { position },
+                name,
+                arguments,
+                trailing_block,
+                position,
+            );
+        }
+
         // `Hash(x)` and the other Kernel conversion functions share a name
         // with a constant, so they are resolved here rather than by letting
         // the identifier fall through to the class it collides with.
@@ -176,6 +240,25 @@ impl VirtualMachine {
                 trailing_block,
                 position,
             );
+        }
+
+        // A Kernel function that runs when its bare name is evaluated has to
+        // be reached here with the arguments the call carries, since
+        // evaluating the name on its own would run it with none.
+        if let Expression::Identifier { name, .. } = callee
+            && let Some(Object::NativeFunction(native)) = self.environment().get(name)
+            && crate::vm::eval::identifier::runs_when_named_bare(&native)
+        {
+            let evaluated_args = self.evaluate_arguments(arguments)?;
+            let has_block = trailing_block.is_some();
+            if let Some(block_expr) = trailing_block {
+                self.pending_block = Some(self.evaluate_expression(block_expr)?);
+                self.pending_block_from_ampersand = false;
+            }
+            return match self.call_native_function(&native, evaluated_args, position) {
+                Err(MetorexError::BlockBreak { value, .. }) if has_block => Ok(value),
+                other => other,
+            };
         }
 
         // A bare identifier naming a zero-argument `def` is a call, so

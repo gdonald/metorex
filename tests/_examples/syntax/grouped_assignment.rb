@@ -1,8 +1,8 @@
 # A multiple assignment written inside a group answers its right-hand side.
-p(((a, b = 1, 2)))
+p((a, b = 1, 2))
 p([a, b])
 
-p(((first, second, third = 1)))
+p((first, second, third = 1))
 p([first, second, third])
 
 # `defined?` reports on an assignment without carrying it out.

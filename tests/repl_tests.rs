@@ -198,7 +198,7 @@ fn process_line_parse_error() {
 fn process_line_runtime_error() {
     let mut core = ReplCore::new();
     match core.process_line("undefined_var_xyz") {
-        LineResult::Error(msg) => assert!(msg.contains("Undefined variable")),
+        LineResult::Error(msg) => assert!(msg.contains("undefined local variable or method")),
         other => panic!("Expected Error for undefined var, got {:?}", other),
     }
 }
@@ -392,6 +392,8 @@ fn format_object_block() {
         is_lambda: false,
         source_file: None,
         home_frame: None,
+        opened_at: None,
+        from_symbol: None,
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }

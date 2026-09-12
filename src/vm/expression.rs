@@ -403,7 +403,7 @@ impl VirtualMachine {
                     Object::Regex(ref pattern, ref flags) => {
                         let translated =
                             crate::vm::native_methods::regexp_methods::uniquify_group_names(
-                                &pattern.as_str(),
+                                pattern.as_str(),
                             )
                             .0;
                         let mut builder = regex::RegexBuilder::new(&translated);
@@ -573,6 +573,13 @@ impl VirtualMachine {
                             value,
                             location: position_to_location(position),
                             home_frame: None,
+                        });
+                    }
+                    ControlFlow::Retry { position } => {
+                        // A `retry` written in a branch belongs to the begin
+                        // whose rescue body holds it, so it unwinds there.
+                        return Err(MetorexError::BlockRetry {
+                            location: position_to_location(position),
                         });
                     }
                     ControlFlow::Redo { position } => {

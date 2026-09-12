@@ -158,8 +158,13 @@ impl VirtualMachine {
                 if !f.is_finite() {
                     return Err(float_domain_error(*f, position));
                 }
-                let scale = (10f64).powi(-digits.max(-320) as i32);
-                Ok(Some(float_to_integer(round(f / scale) * scale)))
+                // The whole number the fraction sits in, rounded the way this
+                // method rounds, and then the same method again on that
+                // Integer. A power of ten past what a Float can spell exactly
+                // is still exact there.
+                let whole = float_to_integer(round(*f));
+                self.send_to_object(whole, method_name, vec![Object::Int(digits)], position)
+                    .map(Some)
             }
 
             "to_i" | "to_int" => {

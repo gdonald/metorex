@@ -16,6 +16,9 @@ use super::Object;
 /// trailing comma is what tells Ruby to destructure a single array argument,
 /// so it has to survive parsing; it never binds a name.
 pub const TRAILING_COMMA_PARAM: &str = ",";
+/// Marks a `|**nil|` declaration, which says the block takes no keyword
+/// arguments at all. It names nothing and binds nothing.
+pub const NO_KEYWORDS_PARAM: &str = "**nil";
 /// Marks a `|(a, b)|` group, whose names follow separated by commas. One
 /// array argument spreads across them.
 pub const DESTRUCTURED_GROUP_PREFIX: &str = "(";
@@ -60,6 +63,12 @@ pub struct BlockStatement {
     /// body unwinds to that invocation, however many other methods the block
     /// travels through first. None for a block created outside any method.
     pub home_frame: Option<u64>,
+    /// The line the block was opened on, which is where `source_location`
+    /// says it was written even when its body starts further down.
+    pub opened_at: Option<usize>,
+    /// The name a callable built from a Symbol stands for, which is what it
+    /// says of itself in place of a file and a line.
+    pub from_symbol: Option<String>,
 }
 
 /// Two blocks are the same when they were written the same way. The captured
@@ -92,6 +101,8 @@ impl BlockStatement {
             is_lambda: false,
             source_file: None,
             home_frame: None,
+            opened_at: None,
+            from_symbol: None,
         }
     }
 
@@ -117,6 +128,8 @@ impl BlockStatement {
             is_lambda,
             source_file: None,
             home_frame: None,
+            opened_at: None,
+            from_symbol: None,
         }
     }
 
@@ -152,7 +165,11 @@ impl BlockStatement {
     pub fn binding_parameters(&self) -> Vec<String> {
         self.parameters
             .iter()
-            .filter(|p| *p != TRAILING_COMMA_PARAM && !p.starts_with(BLOCK_LOCAL_PREFIX))
+            .filter(|p| {
+                *p != TRAILING_COMMA_PARAM
+                    && *p != NO_KEYWORDS_PARAM
+                    && !p.starts_with(BLOCK_LOCAL_PREFIX)
+            })
             .cloned()
             .collect()
     }

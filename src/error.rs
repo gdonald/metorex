@@ -159,6 +159,11 @@ pub enum MetorexError {
     #[error("Block redo")]
     BlockRedo { location: SourceLocation },
 
+    /// A `retry` inside a rescue body, unwinding to the `begin` that owns it
+    /// so its body runs again.
+    #[error("Block retry")]
+    BlockRetry { location: SourceLocation },
+
     /// A `throw tag, value` unwinding to the matching `catch`. `throw` only
     /// raises this once it has found a live catch for the tag, so it always
     /// has somewhere to land.
@@ -269,6 +274,7 @@ impl MetorexError {
             Self::BlockBreak { .. } => "block break",
             Self::BlockNext { .. } => "block next",
             Self::BlockRedo { .. } => "block redo",
+            Self::BlockRetry { .. } => "block retry",
             Self::Throw { .. } => "throw",
         }
     }

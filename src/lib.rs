@@ -70,6 +70,15 @@ pub fn split_short_flags(argument: String) -> Vec<String> {
     /// The flags that take a value, which ends the cluster they sit in.
     const TAKES_A_VALUE: &str = "rIWFe0CXKE";
 
+    // `-i` carries its value attached and may be written with none at all,
+    // which no short flag taking a value can be, so it is spelled out as the
+    // long form the argument parser reads.
+    if let Some(extension) = argument.strip_prefix("-i")
+        && !argument.starts_with("--")
+        && !extension.starts_with('=')
+    {
+        return vec![format!("--in-place={extension}")];
+    }
     if argument.len() < 3 || !argument.starts_with('-') || argument.starts_with("--") {
         return vec![argument];
     }

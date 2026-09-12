@@ -19,6 +19,27 @@ impl VirtualMachine {
         else_clause: Option<&[Statement]>,
         ensure_block: Option<&[Statement]>,
     ) -> Result<Object, MetorexError> {
+        // `retry` in a rescue body runs the whole begin body again, which is
+        // what this loop is for.
+        loop {
+            match self.begin_once(body, rescue_clauses, else_clause, ensure_block) {
+                Err(MetorexError::BlockRetry { .. }) => continue,
+                other => return other,
+            }
+        }
+    }
+
+    /// One pass over a begin body and whichever clause answers for it.
+    fn begin_once(
+        &mut self,
+        body: &[Statement],
+        rescue_clauses: &[crate::ast::RescueClause],
+        else_clause: Option<&[Statement]>,
+        ensure_block: Option<&[Statement]>,
+    ) -> Result<Object, MetorexError> {
+        // What `$!` named before this form ran, which a clause handling an
+        // exception of its own puts back when it is done.
+        let standing = self.globals().get("!").unwrap_or(Object::Nil);
         let body_result = self.execute_statements_for_value(body);
 
         // Convert internal RuntimeError/TypeError to a rescuable UncaughtException so that
@@ -83,7 +104,7 @@ impl VirtualMachine {
                 }
             }
             if handled {
-                self.set_current_exception(Object::Nil);
+                self.restore_current_exception(standing);
             }
         } else if body_result.is_ok()
             && let Some(else_stmts) = else_clause
@@ -148,6 +169,13 @@ impl VirtualMachine {
                         value,
                         location: position_to_location(position),
                         home_frame: None,
+                    });
+                }
+                // `retry` unwinds to the `begin` whose rescue body it sits
+                // in, which runs that body again.
+                ControlFlow::Retry { position } => {
+                    return Err(MetorexError::BlockRetry {
+                        location: position_to_location(position),
                     });
                 }
                 ControlFlow::Redo { position } => {

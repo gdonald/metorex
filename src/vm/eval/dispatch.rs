@@ -47,15 +47,9 @@ impl VirtualMachine {
             Expression::GlobalVariable { name, position } => {
                 // `$?` is the status of the last child waited for, which lives
                 // with the process rather than in the global table.
-                if name == "?" {
-                    return Ok(self.process_last_status());
-                }
-                // `$1` through `$9` name the captures of the last match, and
-                // `` $` `` and `$'` the text on either side of it.
-                if let Some(group) = crate::vm::native_methods::capture_reference(name) {
-                    return self.last_match_part(group, *position);
-                }
-                // A global given a second name reads what the first holds.
+                // A global given a second name reads what the first holds,
+                // whatever that first name is: `$MATCH` reads the match `$&`
+                // names the same way `$&` does.
                 let name = self
                     .global_aliases
                     .get(name)
@@ -63,6 +57,11 @@ impl VirtualMachine {
                     .unwrap_or_else(|| name.clone());
                 if name == "?" {
                     return Ok(self.process_last_status());
+                }
+                // `$1` through `$9` name the captures of the last match, and
+                // `` $` `` and `$'` the text on either side of it.
+                if let Some(group) = crate::vm::native_methods::capture_reference(&name) {
+                    return self.last_match_part(group, *position);
                 }
                 // `$@` is where the exception being handled was raised, which
                 // is the backtrace that exception carries.
@@ -119,6 +118,7 @@ impl VirtualMachine {
                 body,
                 captured_vars,
                 is_lambda,
+                position,
                 ..
             } => {
                 let mut captured = HashMap::new();
@@ -153,10 +153,17 @@ impl VirtualMachine {
                 );
                 // The block's body belongs to the file it was written in,
                 // wherever it is later called from.
-                block.source_file = self
-                    .current_source_file
-                    .clone()
-                    .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()));
+                // A block the core library opens stands in for Ruby's C code,
+                // which names no source location at all.
+                if !position.prelude {
+                    block.source_file = self
+                        .current_source_file
+                        .clone()
+                        .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()));
+                    // Where the block was opened, which is the line
+                    // `source_location` names however far down the body starts.
+                    block.opened_at = Some(position.line);
+                }
                 block.home_frame = self.current_method_frame;
                 Ok(Object::Block(Rc::new(block)))
             }

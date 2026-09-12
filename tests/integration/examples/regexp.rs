@@ -46,3 +46,36 @@ fn test_regexp_pattern_readings_no_parens_execution() {
     let output = run_example("regexp/pattern_readings_no_parens.rb");
     assert_eq!(output, PATTERN_READINGS_OUTPUT);
 }
+
+/// The expected output of both `regexp/pattern_options` variants, which differ only in whether
+/// the calls are written with parentheses.
+const PATTERN_OPTIONS_OUTPUT: &str = "0\n1\n2\n4\n7\n16\n16\n16\n0\n32\n\"uninitialized Regexp\"\n";
+
+#[test]
+fn test_regexp_pattern_options_execution() {
+    let output = run_example("regexp/pattern_options.rb");
+    assert_eq!(output, PATTERN_OPTIONS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_pattern_options_parens_execution() {
+    let output = run_example("regexp/pattern_options_parens.rb");
+    assert_eq!(output, PATTERN_OPTIONS_OUTPUT);
+}
+
+/// The expected output of both `regexp/end_of_subject` variants, which show
+/// where `\z` and `\Z` stand in a subject and differ only in whether the calls are
+/// written with parentheses.
+const END_OF_SUBJECT_OUTPUT: &str = "2\nnil\n2\n2\n\"file\"\n0\n";
+
+#[test]
+fn test_regexp_end_of_subject_execution() {
+    let output = run_example("regexp/end_of_subject.rb");
+    assert_eq!(output, END_OF_SUBJECT_OUTPUT);
+}
+
+#[test]
+fn test_regexp_end_of_subject_no_parens_execution() {
+    let output = run_example("regexp/end_of_subject_no_parens.rb");
+    assert_eq!(output, END_OF_SUBJECT_OUTPUT);
+}

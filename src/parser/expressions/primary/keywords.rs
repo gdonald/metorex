@@ -145,7 +145,10 @@ impl Parser {
     fn defined_argument(&mut self) -> Result<Expression, MetorexError> {
         let resume = self.stream.current_position();
         let position = self.peek().position;
-        if let Ok(statement) = self.parse_statement()
+        let held = std::mem::replace(&mut self.in_defined_argument, true);
+        let read = self.parse_statement();
+        self.in_defined_argument = held;
+        if let Ok(statement) = read
             && matches!(
                 statement,
                 crate::ast::Statement::Assignment { .. }
@@ -156,6 +159,7 @@ impl Parser {
                     | crate::ast::Statement::Break { .. }
                     | crate::ast::Statement::Continue { .. }
                     | crate::ast::Statement::Redo { .. }
+                    | crate::ast::Statement::Retry { .. }
             )
         {
             return Ok(Expression::BeginRescue {

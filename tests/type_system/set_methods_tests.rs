@@ -44,7 +44,7 @@ fn set_new_deduplicates() {
 #[test]
 fn set_new_error_non_array_arg() {
     let err = run_err("Set.new(42)");
-    assert!(err.contains("Array") || err.contains("type"));
+    assert!(err.contains("value must be enumerable"));
 }
 
 #[test]

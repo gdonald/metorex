@@ -25,14 +25,14 @@ fn test_defined_keyword_parens_execution() {
 
 #[test]
 fn test_kernel_conversion_execution() {
-    let expected = "42\n3\n42\n\n\n1\n2\nhi\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
+    let expected = "42\n3\n42\n\n1\n2\nhi\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
     let output = run_example("builtins/kernel_conversion.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_kernel_conversion_parens_execution() {
-    let expected = "42\n3\n42\n\n\n1\n2\nhi\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
+    let expected = "42\n3\n42\n\n1\n2\nhi\ncan't convert TrueClass into Integer\ncan't convert nil into Integer\n";
     let output = run_example("builtins/kernel_conversion_parens.rb");
     assert_eq!(output, expected);
 }
@@ -1456,4 +1456,54 @@ fn test_builtins_optimized_redefinition_execution() {
 fn test_builtins_optimized_redefinition_parens_execution() {
     let output = run_example("builtins/optimized_redefinition_parens.rb");
     assert_eq!(output, OPTIMIZED_REDEFINITION_OUTPUT);
+}
+
+/// The expected output of both `builtins/enumerator/walk_shapes` variants.
+const WALK_SHAPES_OUTPUT: &str = "100\n201\n\"#<Enumerator: uninitialized>\"\n\"#<Enumerator: 1..3:each>\"\n\"#<Enumerator: 1..3:each_slice(2)>\"\n3\ntrue\n:answered\n[3, 2, [:more]]\n[1, 2, 3, 4]\ntrue\n[1, 2, 3, 4]\n";
+
+#[test]
+fn test_builtins_enumerator_walk_shapes_execution() {
+    let output = run_example("builtins/enumerator/walk_shapes.rb");
+    assert_eq!(output, WALK_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_builtins_enumerator_walk_shapes_parens_execution() {
+    let output = run_example("builtins/enumerator/walk_shapes_parens.rb");
+    assert_eq!(output, WALK_SHAPES_OUTPUT);
+}
+
+/// The expected output of both `builtins/complex_powers` variants, which show
+/// a complex number raised to a power that is not a whole number and differ only in whether the calls are
+/// written with parentheses.
+const COMPLEX_POWERS_OUTPUT: &str =
+    "(3+4i)\n(1.0+0.0i)\n[-38.0, 41.0]\n[1.719133, 0.623125]\n[-0.504825, 3.104144]\n32\n";
+
+#[test]
+fn test_builtins_complex_powers_execution() {
+    let output = run_example("builtins/complex_powers.rb");
+    assert_eq!(output, COMPLEX_POWERS_OUTPUT);
+}
+
+#[test]
+fn test_builtins_complex_powers_no_parens_execution() {
+    let output = run_example("builtins/complex_powers_no_parens.rb");
+    assert_eq!(output, COMPLEX_POWERS_OUTPUT);
+}
+
+/// The expected output of both `builtins/frozen_answers` variants, which show
+/// what the runtime hands back frozen, and how a copy carries that state and differ only in whether the calls are
+/// written with parentheses.
+const FROZEN_ANSWERS_OUTPUT: &str = "[true, true, true]\ntrue\ntrue\n[true, true]\nfalse\n[1, 2, 3, 4]\ntrue\n[true, false, false]\n";
+
+#[test]
+fn test_builtins_frozen_answers_execution() {
+    let output = run_example("builtins/frozen_answers.rb");
+    assert_eq!(output, FROZEN_ANSWERS_OUTPUT);
+}
+
+#[test]
+fn test_builtins_frozen_answers_no_parens_execution() {
+    let output = run_example("builtins/frozen_answers_no_parens.rb");
+    assert_eq!(output, FROZEN_ANSWERS_OUTPUT);
 }

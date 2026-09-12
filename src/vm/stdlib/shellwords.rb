@@ -7,27 +7,33 @@ module Shellwords
     started = false
     rest = line
     until rest.empty?
+      # The match is read out before anything else runs: a method called in
+      # between would leave its own match behind.
       if rest =~ /\A\s+/
+        rest = $'
         words.push(field) if started
         field = ""
         started = false
-        rest = $'
       elsif rest =~ /\A'([^']*)'/
-        field += $1
-        started = true
+        inner = $1
         rest = $'
+        field += inner
+        started = true
       elsif rest =~ /\A"((?:[^"\\]|\\.)*)"/
-        field += $1.gsub(/\\([$`"\\\n])/, "\\1")
-        started = true
+        inner = $1
         rest = $'
+        field += inner.gsub(/\\([$`"\\\n])/, "\\1")
+        started = true
       elsif rest =~ /\A\\(.)/m
-        field += $1
-        started = true
+        inner = $1
         rest = $'
+        field += inner
+        started = true
       elsif rest =~ /\A[^\s'"\\]+/
-        field += $&
-        started = true
+        inner = $&
         rest = $'
+        field += inner
+        started = true
       else
         raise ArgumentError, "Unmatched quote: #{line.inspect}"
       end

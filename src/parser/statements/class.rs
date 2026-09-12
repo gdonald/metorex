@@ -38,6 +38,11 @@ impl Parser {
         // `class Name` — simple form, installed in the current lexical scope.
         let first_ident = match self.advance().kind {
             TokenKind::Ident(name) => name,
+            // `class nil::Foo` names no module to hold the class, which is
+            // read here and refused when the class is opened.
+            TokenKind::Nil => "nil".to_string(),
+            TokenKind::True => "true".to_string(),
+            TokenKind::False => "false".to_string(),
             _ => return Err(self.error_at_previous("Expected class name")),
         };
         let mut namespace_expr: Option<Box<Expression>> = None;

@@ -1436,3 +1436,20 @@ fn test_oop_singleton_on_a_collection_no_parens_execution() {
     let output = run_example("oop/singleton_on_a_collection_no_parens.rb");
     assert_eq!(output, SINGLETON_ON_A_COLLECTION_OUTPUT);
 }
+
+/// The expected output of both `oop/basic_object/answers_nothing` variants, which show
+/// what an object rooted at BasicObject answers, and what it takes on from Kernel and differ only in whether the calls are
+/// written with parentheses.
+const BASIC_OBJECT_ANSWERS_NOTHING_OUTPUT: &str = "undefined method 'to_s' for an instance of BasicObject\nfalse\nBasicObject\nfalse\n[true, false]\n";
+
+#[test]
+fn test_oop_basic_object_answers_nothing_execution() {
+    let output = run_example("oop/basic_object/answers_nothing.rb");
+    assert_eq!(output, BASIC_OBJECT_ANSWERS_NOTHING_OUTPUT);
+}
+
+#[test]
+fn test_oop_basic_object_answers_nothing_no_parens_execution() {
+    let output = run_example("oop/basic_object/answers_nothing_no_parens.rb");
+    assert_eq!(output, BASIC_OBJECT_ANSWERS_NOTHING_OUTPUT);
+}

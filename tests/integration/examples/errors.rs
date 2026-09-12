@@ -1030,3 +1030,54 @@ fn test_errors_raised_position_no_parens_execution() {
     let output = run_example("errors/raised_position_no_parens.rb");
     assert_eq!(output, RAISED_POSITION_OUTPUT);
 }
+
+/// The expected output of both `errors/handled_then_outer` variants, which differ only in whether
+/// the calls are written with parentheses.
+const HANDLED_THEN_OUTER_OUTPUT: &str =
+    "\"outer\"\n\"inner\"\n\"outer\"\nRuntimeError\nnil\n:swallowed\n\"again\"\n";
+
+#[test]
+fn test_errors_handled_then_outer_execution() {
+    let output = run_example("errors/handled_then_outer.rb");
+    assert_eq!(output, HANDLED_THEN_OUTER_OUTPUT);
+}
+
+#[test]
+fn test_errors_handled_then_outer_parens_execution() {
+    let output = run_example("errors/handled_then_outer_parens.rb");
+    assert_eq!(output, HANDLED_THEN_OUTER_OUTPUT);
+}
+
+/// The expected output of both `errors/name_and_method_messages` variants, which show
+/// how a NameError and a NoMethodError name what they were raised for and differ only in whether the calls are
+/// written with parentheses.
+const NAME_AND_METHOD_MESSAGES_OUTPUT: &str = "undefined local variable or method 'not_defined_anywhere' for main\nuninitialized constant NotDefinedAnywhere\nundefined method 'missing' for class Named\nundefined method 'missing' for an instance of Named\nundefined method 'missing' for #<Object:0xADDRESS>\n";
+
+#[test]
+fn test_errors_name_and_method_messages_execution() {
+    let output = run_example("errors/name_and_method_messages.rb");
+    assert_eq!(output, NAME_AND_METHOD_MESSAGES_OUTPUT);
+}
+
+#[test]
+fn test_errors_name_and_method_messages_no_parens_execution() {
+    let output = run_example("errors/name_and_method_messages_no_parens.rb");
+    assert_eq!(output, NAME_AND_METHOD_MESSAGES_OUTPUT);
+}
+
+/// The expected output of both `errors/backtrace/frame_labels` variants, which show
+/// how a backtrace names the frame each entry belongs to and differ only in whether the calls are
+/// written with parentheses.
+const BACKTRACE_FRAME_LABELS_OUTPUT: &str = "[\"'Held::Raiser.from_a_class_method'\", \"'<main>'\"]\n[\"'Held::Raiser#from_an_instance_method'\", \"'<main>'\"]\n\"'Runner.protect'\"\n";
+
+#[test]
+fn test_errors_backtrace_frame_labels_execution() {
+    let output = run_example("errors/backtrace/frame_labels.rb");
+    assert_eq!(output, BACKTRACE_FRAME_LABELS_OUTPUT);
+}
+
+#[test]
+fn test_errors_backtrace_frame_labels_no_parens_execution() {
+    let output = run_example("errors/backtrace/frame_labels_no_parens.rb");
+    assert_eq!(output, BACKTRACE_FRAME_LABELS_OUTPUT);
+}

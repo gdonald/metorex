@@ -318,16 +318,22 @@ impl Parser {
 
         // Parse function body
         let mut body = Vec::new();
-        while !self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure])
-            && !self.is_at_end()
-        {
-            self.skip_whitespace();
-            if self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure]) {
-                break;
+        self.def_body_depth += 1;
+        let collected = (|| -> Result<(), MetorexError> {
+            while !self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure])
+                && !self.is_at_end()
+            {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure]) {
+                    break;
+                }
+                body.push(self.parse_statement()?);
+                self.skip_whitespace();
             }
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
+            Ok(())
+        })();
+        self.def_body_depth -= 1;
+        collected?;
 
         // Check for method-level rescue/ensure (implicit begin)
         if self.check(&[TokenKind::Rescue, TokenKind::Ensure]) {

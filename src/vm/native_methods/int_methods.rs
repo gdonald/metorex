@@ -485,9 +485,16 @@ impl VirtualMachine {
                 let Some(letter) = u32::try_from(*code).ok().and_then(char::from_u32) else {
                     return Err(out_of_range());
                 };
-                Ok(Some(Object::String(std::rc::Rc::new(
-                    crate::object::StringValue::with_encoding(letter.to_string(), named),
-                ))))
+                let made = crate::object::StringValue::with_encoding(letter.to_string(), &named);
+                // In an encoding that spells every character with one byte,
+                // the number names that byte rather than a codepoint.
+                if (0..=255).contains(code)
+                    && !named.to_ascii_uppercase().starts_with("UTF")
+                    && !named.eq_ignore_ascii_case("US-ASCII")
+                {
+                    made.mark_bytes();
+                }
+                Ok(Some(Object::String(std::rc::Rc::new(made))))
             }
             "to_s" | "inspect" if !arguments.is_empty() => {
                 if arguments.len() != 1 {
@@ -562,6 +569,7 @@ impl VirtualMachine {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Retry { .. }
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
@@ -684,8 +692,23 @@ impl VirtualMachine {
                         )
                         .map(Some);
                 }
+                // An endless limit walks on without stopping, so the walk
+                // ends only when what reads it stops asking.
+                let endless = matches!(
+                    &arguments[0],
+                    Object::Float(limit)
+                        if limit.is_infinite()
+                            && (limit.is_sign_positive() == (method_name == "upto"))
+                );
                 let limit = match &arguments[0] {
                     Object::Int(limit) => *limit,
+                    Object::Float(_) if endless => {
+                        if method_name == "upto" {
+                            i64::MAX
+                        } else {
+                            i64::MIN
+                        }
+                    }
                     Object::Float(limit) if limit.is_finite() => {
                         let whole = match method_name {
                             "upto" => limit.floor(),
@@ -706,10 +729,10 @@ impl VirtualMachine {
                     }
                 };
                 let limit = &limit;
-                let sequence: Vec<i64> = if method_name == "upto" {
-                    (*n..=*limit).collect()
+                let sequence: Box<dyn Iterator<Item = i64>> = if method_name == "upto" {
+                    Box::new(*n..=*limit)
                 } else {
-                    (*limit..=*n).rev().collect()
+                    Box::new((*limit..=*n).rev())
                 };
                 let block = match self.pending_block.take() {
                     Some(Object::Block(b)) => b,
@@ -724,7 +747,22 @@ impl VirtualMachine {
                     None => {
                         // Without a block it answers an Enumerator over the
                         // sequence, which is what Ruby hands back.
-                        let counted = sequence.len() as i64;
+                        if endless {
+                            return self
+                                .build_enumerator_of_size(
+                                    receiver.clone(),
+                                    method_name,
+                                    arguments.to_vec(),
+                                    Object::Float(f64::INFINITY),
+                                    position,
+                                )
+                                .map(Some);
+                        }
+                        let counted = if method_name == "upto" {
+                            (*limit - *n + 1).max(0)
+                        } else {
+                            (*n - *limit + 1).max(0)
+                        };
                         return self
                             .build_enumerator(
                                 receiver.clone(),
@@ -742,6 +780,7 @@ impl VirtualMachine {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Retry { .. }
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }

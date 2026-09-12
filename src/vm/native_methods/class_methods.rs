@@ -9,6 +9,30 @@ use crate::vm::utils::{is_truthy, position_to_location};
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// Where a bare `autoload` registers: the scope the call sits in. A class
+    /// or module body is that scope, and inside a method body it is the
+    /// module the method was written in.
+    pub(crate) fn autoload_definee(&self) -> Option<Rc<crate::class::Class>> {
+        if let Some(open) = self.def_scope_stack.last() {
+            return Some(Rc::clone(open));
+        }
+        // A block carries the scope it was written in, which its own
+        // `def_scope_stack` holds, so only a method body reads the nesting
+        // the method captured.
+        if !matches!(
+            self.call_stack
+                .last()
+                .map(crate::vm::call_frame::CallFrame::kind),
+            Some(crate::vm::call_frame::FrameKind::Method { .. })
+        ) {
+            return None;
+        }
+        self.method_nesting_stack
+            .last()
+            .and_then(|nesting| nesting.first())
+            .map(Rc::clone)
+    }
+
     /// The elements `Array.new` builds from its arguments and block, which is
     /// also what a subclass of Array starts out holding.
     pub(crate) fn build_array_elements(
@@ -564,6 +588,14 @@ impl VirtualMachine {
         // `autoload :CONST, "path"` — register the constant→path mapping.
         // `autoload?(:CONST, [inherit=true])` returns the registered path.
         if method_name == "autoload" {
+            // `Kernel.autoload` registers where the caller sits, the same way
+            // the bare form does, rather than on Kernel itself.
+            if class_rc.name() == "Kernel"
+                && let Some(definee) = self.autoload_definee()
+                && !Rc::ptr_eq(&definee, class_rc)
+            {
+                return self.call_class_methods(&definee, method_name, arguments, position);
+            }
             let const_name = match arguments.first() {
                 Some(Object::Symbol(s)) => s.as_str().to_string(),
                 Some(Object::String(s)) => s.as_str().to_string(),
@@ -658,6 +690,15 @@ impl VirtualMachine {
                 let Some(value) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                // The external encoding always names one, so nothing stands
+                // for "no encoding" there.
+                if matches!(value, Object::Nil) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "default external cannot be nil",
+                        position,
+                    ));
+                }
                 let settled = self.encoding_setting(class_rc, value, position)?;
                 self.globals_mut()
                     .set("__Encoding_default_external", settled);
@@ -1070,6 +1111,16 @@ impl VirtualMachine {
                     if options & 4 != 0 {
                         flags.push('m');
                     }
+                    // A pattern told to match in one encoding whatever the
+                    // text is tagged with carries that as the `u` a literal
+                    // would have been written with, and one told to match
+                    // bytes carries the `n`.
+                    if options & 16 != 0 {
+                        flags.push('u');
+                    }
+                    if options & 32 != 0 {
+                        flags.push('n');
+                    }
                 }
                 Some(Object::Bool(true)) => flags.push('i'),
                 _ => {}
@@ -1258,7 +1309,7 @@ impl VirtualMachine {
                         .unwrap_or(Object::Nil);
                     return Ok(Some(Object::array(vec![directory, name])));
                 }
-                "expand_path" | "realpath" | "absolute_path" => {
+                "realpath" => {
                     if let Some(Object::String(s)) = arguments.first() {
                         let expanded = std::fs::canonicalize(&*s.as_str())
                             .ok()
@@ -1266,24 +1317,6 @@ impl VirtualMachine {
                             .unwrap_or_else(|| s.as_str().to_string());
                         return Ok(Some(Object::string(expanded)));
                     }
-                }
-                "join" => {
-                    let mut parts: Vec<String> = Vec::new();
-                    for arg in arguments {
-                        match arg {
-                            Object::String(s) => parts.push(s.as_str().to_string()),
-                            Object::Symbol(s) => parts.push(s.as_str().to_string()),
-                            Object::Array(arr) => {
-                                for item in arr.borrow().iter() {
-                                    if let Object::String(s) = item {
-                                        parts.push(s.as_str().to_string());
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    return Ok(Some(Object::string(parts.join("/"))));
                 }
                 "respond_to?" => {
                     if let Some(name_arg) = arguments.first() {
@@ -1337,6 +1370,29 @@ impl VirtualMachine {
                 "__queue_items".to_string(),
                 Object::Array(Rc::new(std::cell::RefCell::new(Vec::new()))),
             );
+            // `Queue.new(enumerable)` starts the queue off with what the
+            // enumerable holds, in the order it holds them.
+            if class_rc.name() == "Queue"
+                && let Some(held) = arguments.first()
+            {
+                let seeded = self.queue_seed_argument(held, position)?;
+                inst_rc
+                    .borrow_mut()
+                    .set_var("__queue_items".to_string(), Object::array(seeded));
+            }
+            // `SizedQueue.new(n)` says how many the queue holds, which it
+            // reports whether or not anything ever waits on it.
+            if class_rc.name() == "SizedQueue" {
+                let counted = match arguments.first() {
+                    Some(held) => self.queue_capacity_argument(held, position)?,
+                    None => {
+                        return Err(method_argument_error("new", 1, 0, position));
+                    }
+                };
+                inst_rc
+                    .borrow_mut()
+                    .set_var("__queue_max".to_string(), Object::Int(counted));
+            }
             return Ok(Some(Object::Instance(inst_rc)));
         }
         // Thread.new captures the block; we run it lazily on `value` so that
@@ -1506,16 +1562,30 @@ impl VirtualMachine {
                 let items = match &arguments[0] {
                     Object::Array(elements) => elements.borrow().clone(),
                     Object::Nil => Vec::new(),
-                    other if self.responds_to(other, "to_a") => {
-                        match self.send_to_object(other.clone(), "to_a", vec![], position)? {
+                    // Ruby walks the seed with `each_entry`, falling back to
+                    // `each`, and refuses anything that answers neither.
+                    other => {
+                        let walked = if self.responds_to(other, "each_entry") {
+                            "each_entry"
+                        } else if self.responds_to(other, "each") {
+                            "each"
+                        } else {
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                "value must be enumerable",
+                                position,
+                            ));
+                        };
+                        let walk = self.send_to_object(
+                            other.clone(),
+                            "to_enum",
+                            vec![Object::symbol(walked.to_string())],
+                            position,
+                        )?;
+                        match self.send_to_object(walk, "to_a", vec![], position)? {
                             Object::Array(elements) => elements.borrow().clone(),
                             _ => Vec::new(),
                         }
-                    }
-                    other => {
-                        return Err(method_argument_type_error(
-                            "Set.new", "Array", other, position,
-                        ));
                     }
                 };
                 let block = match self.pending_block.take() {
@@ -3266,12 +3336,29 @@ impl VirtualMachine {
         value: &Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        if !matches!(value, Object::String(_)) {
-            return Ok(value.clone());
-        }
+        // An Encoding stands for itself, and so does nil. Anything else is a
+        // name, which an object of the program's own spells through `to_str`.
+        let named = match value {
+            Object::String(_) => value.clone(),
+            Object::Nil | Object::Class(_) | Object::Module(_) => return Ok(value.clone()),
+            other if self.responds_to(other, "to_str") => {
+                Object::string(self.coerce_name_argument(other, position)?)
+            }
+            other => {
+                let message = format!(
+                    "no implicit conversion of {} into String",
+                    self.builtins().class_of(other).name()
+                );
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &message,
+                    position,
+                ));
+            }
+        };
         let found =
-            self.call_class_methods(class_rc, "find", std::slice::from_ref(value), position)?;
-        Ok(found.unwrap_or_else(|| value.clone()))
+            self.call_class_methods(class_rc, "find", std::slice::from_ref(&named), position)?;
+        Ok(found.unwrap_or(named))
     }
 
     pub(crate) fn coerce_name_argument(
@@ -3358,6 +3445,61 @@ impl VirtualMachine {
         Err(crate::vm::errors::invalid_name_error(
             msg, arg, receiver, position,
         ))
+    }
+
+    /// What a queue starts off holding: the elements an enumerable answers
+    /// for `to_a`, in the order it answers them.
+    pub(crate) fn queue_seed_argument(
+        &mut self,
+        held: &Object,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        if let Object::Array(elements) = held {
+            return Ok(elements.borrow().clone());
+        }
+        let named = self.builtins().class_of(held).ruby_name().to_string();
+        if !self.responds_to(held, "to_a") {
+            return Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!("can't convert {named} into Array"),
+                position,
+            ));
+        }
+        let answered = self.send_to_object(held.clone(), "to_a", vec![], position)?;
+        match answered {
+            Object::Array(elements) => Ok(elements.borrow().clone()),
+            other => {
+                let gives = self.builtins().class_of(&other).ruby_name().to_string();
+                Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!("can't convert {named} into Array ({named}#to_a gives {gives})"),
+                    position,
+                ))
+            }
+        }
+    }
+
+    /// How many a SizedQueue holds, which is a whole number above zero.
+    pub(crate) fn queue_capacity_argument(
+        &mut self,
+        held: &Object,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let counted: i64 = match held {
+            Object::Int(counted) => *counted,
+            other => {
+                let named = self.coerce_integer_argument(other, position)?;
+                named.try_into().unwrap_or(i64::MAX)
+            }
+        };
+        if counted <= 0 {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "queue size must be positive",
+                position,
+            ));
+        }
+        Ok(counted)
     }
 
     /// Search `class_rc` for constant `name` the way `const_defined?` does:

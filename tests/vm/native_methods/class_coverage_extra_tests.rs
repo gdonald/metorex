@@ -158,9 +158,13 @@ PreHost.new.greet
 // ── `File.join` with Symbol / Array elements (lines 273, 281) ────────────────
 
 #[test]
-fn file_join_with_symbols() {
-    let result = run(r#"File.join(:foo, :bar)"#);
-    assert_eq!(result, Some(Object::string("foo/bar")));
+fn file_join_with_symbols_raises() {
+    let message = run_err(r#"File.join(:foo, :bar)"#);
+    assert!(
+        message.contains("no implicit conversion of Symbol into String"),
+        "unexpected message: {}",
+        message
+    );
 }
 
 #[test]
@@ -170,9 +174,13 @@ fn file_join_with_array_elements() {
 }
 
 #[test]
-fn file_join_with_non_string_ignored() {
-    let result = run(r#"File.join("a", 42, "b")"#);
-    assert_eq!(result, Some(Object::string("a/b")));
+fn file_join_with_non_string_raises() {
+    let message = run_err(r#"File.join("a", 42, "b")"#);
+    assert!(
+        message.contains("no implicit conversion of Integer into String"),
+        "unexpected message: {}",
+        message
+    );
 }
 
 // ── `File.respond_to?` (lines 289-305) ───────────────────────────────────────
@@ -940,7 +948,7 @@ fn set_new_from_array() {
 #[test]
 fn set_new_from_non_array_errors() {
     let err = run_err(r#"Set.new(42)"#);
-    assert!(err.contains("Array") || err.contains("argument"));
+    assert!(err.contains("value must be enumerable"));
 }
 
 #[test]

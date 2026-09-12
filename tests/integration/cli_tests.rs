@@ -800,3 +800,50 @@ fn cli_k_flag_ignores_a_letter_that_names_no_encoding() {
         "source UTF-8\nexternal UTF-8\ninternal none\n"
     );
 }
+
+// ============================================================================
+// -i flag (editing the files ARGF reads in place)
+// ============================================================================
+
+#[test]
+fn cli_i_flag_edits_the_files_in_place_and_keeps_a_backup() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    for (script, mark) in [
+        ("tests/_examples/cli_flags/edit_in_place.rb", "parens"),
+        (
+            "tests/_examples/cli_flags/edit_in_place_no_parens.rb",
+            "plain",
+        ),
+    ] {
+        let directory = std::env::temp_dir();
+        let first = directory.join(format!("metorex_edit_one_{mark}.txt"));
+        let second = directory.join(format!("metorex_edit_two_{mark}.txt"));
+        std::fs::write(&first, "one\ntwo\n").expect("failed to write the first file");
+        std::fs::write(&second, "three\n").expect("failed to write the second file");
+        let output = metorex_cmd()
+            .current_dir(manifest_dir)
+            .args([
+                "-i.bak",
+                script,
+                first.to_str().expect("a path of text"),
+                second.to_str().expect("a path of text"),
+            ])
+            .output()
+            .expect("failed to execute");
+        assert!(
+            output.status.success(),
+            "stderr: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert_eq!(String::from_utf8(output.stdout).unwrap(), "");
+        let backup_one = directory.join(format!("metorex_edit_one_{mark}.txt.bak"));
+        let backup_two = directory.join(format!("metorex_edit_two_{mark}.txt.bak"));
+        assert_eq!(std::fs::read_to_string(&first).unwrap(), "ONE\nTWO\n");
+        assert_eq!(std::fs::read_to_string(&second).unwrap(), "THREE\n");
+        assert_eq!(std::fs::read_to_string(&backup_one).unwrap(), "one\ntwo\n");
+        assert_eq!(std::fs::read_to_string(&backup_two).unwrap(), "three\n");
+        for path in [first, second, backup_one, backup_two] {
+            std::fs::remove_file(path).expect("failed to clean up");
+        }
+    }
+}

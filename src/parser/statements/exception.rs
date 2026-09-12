@@ -209,7 +209,9 @@ impl Parser {
             }
         }
 
-        // Parse rescue body
+        // Parse rescue body. `retry` is only allowed here, which the depth
+        // counter is what says.
+        self.rescue_depth += 1;
         let mut body = Vec::new();
         while !self.check(&[
             TokenKind::Rescue,
@@ -231,6 +233,7 @@ impl Parser {
             self.skip_whitespace();
         }
 
+        self.rescue_depth -= 1;
         Ok(RescueClause {
             exception_types,
             variable_name,

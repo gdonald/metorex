@@ -242,6 +242,29 @@ impl VirtualMachine {
         ensure_block: &Option<Vec<Statement>>,
         _position: Position,
     ) -> Result<ControlFlow, MetorexError> {
+        // `retry` in a rescue body runs the whole begin body again, which is
+        // what this loop is for.
+        loop {
+            let outcome = self.begin_pass(body, rescue_clauses, else_clause, ensure_block);
+            match &outcome {
+                Ok(ControlFlow::Retry { .. }) => continue,
+                Err(MetorexError::BlockRetry { .. }) => continue,
+                _ => return outcome,
+            }
+        }
+    }
+
+    /// One pass over a begin body and whichever clause answers for it.
+    fn begin_pass(
+        &mut self,
+        body: &[Statement],
+        rescue_clauses: &[crate::ast::RescueClause],
+        else_clause: &Option<Vec<Statement>>,
+        ensure_block: &Option<Vec<Statement>>,
+    ) -> Result<ControlFlow, MetorexError> {
+        // What `$!` named before this form ran, which a clause handling an
+        // exception of its own puts back when it is done.
+        let standing = self.globals().get("!").unwrap_or(Object::Nil);
         // Execute the try block
         let body_result = self.execute_begin_branch(body);
 
@@ -355,8 +378,9 @@ impl VirtualMachine {
                 // Keep the exception result to propagate it
                 // Don't execute else clause
             } else {
-                // Clear the $! variable since exception was handled
-                self.set_current_exception(Object::Nil);
+                // A handled exception leaves `$!` naming whatever it was
+                // before, so an outer handler still names what it handles.
+                self.restore_current_exception(standing);
             }
         } else if final_result.is_ok()
             && matches!(

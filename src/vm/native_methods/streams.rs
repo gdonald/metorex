@@ -45,14 +45,65 @@ impl OpenStreams {
     }
 }
 
-/// The error a stream operation reports, named the way the operating system
-/// names it.
-fn stream_error(problem: &std::io::Error, what: &str, position: Position) -> MetorexError {
-    let named = match problem.raw_os_error() {
+/// A file opened the way the count says: 0 reads, 1 writes from the start, 2
+/// adds to the end, 3 reads and writes what is already there, 4 reads and
+/// writes from the start, and 5 reads and adds to the end.
+fn open_for(path: &str, count: i64) -> std::io::Result<std::fs::File> {
+    match count {
+        0 => std::fs::File::open(path),
+        2 => std::fs::OpenOptions::new()
+            .append(true)
+            .create(true)
+            .open(path),
+        // Reading and writing leaves what the file already holds where it
+        // is, which is what `r+` asks for. A file that is not there is not
+        // brought into being: `r+` reads as well as writes.
+        3 => std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .truncate(false)
+            .open(path),
+        4 => std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path),
+        5 => std::fs::OpenOptions::new()
+            .read(true)
+            .append(true)
+            .create(true)
+            .open(path),
+        _ => std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(path),
+    }
+}
+
+/// What the operating system calls this failure, without the number it
+/// carries: `Bad file descriptor` rather than `Bad file descriptor (os error
+/// 9)`.
+fn strerror_text(problem: &std::io::Error) -> String {
+    let spelled = problem.to_string();
+    match spelled.find(" (os error") {
+        Some(at) => spelled[..at].to_string(),
+        None => spelled,
+    }
+}
+
+/// The Errno class a failure belongs to.
+fn errno_class(problem: &std::io::Error) -> &'static str {
+    match problem.raw_os_error() {
         Some(libc::EPIPE) => "Errno::EPIPE",
         Some(libc::EBADF) => "Errno::EBADF",
         Some(libc::EAGAIN) => "Errno::EAGAIN",
         Some(libc::ENOTTY) => "Errno::ENOTTY",
+        Some(libc::ENXIO) => "Errno::ENXIO",
+        Some(libc::ENODEV) => "Errno::ENODEV",
+        Some(libc::ESPIPE) => "Errno::ESPIPE",
+        Some(libc::EPERM) => "Errno::EPERM",
         Some(libc::EINVAL) => "Errno::EINVAL",
         Some(libc::ENOENT) => "Errno::ENOENT",
         Some(libc::EACCES) => "Errno::EACCES",
@@ -62,7 +113,13 @@ fn stream_error(problem: &std::io::Error, what: &str, position: Position) -> Met
         Some(libc::ELOOP) => "Errno::ELOOP",
         Some(libc::ENAMETOOLONG) => "Errno::ENAMETOOLONG",
         _ => "IOError",
-    };
+    }
+}
+
+/// The error a stream operation reports, named the way the operating system
+/// names it.
+fn stream_error(problem: &std::io::Error, what: &str, position: Position) -> MetorexError {
+    let named = errno_class(problem);
     crate::vm::errors::simple_exception(named, &format!("{what}: {problem}"), position)
 }
 
@@ -385,26 +442,7 @@ impl VirtualMachine {
             "open" => {
                 // The count says how the file is opened: 0 reads, 1 writes
                 // from the start, 2 adds to the end, and 3 does both.
-                let opened = match count {
-                    0 => std::fs::File::open(&text),
-                    2 => std::fs::OpenOptions::new()
-                        .append(true)
-                        .create(true)
-                        .open(&text),
-                    // Reading and writing leaves what the file already holds
-                    // where it is, which is what `r+` asks for.
-                    3 => std::fs::OpenOptions::new()
-                        .read(true)
-                        .write(true)
-                        .create(true)
-                        .truncate(false)
-                        .open(&text),
-                    _ => std::fs::OpenOptions::new()
-                        .write(true)
-                        .create(true)
-                        .truncate(true)
-                        .open(&text),
-                };
+                let opened = open_for(&text, count);
                 match opened {
                     Ok(file) => {
                         // SAFETY: the descriptor came from the file just
@@ -414,6 +452,257 @@ impl VirtualMachine {
                     }
                     Err(problem) => Err(stream_error(&problem, &format!("open({text})"), position)),
                 }
+            }
+            // The descriptor a path names, handed back by number rather
+            // than under a handle. Whoever asked for it owns it from here,
+            // which is what `IO.sysopen` promises.
+            "sysopen" => {
+                let opened = open_for(&text, count);
+                match opened {
+                    Ok(file) => Ok(Object::Int(i64::from(file.into_raw_fd()))),
+                    Err(problem) => Err(stream_error(&problem, &format!("open({text})"), position)),
+                }
+            }
+            // One line: everything up to and including the separator the
+            // text names, or the whole of what is left where it names
+            // nothing. A count above zero stops the line at that many
+            // bytes, and the fifth argument, when it is 1, leaves the
+            // newlines before a paragraph behind.
+            "readline" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                // The separator is text the program wrote, so it stands for
+                // the bytes that text is spelled with.
+                let separator = text.as_bytes().to_vec();
+                let skipping = matches!(arguments.get(4), Some(Object::Int(1)));
+                let limit = if count > 0 {
+                    Some(count as usize)
+                } else {
+                    None
+                };
+                let mut collected: Vec<u8> = Vec::new();
+                let mut buffer = [0u8; 4096];
+                // The newlines standing before a paragraph belong to the
+                // one already read, so they are stepped over here.
+                if skipping {
+                    loop {
+                        // SAFETY: `buffer` names a run this call only writes
+                        // into, and one byte is what it is told to write.
+                        let read = unsafe {
+                            libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, 1)
+                        };
+                        if read <= 0 {
+                            break;
+                        }
+                        if buffer[0] != b'\n' {
+                            // SAFETY: `number` is a descriptor this program
+                            // holds open.
+                            unsafe { libc::lseek(number, -1, libc::SEEK_CUR) };
+                            break;
+                        }
+                    }
+                }
+                loop {
+                    let mut wanted = buffer.len();
+                    if let Some(limit) = limit {
+                        wanted = wanted.min(limit.saturating_sub(collected.len()));
+                    }
+                    if wanted == 0 {
+                        break;
+                    }
+                    // SAFETY: `buffer` names a run of `wanted` bytes this
+                    // call only writes into.
+                    let read = unsafe {
+                        libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, wanted)
+                    };
+                    if read < 0 {
+                        let problem = std::io::Error::last_os_error();
+                        if problem.raw_os_error() == Some(libc::EAGAIN) {
+                            break;
+                        }
+                        return Err(stream_error(&problem, "read", position));
+                    }
+                    if read == 0 {
+                        break;
+                    }
+                    let had = collected.len();
+                    collected.extend_from_slice(&buffer[..read as usize]);
+                    if !separator.is_empty() {
+                        let from = had.saturating_sub(separator.len() - 1);
+                        if let Some(at) = collected[from..]
+                            .windows(separator.len())
+                            .position(|run| run == separator.as_slice())
+                        {
+                            let ends = from + at + separator.len();
+                            let extra = (collected.len() - ends) as i64;
+                            // SAFETY: `number` is a descriptor this program
+                            // holds open.
+                            unsafe { libc::lseek(number, -extra, libc::SEEK_CUR) };
+                            collected.truncate(ends);
+                            break;
+                        }
+                    }
+                    if let Some(limit) = limit
+                        && collected.len() >= limit
+                    {
+                        break;
+                    }
+                }
+                // A count stops the line at a whole character rather than
+                // in the middle of one, so the bytes finishing the last
+                // character are read too.
+                while limit.is_some() {
+                    let Err(problem) = std::str::from_utf8(&collected) else {
+                        break;
+                    };
+                    if problem.error_len().is_some() || problem.valid_up_to() + 4 <= collected.len()
+                    {
+                        break;
+                    }
+                    // SAFETY: `buffer` names a run this call only writes
+                    // into, and one byte is what it is told to write.
+                    let read =
+                        unsafe { libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, 1) };
+                    if read <= 0 {
+                        break;
+                    }
+                    collected.push(buffer[0]);
+                }
+                // Text that reads as UTF-8 is handed back as text, and
+                // anything else byte by byte.
+                match String::from_utf8(collected.clone()) {
+                    Ok(text) => Ok(Object::string(text)),
+                    Err(_) => Ok(super::pack_format::bytes_to_string(&collected)),
+                }
+            }
+            // One character: the byte at the cursor and the bytes that
+            // finish the character it starts.
+            "getc" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                let mut collected: Vec<u8> = Vec::new();
+                let mut byte = [0u8; 1];
+                // SAFETY: `byte` names one byte this call only writes into.
+                let read = unsafe { libc::read(number, byte.as_mut_ptr() as *mut libc::c_void, 1) };
+                if read <= 0 {
+                    return Ok(Object::Nil);
+                }
+                collected.push(byte[0]);
+                // What a UTF-8 lead byte says about how many bytes follow it.
+                let following = match byte[0] {
+                    0xC0..=0xDF => 1,
+                    0xE0..=0xEF => 2,
+                    0xF0..=0xF7 => 3,
+                    _ => 0,
+                };
+                for _ in 0..following {
+                    // SAFETY: `byte` names one byte this call only writes
+                    // into.
+                    let read =
+                        unsafe { libc::read(number, byte.as_mut_ptr() as *mut libc::c_void, 1) };
+                    if read <= 0 {
+                        break;
+                    }
+                    collected.push(byte[0]);
+                }
+                match String::from_utf8(collected.clone()) {
+                    Ok(text) => Ok(Object::string(text)),
+                    Err(_) => Ok(super::pack_format::bytes_to_string(&collected)),
+                }
+            }
+            // The directory a descriptor names, made the one the program
+            // works from.
+            "fchdir" => {
+                // SAFETY: the count is a descriptor number the program was
+                // handed, and `fchdir` only reads it.
+                if unsafe { libc::fchdir(count as libc::c_int) } < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    let named = errno_class(&problem);
+                    return Err(crate::vm::errors::simple_exception(
+                        named,
+                        &format!("{} - fchdir", strerror_text(&problem)),
+                        position,
+                    ));
+                }
+                Ok(Object::Int(0))
+            }
+            // Where the descriptor stands. The count is the offset and the
+            // text says what it is measured from.
+            "seek" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                let whence = match &*text {
+                    "cur" => libc::SEEK_CUR,
+                    "end" => libc::SEEK_END,
+                    _ => libc::SEEK_SET,
+                };
+                // SAFETY: `number` is a descriptor this program holds open.
+                let moved = unsafe { libc::lseek(number, count as libc::off_t, whence) };
+                if moved < 0 {
+                    return Err(stream_error(
+                        &std::io::Error::last_os_error(),
+                        "seek",
+                        position,
+                    ));
+                }
+                Ok(Object::Int(moved as i64))
+            }
+            // How many bytes the descriptor stands over.
+            "size" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                // SAFETY: `held` is written by `fstat` before it is read,
+                // and `number` is a descriptor this program holds open.
+                let counted = unsafe {
+                    let mut held: libc::stat = std::mem::zeroed();
+                    if libc::fstat(number, &mut held) < 0 {
+                        return Err(stream_error(
+                            &std::io::Error::last_os_error(),
+                            "fstat",
+                            position,
+                        ));
+                    }
+                    held.st_size
+                };
+                Ok(Object::Int(counted as i64))
+            }
+            // The file cut down to, or filled out to, the count of bytes.
+            "truncate" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                // SAFETY: `number` is a descriptor this program holds open.
+                if unsafe { libc::ftruncate(number, count as libc::off_t) } < 0 {
+                    return Err(stream_error(
+                        &std::io::Error::last_os_error(),
+                        "truncate",
+                        position,
+                    ));
+                }
+                Ok(Object::Int(0))
+            }
+            // How the descriptor was opened: 0 reads, 1 writes, 2 does both.
+            // A number the operating system holds nothing under is refused
+            // the way every other question about it is.
+            "accmode" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                // SAFETY: asking about a descriptor reads nothing and writes
+                // nothing, whether or not it is still open.
+                let flags = unsafe { libc::fcntl(number, libc::F_GETFL) };
+                if flags < 0 {
+                    return Err(stream_error(
+                        &std::io::Error::last_os_error(),
+                        "fcntl",
+                        position,
+                    ));
+                }
+                Ok(Object::Int(i64::from(flags & libc::O_ACCMODE)))
             }
             _ => Ok(Object::Nil),
         }
@@ -444,6 +733,11 @@ impl VirtualMachine {
             };
             self.globals_mut().set(constant, stream.clone());
             self.globals_mut().set_variable(named, stream.clone());
+            // `$>` is where a program writes without naming a stream, which
+            // is standard output under the name Ruby's punctuation gives it.
+            if named == "stdout" {
+                self.globals_mut().set_variable(">", stream.clone());
+            }
             // The name is reached as a constant as well as through the
             // globals, so the scope the program runs in holds it too.
             self.environment_mut().define(constant.to_string(), stream);

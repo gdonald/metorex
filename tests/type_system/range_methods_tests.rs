@@ -48,9 +48,11 @@ fn range_each_error_with_args() {
 }
 
 #[test]
-fn range_each_error_no_block() {
-    let err = run_err("(1..5).each");
-    assert!(err.contains("block"));
+fn range_each_without_a_block_answers_a_walk() {
+    let result = run("(1..5).each.class.to_s");
+    assert_eq!(result, Some(Object::string("Enumerator")));
+    let counted = run("(1..5).each.size");
+    assert_eq!(counted, Some(Object::Int(5)));
 }
 
 #[test]

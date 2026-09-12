@@ -59,6 +59,35 @@ pub(crate) const SET_SUBCLASS_VAR: &str = "__set__";
 /// Instance variable an instance of a Hash subclass stores its entries in,
 /// since a plain Hash is a primitive rather than an instance.
 pub(crate) const HASH_SUBCLASS_VAR: &str = "__hash__";
+/// Instance variable an instance of a Range subclass stores its ends in,
+/// since a plain Range is a primitive rather than an instance.
+pub(crate) const RANGE_SUBCLASS_VAR: &str = "__range__";
+
+/// The backing range an instance of a Range subclass holds, or None when
+/// `receiver` is not one.
+pub(crate) fn range_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(RANGE_SUBCLASS_VAR)
+        .cloned()
+}
+
+/// The value read as a Range: a Range itself, or the one behind an instance
+/// of a Range subclass, which is what lets a subclass stand wherever a range
+/// is expected.
+pub(crate) fn as_range(value: &Object) -> Option<Object> {
+    if matches!(value, Object::Range { .. }) {
+        return Some(value.clone());
+    }
+    match range_subclass_value(value) {
+        Some(held @ Object::Range { .. }) => Some(held),
+        _ => None,
+    }
+}
 
 /// The characters behind an instance of a String subclass.
 pub(crate) fn string_subclass_value(receiver: &Object) -> Option<Object> {
@@ -165,6 +194,15 @@ impl VirtualMachine {
                     return Ok(Some(block.call(self, arguments.to_vec(), position)?));
                 }
                 "binding" => {
+                    // A curried callable is built by the library rather than
+                    // written in the program, so there is no scope behind it.
+                    if self.carried_variable(receiver, "__curried").is_some() {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            "Can't create Binding from C level Proc",
+                            position,
+                        ));
+                    }
                     use crate::object::Binding;
                     let binding = Binding::new(block.captured_vars().clone());
                     return Ok(Some(Object::Binding(Rc::new(binding))));
@@ -290,6 +328,14 @@ impl VirtualMachine {
                 }
                 return Ok(Some(result));
             }
+        }
+
+        // An instance of a Range subclass answers Range's methods, backed by
+        // the ends it was built with.
+        if let Some(ends) = range_subclass_value(receiver)
+            && let Some(result) = self.call_range_method(&ends, method_name, arguments, position)?
+        {
+            return Ok(Some(result));
         }
 
         // An instance of a Hash subclass answers Hash's methods, backed by
@@ -494,7 +540,6 @@ impl VirtualMachine {
             "ConditionVariable" => {
                 self.call_condition_variable_method(receiver, method_name, arguments, position)
             }
-            "File" => self.call_file_handle_method(receiver, method_name, arguments, position),
             "IO" => self.call_io_handle_method(receiver, method_name, arguments, position),
             "Process::Status" => {
                 self.call_process_status_method(receiver, method_name, arguments, position)
@@ -730,427 +775,6 @@ impl VirtualMachine {
         }
     }
 
-    /// Instance-level methods on file handles produced by `File.open`.
-    /// Implements just enough of IO/File: `puts`, `print`, `write`, `<<`,
-    /// `close`, `closed?`. Reads are not supported (handles are write-mode
-    /// only for spec-helper purposes).
-    pub(crate) fn call_file_handle_method(
-        &mut self,
-        receiver: &Object,
-        method_name: &str,
-        arguments: &[Object],
-        _position: Position,
-    ) -> Result<Option<Object>, MetorexError> {
-        let inst = match receiver {
-            Object::Instance(i) => Rc::clone(i),
-            _ => return Ok(None),
-        };
-        // Only intercept if this instance was produced by `File.open`
-        // (carries `__file_path`); otherwise return None and let the
-        // generic class methods (which include reopens of `File`) handle
-        // the call.
-        let path = match inst.borrow().get_var("__file_path").cloned() {
-            Some(Object::String(s)) => s.as_str().to_string(),
-            _ => return Ok(None),
-        };
-        let append_text = |contents: String| -> Result<(), MetorexError> {
-            use std::io::Write as _;
-            let mut f = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(&path)
-                .map_err(|e| {
-                    MetorexError::runtime_error(
-                        format!("Failed to open '{}' for write: {}", path, e),
-                        crate::error::SourceLocation::new(0, 0, 0),
-                    )
-                })?;
-            f.write_all(contents.as_bytes()).map_err(|e| {
-                MetorexError::runtime_error(
-                    format!("Failed to write to '{}': {}", path, e),
-                    crate::error::SourceLocation::new(0, 0, 0),
-                )
-            })?;
-            Ok(())
-        };
-        // Reading a closed handle, moving it, or asking where it stands is
-        // refused. What it is and what it was opened on still answer, and so
-        // does everything an object answers whatever it holds.
-        if matches!(
-            inst.borrow().get_var("__file_closed"),
-            Some(Object::Bool(true))
-        ) && matches!(
-            method_name,
-            "puts"
-                | "print"
-                | "write"
-                | "<<"
-                | "read"
-                | "gets"
-                | "readline"
-                | "readlines"
-                | "each"
-                | "each_line"
-                | "getc"
-                | "readchar"
-                | "readbyte"
-                | "eof"
-                | "eof?"
-                | "pos"
-                | "tell"
-                | "pos="
-                | "seek"
-                | "rewind"
-                | "lineno"
-                | "lineno="
-                | "fsync"
-                | "fdatasync"
-                | "fcntl"
-                | "ioctl"
-                | "fileno"
-                | "to_i"
-                | "sync"
-                | "sync="
-                | "flush"
-        ) {
-            return Err(crate::vm::errors::simple_exception(
-                "IOError",
-                "closed stream",
-                _position,
-            ));
-        }
-        match method_name {
-            "puts" => {
-                if arguments.is_empty() {
-                    append_text("\n".to_string())?;
-                } else {
-                    for arg in arguments {
-                        let s = match arg {
-                            Object::String(s) => s.as_str().to_string(),
-                            other => format!("{}", other),
-                        };
-                        let mut line = s;
-                        if !line.ends_with('\n') {
-                            line.push('\n');
-                        }
-                        append_text(line)?;
-                    }
-                }
-                Ok(Some(Object::Nil))
-            }
-            "print" | "write" | "<<" => {
-                for arg in arguments {
-                    let s = match arg {
-                        Object::String(s) => s.as_str().to_string(),
-                        other => format!("{}", other),
-                    };
-                    append_text(s)?;
-                }
-                Ok(Some(receiver.clone()))
-            }
-            // Each line of the file, with its terminator, yielded to the
-            // block or returned as an array.
-            "each_line" | "readlines" => {
-                let contents = std::fs::read_to_string(&path).map_err(|error| {
-                    MetorexError::runtime_error(
-                        format!("Failed to read '{}': {}", path, error),
-                        crate::error::SourceLocation::new(0, 0, 0),
-                    )
-                })?;
-                let lines: Vec<Object> = contents
-                    .split_inclusive('\n')
-                    .map(|line| Object::string(line.to_string()))
-                    .collect();
-                // Reading every line leaves the stream at the end, which is
-                // what `pos` and `eof?` report afterwards.
-                let reached = handle_offset(&inst) + contents.len();
-                set_handle_offset(&inst, reached);
-                match self.pending_block.take() {
-                    Some(Object::Block(block)) => {
-                        for line in lines {
-                            self.execute_block_body(&block, vec![line])?;
-                        }
-                        Ok(Some(receiver.clone()))
-                    }
-                    _ => Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(lines))))),
-                }
-            }
-            "read" => {
-                // A character device such as /dev/urandom never reaches an
-                // end, so a bounded read has to stop at the count asked for
-                // rather than draining the name.
-                if let Some(Object::Int(length)) = arguments.first()
-                    && !std::fs::metadata(&path)
-                        .map(|found| found.is_file())
-                        .unwrap_or(false)
-                {
-                    use std::io::Read;
-                    let wanted = (*length).max(0) as u64;
-                    let mut held = Vec::new();
-                    let opened = std::fs::File::open(&path).map_err(|error| {
-                        MetorexError::runtime_error(
-                            format!("Failed to read '{}': {}", path, error),
-                            crate::error::SourceLocation::new(0, 0, 0),
-                        )
-                    })?;
-                    opened
-                        .take(wanted)
-                        .read_to_end(&mut held)
-                        .map_err(|error| {
-                            MetorexError::runtime_error(
-                                format!("Failed to read '{}': {}", path, error),
-                                crate::error::SourceLocation::new(0, 0, 0),
-                            )
-                        })?;
-                    return Ok(Some(pack_format::bytes_to_string(&held)));
-                }
-                let contents = std::fs::read_to_string(&path).map_err(|error| {
-                    MetorexError::runtime_error(
-                        format!("Failed to read '{}': {}", path, error),
-                        crate::error::SourceLocation::new(0, 0, 0),
-                    )
-                })?;
-                // Reading picks up where the last `gets` left off and drains
-                // the handle, so a second read answers an empty string.
-                let offset = match inst.borrow().get_var("__file_offset") {
-                    Some(Object::Int(offset)) => *offset as usize,
-                    _ => 0,
-                };
-                let remaining = contents.get(offset..).unwrap_or("").to_string();
-                // `read(length)` takes that many characters and leaves the rest.
-                let taken = match arguments.first() {
-                    Some(Object::Int(length)) => {
-                        let length = (*length).max(0) as usize;
-                        remaining.chars().take(length).collect::<String>()
-                    }
-                    _ => remaining,
-                };
-                inst.borrow_mut().set_var(
-                    "__file_offset".to_string(),
-                    Object::Int((offset + taken.len()) as i64),
-                );
-                Ok(Some(Object::string(taken)))
-            }
-            // One line with its terminator, or nil once the file is drained.
-            "gets" | "readline" => {
-                let contents = std::fs::read_to_string(&path).map_err(|error| {
-                    MetorexError::runtime_error(
-                        format!("Failed to read '{}': {}", path, error),
-                        crate::error::SourceLocation::new(0, 0, 0),
-                    )
-                })?;
-                let offset = match inst.borrow().get_var("__file_offset") {
-                    Some(Object::Int(offset)) => *offset as usize,
-                    _ => 0,
-                };
-                let Some(rest) = contents.get(offset..).filter(|rest| !rest.is_empty()) else {
-                    return Ok(Some(Object::Nil));
-                };
-                let line = match rest.find('\n') {
-                    Some(end) => &rest[..=end],
-                    None => rest,
-                };
-                inst.borrow_mut().set_var(
-                    "__file_offset".to_string(),
-                    Object::Int((offset + line.len()) as i64),
-                );
-                let counted = match inst.borrow().get_var("__file_lineno") {
-                    Some(Object::Int(counted)) => *counted,
-                    _ => 0,
-                };
-                inst.borrow_mut()
-                    .set_var("__file_lineno".to_string(), Object::Int(counted + 1));
-                Ok(Some(Object::string(line.to_string())))
-            }
-            // One character, and nil once the handle is drained. `readchar`
-            // is the same reading, refused at the end rather than answered
-            // with nil.
-            "getc" | "readchar" => {
-                let contents = read_handle(&path)?;
-                let offset = handle_offset(&inst);
-                let Some(character) = contents.get(offset..).and_then(|rest| rest.chars().next())
-                else {
-                    if method_name == "readchar" {
-                        return Err(crate::vm::errors::simple_exception(
-                            "EOFError",
-                            "end of file reached",
-                            _position,
-                        ));
-                    }
-                    return Ok(Some(Object::Nil));
-                };
-                set_handle_offset(&inst, offset + character.len_utf8());
-                Ok(Some(Object::string(character.to_string())))
-            }
-            "eof" | "eof?" => {
-                // A stream opened only for writing has nothing to read, and
-                // asking how far a reading has got is refused.
-                let mode = match inst.borrow().get_var("__file_mode") {
-                    Some(Object::String(text)) => text.as_str().to_string(),
-                    _ => String::new(),
-                };
-                if mode.starts_with('w') && !mode.contains('+') {
-                    return Err(crate::vm::errors::simple_exception(
-                        "IOError",
-                        "not opened for reading",
-                        _position,
-                    ));
-                }
-                let contents = read_handle(&path)?;
-                Ok(Some(Object::Bool(handle_offset(&inst) >= contents.len())))
-            }
-            "pos" | "tell" => Ok(Some(Object::Int(handle_offset(&inst) as i64))),
-            // `seek` counts from the start, the end, or where the handle
-            // already stands, which is what its second argument names.
-            "pos=" | "seek" => {
-                // A place in the stream is named by an Integer, or by
-                // anything that spells itself as one.
-                let wanted = match arguments.first() {
-                    Some(Object::Int(offset)) => *offset,
-                    Some(Object::BigInt(_)) => {
-                        return Err(crate::vm::errors::simple_exception(
-                            "RangeError",
-                            "bignum too big to convert into `long'",
-                            _position,
-                        ));
-                    }
-                    Some(held) => {
-                        let named = if method_name == "seek" {
-                            "seek"
-                        } else {
-                            "pos="
-                        };
-                        match self.integer_argument(named, held, _position) {
-                            Ok(offset) => offset,
-                            Err(_) => {
-                                let message = format!(
-                                    "no implicit conversion of {} into Integer",
-                                    self.builtins().class_of(held).ruby_name()
-                                );
-                                return Err(crate::vm::errors::simple_exception(
-                                    "TypeError",
-                                    &message,
-                                    _position,
-                                ));
-                            }
-                        }
-                    }
-                    None => 0,
-                };
-                let whence = match arguments.get(1) {
-                    Some(Object::Int(whence)) => *whence,
-                    _ => 0,
-                };
-                let anchor = match whence {
-                    1 => handle_offset(&inst) as i64,
-                    2 => read_handle(&path)?.len() as i64,
-                    _ => 0,
-                };
-                // A place before the start of the stream is no place at all.
-                let reached = anchor + wanted;
-                if reached < 0 {
-                    return Err(crate::vm::errors::simple_exception(
-                        "Errno::EINVAL",
-                        "Invalid argument",
-                        _position,
-                    ));
-                }
-                set_handle_offset(&inst, reached as usize);
-                Ok(Some(Object::Int(0)))
-            }
-            "rewind" => {
-                set_handle_offset(&inst, 0);
-                inst.borrow_mut()
-                    .set_var("__file_lineno".to_string(), Object::Int(0));
-                Ok(Some(Object::Int(0)))
-            }
-            // Metorex writes each `write` straight through to the file, so
-            // there is nothing held back for `flush` to send on.
-            "flush" => Ok(Some(receiver.clone())),
-            "lineno" => Ok(Some(match inst.borrow().get_var("__file_lineno") {
-                Some(Object::Int(counted)) => Object::Int(*counted),
-                _ => Object::Int(0),
-            })),
-            "lineno=" => {
-                let counted = arguments.first().cloned().unwrap_or(Object::Int(0));
-                inst.borrow_mut()
-                    .set_var("__file_lineno".to_string(), counted.clone());
-                Ok(Some(counted))
-            }
-            // Nothing is buffered on the way out, so there is nothing left to
-            // push to storage and the request answers at once.
-            "fsync" | "fdatasync" => Ok(Some(Object::Int(0))),
-            // One byte as a number, refused at the end rather than answered
-            // with nil.
-            "readbyte" => {
-                let contents = read_handle(&path)?;
-                let offset = handle_offset(&inst);
-                let Some(byte) = contents.as_bytes().get(offset) else {
-                    return Err(crate::vm::errors::simple_exception(
-                        "EOFError",
-                        "end of file reached",
-                        _position,
-                    ));
-                };
-                let byte = *byte;
-                set_handle_offset(&inst, offset + 1);
-                Ok(Some(Object::Int(byte as i64)))
-            }
-            // `reopen` points the handle at another name and starts it over,
-            // which is how a closed stream is put back to work.
-            "reopen" => {
-                // A name may be spelled out by anything answering `to_path`,
-                // which is what a Pathname hands over.
-                let named = match arguments.first() {
-                    Some(Object::String(named)) => Some(Object::String(Rc::clone(named))),
-                    // A stream stands for itself rather than for its name, so
-                    // only something that is not one is asked for a path.
-                    Some(other)
-                        if !self.responds_to(other, "to_io")
-                            && self.responds_to(other, "to_path") =>
-                    {
-                        Some(self.send_to_object(
-                            other.clone(),
-                            "to_path",
-                            Vec::new(),
-                            _position,
-                        )?)
-                    }
-                    // Anything else names a stream this one is pointed at,
-                    // which the core library's `reopen` does.
-                    Some(_) => return Ok(None),
-                    None => None,
-                };
-                if let Some(Object::String(named)) = named {
-                    inst.borrow_mut()
-                        .set_var("__file_path".to_string(), Object::String(named));
-                }
-                if let Some(mode) = arguments.get(1) {
-                    inst.borrow_mut()
-                        .set_var("__file_mode".to_string(), mode.clone());
-                }
-                set_handle_offset(&inst, 0);
-                inst.borrow_mut()
-                    .set_var("__file_closed".to_string(), Object::Bool(false));
-                inst.borrow_mut()
-                    .set_var("__file_lineno".to_string(), Object::Int(0));
-                Ok(Some(receiver.clone()))
-            }
-            // A closed handle refuses nothing yet, but it reports itself as
-            // closed, which is what a caller checks before reading again.
-            "close" => {
-                inst.borrow_mut()
-                    .set_var("__file_closed".to_string(), Object::Bool(true));
-                Ok(Some(Object::Nil))
-            }
-            "closed?" => Ok(Some(Object::Bool(matches!(
-                inst.borrow().get_var("__file_closed"),
-                Some(Object::Bool(true))
-            )))),
-            _ => Ok(None),
-        }
-    }
-
     /// Instance-level Queue / SizedQueue methods. metorex runs blocks
     /// synchronously, so blocking-pop semantics aren't useful; `pop` on an
     /// empty queue returns nil rather than blocking. Enough for spec
@@ -1234,6 +858,23 @@ impl VirtualMachine {
                 Ok(Some(val))
             }
             "size" | "length" | "count" => Ok(Some(Object::Int(items_arr.borrow().len() as i64))),
+            // How many a SizedQueue holds. Nothing ever waits on one here,
+            // but the count it was made with is still what it reports.
+            "max" => Ok(inst.borrow().get_var("__queue_max").cloned()),
+            "max=" => {
+                let Some(held) = arguments.first() else {
+                    return Err(crate::vm::errors::method_argument_error(
+                        method_name,
+                        1,
+                        0,
+                        _position,
+                    ));
+                };
+                let counted = self.queue_capacity_argument(held, _position)?;
+                inst.borrow_mut()
+                    .set_var("__queue_max".to_string(), Object::Int(counted));
+                Ok(Some(Object::Int(counted)))
+            }
             "empty?" => Ok(Some(Object::Bool(items_arr.borrow().is_empty()))),
             "clear" => {
                 items_arr.borrow_mut().clear();
@@ -1381,31 +1022,6 @@ impl VirtualMachine {
         ];
         self.send_to_object(enumerator, "over", call, position)
     }
-}
-
-/// The whole of an open handle's file. Every read works from the text and the
-/// offset the handle carries rather than from a descriptor.
-fn read_handle(path: &str) -> Result<String, MetorexError> {
-    std::fs::read_to_string(path).map_err(|error| {
-        MetorexError::runtime_error(
-            format!("Failed to read '{}': {}", path, error),
-            crate::error::SourceLocation::new(0, 0, 0),
-        )
-    })
-}
-
-/// How far into the file the handle stands.
-fn handle_offset(instance: &Rc<std::cell::RefCell<crate::object::Instance>>) -> usize {
-    match instance.borrow().get_var("__file_offset") {
-        Some(Object::Int(offset)) => (*offset).max(0) as usize,
-        _ => 0,
-    }
-}
-
-fn set_handle_offset(instance: &Rc<std::cell::RefCell<crate::object::Instance>>, offset: usize) {
-    instance
-        .borrow_mut()
-        .set_var("__file_offset".to_string(), Object::Int(offset as i64));
 }
 
 /// A string cut from another is in the same encoding, so an answer still

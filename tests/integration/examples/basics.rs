@@ -374,14 +374,14 @@ fn test_basics_numeric_equality_parens_execution() {
 
 #[test]
 fn test_basics_puts_array_execution() {
-    let expected = "a\nb\n1\n2\n3\n\nwith newline\nplain\n1\na\nb\n";
+    let expected = "a\nb\n1\n2\n3\nwith newline\nplain\n1\na\nb\n";
     let output = run_example("basics/puts_array.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_basics_puts_array_parens_execution() {
-    let expected = "a\nb\n1\n2\n3\n\nwith newline\nplain\n1\na\nb\n";
+    let expected = "a\nb\n1\n2\n3\nwith newline\nplain\n1\na\nb\n";
     let output = run_example("basics/puts_array_parens.rb");
     assert_eq!(output, expected);
 }

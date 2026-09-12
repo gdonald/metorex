@@ -84,6 +84,13 @@ impl CallFrame {
     }
 
     /// Record the file the call site sits in.
+    /// Record where the frame was entered from, which is what pairs a
+    /// backtrace entry with the frame that made the call.
+    pub fn with_location(mut self, location: Option<String>) -> Self {
+        self.location = location;
+        self
+    }
+
     pub fn with_source_file(mut self, source_file: Option<String>) -> Self {
         self.source_file = source_file;
         self

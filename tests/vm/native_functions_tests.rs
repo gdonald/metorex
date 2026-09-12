@@ -1655,6 +1655,16 @@ fn short_flags_cluster_and_a_value_rides_on_the_end() {
         split_short_flags("--version".to_string()),
         vec!["--version".to_string()]
     );
+    // `-i` carries its value attached and may be written with none at all,
+    // which is the long form the argument parser reads.
+    assert_eq!(
+        split_short_flags("-i.bak".to_string()),
+        vec!["--in-place=.bak".to_string()]
+    );
+    assert_eq!(
+        split_short_flags("-i".to_string()),
+        vec!["--in-place=".to_string()]
+    );
 }
 
 #[test]
@@ -3113,17 +3123,22 @@ answered = held.source_location
 }
 
 #[test]
-fn a_copy_of_a_binding_is_written_to_on_its_own() {
+fn a_copy_of_a_binding_shares_the_locals_it_names() {
+    // A copy is shallow: the two name the same locals, so writing one is seen
+    // through either. A local added afterwards belongs to the one it was
+    // added to alone.
     let result = run(r#"
 held = binding
 held.local_variable_set :counted, 1
 copied = held.dup
 copied.local_variable_set :counted, 2
-[held.local_variable_get(:counted), copied.local_variable_get(:counted)]
+copied.local_variable_set :later, 3
+[held.local_variable_get(:counted), copied.local_variable_get(:counted),
+ held.local_variable_defined?(:later), copied.local_variable_defined?(:later)]
 "#);
     assert_eq!(
         result.map(|value| value.to_string()),
-        Some("[1, 2]".to_string())
+        Some("[2, 2, false, true]".to_string())
     );
 }
 

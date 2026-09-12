@@ -1,6 +1,6 @@
 // Object operations - comparison and boolean logic
 
-use super::{Method, Object};
+use super::{BlockStatement, Method, Object};
 
 impl Object {
     /// Check if this object is truthy (for conditional evaluation)
@@ -216,7 +216,12 @@ impl Object {
                         }
                         && a.body == b.body)
             }
-            (Object::Block(a), Object::Block(b)) => Rc::ptr_eq(a, b),
+            // Two blocks written apart are never equal, which the positions
+            // their bodies carry settle. A copy of one is equal to it: it was
+            // written in the same place and closes over the same cells.
+            (Object::Block(a), Object::Block(b)) => {
+                Rc::ptr_eq(a, b) || (**a == **b && closes_over_the_same(a, b))
+            }
             (Object::Binding(a), Object::Binding(b)) => Rc::ptr_eq(a, b),
             // Ruby compares two exceptions by class, message, and backtrace,
             // so a dup equals its original.
@@ -355,4 +360,18 @@ fn rational_equals(left: &Object, right: &Object) -> Option<bool> {
         },
         (None, None) => None,
     }
+}
+
+/// Whether two blocks hold the same closed-over cells, which is what tells a
+/// copy of a block from another block written the same way.
+fn closes_over_the_same(one: &Rc<BlockStatement>, other: &Rc<BlockStatement>) -> bool {
+    if one.captured_vars.len() != other.captured_vars.len() {
+        return false;
+    }
+    one.captured_vars.iter().all(|(name, cell)| {
+        other
+            .captured_vars
+            .get(name)
+            .is_some_and(|theirs| Rc::ptr_eq(cell, theirs))
+    })
 }

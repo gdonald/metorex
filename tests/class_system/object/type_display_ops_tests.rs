@@ -232,7 +232,7 @@ fn display_method() {
 fn display_block() {
     use metorex::object::BlockStatement;
     let b = Rc::new(BlockStatement::new(vec![], vec![], HashMap::new()));
-    assert_eq!(format!("{}", Object::Block(b)), "<block>");
+    assert!(format!("{}", Object::Block(b)).starts_with("#<Proc:0x"));
 }
 
 #[test]

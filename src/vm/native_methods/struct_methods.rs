@@ -279,8 +279,17 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
-        if class_rc.name() == "Struct" && method_name == "new" {
-            return self.build_struct_class(arguments, position).map(Some);
+        // `Struct.new(:a)` builds a class, and so does `new` on a subclass of
+        // Struct that has no members yet: naming them is what turns it into a
+        // struct class of its own.
+        if method_name == "new"
+            && struct_members(class_rc).is_none()
+            && (class_rc.name() == "Struct"
+                || crate::vm::method_invocation::descends_from(class_rc, "Struct"))
+        {
+            return self
+                .build_struct_class(class_rc, arguments, position)
+                .map(Some);
         }
 
         let Some(members) = struct_members(class_rc) else {
@@ -288,6 +297,21 @@ impl VirtualMachine {
         };
 
         match method_name {
+            // A class of the program's own that wrote its own `initialize`
+            // shapes the instance itself, so construction goes the ordinary
+            // way and reaches that method.
+            "new"
+                if class_rc.find_method("initialize").is_some_and(|found| {
+                    !found.body.is_empty()
+                        && found
+                            .owner_class
+                            .as_ref()
+                            .is_some_and(|owner| owner.name() != "Struct")
+                }) =>
+            {
+                self.invoke_class(Rc::clone(class_rc), arguments.to_vec(), position)
+                    .map(Some)
+            }
             "new" | "[]" => self
                 .build_struct_instance(class_rc, &members, arguments, position)
                 .map(Some),
@@ -306,6 +330,7 @@ impl VirtualMachine {
     /// writer per member and the block (if any) run as its class body.
     fn build_struct_class(
         &mut self,
+        parent: &Rc<Class>,
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
@@ -353,8 +378,10 @@ impl VirtualMachine {
             ));
         };
 
-        let generated = Rc::new(Class::new("", Some(Rc::clone(&struct_class))));
-        struct_class.add_subclass(&generated);
+        // A struct class built from a subclass of Struct stands under that
+        // subclass, so a method it wrote is on the chain.
+        let generated = Rc::new(Class::new("", Some(Rc::clone(parent))));
+        parent.add_subclass(&generated);
         generated.set_class_var(MEMBERS_VAR, symbols(&members));
         generated.set_class_var(
             KEYWORD_INIT_VAR,

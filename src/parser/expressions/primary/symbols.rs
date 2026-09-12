@@ -30,6 +30,8 @@ pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
             | TokenKind::True
             | TokenKind::False
             | TokenKind::Return
+            | TokenKind::Retry
+            | TokenKind::Redo
             | TokenKind::Begin
             | TokenKind::Rescue
             | TokenKind::Ensure
@@ -125,6 +127,8 @@ impl Parser {
             TokenKind::True => Ok(symbol("true", symbol_position)),
             TokenKind::False => Ok(symbol("false", symbol_position)),
             TokenKind::Return => Ok(symbol("return", symbol_position)),
+            TokenKind::Retry => Ok(symbol("retry", symbol_position)),
+            TokenKind::Redo => Ok(symbol("redo", symbol_position)),
             TokenKind::Begin => Ok(symbol("begin", symbol_position)),
             TokenKind::Rescue => Ok(symbol("rescue", symbol_position)),
             TokenKind::Ensure => Ok(symbol("ensure", symbol_position)),

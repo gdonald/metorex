@@ -218,6 +218,7 @@ impl VirtualMachine {
                             super::super::ControlFlow::Next
                             | super::super::ControlFlow::Value(_)
                             | super::super::ControlFlow::Redo { .. }
+                            | super::super::ControlFlow::Retry { .. }
                             | super::super::ControlFlow::Continue { .. } => {
                                 continue;
                             }
@@ -412,7 +413,9 @@ impl VirtualMachine {
                     mine.len() == theirs.len() && mine.iter().all(|held| theirs.contains(held));
                 Ok(Some(Object::Bool(same)))
             }
-            "dup" | "clone" | "to_set" => {
+            // `dup` and `clone` go through the copy every object shares, so
+            // the frozen state and the `freeze:` keyword are read there.
+            "to_set" => {
                 let copy: indexmap::IndexSet<ObjectHash> = set_rc.borrow().clone();
                 Ok(Some(Object::Set(Rc::new(RefCell::new(copy)))))
             }

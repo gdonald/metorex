@@ -133,7 +133,31 @@ impl fmt::Display for Object {
             Object::Class(class) => write!(f, "{}", class.inspect_name()),
             Object::Module(module) => write!(f, "{}", module.inspect_name()),
             Object::Method(method) => write!(f, "<method {}>", method.name),
-            Object::Block(_) => write!(f, "<block>"),
+            // A callable displays as its address and where it was written,
+            // with a lambda saying so.
+            Object::Block(block) => {
+                let shape = if block.is_lambda { " (lambda)" } else { "" };
+                if let Some(named) = &block.from_symbol {
+                    return write!(
+                        f,
+                        "#<Proc:0x{:016x} (&:{}){}>",
+                        Rc::as_ptr(block) as usize,
+                        named,
+                        shape
+                    );
+                }
+                match (&block.source_file, block.opened_at) {
+                    (Some(file), Some(line)) => write!(
+                        f,
+                        "#<Proc:0x{:016x} {}:{}{}>",
+                        Rc::as_ptr(block) as usize,
+                        file,
+                        line,
+                        shape
+                    ),
+                    _ => write!(f, "#<Proc:0x{:016x}{}>", Rc::as_ptr(block) as usize, shape),
+                }
+            }
             Object::Exception(exc) => {
                 let exception = exc.borrow();
                 write!(f, "{}: {}", exception.exception_type, exception.message)

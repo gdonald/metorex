@@ -81,7 +81,9 @@ impl VirtualMachine {
                 // A loop answers nil, except when a `break` carried a value
                 // out of it, which is what the loop then answers.
                 ControlFlow::Break { value, .. } => return Ok(ControlFlow::Value(value)),
-                ControlFlow::Redo { .. } | ControlFlow::Continue { .. } => continue,
+                ControlFlow::Redo { .. }
+                | ControlFlow::Retry { .. }
+                | ControlFlow::Continue { .. } => continue,
                 ControlFlow::Return { value, position } => {
                     return Ok(ControlFlow::Return { value, position });
                 }
@@ -111,7 +113,7 @@ impl VirtualMachine {
             // `redo` runs the body again without reading the condition.
             loop {
                 match self.loop_pass(body)? {
-                    ControlFlow::Redo { .. } => continue,
+                    ControlFlow::Redo { .. } | ControlFlow::Retry { .. } => continue,
                     ControlFlow::Next | ControlFlow::Value(_) | ControlFlow::Continue { .. } => {
                         break;
                     }

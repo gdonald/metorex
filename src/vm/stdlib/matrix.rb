@@ -649,7 +649,10 @@ class Matrix
   def **(count)
     raise ExceptionForMatrix::ErrDimensionMismatch unless square?
     unless count.is_a?(Integer)
-      raise ExceptionForMatrix::ErrOperationNotImplemented
+      # A fractional power is taken on the diagonal, where raising each
+      # eigenvalue to the power is the whole of the work.
+      basis, diagonal, back = eigensystem.to_a
+      return basis * diagonal.map { |entry| entry**count } * back
     end
     return inverse ** -count if count < 0
     answered = self.class.identity(row_size)
@@ -1079,7 +1082,10 @@ class Matrix
         wanted = values.column_count
         held = @pivots.map { |row| values.row(row).to_a }
         __substitute__ held, wanted
-        Matrix.rows(held.first(@column_count))
+        solved = held.first(@column_count)
+        # A decomposition of an empty matrix has no rows to carry the width,
+        # so the answer is named by how wide the values were.
+        solved.empty? ? Matrix.empty(@column_count, wanted) : Matrix.rows(solved)
       when Vector
         raise ExceptionForMatrix::ErrDimensionMismatch unless values.size == @row_count
         held = @pivots.map { |row| [values[row]] }
@@ -1113,6 +1119,137 @@ class Matrix
       held
     end
     private :__substitute__
+  end
+
+  # The eigenvalues and eigenvectors of a matrix. Only the two by two case is
+  # worked out here, where the characteristic polynomial is a quadratic and
+  # its roots are exact.
+  class EigenvalueDecomposition
+    def initialize(matrix)
+      unless matrix.is_a? Matrix
+        raise TypeError, "expected Matrix, got #{matrix.class}"
+      end
+      unless matrix.square?
+        raise Matrix::ErrDimensionMismatch, "matrix must be square"
+      end
+      unless matrix.row_count == 2
+        raise ExceptionForMatrix::ErrOperationNotImplemented,
+              "eigenvalues of a matrix larger than two by two"
+      end
+      @matrix = matrix
+      @values = Matrix::EigenvalueDecomposition.roots_of matrix
+    end
+
+    # The roots of `x**2 - trace * x + determinant`, exact where they come out
+    # whole and a pair of conjugates where the discriminant is negative.
+    def self.roots_of(matrix)
+      a, b = matrix[0, 0], matrix[0, 1]
+      c, d = matrix[1, 0], matrix[1, 1]
+      trace = a + d
+      determinant = a * d - b * c
+      inside = trace * trace - 4 * determinant
+      if inside < 0
+        root = Math.sqrt(-inside) / 2.0
+        middle = trace / 2.0
+        [Complex(whole_or_not(middle), whole_or_not(root)),
+         Complex(whole_or_not(middle), whole_or_not(-root))]
+      else
+        root = Math.sqrt inside
+        found = [whole_or_not((trace + root) / 2.0), whole_or_not((trace - root) / 2.0)]
+        # A symmetric matrix is decomposed by the symmetric algorithm, which
+        # hands its eigenvalues back smallest first.
+        b == c ? found.sort : found
+      end
+    end
+
+    # A value that came out whole is answered as an Integer, so an eigenvalue
+    # of a whole matrix reads the way Ruby's does.
+    def self.whole_or_not(value)
+      return value unless value.is_a? Float
+      return value unless value.finite?
+      value == value.to_i ? value.to_i : value
+    end
+
+    def eigenvalues
+      @values
+    end
+
+    def eigenvalue_matrix
+      Matrix.diagonal(*@values)
+    end
+
+    def d
+      eigenvalue_matrix
+    end
+
+    # One eigenvector per eigenvalue, in the order the eigenvalues came out.
+    # A symmetric matrix answers unit vectors, and every other matrix answers
+    # vectors whose first non-zero component is one.
+    def eigenvectors
+      @values.map { |value| __eigenvector_for__ value }
+    end
+
+    # The eigenvectors side by side, which is the change of basis that makes
+    # the matrix diagonal.
+    def eigenvector_matrix
+      Matrix.columns eigenvectors.map { |held| held.to_a }
+    end
+
+    def v
+      eigenvector_matrix
+    end
+
+    def eigenvector_matrix_inv
+      eigenvector_matrix.inverse
+    end
+
+    def v_inv
+      eigenvector_matrix_inv
+    end
+
+    def to_a
+      [v, d, v_inv]
+    end
+
+    # A vector in the null space of `matrix - value`, scaled the way Ruby's
+    # decomposition scales it.
+    def __eigenvector_for__(value)
+      a, b = @matrix[0, 0], @matrix[0, 1]
+      c, d = @matrix[1, 0], @matrix[1, 1]
+      parts =
+        if b != 0
+          [b, value - a]
+        elsif c != 0
+          [value - d, c]
+        elsif value == a
+          [1, 0]
+        else
+          [0, 1]
+        end
+      Vector.elements __scaled__(parts)
+    end
+    private :__eigenvector_for__
+
+    # A symmetric matrix's eigenvectors are unit length, and every other
+    # matrix's lead with a one.
+    def __scaled__(parts)
+      if @matrix.symmetric? && parts.none? { |part| part.is_a? Complex }
+        length = Math.sqrt(parts[0] * parts[0] + parts[1] * parts[1])
+        return parts.map { |part| part / length }
+      end
+      leading = parts.find { |part| part != 0 }
+      return parts if leading == 1
+      parts.map { |part| part.quo leading }
+    end
+    private :__scaled__
+  end
+
+  def eigensystem
+    EigenvalueDecomposition.new(self)
+  end
+
+  def eigen
+    eigensystem
   end
 
   # The LU decomposition of this matrix, with the row swaps that keep the

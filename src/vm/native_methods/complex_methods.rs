@@ -466,9 +466,30 @@ impl VirtualMachine {
                 position,
             ));
         }
+        // Text spelling a number must be text the numbers can be read from,
+        // which text in an encoding without ASCII is not.
+        for held in positional.iter() {
+            if let Object::String(text) = held {
+                let named = text.encoding_name();
+                if super::string_methods::wide_encoding(&named).is_some() {
+                    let message = format!("ASCII incompatible encoding: {named}");
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception(
+                            "Encoding::CompatibilityError",
+                            message.clone(),
+                        ),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
+            }
+        }
         if positional.len() == 1 {
             return self.complex_from_single(&positional[0], raise, position);
         }
+        // A String stands for the number it spells, which is read out rather
+        // than taken as a part of its own.
+        let spelled = |held: &Object| matches!(held, Object::String(_));
         // With two arguments both must be real numbers. The imaginary one is
         // checked first, since a bad one there is an error `exception: false`
         // swallows, where a first argument that is not a number at all is
@@ -482,13 +503,19 @@ impl VirtualMachine {
                 message,
             }
         };
-        if !self.is_real_operand(&positional[1]) && !matches!(positional[1], Object::Nil) {
+        if !spelled(&positional[1])
+            && !self.is_real_operand(&positional[1])
+            && !matches!(positional[1], Object::Nil)
+        {
             if !raise {
                 return Ok(Object::Nil);
             }
             return Err(not_a_real(self));
         }
-        if !self.is_real_operand(&positional[0]) && !matches!(positional[0], Object::Nil) {
+        if !spelled(&positional[0])
+            && !self.is_real_operand(&positional[0])
+            && !matches!(positional[0], Object::Nil)
+        {
             return Err(not_a_real(self));
         }
         // A Numeric of the program's own making that reports itself as not
@@ -505,6 +532,8 @@ impl VirtualMachine {
         // a signed zero the sign it was given.
         if complex_parts(&positional[0]).is_none()
             && complex_parts(&positional[1]).is_none()
+            && !spelled(&positional[0])
+            && !spelled(&positional[1])
             && self.is_real_operand(&positional[0])
             && self.is_real_operand(&positional[1])
         {
@@ -799,7 +828,7 @@ impl VirtualMachine {
     }
 
     /// The rectangular parts of a complex written in polar form.
-    fn polar_parts(
+    pub(crate) fn polar_parts(
         &mut self,
         modulus: Object,
         argument: Object,
@@ -814,7 +843,7 @@ impl VirtualMachine {
     }
 
     /// Turn a parsed component into the Object Ruby would produce for it.
-    fn component_object(
+    pub(crate) fn component_object(
         &mut self,
         component: ComplexComponent,
         position: Position,
@@ -939,6 +968,44 @@ fn imaginary_sign_index(text: &str) -> Option<usize> {
 
 /// Read a complex literal the way `Complex("...")` does. The whole string must
 /// be consumed, so trailing text makes this answer None.
+/// The longest run at the start of `text` that spells a complex number, read
+/// the lenient way `String#to_c` reads one: a doubled underscore ends the
+/// number, a single one between digits is only spacing, and a NUL ends the
+/// text. Nothing spelling a number at all answers zero.
+pub(crate) fn leading_complex_text(text: &str) -> Option<ParsedComplex> {
+    // A NUL ends the text, and so does a doubled underscore.
+    let held = text.split('\0').next().unwrap_or("");
+    let held = match held.find("__") {
+        Some(at) => &held[..at],
+        None => held,
+    };
+    // A single underscore between digits is spacing rather than part of the
+    // number, which is how `12_3` reads as 123.
+    let spelled: String = held
+        .char_indices()
+        .filter(|(at, held)| {
+            if *held != '_' {
+                return true;
+            }
+            let before = text[..*at].chars().next_back();
+            let after = text[at + 1..].chars().next();
+            !(before.is_some_and(|one| one.is_ascii_digit())
+                && after.is_some_and(|one| one.is_ascii_digit()))
+        })
+        .map(|(_, held)| held)
+        .collect();
+    // The longest run that reads as a number is the number, so whatever
+    // follows it is left alone.
+    let letters: Vec<char> = spelled.chars().collect();
+    for end in (1..=letters.len()).rev() {
+        let candidate: String = letters[..end].iter().collect();
+        if let Some(parsed) = parse_complex_text(&candidate) {
+            return Some(parsed);
+        }
+    }
+    None
+}
+
 pub(crate) fn parse_complex_text(text: &str) -> Option<ParsedComplex> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -1067,14 +1134,36 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let Object::Int(exponent) = exponent else {
-            let message = format!(
-                "{} can't be raised to that power yet",
-                format_complex(real, imaginary)
-            );
-            return Err(MetorexError::runtime_error(
-                message,
-                crate::vm::utils::position_to_location(position),
-            ));
+            // Anything that is not a whole power is taken in polar form,
+            // where `z ** w` is `exp(w * log z)`.
+            if complex_parts(exponent).is_some() || self.is_real_operand(exponent) {
+                return self.complex_polar_power(real, imaginary, exponent, position);
+            }
+            // A power that is none of the numbers coerces the pair, and the
+            // two it answers are raised in its own terms.
+            let base = self.make_complex(real.clone(), imaginary.clone(), position)?;
+            let coerced = self.send_to_object(exponent.clone(), "coerce", vec![base], position)?;
+            let Object::Array(pair) = coerced else {
+                let message = format!(
+                    "{} can't be coerced into Complex",
+                    self.builtins().class_of(exponent).name()
+                );
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &message,
+                    position,
+                ));
+            };
+            let pair = pair.borrow().clone();
+            let [left, right] = pair.as_slice() else {
+                let message = "coerce must return [x, y]".to_string();
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &message,
+                    position,
+                ));
+            };
+            return self.send_to_object(left.clone(), "**", vec![right.clone()], position);
         };
         let mut answer = self.make_complex(Object::Int(1), Object::Int(0), position)?;
         let base = self.make_complex(real.clone(), imaginary.clone(), position)?;
@@ -1086,6 +1175,34 @@ impl VirtualMachine {
             return self.send_to_object(one, "/", vec![answer], position);
         }
         Ok(answer)
+    }
+
+    /// A Complex raised to a power that is not a whole number, worked in
+    /// polar form: `z ** w` is `exp(w * log z)`.
+    fn complex_polar_power(
+        &mut self,
+        real: &Object,
+        imaginary: &Object,
+        exponent: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let base_real = self.float_value_of(real, position)?;
+        let base_imaginary = self.float_value_of(imaginary, position)?;
+        let (power_real, power_imaginary) = self.complex_operand_parts(exponent, position)?;
+        let power_real = self.part_to_float(&power_real, position)?;
+        let power_imaginary = self.part_to_float(&power_imaginary, position)?;
+        let power_real = self.float_value_of(&power_real, position)?;
+        let power_imaginary = self.float_value_of(&power_imaginary, position)?;
+        let length = base_real.hypot(base_imaginary);
+        let angle = base_imaginary.atan2(base_real);
+        let log_length = length.ln();
+        let grown = (power_real * log_length - power_imaginary * angle).exp();
+        let turned = power_real * angle + power_imaginary * log_length;
+        self.make_complex(
+            Object::Float(grown * turned.cos()),
+            Object::Float(grown * turned.sin()),
+            position,
+        )
     }
 
     /// The two parts of an operand: a Complex gives both, and a real number

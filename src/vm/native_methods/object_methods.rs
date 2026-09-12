@@ -274,6 +274,18 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        // An instance of BasicObject, or of a class rooted there rather than
+        // at Object, answers only the handful of methods BasicObject defines.
+        // Everything Kernel and Object add arrives through Object, which such
+        // a class never inherits from.
+        if !basic_object_answers(method_name)
+            && self.bound_stub_depth == 0
+            && self.rooted_at_basic_object(receiver)
+            && !class_defines(receiver, method_name)
+        {
+            return Ok(None);
+        }
+
         // Kernel#autoload / #autoload? — a top-level (or any non-module)
         // receiver registers the autoload on Object, Ruby's home for
         // top-level constants.
@@ -386,12 +398,26 @@ impl VirtualMachine {
                 self.call_object_method(receiver, "send", arguments, position)
             }
             "__send__" | "send" | "public_send" => {
+                // A complaint about what the call was handed names the call
+                // itself in the backtrace, the way Ruby's does.
+                let named = crate::vm::CallFrame::method(
+                    format!("Kernel#{}", method_name),
+                    Some(format!("{}", position_to_location(position))),
+                    method_name,
+                    method_name,
+                );
                 if arguments.is_empty() {
                     let message = "no method name given".to_string();
-                    return Err(MetorexError::UncaughtException {
-                        exception: Object::exception("ArgumentError", message.clone()),
-                        location: position_to_location(position),
-                        message,
+                    return self.with_call_frame(named, |vm| {
+                        let raised = vm.add_stack_trace_to_exception(
+                            Object::exception("ArgumentError", message.clone()),
+                            position,
+                        );
+                        Err(MetorexError::UncaughtException {
+                            exception: raised,
+                            location: position_to_location(position),
+                            message,
+                        })
                     });
                 }
                 let method = match &arguments[0] {
@@ -402,14 +428,56 @@ impl VirtualMachine {
                             "{} is not a symbol nor a string",
                             self.get_inspect_representation(other, position)?
                         );
-                        return Err(MetorexError::UncaughtException {
-                            exception: Object::exception("TypeError", message.clone()),
-                            location: position_to_location(position),
-                            message,
+                        return self.with_call_frame(named, |vm| {
+                            let raised = vm.add_stack_trace_to_exception(
+                                Object::exception("TypeError", message.clone()),
+                                position,
+                            );
+                            Err(MetorexError::UncaughtException {
+                                exception: raised,
+                                location: position_to_location(position),
+                                message,
+                            })
                         });
                     }
                 };
                 let rest_args: Vec<Object> = arguments[1..].to_vec();
+                // `public_send` reaches only what a caller outside the object
+                // could have written, so a private or protected name is
+                // refused rather than run.
+                if method_name == "public_send" {
+                    // The class the method was found on is the one that knows
+                    // how it was declared, which for a singleton method is
+                    // the object's own class.
+                    let holder = match self.lookup_method(receiver, &method) {
+                        Some((owner, _)) => owner,
+                        None => self.builtins().class_of(receiver),
+                    };
+                    let hidden = if holder.is_method_private(&method) {
+                        Some("private")
+                    } else if holder.is_method_protected(&method) {
+                        Some("protected")
+                    } else {
+                        None
+                    };
+                    if let Some(named) = hidden {
+                        let message = format!(
+                            "{} method '{}' called for an instance of {}",
+                            named,
+                            method,
+                            self.builtins().class_of(receiver).name()
+                        );
+                        let exception = Object::exception("NoMethodError", message.clone());
+                        if let Object::Exception(cell) = &exception {
+                            cell.borrow_mut().name = Some(method.clone());
+                        }
+                        return Err(MetorexError::UncaughtException {
+                            exception,
+                            location: position_to_location(position),
+                            message,
+                        });
+                    }
+                }
                 // Prefer full lookup (walks singleton class + mixins) so mocked
                 // or per-instance overrides take precedence over the class's
                 // own method table.
@@ -454,8 +522,9 @@ impl VirtualMachine {
                         position,
                     )?));
                 }
-                Err(undefined_method_error(
-                    &method, receiver, &rest_args, position,
+                let wording = self.receiver_wording_for(receiver, position);
+                Err(crate::vm::errors::undefined_method_error_worded(
+                    &method, receiver, &rest_args, wording, position,
                 ))
             }
             // Kernel#lambda reached by dispatch (`send(:lambda) { }`) rather
@@ -492,7 +561,12 @@ impl VirtualMachine {
                     }
                     // A collection has nowhere of its own to keep the flag,
                     // so the VM records the one it lives at.
-                    Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                    Object::Array(_)
+                    | Object::Dict(_)
+                    | Object::Set(_)
+                    | Object::Method(_)
+                    | Object::Block(_)
+                    | Object::Binding(_) => {
                         if let Some(address) = Self::collection_address(receiver) {
                             self.frozen_collections.insert(address, receiver.clone());
                         }
@@ -534,6 +608,22 @@ impl VirtualMachine {
                 Ok(Some(Object::Nil))
             }
             "__tracing__" => Ok(Some(Object::Bool(self.is_tracing()))),
+            // Run a block with tracing switched off, so an event the block
+            // causes reaches the tracepoints again. `TracePoint.allow_reentry`
+            // is what asks for this.
+            "__reentrant__" => {
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "LocalJumpError",
+                        "no block given (yield)",
+                        position,
+                    ));
+                };
+                let held = self.take_tracing();
+                let answered = self.execute_block_callable(&block, vec![], position);
+                self.restore_tracing(held);
+                answered.map(Some)
+            }
             // ARGF#gets reads a line from the input stream.
             "gets"
                 if arguments.is_empty()
@@ -640,6 +730,10 @@ impl VirtualMachine {
                     Object::Class(cls) => std::rc::Rc::as_ptr(cls) as i64,
                     Object::Module(m) => std::rc::Rc::as_ptr(m) as i64,
                     Object::Block(block) => std::rc::Rc::as_ptr(block) as i64,
+                    // A Method and a Binding are objects of their own, so two
+                    // that name the same thing have different ids.
+                    Object::Method(method) => std::rc::Rc::as_ptr(method) as i64,
+                    Object::Binding(binding) => std::rc::Rc::as_ptr(binding) as i64,
                     Object::Exception(exc) => std::rc::Rc::as_ptr(exc) as i64,
                     // An integer past the i64 range is a heap object in Ruby
                     // too, so two of the same value have different ids.
@@ -923,6 +1017,16 @@ impl VirtualMachine {
                     && let Object::Instance(_) = receiver
                 {
                     return self.default_instance_inspect(receiver, position).map(Some);
+                }
+                // A callable describes itself in bytes rather than in text,
+                // which is what Ruby tags the description with.
+                if matches!(receiver, Object::Block(_)) {
+                    return Ok(Some(Object::String(std::rc::Rc::new(
+                        crate::object::StringValue::with_encoding(
+                            receiver.to_string(),
+                            "ASCII-8BIT",
+                        ),
+                    ))));
                 }
                 Ok(Some(Object::string(receiver.to_string())))
             }
@@ -1407,15 +1511,19 @@ impl VirtualMachine {
                             .get_class_var(&format!("@{}", clean_name))
                             .unwrap_or(Object::Nil),
                     )),
-                    Object::Array(_) | Object::Dict(_) | Object::Set(_) | Object::String(_) => {
-                        Ok(Some(
-                            Self::collection_address(receiver)
-                                .and_then(|address| self.collection_variables.get(&address))
-                                .and_then(|held| held.get(clean_name))
-                                .cloned()
-                                .unwrap_or(Object::Nil),
-                        ))
-                    }
+                    Object::Array(_)
+                    | Object::Dict(_)
+                    | Object::Set(_)
+                    | Object::String(_)
+                    | Object::Method(_)
+                    | Object::Block(_)
+                    | Object::Binding(_) => Ok(Some(
+                        Self::collection_address(receiver)
+                            .and_then(|address| self.collection_variables.get(&address))
+                            .and_then(|held| held.get(clean_name))
+                            .cloned()
+                            .unwrap_or(Object::Nil),
+                    )),
                     Object::Module(module_rc) => Ok(Some(
                         module_rc
                             .get_class_var(&format!("@{}", clean_name))
@@ -1514,7 +1622,13 @@ impl VirtualMachine {
                     }
                     // A collection has nowhere of its own to keep an instance
                     // variable, so the VM records it against the collection.
-                    Object::Array(_) | Object::Dict(_) | Object::Set(_) | Object::String(_) => {
+                    Object::Array(_)
+                    | Object::Dict(_)
+                    | Object::Set(_)
+                    | Object::String(_)
+                    | Object::Method(_)
+                    | Object::Block(_)
+                    | Object::Binding(_) => {
                         if self.object_is_frozen(receiver) {
                             return Err(self.frozen_modification_error(receiver, position));
                         }
@@ -1801,6 +1915,11 @@ impl VirtualMachine {
                     // structurally would never terminate. Ruby's identity
                     // check is the address anyway.
                     (Object::Block(a), Object::Block(b)) => std::rc::Rc::ptr_eq(a, b),
+                    // A Method or an UnboundMethod compares `==` by what it
+                    // names, so two copies of one are equal without being
+                    // the same object.
+                    (Object::Method(a), Object::Method(b)) => std::rc::Rc::ptr_eq(a, b),
+                    (Object::Binding(a), Object::Binding(b)) => std::rc::Rc::ptr_eq(a, b),
                     // A Float is a value, so two of the same bits are the same
                     // object. That covers NaN, which is never `==` itself but
                     // is identical to itself.
@@ -1825,10 +1944,23 @@ impl VirtualMachine {
                     ));
                 }
                 let copy = self.copy_for(receiver, position)?;
-                if let Some(copy) = &copy
-                    && method_name == "clone"
-                {
-                    self.finish_clone(receiver, copy, freeze, arguments, position)?;
+                if let Some(copy) = &copy {
+                    if method_name == "clone" {
+                        self.finish_clone(receiver, copy, freeze, arguments, position)?;
+                    } else if let Some((class, method)) = self.lookup_method(copy, "initialize_dup")
+                        && !method.is_undefined
+                        && !method.body.is_empty()
+                    {
+                        // A class of the program's own may shape what `dup`
+                        // hands back, which it does through this hook.
+                        self.invoke_method(
+                            class,
+                            method,
+                            copy.clone(),
+                            vec![receiver.clone()],
+                            position,
+                        )?;
+                    }
                 }
                 Ok(copy)
             }
@@ -2312,6 +2444,34 @@ impl VirtualMachine {
 
     /// The copy `dup` and `clone` hand back, before any frozen state or
     /// singleton class is carried over.
+    /// Whether the receiver is an instance whose class chain reaches
+    /// BasicObject without passing through Object. Only such an object is
+    /// limited to BasicObject's own methods.
+    fn rooted_at_basic_object(&self, receiver: &Object) -> bool {
+        let Object::Instance(instance) = receiver else {
+            return false;
+        };
+        let mut walked = Some(std::rc::Rc::clone(&instance.borrow().class));
+        let mut reaches_basic_object = false;
+        while let Some(class) = walked {
+            if class.name() == "Object" {
+                return false;
+            }
+            // A class rooted at BasicObject may still take Kernel on, and
+            // then it answers everything Kernel defines.
+            if class
+                .mixin_chain()
+                .iter()
+                .any(|mixed| mixed.name() == "Kernel")
+            {
+                return false;
+            }
+            reaches_basic_object |= class.name() == "BasicObject";
+            walked = class.superclass();
+        }
+        reaches_basic_object
+    }
+
     fn copy_for(
         &mut self,
         receiver: &Object,
@@ -2387,6 +2547,12 @@ impl VirtualMachine {
                     std::cell::RefCell::new(dict),
                 ))))
             }
+            Object::Set(set_rc) => {
+                let elements = set_rc.borrow().clone();
+                Ok(Some(Object::Set(std::rc::Rc::new(
+                    std::cell::RefCell::new(elements),
+                ))))
+            }
             Object::Class(class_rc) => {
                 if class_rc.name() == "BasicObject" {
                     let msg = "can't copy the root class".to_string();
@@ -2404,8 +2570,50 @@ impl VirtualMachine {
                 let copy = crate::class::Class::duplicate(mod_rc);
                 Ok(Some(Object::Module(std::rc::Rc::new(copy))))
             }
+            // A callable and a Binding copy as a new reference to the same
+            // code and scope, so the copy is a separate object with the
+            // instance variables the original carried.
+            Object::Method(method) => {
+                let copy = Object::Method(std::rc::Rc::new((**method).clone()));
+                self.carry_collection_variables(receiver, &copy);
+                Ok(Some(copy))
+            }
+            Object::Block(block) => {
+                let copy = Object::Block(std::rc::Rc::new((**block).clone()));
+                self.carry_collection_variables(receiver, &copy);
+                Ok(Some(copy))
+            }
+            Object::Binding(binding) => {
+                let copy = Object::Binding(std::rc::Rc::new((**binding).clone()));
+                self.carry_collection_variables(receiver, &copy);
+                Ok(Some(copy))
+            }
             // Immutable types return themselves
             _ => Ok(Some(receiver.clone())),
+        }
+    }
+
+    /// Whether any finalizer has been registered at all, which is what
+    /// makes a clone worth asking ObjectSpace about.
+    fn has_finalizers(&self) -> bool {
+        let Some(Object::Module(space) | Object::Class(space)) = self.globals().get("ObjectSpace")
+        else {
+            return false;
+        };
+        matches!(space.get_class_var("@finalizers"), Some(Object::Dict(held)) if !held.borrow().is_empty())
+    }
+
+    /// Give the copy the instance variables the original was carrying, for
+    /// the objects that keep them against their address.
+    fn carry_collection_variables(&mut self, receiver: &Object, copy: &Object) {
+        let Some(from) = Self::collection_address(receiver) else {
+            return;
+        };
+        let Some(held) = self.collection_variables.get(&from).cloned() else {
+            return;
+        };
+        if let Some(to) = Self::collection_address(copy) {
+            self.collection_variables.insert(to, held);
         }
     }
 
@@ -2468,6 +2676,11 @@ impl VirtualMachine {
                     .insert(name, method);
             }
         }
+        // A collection keeps its singleton methods against its address, so
+        // they are carried across the same way a class's are.
+        if !matches!(receiver, Object::Instance(_)) {
+            self.copy_singleton_methods(receiver, copy);
+        }
         if let Some((class, method)) = self.lookup_method(copy, "initialize_clone")
             && !method.is_undefined
             && !method.body.is_empty()
@@ -2475,6 +2688,18 @@ impl VirtualMachine {
             let mut call_arguments = vec![receiver.clone()];
             call_arguments.extend(arguments.iter().cloned());
             self.invoke_method(class, method, copy.clone(), call_arguments, position)?;
+        }
+        // Ruby's `clone` copies the finalizers the original was given, so
+        // both the original and the copy run theirs.
+        if self.has_finalizers()
+            && let Some(space) = self.globals().get("ObjectSpace")
+        {
+            self.send_to_object(
+                space,
+                "__carry_finalizers__",
+                vec![receiver.clone(), copy.clone()],
+                position,
+            )?;
         }
         let frozen = match freeze {
             Some(freeze) => freeze,
@@ -2484,7 +2709,12 @@ impl VirtualMachine {
             match copy {
                 Object::Class(class) | Object::Module(class) => class.freeze(),
                 Object::Instance(instance) => instance.borrow_mut().frozen = true,
-                Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                Object::Array(_)
+                | Object::Dict(_)
+                | Object::Set(_)
+                | Object::Method(_)
+                | Object::Block(_)
+                | Object::Binding(_) => {
                     if let Some(address) = Self::collection_address(copy) {
                         self.frozen_collections.insert(address, copy.clone());
                     }
@@ -2502,33 +2732,52 @@ fn symbol_to_proc_block(name: &str, position: Position) -> crate::object::BlockS
 
     let call = Expression::MethodCall {
         receiver: Box::new(Expression::Identifier {
-            name: "__symbol_proc_receiver".to_string(),
+            name: SYMBOL_PROC_RECEIVER.to_string(),
             position,
         }),
-        method: name.to_string(),
-        arguments: vec![Expression::Splat {
-            expression: Box::new(Expression::Identifier {
-                name: "__symbol_proc_args".to_string(),
+        // The call goes out through `public_send`, so a name the receiver
+        // keeps to itself is refused rather than reached.
+        method: "public_send".to_string(),
+        arguments: vec![
+            Expression::Symbol {
+                value: name.to_string(),
                 position,
-            }),
-            position,
-        }],
+            },
+            Expression::Splat {
+                expression: Box::new(Expression::Identifier {
+                    name: SYMBOL_PROC_ARGS.to_string(),
+                    position,
+                }),
+                position,
+            },
+        ],
         trailing_block: None,
         position,
     };
 
-    crate::object::BlockStatement::new(
+    let mut made = crate::object::BlockStatement::new(
         vec![
-            "__symbol_proc_receiver".to_string(),
-            "*__symbol_proc_args".to_string(),
+            SYMBOL_PROC_RECEIVER.to_string(),
+            format!("*{SYMBOL_PROC_ARGS}"),
         ],
         vec![Statement::Expression {
             expression: call,
             position,
         }],
         std::collections::HashMap::new(),
-    )
+    );
+    // Ruby's symbol proc is a lambda, so it counts its arguments strictly.
+    made.is_lambda = true;
+    // What the callable stands for, which is what it says of itself in place
+    // of a file and a line.
+    made.from_symbol = Some(name.to_string());
+    made
 }
+
+/// The names the block `Symbol#to_proc` builds takes. Ruby reports them with
+/// no names at all, so the pair is recognized by these.
+pub(crate) const SYMBOL_PROC_RECEIVER: &str = "__symbol_proc_receiver";
+pub(crate) const SYMBOL_PROC_ARGS: &str = "__symbol_proc_args";
 
 /// Map an operator method name back to its `BinaryOp`, for calls that arrive
 /// by name (`send(:+, 2)`) instead of through operator syntax.
@@ -2662,10 +2911,13 @@ fn same_object(left: &Object, right: &Object) -> bool {
 fn method_missing_dispatcher(
     name: &str,
     receiver: &Object,
-    position: Position,
+    _position: Position,
 ) -> crate::object::Method {
     use crate::ast::{Expression, Statement};
 
+    // The body is the same wherever the call asking for it was written, so
+    // two of these for one name are equal the way Ruby's are.
+    let position = Position::new(0, 0, 0);
     let call = Expression::MethodCall {
         receiver: Box::new(Expression::SelfExpr { position }),
         method: "method_missing".to_string(),
@@ -2759,6 +3011,8 @@ pub(crate) fn native_alias_target<'a>(class_name: &str, method_name: &'a str) ->
         // Integer answers these natively, so they are its own rather than
         // the Numeric versions the prelude also declares.
         ("Integer", "zero?") => Some("zero?"),
+        // A String counts its characters under either name.
+        ("String", "size") => Some("length"),
         // An Array renders itself the same way whichever of the two names
         // the call is written with.
         ("Array", "to_s") => Some("inspect"),
@@ -2803,6 +3057,11 @@ impl VirtualMachine {
             return held;
         }
         let made = Object::string(text);
+        // One string answered over and over is frozen, since a program that
+        // changed it would change what everyone else is handed.
+        if let Object::String(held) = &made {
+            held.freeze();
+        }
         self.globals_mut().set(slot, made.clone());
         made
     }
@@ -2820,4 +3079,38 @@ impl VirtualMachine {
         };
         parent.name() == "Encoding"
     }
+}
+
+/// Whether BasicObject itself defines `method_name`. Its instance methods are
+/// the only ones an object outside Object's ancestry answers.
+fn basic_object_answers(method_name: &str) -> bool {
+    matches!(
+        method_name,
+        "!" | "=="
+            | "!="
+            | "__send__"
+            | "__id__"
+            | "equal?"
+            | "instance_eval"
+            | "instance_exec"
+            | "initialize"
+            | "method_missing"
+            | "singleton_method_added"
+            | "singleton_method_removed"
+            | "singleton_method_undefined"
+    )
+}
+
+/// Whether the receiver's own class chain defines `method_name`. A class
+/// rooted at BasicObject may still take one of Kernel's methods on, which is
+/// what `define_method(:respond_to?, Kernel.instance_method(:respond_to?))`
+/// does, and the native implementation behind it answers then.
+fn class_defines(receiver: &Object, method_name: &str) -> bool {
+    let Object::Instance(instance) = receiver else {
+        return false;
+    };
+    let class = std::rc::Rc::clone(&instance.borrow().class);
+    class
+        .find_method(method_name)
+        .is_some_and(|method| !method.is_undefined)
 }

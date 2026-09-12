@@ -31,6 +31,8 @@ pub(crate) const MUTATING_STRING_METHODS: &[&str] = &[
     "rstrip!",
     "chomp!",
     "chop!",
+    "delete_prefix!",
+    "delete_suffix!",
     "upcase!",
     "downcase!",
     "capitalize!",

@@ -51,6 +51,14 @@ struct Cli {
     #[arg(short = 'x', hide = true, action = clap::ArgAction::SetTrue)]
     strip_leading_text: bool,
 
+    /// Ruby -S (look the script up in RUBYPATH, then in PATH)
+    #[arg(short = 'S', hide = true, action = clap::ArgAction::SetTrue)]
+    script_search: bool,
+
+    /// Ruby -l (chomp each line the loop reads, and write the separator back)
+    #[arg(short = 'l', hide = true, action = clap::ArgAction::SetTrue)]
+    chomp_lines: bool,
+
     /// Ruby -c (check the syntax and report it, without running anything)
     #[arg(short = 'c', hide = true, action = clap::ArgAction::SetTrue)]
     check_syntax: bool,
@@ -183,6 +191,11 @@ struct Cli {
     #[arg(short = 'U', hide = true, action = clap::ArgAction::Count)]
     utf8_internal: u8,
 
+    /// Ruby -i (edit the files ARGF reads in place, keeping a backup under
+    /// the extension written after the flag)
+    #[arg(long = "in-place", hide = true)]
+    in_place: Option<String>,
+
     /// Ruby -d (turn on `$DEBUG`, and the warnings with it)
     #[arg(short = 'd', hide = true, action = clap::ArgAction::SetTrue)]
     ruby_debug: bool,
@@ -193,6 +206,8 @@ struct Cli {
 struct LineLoop {
     /// `-n` or `-p`: run the program once for each line.
     each_line: bool,
+    /// `-l`: take the separator off each line before the program sees it.
+    chomping: bool,
     /// `-p`: write the line out after each pass.
     printing: bool,
     /// `-a`: split each line into `$F`.
@@ -212,14 +227,30 @@ fn run_program(
         vm.execute_program(program)?;
         return Ok(());
     }
-    let mut line = String::new();
+    // `BEGIN` runs before the loop starts, so a separator it names is in
+    // force for the first record too.
+    let opening: Vec<metorex::ast::Statement> = program
+        .iter()
+        .filter(|statement| names_begin_block(statement))
+        .cloned()
+        .collect();
+    if !opening.is_empty() {
+        vm.execute_program(&opening)?;
+    }
     loop {
-        line.clear();
-        match std::io::stdin().read_line(&mut line) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => {}
-        }
-        vm.set_current_line(line.clone());
+        // The separator may have been changed by the program itself, as a
+        // `BEGIN` block does, so it is read again for each record.
+        let separator = vm.line_separator();
+        let Some(line) = read_record(&separator) else {
+            break;
+        };
+        let held = if reading.chomping {
+            line.strip_suffix(&separator).unwrap_or(&line).to_string()
+        } else {
+            line
+        };
+        vm.set_current_line(held.clone());
+        let line = held;
         if reading.splitting {
             vm.set_split_fields(&line, reading.field_separator.as_deref());
         }
@@ -231,10 +262,90 @@ fn run_program(
     Ok(())
 }
 
+/// The directories a `-I` inside RUBYOPT names, in the order they were
+/// written there.
+fn search_paths_in_rubyopt() -> Vec<String> {
+    let Ok(written) = std::env::var("RUBYOPT") else {
+        return Vec::new();
+    };
+    let mut found = Vec::new();
+    let mut words = written.split_whitespace();
+    while let Some(word) = words.next() {
+        if let Some(rest) = word.strip_prefix("-I") {
+            if rest.is_empty() {
+                if let Some(next) = words.next() {
+                    found.push(next.to_string());
+                }
+            } else {
+                found.push(rest.to_string());
+            }
+        }
+    }
+    found
+}
+
+/// The script `-S` names, looked for in RUBYPATH and then in PATH. A name
+/// that is already a path, or one nothing answers, is left as it was.
+fn script_on_search_path(named: &str) -> Option<String> {
+    if named.contains('/') {
+        return None;
+    }
+    let searched = ["RUBYPATH", "PATH"];
+    for variable in searched {
+        let Ok(written) = std::env::var(variable) else {
+            continue;
+        };
+        for directory in written.split(':').filter(|part| !part.is_empty()) {
+            let candidate = Path::new(directory).join(named);
+            if candidate.is_file() {
+                return Some(candidate.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
+}
+
+/// Whether a statement is a `BEGIN { ... }` block, which runs once before
+/// anything else the program does.
+fn names_begin_block(statement: &metorex::ast::Statement) -> bool {
+    use metorex::ast::{Expression, Statement};
+    matches!(
+        statement,
+        Statement::Expression {
+            expression: Expression::Call { callee, .. },
+            ..
+        } if matches!(callee.as_ref(), Expression::Identifier { name, .. } if name == "__begin_once__")
+    )
+}
+
+/// One record from standard input, read up to and including `separator`.
+/// None once the input is spent.
+fn read_record(separator: &str) -> Option<String> {
+    use std::io::Read;
+    let mut collected = Vec::new();
+    let ending = separator.as_bytes();
+    let mut input = std::io::stdin().lock();
+    let mut byte = [0u8; 1];
+    loop {
+        match input.read(&mut byte) {
+            Ok(0) | Err(_) => break,
+            Ok(_) => collected.push(byte[0]),
+        }
+        if !ending.is_empty() && collected.ends_with(ending) {
+            break;
+        }
+    }
+    if collected.is_empty() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&collected).into_owned())
+}
+
 /// How the line-reading flags were written on the command line.
 fn line_loop_from(cli: &Cli) -> LineLoop {
     LineLoop {
         each_line: cli.each_line || cli.print_loop,
+        chomping: cli.chomp_lines,
         printing: cli.print_loop,
         splitting: cli.split_lines,
         field_separator: cli.field_separator.clone(),
@@ -327,8 +438,15 @@ fn apply_encoding_flags(vm: &mut VirtualMachine, cli: &Cli) {
         if !before.is_empty() {
             external = Some(before.to_string());
         }
-        if after.contains(':') {
-            eprintln!("metorex: extra argument for -E: {}", after);
+        if let Some((_, extra)) = after.split_once(':') {
+            // The complaint names the option the way it was written and the
+            // part past the pair of encodings it takes.
+            let named = if std::env::args().any(|held| held.starts_with("--encoding")) {
+                "--encoding"
+            } else {
+                "-E"
+            };
+            eprintln!("metorex: extra argument for {}: {}", named, extra);
             process::exit(1);
         }
         if !after.is_empty() {
@@ -383,6 +501,14 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     vm.set_flag_global("a", cli.split_lines);
     vm.set_flag_global("n", cli.each_line);
     vm.set_flag_global("p", cli.print_loop);
+    if cli.chomp_lines {
+        vm.set_chomping_lines();
+    }
+    // `-i` names the extension a backup is kept under, and ARGF reads it to
+    // decide whether the files it opens are edited in place.
+    if let Some(extension) = &cli.in_place {
+        vm.set_in_place_extension(extension);
+    }
     vm.set_flag_global("w", cli.warnings);
     vm.set_flag_global("d", cli.ruby_debug);
     // `-w`, `-v` and `-d` are the switches `$VERBOSE` reports.
@@ -399,7 +525,21 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
         vm.set_line_separator(written);
     }
     apply_encoding_flags(vm, cli);
-    for path in &cli.include_paths {
+    // RUBYOPT is read as though its words had been written on the command
+    // line, so a `-I` there adds to the load path too.
+    let mut opened: Vec<String> = search_paths_in_rubyopt();
+    opened.extend(cli.include_paths.iter().cloned());
+    // RUBYLIB names directories of its own, which stand after everything a
+    // `-I` asked for and before the rest of the path.
+    if let Ok(written) = std::env::var("RUBYLIB") {
+        opened.extend(
+            written
+                .split(':')
+                .filter(|part| !part.is_empty())
+                .map(|part| part.to_string()),
+        );
+    }
+    for path in opened.iter().rev() {
         vm.prepend_load_path(load_path_entry(path));
     }
     for lib in &cli.require_libs {
@@ -479,6 +619,9 @@ fn real_main() {
             std::path::PathBuf::from("-e"),
             std::path::PathBuf::from("-e"),
         );
+        // Names written after the code are the program's arguments, which is
+        // where ARGF looks for the files to read.
+        vm.set_argv(cli.file.clone());
         if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
             finish_with_error(&mut vm, &err);
         }
@@ -519,7 +662,13 @@ fn real_main() {
         return;
     }
 
-    let filename = &cli.file[0];
+    let named = &cli.file[0];
+    let found = if cli.script_search {
+        script_on_search_path(named)
+    } else {
+        None
+    };
+    let filename = found.as_ref().unwrap_or(named);
     let script_args: Vec<String> = cli.file[1..].to_vec();
 
     // Convert filename to absolute path
@@ -534,6 +683,15 @@ fn real_main() {
     // Read the source file
     let source = match fs::read_to_string(&absolute_path) {
         Ok(content) => content,
+        // Bytes that spell no character at all are what Ruby reports as an
+        // invalid multibyte char, naming the file and the first line.
+        Err(err) if err.kind() == std::io::ErrorKind::InvalidData => {
+            eprintln!(
+                "{}:1: invalid multibyte char (UTF-8)",
+                absolute_path.display()
+            );
+            process::exit(1);
+        }
         Err(err) => {
             eprintln!("Error reading file '{}': {}", absolute_path.display(), err);
             process::exit(1);

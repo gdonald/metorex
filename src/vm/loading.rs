@@ -12,6 +12,26 @@ use crate::object::Object;
 use crate::vm::errors::keep_exception;
 use std::rc::Rc;
 
+/// An absolute path with `.` and `..` components resolved the way
+/// `File.expand_path` resolves them, without touching the filesystem. A
+/// symlink therefore keeps the name it was reached through.
+fn without_dot_components(path: &std::path::Path) -> std::path::PathBuf {
+    use std::path::Component;
+    let mut built = std::path::PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if !built.pop() {
+                    built.push(component.as_os_str());
+                }
+            }
+            other => built.push(other.as_os_str()),
+        }
+    }
+    built
+}
+
 impl VirtualMachine {
     /// Set the current file being executed.
     pub fn set_current_file(&mut self, path: PathBuf) {
@@ -124,6 +144,13 @@ impl VirtualMachine {
             .set_variable(format!("-{flag}"), Object::Bool(written));
     }
 
+    /// The extension `-i` names a backup by, which ARGF reads to decide
+    /// whether to edit the files it opens in place.
+    pub fn set_in_place_extension(&mut self, extension: &str) {
+        self.globals_mut()
+            .set_variable("-i", Object::string(extension.to_string()));
+    }
+
     /// The separator `$/` reads lines by, named by its octal code. A bare
     /// `-0` names the null byte, and `-00` asks for paragraph mode.
     pub fn set_line_separator(&mut self, written: &str) {
@@ -147,6 +174,22 @@ impl VirtualMachine {
         self.globals_mut().set_variable("-0", held);
     }
 
+    /// The separator `$/` names now, which a program may have changed.
+    pub fn line_separator(&self) -> String {
+        match self.globals().get("/") {
+            Some(Object::String(text)) => text.as_str().to_string(),
+            _ => "\n".to_string(),
+        }
+    }
+
+    /// `-l` chomps each line and writes the separator back out, which Ruby
+    /// records as `$\` alongside the flag itself.
+    pub fn set_chomping_lines(&mut self) {
+        self.set_flag_global("l", true);
+        let separator = Object::string(self.line_separator());
+        self.globals_mut().set_variable("\\", separator);
+    }
+
     /// The name the main script was run under, which is what `Process.argv0`
     /// and `__FILE__` report for it.
     pub(crate) fn script_name(&self) -> Option<String> {
@@ -157,6 +200,11 @@ impl VirtualMachine {
 
     /// Record the main script's canonical path and the path it was named by.
     pub fn set_script_path(&mut self, canonical: PathBuf, as_given: PathBuf) {
+        // `$0` names the program the way the command line spelled it, which
+        // is what a script reports of itself.
+        let named = Object::string(as_given.display().to_string());
+        self.globals_mut().set_variable("0", named.clone());
+        self.globals_mut().set_variable("PROGRAM_NAME", named);
         self.script_path = Some((canonical, as_given));
     }
 
@@ -166,7 +214,12 @@ impl VirtualMachine {
         let current = self.current_file.as_ref()?;
         match &self.script_path {
             Some((canonical, as_given)) if canonical == current => Some(as_given.clone()),
-            _ => Some(current.clone()),
+            _ => Some(
+                self.reported_files
+                    .get(current)
+                    .cloned()
+                    .unwrap_or_else(|| current.clone()),
+            ),
         }
     }
 
@@ -650,13 +703,21 @@ impl VirtualMachine {
             }
         }
 
+        // The spelling the file was named by, which is the path it reports of
+        // itself. A symlink keeps the name it was reached through, while
+        // everything that loads the file works from the resolved path.
+        let named_path = std::path::absolute(&actual_path)
+            .map(|absolute| without_dot_components(&absolute))
+            .unwrap_or_else(|_| canonical_path.clone());
+        self.reported_files
+            .insert(canonical_path.clone(), named_path.clone());
         // Save the current file path to restore later
         let previous_file = self.current_file.clone();
         // Code in the file being executed belongs to that file, so a block
         // written in it names it however far from the load it is called.
         let previous_source_file = self
             .current_source_file
-            .replace(canonical_path.display().to_string());
+            .replace(named_path.display().to_string());
 
         // Load file source with error context
         let source = load_file_source(&canonical_path).map_err(|e| {
@@ -709,7 +770,7 @@ impl VirtualMachine {
         // at top level, so neither reports the method that ran the load.
         self.call_stack_push(crate::vm::CallFrame::boundary(format!(
             "<file:{}>",
-            canonical_path.display()
+            named_path.display()
         )));
         // Execute the parsed statements (always restore current_file, even on error).
         let result = self.execute_program(&statements);

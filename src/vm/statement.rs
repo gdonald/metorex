@@ -81,40 +81,7 @@ impl VirtualMachine {
                         .collect::<Result<Vec<_>, _>>()?;
                     (Object::array(each.clone()), each)
                 };
-                let splat_at = targets
-                    .iter()
-                    .position(|target| matches!(target, Expression::Splat { .. }));
-                match splat_at {
-                    None => {
-                        for (index, target) in targets.iter().enumerate() {
-                            let value = source.get(index).cloned().unwrap_or(Object::Nil);
-                            self.assign_value(target, value)?;
-                        }
-                    }
-                    Some(splat_at) => {
-                        for (index, target) in targets[..splat_at].iter().enumerate() {
-                            let value = source.get(index).cloned().unwrap_or(Object::Nil);
-                            self.assign_value(target, value)?;
-                        }
-                        // The splat takes what the targets on either side of
-                        // it do not, which is none at all when there are
-                        // fewer values than named targets.
-                        let after = targets.len() - splat_at - 1;
-                        let taken = source.len().saturating_sub(splat_at + after);
-                        let collected: Vec<Object> =
-                            source.iter().skip(splat_at).take(taken).cloned().collect();
-                        if let Expression::Splat { expression, .. } = &targets[splat_at] {
-                            self.assign_value(expression, Object::array(collected))?;
-                        }
-                        for (offset, target) in targets[splat_at + 1..].iter().enumerate() {
-                            let value = source
-                                .get(splat_at + taken + offset)
-                                .cloned()
-                                .unwrap_or(Object::Nil);
-                            self.assign_value(target, value)?;
-                        }
-                    }
-                }
+                self.spread_into_targets(targets, &source)?;
                 // The assignment answers the right-hand side as it was
                 // written, which is what `(a, b = 1, 2)` reads back as.
                 Ok(ControlFlow::Value(answer))
@@ -149,6 +116,11 @@ impl VirtualMachine {
                     position: *position,
                 })
             }
+            // `retry` inside a rescue body runs the begin body again, which
+            // the begin handler does when it sees this.
+            Statement::Retry { position } => Ok(ControlFlow::Retry {
+                position: *position,
+            }),
             Statement::Redo { position } => Ok(ControlFlow::Redo {
                 position: *position,
             }),
@@ -390,6 +362,50 @@ impl VirtualMachine {
         }
     }
 
+    /// Hand each value to the target standing in the same place, with the
+    /// splat, where there is one, taking everything the others leave.
+    pub(crate) fn spread_into_targets(
+        &mut self,
+        targets: &[Expression],
+        source: &[Object],
+    ) -> Result<(), MetorexError> {
+        let splat_at = targets
+            .iter()
+            .position(|target| matches!(target, Expression::Splat { .. }));
+        match splat_at {
+            None => {
+                for (index, target) in targets.iter().enumerate() {
+                    let value = source.get(index).cloned().unwrap_or(Object::Nil);
+                    self.assign_value(target, value)?;
+                }
+            }
+            Some(splat_at) => {
+                for (index, target) in targets[..splat_at].iter().enumerate() {
+                    let value = source.get(index).cloned().unwrap_or(Object::Nil);
+                    self.assign_value(target, value)?;
+                }
+                // The splat takes what the targets on either side of it do
+                // not, which is none at all when there are fewer values than
+                // named targets.
+                let after = targets.len() - splat_at - 1;
+                let taken = source.len().saturating_sub(splat_at + after);
+                let collected: Vec<Object> =
+                    source.iter().skip(splat_at).take(taken).cloned().collect();
+                if let Expression::Splat { expression, .. } = &targets[splat_at] {
+                    self.assign_value(expression, Object::array(collected))?;
+                }
+                for (offset, target) in targets[splat_at + 1..].iter().enumerate() {
+                    let value = source
+                        .get(splat_at + taken + offset)
+                        .cloned()
+                        .unwrap_or(Object::Nil);
+                    self.assign_value(target, value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Assign a value to the given target expression.
     pub(crate) fn assign_value(
         &mut self,
@@ -397,6 +413,15 @@ impl VirtualMachine {
         value: Object,
     ) -> Result<(), MetorexError> {
         match target {
+            // `(a, b), c = pair, held` names a group of targets, which takes
+            // the value apart the way the whole list does.
+            Expression::Array { elements, .. } => {
+                let source: Vec<Object> = match &value {
+                    Object::Array(items) => items.borrow().clone(),
+                    held => vec![held.clone()],
+                };
+                self.spread_into_targets(elements, &source)
+            }
             Expression::Identifier { name, position } => {
                 // Constant-shaped identifiers (`MyClass = ...`) auto-name
                 // anonymous classes/modules on first assignment, matching
@@ -1089,6 +1114,19 @@ impl VirtualMachine {
                     .get(name)
                     .cloned()
                     .unwrap_or_else(|| name.clone());
+                // Ruby has retired the separators a split and a join read
+                // when they are given none of their own, and says so once the
+                // deprecated category is asked for.
+                if matches!(name.as_str(), ";" | ",")
+                    && !matches!(value, Object::Nil)
+                    && self.warning_category_enabled("deprecated")
+                {
+                    let message = format!("warning: ${} is deprecated\n", name);
+                    self.warn_through_warning_module(
+                        message,
+                        crate::lexer::Position::new(0, 0, 0),
+                    )?;
+                }
                 self.globals_mut().set_variable(name.clone(), value.clone());
                 // A `trace_var` hook on this global runs with the new value.
                 let name = name.clone();

@@ -38,8 +38,9 @@ impl VirtualMachine {
                 .strip_prefix("__class__")
                 .unwrap_or(&method_name)
                 .to_string();
-            return Err(crate::vm::errors::undefined_method_error(
-                &reported, &receiver, &arguments, position,
+            let wording = self.receiver_wording_for(&receiver, position);
+            return Err(crate::vm::errors::undefined_method_error_worded(
+                &reported, &receiver, &arguments, wording, position,
             ));
         }
 
@@ -49,7 +50,24 @@ impl VirtualMachine {
         // shadowed by that table. Everything else reaches the native table
         // first, which is what puts `Integer#div` ahead of the `Numeric#div`
         // written for the subclasses a program defines.
-        let overrides_builtin = !method.body.is_empty() && backs_a_collection(&receiver);
+        // A method written on a class object's own singleton runs its own
+        // body rather than the native table's, which is what lets a program
+        // stand one in for `Dir.tmpdir`. The library's own `def self.name`
+        // methods live in the class's method table instead, and stay behind
+        // the native table the way they were written to.
+        let stands_for_a_class_method = match &receiver {
+            Object::Class(held) | Object::Module(held) => {
+                held.singleton_class_slot()
+                    .as_ref()
+                    .is_some_and(|singleton| singleton.find_own_method(&method_name).is_some())
+                    || held
+                        .find_own_method(&format!("__class__{}", method_name))
+                        .is_some_and(|written| written_by_the_program(&written))
+            }
+            _ => false,
+        };
+        let overrides_builtin =
+            !method.body.is_empty() && (backs_a_collection(&receiver) || stands_for_a_class_method);
         if !overrides_builtin
             && let Some(result) = self.call_native_method(
                 class.as_ref(),
@@ -130,12 +148,13 @@ impl VirtualMachine {
 
         // For stub methods (empty body, registered on Object for introspection),
         // fall through to base Object native methods (class, to_s, respond_to?, etc.)
-        if method.body.is_empty()
-            && method.captured_vars.is_none()
-            && let Some(result) =
-                self.call_object_method(&receiver, &method_name, &arguments, position)?
-        {
-            return Ok(result);
+        if method.body.is_empty() && method.captured_vars.is_none() {
+            self.bound_stub_depth += 1;
+            let answered = self.call_object_method(&receiver, &method_name, &arguments, position);
+            self.bound_stub_depth -= 1;
+            if let Some(result) = answered? {
+                return Ok(result);
+            }
         }
 
         let expected = method.parameters.len();
@@ -193,7 +212,14 @@ impl VirtualMachine {
             .original_name
             .clone()
             .unwrap_or_else(|| method_name.clone());
-        let frame_name = format!("{}#{}", owning_class_name, defined_name);
+        // A method on a class or module is named with a dot, the way Ruby
+        // writes `Foo.bar` in a backtrace, and an instance method with a hash.
+        let separator = if matches!(receiver, Object::Class(_) | Object::Module(_)) {
+            "."
+        } else {
+            "#"
+        };
+        let frame_name = format!("{}{}{}", owning_class_name, separator, defined_name);
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
 
@@ -647,6 +673,11 @@ impl VirtualMachine {
                     }
                     return Err(loop_control_error("break", position));
                 }
+                ControlFlow::Retry { position } => {
+                    return Err(MetorexError::BlockRetry {
+                        location: position_to_location(position),
+                    });
+                }
                 ControlFlow::Redo { position } => {
                     if lambda_semantics {
                         return Err(MetorexError::BlockRedo {
@@ -719,4 +750,14 @@ fn backs_a_collection(receiver: &crate::object::Object) -> bool {
             || array_subclass_value(receiver).is_some()
             || set_subclass_value(receiver).is_some()
             || string_subclass_value(receiver).is_some())
+}
+
+/// Whether a method was written by the program rather than by the core
+/// library. A library `def self.name` stays behind the native table, where
+/// one a program writes stands in front of it.
+fn written_by_the_program(method: &std::rc::Rc<crate::object::Method>) -> bool {
+    method
+        .body
+        .first()
+        .is_some_and(|statement| !statement.position().prelude)
 }

@@ -22,13 +22,14 @@ fn run_err(code: &str) -> String {
 // ── Range each without block ──────────────────────────────────────────────────
 
 #[test]
-fn range_each_without_block_error() {
-    let err = run_err(
-        r#"
-(1..5).each
-"#,
+fn range_each_without_block_answers_a_walk() {
+    let result = run(r#"
+(1..5).each.to_a.inspect
+"#);
+    assert_eq!(
+        result.map(|value| value.to_string()),
+        Some("[1, 2, 3, 4, 5]".to_string())
     );
-    assert!(err.contains("block") || err.contains("each") || err.contains("requires"));
 }
 
 // ── Range map without block ───────────────────────────────────────────────

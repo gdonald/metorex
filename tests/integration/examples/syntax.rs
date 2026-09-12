@@ -79,3 +79,52 @@ fn test_syntax_grouped_assignment_no_parens_execution() {
     let output = run_example("syntax/grouped_assignment_no_parens.rb");
     assert_eq!(output, GROUPED_ASSIGNMENT_OUTPUT);
 }
+
+/// The expected output of both `syntax/retry_and_rescue` variants.
+const RETRY_AND_RESCUE_OUTPUT: &str = "[4, :done]\n[2, 4]\nrefused outside a rescue\n";
+
+#[test]
+fn test_syntax_retry_and_rescue_execution() {
+    let output = run_example("syntax/retry_and_rescue.rb");
+    assert_eq!(output, RETRY_AND_RESCUE_OUTPUT);
+}
+
+#[test]
+fn test_syntax_retry_and_rescue_parens_execution() {
+    let output = run_example("syntax/retry_and_rescue_parens.rb");
+    assert_eq!(output, RETRY_AND_RESCUE_OUTPUT);
+}
+
+/// The expected output of both `syntax/grouped_targets` variants, which differ only in whether
+/// the calls are written with parentheses.
+const GROUPED_TARGETS_OUTPUT: &str = "[1, 2, 3]\n[1, nil, nil, nil, nil, nil, nil, nil]\n[4, [5, 6]]\n[nil]\n[7, 8, 9]\n[3, 4, 1, 2]\n[:a, :b]\n[:one, :two]\nnil\n2\n";
+
+#[test]
+fn test_syntax_grouped_targets_execution() {
+    let output = run_example("syntax/grouped_targets.rb");
+    assert_eq!(output, GROUPED_TARGETS_OUTPUT);
+}
+
+#[test]
+fn test_syntax_grouped_targets_parens_execution() {
+    let output = run_example("syntax/grouped_targets_parens.rb");
+    assert_eq!(output, GROUPED_TARGETS_OUTPUT);
+}
+
+/// The expected output of both `syntax/numbered_and_shorthand` variants, which show
+/// a block that names its arguments `_1`, and a call that passes a keyword by name alone and differ only in whether the calls are
+/// written with parentheses.
+const NUMBERED_AND_SHORTHAND_OUTPUT: &str =
+    "[2, 4, 6]\n[[1, 10], [2, 20]]\n[4, 6, 10]\n[1, 6, 7]\n{first: 4, second: 6}\n";
+
+#[test]
+fn test_syntax_numbered_and_shorthand_execution() {
+    let output = run_example("syntax/numbered_and_shorthand.rb");
+    assert_eq!(output, NUMBERED_AND_SHORTHAND_OUTPUT);
+}
+
+#[test]
+fn test_syntax_numbered_and_shorthand_no_parens_execution() {
+    let output = run_example("syntax/numbered_and_shorthand_no_parens.rb");
+    assert_eq!(output, NUMBERED_AND_SHORTHAND_OUTPUT);
+}

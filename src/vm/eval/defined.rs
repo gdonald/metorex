@@ -162,6 +162,7 @@ impl VirtualMachine {
                             | crate::ast::Statement::Break { .. }
                             | crate::ast::Statement::Continue { .. }
                             | crate::ast::Statement::Redo { .. }
+                            | crate::ast::Statement::Retry { .. }
                     ) =>
             {
                 Some("expression")

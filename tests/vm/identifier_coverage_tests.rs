@@ -269,7 +269,7 @@ Foo.new.test
 #[test]
 fn identifier_undefined_variable_error() {
     let err = run_err("nonexistent_var");
-    assert!(err.contains("Undefined"));
+    assert!(err.contains("undefined local variable or method"));
 }
 
 #[test]
@@ -288,7 +288,7 @@ check
 #[test]
 fn identifier_no_self_no_global_error() {
     let err = run_err("unknown_thing");
-    assert!(err.contains("Undefined"));
+    assert!(err.contains("undefined local variable or method"));
 }
 
 #[test]
@@ -352,7 +352,7 @@ end
 Foo.new.test
 "#,
     );
-    assert!(err.contains("Undefined"));
+    assert!(err.contains("undefined local variable or method"));
 }
 
 #[test]

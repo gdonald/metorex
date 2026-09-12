@@ -23,7 +23,14 @@ module Timeout
     if sec < 0
       raise ArgumentError, "Timeout sec must be a non-negative number"
     end
-    block.call(sec)
+    raised = klass.nil? ? Timeout::Error : klass
+    text = message.nil? ? "execution expired" : message
+    __timeout_open__ sec, raised, text
+    begin
+      block.call sec
+    ensure
+      __timeout_close__
+    end
   end
 
   def timeout(sec, klass = nil, message = nil, &block)

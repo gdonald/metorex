@@ -314,7 +314,10 @@ impl VirtualMachine {
                     let key = self.environment_text(&arguments[0], position)?;
                     let held = dict_rc.borrow().get(&key).cloned();
                     return Ok(Some(match held {
-                        Some(value) => retagged(value, &named),
+                        // A value read out of the environment is frozen, so
+                        // changing what was handed back cannot reach the
+                        // environment behind it.
+                        Some(value) => frozen_text(retagged(value, &named)),
                         None => Object::Nil,
                     }));
                 }
@@ -639,9 +642,42 @@ impl VirtualMachine {
                         dict_rc.borrow_mut().shift_remove(DEFAULT_PROC_KEY);
                     }
                     other => {
-                        dict_rc
-                            .borrow_mut()
-                            .insert(DEFAULT_PROC_KEY.to_string(), other.clone());
+                        // Anything that spells itself out as a callable may
+                        // be the default, and one that names its arguments
+                        // strictly must take the hash and the key.
+                        let held = match other {
+                            Object::Block(_) | Object::Method(_) => other.clone(),
+                            _ if self.responds_to(other, "to_proc") => {
+                                self.send_to_object(other.clone(), "to_proc", vec![], position)?
+                            }
+                            _ => {
+                                return Err(crate::vm::errors::simple_exception(
+                                    "TypeError",
+                                    &format!(
+                                        "wrong default_proc type {} (expected Proc)",
+                                        self.builtins().class_of(other).ruby_name()
+                                    ),
+                                    position,
+                                ));
+                            }
+                        };
+                        if let Object::Block(block) = &held
+                            && block.is_lambda
+                        {
+                            let counted = super::method_object_methods::block_arity(block);
+                            if counted != 2 {
+                                return Err(crate::vm::errors::simple_exception(
+                                    "TypeError",
+                                    "default_proc takes two arguments (2 for 1)",
+                                    position,
+                                ));
+                            }
+                        }
+                        let mut dict = dict_rc.borrow_mut();
+                        // A hash answers with a default value or a default
+                        // block, never both.
+                        dict.shift_remove(DEFAULT_VALUE_KEY);
+                        dict.insert(DEFAULT_PROC_KEY.to_string(), held);
                     }
                 }
                 Ok(Some(arguments[0].clone()))
@@ -916,6 +952,7 @@ impl VirtualMachine {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Retry { .. }
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
@@ -1983,6 +2020,17 @@ impl VirtualMachine {
 
 /// Text tagged with an encoding, where one was named. A value of any other
 /// kind is answered as it stands.
+/// A String frozen where it stands, which is how the environment hands back
+/// what it holds.
+fn frozen_text(value: Object) -> Object {
+    let Object::String(text) = &value else {
+        return value;
+    };
+    let copy = crate::object::StringValue::with_encoding(text.to_text(), text.encoding_name());
+    copy.freeze();
+    Object::String(std::rc::Rc::new(copy))
+}
+
 fn retagged(value: Object, named: &Option<String>) -> Object {
     let (Object::String(text), Some(named)) = (&value, named) else {
         return value;

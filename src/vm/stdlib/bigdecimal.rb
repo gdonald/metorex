@@ -38,6 +38,8 @@ class BigDecimal < Numeric
 
   @@rounding_mode = ROUND_HALF_UP
   @@limit = 0
+  # Which results the program asked to be refused rather than answered.
+  @@exception_flags = 0
 
   # The parts another BigDecimal reads off this one while the two are being
   # added, multiplied, or compared.
@@ -76,12 +78,38 @@ class BigDecimal < Numeric
     allocate.send :initialize_parts, sign, stripped, exponent, nil
   end
 
+  # How far the exponent may reach before a value counts as infinite. Past
+  # this the number is beyond what BigDecimal carries.
+  EXPONENT_LIMIT = 10 ** 19
+
   def initialize_parts(sign, digits, exponent, special)
     @sign = sign
     @digits = digits
     @exponent = exponent
     @special = special
+    # An exponent past what BigDecimal carries stands for infinity.
+    if @special.nil? && exponent.is_a?(Integer) && exponent.abs >= EXPONENT_LIMIT
+      @special = exponent > 0 ? :infinite : nil
+      @digits = "" if @special.nil?
+    end
+    BigDecimal.refuse_special @special
     self
+  end
+
+  # The exception flags `BigDecimal.mode` was asked for. A result the program
+  # said it does not accept is refused rather than answered.
+  def self.refuse_special(special)
+    case special
+    when :nan
+      if (@@exception_flags & EXCEPTION_NaN) != 0
+        raise FloatDomainError, "Computation results to 'NaN'(Not a Number)"
+      end
+    when :infinite
+      if (@@exception_flags & EXCEPTION_INFINITY) != 0
+        raise FloatDomainError, "Computation results to 'Infinity'"
+      end
+    end
+    nil
   end
 
   protected :initialize_parts
@@ -578,7 +606,13 @@ class BigDecimal < Numeric
       @@rounding_mode = rounding_named(value) unless value.nil?
       return @@rounding_mode
     end
-    0
+    return @@exception_flags if value.nil?
+    if value
+      @@exception_flags = @@exception_flags | selector
+    else
+      @@exception_flags = @@exception_flags & ~selector
+    end
+    @@exception_flags
   end
 
   # Run a block with the global limit set aside, which is what an operation
@@ -645,6 +679,11 @@ class BigDecimal < Numeric
     end
     if right.zero?
       return BigDecimal.build(0, "", 0, :nan) if left.zero?
+      # Dividing by zero is its own flag, apart from the one for an infinite
+      # result of any other kind.
+      if (BigDecimal.mode(BigDecimal::EXCEPTION_ZERODIVIDE) & BigDecimal::EXCEPTION_ZERODIVIDE) != 0
+        raise FloatDomainError, "Divide by zero"
+      end
       return BigDecimal.build(left.sign_of * right.sign_of, "", 0, :infinite)
     end
     return BigDecimal.build(left.sign_of * right.sign_of, "", 0) if left.zero?

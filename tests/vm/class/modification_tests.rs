@@ -774,7 +774,7 @@ fn file_write_failure() {
 File.write("/nonexistent/path/file.txt", "content")
 "#,
     );
-    assert!(err.contains("Failed to write file"));
+    assert!(err.contains("No such file or directory"));
 }
 
 // ── module_function on Class receiver ───────────────────────────────────────

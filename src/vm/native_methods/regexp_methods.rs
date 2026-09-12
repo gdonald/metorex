@@ -32,6 +32,10 @@ pub(crate) fn uniquify_group_names(pattern: &str) -> (String, Vec<String>) {
             match chars.next() {
                 Some((_, 'h')) => rewritten.push_str("[0-9a-fA-F]"),
                 Some((_, 'H')) => rewritten.push_str("[^0-9a-fA-F]"),
+                // Ruby's `\Z` stands at the end of the subject, or just
+                // before a newline that ends it. The engine underneath knows
+                // `\z` alone, so the optional newline is spelled out.
+                Some((_, 'Z')) => rewritten.push_str(r"\n?\z"),
                 Some((_, escaped)) => {
                     rewritten.push(character);
                     rewritten.push(escaped);
@@ -254,9 +258,29 @@ impl VirtualMachine {
                 if flags.contains('m') {
                     options |= 4;
                 }
+                // A pattern written with an encoding after it matches in that
+                // encoding whatever the text is tagged with, which is what
+                // `FIXEDENCODING` says. `n` matches bytes instead.
+                if flags.contains('u') || flags.contains('e') || flags.contains('s') {
+                    options |= 16;
+                }
+                if flags.contains('n') {
+                    options |= 32;
+                }
                 Ok(Some(Object::Int(options)))
             }
             "casefold?" => Ok(Some(Object::Bool(flags.contains('i')))),
+            // Whether the pattern matches in one encoding whatever the text
+            // it is matched against is tagged with. A pattern written with
+            // an encoding after it does, and so does one spelled with
+            // characters outside ASCII.
+            "fixed_encoding?" => {
+                let named = flags.contains('u') || flags.contains('e') || flags.contains('s');
+                // A `\u` escape names a character outside ASCII whether or
+                // not the pattern spells it out.
+                let spelled = !pattern.is_ascii() || pattern.contains("\\u");
+                Ok(Some(Object::Bool(named || spelled)))
+            }
             "names" => {
                 let mut named: Vec<Object> = Vec::new();
                 let mut seen = Vec::new();
@@ -381,7 +405,27 @@ impl VirtualMachine {
                 }
             }
             "to_s" => Ok(Some(Object::string(to_source_string(pattern, flags)))),
-            "inspect" => Ok(Some(Object::string(format!("/{}/{}", pattern, flags)))),
+            // A pattern written back out the way it was read: the source
+            // with its slashes escaped, and the flags that change how it
+            // matches, in the order Ruby writes them.
+            "inspect" => {
+                let mut written = String::new();
+                let mut escaped = false;
+                for held in pattern.chars() {
+                    if held == '/' && !escaped {
+                        written.push('\\');
+                    }
+                    escaped = held == '\\' && !escaped;
+                    written.push(held);
+                }
+                let mut shown = String::new();
+                for flag in ['m', 'i', 'x', 'n'] {
+                    if flags.contains(flag) {
+                        shown.push(flag);
+                    }
+                }
+                Ok(Some(Object::string(format!("/{}/{}", written, shown))))
+            }
             "hash" => {
                 let mut hasher = std::collections::hash_map::DefaultHasher::new();
                 std::hash::Hash::hash(&(pattern, comparable_flags(flags)), &mut hasher);
@@ -582,6 +626,8 @@ pub(crate) enum MatchPart {
     Group(i64),
     Before,
     After,
+    /// The last group that matched, which is what `$+` names.
+    LastGroup,
 }
 
 /// The match part `$1`, `` $` ``, `$'`, or `$&` names, if any.
@@ -590,6 +636,7 @@ pub(crate) fn capture_reference(name: &str) -> Option<MatchPart> {
         "`" => Some(MatchPart::Before),
         "'" => Some(MatchPart::After),
         "&" => Some(MatchPart::Group(0)),
+        "+" => Some(MatchPart::LastGroup),
         _ => name
             .parse::<i64>()
             .ok()
@@ -618,6 +665,21 @@ impl VirtualMachine {
             }
             MatchPart::Before => self.send_to_object(data, "pre_match", vec![], position),
             MatchPart::After => self.send_to_object(data, "post_match", vec![], position),
+            // `$+` names the last group that matched, which is the last one
+            // the match holds anything for.
+            MatchPart::LastGroup => {
+                let held = self.send_to_object(data, "captures", vec![], position)?;
+                let Object::Array(groups) = held else {
+                    return Ok(Object::Nil);
+                };
+                let found = groups
+                    .borrow()
+                    .iter()
+                    .rev()
+                    .find(|group| !matches!(group, Object::Nil))
+                    .cloned();
+                Ok(found.unwrap_or(Object::Nil))
+            }
         }
     }
 }

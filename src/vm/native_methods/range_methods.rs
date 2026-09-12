@@ -26,6 +26,13 @@ impl VirtualMachine {
         else {
             return Ok(None);
         };
+        // A subclass instance stands wherever a range does, so an argument
+        // that is one is read as the range behind it.
+        let arguments: Vec<Object> = arguments
+            .iter()
+            .map(|held| super::as_range(held).unwrap_or_else(|| held.clone()))
+            .collect();
+        let arguments = arguments.as_slice();
         match method_name {
             "each" => {
                 if !arguments.is_empty() {
@@ -47,11 +54,24 @@ impl VirtualMachine {
                             position,
                         ));
                     }
+                    // Without a block the walk is handed back, which is what
+                    // `(1..3).each` answers. It counts as many values as the
+                    // range holds, where the range can say.
                     None => {
-                        return Err(MetorexError::runtime_error(
-                            "each requires a block",
-                            position_to_location(position),
-                        ));
+                        let counted =
+                            match self.send_to_object(receiver.clone(), "size", vec![], position) {
+                                Ok(Object::Int(count)) => Some(count),
+                                _ => None,
+                            };
+                        return self
+                            .build_enumerator(
+                                receiver.clone(),
+                                method_name,
+                                Vec::new(),
+                                counted,
+                                position,
+                            )
+                            .map(Some);
                     }
                 };
 
@@ -68,6 +88,7 @@ impl VirtualMachine {
                             super::super::ControlFlow::Next
                             | super::super::ControlFlow::Value(_)
                             | super::super::ControlFlow::Redo { .. }
+                            | super::super::ControlFlow::Retry { .. }
                             | super::super::ControlFlow::Continue { .. } => {}
                             super::super::ControlFlow::Break { value, .. } => {
                                 return Ok(Some(value));
@@ -94,6 +115,52 @@ impl VirtualMachine {
                     }
                 }
 
+                // A String range with no end follows `succ` for as long as
+                // the block keeps asking, the same way the Integer one counts.
+                if let Some(first) = endless_string_start(start, end) {
+                    let mut current = first;
+                    loop {
+                        let value = Object::string(current.clone());
+                        match self.execute_block_with_control_flow(&block, vec![value])? {
+                            super::super::ControlFlow::Next
+                            | super::super::ControlFlow::Value(_)
+                            | super::super::ControlFlow::Redo { .. }
+                            | super::super::ControlFlow::Retry { .. }
+                            | super::super::ControlFlow::Continue { .. } => {}
+                            super::super::ControlFlow::Break { value, .. } => {
+                                return Ok(Some(value));
+                            }
+                            super::super::ControlFlow::Return { value, position } => {
+                                return Err(MetorexError::NonLocalReturn {
+                                    value,
+                                    location: super::super::utils::position_to_location(position),
+                                    home_frame: block.home_frame,
+                                });
+                            }
+                            super::super::ControlFlow::Exception {
+                                exception,
+                                position,
+                            } => {
+                                return Err(MetorexError::UncaughtException {
+                                    exception: exception.clone(),
+                                    location: super::super::utils::position_to_location(position),
+                                    message: super::super::utils::format_exception(&exception),
+                                });
+                            }
+                        }
+                        let stepped = self.send_to_object(
+                            Object::string(current.clone()),
+                            "succ",
+                            vec![],
+                            position,
+                        )?;
+                        match stepped {
+                            Object::String(text) => current = text.as_str().to_string(),
+                            _ => return Ok(Some(receiver.clone())),
+                        }
+                    }
+                }
+
                 // The values are walked the same way `to_a` collects them,
                 // so a String range follows `succ` too.
                 let elements = self.range_elements(start, end, *exclusive, position)?;
@@ -102,6 +169,7 @@ impl VirtualMachine {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
+                        | super::super::ControlFlow::Retry { .. }
                         | super::super::ControlFlow::Continue { .. } => continue,
                         // `break` ends the walk and answers what it carried,
                         // which is what the call reports.
@@ -395,6 +463,11 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // Both ends at once are answered by asking for each on its
+                // own, which Range does in the core library.
+                if method_name == "minmax" && arguments.is_empty() {
+                    return Ok(None);
+                }
                 // Without a block or a count, the ends answer directly, which
                 // works for a range too large to walk.
                 if !has_block && arguments.is_empty() && method_name != "minmax" {
@@ -682,6 +755,18 @@ impl VirtualMachine {
 
 /// The first value of a range that counts up from an Integer and never
 /// reaches an end, which is walked one value at a time rather than collected.
+/// The first value of a String range with no end, which `each` walks with
+/// `succ` for as long as the block keeps asking.
+fn endless_string_start(start: &Object, end: &Object) -> Option<String> {
+    if !matches!(end, Object::Nil) {
+        return None;
+    }
+    match start {
+        Object::String(text) => Some(text.as_str().to_string()),
+        _ => None,
+    }
+}
+
 fn endless_int_start(start: &Object, end: &Object) -> Option<i64> {
     let endless = matches!(end, Object::Nil)
         || matches!(end, Object::Float(value) if value.is_infinite() && *value > 0.0);

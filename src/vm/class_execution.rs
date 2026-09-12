@@ -796,6 +796,7 @@ impl VirtualMachine {
                     );
                     m.owner = Some(class.name().to_string());
                     m.owner_class = Some(Rc::clone(class));
+                    m.source_location = Some(self.source_location_for(*def_position));
                     self.warn_redefined_optimized_method(class.name(), method_name, *def_position)?;
                     class.define_method(method_name, Rc::new(m));
                     apply_current_visibility(class, method_name);
@@ -816,15 +817,16 @@ impl VirtualMachine {
                     parameters,
                     body: method_body,
                     singleton_class: Some(receiver),
-                    ..
+                    position: def_position,
                 } if receiver == "self" => {
-                    let m = build_method_from_params(
+                    let mut m = build_method_from_params(
                         method_name.clone(),
                         parameters,
                         method_body.clone(),
                         self.snapshot_active_refinements(),
                         self.snapshot_lexical_nesting(),
                     );
+                    m.source_location = Some(self.source_location_for(*def_position));
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
                     last_value = Object::symbol(method_name.clone());
                 }
@@ -1269,7 +1271,10 @@ impl VirtualMachine {
                         }
                         self.pending_block = Some(self.evaluate_expression(block_expr)?);
                         self.pending_block_from_ampersand = false;
-                        last_value = self.module_define_method(class, &define_args, position)?;
+                        // The method stands where the call was written, not
+                        // where the body it sits in opened.
+                        last_value =
+                            self.module_define_method(class, &define_args, statement.position())?;
                     }
                     // `refine(target) { body }` inside a module body — dispatch
                     // to the module's refine method, preserving the block.
@@ -1373,9 +1378,15 @@ impl VirtualMachine {
             .filter_map(|(i, p)| p.default_value.clone().map(|dv| (i, dv)))
             .collect();
 
-        // Create source location from position
-        let source_location =
+        // Create source location from position, naming the file the `def` was
+        // read from the way that file names itself. Code handed to `eval`
+        // with a name of its own reports that name rather than whatever is
+        // running when the location is asked for.
+        let mut source_location =
             crate::error::SourceLocation::new(position.line, position.column, position.offset);
+        source_location.filename = self
+            .reported_current_file()
+            .map(|file| file.display().to_string());
 
         // Extract variadic parameter info
         let variadic_param = parameters
@@ -2483,6 +2494,16 @@ impl VirtualMachine {
 
     /// The address a collection lives at, used to record that it is frozen.
     /// An Array, Hash, or Set has nowhere of its own to keep the flag.
+    /// An instance variable an object keeps outside itself, which is where a
+    /// callable, a String, and the collections hold theirs.
+    pub(crate) fn carried_variable(&self, held: &Object, name: &str) -> Option<Object> {
+        let address = Self::collection_address(held)?;
+        self.collection_variables
+            .get(&address)
+            .and_then(|held| held.get(name))
+            .cloned()
+    }
+
     pub(crate) fn collection_address(receiver: &Object) -> Option<usize> {
         match receiver {
             Object::Array(items) => Some(Rc::as_ptr(items) as usize),
@@ -2491,6 +2512,11 @@ impl VirtualMachine {
             // A String keeps its instance variables the same way, since the
             // text itself has nowhere to put them.
             Object::String(text) => Some(Rc::as_ptr(text) as usize),
+            // A callable and a Binding are the same: what they hold is the
+            // code and the scope, with nowhere for a variable or a flag.
+            Object::Method(method) => Some(Rc::as_ptr(method) as usize),
+            Object::Block(block) => Some(Rc::as_ptr(block) as usize),
+            Object::Binding(binding) => Some(Rc::as_ptr(binding) as usize),
             _ => None,
         }
     }
@@ -2539,11 +2565,18 @@ impl VirtualMachine {
             // A string changes unless it has been frozen, so it carries the
             // flag itself rather than always answering yes.
             Object::String(text) => text.is_frozen(),
+            // A range holds its ends and nothing else, and Ruby freezes every
+            // one it builds. A subclass instance is an ordinary object, so it
+            // is not reached here.
+            Object::Range { .. } => true,
             Object::Class(c) | Object::Module(c) => c.is_frozen(),
-            Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
-                Self::collection_address(receiver)
-                    .is_some_and(|address| self.frozen_collections.contains_key(&address))
-            }
+            Object::Array(_)
+            | Object::Dict(_)
+            | Object::Set(_)
+            | Object::Method(_)
+            | Object::Block(_)
+            | Object::Binding(_) => Self::collection_address(receiver)
+                .is_some_and(|address| self.frozen_collections.contains_key(&address)),
             // Complex and Rational are value objects, frozen from birth.
             Object::Instance(inst) => {
                 inst.borrow().frozen || matches!(inst.borrow().class.name(), "Complex" | "Rational")

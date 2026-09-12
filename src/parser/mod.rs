@@ -41,6 +41,14 @@ pub struct Parser {
     /// list of choices rather than naming a rest pattern.
     pub(crate) in_when_clause: bool,
 
+    /// How deep the walk is inside a rescue body, which is the only place a
+    /// `retry` may be written.
+    pub(crate) rescue_depth: usize,
+
+    /// Whether the walk is reading the argument of `defined?`, where a jump
+    /// is reported on rather than taken and so is written freely.
+    pub(crate) in_defined_argument: bool,
+
     /// How deep the walk is inside the right-hand side of an assignment,
     /// where `and` and `or` bind more loosely than the assignment itself.
     pub(crate) assignment_rhs_depth: usize,
@@ -48,6 +56,9 @@ pub struct Parser {
     /// to disambiguate `{x 1}` (dict-with-missing-colon, not a paren-less call)
     /// from `Class.new { attr o }` (brace block where `attr o` is a method call).
     pub(crate) dict_literal_depth: usize,
+    /// How deep the walk is inside a `def` body, where an `END` block is
+    /// registered once for every call rather than once for the program.
+    pub(crate) def_body_depth: usize,
     /// Names the file binds somewhere: assignment targets, method parameters,
     /// and block parameters. `foo [1]` indexes a name in this set and passes
     /// an array to a name that is not, which is the rule Ruby applies.
@@ -142,8 +153,11 @@ impl Parser {
             paren_less_arg_depth: 0,
             condition_depth: 0,
             in_when_clause: false,
+            rescue_depth: 0,
+            in_defined_argument: false,
             assignment_rhs_depth: 0,
             dict_literal_depth: 0,
+            def_body_depth: 0,
             bound_names: collect_bound_names(&tokens_for_names),
         }
     }

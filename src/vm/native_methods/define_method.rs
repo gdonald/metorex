@@ -56,7 +56,17 @@ impl VirtualMachine {
         };
 
         let method = match &body_source {
-            Object::Block(block) => self.method_from_block(&method_name, block),
+            Object::Block(block) => {
+                let mut made = self.method_from_block(&method_name, block);
+                // The method stands where the block was written, which is what
+                // `source_location` reports for one built this way.
+                let mut written = self.source_location_for(position);
+                if let Some(named) = &block.source_file {
+                    written.filename = Some(named.clone());
+                }
+                made.source_location = Some(written);
+                made
+            }
             Object::Method(source) => {
                 self.rebindable_method(class_rc, &method_name, source, position)?
             }
@@ -193,14 +203,20 @@ impl VirtualMachine {
         }
 
         let mut method = (**source).clone();
-        // A body-less stub stands in for a natively implemented method, which
-        // dispatch finds by name — so the new copy has to remember the name it
-        // was cut from.
-        if method.body.is_empty() && method.captured_vars.is_none() {
-            method.original_name = Some(method.name.clone());
-        }
+        // The copy remembers the name it was cut from: a body-less stub needs
+        // it to reach the native method, and two names for one definition are
+        // equal because of it.
+        method.original_name = Some(
+            method
+                .original_name
+                .clone()
+                .unwrap_or_else(|| method.name.clone()),
+        );
         method.name = method_name.to_string();
         method.receiver = None;
+        // The copy still stands where the original was written, which is what
+        // `source_location` reports for a method defined from another.
+        method.source_location = source.source_location.clone();
         method.owner = Some(class_rc.name().to_string());
         method.owner_class = Some(Rc::clone(class_rc));
         Ok(method)

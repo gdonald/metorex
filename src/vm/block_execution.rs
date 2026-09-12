@@ -355,7 +355,11 @@ impl VirtualMachine {
             Some((callee, defined)) => {
                 CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
             }
-            None => CallFrame::boundary(frame_name.clone()),
+            // A block run against another receiver still sits where the call
+            // was made, which is what a backtrace entry for it names.
+            None => {
+                CallFrame::boundary(frame_name.clone()).with_location(frame_location_string.clone())
+            }
         }
         .with_source_file(self.current_source_file.clone());
         let body_source_file = block
@@ -472,13 +476,16 @@ impl VirtualMachine {
                                 });
                             }
                             ControlFlow::Break { value, position } => {
+                                // The break belongs to the call that was
+                                // handed this block, which is one made from
+                                // the frame the block was written in.
                                 return Err(MetorexError::BlockBreak {
                                     value,
                                     location: position_to_location(position),
-                                    home_frame: None,
+                                    home_frame: block.home_frame,
                                 });
                             }
-                            ControlFlow::Redo { .. } => continue 'again,
+                            ControlFlow::Redo { .. } | ControlFlow::Retry { .. } => continue 'again,
                             ControlFlow::Continue { position, .. } => {
                                 return Err(loop_control_error("continue", position));
                             }
@@ -643,7 +650,7 @@ impl VirtualMachine {
                                 home_frame: None,
                             });
                         }
-                        ControlFlow::Redo { .. } => continue 'again,
+                        ControlFlow::Redo { .. } | ControlFlow::Retry { .. } => continue 'again,
                         // `next <value>` ends this run of the block with that
                         // value, which is what the method holding the block sees.
                         ControlFlow::Continue { value, .. } => {
@@ -736,7 +743,7 @@ impl VirtualMachine {
                 for statement in block.body() {
                     match self.execute_statement(statement)? {
                         ControlFlow::Next | ControlFlow::Value(_) => {}
-                        ControlFlow::Redo { .. } => {
+                        ControlFlow::Retry { .. } | ControlFlow::Redo { .. } => {
                             again = true;
                             break;
                         }
@@ -844,16 +851,26 @@ fn strict_arity_check(
         return Ok(());
     }
     let parameters = block.binding_parameters();
-    if parameters
-        .iter()
-        .any(|name| name.starts_with('*') || name.starts_with('&'))
-    {
+    if parameters.iter().any(|name| name.starts_with('&')) {
         return Ok(());
     }
-    let expected = parameters.len();
+    // A splat takes everything past the named parameters, so only the count
+    // below it is settled. The ones before it are still required.
+    let splat = parameters.iter().any(|name| name.starts_with('*'));
+    let expected = parameters
+        .iter()
+        .filter(|name| !name.starts_with('*'))
+        .count();
     let required = expected.saturating_sub(block.parameter_defaults.len());
-    if found >= required && found <= expected {
+    if found >= required && (splat || found <= expected) {
         return Ok(());
+    }
+    if splat {
+        return Err(crate::vm::errors::argument_count_error(
+            crate::vm::errors::Arity::AtLeast(required),
+            found,
+            position,
+        ));
     }
     let accepted = if required == expected {
         crate::vm::errors::Arity::Exact(expected)

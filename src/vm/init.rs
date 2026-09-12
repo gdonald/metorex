@@ -68,7 +68,7 @@ pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 26] = [
     ),
 ];
 
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 52] = [
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 55] = [
     ("UTF_8", "UTF-8", false),
     ("CESU_8", "CESU-8", false),
     ("US_ASCII", "US-ASCII", false),
@@ -112,7 +112,10 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 52] = [
     ("GB18030", "GB18030", false),
     ("GBK", "GBK", false),
     ("IBM437", "IBM437", false),
+    ("IBM037", "IBM037", false),
     ("Windows_1250", "Windows-1250", false),
+    ("Windows_1251", "Windows-1251", false),
+    ("CP1251", "Windows-1251", false),
     ("IBM866", "IBM866", false),
     ("MacJapanese", "MacJapanese", false),
     // The dummy encodings: Ruby names them and tags strings with them, but
@@ -127,7 +130,7 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 52] = [
 
 /// The flags `File.open` accepts in `flags:`, and the ones a glob or fnmatch
 /// is narrowed with. File, IO, and File::Constants all carry them.
-const FILE_OPEN_FLAGS: [(&str, i64); 15] = [
+const FILE_OPEN_FLAGS: [(&str, i64); 24] = [
     ("RDONLY", libc::O_RDONLY as i64),
     ("WRONLY", libc::O_WRONLY as i64),
     ("RDWR", libc::O_RDWR as i64),
@@ -143,6 +146,17 @@ const FILE_OPEN_FLAGS: [(&str, i64); 15] = [
     ("FNM_EXTGLOB", 0x10),
     ("FNM_SYSCASE", 0),
     ("FNM_SHORTNAME", 0),
+    ("NOCTTY", libc::O_NOCTTY as i64),
+    ("SYNC", libc::O_SYNC as i64),
+    ("DSYNC", libc::O_DSYNC as i64),
+    ("NOFOLLOW", libc::O_NOFOLLOW as i64),
+    // Nothing shares a file the way Windows does, so a file opened here is
+    // already open the way `SHARE_DELETE` asks for.
+    ("SHARE_DELETE", 0),
+    ("LOCK_SH", libc::LOCK_SH as i64),
+    ("LOCK_EX", libc::LOCK_EX as i64),
+    ("LOCK_UN", libc::LOCK_UN as i64),
+    ("LOCK_NB", libc::LOCK_NB as i64),
 ];
 
 /// Initialize built-in methods for core classes.
@@ -756,7 +770,11 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     // so a singleton method can stand in for `gets` during a test.
     let argf_class = Rc::new(Class::new("ARGF.class", None));
     globals.set("ARGF.class", Object::Class(Rc::clone(&argf_class)));
-    globals.set("ARGF", Object::instance(argf_class));
+    let argf = Object::instance(argf_class);
+    globals.set("ARGF", argf.clone());
+    // `$<` is the stream a program reads without naming one, which is ARGF
+    // under the name Ruby's punctuation gives it.
+    globals.set_variable("<", argf);
     globals.set("assert", Object::NativeFunction("assert".to_string()));
     globals.set(
         "assert_equal",
@@ -886,6 +904,16 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("rand", Object::NativeFunction("rand".to_string()));
     globals.set("srand", Object::NativeFunction("srand".to_string()));
     globals.set("sleep", Object::NativeFunction("sleep".to_string()));
+    // The pair behind `Timeout.timeout`, which name when the block it runs
+    // has to be over and what to raise when it is.
+    globals.set(
+        "__timeout_open__",
+        Object::NativeFunction("__timeout_open__".to_string()),
+    );
+    globals.set(
+        "__timeout_close__",
+        Object::NativeFunction("__timeout_close__".to_string()),
+    );
     // The one primitive behind the Math module, which the prelude wraps in a
     // method per function.
     globals.set(

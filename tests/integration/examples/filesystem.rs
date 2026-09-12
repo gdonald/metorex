@@ -93,3 +93,67 @@ fn test_filesystem_stream_redirection_no_parens_execution() {
     let output = run_example("filesystem/stream_redirection_no_parens.rb");
     assert_eq!(output, STREAM_REDIRECTION_OUTPUT);
 }
+
+/// The expected output of both `filesystem/stream_bytes` variants.
+const STREAM_BYTES_OUTPUT: &str =
+    "97\n\"b\"\n122\n\"c\"\nnil\n[97, 98, 99]\n[\"a\", \"b\", \"c\"]\nnil\n\"ab\"\n0\n\"held\"\n";
+
+#[test]
+fn test_filesystem_stream_bytes_execution() {
+    let output = run_example("filesystem/stream_bytes.rb");
+    assert_eq!(output, STREAM_BYTES_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_stream_bytes_parens_execution() {
+    let output = run_example("filesystem/stream_bytes_parens.rb");
+    assert_eq!(output, STREAM_BYTES_OUTPUT);
+}
+
+/// The expected output of both `filesystem/descriptor_streams` variants, which differ only in whether
+/// the calls are written with parentheses.
+const DESCRIPTOR_STREAMS_OUTPUT: &str = "true\n14\nnil\n[\"UTF-8\", \"ISO-8859-1\"]\n\"one\\n\"\n14\n\"one\\n\"\n4\n0\n\"three\\n\"\n0\n14\n\"one\"\n\"two\"\n\"three\"\n[\"one\", \"two\", \"three\"]\n[\"one\", \"two\", \"three\"]\n3\n\"one\"\n";
+
+#[test]
+fn test_filesystem_descriptor_streams_execution() {
+    let output = run_example("filesystem/descriptor_streams.rb");
+    assert_eq!(output, DESCRIPTOR_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_descriptor_streams_parens_execution() {
+    let output = run_example("filesystem/descriptor_streams_parens.rb");
+    assert_eq!(output, DESCRIPTOR_STREAMS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/line_reading` variants, which differ only in whether
+/// the calls are written with parentheses.
+const LINE_READING_OUTPUT: &str = "\"one two\\n\"\n\"three \"\n\"four\"\n\"\"\n4\n\"one two\\nthree four\\n\\n\"\n\"five six\\n\"\n\"one two\"\n[\"three four\", \"\", \"five six\"]\n[\"one two\", \"three four\", \"\", \"five six\"]\n\"one\"\n\" t\"\n\"sysread for buffered IO\"\n\"one\"\n\" two\"\n";
+
+#[test]
+fn test_filesystem_line_reading_execution() {
+    let output = run_example("filesystem/line_reading.rb");
+    assert_eq!(output, LINE_READING_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_line_reading_parens_execution() {
+    let output = run_example("filesystem/line_reading_parens.rb");
+    assert_eq!(output, LINE_READING_OUTPUT);
+}
+
+/// The expected output of both `filesystem/argf_streams` variants, which differ only in whether
+/// the calls are written with parentheses.
+const ARGF_STREAMS_OUTPUT: &str = "[111, 110, 101, 10]\n[\"o\", \"n\", \"e\", \"\\n\", \"t\", \"w\", \"o\", \"\\n\"]\n8\n[\"one\\n\", \"two\\n\"]\n\"one\\n\"\ntrue\n\"two\\n\"\nnil\n\"one\\n\"\n\"one\\n\"\n\"\"\n\"two\\n\"\n\"US-ASCII\"\n\"US-ASCII\"\n";
+
+#[test]
+fn test_filesystem_argf_streams_execution() {
+    let output = run_example("filesystem/argf_streams.rb");
+    assert_eq!(output, ARGF_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_argf_streams_parens_execution() {
+    let output = run_example("filesystem/argf_streams_parens.rb");
+    assert_eq!(output, ARGF_STREAMS_OUTPUT);
+}

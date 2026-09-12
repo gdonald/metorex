@@ -48,3 +48,34 @@ fn test_callables_currying_and_forwarding_no_parens_execution() {
     let output = run_example("callables/currying_and_forwarding_no_parens.rb");
     assert_eq!(output, CURRYING_AND_FORWARDING_OUTPUT);
 }
+
+/// The expected output of both `callables/copies_and_visibility` variants.
+const COPIES_AND_VISIBILITY_OUTPUT: &str = "true\nfalse\n:open\n[:@note]\ntrue\nfalse\n:open\nprotected method 'shut_door' called for an instance of Holder\nprivate method 'hidden_door' called for an instance of Holder\ntrue\n[[:req], [:rest]]\n\"SHOUT\"\n";
+
+#[test]
+fn test_callables_copies_and_visibility_execution() {
+    let output = run_example("callables/copies_and_visibility.rb");
+    assert_eq!(output, COPIES_AND_VISIBILITY_OUTPUT);
+}
+
+#[test]
+fn test_callables_copies_and_visibility_parens_execution() {
+    let output = run_example("callables/copies_and_visibility_parens.rb");
+    assert_eq!(output, COPIES_AND_VISIBILITY_OUTPUT);
+}
+
+/// The expected output of both `callables/curried_shapes` variants, which differ only in whether
+/// the calls are written with parentheses.
+const CURRIED_SHAPES_OUTPUT: &str = "[[:rest]]\n-1\n3\nArgumentError\n6\n[[:rest]]\n42\nnil\n\"city is missing\"\nnil\nnil\nTypeError\nTypeError\n";
+
+#[test]
+fn test_callables_curried_shapes_execution() {
+    let output = run_example("callables/curried_shapes.rb");
+    assert_eq!(output, CURRIED_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_callables_curried_shapes_parens_execution() {
+    let output = run_example("callables/curried_shapes_parens.rb");
+    assert_eq!(output, CURRIED_SHAPES_OUTPUT);
+}

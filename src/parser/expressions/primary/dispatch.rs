@@ -180,6 +180,13 @@ impl Parser {
                     TokenKind::End,
                     TokenKind::RParen,
                     TokenKind::RBrace,
+                    // A modifier after `raise` says when to raise rather than
+                    // what to raise, so the re-raise takes no arguments.
+                    TokenKind::If,
+                    TokenKind::Unless,
+                    TokenKind::While,
+                    TokenKind::Until,
+                    TokenKind::Rescue,
                 ]) {
                     Vec::new()
                 } else {

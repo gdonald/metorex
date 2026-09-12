@@ -4,7 +4,7 @@
 //! to the appropriate method implementation.
 
 use super::VirtualMachine;
-use super::errors::*;
+
 use crate::ast::Expression;
 use crate::class::Class;
 use crate::error::MetorexError;
@@ -66,11 +66,12 @@ impl VirtualMachine {
         // to *this* method call and makes the call return `value`. Only catch
         // when a block was attached here and the break came from a block
         // written in this frame, so a nested call does not absorb a break
-        // meant for an outer one.
+        // meant for an outer one. Top-level blocks carry no frame, and match
+        // only a call made at top level.
         match result {
             Err(MetorexError::BlockBreak {
                 value, home_frame, ..
-            }) if has_block && (home_frame.is_none() || home_frame == calling_frame) => Ok(value),
+            }) if has_block && home_frame == calling_frame => Ok(value),
             other => other,
         }
     }
@@ -204,6 +205,11 @@ impl VirtualMachine {
                     is_private = self.refuses_explicit_receiver(&owner, method_name);
                 } else if self.refuses_explicit_receiver(&class, method_name) {
                     is_private = true;
+                } else if class.find_own_method(method_name).is_some() {
+                    // The class that supplies the method decides how it may
+                    // be called. A marking further up the chain belongs to
+                    // another definition of the same name.
+                    is_private = false;
                 } else if !is_private {
                     let mut current = class.superclass();
                     while let Some(sc) = current {
@@ -336,10 +342,12 @@ impl VirtualMachine {
                 position,
             )
         } else {
-            Err(undefined_method_error(
+            let wording = self.receiver_wording_for(&receiver, position);
+            Err(crate::vm::errors::undefined_method_error_worded(
                 method_name,
                 &receiver,
                 &arguments,
+                wording,
                 position,
             ))
         }

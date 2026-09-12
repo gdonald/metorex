@@ -647,6 +647,14 @@ impl VirtualMachine {
             // `autoload :CONST, "path"` registers a lazy loader. The path is
             // stored verbatim — `autoload?` returns it unchanged on hit.
             "autoload" => {
+                // `Kernel.autoload` registers where the caller sits, the same
+                // way the bare form does, rather than on Kernel itself.
+                if module_rc.name() == "Kernel"
+                    && let Some(definee) = self.autoload_definee()
+                    && !Rc::ptr_eq(&definee, module_rc)
+                {
+                    return self.call_class_methods(&definee, method_name, arguments, position);
+                }
                 let const_name = match arguments.first() {
                     Some(Object::Symbol(s)) => s.as_str().to_string(),
                     Some(Object::String(s)) => s.as_str().to_string(),

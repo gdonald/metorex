@@ -576,7 +576,37 @@ impl VirtualMachine {
                 self.random_state = machine_word ^ 0x9E3779B97F4A7C15;
                 Ok(previous)
             }
-            "sleep" => Ok(Object::Int(0)),
+            // Metorex does not hold the program up: a sleep answers at once.
+            // A sleep inside `Timeout.timeout` that would run past the limit
+            // is the one thing it reports on, since that is what the block
+            // was given a limit for.
+            "sleep" => {
+                let wanted = match arguments.first() {
+                    None | Some(Object::Nil) => None,
+                    Some(held) => Some(self.float_value_of(held, position)?),
+                };
+                if let Some((deadline, class, message)) = self.timeout_limits.last().cloned() {
+                    let left = deadline.saturating_duration_since(std::time::Instant::now());
+                    if wanted.is_none_or(|seconds| seconds > left.as_secs_f64()) {
+                        self.call_native_function("raise", vec![class, message], position)?;
+                    }
+                }
+                Ok(Object::Int(wanted.unwrap_or(0.0) as i64))
+            }
+            // `Timeout.timeout` opens a limit around the block it runs, and
+            // closes it however the block ends.
+            "__timeout_open__" => {
+                let seconds = self.float_value_of(&arguments[0], position)?;
+                let deadline = std::time::Instant::now()
+                    + std::time::Duration::from_secs_f64(seconds.max(0.0));
+                self.timeout_limits
+                    .push((deadline, arguments[1].clone(), arguments[2].clone()));
+                Ok(Object::Nil)
+            }
+            "__timeout_close__" => {
+                self.timeout_limits.pop();
+                Ok(Object::Nil)
+            }
             // The primitive behind the Math module: the function named by the
             // first argument, applied to the numbers that follow.
             "__math_function__" => self.apply_math_function(&arguments, position),
@@ -605,8 +635,11 @@ impl VirtualMachine {
                     ));
                 }
 
+                // A name may be written as a Symbol or as a String, which is
+                // what `method("hello")` passes.
                 let method_name = match &arguments[0] {
                     Object::Symbol(name) => name.as_str(),
+                    Object::String(name) => name.as_str(),
                     _ => {
                         return Err(MetorexError::runtime_error(
                             format!(
@@ -654,8 +687,7 @@ impl VirtualMachine {
                 // Inside a method the definee is the module the method was
                 // written in, which a module's instance method reaches
                 // through the nesting it captured.
-                let lexical_owner = self.def_scope_stack.last().map(Rc::clone);
-                let owner = match lexical_owner {
+                let owner = match self.autoload_definee() {
                     Some(enclosing) => enclosing,
                     None => match self.globals().get("Object") {
                         Some(Object::Class(object_class)) => object_class,

@@ -61,6 +61,11 @@ impl Parser {
         {
             let position = self.peek().position;
             let opens = name == "BEGIN";
+            // Ruby says so where an `END` block sits inside a method, since
+            // the block is registered again on every call.
+            if !opens && self.def_body_depth > 0 {
+                eprintln!("{}: warning: END in method; use at_exit", position.line);
+            }
             self.advance();
             let block = self.parse_brace_block()?;
             let called = if opens {
@@ -140,6 +145,7 @@ impl Parser {
             TokenKind::Break => self.parse_break_statement(),
             TokenKind::Continue => self.parse_continue_statement(),
             TokenKind::Redo => self.parse_redo_statement(),
+            TokenKind::Retry => self.parse_retry_statement(),
             TokenKind::Return => {
                 let stmt = self.parse_return_statement()?;
                 self.wrap_with_modifier(stmt)
@@ -161,6 +167,13 @@ impl Parser {
                     let stmt = self.finish_multiple_assignment(None, token.position)?;
                     return self.wrap_with_modifier(stmt);
                 }
+                // `(a, b), c = pair, held` opens with a group of targets,
+                // which reads as a parenthesized expression until the `=`
+                // says what it was.
+                if matches!(token.kind, TokenKind::LParen) && self.scans_grouped_targets() {
+                    let stmt = self.finish_multiple_assignment(None, token.position)?;
+                    return self.wrap_with_modifier(stmt);
+                }
                 // Try to parse as an expression or assignment (including arrow lambdas)
                 let expr = self.parse_expression_with_lambda()?;
 
@@ -175,8 +188,9 @@ impl Parser {
                         | Expression::InstanceVariable { .. }
                         | Expression::ClassVariable { .. }
                         | Expression::GlobalVariable { .. }
-                ) || matches!(&expr, Expression::MethodCall { arguments, trailing_block, .. }
-                    if arguments.is_empty() && trailing_block.is_none());
+                        | Expression::ScopeResolution { .. }
+                ) || matches!(&expr, Expression::MethodCall { method, arguments, trailing_block, .. }
+                    if (arguments.is_empty() || method == "[]") && trailing_block.is_none());
                 if assignable_target
                     && self.check(&[TokenKind::Comma])
                     && self.scans_assignment_targets(1, true)
@@ -336,13 +350,52 @@ impl Parser {
             if matches!(tok.kind, TokenKind::Equal) {
                 return seen;
             }
-            // `*rest` takes whatever the targets around it leave.
+            // `*rest` takes whatever the targets around it leave, and a
+            // splat with no name after it takes them and keeps none.
             let tok = if matches!(tok.kind, TokenKind::Star) {
                 offset += 1;
-                self.peek_ahead(offset)
+                let next = self.peek_ahead(offset);
+                if matches!(next.kind, TokenKind::Equal) {
+                    return true;
+                }
+                if matches!(next.kind, TokenKind::Comma) {
+                    seen = true;
+                    offset += 1;
+                    continue;
+                }
+                next
             } else {
                 tok
             };
+            // A group of targets stands where a name may, as the `(y, z)`
+            // of `x, (y, z) = held, pair` does.
+            if matches!(tok.kind, TokenKind::LParen) {
+                let mut depth = 0;
+                loop {
+                    match &self.peek_ahead(offset).kind {
+                        TokenKind::LParen => depth += 1,
+                        TokenKind::RParen => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        TokenKind::EOF | TokenKind::Newline => return false,
+                        _ => {}
+                    }
+                    offset += 1;
+                }
+                offset += 1;
+                match &self.peek_ahead(offset).kind {
+                    TokenKind::Equal => return true,
+                    TokenKind::Comma => {
+                        seen = true;
+                        offset += 1;
+                        continue;
+                    }
+                    _ => return false,
+                }
+            }
             // Expect an identifier (or @ivar, @@cvar, $gvar)
             if !matches!(
                 tok.kind,
@@ -370,6 +423,16 @@ impl Parser {
                     offset += 1;
                 }
             }
+            // `m::A, m::B = :a, :b` names constants under a module, which
+            // are targets the same way a name is.
+            while matches!(self.peek_ahead(offset).kind, TokenKind::ColonColon) {
+                offset += 1;
+                if matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
+                    offset += 1;
+                } else {
+                    return false;
+                }
+            }
             // Skip dot+method chains (e.g., obj.field)
             while matches!(self.peek_ahead(offset).kind, TokenKind::Dot) {
                 offset += 1; // skip .
@@ -393,11 +456,83 @@ impl Parser {
         }
     }
 
+    /// Whether a statement opening with `(` is a multiple assignment whose
+    /// first target is a group, as `(a, b), c = pair, held` is.
+    fn scans_grouped_targets(&self) -> bool {
+        let mut offset = 0;
+        let mut depth = 0;
+        let mut commas = 0;
+        loop {
+            match &self.peek_ahead(offset).kind {
+                TokenKind::LParen => depth += 1,
+                TokenKind::RParen => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                TokenKind::Comma if depth == 1 => commas += 1,
+                // `(*a) = held` names one target and takes the value apart
+                // anyway, which is what the splat says.
+                TokenKind::Star if depth == 1 => commas += 1,
+                TokenKind::EOF | TokenKind::Newline => return false,
+                _ => {}
+            }
+            offset += 1;
+        }
+        offset += 1;
+        while matches!(
+            self.peek_ahead(offset).kind,
+            TokenKind::Comment(_) | TokenKind::Semicolon
+        ) {
+            offset += 1;
+        }
+        match &self.peek_ahead(offset).kind {
+            TokenKind::Equal => commas > 0,
+            TokenKind::Comma => self.scans_assignment_targets(offset + 1, true),
+            _ => false,
+        }
+    }
+
     /// One target in a multiple assignment, which may carry a leading `*`
     /// marking it as the one that takes everything the others leave.
     fn parse_assignment_target(&mut self) -> Result<Expression, MetorexError> {
+        // `(a, b), c = pair, held` groups targets, and a group may hold
+        // further groups, which is what takes a nested Array apart.
+        if self.check(&[TokenKind::LParen]) {
+            let opened = self.advance();
+            let mut grouped = Vec::new();
+            loop {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::RParen]) {
+                    break;
+                }
+                grouped.push(self.parse_assignment_target()?);
+                self.skip_whitespace();
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+            self.expect(TokenKind::RParen, "Expected ')' after grouped targets")?;
+            return Ok(Expression::Array {
+                elements: grouped,
+                position: opened.position,
+            });
+        }
         if self.check(&[TokenKind::Star]) {
             let star = self.advance();
+            self.skip_whitespace();
+            // A splat with no name after it takes the values the other
+            // targets leave and keeps none of them.
+            if self.check(&[TokenKind::Equal, TokenKind::Comma, TokenKind::RParen]) {
+                return Ok(Expression::Splat {
+                    expression: Box::new(Expression::Array {
+                        elements: Vec::new(),
+                        position: star.position,
+                    }),
+                    position: star.position,
+                });
+            }
             let expression = self.parse_expression_with_lambda()?;
             return Ok(Expression::Splat {
                 expression: Box::new(expression),
@@ -426,6 +561,13 @@ impl Parser {
                 break;
             }
             targets.push(self.parse_assignment_target()?);
+        }
+        // `(a, b) = pair` wraps the whole list in a group, which names the
+        // same targets as writing them bare does.
+        if targets.len() == 1
+            && let Expression::Array { elements, .. } = &targets[0]
+        {
+            targets = elements.clone();
         }
         self.expect(TokenKind::Equal, "Expected '=' in multiple assignment")?;
         self.skip_whitespace();
@@ -579,7 +721,7 @@ impl Parser {
     fn parse_condition_expression(
         &mut self,
     ) -> Result<crate::ast::Expression, crate::error::MetorexError> {
-        let expr = self.parse_expression()?;
+        let expr = self.parse_condition_operands()?;
         if self.match_token(&[crate::lexer::TokenKind::Equal]) {
             self.skip_whitespace();
             let value = self.parse_expression()?;
@@ -592,6 +734,33 @@ impl Parser {
             })
         } else {
             Ok(expr)
+        }
+    }
+
+    /// The condition a modifier reads, where `and` and `or` join the tests the
+    /// way they do in a statement of their own.
+    fn parse_condition_operands(
+        &mut self,
+    ) -> Result<crate::ast::Expression, crate::error::MetorexError> {
+        use crate::lexer::TokenKind as Kind;
+        let mut held = self.parse_expression()?;
+        loop {
+            let op = if self.check(&[Kind::KeywordAnd]) {
+                crate::ast::BinaryOp::And
+            } else if self.check(&[Kind::KeywordOr]) {
+                crate::ast::BinaryOp::Or
+            } else {
+                return Ok(held);
+            };
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let right = self.parse_expression()?;
+            held = crate::ast::Expression::BinaryOp {
+                op,
+                left: Box::new(held),
+                right: Box::new(right),
+                position,
+            };
         }
     }
 

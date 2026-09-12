@@ -102,43 +102,11 @@ impl VirtualMachine {
             // 0-arg forms raise SystemExit), and the visibility modifiers,
             // whose 0-arg form is a toggle on the enclosing class or module.
             if let Object::NativeFunction(fn_name) = &val
-                && (matches!(
-                    fn_name.as_str(),
-                    "top_level_to_s"
-                        | "using"
-                        | "__method__"
-                        | "__callee__"
-                        | "abort"
-                        | "at_exit"
-                        | "caller"
-                        | "caller_locations"
-                        | "chomp"
-                        | "chop"
-                        | "fork"
-                        | "loop"
-                        | "open"
-                        | "exit"
-                        | "exit!"
-                        | "fail"
-                        | "gets"
-                        | "global_variables"
-                        | "local_variables"
-                        | "p"
-                        | "pp"
-                        | "proc"
-                        | "print"
-                        | "putc"
-                        | "puts"
-                        | "rand"
-                        | "readline"
-                        | "readlines"
-                        | "srand"
-                        | "throw"
-                        | "binding_kernel"
-                ) || (matches!(
-                    fn_name.as_str(),
-                    "module_function" | "private" | "public" | "protected"
-                ) && self.self_is_class_or_module()))
+                && (runs_when_named_bare(fn_name)
+                    || (matches!(
+                        fn_name.as_str(),
+                        "module_function" | "private" | "public" | "protected"
+                    ) && self.self_is_class_or_module()))
             {
                 return self.call_native_function(fn_name, vec![], position);
             }
@@ -408,4 +376,46 @@ impl VirtualMachine {
             position,
         ))
     }
+}
+
+/// Whether a Kernel function runs when its bare name is evaluated rather than
+/// answering the function itself: top-level `to_s` (Ruby's "main"), `using`
+/// (whose 0-arg form raises ArgumentError), `abort` and `exit` (whose 0-arg
+/// forms raise SystemExit), and the rest whose 0-arg form does the work.
+pub(crate) fn runs_when_named_bare(name: &str) -> bool {
+    matches!(
+        name,
+        "top_level_to_s"
+            | "using"
+            | "__method__"
+            | "__callee__"
+            | "abort"
+            | "at_exit"
+            | "caller"
+            | "caller_locations"
+            | "chomp"
+            | "chop"
+            | "fork"
+            | "loop"
+            | "open"
+            | "exit"
+            | "exit!"
+            | "fail"
+            | "gets"
+            | "global_variables"
+            | "local_variables"
+            | "p"
+            | "pp"
+            | "proc"
+            | "print"
+            | "putc"
+            | "puts"
+            | "rand"
+            | "sleep"
+            | "readline"
+            | "readlines"
+            | "srand"
+            | "throw"
+            | "binding_kernel"
+    )
 }

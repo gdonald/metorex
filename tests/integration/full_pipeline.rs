@@ -159,7 +159,7 @@ fn syntax_error_to_stderr() {
 #[test]
 fn runtime_error_to_stderr() {
     let stderr = run_source_err("undefined_var_xyz");
-    assert!(stderr.contains("Undefined variable"));
+    assert!(stderr.contains("undefined local variable or method"));
 }
 
 // ── File-based pipeline tests ──

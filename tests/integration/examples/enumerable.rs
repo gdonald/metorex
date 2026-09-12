@@ -78,3 +78,20 @@ fn test_enumerable_stepping_and_products_no_parens_execution() {
     let output = run_example("enumerable/stepping_and_products_no_parens.rb");
     assert_eq!(output, STEPPING_AND_PRODUCTS_OUTPUT);
 }
+
+/// The expected output of both `enumerable/products_and_ends` variants, which show
+/// every combination of several walks, and the two ends of a range and differ only in whether the calls are
+/// written with parentheses.
+const PRODUCTS_AND_ENDS_OUTPUT: &str = "Enumerator::Product\n[[1, \"a\"], [1, \"b\"], [2, \"a\"], [2, \"b\"]]\n4\n[[1, \"x\"], [2, \"x\"], [3, \"x\"]]\n[3, 9]\n[nil, nil]\n[4, 1]\n[[1, 10], [2, 11]]\n[10, 11, 12]\n{a: 1, b: 2}\n\"wrong element type Symbol (expected array)\"\n[[7], [6, 5], [4]]\n[[\"a\", 1], [\"b\", 2], [\"c\", 3]]\n";
+
+#[test]
+fn test_enumerable_products_and_ends_execution() {
+    let output = run_example("enumerable/products_and_ends.rb");
+    assert_eq!(output, PRODUCTS_AND_ENDS_OUTPUT);
+}
+
+#[test]
+fn test_enumerable_products_and_ends_no_parens_execution() {
+    let output = run_example("enumerable/products_and_ends_no_parens.rb");
+    assert_eq!(output, PRODUCTS_AND_ENDS_OUTPUT);
+}

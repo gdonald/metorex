@@ -251,7 +251,12 @@ impl Parser {
         if matches!(expr, Expression::Identifier { .. }) && self.check(&[TokenKind::Equal]) {
             let position = self.advance().position;
             self.skip_whitespace();
-            let value = self.parse_expression()?;
+            // The value is read as part of the condition, so a `do` after it
+            // opens the loop body rather than a block on the value.
+            self.condition_depth += 1;
+            let read = self.parse_expression();
+            self.condition_depth -= 1;
+            let value = read?;
             return Ok(Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
                 left: Box::new(expr),
@@ -319,6 +324,20 @@ impl Parser {
         if !self.check(&[TokenKind::Pipe]) {
             loop {
                 self.skip_whitespace();
+                // `|**nil|` says the block takes no keyword arguments, which
+                // is a declaration rather than a parameter.
+                if self.check(&[TokenKind::StarStar])
+                    && matches!(self.peek_ahead(1).kind, TokenKind::Nil)
+                {
+                    self.advance();
+                    self.advance();
+                    params.push(crate::object::NO_KEYWORDS_PARAM.to_string());
+                    self.skip_whitespace();
+                    if !self.match_token(&[TokenKind::Comma]) {
+                        break;
+                    }
+                    continue;
+                }
                 let prefix = if self.match_token(&[TokenKind::StarStar]) {
                     "**"
                 } else if self.match_token(&[TokenKind::Star]) {
@@ -440,8 +459,11 @@ impl Parser {
 
         self.skip_whitespace();
 
+        let body_opened_at = self.stream.current_position();
         let body = self.parse_block_body_with_optional_rescue_ensure(start_pos)?;
+        let body_closed_at = self.stream.current_position();
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
+        let parameters = self.with_numbered_parameters(parameters, body_opened_at, body_closed_at);
 
         Ok(Expression::Lambda {
             parameters,
@@ -523,6 +545,32 @@ impl Parser {
     }
 
     /// Parse a block with brace syntax: { |x| ... }
+    /// The parameters a block declares, or the numbered ones its body names
+    /// when it declares none. `{ _1 + _2 }` takes two parameters, spelled
+    /// `_1` and `_2`, which is how Ruby reads a block written that way.
+    fn with_numbered_parameters(
+        &self,
+        declared: Vec<String>,
+        opened_at: usize,
+        closed_at: usize,
+    ) -> Vec<String> {
+        if !declared.is_empty() {
+            return declared;
+        }
+        let mut highest = 0;
+        for token in &self.stream.tokens()[opened_at..closed_at] {
+            if let TokenKind::Ident(name) = &token.kind
+                && let Some(digit) = name.strip_prefix('_')
+                && digit.len() == 1
+                && let Some(place) = digit.chars().next().and_then(|c| c.to_digit(10))
+                && place >= 1
+            {
+                highest = highest.max(place as usize);
+            }
+        }
+        (1..=highest).map(|place| format!("_{}", place)).collect()
+    }
+
     pub(crate) fn parse_brace_block(&mut self) -> Result<Expression, MetorexError> {
         // A block body is its own run of statements, so `and` and `or` bind
         // there the way they do anywhere else.
@@ -544,6 +592,7 @@ impl Parser {
         self.skip_whitespace();
 
         // Parse block body (single expression or statements)
+        let body_opened_at = self.stream.current_position();
         let mut body = Vec::new();
         while !self.check(&[TokenKind::RBrace]) && !self.is_at_end() {
             // For brace blocks, we typically expect a single expression
@@ -551,8 +600,10 @@ impl Parser {
             body.push(self.parse_statement()?);
             self.skip_whitespace();
         }
+        let body_closed_at = self.stream.current_position();
 
         self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
+        let parameters = self.with_numbered_parameters(parameters, body_opened_at, body_closed_at);
 
         Ok(Expression::Lambda {
             parameters,

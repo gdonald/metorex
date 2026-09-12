@@ -121,6 +121,8 @@ fn class_of_block() {
         is_lambda: false,
         source_file: None,
         home_frame: None,
+        opened_at: None,
+        from_symbol: None,
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");

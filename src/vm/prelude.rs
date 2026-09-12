@@ -857,14 +857,32 @@ module Enumerable
     to_a.uniq(&block)
   end
 
-  def to_h(&block)
+  def to_h(*arguments, &block)
     built = {}
-    each do |*values|
-      pair = block_given? ? yield(packed(values)) : (packed(values))
+    each(*arguments) do |*values|
+      pair = block.nil? ? packed(values) : block.call(packed(values))
+      pair = __pair_of__ pair
       built[pair[0]] = pair[1]
     end
     built
   end
+
+  # One [key, value] pair, which is what every element of a walk read as a
+  # Hash has to be. Anything that is not already an Array is asked for one.
+  def __pair_of__(pair)
+    unless pair.is_a? Array
+      converted = pair.respond_to?(:to_ary) ? pair.to_ary : nil
+      unless converted.is_a? Array
+        raise TypeError, "wrong element type #{pair.class} (expected array)"
+      end
+      pair = converted
+    end
+    unless pair.size == 2
+      raise ArgumentError, "element has wrong array length (expected 2, was #{pair.size})"
+    end
+    pair
+  end
+  private :__pair_of__
 
   def to_set(*args, &block)
     to_a.to_set(*args, &block)
@@ -1071,6 +1089,26 @@ module Enumerable
     each do |*values|
       element = packed(values)
       found = block.call(element)
+      # A name beginning with an underscore is the library's own: `:_alone`
+      # keeps the element on its own, `:_separator` and nil drop it, and
+      # every other such name is a mistake.
+      if found.is_a?(Symbol) && found.to_s.start_with?("_") &&
+         found != :_alone && found != :_separator
+        raise RuntimeError, "symbols beginning with an underscore are reserved"
+      end
+      if found.nil? || found == :_separator
+        grouped.push([key, run]) unless run.empty?
+        run = []
+        key = nil
+        next
+      end
+      if found == :_alone
+        grouped.push([key, run]) unless run.empty?
+        grouped.push([:_alone, [element]])
+        run = []
+        key = nil
+        next
+      end
       unless run.empty? || found == key
         grouped.push([key, run])
         run = []
@@ -1079,7 +1117,7 @@ module Enumerable
       run.push(element)
     end
     grouped.push([key, run]) unless run.empty?
-    Enumerator.over(grouped, :each, [], grouped.size)
+    Enumerator.over(grouped, :each, [], nil)
   end
 
   # The runs where each neighboring pair answers true, so a false answer
@@ -1134,14 +1172,17 @@ module Enumerable
     run = []
     each do |*values|
       element = packed(values)
-      unless run.empty? || !matcher.call(element)
+      # Every element is put to the test, the first one included, even
+      # though a run that has not started yet cannot be closed.
+      starts = matcher.call element
+      if starts && !run.empty?
         grouped.push(run)
         run = []
       end
       run.push(element)
     end
     grouped.push(run) unless run.empty?
-    Enumerator.over(grouped, :each, [], grouped.size)
+    Enumerator.over(grouped, :each, [], nil)
   end
 
   # The runs that end at every element the pattern or block picks out.
@@ -1172,7 +1213,9 @@ end
 # back from `Regexp#match`, `String#match`, and `=~`.
 class MatchData
   def initialize(string, regexp, begins, ends, names)
-    @string = string
+    # The subject is kept as a frozen copy, so a later change to the string
+    # that was matched leaves what the match reports alone.
+    @string = string.dup.freeze
     @regexp = regexp
     @begins = begins
     @ends = ends
@@ -1318,6 +1361,28 @@ class MatchData
     [@begins[index], @ends[index]]
   end
 
+  # Where a group sat counted in bytes rather than in characters, which is
+  # what a program reading the subject byte by byte needs.
+  def byteoffset(key)
+    index = positive_group_index(key)
+    [__bytes_before__(@begins[index]), __bytes_before__(@ends[index])]
+  end
+
+  def bytebegin(key)
+    __bytes_before__ @begins[positive_group_index(key)]
+  end
+
+  def byteend(key)
+    __bytes_before__ @ends[positive_group_index(key)]
+  end
+
+  # How many bytes of the subject sit before a place counted in characters.
+  def __bytes_before__(counted)
+    return nil if counted.nil?
+    @string[0, counted].bytesize
+  end
+  private :__bytes_before__
+
   # `match` and `match_length` answer one group's text and its length.
   def match(key)
     group_text(positive_group_index(key))
@@ -1344,12 +1409,23 @@ class MatchData
     captures
   end
 
+  # Only an Array names which groups to read, and each name in it must be a
+  # Symbol. A key the pattern does not name ends the reading, and more keys
+  # than there are named groups reads none at all.
   def deconstruct_keys(keys)
+    return named_captures.transform_keys { |name| name.to_sym } if keys.nil?
+    unless keys.is_a?(Array)
+      raise TypeError, "wrong argument type #{keys.class} (expected Array)"
+    end
+    return {} if keys.size > @names.size
     collected = {}
-    wanted = keys.nil? ? @names.keys : keys.map { |key| key.to_s }
-    wanted.each do |name|
-      index = @names[name]
-      collected[name.to_sym] = index.nil? ? nil : group_text(index)
+    keys.each do |key|
+      unless key.is_a?(Symbol)
+        raise TypeError, "wrong argument type #{key.class} (expected Symbol)"
+      end
+      index = @names[key.to_s]
+      return collected if index.nil?
+      collected[key] = group_text(index)
     end
     collected
   end
@@ -1711,10 +1787,31 @@ class StringIO
       filled buffer, "" unless buffer.nil?
       return nil
     end
-    taken = remaining[0, wanted]
-    @position = @position + taken.length
-    # A read of so many characters answers bytes rather than text.
-    filled buffer, taken.b
+    # A count names bytes rather than characters, which is what a stream of
+    # text holding multibyte characters reads out one piece at a time.
+    taken = StringIO.__first_bytes__ remaining, wanted
+    @position = @position + StringIO.__characters_for__(remaining, taken.bytesize)
+    filled buffer, taken
+  end
+
+  # The first so many bytes of some text, as bytes rather than as text.
+  def self.__first_bytes__(text, wanted)
+    listed = text.bytes
+    return text.b if listed.size <= wanted
+    listed[0, wanted].pack("C*")
+  end
+
+  # How many characters the first so many bytes of some text spell. A count
+  # landing inside a character counts that character as read.
+  def self.__characters_for__(text, counted)
+    used = 0
+    walked = 0
+    text.each_char do |held|
+      break if used >= counted
+      used += held.bytesize
+      walked += 1
+    end
+    walked
   end
 
   # The number an argument stands for, refusing anything that names none.
@@ -1745,7 +1842,11 @@ class StringIO
 
   def sysread(length = nil, buffer = nil)
     reading_allowed
-    raise EOFError, "end of file reached" if eof? && !length.nil? && length > 0
+    if eof? && !length.nil? && length > 0
+      # The buffer holds what was read, so nothing read leaves it empty.
+      buffer.replace "" unless buffer.nil?
+      raise EOFError, "end of file reached"
+    end
     self.read(length, buffer)
   end
 
@@ -1792,18 +1893,44 @@ class StringIO
   end
 
   def ungetc(letter)
+    reading_allowed
     return nil if letter.nil?
-    text = letter.is_a?(Integer) ? letter.chr : letter.to_s
+    text = if letter.is_a? Integer
+      letter.chr
+    elsif letter.is_a? String
+      letter
+    elsif letter.respond_to? :to_str
+      letter.to_str
+    else
+      raise TypeError, "no implicit conversion of #{letter.class} into String"
+    end
     landing = @position - text.length
     landing = 0 if landing < 0
+    # A position past the end leaves a gap, which Ruby fills with zero bytes
+    # so the character lands where the position said.
+    if landing > @string.length
+      @string = @string + "\000" * (landing - @string.length)
+    end
     @string = @string[0, landing] + text + (@string[landing + text.length..-1] || "")
     @position = landing
     nil
   end
 
+  # Bytes put back land where the cursor stands, so a byte in the middle of a
+  # character replaces that byte alone. What follows the cursor stays where
+  # it was, which is why putting back more bytes than were read grows the
+  # string.
   def ungetbyte(byte)
     return nil if byte.nil?
-    self.ungetc(byte.is_a?(Integer) ? (byte % 256).chr : byte.to_s)
+    listed = byte.is_a?(Integer) ? [byte & 0xff] : byte.to_s.bytes
+    held = @string.bytes
+    landing = @position - listed.size
+    landing = 0 if landing < 0
+    tail = held[@position..-1] || []
+    named = @string.encoding
+    @string = (held[0, landing] + listed + tail).pack("C*").force_encoding(named)
+    @position = landing
+    nil
   end
 
   def gets(separator = $/, limit = nil, chomp: false)
@@ -2041,22 +2168,39 @@ class StringIO
       return
     end
     values.each do |value|
-      if value.is_a?(Array)
+      spread = value.is_a?(Array) ? value : StringIO.__as_array__(value)
+      unless spread.nil?
         if walking.any? { |held| held.equal?(value) }
           self.write "[...]\n"
           next
         end
         walking.push(value)
-        value.empty? ? self.write("\n") : write_lines(value, walking)
+        spread.empty? ? self.write("\n") : write_lines(spread, walking)
         walking.pop
         next
       end
       text = value.nil? ? "" : value.to_s
+      # A `to_s` that hands back something other than a String says nothing
+      # about the object, so the object describes itself.
+      text = Object.instance_method(:to_s).bind(value).call unless text.is_a? String
       self.write text
       self.write "\n" unless text.end_with? "\n"
     end
   end
   private :write_lines
+
+  # The Array an object stands for, or nil where it stands for none. An
+  # object that answers for missing names is asked too, and one that refuses
+  # the name stands for no Array.
+  def self.__as_array__(value)
+    return nil if value.nil? || value.is_a?(String)
+    held = begin
+      value.to_ary
+    rescue NoMethodError
+      nil
+    end
+    held.is_a?(Array) ? held : nil
+  end
 
   # ── What a stream reports about itself ───────────────────────────────────
 
@@ -2141,6 +2285,19 @@ end
 class Enumerator
   include Enumerable
 
+  # Every way of taking one element from each of the walks given, as a walk of
+  # its own. With a block the tuples are handed over as they are made.
+  def self.product(*walks, **keywords)
+    unless keywords.empty?
+      named = keywords.keys.map { |key| key.inspect }.join(", ")
+      raise ArgumentError, "unknown keywords: #{named}"
+    end
+    made = Enumerator::Product.new(*walks)
+    return made unless block_given?
+    made.each { |held| yield held }
+    nil
+  end
+
   # What a generator block is handed, so `Enumerator.new { |y| y << 1 }`
   # reads the same way as one built over a method that yields. Everything
   # handed to it goes to the block it was made with.
@@ -2165,11 +2322,13 @@ class Enumerator
     end
   end
 
-  def initialize(receiver = nil, method_name = nil, arguments = [], size = nil, &generator)
+  # `Enumerator.new { |y| ... }` names the count the walk will hand out, and
+  # nothing else: the walk itself is the block.
+  def initialize(size = nil, &generator)
     raise ArgumentError, "wrong number of arguments (given 0, expected 1+)" if generator.nil?
-    @receiver = receiver
-    @method_name = method_name
-    @arguments = arguments
+    @receiver = nil
+    @method_name = nil
+    @arguments = []
     @size = size
     @position = 0
     @generator = generator
@@ -2194,8 +2353,9 @@ class Enumerator
   # refused rather than answered with a guess.
   def size
     raise ArgumentError, @size_error unless @size_error.nil?
-    # A size named by a block is worked out the first time it is asked for.
-    @size = @size.call if @size.is_a?(Proc)
+    # A size named by something callable is asked each time, so a count that
+    # depends on what the program has done since answers the new one.
+    return @size.call if @size.respond_to?(:call)
     @size
   end
 
@@ -2352,9 +2512,19 @@ class Enumerator
     self
   end
 
+  # Only as much of the walk as was asked for is run, so a walk with no end
+  # still answers its first few.
   def first(count = nil)
-    return to_a[0] if count.nil?
-    to_a[0, count]
+    wanted = count.nil? ? 1 : count
+    raise ArgumentError, "attempt to take negative size" if wanted < 0
+    collected = []
+    unless wanted == 0
+      each do |*values|
+        collected.push(packed(values))
+        break if collected.size >= wanted
+      end
+    end
+    count.nil? ? collected[0] : collected
   end
 
   def map(&block)
@@ -2380,8 +2550,56 @@ class Enumerator
     memo
   end
 
+  # The same walk, with a count alongside each element. The count starts at
+  # the offset given, and what the block answers reaches the method behind
+  # the walk, which is what `chunk.with_index { }` reads.
+  def with_index(offset = 0, &block)
+    counted = __index_offset__ offset
+    return Enumerator.over(self, :with_index, [counted], @size) if block.nil?
+    each do |*values|
+      outcome = block.call(packed(values), counted)
+      counted += 1
+      outcome
+    end
+  end
+
+  # Where a walk starts counting. Nothing at all starts at zero, and
+  # anything that is not already an Integer is asked for one.
+  def __index_offset__(offset)
+    return 0 if offset.nil?
+    return offset if offset.is_a? Integer
+    unless offset.respond_to? :to_int
+      raise TypeError, "no implicit conversion of #{offset.class} into Integer"
+    end
+    named = offset.to_int
+    unless named.is_a? Integer
+      raise TypeError, "can't convert #{offset.class} to Integer (#{offset.class}#to_int gives #{named.class})"
+    end
+    named
+  end
+  private :__index_offset__
+
+  # A walk's `each_with_index` answers whatever the method behind the walk
+  # answers, and the block's own value reaches that method.
+  def each_with_index(*arguments, &block)
+    unless arguments.empty?
+      raise ArgumentError, "wrong number of arguments (given #{arguments.size}, expected 0)"
+    end
+    return Enumerator.over(self, :each_with_index, [], @size) if block.nil?
+    index = 0
+    each do |*values|
+      outcome = block.call(packed(values), index)
+      index += 1
+      outcome
+    end
+  end
+
   def inspect
-    "#<Enumerator: #{@receiver.inspect}:#{@method_name}>"
+    return "#<#{self.class}: uninitialized>" if @position.nil?
+    written = "#<#{self.class}: #{@receiver.inspect}:#{@method_name}"
+    listed = @arguments.nil? ? [] : @arguments
+    written += "(#{listed.map { |one| one.inspect }.join(', ')})" unless listed.empty?
+    written + ">"
   end
 
 end
@@ -2788,6 +3006,7 @@ class Enumerator::Lazy < Enumerator
   end
 
   def inspect
+    return "#<#{self.class}: uninitialized>" if @source.nil?
     "#<Enumerator::Lazy: #{@source.inspect}>"
   end
 end
@@ -2826,15 +3045,37 @@ class Enumerator::EmptyWalk
   end
 end
 
+# The block behind `Enumerator.new { |y| ... }`, held as an object of its own
+# so a walk can be built from one and asked to run it again.
+class Enumerator::Generator
+  include Enumerable
+
+  def initialize(&block)
+    raise ArgumentError, "tried to create a Generator object without a block" if block.nil?
+    @block = block
+    self
+  end
+  private :initialize
+
+  def each(*arguments, &block)
+    raise LocalJumpError, "no block given (yield)" if block.nil?
+    @block.call(Enumerator::Yielder.new { |*values| block.call(*values) }, *arguments)
+  end
+end
+
 # The walks a chain runs through in order, which `+` builds.
 class Enumerator::Chain < Enumerator
   def initialize(*walks)
     @walks = walks
+    self
   end
+  private :initialize
 
   def each
     return to_enum(:each) unless block_given?
+    @walked = []
     @walks.each do |walk|
+      @walked.push(walk)
       walk.each { |*values| yield(*values) }
     end
     self
@@ -2861,7 +3102,11 @@ class Enumerator::Chain < Enumerator
     total
   end
 
+  # Ruby rewinds the walks a chain has run, last one first, and leaves the
+  # ones it never reached alone.
   def rewind
+    listed = @walked.nil? ? [] : @walked
+    listed.reverse.each { |walk| walk.rewind if walk.respond_to?(:rewind) }
     self
   end
 
@@ -2904,21 +3149,28 @@ class Enumerator::Product < Enumerator
   end
   private :initialize_copy
 
-  def each
-    return Enumerator.over(self, :each, [], size) unless block_given?
-    combinations = [[]]
-    @enumerables.each do |enumerable|
-      entries = []
-      enumerable.each_entry { |entry| entries.push(entry) }
-      grown = []
-      combinations.each do |prefix|
-        entries.each { |entry| grown.push(prefix + [entry]) }
-      end
-      combinations = grown
-    end
-    combinations.each { |combination| yield combination }
+  def each(&block)
+    return Enumerator.over(self, :each, [], size) if block.nil?
+    __combined__([], 0, &block)
     self
   end
+
+  # One entry from the walk at `at`, then every combination of the walks
+  # under it. Each walk is read only as far as the block asks for, so a
+  # product over an endless walk still yields.
+  def __combined__(prefix, at, &block)
+    if at == @enumerables.size
+      block.call(prefix.dup)
+      return nil
+    end
+    @enumerables[at].each_entry do |entry|
+      prefix.push(entry)
+      __combined__(prefix, at + 1, &block)
+      prefix.pop
+    end
+    nil
+  end
+  private :__combined__
 
   def to_a
     collected = []
@@ -3111,6 +3363,13 @@ class Numeric
 end
 
 class Range
+  # Both ends at once. Without a block the ends name themselves, so a range
+  # over anything with a `succ` is not walked to find them.
+  def minmax(&block)
+    return to_a.minmax(&block) unless block.nil?
+    [min, max]
+  end
+
   # `(1..10).step(3)` walks 1, 4, 7, 10, and `%` is written for the same
   # thing. Without a block either one answers the sequence itself.
   def step(by = nil, &block)
@@ -3373,6 +3632,21 @@ class Array
 end
 
 class Set
+  # `Set.new` builds the set itself, and the hook behind it is private the
+  # way every other `initialize` is.
+  def initialize(enumerable = nil, &block)
+    return self if enumerable.nil?
+    unless enumerable.respond_to?(:each_entry) || enumerable.respond_to?(:each)
+      raise ArgumentError, "value must be enumerable"
+    end
+    walked = enumerable.respond_to?(:each_entry) ? :each_entry : :each
+    enumerable.send(walked) do |entry|
+      add(block.nil? ? entry : block.call(entry))
+    end
+    self
+  end
+  private :initialize
+
   # The elements grouped into sets under whatever the block answers for each
   # of them.
   def classify
@@ -3454,6 +3728,28 @@ class Set
 end
 
 class Hash
+  # The hook behind `Hash.new`, which a subclass reaches through `super` and
+  # a program may call again to set a new default. The pairs already stored
+  # are left alone.
+  def initialize(*arguments, &block)
+    raise FrozenError, "can't modify frozen Hash: #{inspect}" if frozen?
+    if arguments.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{arguments.size}, expected 0..1)"
+    end
+    unless block.nil?
+      unless arguments.empty?
+        raise ArgumentError, "wrong number of arguments (given #{arguments.size}, expected 0)"
+      end
+      self.default = nil
+      self.default_proc = block
+      return self
+    end
+    self.default_proc = nil
+    self.default = arguments.empty? ? nil : arguments[0]
+    self
+  end
+  private :initialize
+
   # A lambda that reads one key out of the hash, which is what `&hash` passes
   # to a method expecting a block.
   def to_proc
@@ -4205,11 +4501,15 @@ class Proc
   end
 
   def self.__curried__(callable, count, collected, strict)
-    if strict
+    held = if strict
       lambda { |*given| Proc.__curry_step__(callable, count, collected, strict, given) }
     else
       proc { |*given| Proc.__curry_step__(callable, count, collected, strict, given) }
     end
+    # A curried callable stands for the library's own, which names no
+    # arguments of its own and has no scope behind it.
+    held.instance_variable_set :@__curried, true
+    held
   end
 
   def self.__curry_step__(callable, count, collected, strict, given)
@@ -4600,31 +4900,319 @@ class IO
     held
   end
 
-  # `IO.new(fd)` stands over a descriptor this program did not open, so
-  # closing the IO leaves the descriptor alone unless `autoclose` says
-  # otherwise. A subclass opened another way keeps the constructor of its
-  # own, which is why this is written as an `initialize` rather than as a
-  # `new`.
-  def initialize(number, _mode = nil, path: nil, autoclose: true)
-    if number.is_a? IO
-      return __take__(number.__stream_handle__, path.nil? ? number.path : path)
+  # The whole of a file, or a run of it, named by path. `File` reads these
+  # itself, and an IO reads them the same way.
+  def self.read(name, *rest, **options)
+    File.read name, *rest, **options
+  end
+
+  def self.binread(name, *rest)
+    File.binread name, *rest
+  end
+
+  # Text written to a file named by path. Without an offset the file is
+  # written from the start and cut down to what was written, and with one the
+  # rest of the file is left as it was.
+  def self.write(name, text, offset = :__none__, *extra, **options)
+    unless extra.empty?
+      raise ArgumentError,
+            "wrong number of arguments (given #{3 + extra.size}, expected 2..3)"
     end
-    unless number.is_a? Integer
+    spelled = text.is_a?(String) ? text : text.to_s
+    at = offset == :__none__ ? nil : offset
+    named = options[:mode]
+    mode = if !named.nil?
+      named
+    elsif at.nil?
+      "w"
+    else
+      "r+"
+    end
+    held = begin
+      File.open File.path(name), mode
+    rescue Errno::ENOENT
+      # A write brings the file into being, whatever the mode says about
+      # reading it.
+      File.open File.path(name), "w"
+    end
+    begin
+      held.seek at, IO::SEEK_SET unless at.nil?
+      held.write spelled
+    ensure
+      held.close
+    end
+  end
+
+  # The bytes a String stands for written to a file, with nothing carried
+  # into another encoding on the way.
+  def self.binwrite(name, text, offset = :__none__, *extra, **options)
+    IO.write name, text, offset, *extra, **options
+  end
+
+  def self.readlines(name, separator = $/, limit = nil, chomp: false, **options)
+    held = File.open File.path(name), options[:mode].nil? ? "r" : options[:mode]
+    begin
+      held.readlines separator, limit, chomp: chomp
+    ensure
+      held.close
+    end
+  end
+
+  # Each line of a file in turn. Without a block the lines are handed back as
+  # a walk over them.
+  def self.foreach(name, separator = :__none__, limit = nil, chomp: false, **options, &block)
+    if block.nil?
+      return Enumerator.new do |yielder|
+        IO.foreach(name, separator, limit, chomp: chomp, **options) { |line| yielder << line }
+      end
+    end
+    held = File.open File.path(name), options[:mode].nil? ? "r" : options[:mode]
+    # Reading every line of a file leaves no last line read behind.
+    $_ = nil
+    begin
+      if separator == :__none__
+        held.each_line(chomp: chomp) { |line| block.call line }
+      else
+        held.each_line(separator, limit, chomp: chomp) { |line| block.call line }
+      end
+    ensure
+      held.close
+    end
+    nil
+  end
+
+  # The stream an object stands for, or nil where it stands for none. Only an
+  # object answering `to_io` is asked.
+  def self.try_convert(held)
+    # `IO === held` asks IO rather than the object, so an object that answers
+    # nothing of Kernel's, a BasicObject among them, is read here too.
+    return held if IO === held
+    converted = begin
+      held.to_io
+    rescue NoMethodError => missing
+      raise unless missing.name == :to_io
+      return nil
+    end
+    return converted if IO === converted
+    raise TypeError,
+          "can't convert #{held.class} into IO (#{held.class}#to_io gives #{converted.class})"
+  end
+
+  # An IO over a descriptor, handed to a block when one is given and closed
+  # once the block is done.
+  def self.open(number, mode = nil, *extra, **options)
+    held = new number, mode, *extra, **options
+    return held unless block_given?
+    begin
+      yield held
+    ensure
+      begin
+        held.close unless held.closed?
+      rescue IOError => closing
+        # A stream already closed inside the block is not a failure of the
+        # close here, so that one error alone is let go.
+        raise unless closing.message == "closed stream"
+      end
+    end
+  end
+
+  # The descriptor a name opens under, handed back by number. Whoever asked
+  # for it owns it, so nothing here closes it.
+  def self.sysopen(name, mode = nil, permissions = nil)
+    written = IO.__written_mode__(mode).to_s
+    written = "r" if written.empty?
+    IO.__stream__ "sysopen", 0, File.path(name), IO.__opening_number__(written)
+  end
+
+  # How a mode string says the file is opened: 0 reads, 1 writes from the
+  # start, 2 adds to the end, and 3 does both.
+  def self.__opening_number__(written)
+    return 2 if written.start_with? "a"
+    return 3 if written.start_with?("r") && written.include?("+")
+    return 1 if written.start_with? "w"
+    0
+  end
+
+  # A mode as a String, whatever it was written as: a String stands as it is,
+  # a number names the flags, and anything else spells itself as one.
+  def self.__written_mode__(mode)
+    return nil if mode.nil?
+    return mode if mode.is_a? String
+    return IO.__mode_of_flags__(mode) if mode.is_a? Integer
+    return mode.to_str if mode.respond_to? :to_str
+    return IO.__mode_of_flags__(mode.to_int) if mode.respond_to? :to_int
+    raise ArgumentError, "invalid access mode #{mode}"
+  end
+
+  # The mode string the open flags stand for.
+  def self.__mode_of_flags__(flags)
+    access = flags & 3
+    adding = flags & File::APPEND != 0
+    return adding ? "a+" : "r+" if access == File::RDWR
+    return adding ? "a" : "w" if access == File::WRONLY
+    "r"
+  end
+
+  # `IO.new(fd)` stands over a descriptor this program did not open. The mode
+  # says how the program means to use it, which must be a use the descriptor
+  # was opened for, and the options name the encodings and whether the
+  # descriptor is closed along with the IO.
+  def initialize(number, mode = nil, *extra, **options)
+    unless extra.empty?
+      raise ArgumentError,
+            "wrong number of arguments (given #{2 + extra.size}, expected 1..2)"
+    end
+    if block_given?
+      warn "warning: IO::new() does not take block; use IO::open() instead"
+    end
+    number = IO.__as_descriptor__ number
+    written = IO.__mode_wanted__ mode, options
+    handle = IO.__stream__ "adopt", 0, "", number
+    opened = IO.__stream__ "accmode", handle, "", 0
+    if written.nil?
+      # Nothing said how the stream would be used, so it is used the way the
+      # descriptor was opened.
+      written = IO.__mode_of_flags__ opened
+    else
+      # A descriptor opened for reading cannot be written through, and one
+      # opened for writing cannot be read.
+      IO.__check_access__ written, opened
+    end
+    __take__ handle, options[:path], written
+    self.autoclose = options.key?(:autoclose) ? (options[:autoclose] ? true : false) : true
+    @binmode = true if IO.__binary_mode__ written, options
+    @__file_encoding = IO.__named_encoding__ written, options
+    self
+  end
+
+  # The descriptor a program named, which is a number or something that
+  # spells itself as one.
+  def self.__as_descriptor__(number)
+    return number if number.is_a? Integer
+    unless number.respond_to? :to_int
       raise TypeError, "no implicit conversion of #{number.class} into Integer"
     end
-    __take__ IO.__stream__("adopt", 0, "", number), path
-    self.autoclose = autoclose
-    self
+    held = number.to_int
+    unless held.is_a? Integer
+      raise TypeError, "can't convert #{number.class} to Integer"
+    end
+    held
+  end
+
+  # The mode a program asked for, named either as an argument or as a `mode:`
+  # option, but never as both.
+  def self.__mode_wanted__(mode, options)
+    named = options[:mode]
+    if !mode.nil? && !named.nil?
+      raise ArgumentError, "mode specified twice"
+    end
+    given = named.nil? ? mode : named
+    return nil if given.nil?
+    written = IO.__written_mode__(given).to_s
+    raise ArgumentError, "invalid access mode #{written}" if written.empty?
+    written
+  end
+
+  # Whether the stream reads and writes bytes rather than text. A mode
+  # naming binary or text and an option saying so are two ways of asking for
+  # the same thing, and Ruby takes only one of them.
+  def self.__binary_mode__(written, options)
+    access = written.split(":", 2)[0].to_s
+    named = access.include?("b") || access.include?("t")
+    if named && (options.key?(:binmode) || options.key?(:textmode))
+      raise ArgumentError, "binmode specified twice"
+    end
+    if options[:binmode] && options[:textmode]
+      raise ArgumentError, "both textmode and binmode specified"
+    end
+    return true if access.include? "b"
+    options[:binmode] ? true : false
+  end
+
+  # The encodings a stream reads and writes in, written as `"ext:int"`. They
+  # may be named after the mode or as options, and never as both.
+  def self.__named_encoding__(written, options)
+    parts = written.split(":")
+    named = parts[1..].to_a.join(":")
+    keyed = [:encoding, :external_encoding, :internal_encoding].any? { |key| options.key? key }
+    if !named.empty? && keyed
+      raise ArgumentError, "encoding specified twice"
+    end
+    unless named.empty?
+      return IO.__encoding_pair__ parts[1], parts[2], written
+    end
+    outer = options[:external_encoding]
+    inner = options[:internal_encoding]
+    if options.key?(:encoding)
+      if outer.nil? && inner.nil?
+        outer, inner = IO.__spelled_encoding__(options[:encoding]).split(":", 2)
+      else
+        warn "warning: Ignoring encoding parameter '#{options[:encoding]}': #{outer.nil? ? "internal" : "external"}_encoding is used"
+      end
+    end
+    if outer.nil? && inner.nil?
+      return "ASCII-8BIT" if IO.__binary_mode__ written, options
+      return nil
+    end
+    IO.__encoding_pair__ outer, inner, written
+  end
+
+  # Two encodings as one `"ext:int"` string. An internal encoding matching
+  # the external one, or named `-`, is no internal encoding at all.
+  def self.__encoding_pair__(outer, inner, written)
+    outer = outer.nil? ? "" : IO.__spelled_encoding__(outer)
+    inner = inner.nil? ? "" : IO.__spelled_encoding__(inner)
+    inner = "" if inner == "-" || inner.downcase == outer.downcase
+    inner.empty? ? outer : "#{outer}:#{inner}"
+  end
+
+  # An encoding as the name it is held under, whatever it was written as.
+  def self.__spelled_encoding__(named)
+    return named.name if named.is_a? Encoding
+    return named if named.is_a? String
+    return named.to_str if named.respond_to? :to_str
+    named.to_s
+  end
+
+  # Whether the descriptor may be used the way the mode says.
+  def self.__check_access__(written, opened)
+    access = written.split(":", 2)[0].to_s
+    reading = access.start_with?("r") || access.include?("+")
+    writing = access.start_with?("w") || access.start_with?("a") || access.include?("+")
+    if (reading && opened == File::WRONLY) || (writing && opened == File::RDONLY)
+      raise Errno::EINVAL, "invalid access mode #{written}"
+    end
+    nil
   end
 
   def self.for_fd(number, mode = nil, **options)
     new number, mode, **options
   end
 
+  # Everything one stream holds, written to another. A name stands for a file
+  # opened for the copy and closed after it, and an object that reads or
+  # writes is used as it is.
+  def self.copy_stream(source, destination, length = nil, offset = nil)
+    opened_source = nil
+    opened_target = nil
+    begin
+      reader = source.respond_to?(:read) ? source : (opened_source = File.open(File.path(source), "rb"))
+      writer = destination.respond_to?(:write) ? destination : (opened_target = File.open(File.path(destination), "wb"))
+      held = reader.read.to_s
+      held = held.byteslice(offset, held.bytesize).to_s unless offset.nil?
+      held = held.byteslice(0, length).to_s unless length.nil?
+      writer.write held
+      held.bytesize
+    ensure
+      opened_source.close unless opened_source.nil?
+      opened_target.close unless opened_target.nil?
+    end
+  end
+
   # The three streams the program started with, each over the descriptor the
   # operating system opened for it.
   def self.__standard__(number, named)
-    held = __over__ IO.__stream__("adopt", 0, "", number), named
+    held = __over__ IO.__stream__("adopt", 0, "", number), named, number == 0 ? "r" : "w"
     held.__send__ :__name_standard__, named
     held
   end
@@ -4638,6 +5226,7 @@ class IO
   end
 
   def __take__(handle, path = nil, mode = nil)
+    __note_encodings__
     @handle = handle
     @path = path
     @__file_mode = mode
@@ -4690,8 +5279,14 @@ class IO
 
   def close
     return nil if closed?
-    IO.__stream__ "close", __stream_handle__, "", 0 if autoclose?
-    @closed = true
+    # What the stream was holding back is written before the descriptor goes,
+    # so a broken pipe is reported here rather than lost.
+    begin
+      __drain__
+    ensure
+      IO.__stream__ "close", __stream_handle__, "", 0 if autoclose?
+      @closed = true
+    end
     nil
   end
 
@@ -4711,6 +5306,15 @@ class IO
   # carrying a plus says.
   def __both_ways__
     @__file_mode.to_s.include? "+"
+  end
+
+  # Whether reading is allowed at all. A mode naming only writing or only
+  # appending leaves no reading side.
+  def __readable__
+    return false if @standard == "stdout" || @standard == "stderr"
+    return true if @__file_mode.nil?
+    return true if __both_ways__
+    !(__opened_for__("w") || __opened_for__("a"))
   end
 
   def close_read
@@ -4738,7 +5342,16 @@ class IO
   def write(*parts)
     raise IOError, "closed stream" if closed?
     raise IOError, "not opened for writing" if @write_closed
+    raise IOError, "not opened for writing" unless __writable__
+    @line_buffered = nil
+    @wrote_through_buffer = true
     held = parts.length == 1 ? parts[0].to_s : parts.map { |part| part.to_s }.join
+    # A stream the program told not to sync holds what is written until it is
+    # flushed, which is when the descriptor hears about it.
+    if @holding && @standard.nil?
+      @pending = @pending.nil? ? held : @pending + held
+      return held.bytesize
+    end
     # The streams the program started with are written through the
     # interpreter's own writer, so what a program prints keeps the order it
     # printed it in whichever route it took.
@@ -4747,13 +5360,33 @@ class IO
     held.bytesize
   end
 
+  # Everything held back by a stream that does not sync, written through now.
+  def __drain__
+    return nil if @pending.nil? || @pending.empty?
+    # What could not be written stays held, so the next flush or the close
+    # reports the same trouble rather than losing it.
+    IO.__stream__ "write", __stream_handle__, @pending, 0
+    @pending = nil
+    nil
+  end
+  private :__drain__
+
   def <<(text)
     write text
     self
   end
 
+  # Each value written out as text, separated by `$,` where the program set
+  # one, and followed by `$\`. With nothing to write the last line read is
+  # written instead.
   def print(*parts)
-    parts.each { |part| write part.to_s }
+    parts = [$_] if parts.empty?
+    separator = $,
+    parts.each_with_index do |part, index|
+      write separator.to_s if index > 0 && !separator.nil?
+      write(part.nil? ? "" : part.to_s)
+    end
+    write $\ unless $\.nil?
     nil
   end
 
@@ -4765,25 +5398,34 @@ class IO
   end
 
   def puts(*lines)
-    return write("\n") && nil if lines.empty?
+    return write(__line_ending__) && nil if lines.empty?
     __write_lines__ lines, []
     nil
   end
 
+  # What ends a line this stream writes. A stream opened with `newline:` ends
+  # them the way that named, and every other stream ends them with a newline.
+  def __line_ending__
+    return "\r\n" if @__file_newline == :crlf
+    return "\r" if @__file_newline == :cr
+    "\n"
+  end
+  private :__line_ending__
+
   # One line per value, where an array is written out element by element. An
   # array that reaches itself is written as `[...]` rather than followed.
   def __write_lines__(values, walking)
-    if values.empty?
-      write "\n"
-      return
-    end
+    ending = __line_ending__
     values.each do |value|
-      spread = value.is_a?(Array) ? value : (value.respond_to?(:to_ary) ? value.to_ary : nil)
+      spread = value.is_a?(Array) ? value : __as_array__(value)
       if spread.nil?
         held = value.nil? ? "" : value.to_s
-        write(held.end_with?("\n") ? held : held + "\n")
+        # A `to_s` that hands back something other than a String says
+        # nothing about the object, so the object describes itself.
+        held = Object.instance_method(:to_s).bind(value).call unless held.is_a? String
+        write(held.end_with?(ending) ? held : held + ending)
       elsif walking.any? { |seen| seen.equal? value }
-        write "[...]\n"
+        write "[...]#{ending}"
       else
         __write_lines__ spread, walking + [value]
       end
@@ -4791,72 +5433,676 @@ class IO
   end
   private :__write_lines__
 
+  # The Array an object stands for, or nil where it stands for none. An
+  # object that answers for missing names is asked too, and one that refuses
+  # the name stands for no Array.
+  def __as_array__(value)
+    return nil if value.nil? || value.is_a?(String)
+    held = begin
+      value.to_ary
+    rescue NoMethodError
+      nil
+    end
+    held.is_a?(Array) ? held : nil
+  end
+  private :__as_array__
+
+  # As many bytes as asked for, or everything left where no count is given.
+  # Whatever was put back with `ungetc` stands before what the descriptor
+  # has, and is handed out first.
   def read(length = nil, buffer = nil)
     raise IOError, "closed stream" if closed?
     raise IOError, "not opened for reading" if @read_closed
-    wanted = length.nil? ? 0 : length.to_i
+    wanted = length.nil? ? 0 : __as_integer__(length)
+    raise ArgumentError, "negative length #{wanted} given" if wanted < 0
     waiting = @peeked
     @peeked = nil
-    held = if waiting.nil?
-      IO.__stream__ "read", __stream_handle__, "", wanted
-    elsif wanted == 1
+    waiting = "" if waiting.nil?
+    held = if wanted == 0
+      waiting + IO.__stream__("read", __stream_handle__, "", 0).to_s
+    elsif waiting.bytesize > wanted
+      taken = waiting[0, wanted]
+      rest = waiting[wanted, waiting.length - wanted]
+      @peeked = rest.nil? || rest.empty? ? nil : rest
+      taken
+    elsif waiting.bytesize == wanted
       waiting
     else
-      waiting + IO.__stream__("read", __stream_handle__, "", wanted == 0 ? 0 : wanted - 1)
+      # What was put back is already in hand, so a descriptor with nothing
+      # waiting behind it does not make the read fail.
+      more = begin
+        IO.__stream__("read", __stream_handle__, "", wanted - waiting.bytesize).to_s
+      rescue Errno::EAGAIN
+        raise if waiting.empty?
+        ""
+      end
+      waiting + more
     end
-    return buffer.replace held unless buffer.nil?
+    return __fill_buffer__(buffer.nil? ? nil : __as_buffer__(buffer), held) unless buffer.nil?
     return nil if length && held.empty?
     held
   end
 
-  def readpartial(length, buffer = nil)
-    held = read length, buffer
-    raise EOFError, "end of file reached" if held.nil? || held.empty?
+  # As much as is there right now, up to the count asked for. Nothing left
+  # at all is the end of the stream.
+  def readpartial(length = nil, buffer = nil)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    wanted = length.nil? ? 0 : __as_integer__(length)
+    raise ArgumentError, "negative length #{wanted} given" if wanted < 0
+    target = buffer.nil? ? nil : __as_buffer__(buffer)
+    return __fill_buffer__(target, "") if wanted == 0
+    held = read wanted
+    if held.nil? || held.empty?
+      __fill_buffer__ target, ""
+      raise EOFError, "end of file reached"
+    end
+    __fill_buffer__ target, held
+  end
+
+  # A character put back, which the next read hands out before anything the
+  # descriptor has.
+  def ungetc(held)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    raise TypeError, "no implicit conversion of nil into String" if held.nil?
+    text = if held.is_a? Integer
+      # A codepoint stands for the character the stream reads text as.
+      named = external_encoding
+      held.chr(named.nil? ? Encoding::UTF_8 : named)
+    elsif held.is_a? String
+      held
+    elsif held.respond_to? :to_str
+      held.to_str
+    else
+      raise TypeError, "no implicit conversion of #{held.class} into String"
+    end
+    @peeked = @peeked.nil? ? text : text + @peeked
+    # A stream holding text the descriptor already handed over cannot be
+    # read around, which is what `sysread` would do.
+    @line_buffered = true
+    nil
+  end
+
+  # As many bytes as asked for, read straight from the descriptor. A stream
+  # whose lines have been read holds text the descriptor has already handed
+  # over, so reading around that is refused.
+  def sysread(length = nil, buffer = nil)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    raise IOError, "sysread for buffered IO" if @line_buffered
+    wanted = length.nil? ? 0 : __as_integer__(length)
+    raise ArgumentError, "negative length #{wanted} given" if wanted < 0
+    target = buffer.nil? ? nil : __as_buffer__(buffer)
+    return target.nil? ? "" : target if wanted == 0
+    held = IO.__stream__ "read", __stream_handle__, "", wanted
+    if held.nil? || held.empty?
+      __fill_buffer__ target, ""
+      raise EOFError, "end of file reached"
+    end
+    return __fill_buffer__(target, held) unless target.nil?
     held
   end
 
-  alias_method :sysread, :readpartial
-  alias_method :read_nonblock, :readpartial
-  alias_method :syswrite, :write
-  alias_method :write_nonblock, :write
-
-  def gets(separator = "\n")
-    collected = ""
-    while true
-      held = read 1
-      break if held.nil? || held.empty?
-      collected = collected + held
-      break if collected.end_with? separator.to_s
+  # The String a program handed over to be read into.
+  def __as_buffer__(buffer)
+    return buffer if buffer.is_a? String
+    unless buffer.respond_to? :to_str
+      raise TypeError, "no implicit conversion of #{buffer.class} into String"
     end
-    return nil if collected.empty?
-    @lineno = @lineno + 1
-    collected
+    buffer.to_str
+  end
+  private :__as_buffer__
+
+  # What was read, written into the buffer the program handed over. The
+  # buffer keeps the encoding it was tagged with.
+  def __fill_buffer__(target, held)
+    return held if target.nil?
+    was = target.encoding
+    target.replace held
+    target.force_encoding was
+    target
+  end
+  private :__fill_buffer__
+
+  # Where the stream stands, counted in bytes from the start. A byte put back
+  # with `ungetc` stands before that place.
+  def pos
+    raise IOError, "closed stream" if closed?
+    __drain__
+    standing = IO.__stream__ "seek", __stream_handle__, "cur", 0
+    standing - (@peeked.nil? ? 0 : @peeked.bytesize)
   end
 
-  def readlines(separator = "\n")
+  alias_method :tell, :pos
+
+  def pos=(offset)
+    seek offset, IO::SEEK_SET
+    offset
+  end
+
+  # An offset the operating system can hold. It counts bytes in a file, and
+  # no file is longer than a machine word counts.
+  def __as_offset__(offset)
+    held = __as_integer__ offset
+    if held.bit_length > 62
+      raise RangeError, "bignum too big to convert into 'long'"
+    end
+    held
+  end
+  private :__as_offset__
+
+  # The stream moved to another place: from the start, from where it stands,
+  # or back from the end.
+  def seek(offset, whence = IO::SEEK_SET)
+    raise IOError, "closed stream" if closed?
+    __drain__
+    @peeked = nil
+    @line_buffered = nil
+    named = case whence
+    when IO::SEEK_CUR, :CUR then "cur"
+    when IO::SEEK_END, :END then "end"
+    else "set"
+    end
+    IO.__stream__ "seek", __stream_handle__, named, __as_offset__(offset)
+    0
+  end
+
+  # The descriptor moved straight, without the buffer a read fills. A stream
+  # whose lines have been read holds text the descriptor already handed over,
+  # so moving around that is refused.
+  def sysseek(offset, whence = IO::SEEK_SET)
+    raise IOError, "sysseek for buffered IO" if @line_buffered
+    held = __as_offset__ offset
+    seek held, whence
+    IO.__stream__ "seek", __stream_handle__, "cur", 0
+  end
+
+  # Back to the start, with the line count starting over.
+  def rewind
+    seek 0, IO::SEEK_SET
+    @lineno = 0
+    0
+  end
+
+  # How many bytes the stream stands over.
+  def size
+    raise IOError, "closed stream" if closed?
+    __drain__
+    IO.__stream__ "size", __stream_handle__, "", 0
+  end
+
+  # The file cut down to the count of bytes, or filled out to it.
+  def truncate(length)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for writing" unless __writable__
+    __drain__
+    IO.__stream__ "truncate", __stream_handle__, "", __as_integer__(length)
+  end
+
+  # As much as is there right now. A stream with nothing waiting says so
+  # rather than holding the program up, either by raising or, when asked not
+  # to, by answering what it would have waited for.
+  def read_nonblock(length, buffer = nil, exception: true)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    wanted = __as_integer__ length
+    raise ArgumentError, "negative length #{wanted} given" if wanted < 0
+    target = buffer.nil? ? nil : __as_buffer__(buffer)
+    return __fill_buffer__(target, "") if wanted == 0
+    waiting = @peeked.nil? ? "" : @peeked
+    unless waiting.empty?
+      # A stream carrying text cannot be read a byte at a time around what
+      # was put back, which is what Ruby refuses here.
+      if @__newline_conversion
+        raise IOError, "byte oriented read for character buffered IO"
+      end
+      return __fill_buffer__(target, read(wanted))
+    end
+    unless IO.__stream__("ready?", __stream_handle__, "", 0)
+      return :wait_readable unless exception
+      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - read would block"
+    end
+    held = read wanted
+    if held.nil? || held.empty?
+      __fill_buffer__ target, ""
+      return nil unless exception
+      raise EOFError, "end of file reached"
+    end
+    __fill_buffer__ target, held
+  end
+
+  # Written straight to the descriptor. A stream that has written through its
+  # own buffer says so, since the two writes may land out of order.
+  def syswrite(text)
+    if @wrote_through_buffer
+      warn "warning: syswrite for buffered IO"
+    end
+    held = write text
+    @wrote_through_buffer = nil
+    held
+  end
+
+  # As much as the descriptor will take right now. A descriptor with no room
+  # says so rather than holding the program up.
+  def write_nonblock(text, exception: true)
+    write text
+  rescue Errno::EAGAIN
+    raise IO::EAGAINWaitWritable, "Resource temporarily unavailable - write would block" if exception
+    :wait_writable
+  end
+
+  # The next line, up to the separator or the limit, whichever comes first.
+  # The line read is what `$_` and `$.` report on.
+  def gets(separator = $/, limit = nil, *extra, chomp: false)
+    unless extra.empty?
+      raise ArgumentError,
+            "wrong number of arguments (given #{2 + extra.size}, expected 0..2)"
+    end
+    # `$_` names the line `gets` read. Walking the lines does not set it.
+    $_ = __read_line__ separator, limit, chomp
+  end
+
+  # The next line, up to the separator or the limit, whichever comes first.
+  # An empty separator reads a paragraph: the lines up to a blank one, with
+  # the blank lines before it left behind.
+  def __read_line__(separator, limit, chomp)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    separator, limit = StringIO.line_arguments separator, limit
+    unless limit.nil?
+      limit = __as_integer__ limit
+      if limit.bit_length > 62
+        raise RangeError, "bignum too big to convert into 'long'"
+      end
+      return "" if limit == 0
+    end
+    ending = separator.nil? ? nil : separator.to_s
+    # An empty separator reads a paragraph, which ends at a blank line and
+    # starts after the blank lines the paragraph before it ended with.
+    paragraph = !ending.nil? && ending.empty?
+    ending = "\n\n" if paragraph
+    # A byte or a character put back with `ungetc` stands before whatever the
+    # stream has left, and may already hold the separator.
+    waiting = @peeked
+    @peeked = nil
+    collected = waiting.nil? ? "" : waiting
+    unless collected.empty?
+      if !ending.nil? && !ending.empty?
+        at = collected.index ending
+        unless at.nil?
+          ends = at + ending.length
+          rest = collected[ends, collected.length - ends]
+          @peeked = rest.nil? || rest.empty? ? nil : rest
+          collected = collected[0, ends]
+          return __finish_line__ collected, ending, chomp
+        end
+      end
+      if !limit.nil? && collected.bytesize >= limit
+        rest = collected[limit, collected.length - limit]
+        @peeked = rest.nil? || rest.empty? ? nil : rest
+        return __finish_line__ collected[0, limit], ending, chomp
+      end
+    end
+    wanted = limit.nil? ? -1 : limit - collected.bytesize
+    held = IO.__stream__(
+      "readline",
+      __stream_handle__,
+      ending.nil? ? "" : ending,
+      wanted,
+      paragraph && collected.empty? ? 1 : 0
+    )
+    collected = collected + held.to_s
+    return nil if collected.empty?
+    @line_buffered = true
+    return __finish_line__ collected, ending, chomp
+  end
+  private :__read_line__
+
+  # A line read, counted and tagged the way the stream reads text, with the
+  # separator taken off where the reader asked for that.
+  def __finish_line__(collected, ending, chomp)
+    @lineno = (@lineno.nil? ? 0 : @lineno) + 1
+    $. = @lineno
+    held = __tag_read__ collected
+    if chomp && !ending.nil? && !ending.empty? && held.end_with?(ending)
+      held = held[0, held.length - ending.length]
+    end
+    held
+  end
+  private :__finish_line__
+
+  def readline(separator = $/, limit = nil, *extra, chomp: false)
+    line = self.gets separator, limit, *extra, chomp: chomp
+    raise EOFError, "end of file reached" if line.nil?
+    line
+  end
+
+  # The encodings named alongside the mode, as `"r:UTF-8:ISO-8859-1"` or as
+  # an `encoding:` keyword. The first is what the stream is read as and the
+  # second what its text is carried into.
+  def __named_encodings__
+    written = @__file_encoding.to_s
+    if written.empty?
+      # A stream told to follow the program's own encodings names none of
+      # its own any more, whatever its mode was opened with.
+      return [] if @__encodings_reset
+      written = @__file_mode.to_s.split(":", 2)[1].to_s
+    end
+    written.split(":")
+  end
+  private :__named_encodings__
+
+  # The encodings the program was reading and writing text in when the stream
+  # was opened. A stream keeps them, so a later change to the program's own
+  # encodings leaves an already open stream alone.
+  def __note_encodings__
+    return self if @__noted_encodings
+    @__noted_encodings = true
+    @__made_external = Encoding.default_external
+    @__made_internal = Encoding.default_internal
+    self
+  end
+
+  # Whether the stream was opened to write, which decides what it reports
+  # when no encoding was named for it.
+  def __writing_mode__
+    access = @__file_mode.to_s.split(":", 2)[0].to_s
+    access.start_with?("w") || access.start_with?("a") || access.include?("+")
+  end
+  private :__writing_mode__
+
+  # The encoding a stream reads as. A stream that names none reads as the
+  # program's external encoding, which a stream opened while an internal
+  # encoding was set keeps as it was at the time.
+  def external_encoding
+    named = __named_encodings__[0]
+    return Encoding.find(named) unless named.nil? || named.empty?
+    unless @__encodings_reset
+      return Encoding::BINARY if @binmode
+      return Encoding::BINARY if @__file_mode.to_s.split(":", 2)[0].to_s.include?("b")
+    end
+    return nil if __writing_mode__ && @__made_internal.nil?
+    return @__made_external unless @__made_internal.nil?
+    Encoding.default_external
+  end
+
+  # The encoding read text is carried into. A stream carries text nowhere
+  # when the two encodings are the same, or when it reads bytes.
+  def internal_encoding
+    named = __named_encodings__[1]
+    return Encoding.find(named) unless named.nil? || named.empty?
+    return nil if @__made_internal.nil?
+    outer = external_encoding
+    return nil if outer.nil? || outer == Encoding::BINARY
+    return nil if outer == @__made_internal
+    @__made_internal
+  end
+
+  # The encodings the stream reads text as, named either as two arguments or
+  # as one `"ext:int"` string.
+  def set_encoding(external, internal = nil, **options)
+    # A stream told to read every line ending the same way carries text
+    # rather than bytes, which is what refuses a byte-wise read afterwards.
+    @__newline_conversion = options[:universal_newline] ? true : false
+    # Naming neither encoding puts the stream back to following the
+    # program's own, as they stand now.
+    if external.nil? && internal.nil?
+      @__file_encoding = nil
+      @__encodings_reset = true
+      @__noted_encodings = nil
+      __note_encodings__
+      return self
+    end
+    @__encodings_reset = nil
+    @__file_encoding = IO.__encoding_pair__(
+      *(internal.nil? && external.is_a?(String) && external.include?(":") ? external.split(":", 2) : [external, internal]),
+      ""
+    )
+    self
+  end
+
+  # Text read from the stream is tagged with the encoding the stream reads
+  # as, and carried into the internal one where the stream names one.
+  def __tag_read__(text)
+    return text if text.nil? || text.empty?
+    inner = internal_encoding
+    outer = external_encoding
+    return text.encode(inner, outer) unless inner.nil?
+    return text if outer.nil?
+    text.dup.force_encoding outer
+  end
+  private :__tag_read__
+
+  def readlines(separator = $/, limit = nil, chomp: false)
+    separator, limit = StringIO.line_arguments separator, limit
+    raise ArgumentError, "invalid limit: 0 for readlines" if limit == 0
     collected = []
-    while (held = gets(separator))
+    while (held = __read_line__(separator, limit, chomp))
       collected.push held
     end
     collected
   end
 
-  def each_line(separator = "\n")
-    while (held = gets(separator))
-      yield held
+  def each_line(separator = $/, limit = nil, chomp: false, &block)
+    return to_enum(:each_line, separator, limit, chomp: chomp) if block.nil?
+    separator, limit = StringIO.line_arguments separator, limit
+    raise ArgumentError, "invalid limit: 0 for each_line" if limit == 0
+    while (held = __read_line__(separator, limit, chomp))
+      block.call held
     end
     self
   end
 
   alias_method :each, :each_line
 
+  # One byte at the cursor, or nil where the stream has no more. A stream
+  # opened only for writing has no reading side at all.
+  def getbyte
+    raise IOError, "not opened for reading" unless __readable__
+    waiting = @peeked
+    unless waiting.nil? || waiting.empty?
+      listed = waiting.bytes
+      first = listed.shift
+      @peeked = listed.empty? ? nil : listed.pack("C*")
+      return first
+    end
+    held = read 1
+    return nil if held.nil? || held.empty?
+    held.bytes.first
+  end
+
+  # An argument read as an Integer, which anything answering `to_int` can be.
+  def __as_integer__(held)
+    return held if held.is_a? Integer
+    unless held.respond_to? :to_int
+      # Ruby names nothing by its class, so a nil is reported as `nil`.
+      named = held.nil? ? "nil" : held.class.to_s
+      raise TypeError, "no implicit conversion of #{named} into Integer"
+    end
+    held.to_int
+  end
+  private :__as_integer__
+
+  # A read at a named offset, which leaves the cursor where it was.
+  def pread(maxlen, offset, buffer = nil)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    wanted = __as_integer__ maxlen
+    at = __as_integer__ offset
+    raise ArgumentError, "negative string size (or size too big)" if wanted < 0
+    raise Errno::EINVAL, "Invalid argument" if at < 0
+    target = nil
+    unless buffer.nil?
+      if buffer.is_a? String
+        target = buffer
+      elsif buffer.respond_to? :to_str
+        target = buffer.to_str
+      else
+        raise TypeError, "no implicit conversion of #{buffer.class} into String"
+      end
+    end
+    return buffer.nil? ? "" : buffer if wanted == 0
+    held = pos
+    self.pos = at
+    read_back = read wanted
+    self.pos = held
+    raise EOFError, "end of file reached" if read_back.nil? || read_back.empty?
+    return read_back if buffer.nil?
+    named = target.encoding
+    target.replace read_back
+    target.force_encoding named
+    buffer
+  end
+
+  # A write at a named offset, which leaves the cursor where it was.
+  def pwrite(held, offset)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for writing" unless __writable__
+    text = held.to_s
+    at = __as_integer__ offset
+    standing = pos
+    self.pos = at
+    write text
+    self.pos = standing
+    text.bytesize
+  end
+
+  # Whether writing is allowed at all. A mode naming only reading leaves no
+  # writing side.
+  def __writable__
+    return true if @__file_mode.nil?
+    return true if __both_ways__
+    !__opened_for__("r")
+  end
+
+  # A hint about how the file will be read. Nothing is passed on to the
+  # system, so what is left is refusing what Ruby refuses.
+  def advise(kind, offset = 0, length = 0)
+    raise IOError, "closed stream" if closed?
+    raise TypeError, "advice must be a Symbol" unless kind.is_a? Symbol
+    allowed = [:normal, :sequential, :random, :willneed, :dontneed, :noreuse]
+    raise NotImplementedError, "Unsupported advice: #{kind}" unless allowed.include? kind
+    [offset, length].each do |held|
+      unless held.is_a? Integer
+        raise TypeError, "no implicit conversion of #{held.class} into Integer"
+      end
+      if held > 9223372036854775807 || held < -9223372036854775808
+        raise RangeError, "bignum too big to convert into 'long long'"
+      end
+    end
+    nil
+  end
+
+  # Bytes put back are read again before anything else in the stream. An
+  # Integer names one byte, and only its low eight bits are kept.
+  def ungetbyte(held)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    return nil if held.nil?
+    text = if held.is_a? Integer
+      [held & 0xff].pack("C")
+    elsif held.is_a? String
+      held
+    elsif held.respond_to? :to_str
+      held.to_str
+    else
+      raise TypeError, "no implicit conversion of #{held.class} into String"
+    end
+    @peeked = @peeked.nil? ? text : text + @peeked
+    nil
+  end
+
+  def readbyte
+    held = getbyte
+    raise EOFError, "end of file reached" if held.nil?
+    held
+  end
+
+  # Every byte in turn. Without a block the walk is handed back, and it
+  # cannot say how many bytes are left to come.
+  def each_byte
+    return Enumerator.over(self, :each_byte) unless block_given?
+    raise IOError, "closed stream" if closed?
+    while (held = getbyte)
+      yield held
+    end
+    self
+  end
+
+  # One character at the cursor. A character spelled in several bytes is read
+  # to its end rather than cut in half.
+  # One character, which is as many bytes as the character is spelled with.
+  def getc
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" unless __readable__
+    waiting = @peeked
+    unless waiting.nil? || waiting.empty?
+      first = waiting[0]
+      rest = waiting[1, waiting.length - 1]
+      @peeked = rest.nil? || rest.empty? ? nil : rest
+      return first
+    end
+    held = IO.__stream__ "getc", __stream_handle__, "", 0
+    return nil if held.nil? || held.empty?
+    __tag_read__ held
+  end
+
+  def readchar
+    held = getc
+    raise EOFError, "end of file reached" if held.nil?
+    held
+  end
+
+  def each_char
+    return Enumerator.over(self, :each_char) unless block_given?
+    raise IOError, "closed stream" if closed?
+    while (held = getc)
+      yield held
+    end
+    self
+  end
+
+  def each_codepoint
+    return Enumerator.over(self, :each_codepoint) unless block_given?
+    each_char { |held| yield held.ord }
+    self
+  end
+
+  alias_method :codepoints, :each_codepoint
+
+  # How many lines have been read. Only a stream being read counts them, so
+  # one that cannot be read has none to report.
   def lineno
+    __reading_side__
     @lineno.nil? ? 0 : @lineno
   end
 
   def lineno=(held)
-    @lineno = held.to_i
+    __reading_side__
+    counted = __as_integer__ held
+    # The line count is one the operating system holds, which is as wide as
+    # a C int and no wider.
+    if counted.bit_length > 31
+      raise RangeError, "integer #{counted} too big to convert to `int'"
+    end
+    @lineno = counted
   end
+
+  # Refuse a stream that has no reading side: a closed one, one opened only
+  # to write, and one whose reading side was closed.
+  def __reading_side__
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" if @read_closed
+    # A stream over a child process keeps its own mark for the side that was
+    # closed, since the interpreter is what closed it.
+    if @__popen_read_closed
+      raise IOError, "not opened for reading"
+    end
+    raise IOError, "not opened for reading" unless __readable__
+    nil
+  end
+  private :__reading_side__
 
   # Reading one character ahead is the only way to tell a stream that has
   # nothing left from one whose writer has not written yet, so the character
@@ -4878,19 +6124,26 @@ class IO
   # nothing is ever waiting to be flushed.
   def flush
     raise IOError, "closed stream" if closed?
+    __drain__
+    @line_buffered = nil
     self
   end
 
   def fsync
+    raise IOError, "closed stream" if closed?
     0
   end
 
   def sync
+    raise IOError, "closed stream" if closed?
     @sync == true
   end
 
   def sync=(wanted)
+    raise IOError, "closed stream" if closed?
     @sync = wanted ? true : false
+    # Only a program asking for it makes a stream hold what is written.
+    @holding = !@sync
   end
 
   def tty?
@@ -4959,10 +6212,21 @@ class IO
   # Point this stream at another place. The descriptor keeps its number, so
   # everything already reading or writing through it reaches the new place.
   def reopen(target, mode = nil)
-    raise IOError, "closed stream" if closed?
+    # A closed stream may be opened again over a file named by path, which is
+    # what reopening one is for. Pointed at another stream it stays closed.
+    named = target.is_a?(String) || (!target.is_a?(IO) && target.respond_to?(:to_path))
+    raise IOError, "closed stream" if closed? && !named
     other = __reopen_target__ target, mode
     raise IOError, "closed stream" if other.closed?
-    IO.__stream__ "reopen", __stream_handle__, "", other.__stream_handle__
+    # A closed stream is opened again over what it was pointed at, which is
+    # what reopening one is for. A stream still open keeps its descriptor,
+    # so everything already reading or writing through it follows along.
+    if closed?
+      @handle = other.__stream_handle__
+      @closed = false
+    else
+      IO.__stream__ "reopen", __stream_handle__, "", other.__stream_handle__
+    end
     @__file_path = other.path
     @__file_mode = mode.nil? ? other.instance_variable_get(:@__file_mode) : mode
     @read_closed = false
@@ -5050,21 +6314,220 @@ end
 # A file opened by name answers the descriptor questions an IO answers, over
 # a descriptor opened the first time one of them is asked.
 class File
+  # Whether a name says where it is from the root, rather than from wherever
+  # the program happens to be. A `~` says nothing about the root.
+  def self.absolute_path?(name)
+    File.__path_text__(name).start_with? File::SEPARATOR
+  end
+
+  # The name a path names from the root. A relative one is read from the
+  # directory given, or from the one the program is working in.
+  def self.absolute_path(name, directory = nil)
+    held = File.__path_text__ name
+    return held if held.start_with? File::SEPARATOR
+    base = directory.nil? ? Dir.pwd : File.absolute_path(directory)
+    File.join base, held
+  end
+
+  # The name a path names from the root, with `~`, `.`, and `..` read out and
+  # the runs of separators inside it collapsed. The leading run is left as it
+  # was written, which is what Ruby does with `//host/share`.
+  def self.expand_path(name, directory = nil)
+    held = File.__path_text__ name
+    tag = held.encoding
+    if held.start_with? "~"
+      held = File.__expanded_home__ held
+    elsif !held.start_with? File::SEPARATOR
+      # Reading the directory the program works in means writing its name
+      # ahead of this one, which text in an encoding without ASCII cannot
+      # stand beside.
+      unless Encoding.default_external.ascii_compatible?
+        raise Encoding::CompatibilityError,
+              "ASCII incompatible encoding: #{Encoding.default_external}"
+      end
+      base = directory.nil? ? Dir.pwd : File.expand_path(directory)
+      held = held.empty? ? base : File.join(base, held)
+    end
+    answered = File.__without_dots__ held
+    answered.force_encoding tag
+    answered
+  end
+
+  # A name opening with `~` read as the home directory it names: the one the
+  # program belongs to, or the one the user named after it does.
+  def self.__expanded_home__(held)
+    at = held.index File::SEPARATOR
+    head = at.nil? ? held : held[0, at]
+    rest = at.nil? ? "" : held[at, held.length - at]
+    return Dir.home(head[1, head.length - 1]) + rest unless head == "~"
+    # `HOME` says where the program's own files are. One set to nothing says
+    # nothing, and one that does not start from the root names no home.
+    named = ENV["HOME"]
+    return Dir.home + rest if named.nil?
+    if named.empty?
+      raise ArgumentError, "couldn't find HOME environment -- expanding `~'"
+    end
+    unless named.start_with? File::SEPARATOR
+      raise ArgumentError, "non-absolute home"
+    end
+    named + rest
+  end
+
+  # A path with `.` and `..` read out and the separators inside it collapsed.
+  def self.__without_dots__(held)
+    leading = ""
+    rest = held
+    while rest.start_with? File::SEPARATOR
+      leading = leading + File::SEPARATOR
+      rest = rest[1, rest.length - 1]
+    end
+    walked = []
+    rest.split(File::SEPARATOR).each do |part|
+      next if part.empty? || part == "."
+      if part == ".."
+        # Nothing stands above the root, so a step up from there is no step
+        # at all. A relative path keeps the steps it cannot take.
+        if walked.empty?
+          walked.push part if leading.empty?
+        elsif walked.last == ".."
+          walked.push part
+        else
+          walked.pop
+        end
+        next
+      end
+      walked.push part
+    end
+    answered = leading + walked.join(File::SEPARATOR)
+    answered.empty? ? "." : answered
+  end
+
+  # A file cut down to the count of bytes it is told to keep, or filled out
+  # with zero bytes to reach it.
+  def self.truncate(name, length)
+    path = File.__path_text__ name
+    counted = length
+    unless counted.is_a? Integer
+      unless counted.respond_to? :to_int
+        named = counted.nil? ? "nil" : counted.class.to_s
+        raise TypeError, "no implicit conversion of #{named} into Integer"
+      end
+      counted = counted.to_int
+    end
+    held = File.open path, "r+"
+    begin
+      held.truncate counted
+    ensure
+      held.close
+    end
+    0
+  end
+
+  # A path as the text it stands for, whatever it was written as.
+  def self.__path_text__(name)
+    # A String subclass carries the text a path is spelled with, and the path
+    # itself is that text rather than the object.
+    return name.to_s if name.is_a? String
+    return name.to_path if name.respond_to? :to_path
+    return name.to_str if name.respond_to? :to_str
+    raise TypeError, "no implicit conversion of #{name.class} into String"
+  end
+
+  # The parts of a path joined with a separator between them. Two parts that
+  # each carry one at the boundary keep the right one's, and a part that is
+  # itself a list of parts is joined before it is used.
+  def self.join(*parts)
+    return "" if parts.empty?
+    held = ""
+    parts.each_with_index do |part, index|
+      spelled = File.__joined_part__ part, []
+      held = index == 0 ? spelled : File.__join_two__(held, spelled)
+    end
+    held.dup
+  end
+
+  # One part of a path as the text it stands for. An Array is a path of its
+  # own, and one that reaches itself names no path at all.
+  def self.__joined_part__(part, walking)
+    if part.is_a? Array
+      if walking.any? { |seen| seen.equal? part }
+        raise ArgumentError, "recursive array"
+      end
+      inside = walking + [part]
+      held = ""
+      part.each_with_index do |inner, index|
+        spelled = File.__joined_part__ inner, inside
+        held = index == 0 ? spelled : File.__join_two__(held, spelled)
+      end
+      return held
+    end
+    spelled = if part.is_a? String
+      part
+    elsif part.respond_to? :to_str
+      part.to_str
+    elsif part.respond_to? :to_path
+      part.to_path
+    else
+      raise TypeError, "no implicit conversion of #{part.class} into String"
+    end
+    if spelled.include? "\0"
+      raise ArgumentError, "string contains null byte"
+    end
+    spelled
+  end
+
+  # Two parts of a path, one after the other. A separator at the boundary is
+  # left as the part carrying it wrote it, and where both carry one the right
+  # part's stands.
+  def self.__join_two__(left, right)
+    separator = File::SEPARATOR
+    if left.end_with?(separator) && right.start_with?(separator)
+      trimmed = left
+      while trimmed.end_with? separator
+        trimmed = trimmed[0, trimmed.length - separator.length]
+      end
+      return trimmed + right
+    end
+    if left.end_with?(separator) || right.start_with?(separator)
+      return left + right
+    end
+    left + separator + right
+  end
+
   def __stream_handle__
     return @handle unless @handle.nil?
+    __note_encodings__
     written = @__file_mode.to_s
+    both = written.include? "+"
     opening = if written.start_with?("a")
-      2
-    elsif written.start_with?("r") && written.include?("+")
-      3
+      both ? 5 : 2
+    elsif written.start_with?("r")
+      both ? 3 : 0
     elsif written.start_with?("w")
-      1
+      both ? 4 : 1
     else
       0
     end
     @handle = IO.__stream__ "open", 0, @__file_path.to_s, opening
+    __apply_options__
     @handle
   end
+
+  # What the options a file was opened with say beyond the mode: the
+  # encodings it reads and writes in, what ends the lines it writes, and
+  # whether it reads and writes bytes.
+  def __apply_options__
+    held = @__file_options
+    return self if held.nil?
+    outer = held[:external_encoding]
+    inner = held[:internal_encoding]
+    if !outer.nil? || !inner.nil?
+      @__file_encoding = IO.__encoding_pair__ outer, inner, ""
+    end
+    @binmode = true if held[:binmode]
+    self
+  end
+  private :__apply_options__
 
   def path
     @__file_path
@@ -5075,27 +6538,6 @@ class File
     nil
   end
 
-  # The encodings named alongside the mode, as `"r:UTF-8:ISO-8859-1"` or as
-  # an `encoding:` keyword. The first is what the file is read as and the
-  # second what its text is carried into.
-  def __named_encodings__
-    written = @__file_encoding.to_s
-    written = @__file_mode.to_s.split(":", 2)[1].to_s if written.empty?
-    written.split(":")
-  end
-  private :__named_encodings__
-
-  def external_encoding
-    named = __named_encodings__[0]
-    return Encoding.default_external if named.nil? || named.empty?
-    Encoding.find named
-  end
-
-  def internal_encoding
-    named = __named_encodings__[1]
-    return nil if named.nil? || named.empty?
-    Encoding.find named
-  end
 end
 
 # The numbers the operating system keeps about a file, presented the way Ruby
@@ -5106,10 +6548,13 @@ class File
 
     def initialize(path, follow = true)
       unless path.is_a?(String)
-        unless path.respond_to?(:to_path)
+        if path.respond_to?(:to_path)
+          path = path.to_path
+        elsif path.respond_to?(:to_str)
+          path = path.to_str
+        else
           raise TypeError, "no implicit conversion of #{path.class} into String"
         end
-        path = path.to_path
       end
       @path = path.to_s
       @fields = File.__stat_fields__(@path, follow)
@@ -5455,6 +6900,12 @@ class File
     File::Stat.new("/dev/fd/#{fileno}")
   end
 
+  # The one file a handle stands for, which Ruby answers 0 for.
+  def chown(owner, group)
+    File.chown(owner, group, path)
+    0
+  end
+
   def lstat
     raise IOError, "closed stream" if closed?
     File::Stat.new(self.path, false)
@@ -5485,12 +6936,42 @@ class File
 
   # The name the handle was opened under. An IO that never came from a name
   # has none, which is what `to_path` answers for.
+  # The name an object stands for: a String as it is, and anything else
+  # through `to_path`. Ruby leaves the name exactly as it was written.
+  def self.path(held)
+    return __checked_path__ held if held.is_a? String
+    unless held.respond_to? :to_path
+      raise TypeError, "no implicit conversion of #{held.class} into String"
+    end
+    named = held.to_path
+    unless named.is_a? String
+      raise TypeError, "no implicit conversion of #{named.class} into String"
+    end
+    __checked_path__ named
+  end
+
+  # A name the operating system can take: NUL ends a C string, and a name
+  # spelled in an encoding without ASCII cannot be compared with one.
+  def self.__checked_path__(named)
+    unless named.encoding.ascii_compatible?
+      raise Encoding::CompatibilityError,
+            "incompatible character encodings: #{named.encoding} and US-ASCII"
+    end
+    if named.include? "\0"
+      raise ArgumentError, "path name contains null byte"
+    end
+    named
+  end
+
+  # Ruby hands back a fresh String each time, tagged the way the name it was
+  # opened under was, so a program may change what it is given.
   def path
-    @__file_path
+    return nil if @__file_path.nil?
+    @__file_path.dup
   end
 
   def to_path
-    @__file_path
+    path
   end
 
   # An IO stands for itself where one is asked for.
@@ -5526,12 +7007,27 @@ class TracePoint
                   :a_return]
 
   def self.new(*events, &block)
-    raise ArgumentError, "must be called with a block" if block.nil?
+    # An event may be named with a String or with anything answering
+    # `to_sym`, and only a Symbol comes back from that.
+    events = events.map do |event|
+      named = if event.is_a?(Symbol)
+        event
+      elsif event.respond_to?(:to_sym)
+        event.to_sym
+      else
+        raise TypeError, "#{event.inspect} is not a symbol nor a string"
+      end
+      unless named.is_a?(Symbol)
+        raise TypeError, "#{event.inspect} is not a symbol nor a string"
+      end
+      named
+    end
     events.each do |event|
       unless KNOWN_EVENTS.include?(event)
         raise ArgumentError, "unknown event: #{event}"
       end
     end
+    raise ArgumentError, "must be called with a block" if block.nil?
     made = allocate
     made.send(:__set_up__, events, block)
     made
@@ -5592,7 +7088,7 @@ class TracePoint
   # length of a block, and is refused outside a handler.
   def self.allow_reentry
     raise RuntimeError, "allow_reentry is not allowed outside of a trace" unless __tracing__
-    yield
+    __reentrant__ { yield }
   end
 
   def event
@@ -5681,6 +7177,25 @@ end
 module Marshal
   MAJOR_VERSION = 4
   MINOR_VERSION = 8
+end
+
+class Struct
+  # The members a struct holds, set from the values given. A struct class of
+  # the program's own may write its own and reach this one with `super`.
+  def initialize(*values, **keywords)
+    named = self.class.members
+    if values.empty? && !keywords.empty?
+      keywords.each do |key, value|
+        instance_variable_set "@__struct_member_#{key}", value
+      end
+    else
+      named.each_with_index do |member, index|
+        instance_variable_set "@__struct_member_#{member}", values[index]
+      end
+    end
+    self
+  end
+  private :initialize
 end
 
 module ObjectSpace
@@ -5789,6 +7304,21 @@ module ObjectSpace
       self
     end
 
+    # The map's address, and the pair of addresses each entry holds. What a
+    # key or a value writes itself as is read through Kernel, since an object
+    # rooted at BasicObject answers no `inspect` of its own.
+    def inspect
+      written = @entries.map do |entry|
+        "#{ObjectSpace::WeakMap.written(entry[0])} => #{ObjectSpace::WeakMap.written(entry[1])}"
+      end
+      named = format("#<ObjectSpace::WeakMap:0x%016x", object_id)
+      written.empty? ? "#{named}>" : "#{named}: #{written.join(", ")}>"
+    end
+
+    def self.written(held)
+      ::Kernel.instance_method(:inspect).bind(held).call
+    end
+
     # Where a key sits, found by identity rather than by value.
     def place_of(key)
       @entries.each_with_index do |entry, place|
@@ -5812,15 +7342,23 @@ module ObjectSpace
       ::Kernel.instance_method(:class).bind(held).call.to_s
     end
 
+    # Whether an object has a `hash` at all, asked of its class so an object
+    # answering nothing of Kernel's can be asked too.
+    def self.answers_hash?(held)
+      holder = ::Kernel.instance_method(:class).bind(held).call
+      named = holder.ancestors.map { |ancestor| ancestor.to_s }
+      named.include?("Object") || named.include?("Kernel") || holder.method_defined?(:hash)
+    end
+
     def []=(key, value)
       unless collectable?(key)
         raise ArgumentError, "WeakKeyMap must be garbage collectable"
       end
       # A key is found again by its hash, so one that has none cannot be
-      # stored at all.
-      # An object that descends from BasicObject alone answers none of the
-      # names Kernel gives, `hash` among them.
-      unless key.respond_to?(:hash) && key.class != BasicObject
+      # stored at all. An object that descends from BasicObject alone answers
+      # none of the names Kernel gives, `hash` among them, so the question is
+      # put to its class rather than to the object.
+      unless ObjectSpace::WeakKeyMap.answers_hash?(key)
         raise NoMethodError,
               "undefined method 'hash' for an instance of #{ObjectSpace::WeakKeyMap.named(key)}"
       end
@@ -5883,8 +7421,10 @@ module ObjectSpace
     # Whether a key is something the collector could free. A number, a
     # symbol, and the three singletons live for the whole run.
     def collectable?(key)
-      return false if key.nil? || key == true || key == false
-      return false if key.is_a?(Numeric) || key.is_a?(Symbol)
+      # An object rooted at BasicObject answers none of Kernel's names, so
+      # the classes are asked about the key rather than the key about itself.
+      return false if NilClass === key || TrueClass === key || FalseClass === key
+      return false if Numeric === key || Symbol === key
       true
     end
     private :collectable?
@@ -6014,8 +7554,37 @@ module FileTest
   end
 end
 
+# A queue is built by the interpreter, and `initialize` is the private method
+# Ruby reports for it.
+class Queue
+  def initialize(*items)
+    self
+  end
+  private :initialize
+end
+
+class SizedQueue
+  def initialize(*counted)
+    self
+  end
+  private :initialize
+end
+
 class Dir
   include Enumerable
+
+  # The directory a descriptor names, made the one the program works from.
+  # With a block the program works from there only while the block runs.
+  def self.fchdir(number)
+    was = Dir.pwd
+    IO.__stream__ "fchdir", 0, "", number
+    return 0 unless block_given?
+    begin
+      yield
+    ensure
+      Dir.chdir was
+    end
+  end
 
   def initialize(path, **options)
     unless path.is_a?(String)
@@ -6252,12 +7821,50 @@ class ArgfStream
   end
 
   def path
-    self.file.path
+    return "-" if @reading_stdin
+    held = self.file
+    return "-" if @reading_stdin
+    held.path
   end
 
   def filename
     self.path
   end
+
+  # The encodings the files are read as. ARGF keeps them for the files it has
+  # yet to open as well as the one it is reading.
+  def set_encoding(external, internal = nil)
+    outer = external
+    inner = internal
+    if internal.nil? && external.is_a?(String) && external.include?(":")
+      outer, inner = external.split(":", 2)
+    end
+    @external_encoding = outer.nil? || outer == "" ? nil : Encoding.find(outer)
+    @internal_encoding = inner.nil? || inner == "" ? nil : Encoding.find(inner)
+    self
+  end
+
+  def external_encoding
+    return @external_encoding unless @external_encoding.nil?
+    Encoding.default_external
+  end
+
+  def internal_encoding
+    return @internal_encoding unless @internal_encoding.nil?
+    Encoding.default_internal
+  end
+
+  # Text read from a file is tagged with the encoding ARGF reads as, and
+  # carried into the internal one where there is one.
+  def __tagged__(text)
+    return text if text.nil? || text.empty?
+    inner = self.internal_encoding
+    outer = self.external_encoding
+    return text.encode(inner, outer) unless inner.nil?
+    return text if outer.nil?
+    text.dup.force_encoding outer
+  end
+  private :__tagged__
 
   def fileno
     if @drained || (self.__names__.empty? && @current.nil?)
@@ -6310,7 +7917,7 @@ class ArgfStream
 
   # Reading a line records which file it came from and how many have been
   # read, which is what `$FILENAME` and `$.` report.
-  def gets
+  def gets(*separator)
     loop do
       self.__open_current__
       if @current.nil?
@@ -6318,39 +7925,46 @@ class ArgfStream
         return nil
       end
       $FILENAME = @current.path
-      line = @current.gets
+      line = @current.gets(*separator)
       if line.nil?
         if self.__names__.empty?
           @drained = true
+          __finish_edit__
           break
         end
         @current = nil
+        __finish_edit__
         next
       end
       @lineno = self.__lineno__ + 1
       $. = @lineno
       # Reading in binary hands back bytes rather than text.
-      return @binmode ? line.b : line
+      # `$_` names the line last read, which is what a program written
+      # without a variable of its own reads back.
+      $_ = @binmode ? line.b : __tagged__(line)
+      return $_
     end
     nil
   end
 
-  def readline
-    line = self.gets
+  def readline(*separator)
+    line = self.gets(*separator)
     raise EOFError, "end of file reached" if line.nil?
     line
   end
 
-  def each_line(&block)
-    return self if block.nil?
-    while (line = self.gets)
-      block.call(line)
+  # Every line of every file, read as though the list were one file. A
+  # separator stands in for the newline, the way `IO#each_line` takes one.
+  def each_line(*separator, &block)
+    return to_enum(:each_line, *separator) if block.nil?
+    while (line = self.gets(*separator))
+      block.call line
     end
     self
   end
 
-  def each(&block)
-    self.each_line(&block)
+  def each(*separator, &block)
+    self.each_line(*separator, &block)
   end
 
   def readlines(*args)
@@ -6368,7 +7982,7 @@ class ArgfStream
   # `read(length)` stops at the count it was asked for, crossing into the next
   # file only when the one being read runs out first. With no count it drains
   # every remaining file.
-  def read(length = nil)
+  def read(length = nil, buffer = nil)
     collected = ""
     loop do
       self.__open_current__
@@ -6384,9 +7998,68 @@ class ArgfStream
       end
       @current = nil
     end
-    return nil if !length.nil? && length > 0 && collected.empty?
-    # Reading in binary hands back bytes rather than text.
-    @binmode ? collected.b : collected
+    if collected.empty? && !length.nil? && length > 0
+      buffer.replace "" unless buffer.nil?
+      return nil
+    end
+    held = @binmode ? collected.b : __tagged__(collected)
+    return buffer.replace held unless buffer.nil?
+    held
+  end
+
+  # As much as is asked for of the file being read, which is never carried
+  # across into the next one. The file running out hands back an empty String
+  # and moves on, and running out of the last file is the end.
+  def readpartial(length = nil, buffer = nil)
+    if length.nil?
+      raise ArgumentError, "wrong number of arguments (given 0, expected 1..2)"
+    end
+    buffer.replace "" unless buffer.nil?
+    self.__open_current__
+    raise EOFError, "end of file reached" if @current.nil?
+    held = @current.read length
+    if held.nil? || held.empty?
+      if self.__names__.empty?
+        @drained = true
+        __finish_edit__
+        raise EOFError, "end of file reached"
+      end
+      @current = nil
+      __finish_edit__
+      held = ""
+    end
+    held = @binmode ? held.b : __tagged__(held)
+    return buffer.replace held unless buffer.nil?
+    held
+  end
+
+  # As much of the file being read as is there right now, which is as much as
+  # `readpartial` hands back for a file and never crosses into the next one.
+  def read_nonblock(length = nil, buffer = nil, exception: true)
+    if length.nil?
+      raise ArgumentError, "wrong number of arguments (given 0, expected 1..2)"
+    end
+    buffer.replace "" unless buffer.nil?
+    self.__open_current__
+    raise EOFError, "end of file reached" if @current.nil?
+    held = begin
+      @current.read_nonblock length, nil, exception: exception
+    rescue EOFError
+      ""
+    end
+    return held unless held.is_a? String
+    if held.empty?
+      if self.__names__.empty?
+        @drained = true
+        __finish_edit__
+        raise EOFError, "end of file reached"
+      end
+      @current = nil
+      __finish_edit__
+    end
+    held = @binmode ? held.b : __tagged__(held)
+    return buffer.replace held unless buffer.nil?
+    held
   end
 
   def getc
@@ -6405,6 +8078,44 @@ class ArgfStream
     raise EOFError, "end of file reached" if character.nil?
     character
   end
+
+  def each_byte(&block)
+    return to_enum(:each_byte) if block.nil?
+    while (byte = self.__next_byte__)
+      block.call byte
+    end
+    self
+  end
+
+  def each_char(&block)
+    return to_enum(:each_char) if block.nil?
+    while (character = self.getc)
+      block.call character
+    end
+    self
+  end
+
+  def each_codepoint(&block)
+    return to_enum(:each_codepoint) if block.nil?
+    while (character = self.getc)
+      block.call character.ord
+    end
+    self
+  end
+
+  # The next byte of the list, crossing into the following file when the one
+  # being read runs out.
+  def __next_byte__
+    loop do
+      self.__open_current__
+      return nil if @current.nil?
+      byte = @current.getbyte
+      return byte unless byte.nil?
+      return nil if self.__names__.empty?
+      @current = nil
+    end
+  end
+  private :__next_byte__
 
   # Whether the file being read has run out, which is asked per file rather
   # than of the whole list. A stream whose last file was drained is closed,
@@ -6436,6 +8147,12 @@ class ArgfStream
     offset
   end
 
+  # Seeking moves the file now being read. A stream that has not opened one
+  # opens the first name first, so the offset lands somewhere.
+  def seek(offset, whence = IO::SEEK_SET)
+    self.file.seek offset, whence
+  end
+
   # A stream whose last file has been read to the end is closed, and closed
   # streams cannot be put back to the start.
   def rewind
@@ -6450,7 +8167,16 @@ class ArgfStream
   # the list as it opens, which is what `argv` reports on.
   def __open_current__
     return if @current
-    return if self.__names__.empty?
+    # A stream over no names at all reads standard input, which is what a
+    # program handed nothing on the command line reads from.
+    if self.__names__.empty?
+      return if @walked
+      @walked = true
+      @reading_stdin = true
+      @current = $stdin
+      return @current
+    end
+    @walked = true
     named = self.__names__.shift
     # A name of `-` stands for standard input, which the program owns rather
     # than ARGF.
@@ -6460,9 +8186,37 @@ class ArgfStream
       return @current
     end
     @reading_stdin = false
+    # `-i` edits each file as it is read: the file is set aside under the
+    # backup name, and what the program writes takes its place.
+    extension = $-i
+    unless extension.nil?
+      @edited_name = named
+      @backup_name = named + (extension.empty? ? ".__metorex_edit__" : extension)
+      File.rename named, @backup_name
+      @current = File.open(@backup_name, "r")
+      @written = File.open(named, "w")
+      $stdout = @written
+      return @current
+    end
     @current = File.open(named, "r")
   end
   private :__open_current__
+
+  # Close the file the program was writing in place of the one being read,
+  # and put standard output back where it was.
+  def __finish_edit__
+    return if @written.nil?
+    @written.close
+    @written = nil
+    $stdout = STDOUT
+    # A backup asked for under no extension is not kept.
+    if !@backup_name.nil? && @backup_name.end_with?(".__metorex_edit__")
+      File.unlink @backup_name
+    end
+    @backup_name = nil
+    nil
+  end
+  private :__finish_edit__
 
   # The names still to be read. The interpreter builds the global ARGF without
   # running `initialize`, and that one reads ARGV itself, so a name taken off
@@ -6568,6 +8322,12 @@ class Regexp
   MULTILINE = 4
   FIXEDENCODING = 16
   NOENCODING = 32
+
+  # A Regexp that was made without a pattern has nothing to answer about,
+  # which Ruby reports rather than treating it as an empty pattern.
+  def options
+    raise TypeError, "uninitialized Regexp"
+  end
 
   # The pattern an object stands for, or nil where it stands for none. Only
   # an object answering `to_regexp` is asked.
@@ -6725,6 +8485,15 @@ module ObjectSpace
     [0, finalizer]
   end
 
+  # A clone carries the finalizers its original was given, which is what
+  # makes both of them run one as the program ends.
+  def self.__carry_finalizers__(from, to)
+    listed = __finalizers__[from.object_id]
+    return nil if listed.nil?
+    __finalizers__[to.object_id] = __finalizers__.fetch(to.object_id, []) + listed
+    nil
+  end
+
   def self.undefine_finalizer(held)
     if held.frozen?
       raise FrozenError, "can't modify frozen #{held.class}: #{held.inspect}"
@@ -6747,6 +8516,22 @@ module ObjectSpace
 end
 
 module GC
+  # The collector's settings. `:implementation` names the collector and is
+  # read-only, and the rest are whatever the collector takes. Metorex frees
+  # an object when its last reference goes, so it takes none.
+  def self.config(options = :__none__)
+    @settings = {} if @settings.nil?
+    current = { implementation: "metorex" }.merge(@settings)
+    return current if options == :__none__ || options.nil?
+    unless options.is_a? Hash
+      raise ArgumentError, "expecting a Hash, got #{options.class}"
+    end
+    if options.key? :implementation
+      raise ArgumentError, 'Attempting to set read-only key "Implementation"'
+    end
+    current
+  end
+
   # An object that extends GC answers `garbage_collect` the way the module
   # itself does, and Ruby documents the answer as always nil.
   def garbage_collect(full_mark: true, immediate_sweep: true)
@@ -7690,6 +9475,34 @@ impl VirtualMachine {
                 Some(size) => Object::Int(size),
                 None => Object::Nil,
             },
+        ];
+        self.send_to_object(enumerator_class, "over", arguments, position)
+    }
+
+    /// A walk whose count is named by an object rather than a plain Integer,
+    /// which is how an endless walk reports a size of Infinity.
+    pub(crate) fn build_enumerator_of_size(
+        &mut self,
+        receiver: crate::object::Object,
+        method_name: &str,
+        arguments: Vec<crate::object::Object>,
+        size: crate::object::Object,
+        position: crate::lexer::Position,
+    ) -> Result<crate::object::Object, crate::error::MetorexError> {
+        use crate::object::Object;
+        let Some(enumerator_class) = self.globals().get("Enumerator") else {
+            let message = "uninitialized constant Enumerator".to_string();
+            return Err(crate::error::MetorexError::UncaughtException {
+                exception: Object::exception("NameError", message.clone()),
+                location: crate::vm::utils::position_to_location(position),
+                message,
+            });
+        };
+        let arguments = vec![
+            receiver,
+            Object::symbol(method_name.to_string()),
+            Object::Array(std::rc::Rc::new(std::cell::RefCell::new(arguments))),
+            size,
         ];
         self.send_to_object(enumerator_class, "over", arguments, position)
     }

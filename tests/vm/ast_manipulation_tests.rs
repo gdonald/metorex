@@ -97,7 +97,7 @@ fn eval_parse_error() {
 #[test]
 fn eval_runtime_error() {
     let err = run_err(r#"eval("undefined_xyz")"#);
-    assert!(err.contains("Undefined"));
+    assert!(err.contains("undefined local variable or method"));
 }
 
 // ── parse ───────────────────────────────────────────────────────────────

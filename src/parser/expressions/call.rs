@@ -527,9 +527,19 @@ impl Parser {
                 .expect("the name was checked")
                 .to_string();
                 self.advance();
+                let named_at = self.previous().position;
                 self.advance(); // consume ':'
                 self.skip_whitespace();
-                let value = self.parse_expression()?;
+                // `m(a:, b:)` passes what `a` and `b` name, which is Ruby's
+                // shorthand for `m(a: a, b: b)`.
+                let value = if matches!(self.peek().kind, TokenKind::Comma | TokenKind::RParen) {
+                    Expression::Identifier {
+                        name: name.clone(),
+                        position: named_at,
+                    }
+                } else {
+                    self.parse_expression()?
+                };
                 keyword_pairs.push((name, value));
             } else if matches!(self.peek().kind, TokenKind::Colon)
                 && matches!(self.peek_ahead(1).kind, TokenKind::Ident(_))

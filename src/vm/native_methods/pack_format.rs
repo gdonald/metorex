@@ -803,7 +803,10 @@ impl VirtualMachine {
                         None => return Err(too_few_items(position)),
                     };
                     taken += 1;
-                    let digits: Vec<char> = held.chars().collect();
+                    // Ruby reads the bits and nibbles off the bytes of the
+                    // string, so a character spelled in several bytes
+                    // contributes one digit per byte.
+                    let digits = string_to_bytes(&held);
                     let wanted = match directive.count {
                         Count::Rest => digits.len(),
                         Count::One => 1,
@@ -821,13 +824,13 @@ impl VirtualMachine {
                             // A bit is the low bit of the character that
                             // names it, so '0' and '1' read as themselves and
                             // any other character contributes its own.
-                            Some(digit) if bits_each == 1 => (*digit as u8) & 1,
+                            Some(digit) if bits_each == 1 => *digit & 1,
                             // A letter counts nine past its own low half, so
                             // 'a' through 'f' land on ten through fifteen and
                             // every other letter follows the same step. Any
                             // other character contributes its low half alone.
                             Some(digit) => {
-                                let low = (*digit as u8) & 0xf;
+                                let low = *digit & 0xf;
                                 if digit.is_ascii_alphabetic() {
                                     (low + 9) & 0xf
                                 } else {
@@ -1059,16 +1062,22 @@ impl VirtualMachine {
             Object::Int(number) => return Ok(*number as f64),
             _ => {}
         }
-        if self.responds_to(value, "to_f")
-            && let Object::Float(number) =
-                self.send_to_object(value.clone(), "to_f", vec![], position)?
+        // Any other number converts through `to_f`, which is how a Rational
+        // or a Complex with no imaginary part reaches a double. Anything that
+        // is not a number at all is refused.
+        let class = self.builtins().class_of(value);
+        if crate::vm::method_invocation::descends_from(&class, "Numeric")
+            || self.responds_to(value, "to_f")
         {
-            return Ok(number);
+            // A number that has no `to_f`, or one whose `to_f` answers
+            // something else, is refused the same way a non-number is.
+            if let Ok(Object::Float(number)) =
+                self.send_to_object(value.clone(), "to_f", vec![], position)
+            {
+                return Ok(number);
+            }
         }
-        let message = format!(
-            "no implicit conversion of {} into Float",
-            self.builtins().class_of(value).name()
-        );
+        let message = format!("can't convert {} into Float", class.name());
         Err(crate::vm::errors::simple_exception(
             "TypeError",
             &message,

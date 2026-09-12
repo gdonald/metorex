@@ -42,7 +42,7 @@ fn bitwise_and_int_bool() {
 #[test]
 fn bitwise_and_type_error() {
     let err = run_err("'a' & 'b'");
-    assert!(err.contains("type") || err.contains("Cannot"));
+    assert!(err.contains("undefined method '&' for an instance of String"));
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn bitwise_or_int_bool() {
 #[test]
 fn bitwise_or_type_error() {
     let err = run_err("'a' | 'b'");
-    assert!(err.contains("type") || err.contains("Cannot"));
+    assert!(err.contains("undefined method '|' for an instance of String"));
 }
 
 #[test]
@@ -163,5 +163,5 @@ fn xor_int_bool() {
 #[test]
 fn xor_type_error() {
     let err = run_err("'a' ^ 'b'");
-    assert!(err.contains("type") || err.contains("Cannot"));
+    assert!(err.contains("undefined method '^' for an instance of String"));
 }

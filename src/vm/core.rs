@@ -78,6 +78,18 @@ pub struct VirtualMachine {
     /// The file whose code is running right now, which differs from
     /// `current_file` inside a method defined in another file.
     pub(crate) current_source_file: Option<String>,
+    /// The spelling each loaded file was named by, against the path its
+    /// symlinks resolve to. `__FILE__` and a backtrace name the spelling,
+    /// while everything that loads or dedups works from the resolved path.
+    pub(crate) reported_files: std::collections::HashMap<std::path::PathBuf, std::path::PathBuf>,
+    /// The limits `Timeout.timeout` has open, innermost last: when each one
+    /// runs out, and what to raise when it does. A sleep that would run past
+    /// the nearest one ends the block instead.
+    pub(crate) timeout_limits: Vec<(std::time::Instant, Object, Object)>,
+    /// How deep the machine is inside a body-less method stub standing in for
+    /// a native one. A method bound explicitly reaches its native body even
+    /// on an object whose class answers nothing of Kernel's.
+    pub(crate) bound_stub_depth: usize,
     /// The method invocation a block written right now would return from.
     /// A `return` inside a block unwinds to the method that created the
     /// block, so the block records this id and the unwinding stops at the
@@ -268,6 +280,9 @@ impl VirtualMachine {
             open_streams: Default::default(),
             next_popen_id: 0,
             current_source_file: None,
+            reported_files: std::collections::HashMap::new(),
+            timeout_limits: Vec::new(),
+            bound_stub_depth: 0,
             current_method_frame: Some(TOP_LEVEL_FRAME),
             iterating_sets: Vec::new(),
             live_frames: vec![TOP_LEVEL_FRAME],
@@ -330,6 +345,31 @@ impl VirtualMachine {
         raised_ref.borrow_mut().cause = Some(Box::new(cause.clone()));
     }
 
+    /// Put `$!` back to what it was before a rescue clause ran. A clause
+    /// that handled an exception leaves the one it interrupted in place, so
+    /// an outer handler still names what it is handling.
+    pub(crate) fn restore_current_exception(&mut self, exception: Object) {
+        let backtrace = match &exception {
+            Object::Exception(details) => details
+                .borrow()
+                .backtrace
+                .as_ref()
+                .map(|trace| {
+                    let entries: Vec<Object> = trace
+                        .iter()
+                        .map(|line| Object::string(line.clone()))
+                        .collect();
+                    Object::Array(Rc::new(RefCell::new(entries)))
+                })
+                .unwrap_or(Object::Nil),
+            _ => Object::Nil,
+        };
+        self.environment_mut()
+            .define("$!".to_string(), exception.clone());
+        self.globals_mut().set_variable("!", exception);
+        self.globals_mut().set_variable("@", backtrace);
+    }
+
     pub(crate) fn set_current_exception(&mut self, exception: Object) {
         // An exception reaching a rescue clause takes the one that was active
         // as its `#cause`, which is how an error raised inside a rescue body
@@ -386,10 +426,14 @@ impl VirtualMachine {
     ) -> crate::error::SourceLocation {
         let mut location =
             crate::error::SourceLocation::new(position.line, position.column, position.offset);
-        location.filename = self
-            .current_file
-            .as_ref()
-            .map(|file| file.display().to_string());
+        // A `def` belongs to the file it was written in, which is not always
+        // the file being run: a block from another file runs with that file
+        // still current.
+        location.filename = self.current_source_file.clone().or_else(|| {
+            self.current_file
+                .as_ref()
+                .map(|file| file.display().to_string())
+        });
         location
     }
 
@@ -541,6 +585,9 @@ impl VirtualMachine {
         let elements: Vec<Object> = args.into_iter().map(Object::string).collect();
         let argv = Object::Array(Rc::new(RefCell::new(elements)));
         self.globals.set("ARGV", argv.clone());
+        // `$*` is the same list under the name Ruby's own punctuation gives
+        // it, which `$ARGV` reads through.
+        self.globals.set_variable("*", argv.clone());
         self.environment.define("ARGV".to_string(), argv);
         self.seeded_global_names.insert("ARGV".to_string());
     }
