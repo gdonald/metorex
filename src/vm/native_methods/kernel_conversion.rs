@@ -626,6 +626,13 @@ impl VirtualMachine {
                 message,
             })
         };
+        // An instance of a String subclass is read as the characters it holds
+        // rather than through a `to_f` the subclass may have written, which
+        // is what Ruby does with one.
+        let value = &match crate::vm::native_methods::string_subclass_value(value) {
+            Some(text @ Object::String(_)) => text,
+            _ => value.clone(),
+        };
         match value {
             Object::Float(_) => return Ok(value.clone()),
             Object::Int(number) => return Ok(Object::Float(*number as f64)),

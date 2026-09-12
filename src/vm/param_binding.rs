@@ -46,6 +46,19 @@ pub(crate) fn bind_params(
     default_parameters: &[(usize, Expression)],
     variadic_param: &Option<(usize, String)>,
 ) -> Result<(), MetorexError> {
+    // A default that assigns a local, as `def f(a = b = 1)` does, names that
+    // local for the whole body whether or not the default is reached.
+    for (_, default_expr) in default_parameters {
+        let written = crate::ast::Statement::Expression {
+            expression: default_expr.clone(),
+            position: default_expr.position(),
+        };
+        for name in crate::ast::collect_assigned_locals(std::slice::from_ref(&written)) {
+            if vm.environment().get(&name).is_none() {
+                vm.environment_mut().define(name, Object::Nil);
+            }
+        }
+    }
     if let Some((vi, _)) = variadic_param {
         let vi = *vi;
         let params_after_splat = params.len() - vi - 1;

@@ -132,7 +132,17 @@ fn assembled(
     }
     unsafe {
         tzset();
-        libc::mktime(&mut parts) as i64
+        let made = libc::mktime(&mut parts) as i64;
+        if made != -1 {
+            return made;
+        }
+        // A date older than the C library reads is counted from the calendar
+        // itself, with the offset the zone holds at that moment taken off.
+        let plain = days_from_civil(year, month, day) * 86400 + hour * 3600 + minute * 60 + second;
+        let stamp = plain as libc::time_t;
+        let mut local = empty_tm();
+        libc::localtime_r(&stamp, &mut local);
+        plain - local.tm_gmtoff as i64
     }
 }
 

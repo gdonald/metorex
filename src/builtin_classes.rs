@@ -505,6 +505,37 @@ pub fn init_string_methods(string_class: &Class) {
 /// Register Integer's native methods so introspection reports them. The
 /// bodies live in the native dispatch table; these stubs carry the names and
 /// parameter counts.
+/// The walk a Range answers natively. Naming them here is what lets
+/// `respond_to?` and `instance_methods` report them.
+pub fn init_range_methods(range_class: &Class) {
+    for (name, parameters) in [
+        ("each", &[][..]),
+        ("to_a", &[]),
+        ("entries", &[]),
+        ("size", &[]),
+        ("count", &[]),
+        ("first", &[]),
+        ("last", &[]),
+        ("min", &[]),
+        ("max", &[]),
+        ("sum", &[]),
+        ("step", &["by"][..]),
+        ("include?", &["value"][..]),
+        ("member?", &["value"][..]),
+        ("cover?", &["value"][..]),
+        ("begin", &[]),
+        ("end", &[]),
+        ("exclude_end?", &[]),
+    ] {
+        let method = Rc::new(Method::new(
+            name.to_string(),
+            parameters.iter().map(|p| (*p).to_string()).collect(),
+            vec![],
+        ));
+        range_class.define_method(name, method);
+    }
+}
+
 pub fn init_integer_methods(integer_class: &Class) {
     for (name, parameters) in [
         ("abs", &[][..]),
@@ -528,6 +559,14 @@ pub fn init_integer_methods(integer_class: &Class) {
             vec![],
         ));
         integer_class.define_method(name, method);
+    }
+    // The arithmetic operators answer natively. A stub carrying the name
+    // keeps `respond_to?` and `alias_method` honest about them, and a call
+    // through one reaches the native implementation.
+    for name in ["+", "-", "*", "/", "%", "**"] {
+        let mut stub = Method::new(name.to_string(), vec!["other".to_string()], vec![]);
+        stub.native_alias = Some(name.to_string());
+        integer_class.define_method(name, Rc::new(stub));
     }
 }
 
@@ -565,8 +604,9 @@ pub fn init_array_methods(array_class: &Class) {
     array_class.define_method("[]", index_method);
 
     // `min` and `max` are Array's own rather than Enumerable's, which is what
-    // `[1].method(:max).owner` reports.
-    for name in ["min", "max", "minmax"] {
+    // `[1].method(:max).owner` reports. So are the two names for the way an
+    // Array writes itself out.
+    for name in ["min", "max", "minmax", "to_s", "inspect"] {
         array_class.define_method(name, Rc::new(Method::new(name.to_string(), vec![], vec![])));
     }
 }
@@ -589,6 +629,11 @@ pub fn init_float_methods(float_class: &Class) {
     float_class.set_class_var("MIN", Object::Float(f64::MIN_POSITIVE));
     float_class.set_class_var("DIG", Object::Int(15));
     float_class.set_class_var("MANT_DIG", Object::Int(53));
+    float_class.set_class_var("RADIX", Object::Int(2));
+    float_class.set_class_var("MAX_EXP", Object::Int(f64::MAX_EXP as i64));
+    float_class.set_class_var("MIN_EXP", Object::Int(f64::MIN_EXP as i64));
+    float_class.set_class_var("MAX_10_EXP", Object::Int(f64::MAX_10_EXP as i64));
+    float_class.set_class_var("MIN_10_EXP", Object::Int(f64::MIN_10_EXP as i64));
 }
 
 /// Initialize built-in methods for the Hash class

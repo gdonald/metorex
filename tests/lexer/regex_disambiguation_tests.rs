@@ -68,20 +68,22 @@ fn regex_empty() {
 }
 
 #[test]
-fn regex_unterminated_at_newline() {
+fn regex_runs_across_lines() {
+    // A pattern may be laid out over several lines, which is how one written
+    // with the `x` flag reads.
     let tokens = Lexer::new("/abc\ndef").tokenize();
     assert_eq!(
         tokens[0].kind,
-        TokenKind::Regex("abc".to_string(), "".to_string())
+        TokenKind::Regex("abc\ndef".to_string(), "".to_string())
     );
 }
 
 #[test]
-fn regex_newline_inside_interpolation_terminates() {
+fn regex_interpolation_runs_across_lines() {
     let tokens = Lexer::new("/#{x\n}/").tokenize();
     assert_eq!(
         tokens[0].kind,
-        TokenKind::Regex("#{x".to_string(), "".to_string())
+        TokenKind::Regex("#{x\n}".to_string(), "".to_string())
     );
 }
 

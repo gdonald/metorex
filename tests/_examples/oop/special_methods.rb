@@ -40,7 +40,7 @@ book = Book.new("Ruby Guide")
 puts book
 
 magazine = Magazine.new("Tech Monthly")
-puts magazine
+p magazine
 
 it = SimpleIterator.new
 iterator = it.each

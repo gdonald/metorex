@@ -1420,3 +1420,19 @@ fn test_oop_refinement_names_target_parens_execution() {
     let output = run_example("oop/refinement_names/target_parens.rb");
     assert_eq!(output, REFINEMENT_NAMES_OUTPUT);
 }
+
+/// The expected output of both `oop/singleton_on_a_collection` variants, which
+/// differ only in whether the calls are written with parentheses.
+const SINGLETON_ON_A_COLLECTION_OUTPUT: &str = "[2, 4]\ntrue\nfalse\ntrue\nfalse\n77\n1\n";
+
+#[test]
+fn test_oop_singleton_on_a_collection_execution() {
+    let output = run_example("oop/singleton_on_a_collection.rb");
+    assert_eq!(output, SINGLETON_ON_A_COLLECTION_OUTPUT);
+}
+
+#[test]
+fn test_oop_singleton_on_a_collection_no_parens_execution() {
+    let output = run_example("oop/singleton_on_a_collection_no_parens.rb");
+    assert_eq!(output, SINGLETON_ON_A_COLLECTION_OUTPUT);
+}

@@ -487,6 +487,48 @@ impl VirtualMachine {
                     None => Object::Nil,
                 })
             }
+            // The socket a descriptor names, answered as the handle metorex
+            // holds it under, which is what `for_fd` builds another socket
+            // around.
+            "handle_of_fd" => {
+                use std::os::unix::io::AsRawFd as _;
+                let wanted = port as i32;
+                let found = self
+                    .open_sockets
+                    .listeners
+                    .iter()
+                    .map(|(held, socket)| (*held, socket.as_raw_fd()))
+                    .chain(
+                        self.open_sockets
+                            .streams
+                            .iter()
+                            .map(|(held, socket)| (*held, socket.as_raw_fd())),
+                    )
+                    .chain(
+                        self.open_sockets
+                            .unix_listeners
+                            .iter()
+                            .map(|(held, socket)| (*held, socket.as_raw_fd())),
+                    )
+                    .chain(
+                        self.open_sockets
+                            .unix_streams
+                            .iter()
+                            .map(|(held, socket)| (*held, socket.as_raw_fd())),
+                    )
+                    .chain(
+                        self.open_sockets
+                            .datagrams
+                            .iter()
+                            .map(|(held, socket)| (*held, socket.as_raw_fd())),
+                    )
+                    .find(|(_, number)| *number == wanted)
+                    .map(|(held, _)| held);
+                Ok(match found {
+                    Some(held) => Object::Int(held as i64),
+                    None => Object::Nil,
+                })
+            }
             // ── sockets named by a path in the file system ────────────────
             "unix_listen" => {
                 // A name something is already listening under cannot be bound
@@ -507,13 +549,73 @@ impl VirtualMachine {
                 Ok(Object::Int(named as i64))
             }
             "unix_connect" => {
-                let held = std::os::unix::net::UnixStream::connect(&text)
-                    .map_err(|problem| refuse(format!("connect({text}): {problem}")))?;
+                let held = std::os::unix::net::UnixStream::connect(&text).map_err(|problem| {
+                    // A name with nothing listening under it is reported the
+                    // way the operating system reports it, which for a path
+                    // that is not there is a missing file.
+                    let named = match problem.kind() {
+                        std::io::ErrorKind::NotFound => "Errno::ENOENT",
+                        _ => "Errno::ECONNREFUSED",
+                    };
+                    crate::vm::errors::simple_exception(
+                        named,
+                        &format!("connect({text}): {problem}"),
+                        position,
+                    )
+                })?;
                 let _ = held.set_read_timeout(Some(WAIT_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.unix_streams.insert(named, held);
                 Ok(Object::Int(named as i64))
+            }
+            // One try at taking a waiting connection, answering nil when
+            // there is none rather than waiting for one.
+            "unix_accept_now" => {
+                let listener = self
+                    .open_sockets
+                    .unix_listeners
+                    .get(&handle)
+                    .ok_or_else(|| refuse("accept on a closed listener".to_string()))?;
+                let _ = listener.set_nonblocking(true);
+                let taken = listener.accept();
+                let _ = listener.set_nonblocking(false);
+                match taken {
+                    Ok((stream, _)) => {
+                        let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
+                        let named = self.open_sockets.next;
+                        self.open_sockets.next += 1;
+                        self.open_sockets.unix_streams.insert(named, stream);
+                        Ok(Object::Int(named as i64))
+                    }
+                    Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                        Ok(Object::Nil)
+                    }
+                    Err(problem) => Err(refuse(format!("accept: {problem}"))),
+                }
+            }
+            "accept_now" => {
+                let listener = self
+                    .open_sockets
+                    .listeners
+                    .get(&handle)
+                    .ok_or_else(|| refuse("accept on a closed listener".to_string()))?;
+                let _ = listener.set_nonblocking(true);
+                let taken = listener.accept();
+                let _ = listener.set_nonblocking(false);
+                match taken {
+                    Ok((stream, _)) => {
+                        let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
+                        let named = self.open_sockets.next;
+                        self.open_sockets.next += 1;
+                        self.open_sockets.streams.insert(named, stream);
+                        Ok(Object::Int(named as i64))
+                    }
+                    Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                        Ok(Object::Nil)
+                    }
+                    Err(problem) => Err(refuse(format!("accept: {problem}"))),
+                }
             }
             "unix_accept" => {
                 let listener = self

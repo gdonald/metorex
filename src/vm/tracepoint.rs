@@ -37,10 +37,13 @@ impl VirtualMachine {
         if self.tracepoints.is_empty() || self.tracing || position.prelude {
             return Ok(());
         }
-        if self.traced_line == Some(position.line) {
+        // One line reports once, and the same line number in another file is
+        // a line of its own.
+        let reached = (self.traced_path(), position.line);
+        if self.traced_line.as_ref() == Some(&reached) {
             return Ok(());
         }
-        self.traced_line = Some(position.line);
+        self.traced_line = Some(reached);
         self.fire_event("line", position, Vec::new())
     }
 
@@ -151,6 +154,15 @@ impl VirtualMachine {
         if self.tracepoints.is_empty() || self.tracing || position.prelude {
             return Ok(());
         }
+        // The core library stands in for Ruby's C code, so a method written
+        // there fires nothing however it was reached.
+        if method
+            .body
+            .first()
+            .is_some_and(|held| held.position().prelude)
+        {
+            return Ok(());
+        }
         let plain = method_name
             .strip_prefix("__class__")
             .unwrap_or(method_name)
@@ -160,18 +172,34 @@ impl VirtualMachine {
             ("callee_id", Object::symbol(plain)),
             // Ruby names the class the method was written on, which is not
             // always the one the call found it through.
+            ("defined_class", {
+                // A module the method was written on stands as a module, not
+                // as a class, so the object a trace reads is the same one the
+                // name reaches.
+                let owner = method
+                    .owner_class
+                    .clone()
+                    .unwrap_or_else(|| Rc::clone(found_on));
+                if owner.is_module() {
+                    Object::Module(owner)
+                } else {
+                    Object::Class(owner)
+                }
+            }),
+            // A trace reads the parameters a method declared off either of
+            // the events that name the method.
             (
-                "defined_class",
-                Object::Class(
-                    method
-                        .owner_class
-                        .clone()
-                        .unwrap_or_else(|| Rc::clone(found_on)),
-                ),
+                "parameters",
+                crate::vm::native_methods::method_parameter_list(method),
             ),
         ];
         if let Some(value) = value {
             extra.push(("return_value", value.clone()));
+        }
+        if event == "return"
+            && let Some(held) = self.traced_binding.take()
+        {
+            extra.push(("binding", held));
         }
         self.fire_event(event, position, extra)
     }

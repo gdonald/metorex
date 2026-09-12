@@ -46,7 +46,7 @@ impl Parser {
     }
 
     /// Parse a lexer-produced interpolated string into an `Expression::InterpolatedString`.
-    pub(super) fn primary_interpolated_string(
+    pub(crate) fn primary_interpolated_string(
         &self,
         parts: Vec<InterpolationPart>,
         position: Position,
@@ -56,6 +56,11 @@ impl Parser {
             match part {
                 InterpolationPart::Text(text) => {
                     ast_parts.push(crate::ast::node::InterpolationPart::Text(text));
+                }
+                // `"#{}"` interpolates nothing at all, which reads as the
+                // empty string rather than as an expression.
+                InterpolationPart::Expression(expr_str) if expr_str.trim().is_empty() => {
+                    ast_parts.push(crate::ast::node::InterpolationPart::Text(String::new()));
                 }
                 InterpolationPart::Expression(expr_str) => {
                     // Parse the embedded expression as a fresh token stream,
@@ -91,6 +96,31 @@ pub(super) fn float_literal(value: f64, position: Position) -> Expression {
 /// Map a `TokenKind::String(...)` value to a `StringLiteral` expression.
 pub(super) fn string_literal(value: String, position: Position) -> Expression {
     Expression::StringLiteral { value, position }
+}
+
+/// Map a `TokenKind::ByteString(...)` value to a String that says it holds
+/// bytes. The characters stand for the bytes the escapes named, which is what
+/// tagging the literal as bytes says.
+/// Map a `TokenKind::BinaryString(...)` value to a String written in bytes,
+/// which is what a literal in a source written in bytes stands for.
+pub(super) fn binary_string_literal(value: String, position: Position) -> Expression {
+    Expression::MethodCall {
+        receiver: Box::new(Expression::StringLiteral { value, position }),
+        method: "__binary_literal__".to_string(),
+        arguments: Vec::new(),
+        trailing_block: None,
+        position,
+    }
+}
+
+pub(super) fn byte_string_literal(value: String, position: Position) -> Expression {
+    Expression::MethodCall {
+        receiver: Box::new(Expression::StringLiteral { value, position }),
+        method: "__holds_bytes__".to_string(),
+        arguments: Vec::new(),
+        trailing_block: None,
+        position,
+    }
 }
 
 /// Map a `TokenKind::Regex(...)` value to a `RegexLiteral` expression.

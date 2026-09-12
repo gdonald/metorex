@@ -54,6 +54,8 @@ pub struct Lexer<'a> {
     /// run of numeric escapes then names those bytes one by one instead of
     /// spelling a character between them.
     pub(super) binary_source: bool,
+    /// Whether the source asked for its string literals to be frozen.
+    pub(super) frozen_literals: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -79,6 +81,7 @@ impl<'a> Lexer<'a> {
         // the encoding rather than anything the program says.
         let source = source.strip_prefix('\u{feff}').unwrap_or(source);
         let binary_source = names_binary_encoding(source);
+        let frozen_literals = freezes_string_literals(source);
         Self {
             chars: source.chars().peekable(),
             prepend: Vec::new(),
@@ -90,6 +93,7 @@ impl<'a> Lexer<'a> {
             restore_line: None,
             prelude: false,
             binary_source,
+            frozen_literals,
         }
     }
 
@@ -174,6 +178,28 @@ impl<'a> Iterator for Lexer<'a> {
 /// Whether a magic comment on one of the first two lines says the source is
 /// written in bytes. Ruby reads such a file as bytes, so what a numeric
 /// escape names is a byte rather than part of a character.
+/// Whether the source says its string literals are frozen, which the magic
+/// comment `# frozen_string_literal: true` asks for.
+fn freezes_string_literals(source: &str) -> bool {
+    for line in source.lines().take(3) {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with('#') {
+            break;
+        }
+        let lowered = trimmed.to_ascii_lowercase();
+        let Some(at) = lowered.find("frozen_string_literal") else {
+            continue;
+        };
+        let named = lowered[at + "frozen_string_literal".len()..].trim_start();
+        let named = named.strip_prefix(':').unwrap_or(named).trim_start();
+        return named.starts_with("true");
+    }
+    false
+}
+
 fn names_binary_encoding(source: &str) -> bool {
     for line in source.lines().take(2) {
         let trimmed = line.trim_start();

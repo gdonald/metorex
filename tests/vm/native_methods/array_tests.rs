@@ -168,15 +168,13 @@ end
 // ── array_methods.rs: each with return in block (lines 126-129) ─────────────
 
 #[test]
-fn array_each_return_in_block_error() {
-    let err = run_err(
-        r#"
+fn array_each_return_in_block_ends_the_program() {
+    let result = run(r#"
 [1, 2, 3].each do |x|
   return x
 end
-"#,
-    );
-    assert!(err.contains("return") || err.contains("control") || err.contains("loop"));
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 // ── array_methods.rs: map with return in block error ────────────────────────

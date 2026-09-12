@@ -101,6 +101,23 @@ class ERB
     built
   end
 
+  # Writing a template out as a method of the module extending this one, so
+  # rendering it reads as an ordinary call.
+  module DefMethod
+    # `def_erb_method("render()", file_or_erb)` writes the template as a
+    # method of this module. A String names a file holding the template, and
+    # an ERB stands for one already read.
+    def def_erb_method(name, held)
+      if held.is_a? ERB
+        held.def_method(self, name, held.filename)
+        return
+      end
+      compiled = ERB.new(File.read(held.to_s))
+      compiled.filename = held.to_s
+      compiled.def_method(self, name, held.to_s)
+    end
+  end
+
   # Compile a template into Ruby source. The answer is built with `+` rather
   # than in place, so the source runs wherever a String does.
   def self.compile(template, trim_mode, name)

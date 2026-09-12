@@ -121,8 +121,16 @@ impl<'a> Lexer<'a> {
             }
             '=' => {
                 self.advance();
+                // `:a==>1` names the symbol `a=` and then the arrow, which is
+                // the only way `==>` is written.
                 if self.peek() == Some('=') {
                     self.advance();
+                    // `:a==>1` names the symbol `a=` and then the arrow,
+                    // which is the only way `==>` is written.
+                    if self.peek() == Some('>') {
+                        self.push_back('=');
+                        return Token::new(TokenKind::Equal, position);
+                    }
                     if self.peek() == Some('=') {
                         self.advance();
                         Token::new(TokenKind::TripleEqual, position)
@@ -327,10 +335,16 @@ impl<'a> Lexer<'a> {
                 Ok(kind) => Token::new(kind, position),
                 Err(_) => Token::new(TokenKind::EOF, position),
             },
+            // A NUL byte ends the source, which is how a file written in an
+            // encoding Ruby cannot read reads as empty.
+            '\0' => Token::new(TokenKind::EOF, position),
             _ => {
-                // Unknown character, consume and return EOF
+                // A character that spells no token stands for nothing, so it
+                // is passed over rather than read as the end of the source.
+                // Reporting an end here would leave the parser with a stream
+                // it can never walk past.
                 self.advance();
-                Token::new(TokenKind::EOF, position)
+                self.next_token_body()
             }
         }
     }

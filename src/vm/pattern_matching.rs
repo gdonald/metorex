@@ -170,7 +170,7 @@ impl VirtualMachine {
     }
 
     pub(crate) fn match_pattern(
-        &self,
+        &mut self,
         pattern: &crate::ast::MatchPattern,
         value: &Object,
         bindings: &mut HashMap<String, Object>,
@@ -213,6 +213,46 @@ impl VirtualMachine {
 
             // Wildcard pattern - matches anything without binding
             MatchPattern::Wildcard => Ok(true),
+
+            // Anything written where a pattern goes that stands for a value
+            // of its own, which the case asks with `===`.
+            // `when *values` asks each of the values in turn, so a list
+            // written there stands for the choices it holds.
+            MatchPattern::Expression(held)
+                if matches!(held.as_ref(), crate::ast::Expression::Splat { .. }) =>
+            {
+                let crate::ast::Expression::Splat { expression, .. } = held.as_ref() else {
+                    unreachable!("guarded by the match above")
+                };
+                let spread = self.evaluate_expression(expression)?;
+                let choices = match spread {
+                    Object::Array(held) => held.borrow().clone(),
+                    other => vec![other],
+                };
+                for choice in choices {
+                    let matched = self.evaluate_binary_operation(
+                        &crate::ast::BinaryOp::CaseEqual,
+                        choice,
+                        value.clone(),
+                        position,
+                    )?;
+                    if matched.is_truthy() {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
+
+            MatchPattern::Expression(held) => {
+                let pattern_value = self.evaluate_expression(held)?;
+                let matched = self.evaluate_binary_operation(
+                    &crate::ast::BinaryOp::CaseEqual,
+                    pattern_value,
+                    value.clone(),
+                    position,
+                )?;
+                Ok(matched.is_truthy())
+            }
 
             // Array pattern - destructure arrays
             MatchPattern::Array(patterns) => match value {
@@ -353,7 +393,7 @@ impl VirtualMachine {
 
     /// Match an array pattern against an array value.
     pub(crate) fn match_array_pattern(
-        &self,
+        &mut self,
         patterns: &[crate::ast::MatchPattern],
         array: &[Object],
         bindings: &mut HashMap<String, Object>,
@@ -431,7 +471,7 @@ impl VirtualMachine {
 
     /// Match an object/dictionary pattern against a dictionary value.
     pub(crate) fn match_object_pattern(
-        &self,
+        &mut self,
         key_patterns: &[(String, crate::ast::MatchPattern)],
         dict: &indexmap::IndexMap<String, Object>,
         bindings: &mut HashMap<String, Object>,

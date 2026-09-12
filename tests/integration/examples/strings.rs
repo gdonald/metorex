@@ -35,3 +35,18 @@ fn test_strings_in_place_changes_parens_execution() {
     let output = run_example("strings/in_place/changes_parens.rb");
     assert_eq!(output, STRING_IN_PLACE_OUTPUT);
 }
+
+/// The expected output of both `strings/byte_sets` variants.
+const BYTE_SETS_OUTPUT: &str = "[0, 32, 45, 32, 255]\n#<Encoding:BINARY (ASCII-8BIT)>\ntrue\nfalse\ninvalid byte sequence in UTF-8\ninvalid range \"h-e\" in string transliteration\n\"heo\"\n";
+
+#[test]
+fn test_strings_byte_sets_execution() {
+    let output = run_example("strings/byte_sets.rb");
+    assert_eq!(output, BYTE_SETS_OUTPUT);
+}
+
+#[test]
+fn test_strings_byte_sets_parens_execution() {
+    let output = run_example("strings/byte_sets_parens.rb");
+    assert_eq!(output, BYTE_SETS_OUTPUT);
+}

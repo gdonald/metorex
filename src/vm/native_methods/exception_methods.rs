@@ -9,6 +9,31 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// What Ruby prints for an exception nothing rescued: the place it was
+    /// raised, its message and class, and the frames under it.
+    pub fn uncaught_report(&mut self, exception: &Object) -> Option<String> {
+        if let Object::Exception(held) = exception
+            && held.borrow().exception_type == "SystemExit"
+        {
+            // `exit` ends the program rather than failing it, so there is
+            // nothing to report.
+            return Some(String::new());
+        }
+        let mut keywords = indexmap::IndexMap::new();
+        keywords.insert("__MX_KWARGS__".to_string(), Object::Bool(true));
+        keywords.insert(":highlight".to_string(), Object::Bool(false));
+        let arguments = vec![Object::Dict(Rc::new(RefCell::new(keywords)))];
+        match self.send_to_object(
+            exception.clone(),
+            "full_message",
+            arguments,
+            Position::default(),
+        ) {
+            Ok(Object::String(text)) => Some(text.as_str().to_string()),
+            _ => None,
+        }
+    }
+
     /// Call a native method on an Exception object
     pub(crate) fn call_exception_method(
         &mut self,
@@ -319,10 +344,13 @@ impl VirtualMachine {
             // gets on stderr: the backtrace plus the detailed message, with
             // `order:` deciding which end the message sits at.
             "full_message" => {
-                let highlight = !matches!(
-                    keyword_argument(arguments, "highlight"),
-                    Some(Object::Bool(false))
-                );
+                // Ruby paints the report only when it is going to a
+                // terminal, which is what `Exception.to_tty?` reports.
+                let highlight = match keyword_argument(arguments, "highlight") {
+                    Some(Object::Bool(asked)) => asked,
+                    Some(Object::Nil) | None => unsafe { libc::isatty(2) == 1 },
+                    Some(_) => true,
+                };
                 let bottom_first = matches!(
                     keyword_argument(arguments, "order"),
                     Some(Object::Symbol(order)) if *order.as_str() == *"bottom"
@@ -345,7 +373,17 @@ impl VirtualMachine {
                 };
                 let trace = exception.borrow().backtrace.clone().unwrap_or_default();
                 let origin = trace.first().cloned().unwrap_or_default();
-                let rest: Vec<String> = trace.iter().skip(1).cloned().collect();
+                let mut rest: Vec<String> = trace.iter().skip(1).cloned().collect();
+                // `--backtrace-limit` says how many frames under the top one
+                // are written out, with a count standing for the rest.
+                let mut left_out = 0;
+                if self.backtrace_limit >= 0 {
+                    let kept = self.backtrace_limit as usize;
+                    if rest.len() > kept {
+                        left_out = rest.len() - kept;
+                        rest.truncate(kept);
+                    }
+                }
                 let mut lines = Vec::new();
                 if bottom_first {
                     lines.push(if highlight {
@@ -361,6 +399,9 @@ impl VirtualMachine {
                     lines.push(format!("{}: {}", origin, detail));
                     for entry in &rest {
                         lines.push(format!("\tfrom {}", entry));
+                    }
+                    if left_out > 0 {
+                        lines.push(format!("\t ... {} levels...", left_out));
                     }
                 }
                 let mut rendered = lines.join("\n");

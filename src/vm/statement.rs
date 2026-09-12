@@ -67,16 +67,19 @@ impl VirtualMachine {
             } => {
                 // One value on the right is spread across the targets when it
                 // is an Array, and otherwise reaches the first target alone.
-                let source: Vec<Object> = if values.len() == 1 {
-                    match self.evaluate_expression(&values[0])? {
+                let (answer, source): (Object, Vec<Object>) = if values.len() == 1 {
+                    let single = self.evaluate_expression(&values[0])?;
+                    let spread = match &single {
                         Object::Array(elements) => elements.borrow().clone(),
-                        single => vec![single],
-                    }
+                        held => vec![held.clone()],
+                    };
+                    (single, spread)
                 } else {
-                    values
+                    let each = values
                         .iter()
                         .map(|value| self.evaluate_expression(value))
-                        .collect::<Result<Vec<_>, _>>()?
+                        .collect::<Result<Vec<_>, _>>()?;
+                    (Object::array(each.clone()), each)
                 };
                 let splat_at = targets
                     .iter()
@@ -112,7 +115,9 @@ impl VirtualMachine {
                         }
                     }
                 }
-                Ok(ControlFlow::Next)
+                // The assignment answers the right-hand side as it was
+                // written, which is what `(a, b = 1, 2)` reads back as.
+                Ok(ControlFlow::Value(answer))
             }
             Statement::Return { value, position } => {
                 let result = match value {
@@ -169,12 +174,25 @@ impl VirtualMachine {
                 body,
                 position: _,
             } => self.execute_while(condition, body),
+            Statement::DoWhile {
+                condition,
+                body,
+                position: _,
+            } => self.execute_do_while(condition, body),
             Statement::For {
                 variable,
                 iterable,
                 body,
                 position,
             } => self.execute_for(variable, iterable, body, *position),
+            Statement::DeclareLocals { names, .. } => {
+                for name in names {
+                    if self.environment().get(name).is_none() {
+                        self.environment_mut().define(name.clone(), Object::Nil);
+                    }
+                }
+                Ok(ControlFlow::Next)
+            }
             Statement::ClassDef {
                 name,
                 namespace,
@@ -277,6 +295,30 @@ impl VirtualMachine {
     }
 
     /// Execute statements within a new lexical scope.
+    /// Ruby reports a constant given a second value, naming the class or
+    /// module the constant is bound on.
+    fn warn_already_initialized(
+        &mut self,
+        owner: &Rc<crate::class::Class>,
+        name: &str,
+        position: crate::lexer::Position,
+    ) {
+        let named = owner.ruby_name();
+        let named = if named.is_empty() {
+            owner.inspect_name()
+        } else {
+            named
+        };
+        // A constant at the top level is bound on Object, which Ruby leaves
+        // out of the name it reports.
+        let message = if named == "Object" {
+            format!("warning: already initialized constant {}", name)
+        } else {
+            format!("warning: already initialized constant {}::{}", named, name)
+        };
+        self.emit_warning_to_stderr(&message, position);
+    }
+
     pub(crate) fn execute_block(
         &mut self,
         statements: &[Statement],
@@ -388,6 +430,9 @@ impl VirtualMachine {
                     .unwrap_or_default();
                 if is_const && let Some(enclosing) = self.def_scope_stack.last().cloned() {
                     let is_new = enclosing.get_class_var(name).is_none();
+                    if !is_new {
+                        self.warn_already_initialized(&enclosing, name, *position);
+                    }
                     enclosing.set_class_var(name, value);
                     enclosing.set_const_location(name, assign_file, position.line as i64);
                     if is_new {
@@ -402,6 +447,8 @@ impl VirtualMachine {
                     if let Some(Object::Class(object_class)) = self.globals().get("Object") {
                         if object_class.get_class_var(name).is_none() {
                             owner = Some(Object::Class(Rc::clone(&object_class)));
+                        } else {
+                            self.warn_already_initialized(&object_class, name, *position);
                         }
                         object_class.set_class_var(name, value);
                         object_class.set_const_location(name, assign_file, position.line as i64);
@@ -490,6 +537,21 @@ impl VirtualMachine {
                 }
             }
             Expression::ClassVariable { name, position } => {
+                // A class variable written inside `instance_exec` belongs to
+                // the class or module the block was written in.
+                if let Some(home) = self.class_var_home.last() {
+                    // A singleton class holds no class variables of its own:
+                    // one written there belongs to the class it stands for.
+                    if home.get_class_var("__singleton__").is_some()
+                        && let Some(Object::Class(attached) | Object::Module(attached)) =
+                            home.get_class_var("__attached__")
+                    {
+                        attached.set_class_var(name.clone(), value);
+                    } else {
+                        home.set_class_var(name.clone(), value);
+                    }
+                    return Ok(());
+                }
                 // Class variables can only be set within a method or class context
                 // For now, we'll look for 'self' to get the class
                 match self.environment().get("self") {
@@ -543,6 +605,14 @@ impl VirtualMachine {
                         Ok(())
                     }
                     Object::Dict(dict_rc) => {
+                        // The environment names and values its variables in
+                        // text, so a write to it is read that way first.
+                        if self.dict_is_environment(&dict_rc) {
+                            let environment = Object::Dict(Rc::clone(&dict_rc));
+                            let given = vec![idx, value];
+                            self.call_hash_method(&environment, "[]=", &given, *position)?;
+                            return Ok(());
+                        }
                         // Hash/Dict index assignment — Ruby allows any object as a key
                         let key_str =
                             crate::vm::utils::object_to_dict_key(&idx).unwrap_or_default();
@@ -661,6 +731,13 @@ impl VirtualMachine {
                             ))
                         }
                     }
+                    // `str[at] = text` writes into the string itself, which
+                    // every reference to it then reads.
+                    Object::String(_) => {
+                        let given = vec![idx, value];
+                        self.call_string_mutation(&obj, "[]=", &given, *position)?;
+                        Ok(())
+                    }
                     // Nil receivers swallow `[]=` as a no-op so spec
                     // fixtures using stub Thread.current (which is Nil)
                     // can run `Thread.current[:in_autoload_rb] = true`
@@ -689,6 +766,23 @@ impl VirtualMachine {
                     }
                     subscripts.push(value);
                     self.send_to_object(receiver_obj, "[]=", subscripts, *position)?;
+                    return Ok(());
+                }
+                // `held&.name = value` writes only when the receiver is
+                // there, which is what the safe call stands for.
+                if method == crate::parser::SAFE_CALL
+                    && let [Expression::Symbol { value: named, .. }] = arguments.as_slice()
+                {
+                    let receiver_obj = self.evaluate_expression(receiver)?;
+                    if matches!(receiver_obj, Object::Nil) {
+                        return Ok(());
+                    }
+                    self.send_to_object(
+                        receiver_obj,
+                        &format!("{}=", named),
+                        vec![value],
+                        *position,
+                    )?;
                     return Ok(());
                 }
                 // Handle setter method calls (e.g., obj.name = value becomes obj.name=(value))

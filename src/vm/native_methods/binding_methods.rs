@@ -50,6 +50,15 @@ impl VirtualMachine {
             }
             "local_variable_set" => {
                 let name = self.binding_local_name(arguments, method_name, position)?;
+                // A global or one of the names the interpreter keeps for
+                // itself is not a local, so a binding refuses to bind it.
+                if !name.starts_with(|held: char| held == '_' || held.is_lowercase()) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "NameError",
+                        &format!("wrong local variable name '{name}' for {binding:p}"),
+                        position,
+                    ));
+                }
                 let value = arguments.get(1).cloned().unwrap_or(Object::Nil);
                 match binding.get(&name) {
                     Some(cell) => *cell.borrow_mut() = value.clone(),
@@ -93,6 +102,18 @@ impl VirtualMachine {
         match arguments.first() {
             Some(Object::Symbol(name)) | Some(Object::String(name)) => {
                 Ok(name.as_str().to_string())
+            }
+            // A name may be written as anything that spells itself out.
+            Some(other) if self.responds_to(other, "to_str") => {
+                let spelled = self.send_to_object(other.clone(), "to_str", Vec::new(), position)?;
+                match spelled {
+                    Object::String(name) => Ok(name.as_str().to_string()),
+                    held => Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!("{held} is not a symbol nor a string"),
+                        position,
+                    )),
+                }
             }
             Some(other) => Err(crate::vm::errors::simple_exception(
                 "TypeError",

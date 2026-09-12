@@ -445,14 +445,58 @@ impl Parser {
         let start_pos = self.expect(TokenKind::Alias, "Expected 'alias'")?.position;
         self.skip_whitespace();
 
-        let new_name = self.parse_alias_method_name()?;
+        let new_name = self.parse_alias_name_expression()?;
         self.skip_whitespace();
-        let old_name = self.parse_alias_method_name()?;
+        let old_name = self.parse_alias_name_expression()?;
 
-        Ok(Statement::Alias {
-            new_name,
-            old_name,
+        if let (Expression::Symbol { value: new, .. }, Expression::Symbol { value: old, .. }) =
+            (&new_name, &old_name)
+        {
+            return Ok(Statement::Alias {
+                new_name: new.clone(),
+                old_name: old.clone(),
+                position: start_pos,
+            });
+        }
+        // A name spelled out by an interpolated symbol is only known once the
+        // interpolation runs, which is what `alias_method` takes.
+        Ok(Statement::Expression {
+            expression: Expression::Call {
+                callee: Box::new(Expression::Identifier {
+                    name: "alias_method".to_string(),
+                    position: start_pos,
+                }),
+                arguments: vec![new_name, old_name],
+                trailing_block: None,
+                position: start_pos,
+            },
             position: start_pos,
+        })
+    }
+
+    /// One name given to `alias` or `undef`, as the expression that spells it
+    /// out. A plain name is a symbol; an interpolated symbol is the string it
+    /// builds, turned into a symbol when it runs.
+    fn parse_alias_name_expression(&mut self) -> Result<Expression, MetorexError> {
+        let position = self.peek().position;
+        if self.check(&[TokenKind::Colon])
+            && let TokenKind::InterpolatedString(parts) = self.peek_ahead(1).kind.clone()
+        {
+            self.advance();
+            self.advance();
+            let built = self.primary_interpolated_string(parts, position)?;
+            return Ok(Expression::MethodCall {
+                receiver: Box::new(built),
+                method: "to_sym".to_string(),
+                arguments: Vec::new(),
+                trailing_block: None,
+                position,
+            });
+        }
+        let name = self.parse_alias_method_name()?;
+        Ok(Expression::Symbol {
+            value: name,
+            position,
         })
     }
 
@@ -464,11 +508,7 @@ impl Parser {
 
         let mut arguments = Vec::new();
         loop {
-            let name = self.parse_alias_method_name()?;
-            arguments.push(Expression::Symbol {
-                value: name,
-                position: start_pos,
-            });
+            arguments.push(self.parse_alias_name_expression()?);
             self.skip_whitespace();
             if !self.match_token(&[TokenKind::Comma]) {
                 break;

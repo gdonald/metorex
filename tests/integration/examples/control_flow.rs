@@ -80,7 +80,7 @@ fn test_control_flow_case_expr_mixed_execution() {
 
 #[test]
 fn test_control_flow_case_expression_basic_execution() {
-    let expected = "two\nThe answer!\nnil\na=1, b=2\n";
+    let expected = "two\nThe answer!\n\na=1, b=2\n";
     let output = run_example("control_flow/case_expression_basic.rb");
     assert_eq!(output, expected);
 }
@@ -108,14 +108,14 @@ fn test_case_multi_value_execution() {
 
 #[test]
 fn test_control_flow_logical_operators_execution() {
-    let expected = "false\ntrue\nfalse\ntrue\n42\nnil\ntrue\nfalse\ntrue\n";
+    let expected = "false\ntrue\nfalse\ntrue\n42\n\ntrue\nfalse\ntrue\n";
     let output = run_example("control_flow/logical_operators.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_logical_operators_parens_execution() {
-    let expected = "false\ntrue\nfalse\ntrue\n42\nnil\ntrue\nfalse\ntrue\n";
+    let expected = "false\ntrue\nfalse\ntrue\n42\n\ntrue\nfalse\ntrue\n";
     let output = run_example("control_flow/logical_operators_parens.rb");
     assert_eq!(output, expected);
 }
@@ -164,14 +164,14 @@ fn test_control_flow_case_in_else_parens_execution() {
 
 #[test]
 fn test_control_flow_if_expression_execution() {
-    let expected = "42\n2\nnil\n10\npositive\n";
+    let expected = "42\n2\n\n10\npositive\n";
     let output = run_example("control_flow/if_expression.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_control_flow_if_expression_parens_execution() {
-    let expected = "42\n2\nnil\n10\npositive\n";
+    let expected = "42\n2\n\n10\npositive\n";
     let output = run_example("control_flow/if_expression_parens.rb");
     assert_eq!(output, expected);
 }
@@ -297,4 +297,51 @@ fn test_control_flow_throw_and_tap_parens() {
     );
     let output = run_example("control_flow/throw_and_tap_parens.rb");
     assert_eq!(output, expected);
+}
+
+/// The expected output of both `control_flow/jumps_as_values` variants, which
+/// differ only in whether the calls are written with parentheses.
+const JUMPS_AS_VALUES_OUTPUT: &str = "[1, 0, 2]\n123\nnil\nnil\nnil\nnil\ntrue\n:doubled\n42\n";
+
+#[test]
+fn test_control_flow_jumps_as_values_execution() {
+    let output = run_example("control_flow/jumps_as_values.rb");
+    assert_eq!(output, JUMPS_AS_VALUES_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_jumps_as_values_no_parens_execution() {
+    let output = run_example("control_flow/jumps_as_values_no_parens.rb");
+    assert_eq!(output, JUMPS_AS_VALUES_OUTPUT);
+}
+
+/// The expected output of both `control_flow/for_loops` variants.
+const FOR_LOOPS_OUTPUT: &str =
+    "[3, 6]\n[1, 2]\n[3, 4]\n1\n3\n[1, [2, 3]]\n8\n[1, 3]\n1..3\n10\n[6, 6]\n";
+
+#[test]
+fn test_control_flow_for_loops_execution() {
+    let output = run_example("control_flow/for_loops.rb");
+    assert_eq!(output, FOR_LOOPS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_for_loops_no_parens_execution() {
+    let output = run_example("control_flow/for_loops_no_parens.rb");
+    assert_eq!(output, FOR_LOOPS_OUTPUT);
+}
+
+/// The expected output of both `control_flow/post_test_loops` variants.
+const POST_TEST_LOOPS_OUTPUT: &str = "1\n[0, 1, 2, 3]\n[0, 1, 3]\n[0, 0, 0, 1, 2]\n123\nnil\n3\n";
+
+#[test]
+fn test_control_flow_post_test_loops_execution() {
+    let output = run_example("control_flow/post_test_loops.rb");
+    assert_eq!(output, POST_TEST_LOOPS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_post_test_loops_no_parens_execution() {
+    let output = run_example("control_flow/post_test_loops_no_parens.rb");
+    assert_eq!(output, POST_TEST_LOOPS_OUTPUT);
 }

@@ -87,8 +87,21 @@ impl<'a> Lexer<'a> {
             self.advance();
             return TokenKind::GlobalVar(format!("-{flag}"));
         }
+        // `$1` and the rest name a capture group, and a pattern may hold
+        // more than nine of them, so the digits are read as one number.
+        if self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+            let mut digits = String::new();
+            while let Some(ch) = self.peek() {
+                if !ch.is_ascii_digit() {
+                    break;
+                }
+                digits.push(ch);
+                self.advance();
+            }
+            return TokenKind::GlobalVar(digits);
+        }
         if let Some(ch) = self.peek() {
-            // Special single-character globals: $: $; $, $/ $\ $! $@ $~ $& $' $` $+ $. $< $> $" $_ $* $$ $? $0-$9
+            // Special single-character globals: $: $; $, $/ $\ $! $@ $~ $& $' $` $+ $. $< $> $" $_ $* $$ $?
             if !Self::is_identifier_start(ch) {
                 self.advance();
                 return TokenKind::GlobalVar(ch.to_string());

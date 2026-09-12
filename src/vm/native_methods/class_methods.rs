@@ -84,6 +84,15 @@ impl VirtualMachine {
         {
             return Ok(Some(found));
         }
+        // Every symbol the program has spelled, which the parser records as
+        // it reads them and the constructor records as they are made.
+        if class_rc.name() == "Symbol" && method_name == "all_symbols" {
+            let named = crate::symbol_registry::all()
+                .into_iter()
+                .map(Object::symbol)
+                .collect();
+            return Ok(Some(Object::array(named)));
+        }
         // The shape of a network address belongs to the operating system, so
         // the socket library reads and writes them here.
         if class_rc.name() == "Socket" && method_name == "__address__" {
@@ -91,6 +100,31 @@ impl VirtualMachine {
         }
         if class_rc.name() == "Socket" && method_name == "__net__" {
             return self.socket_net(arguments, position).map(Some);
+        }
+        if class_rc.name() == "IO" && method_name == "__stream__" {
+            return self.stream_action(arguments, position).map(Some);
+        }
+        // `IO.__write_standard__(name, text)` writes through the
+        // interpreter's own writer, which is what keeps a program's output in
+        // the order it wrote it whichever route each piece took.
+        if class_rc.name() == "IO" && method_name == "__write_standard__" {
+            let named = match arguments.first() {
+                Some(Object::String(held)) => held.as_str().to_string(),
+                _ => String::new(),
+            };
+            let text = match arguments.get(1) {
+                Some(Object::String(held)) => held.as_str().to_string(),
+                other => other.map(|held| held.to_string()).unwrap_or_default(),
+            };
+            use std::io::Write as _;
+            if named == "stderr" {
+                eprint!("{}", text);
+                let _ = std::io::stderr().flush();
+            } else {
+                print!("{}", text);
+                let _ = std::io::stdout().flush();
+            }
+            return Ok(Some(Object::Nil));
         }
         // A class that defines `new` of its own builds its instances that
         // way, rather than through the allocate-and-initialize every class
@@ -624,8 +658,9 @@ impl VirtualMachine {
                 let Some(value) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                let settled = self.encoding_setting(class_rc, value, position)?;
                 self.globals_mut()
-                    .set("__Encoding_default_external", value.clone());
+                    .set("__Encoding_default_external", settled);
                 return Ok(Some(value.clone()));
             }
             return Ok(Some(
@@ -645,8 +680,9 @@ impl VirtualMachine {
                 let Some(value) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                let settled = self.encoding_setting(class_rc, value, position)?;
                 self.globals_mut()
-                    .set("__Encoding_default_internal", value.clone());
+                    .set("__Encoding_default_internal", settled);
                 return Ok(Some(value.clone()));
             }
             return Ok(Some(
@@ -729,14 +765,48 @@ impl VirtualMachine {
                     seen.push(display);
                 }
             }
+            // Ruby lists the settings among the aliases, so "external" and
+            // "locale" name the encodings they stand for.
+            for named in ["external", "locale"] {
+                let found =
+                    self.call_class_methods(class_rc, "find", &[Object::string(named)], position)?;
+                if let Some(encoding) = found {
+                    let name = self.send_to_object(encoding, "name", Vec::new(), position)?;
+                    pairs.insert(named.to_string(), name);
+                }
+            }
             return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(pairs)))));
         }
         if class_rc.name() == "Encoding" && matches!(method_name, "find" | "[]") {
             let wanted = match arguments.first() {
                 Some(Object::String(held)) => held.as_str().to_string(),
-                Some(Object::Symbol(held)) => held.as_str().to_string(),
                 Some(Object::Class(held)) if held.name().contains('-') => {
                     return Ok(Some(arguments[0].clone()));
+                }
+                // An encoding is named by a String, and a Symbol is not one.
+                // Anything that spells itself out names one all the same.
+                Some(other @ Object::Symbol(_)) => {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "String",
+                        other,
+                        position,
+                    ));
+                }
+                Some(other) if self.responds_to(other, "to_str") => {
+                    let spelled =
+                        self.send_to_object(other.clone(), "to_str", Vec::new(), position)?;
+                    match spelled {
+                        Object::String(held) => held.as_str().to_string(),
+                        held => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "String",
+                                &held,
+                                position,
+                            ));
+                        }
+                    }
                 }
                 _ => return Err(method_argument_error(method_name, 1, 0, position)),
             };
@@ -941,7 +1011,25 @@ impl VirtualMachine {
             && arguments.len() == 1
         {
             let source = self.coerce_name_argument(&arguments[0], position)?;
-            return Ok(Some(Object::string(regex::escape(&source))));
+            let named = match &arguments[0] {
+                Object::String(held) => held.encoding_name(),
+                _ => "US-ASCII".to_string(),
+            };
+            let escaped = quoted_for_pattern(&source);
+            // Ruby tags the answer US-ASCII when nothing but ASCII went in,
+            // and keeps the source's own encoding otherwise.
+            let tagged = if source.is_ascii() {
+                "US-ASCII".to_string()
+            } else {
+                named
+            };
+            let made = crate::object::StringValue::with_encoding(escaped, tagged);
+            // Characters standing for bytes go on standing for them in the
+            // pattern built out of them.
+            if matches!(&arguments[0], Object::String(held) if held.holds_bytes()) {
+                made.mark_bytes();
+            }
+            return Ok(Some(Object::String(Rc::new(made))));
         }
         // `Regexp.last_match` answers the whole MatchData, and with a number
         // the capture that number names.
@@ -986,7 +1074,11 @@ impl VirtualMachine {
                 Some(Object::Bool(true)) => flags.push('i'),
                 _ => {}
             }
-            return Ok(Some(Object::Regex(Rc::new(source), Rc::new(flags))));
+            let built = Rc::new(source);
+            // A pattern built here is not frozen, which is what tells it
+            // apart from one written as a literal.
+            self.built_patterns.insert(Rc::as_ptr(&built) as usize);
+            return Ok(Some(Object::Regex(built, Rc::new(flags))));
         }
         // `Regexp.union` matches any of what it was given.
         if class_rc.name() == "Regexp" && method_name == "union" {
@@ -1061,6 +1153,34 @@ impl VirtualMachine {
                             position,
                         ));
                     }
+                    // A name written in an encoding that spells the ASCII
+                    // letters in more than one byte cannot be read as a path.
+                    if let Object::String(held) = &arguments[0]
+                        && !crate::vm::native_methods::string_methods::encoding_is_ascii_compatible(
+                            &held.encoding_name(),
+                        )
+                    {
+                        let message = format!(
+                            "path name must be ASCII-compatible ({}): {:?}",
+                            held.encoding_name(),
+                            held.as_str()
+                        );
+                        return Err(crate::vm::errors::simple_exception(
+                            "Encoding::CompatibilityError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    // A suffix is named by text, and nothing else stands for
+                    // one.
+                    if let Some(held) = arguments.get(1)
+                        && !matches!(held, Object::String(_))
+                        && !self.answers_to(held, "to_str", position)?
+                    {
+                        return Err(method_argument_type_error(
+                            "basename", "String", held, position,
+                        ));
+                    }
                     let path = self.path_name_argument("basename", &arguments[0], position)?;
                     let trimmed = path.trim_end_matches('/');
                     let held = if trimmed.is_empty() {
@@ -1081,7 +1201,16 @@ impl VirtualMachine {
                             name.truncate(name.len() - suffix.len());
                         }
                     }
-                    return Ok(Some(Object::string(name)));
+                    // The piece is written in the same encoding the whole
+                    // name was.
+                    let made = Object::string(name);
+                    if let (Object::String(held), Object::String(piece)) = (&arguments[0], &made) {
+                        piece.set_encoding(held.encoding_name());
+                        if held.holds_bytes() {
+                            piece.mark_bytes();
+                        }
+                    }
+                    return Ok(Some(made));
                 }
                 // The extension a name carries, and the empty string for a
                 // name that carries none.
@@ -1243,7 +1372,11 @@ impl VirtualMachine {
                 // Outside any thread block the running thread is the main
                 // one, which is a Thread like any other.
                 "current" | "main" => {
-                    if let Some(current) = self.thread_current_stack.last() {
+                    // `current` is the thread whose block is running, where
+                    // `main` is always the one the program started on.
+                    if method_name == "current"
+                        && let Some(current) = self.thread_current_stack.last()
+                    {
                         return Ok(Some(current.clone()));
                     }
                     if let Some(main) = self.globals().get("__Thread_main") {
@@ -1517,6 +1650,30 @@ impl VirtualMachine {
                         "Kernel".to_string(),
                     );
                     stub.variadic_param = Some((0, "args".to_string()));
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
+                // A builtin class answers many of its methods natively. A
+                // body-less stub carrying the name reaches the same one.
+                if let Some(probe) = sample_of_class(class_rc.name())
+                    && self.responds_to(&probe, &name_str)
+                {
+                    let mut stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                        class_rc.name().to_string(),
+                    );
+                    stub.variadic_param = Some((0, "args".to_string()));
+                    // Two names for one native method stand for that one
+                    // method, which is what makes them equal and alike.
+                    let named = super::object_methods::native_alias_target(
+                        class_rc.name(),
+                        name_str.as_str(),
+                    )
+                    .unwrap_or(name_str.as_str())
+                    .to_string();
+                    stub.native_alias = Some(named.clone());
+                    stub.original_name = Some(named);
                     return Ok(Some(Object::Method(Rc::new(stub))));
                 }
                 // An exception class takes its message, and whatever else a
@@ -1872,6 +2029,17 @@ impl VirtualMachine {
                     && KERNEL_PRIVATE_FUNCTIONS.contains(&name.as_str())
                 {
                     return Ok(Some(Object::Bool(method_name == "private_method_defined?")));
+                }
+                // The public ones live there too, so Kernel reports them the
+                // same way rather than answering that it has none.
+                if matches!(class_rc.name(), "Kernel" | "Object")
+                    && found.is_none()
+                    && crate::vm::native_methods::is_native_kernel_method(&name)
+                {
+                    return Ok(Some(Object::Bool(matches!(
+                        method_name,
+                        "method_defined?" | "public_method_defined?"
+                    ))));
                 }
                 let answer = match found {
                     // A tombstone left by `undef_method` is not a definition.
@@ -2647,6 +2815,17 @@ impl VirtualMachine {
                         || self.attached_class_of(class_rc).is_some_and(|attached| {
                             attached.remove_method(&format!("__class__{}", name))
                         });
+                    // A name the interpreter answers natively has no entry
+                    // in any method table, so removing it leaves a tombstone
+                    // that the lookup reads as undefined.
+                    let removed = removed
+                        || (crate::vm::native_methods::is_native_kernel_method(&name)
+                            || name == "method_missing")
+                            && {
+                                let sentinel = Method::undefined(name.clone());
+                                class_rc.define_method(&name, Rc::new(sentinel));
+                                true
+                            };
                     if !removed {
                         let msg =
                             format!("method '{}' not defined in {}", name, class_rc.ruby_name());
@@ -2805,6 +2984,25 @@ impl VirtualMachine {
                     if !found
                         && let Some(attached) = class_rc.get_class_var("__attached__")
                         && self.responds_to(&attached, &old_name)
+                    {
+                        let mut stub = Method::with_owner(
+                            new_name.clone(),
+                            vec!["args".to_string()],
+                            vec![],
+                            class_rc.name().to_string(),
+                        );
+                        stub.variadic_param = Some((0, "args".to_string()));
+                        stub.original_name = Some(old_name.clone());
+                        stub.native_alias = Some(old_name.clone());
+                        class_rc.define_method(&new_name, Rc::new(stub));
+                        found = true;
+                    }
+                    // A builtin class answers many of its methods natively,
+                    // with no entry to copy. A stub carrying the name keeps
+                    // the alias reaching the native one.
+                    if !found
+                        && let Some(probe) = sample_of_class(class_rc.name())
+                        && self.responds_to(&probe, &old_name)
                     {
                         let mut stub = Method::with_owner(
                             new_name.clone(),
@@ -3060,6 +3258,22 @@ impl VirtualMachine {
     /// Coerce a name argument to a String: Strings and Symbols are used
     /// directly, anything else goes through `to_str`. Raises TypeError when
     /// that conversion is missing or returns a non-String.
+    /// The encoding a setting was given. A name is looked up, and anything
+    /// else already stands for an encoding.
+    fn encoding_setting(
+        &mut self,
+        class_rc: &Rc<Class>,
+        value: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if !matches!(value, Object::String(_)) {
+            return Ok(value.clone());
+        }
+        let found =
+            self.call_class_methods(class_rc, "find", std::slice::from_ref(value), position)?;
+        Ok(found.unwrap_or_else(|| value.clone()))
+    }
+
     pub(crate) fn coerce_name_argument(
         &mut self,
         arg: &Object,
@@ -3555,6 +3769,7 @@ pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "format",
     "load",
     "open",
+    "spawn",
     "sprintf",
     "at_exit",
     "autoload",
@@ -3622,7 +3837,7 @@ pub(super) const MODULE_PRIVATE_DECLARATIONS: &[&str] = &[
 /// parameters each takes and whether the last one is variadic.
 /// `Module#instance_methods` advertises the names, and `Object#method` builds
 /// a callable stub from the parameter list.
-pub(super) const NATIVE_MODULE_METHODS: &[(&str, &[&str], bool)] = &[
+pub(crate) const NATIVE_MODULE_METHODS: &[(&str, &[&str], bool)] = &[
     ("alias_method", &["new_name", "old_name"], false),
     ("attr", &["names"], true),
     ("attr_accessor", &["names"], true),
@@ -3940,6 +4155,16 @@ pub(crate) fn is_native_kernel_method(name: &str) -> bool {
             | "send"
             | "tap"
             | "to_s"
+            | "to_enum"
+            | "enum_for"
+            | "display"
+            | "then"
+            | "yield_self"
+            | "instance_variable_defined?"
+            | "define_singleton_method"
+            | "singleton_class"
+            | "singleton_method"
+            | "public_method"
             | "__id__"
             | "__send__"
     )
@@ -3999,5 +4224,47 @@ impl VirtualMachine {
                 position,
             )),
         }
+    }
+}
+
+/// One string written so a pattern matches it and nothing else. Ruby escapes
+/// every character a pattern reads as punctuation, the space among them, and
+/// spells out the whitespace that has no printable form.
+fn quoted_for_pattern(source: &str) -> String {
+    let mut written = String::with_capacity(source.len());
+    for character in source.chars() {
+        match character {
+            '[' | ']' | '{' | '}' | '(' | ')' | '|' | '-' | '*' | '.' | '\\' | '?' | '+' | '^'
+            | '$' | '#' | ' ' => {
+                written.push('\\');
+                written.push(character);
+            }
+            '\n' => written.push_str("\\n"),
+            '\r' => written.push_str("\\r"),
+            '\t' => written.push_str("\\t"),
+            '\u{b}' => written.push_str("\\v"),
+            '\u{c}' => written.push_str("\\f"),
+            other => written.push(other),
+        }
+    }
+    written
+}
+
+/// A value of the class named, for asking whether that class answers a
+/// method natively.
+fn sample_of_class(named: &str) -> Option<Object> {
+    match named {
+        "Integer" => Some(Object::Int(0)),
+        "Float" => Some(Object::Float(0.0)),
+        "String" => Some(Object::string("")),
+        "Symbol" => Some(Object::symbol("held")),
+        "Array" => Some(Object::array(Vec::new())),
+        "Hash" => Some(Object::Dict(Rc::new(std::cell::RefCell::new(
+            indexmap::IndexMap::new(),
+        )))),
+        "NilClass" => Some(Object::Nil),
+        "TrueClass" => Some(Object::Bool(true)),
+        "FalseClass" => Some(Object::Bool(false)),
+        _ => None,
     }
 }

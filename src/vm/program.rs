@@ -20,7 +20,9 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
                 name: "x".to_string(),
                 position: pos,
             }),
-            method: "send".to_string(),
+            // `__send__` rather than `send`, since a class of the program's
+            // own may name `send` for something else, as a socket does.
+            method: "__send__".to_string(),
             arguments: vec![Expression::Symbol {
                 value: sym.to_string(),
                 position: pos,
@@ -40,36 +42,73 @@ fn symbol_to_proc_block(sym: &str) -> BlockStatement {
 /// Build the block `&some_method` hands over: `{ |*args| target.call(*args) }`,
 /// where `target` is the Method itself. The call keeps the method's own arity,
 /// so a callable given the wrong number of arguments still says so.
-fn method_to_proc_block(position: Position) -> BlockStatement {
+fn method_to_proc_block(target: &Object, position: Position) -> BlockStatement {
+    let mut parameters = Vec::new();
+    let mut parameter_defaults = Vec::new();
+    let mut forwarded = Vec::new();
+    if let Object::Method(method) = target {
+        let optional: std::collections::HashSet<usize> = method
+            .default_parameters
+            .iter()
+            .map(|(index, _)| *index)
+            .collect();
+        for index in 0..method.parameters.len() {
+            let name = format!("__method_proc_p{index}");
+            if optional.contains(&index) {
+                parameter_defaults.push((parameters.len(), Expression::NilLiteral { position }));
+            }
+            parameters.push(name.clone());
+            forwarded.push(Expression::Identifier { name, position });
+        }
+        if method.variadic_param.is_some() {
+            let name = "__method_proc_rest".to_string();
+            parameters.push(format!("*{name}"));
+            forwarded.push(Expression::Splat {
+                expression: Box::new(Expression::Identifier { name, position }),
+                position,
+            });
+        }
+    }
     let call = Expression::MethodCall {
         receiver: Box::new(Expression::Identifier {
             name: "__method_proc_target".to_string(),
             position,
         }),
         method: "call".to_string(),
-        arguments: vec![Expression::Splat {
-            expression: Box::new(Expression::Identifier {
-                name: "__method_proc_args".to_string(),
-                position,
-            }),
-            position,
-        }],
+        arguments: forwarded,
         trailing_block: None,
         position,
     };
-    BlockStatement::new(
-        vec!["*__method_proc_args".to_string()],
+    let mut made = BlockStatement::new(
+        parameters,
         vec![Statement::Expression {
             expression: call,
             position,
         }],
         std::collections::HashMap::new(),
-    )
+    );
+    made.parameter_defaults = parameter_defaults;
+    // A Method takes its arguments exactly, so the block standing for one is
+    // a lambda rather than an ordinary block.
+    made.is_lambda = true;
+    made
 }
 
 impl VirtualMachine {
     /// Execute a sequence of statements and return an optional result (from return statements).
     pub fn execute_program(
+        &mut self,
+        statements: &[Statement],
+    ) -> Result<Option<Object>, MetorexError> {
+        // A `return` written at the top level ends the program, carrying its
+        // value out however deep in blocks it was written.
+        match self.run_program_statements(statements) {
+            Err(MetorexError::NonLocalReturn { value, .. }) => Ok(Some(value)),
+            other => other,
+        }
+    }
+
+    fn run_program_statements(
         &mut self,
         statements: &[Statement],
     ) -> Result<Option<Object>, MetorexError> {
@@ -241,13 +280,40 @@ impl VirtualMachine {
                         // `&some_method` hands the method over as the block,
                         // which is what `to_proc` on a Method answers.
                         target @ Object::Method(_) => {
-                            let mut block = method_to_proc_block(other_position);
+                            let mut block = method_to_proc_block(&target, other_position);
                             block.captured_vars.insert(
                                 "__method_proc_target".to_string(),
                                 std::rc::Rc::new(std::cell::RefCell::new(target)),
                             );
                             self.pending_block = Some(Object::Block(std::rc::Rc::new(block)));
                             self.pending_block_from_ampersand = true;
+                        }
+                        // An object of the program's own becomes a block
+                        // through `to_proc`, which is how a Yielder reaches
+                        // a method that takes one.
+                        other @ Object::Instance(_)
+                            if self
+                                .send_to_object(
+                                    other.clone(),
+                                    "respond_to?",
+                                    vec![Object::symbol("to_proc".to_string())],
+                                    other_position,
+                                )?
+                                .is_truthy() =>
+                        {
+                            let made = self.send_to_object(
+                                other.clone(),
+                                "to_proc",
+                                Vec::new(),
+                                other_position,
+                            )?;
+                            match made {
+                                Object::Block(_) => {
+                                    self.pending_block = Some(made);
+                                    self.pending_block_from_ampersand = true;
+                                }
+                                _ => args.push(other),
+                            }
                         }
                         other => {
                             // Non-block, non-nil &arg: push as positional so
@@ -303,6 +369,14 @@ impl VirtualMachine {
     /// Answers the exit status to end with, and whether anything reported an
     /// error, given the status the program had reached and the exception that
     /// ended it, if any.
+    /// Say how many frames under the top one a report writes out. The value
+    /// is also what `Thread::Backtrace.limit` answers.
+    pub fn set_backtrace_limit(&mut self, limit: i64) {
+        self.backtrace_limit = limit;
+        self.globals_mut()
+            .set("__backtrace_limit__", Object::Int(limit));
+    }
+
     pub fn run_at_exit_handlers(&mut self, status: i32, ending: Option<Object>) -> i32 {
         if let Some(exception) = ending {
             self.set_current_exception(exception);
@@ -337,10 +411,18 @@ impl VirtualMachine {
                     self.set_current_exception(Object::Exception(std::rc::Rc::clone(&details)));
                 }
                 Err(error) => {
-                    eprintln!("{}", error);
+                    // A handler that raises reports the way the program does,
+                    // naming where it was raised and the class it is.
                     if let crate::error::MetorexError::UncaughtException { exception, .. } = &error
                     {
-                        self.set_current_exception(exception.clone());
+                        let held = exception.clone();
+                        match self.uncaught_report(&held) {
+                            Some(report) => eprint!("{}", report),
+                            None => eprintln!("{}", error),
+                        }
+                        self.set_current_exception(held);
+                    } else {
+                        eprintln!("{}", error);
                     }
                     status = 1;
                 }

@@ -34,6 +34,9 @@ impl<'a> Lexer<'a> {
                 text,
             )])),
             TokenKind::InterpolatedString(parts) => Ok(TokenKind::CommandString(parts)),
+            // A command whose escapes name bytes runs those bytes, so the
+            // text stands for them rather than for characters.
+            TokenKind::ByteString(text) => Ok(TokenKind::ByteCommandString(text)),
             other => Ok(other),
         }
     }
@@ -41,6 +44,9 @@ impl<'a> Lexer<'a> {
     fn read_quoted(&mut self, quote: char, command: bool) -> Result<TokenKind, String> {
         let mut parts = Vec::new();
         let mut current_text = String::new();
+        // A run of numeric escapes that spells no text leaves the literal
+        // standing for bytes rather than for characters.
+        let mut holds_bytes = false;
         // Only double-quoted strings and backticks support interpolation.
         let has_interpolation = quote == '"' || command;
 
@@ -71,6 +77,21 @@ impl<'a> Lexer<'a> {
                             parts.push(InterpolationPart::Text(current_text));
                         }
                         return Ok(TokenKind::InterpolatedString(parts));
+                    } else if self.frozen_literals && quote == '"' && !command {
+                        // The source asked for its literals to be frozen, and
+                        // one written in escapes still stands for its bytes.
+                        if holds_bytes {
+                            return Ok(TokenKind::ByteString(current_text));
+                        }
+                        return Ok(TokenKind::FrozenString(current_text));
+                    } else if holds_bytes {
+                        // A source written in bytes spells its literals in
+                        // bytes; anywhere else the characters stand for the
+                        // bytes the escapes named, in the source's encoding.
+                        if self.binary_source {
+                            return Ok(TokenKind::BinaryString(current_text));
+                        }
+                        return Ok(TokenKind::ByteString(current_text));
                     } else {
                         return Ok(TokenKind::String(current_text));
                     }
@@ -78,6 +99,18 @@ impl<'a> Lexer<'a> {
                 Some('\\') => {
                     // Handle escape sequences
                     self.advance();
+                    // A single-quoted string reads only `\\` and `\'` as
+                    // escapes, so every other backslash stands for itself.
+                    if quote == '\'' {
+                        match self.peek() {
+                            Some(next @ ('\\' | '\'')) => {
+                                current_text.push(next);
+                                self.advance();
+                            }
+                            _ => current_text.push('\\'),
+                        }
+                        continue;
+                    }
                     match self.peek() {
                         Some('n') => {
                             current_text.push('\n');
@@ -142,6 +175,7 @@ impl<'a> Lexer<'a> {
                             match binary_run(self.binary_source, &bytes) {
                                 Ok(text) => current_text.push_str(&text),
                                 Err(_) => {
+                                    holds_bytes = true;
                                     for byte in bytes {
                                         current_text.push(byte as char);
                                     }
@@ -205,6 +239,7 @@ impl<'a> Lexer<'a> {
                             match binary_run(self.binary_source, &bytes) {
                                 Ok(text) => current_text.push_str(&text),
                                 Err(_) => {
+                                    holds_bytes = true;
                                     for byte in bytes {
                                         current_text.push(byte as char);
                                     }

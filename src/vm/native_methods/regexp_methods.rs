@@ -25,11 +25,18 @@ pub(crate) fn uniquify_group_names(pattern: &str) -> (String, Vec<String>) {
     let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut chars = pattern.char_indices().peekable();
     while let Some((index, character)) = chars.next() {
-        // An escaped character never opens a group.
+        // An escaped character never opens a group. Ruby's `\h` and `\H`
+        // name the hex digits, which are written out as the set they stand
+        // for since the engine underneath knows no such name.
         if character == '\\' {
-            rewritten.push(character);
-            if let Some((_, escaped)) = chars.next() {
-                rewritten.push(escaped);
+            match chars.next() {
+                Some((_, 'h')) => rewritten.push_str("[0-9a-fA-F]"),
+                Some((_, 'H')) => rewritten.push_str("[^0-9a-fA-F]"),
+                Some((_, escaped)) => {
+                    rewritten.push(character);
+                    rewritten.push(escaped);
+                }
+                None => rewritten.push(character),
             }
             continue;
         }
@@ -76,7 +83,9 @@ pub(crate) fn original_group_name(name: &str) -> &str {
 
 /// Compile a pattern, applying the flags the literal carried.
 pub(crate) fn compile(pattern: &str, flags: &str) -> Option<regex::Regex> {
-    let mut prefix = String::new();
+    // Ruby's `^` and `$` stand for the start and end of a line, always, so
+    // the engine underneath is told to read them that way.
+    let mut prefix = String::from("m");
     if flags.contains('i') {
         prefix.push('i');
     }
@@ -222,7 +231,18 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         match method_name {
-            "source" => Ok(Some(Object::string(pattern.to_string()))),
+            // A pattern spelled with nothing but ASCII reads the same in
+            // every ASCII-compatible encoding, which Ruby tags US-ASCII.
+            "source" => Ok(Some(Object::String(Rc::new(
+                crate::object::StringValue::with_encoding(
+                    pattern.to_string(),
+                    if names_only_ascii(pattern) {
+                        "US-ASCII"
+                    } else {
+                        "UTF-8"
+                    },
+                ),
+            )))),
             "options" => {
                 let mut options = 0;
                 if flags.contains('i') {
@@ -322,6 +342,27 @@ impl VirtualMachine {
                     .unwrap_or(false);
                 Ok(Some(Object::Bool(matched)))
             }
+            // A pattern written out on the left of `=~` leaves its named
+            // captures behind as local variables, which is what Ruby does
+            // for that form alone.
+            "__match_named__" => {
+                let answer = self.call_regexp_method(pattern, flags, "=~", arguments, position)?;
+                let names = group_names(pattern);
+                let found = self.globals().get(LAST_MATCH).unwrap_or(Object::Nil);
+                for name in names {
+                    let value = match &found {
+                        Object::Nil => Object::Nil,
+                        held => self.send_to_object(
+                            held.clone(),
+                            "[]",
+                            vec![Object::string(name.clone())],
+                            position,
+                        )?,
+                    };
+                    self.environment_mut().define(name, value);
+                }
+                Ok(answer)
+            }
             "=~" => {
                 if arguments.is_empty() {
                     return Err(crate::vm::errors::method_argument_error(
@@ -362,6 +403,38 @@ impl VirtualMachine {
     }
 }
 
+/// The names a pattern gives its capture groups, in the order they are
+/// written.
+fn group_names(pattern: &str) -> Vec<String> {
+    let letters: Vec<char> = pattern.chars().collect();
+    let mut names = Vec::new();
+    let mut at = 0;
+    while at < letters.len() {
+        if letters[at] == '\\' {
+            at += 2;
+            continue;
+        }
+        if letters[at] == '('
+            && at + 2 < letters.len()
+            && letters[at + 1] == '?'
+            && letters[at + 2] == '<'
+            && !matches!(letters.get(at + 3), Some('=') | Some('!'))
+        {
+            let mut held = String::new();
+            let mut index = at + 3;
+            while index < letters.len() && letters[index] != '>' {
+                held.push(letters[index]);
+                index += 1;
+            }
+            names.push(held);
+            at = index + 1;
+            continue;
+        }
+        at += 1;
+    }
+    names
+}
+
 /// The byte offset `index` counted in characters, which is what a Ruby offset
 /// into a String means.
 fn char_offset(text: &str, index: usize) -> i64 {
@@ -386,15 +459,25 @@ fn resolve_offset(text: &str, offset: i64) -> Option<usize> {
 
 /// Ruby renders a Regexp's `to_s` as `(?flags-offflags:source)`.
 fn to_source_string(pattern: &str, flags: &str) -> String {
+    // A source that is nothing but one option group folds into the wrapper,
+    // so `/(?i:a)/` writes itself as `(?i-mx:a)` rather than nesting.
+    let (pattern, group_on, group_off) = match sole_option_group(pattern) {
+        Some(held) => held,
+        None => (pattern.to_string(), String::new(), String::new()),
+    };
+    let pattern = pattern.as_str();
     let mut on = String::new();
     for flag in ['m', 'i', 'x'] {
-        if flags.contains(flag) {
+        if group_off.contains(flag) {
+            continue;
+        }
+        if flags.contains(flag) || group_on.contains(flag) {
             on.push(flag);
         }
     }
     let mut off = String::new();
     for flag in ['m', 'i', 'x'] {
-        if !flags.contains(flag) {
+        if !on.contains(flag) {
             off.push(flag);
         }
     }
@@ -403,6 +486,86 @@ fn to_source_string(pattern: &str, flags: &str) -> String {
     } else {
         format!("(?{}-{}:{})", on, off, pattern)
     }
+}
+
+/// Whether a pattern names nothing but ASCII. A `\\u` escape counts for the
+/// character it names rather than for the letters that spell it.
+fn names_only_ascii(pattern: &str) -> bool {
+    if !pattern.is_ascii() {
+        return false;
+    }
+    let letters: Vec<char> = pattern.chars().collect();
+    let mut at = 0;
+    while at + 1 < letters.len() {
+        if letters[at] != '\\' || letters[at + 1] != 'u' {
+            at += 1;
+            continue;
+        }
+        let mut digits = String::new();
+        let mut cursor = at + 2;
+        if letters.get(cursor) == Some(&'{') {
+            cursor += 1;
+            while let Some(letter) = letters.get(cursor) {
+                if *letter == '}' {
+                    break;
+                }
+                digits.push(*letter);
+                cursor += 1;
+            }
+        } else {
+            while digits.len() < 4 && letters.get(cursor).is_some_and(char::is_ascii_hexdigit) {
+                digits.push(letters[cursor]);
+                cursor += 1;
+            }
+        }
+        for named in digits.split_whitespace() {
+            if u32::from_str_radix(named, 16).is_ok_and(|value| value > 0x7f) {
+                return false;
+            }
+        }
+        at = cursor.max(at + 2);
+    }
+    true
+}
+
+/// The body and options of a source that is one option group and nothing
+/// else, as `(?on-off:body)`.
+fn sole_option_group(pattern: &str) -> Option<(String, String, String)> {
+    let rest = pattern.strip_prefix("(?")?;
+    let body = rest.strip_suffix(')')?;
+    let (options, inner) = body.split_once(':')?;
+    if !options
+        .chars()
+        .all(|letter| matches!(letter, 'm' | 'i' | 'x' | '-'))
+    {
+        return None;
+    }
+    // The group must reach the end of the source on its own, which it does
+    // only when nothing in its body closes it early.
+    let mut depth = 1;
+    let mut escaped = false;
+    for letter in inner.chars() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match letter {
+            '\\' => escaped = true,
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return None;
+                }
+            }
+            _ => {}
+        }
+    }
+    let (on, off) = match options.split_once('-') {
+        Some((on, off)) => (on, off),
+        None => (options, ""),
+    };
+    Some((inner.to_string(), on.to_string(), off.to_string()))
 }
 
 fn type_error(message: String, position: Position) -> MetorexError {

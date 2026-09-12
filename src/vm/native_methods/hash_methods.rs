@@ -41,6 +41,7 @@ fn reconstruct_key(dict: &indexmap::IndexMap<String, Object>, key_str: &str) -> 
 /// The environment methods whose one argument names a variable or a value,
 /// which is written as text however it arrives.
 const ENVIRONMENT_TEXT_ARGUMENT: &[&str] = &[
+    "[]",
     "delete",
     "has_key?",
     "key?",
@@ -57,6 +58,84 @@ const ENVIRONMENT_TEXT_ARGUMENT: &[&str] = &[
 const ENVIRONMENT_VALUE_ARGUMENT: &[&str] = &["has_value?", "value?", "rassoc"];
 
 impl VirtualMachine {
+    /// The text an argument to an environment method names, refusing anything
+    /// that names none.
+    fn environment_text(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(text) = value {
+            return Ok(text.to_text());
+        }
+        if self.responds_to(value, "to_str")
+            && let Object::String(text) =
+                self.send_to_object(value.clone(), "to_str", vec![], position)?
+        {
+            return Ok(text.to_text());
+        }
+        let message = format!(
+            "no implicit conversion of {} into String",
+            self.builtins().class_of(value).name()
+        );
+        Err(crate::vm::errors::simple_exception(
+            "TypeError",
+            &message,
+            position,
+        ))
+    }
+
+    /// The encoding the environment is read as: the one a program named, or
+    /// the one the system is set to.
+    fn environment_reading_encoding(&mut self) -> Option<String> {
+        if let Some(Object::Class(held)) = self.globals().get("__Encoding_default_internal") {
+            return Some(held.name().to_string());
+        }
+        match self.globals().get("__Encoding_default_external") {
+            Some(Object::Class(held)) => Some(held.name().to_string()),
+            _ => None,
+        }
+    }
+
+    /// Refuse a name the environment could never hold.
+    fn refuse_bad_variable_name(&self, key: &str, position: Position) -> Result<(), MetorexError> {
+        if key.is_empty() || key.contains('=') {
+            let message = format!("Invalid argument - setenv({})", key);
+            return Err(crate::vm::errors::simple_exception(
+                "Errno::EINVAL",
+                &message,
+                position,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Put one variable into the environment, where the C library sees it too.
+    fn store_variable(
+        &mut self,
+        dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+        key: String,
+        value: String,
+    ) {
+        let named = Object::string(key.clone());
+        let held = Object::string(value);
+        // A name that reads back as some other kind of value is kept beside
+        // the entry, so `ENV["1"]` stays a name rather than a number.
+        if !crate::vm::utils::is_primitive_key(&named) {
+            let slot = "__MX_KEY_OBJECTS__".to_string();
+            let mut objects = match dict_rc.borrow().get(&slot) {
+                Some(Object::Dict(held)) => held.borrow().clone(),
+                _ => indexmap::IndexMap::new(),
+            };
+            objects.insert(key.clone(), named.clone());
+            dict_rc
+                .borrow_mut()
+                .insert(slot, Object::Dict(Rc::new(RefCell::new(objects))));
+        }
+        dict_rc.borrow_mut().insert(key, held.clone());
+        self.record_environment_change(dict_rc, &named, &held);
+    }
+
     /// Execute native methods for the Hash class.
     pub(crate) fn call_hash_method(
         &mut self,
@@ -163,6 +242,171 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // A variable is named and valued in text, and a name that
+                // holds an `=` or nothing at all names no variable.
+                "[]=" | "store" if arguments.len() == 2 => {
+                    let key = self.environment_text(&arguments[0], position)?;
+                    // Setting a name to nil takes it away, and a name the
+                    // environment could never hold simply has nothing to take.
+                    if matches!(arguments[1], Object::Nil) {
+                        let named = Object::string(key);
+                        self.record_environment_change(dict_rc, &named, &Object::Nil);
+                        return Ok(Some(Object::Nil));
+                    }
+                    if key.is_empty() || key.contains('=') {
+                        let message = format!("Invalid argument - setenv({})", key);
+                        return Err(crate::vm::errors::simple_exception(
+                            "Errno::EINVAL",
+                            &message,
+                            position,
+                        ));
+                    }
+                    let value = self.environment_text(&arguments[1], position)?;
+                    self.store_variable(dict_rc, key, value);
+                    // The assignment answers what it was handed, which is the
+                    // same object when that was already text.
+                    return Ok(Some(arguments[1].clone()));
+                }
+                // `slice` looks each name up as text and answers under the
+                // objects it was handed.
+                "slice" => {
+                    let named = self.environment_reading_encoding();
+                    let mut made: indexmap::IndexMap<String, Object> = indexmap::IndexMap::new();
+                    let mut keyed: Vec<(String, Object)> = Vec::new();
+                    for argument in arguments {
+                        let key = self.environment_text(argument, position)?;
+                        let Some(value) = dict_rc.borrow().get(&key).cloned() else {
+                            continue;
+                        };
+                        let Some(slot) = crate::vm::utils::object_to_dict_key(argument) else {
+                            continue;
+                        };
+                        made.insert(slot.clone(), retagged(value, &named));
+                        keyed.push((slot, argument.clone()));
+                    }
+                    if !keyed.is_empty() {
+                        let mut objects: indexmap::IndexMap<String, Object> =
+                            indexmap::IndexMap::new();
+                        for (slot, held) in keyed {
+                            objects.insert(slot, held);
+                        }
+                        made.insert(
+                            "__MX_KEY_OBJECTS__".to_string(),
+                            Object::Dict(Rc::new(RefCell::new(objects))),
+                        );
+                    }
+                    return Ok(Some(Object::Dict(Rc::new(RefCell::new(made)))));
+                }
+                // What the environment answers is written in the encoding a
+                // program asked for, and in the one the system uses otherwise.
+                "[]" | "shift" if arguments.len() <= 1 => {
+                    let named = self.environment_reading_encoding();
+                    if method_name == "shift" {
+                        let Some((key, value)) = self.hash_pairs(dict_rc).into_iter().next() else {
+                            return Ok(Some(Object::Nil));
+                        };
+                        self.record_environment_change(dict_rc, &key, &Object::Nil);
+                        return Ok(Some(Object::array(vec![
+                            retagged(key, &named),
+                            retagged(value, &named),
+                        ])));
+                    }
+                    let key = self.environment_text(&arguments[0], position)?;
+                    let held = dict_rc.borrow().get(&key).cloned();
+                    return Ok(Some(match held {
+                        Some(value) => retagged(value, &named),
+                        None => Object::Nil,
+                    }));
+                }
+                // Every name and value a whole hash brings is read as text
+                // first, so a bad one stops the change before it starts.
+                "replace" | "merge!" | "update" if arguments.len() == 1 => {
+                    let Some(Object::Dict(given)) = arguments.first() else {
+                        let message = format!(
+                            "no implicit conversion of {} into Hash",
+                            self.builtins()
+                                .class_of(arguments.first().unwrap_or(&Object::Nil))
+                                .name()
+                        );
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &message,
+                            position,
+                        ));
+                    };
+                    let pairs = self.hash_pairs(given);
+                    // `replace` reads every name and value before it changes
+                    // anything, where `merge!` changes as it goes.
+                    if method_name == "replace" {
+                        let mut settled = Vec::new();
+                        for (key, value) in &pairs {
+                            let key = self.environment_text(key, position)?;
+                            let value = self.environment_text(value, position)?;
+                            self.refuse_bad_variable_name(&key, position)?;
+                            settled.push((key, value));
+                        }
+                        for key in self.hash_pairs(dict_rc).into_iter().map(|(key, _)| key) {
+                            self.record_environment_change(dict_rc, &key, &Object::Nil);
+                        }
+                        dict_rc.borrow_mut().clear();
+                        for (key, value) in settled {
+                            self.store_variable(dict_rc, key, value);
+                        }
+                        return Ok(Some(receiver.clone()));
+                    }
+                    let block = self.pending_block.take();
+                    for (key, value) in pairs {
+                        let key = self.environment_text(&key, position)?;
+                        let mut value = self.environment_text(&value, position)?;
+                        self.refuse_bad_variable_name(&key, position)?;
+                        // A block settles a name both sides hold.
+                        if let Some(Object::Block(block)) = &block
+                            && let Some(held) = dict_rc.borrow().get(&key).cloned()
+                        {
+                            let given = vec![
+                                Object::string(key.clone()),
+                                held,
+                                Object::string(value.clone()),
+                            ];
+                            let answered = self.execute_block_callable(block, given, position)?;
+                            value = self.environment_text(&answered, position)?;
+                        }
+                        self.store_variable(dict_rc, key, value);
+                    }
+                    return Ok(Some(receiver.clone()));
+                }
+                // What the environment answers is written in the encoding
+                // the program asked for, when it asked for one.
+                "each" | "each_pair"
+                    if arguments.is_empty()
+                        && matches!(self.pending_block, Some(Object::Block(_))) =>
+                {
+                    let Some(Object::Block(block)) = self.pending_block.take() else {
+                        return Ok(None);
+                    };
+                    let named = self.environment_reading_encoding();
+                    for (key, value) in self.hash_pairs(dict_rc) {
+                        let key = retagged(key, &named);
+                        let value = retagged(value, &named);
+                        let pair = Object::array(vec![key, value]);
+                        match self.execute_block_with_control_flow(&block, vec![pair])? {
+                            // `break` ends the walk and answers what it carried,
+                            // which is what the call reports.
+                            super::super::ControlFlow::Break { value, .. } => {
+                                return Ok(Some(value));
+                            }
+                            super::super::ControlFlow::Return { value, position } => {
+                                return Err(MetorexError::NonLocalReturn {
+                                    value,
+                                    location: position_to_location(position),
+                                    home_frame: None,
+                                });
+                            }
+                            _ => {}
+                        }
+                    }
+                    return Ok(Some(receiver.clone()));
+                }
                 _ => {}
             }
         }
@@ -241,6 +485,35 @@ impl VirtualMachine {
                 }
                 let found = self.hash_find_key(dict_rc, &arguments[0], position)?;
                 Ok(Some(Object::Bool(found.is_some())))
+            }
+            // Two hashes holding the same pairs hash alike however they were
+            // built, so the pairs are folded in a way the order cannot
+            // change. A hash held inside another stands for its kind and its
+            // count, which is what lets one that reaches itself hash at all.
+            "hash" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let pairs: Vec<(Object, Object)> = {
+                    let dict = dict_rc.borrow();
+                    dict.iter()
+                        .filter(|(key, _)| !is_internal_key(key))
+                        .map(|(key, value)| (reconstruct_key(&dict, key), value.clone()))
+                        .collect()
+                };
+                let mut total: i64 = pairs.len() as i64;
+                for (key, value) in pairs {
+                    let key_digest = self.shallow_digest(&key, position)?;
+                    let value_digest = self.shallow_digest(&value, position)?;
+                    total =
+                        total.wrapping_add(key_digest.wrapping_mul(31).wrapping_add(value_digest));
+                }
+                Ok(Some(Object::Int(total)))
             }
             "entries" | "to_a" => {
                 if !arguments.is_empty() {
@@ -410,9 +683,19 @@ impl VirtualMachine {
                 let Some(key_str) = crate::vm::utils::object_to_dict_key(&arguments[0]) else {
                     return Ok(Some(Object::Nil));
                 };
+                // A key the hash holds nothing for reads as the default,
+                // since `dig` goes through `[]` the way Ruby's does.
                 let found = dict_rc.borrow().get(&key_str).cloned();
-                let Some(value) = found else {
-                    return Ok(Some(Object::Nil));
+                let value = match found {
+                    Some(held) => held,
+                    None => {
+                        let default =
+                            self.call_hash_method(receiver, "[]", &arguments[..1], position)?;
+                        match default {
+                            Some(held) => held,
+                            None => return Ok(Some(Object::Nil)),
+                        }
+                    }
                 };
                 if arguments.len() == 1 {
                     return Ok(Some(value));
@@ -577,9 +860,23 @@ impl VirtualMachine {
                     .map(|(key, value)| (reconstruct_key(&dict, key), value.clone()))
                     .collect();
                 drop(dict);
+                // A block written for one value reads the pair as an array,
+                // which is the single value a Hash yields. One written for
+                // two reads the key and the value apart.
+                let takes_pair_apart = block
+                    .binding_parameters()
+                    .iter()
+                    .filter(|named| !named.starts_with('&'))
+                    .count()
+                    >= 2;
                 let mut mapped = Vec::with_capacity(entries.len());
                 for (key, value) in entries {
-                    mapped.push(self.execute_block_callable(&block, vec![key, value], position)?);
+                    let given = if takes_pair_apart {
+                        vec![key, value]
+                    } else {
+                        vec![Object::array(vec![key, value])]
+                    };
+                    mapped.push(self.execute_block_callable(&block, given, position)?);
                 }
                 Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
                     mapped,
@@ -622,7 +919,11 @@ impl VirtualMachine {
                         | super::super::ControlFlow::Continue { .. } => {
                             continue;
                         }
-                        super::super::ControlFlow::Break { .. } => break,
+                        // `break` ends the walk and answers what it carried,
+                        // which is what the call reports.
+                        super::super::ControlFlow::Break { value, .. } => {
+                            return Ok(Some(value));
+                        }
                         super::super::ControlFlow::Return { value, position } => {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
@@ -1678,4 +1979,16 @@ impl VirtualMachine {
             }
         }
     }
+}
+
+/// Text tagged with an encoding, where one was named. A value of any other
+/// kind is answered as it stands.
+fn retagged(value: Object, named: &Option<String>) -> Object {
+    let (Object::String(text), Some(named)) = (&value, named) else {
+        return value;
+    };
+    Object::String(std::rc::Rc::new(crate::object::StringValue::with_encoding(
+        text.to_text(),
+        named.clone(),
+    )))
 }

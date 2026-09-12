@@ -167,18 +167,19 @@ Foo.new.test
 }
 
 #[test]
-fn class_var_assignment_on_non_class_self_errors() {
-    let err = run_err(
-        r#"
+fn class_var_assignment_in_instance_eval_belongs_to_the_written_class() {
+    // A class variable written inside `instance_eval` belongs to the class
+    // the block was written in, whatever object the block runs against.
+    let result = run(r#"
 class Foo
   def test
     1.instance_eval { @@x = 5 }
   end
 end
 Foo.new.test
-"#,
-    );
-    assert!(err.contains("Cannot set") || err.contains("class variable") || err.contains("@@x"));
+Foo.class_variable_get(:@@x)
+"#);
+    assert_eq!(result, Some(Object::Int(5)));
 }
 
 // ── Comparable <=> fallback ───────────────────────────────────────────────────

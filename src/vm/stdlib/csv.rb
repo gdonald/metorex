@@ -35,8 +35,10 @@ class CSV
     QUOTE + written.gsub(QUOTE, QUOTE + QUOTE) + QUOTE
   end
 
+  # Rows written inside the block are appended to the very string handed in,
+  # which is what the call answers.
   def self.generate(text = "", **options, &block)
-    writer = CSV.new(text.to_s, **options)
+    writer = CSV.new(text.is_a?(String) ? text : text.to_s, **options)
     block.call(writer)
     writer.string
   end
@@ -71,7 +73,7 @@ class CSV
     @col_sep = options[:col_sep] || DEFAULT_COLUMN_SEPARATOR
     @row_sep = options[:row_sep] || DEFAULT_ROW_SEPARATOR
     @liberal_parsing = options[:liberal_parsing] ? true : false
-    @string = data.to_s
+    @string = data.is_a?(String) ? data : data.to_s
     @rows = nil
   end
 
@@ -96,7 +98,7 @@ class CSV
   end
 
   def <<(row)
-    @string = @string + CSV.generate_line(row, **@options)
+    @string << CSV.generate_line(row, **@options)
     @rows = nil
     self
   end

@@ -31,7 +31,7 @@ calculate defined in code_object.rb line 5
 fn test_introspection_closure_namespace_execution() {
     let expected = r#"simple_func
 simple_func
-nil
+
 Proc
 Proc
 Binding
@@ -568,4 +568,41 @@ fn test_introspection_method_shapes_execution() {
 fn test_introspection_method_shapes_no_parens_execution() {
     let output = run_example("introspection/method_shapes_no_parens.rb");
     assert_eq!(output, METHOD_SHAPES_OUTPUT);
+}
+
+/// The expected output of both `introspection/tracepoint_events` variants.
+const TRACEPOINT_EVENTS_OUTPUT: &str = concat!(
+    "[:call, :greet, \"Greeter\", [[:req, :name], [:key, :punctuation]]]\n",
+    "[:return, :greet, \"Greeter\", [[:req, :name], [:key, :punctuation]]]\n",
+    "ArgumentError\n",
+    "no name given\n",
+    "[:name, :punctuation]\n"
+);
+
+#[test]
+fn test_introspection_tracepoint_events_execution() {
+    let output = run_example("introspection/tracepoint_events.rb");
+    assert_eq!(output, TRACEPOINT_EVENTS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_tracepoint_events_no_parens_execution() {
+    let output = run_example("introspection/tracepoint_events_no_parens.rb");
+    assert_eq!(output, TRACEPOINT_EVENTS_OUTPUT);
+}
+
+/// The expected output of both `introspection/script_compiled` variants.
+const SCRIPT_COMPILED_OUTPUT: &str =
+    "[\"def greeting\\n  'hello'\\nend\\n\", \"1 + 1\"]\n\"hello\"\n";
+
+#[test]
+fn test_introspection_script_compiled_execution() {
+    let output = run_example("introspection/script_compiled.rb");
+    assert_eq!(output, SCRIPT_COMPILED_OUTPUT);
+}
+
+#[test]
+fn test_introspection_script_compiled_parens_execution() {
+    let output = run_example("introspection/script_compiled_parens.rb");
+    assert_eq!(output, SCRIPT_COMPILED_OUTPUT);
 }

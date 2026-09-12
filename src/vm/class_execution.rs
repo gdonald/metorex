@@ -258,7 +258,11 @@ impl VirtualMachine {
         self.environment_mut().push_isolated_scope();
         self.environment_mut()
             .define("self".to_string(), Object::Class(Rc::clone(&class)));
+        // A trace sees a class body opening and closing, with the class
+        // itself as the `self` those two events report.
+        self.fire_event("class", position, Vec::new())?;
         let body_result = self.apply_class_body(&class, body, position);
+        self.fire_event("end", position, Vec::new())?;
         self.environment_mut().pop_scope();
         self.def_scope_stack.pop();
         if let Some(prev) = prev_self {
@@ -735,6 +739,20 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // A class variable written in this body belongs to this class, not to
+        // whatever block the body happens to be running inside.
+        let held_home = std::mem::take(&mut self.class_var_home);
+        let answer = self.class_body_statements(class, body, position);
+        self.class_var_home = held_home;
+        answer
+    }
+
+    fn class_body_statements(
+        &mut self,
+        class: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         let mut last_value = Object::Nil;
         for statement in body {
             // Bare `private` / `public` / `protected` statements (no args)
@@ -778,6 +796,7 @@ impl VirtualMachine {
                     );
                     m.owner = Some(class.name().to_string());
                     m.owner_class = Some(Rc::clone(class));
+                    self.warn_redefined_optimized_method(class.name(), method_name, *def_position)?;
                     class.define_method(method_name, Rc::new(m));
                     apply_current_visibility(class, method_name);
                     let hook = Self::method_added_hook_for(class);
@@ -870,6 +889,11 @@ impl VirtualMachine {
                             position,
                         )?;
                     } else {
+                        self.warn_redefined_optimized_method(
+                            class.name(),
+                            method_name,
+                            *def_position,
+                        )?;
                         class.define_method(method_name, method);
                         apply_current_visibility(class, method_name);
                         // A method defined in a `class << obj` body is a
@@ -1401,7 +1425,7 @@ impl VirtualMachine {
                 if let Some(Object::Class(target_class)) = resolved {
                     target_class.define_method(name, Rc::clone(&function));
                 }
-                return Ok(ControlFlow::Next);
+                return Ok(ControlFlow::Value(Object::symbol(name)));
             }
             match resolved {
                 // `def Klass.name` / `def mod.name` defines a singleton
@@ -1422,7 +1446,14 @@ impl VirtualMachine {
                 // all see it.
                 // `def obj.name` installs on any receiver's singleton class,
                 // exceptions included.
-                Some(receiver @ (Object::Instance(_) | Object::Exception(_))) => {
+                Some(
+                    receiver @ (Object::Instance(_)
+                    | Object::Exception(_)
+                    | Object::Array(_)
+                    | Object::Dict(_)
+                    | Object::Set(_)
+                    | Object::String(_)),
+                ) => {
                     if self.object_is_frozen(&receiver) {
                         return Err(self.frozen_modification_error(&receiver, position));
                     }
@@ -1452,7 +1483,7 @@ impl VirtualMachine {
                 }
                 _ => {}
             }
-            return Ok(ControlFlow::Next);
+            return Ok(ControlFlow::Value(Object::symbol(name)));
         }
 
         // Register the function in the environment (for immediate local access)
@@ -1474,7 +1505,7 @@ impl VirtualMachine {
             object_class.define_method(name, Rc::clone(&function));
         }
 
-        Ok(ControlFlow::Next)
+        Ok(ControlFlow::Value(Object::symbol(name)))
     }
 
     /// Execute module definition - create a Module object and register it.
@@ -1640,7 +1671,10 @@ impl VirtualMachine {
 
         // Run the body through a helper so scope cleanup below happens even
         // when a statement raises.
+        // A module body opens and closes the same way a class body does.
+        self.fire_event("class", position, Vec::new())?;
         let body_result = self.execute_module_body(&module, body);
+        self.fire_event("end", position, Vec::new())?;
 
         self.environment_mut().pop_scope();
         self.def_scope_stack.pop();
@@ -1675,6 +1709,19 @@ impl VirtualMachine {
     /// out of `execute_module_def` so its caller can unwind scope state
     /// regardless of errors.
     fn execute_module_body(
+        &mut self,
+        module: &Rc<Class>,
+        body: &[Statement],
+    ) -> Result<(), MetorexError> {
+        // A class variable written in this body belongs to this module, not
+        // to whatever block the body happens to be running inside.
+        let held_home = std::mem::take(&mut self.class_var_home);
+        let answer = self.module_body_statements(module, body);
+        self.class_var_home = held_home;
+        answer
+    }
+
+    fn module_body_statements(
         &mut self,
         module: &Rc<Class>,
         body: &[Statement],
@@ -2441,6 +2488,9 @@ impl VirtualMachine {
             Object::Array(items) => Some(Rc::as_ptr(items) as usize),
             Object::Dict(entries) => Some(Rc::as_ptr(entries) as usize),
             Object::Set(items) => Some(Rc::as_ptr(items) as usize),
+            // A String keeps its instance variables the same way, since the
+            // text itself has nowhere to put them.
+            Object::String(text) => Some(Rc::as_ptr(text) as usize),
             _ => None,
         }
     }

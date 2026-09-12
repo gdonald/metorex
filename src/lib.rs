@@ -17,6 +17,7 @@ pub mod repl;
 pub mod resolver;
 pub mod runtime;
 pub mod scope;
+pub mod symbol_registry;
 pub mod test_discovery;
 pub mod vm;
 
@@ -53,18 +54,27 @@ pub fn reported_ruby_version() -> String {
     }
 }
 
+/// The line `ruby -v` writes, which `RUBY_DESCRIPTION` reports as well.
+pub fn ruby_description() -> String {
+    format!(
+        "metorex {} (ruby-compatible) [{}]",
+        reported_ruby_version(),
+        reported_ruby_platform()
+    )
+}
+
 /// Ruby lets short flags cluster and lets a value ride on the end of the one
 /// that takes it, so `-naF:` is `-n -a -F:` and `-rfoo` is `-r foo`. The
 /// argument parser only understands them written out.
 pub fn split_short_flags(argument: String) -> Vec<String> {
     /// The flags that take a value, which ends the cluster they sit in.
-    const TAKES_A_VALUE: &str = "rIWFe0";
+    const TAKES_A_VALUE: &str = "rIWFe0CXKE";
 
     if argument.len() < 3 || !argument.starts_with('-') || argument.starts_with("--") {
         return vec![argument];
     }
     /// The valueless flags that may sit in a cluster.
-    const ON_ITS_OWN: &str = "napwd";
+    const ON_ITS_OWN: &str = "napwdcvU";
 
     let characters: Vec<char> = argument.chars().skip(1).collect();
     let mut written = Vec::new();

@@ -166,6 +166,22 @@ class StringScanner
 
   def attempt(pattern, anchored)
     compiled = anchored ? as_pattern(pattern) : as_searched_pattern(pattern)
+    # A scanner asked for fixed anchors reads `^` and `\A` against the whole
+    # string, so the match runs over it from where the scan stands rather
+    # than over the rest as a string of its own.
+    if @fixed_anchor
+      found = compiled.match(@string, @position)
+      if found.nil? || (anchored && found.begin(0) != @position)
+        @match = nil
+        @match_start = nil
+        @match_text = nil
+        return nil
+      end
+      @match = found
+      @match_start = found.begin(0)
+      @match_text = found[0]
+      return found
+    end
     remaining = rest
     found = compiled.match(remaining)
     if found.nil? || (anchored && found.begin(0) != 0)
@@ -318,14 +334,35 @@ class StringScanner
 
   # ── Reading a piece at a time ────────────────────────────────────────────
 
+  # How many of the stored characters spell one character in the encoding the
+  # string is tagged with. A string tagged with an encoding metorex does not
+  # read holds one character per byte, so the lead byte says how many of them
+  # belong together.
+  def character_width(at)
+    lead = @string.getbyte at
+    case @string.encoding.name
+    when "EUC-JP"
+      return 3 if lead == 0x8f
+      return 2 if lead == 0x8e || (lead >= 0xa1 && lead <= 0xfe)
+      1
+    when "Shift_JIS", "Windows-31J"
+      return 2 if (lead >= 0x81 && lead <= 0x9f) || (lead >= 0xe0 && lead <= 0xfc)
+      1
+    else
+      1
+    end
+  end
+  private :character_width
+
   def getch
     return nil if eos?
     @previous = @position
-    letter = @string[@position]
+    width = character_width @position
+    letter = @string[@position, width]
     @match_start = @position
     @match_text = letter
     @match = letter.match(/\A./m)
-    @position = @position + 1
+    @position = @position + width
     letter
   end
 
@@ -338,9 +375,23 @@ class StringScanner
     letter.nil? ? nil : letter.bytes[0]
   end
 
+  # A count of bytes rather than of characters, and never a part of one.
   def peek(length)
     raise ArgumentError, "negative string size (or size too big)" if length < 0
-    @string[@position, length] || ""
+    if length > 9223372036854775807
+      raise RangeError, "bignum too big to convert into `long'"
+    end
+    taken = ""
+    at = @position
+    used = 0
+    while at < @string.length
+      width = @string[at].bytesize
+      break if used + width > length
+      taken = taken + @string[at]
+      used = used + width
+      at = at + 1
+    end
+    taken
   end
 
   def peep(length)

@@ -136,13 +136,11 @@ fn range_each_exception_in_block_propagates() {
 // ── Range.each with return in block error ────────────────────────────────────
 
 #[test]
-fn range_each_return_in_block_error() {
-    let err = run_err(
-        r#"
+fn range_each_return_in_block_ends_the_program() {
+    let result = run(r#"
 (1..3).each { |i| return i }
-"#,
-    );
-    assert!(err.contains("return") || err.contains("loop") || err.contains("control"));
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 // ── Range each with break ───────────────────────────────────────────────

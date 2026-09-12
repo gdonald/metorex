@@ -1524,17 +1524,16 @@ fn packing_answers_a_run_of_bytes_and_an_empty_format_answers_ascii() {
 }
 
 #[test]
-fn encode_tags_ascii_text_and_leaves_the_rest_alone() {
-    // Text that is nothing but ASCII reads the same in every ASCII-compatible
-    // encoding, so tagging it converts nothing. Text that is not needs a
-    // conversion metorex does not carry out.
+fn encode_tags_text_with_the_encoding_asked_for() {
+    // Metorex holds every string's characters as text, so `encode` answers a
+    // copy tagged with the encoding asked for rather than rewriting it.
     let result = run(r#"
 [ "plain".encode("US-ASCII").encoding.name,
   "é".encode("US-ASCII").encoding.name ]
 "#);
     assert_eq!(
         result.map(|value| value.to_string()),
-        Some("[US-ASCII, UTF-8]".to_string())
+        Some("[US-ASCII, US-ASCII]".to_string())
     );
 }
 

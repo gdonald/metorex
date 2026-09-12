@@ -102,6 +102,13 @@ impl VirtualMachine {
             Expression::MethodCall {
                 receiver, method, ..
             } => {
+                // `"text".freeze` is read as the one frozen string it stands
+                // for, and it is still `freeze` that was written.
+                let method = if method == "__frozen_literal__" {
+                    "freeze"
+                } else {
+                    method
+                };
                 // The receiver has to evaluate, and it has to answer to the
                 // method: `defined?(Math.rsqrt)` is nil, not "method".
                 match self.evaluate_expression(receiver) {
@@ -145,6 +152,39 @@ impl VirtualMachine {
             | Expression::Array { .. }
             | Expression::Dictionary { .. }
             | Expression::RegexLiteral { .. } => Some("expression"),
+            // A jump written inside `defined?` is named for what it is, and
+            // reporting on one never takes it.
+            Expression::BeginRescue { body, .. }
+                if body.len() == 1
+                    && matches!(
+                        &body[0],
+                        crate::ast::Statement::Return { .. }
+                            | crate::ast::Statement::Break { .. }
+                            | crate::ast::Statement::Continue { .. }
+                            | crate::ast::Statement::Redo { .. }
+                    ) =>
+            {
+                Some("expression")
+            }
+            // An assignment written inside `defined?` is reported on rather
+            // than carried out. Ruby names an index assignment by the `[]=`
+            // method behind it and every other one an assignment.
+            Expression::BeginRescue { body, .. }
+                if body.len() == 1
+                    && matches!(
+                        &body[0],
+                        crate::ast::Statement::Assignment { .. }
+                            | crate::ast::Statement::MultipleAssignment { .. }
+                    ) =>
+            {
+                match &body[0] {
+                    crate::ast::Statement::Assignment {
+                        target: Expression::Index { .. },
+                        ..
+                    } => Some("method"),
+                    _ => Some("assignment"),
+                }
+            }
             Expression::Super { .. } => Some("super"),
             Expression::SelfExpr { .. } => Some("self"),
             // For anything else, try evaluating and check

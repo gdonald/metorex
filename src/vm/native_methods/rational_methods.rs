@@ -410,7 +410,10 @@ impl VirtualMachine {
                     rounded * ten.pow(digits.unsigned_abs() as u32),
                 )))
             }
-            "to_r" | "rationalize" => Ok(Some(receiver.clone())),
+            "to_r" => Ok(Some(receiver.clone())),
+            // `rationalize` with a tolerance picks the simplest fraction
+            // within it, which the core library works out.
+            "rationalize" if arguments.is_empty() => Ok(Some(receiver.clone())),
             // Rational truncates toward zero, so (8/3) is 2 and (-8/3) is -2.
             "to_i" | "to_int" => {
                 if !arguments.is_empty() {

@@ -88,7 +88,7 @@ fn translation_for(from: &CharacterSet, to: &CharacterSet, character: char) -> O
 impl VirtualMachine {
     /// The characters an argument stands for, taking `to_str` from an object
     /// that answers one, the way Ruby reads a String argument.
-    fn string_argument(
+    pub(crate) fn string_argument(
         &mut self,
         method_name: &str,
         argument: &Object,
@@ -96,7 +96,10 @@ impl VirtualMachine {
     ) -> Result<String, MetorexError> {
         match argument {
             Object::String(text) => Ok(text.as_str().to_string()),
-            other if self.responds_to(other, "to_str") => {
+            // An object of the program's own is asked whether it spells
+            // itself as text, since its answer may be written rather than
+            // declared.
+            other if self.answers_to(other, "to_str", position)? => {
                 match self.send_to_object(other.clone(), "to_str", vec![], position)? {
                     Object::String(text) => Ok(text.as_str().to_string()),
                     converted => Err(method_argument_type_error(
@@ -118,7 +121,7 @@ impl VirtualMachine {
 
     /// The whole number an argument stands for, taking `to_int` from an
     /// object that answers one.
-    fn integer_argument(
+    pub(crate) fn integer_argument(
         &mut self,
         method_name: &str,
         argument: &Object,
@@ -126,7 +129,7 @@ impl VirtualMachine {
     ) -> Result<i64, MetorexError> {
         match argument {
             Object::Int(number) => Ok(*number),
-            other if self.responds_to(other, "to_int") => {
+            other if self.answers_to(other, "to_int", position)? => {
                 match self.send_to_object(other.clone(), "to_int", vec![], position)? {
                     Object::Int(number) => Ok(number),
                     converted => Err(method_argument_type_error(
@@ -156,6 +159,19 @@ impl VirtualMachine {
     ) -> Result<Vec<CharacterSet>, MetorexError> {
         let mut sets = Vec::new();
         for argument in arguments {
+            // A set spelled with bytes that are not characters in its own
+            // encoding cannot be read at all, which is what Ruby reports
+            // before it looks at any range inside.
+            if let Object::String(spelled) = argument
+                && !crate::vm::native_methods::string_methods::holds_valid_text(spelled)
+            {
+                let message = format!("invalid byte sequence in {}", spelled.encoding_name());
+                return Err(MetorexError::UncaughtException {
+                    exception: Object::exception("ArgumentError", message.clone()),
+                    location: crate::vm::utils::position_to_location(position),
+                    message,
+                });
+            }
             let text = self.string_argument(method_name, argument, position)?;
             match CharacterSet::parse(&text) {
                 Ok(set) => sets.push(set),
@@ -265,6 +281,32 @@ impl VirtualMachine {
                         arguments.len(),
                         position,
                     ));
+                }
+                // Text written in an encoding of more than one byte to a
+                // character is read as characters before the last one comes
+                // off, and written back out afterwards.
+                if let Some(shape) = crate::vm::native_methods::string_methods::wide_encoding(
+                    &string_value.encoding_name(),
+                ) {
+                    use crate::vm::native_methods::string_methods as text_methods;
+                    let reading =
+                        text_methods::wide_text(&text_methods::binary_bytes(string_value), shape);
+                    let cut = match reading.strip_suffix("\r\n") {
+                        Some(rest) => rest.to_string(),
+                        None => {
+                            let mut letters: Vec<char> = reading.chars().collect();
+                            letters.pop();
+                            letters.into_iter().collect()
+                        }
+                    };
+                    let made =
+                        Object::String(std::rc::Rc::new(crate::object::StringValue::from_bytes(
+                            text_methods::bytes_as_text(&text_methods::wide_bytes(&cut, shape)),
+                        )));
+                    if let Object::String(held) = &made {
+                        held.set_encoding(string_value.encoding_name());
+                    }
+                    return Ok(Some(made));
                 }
                 // A trailing "\r\n" comes off as one, which is what keeps
                 // `chop` from splitting a line ending in half.
@@ -431,9 +473,10 @@ impl VirtualMachine {
                 // `casecmp?` folds the whole of Unicode, where `casecmp`
                 // orders by the ASCII letters alone.
                 if method_name == "casecmp?" {
-                    return Ok(Some(Object::Bool(
-                        text.to_lowercase() == other.as_str().to_lowercase(),
-                    )));
+                    // Folding maps a letter onto the letters it compares
+                    // equal to, which is where a sharp s becomes two of them.
+                    let folded = |held: &str| held.to_lowercase().replace('\u{df}', "ss");
+                    return Ok(Some(Object::Bool(folded(&text) == folded(&other.as_str()))));
                 }
                 let order = match left.cmp(&right) {
                     std::cmp::Ordering::Less => -1,
@@ -441,6 +484,21 @@ impl VirtualMachine {
                     std::cmp::Ordering::Greater => 1,
                 };
                 Ok(Some(Object::Int(order)))
+            }
+            // Text written in two encodings that do not go together cannot
+            // be padded with one another.
+            "center" | "ljust" | "rjust"
+                if matches!(arguments.get(1), Some(Object::String(pad))
+                    if super::string_methods::encodings_clash(string_value, pad)) =>
+            {
+                let Some(Object::String(pad)) = arguments.get(1) else {
+                    return Ok(None);
+                };
+                Err(super::string_methods::clashing_encodings_error(
+                    string_value,
+                    pad,
+                    position,
+                ))
             }
             "center" => {
                 if arguments.is_empty() || arguments.len() > 2 {
@@ -531,17 +589,35 @@ impl VirtualMachine {
                     ));
                 }
                 let wants_frozen = method_name != "+@";
-                if string_value.is_frozen() == wants_frozen {
-                    return Ok(Some(receiver.clone()));
+                if !wants_frozen {
+                    if !string_value.is_frozen() {
+                        return Ok(Some(receiver.clone()));
+                    }
+                    let copy = crate::object::StringValue::with_encoding(
+                        string_value.to_text(),
+                        string_value.encoding_name(),
+                    );
+                    return Ok(Some(Object::String(std::rc::Rc::new(copy))));
                 }
-                let copy = crate::object::StringValue::with_encoding(
-                    string_value.to_text(),
-                    string_value.encoding_name(),
-                );
-                if wants_frozen {
+                // A string carrying instance variables of its own is not
+                // shared with anything, so it stands for itself.
+                if Self::collection_address(receiver)
+                    .and_then(|address| self.collection_variables.get(&address))
+                    .is_some_and(|held| !held.is_empty())
+                {
+                    if string_value.is_frozen() {
+                        return Ok(Some(receiver.clone()));
+                    }
+                    let copy = crate::object::StringValue::with_encoding(
+                        string_value.to_text(),
+                        string_value.encoding_name(),
+                    );
                     copy.freeze();
+                    return Ok(Some(Object::String(std::rc::Rc::new(copy))));
                 }
-                Ok(Some(Object::String(std::rc::Rc::new(copy))))
+                // Two equal strings deduplicate to one frozen object, which
+                // is what `-@` and `dedup` hand back.
+                Ok(Some(self.deduped_string(string_value)))
             }
             "grapheme_clusters" | "each_grapheme_cluster" => {
                 if !arguments.is_empty() {

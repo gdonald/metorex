@@ -46,6 +46,42 @@ impl Parser {
         // Skip leading whitespace
         self.skip_whitespace();
 
+        // Nothing at all is not a statement. A group left open at the end of
+        // the source reaches here, and stops rather than reading on.
+        if self.is_at_end() {
+            return Err(self.error_at_previous("Unexpected end of input"));
+        }
+
+        // `BEGIN { ... }` runs its body once before the rest of the file,
+        // and `END { ... }` runs its body once when the program ends, which
+        // is what `at_exit` does.
+        if let TokenKind::Ident(name) = &self.peek().kind
+            && matches!(name.as_str(), "BEGIN" | "END")
+            && matches!(self.peek_ahead(1).kind, TokenKind::LBrace)
+        {
+            let position = self.peek().position;
+            let opens = name == "BEGIN";
+            self.advance();
+            let block = self.parse_brace_block()?;
+            let called = if opens {
+                "__begin_once__"
+            } else {
+                "__end_once__"
+            };
+            return Ok(Statement::Expression {
+                expression: Expression::Call {
+                    callee: Box::new(Expression::Identifier {
+                        name: called.to_string(),
+                        position,
+                    }),
+                    arguments: Vec::new(),
+                    trailing_block: Some(Box::new(block)),
+                    position,
+                },
+                position,
+            });
+        }
+
         // Recognize `private def …` / `public def …` / `protected def …` /
         // `module_function def …` as a special two-keyword form. The
         // visibility modifier is parsed and discarded; the wrapped `def`
@@ -91,7 +127,9 @@ impl Parser {
             TokenKind::Until => {
                 self.control_flow_statement(token.position, Self::parse_until_statement)
             }
-            TokenKind::For => self.parse_for_statement(),
+            TokenKind::For => {
+                self.control_flow_statement(token.position, Self::parse_for_statement)
+            }
             TokenKind::Case => {
                 self.control_flow_statement(token.position, Self::parse_case_statement)
             }
@@ -128,14 +166,19 @@ impl Parser {
 
                 // Check for multiple assignment: a, b, c = ...
                 // Look ahead to verify there's an = after the comma-separated identifiers
-                if matches!(
+                // `obj.field` names a target too, which reads as a call with
+                // no arguments until the `=` turns it into a setter.
+                let assignable_target = matches!(
                     expr,
                     Expression::Identifier { .. }
                         | Expression::Index { .. }
                         | Expression::InstanceVariable { .. }
                         | Expression::ClassVariable { .. }
                         | Expression::GlobalVariable { .. }
-                ) && self.check(&[TokenKind::Comma])
+                ) || matches!(&expr, Expression::MethodCall { arguments, trailing_block, .. }
+                    if arguments.is_empty() && trailing_block.is_none());
+                if assignable_target
+                    && self.check(&[TokenKind::Comma])
                     && self.scans_assignment_targets(1, true)
                 {
                     let stmt = self.finish_multiple_assignment(Some(expr), token.position)?;
@@ -163,6 +206,9 @@ impl Parser {
                         return Err(self.error_at_current("Cannot assign to this expression"));
                     }
                     let op_token = self.advance();
+                    // The value may open on the next line, which is how a
+                    // long right-hand side is written.
+                    self.skip_whitespace();
                     let value = self.parse_assignment_rhs()?;
 
                     // Convert compound assignment to regular assignment with binary op
@@ -257,6 +303,7 @@ impl Parser {
                         value: final_value,
                         position: token.position,
                     };
+                    let stmt = self.fold_keyword_logic(stmt)?;
                     self.wrap_with_modifier(stmt)
                 } else {
                     // It's just an expression statement
@@ -408,7 +455,9 @@ impl Parser {
         let opened_at = self.stream.current_position();
         let parsed = parse(self)?;
         if !self.check(&[TokenKind::Dot]) {
-            return Ok(parsed);
+            // `begin ... end while cond` and the rest of the modifiers read
+            // the block they follow.
+            return self.wrap_with_modifier(parsed);
         }
         self.stream.restore_position(opened_at);
         let expression = self.parse_expression_with_lambda()?;
@@ -485,6 +534,15 @@ impl Parser {
             let position = self.advance().position; // consume 'while'
             self.skip_whitespace();
             let condition = self.parse_condition_expression()?;
+            // `begin ... end while cond` reads its condition after the body
+            // has run, so the body runs at least once.
+            if runs_before_the_test(&stmt) {
+                return Ok(Statement::DoWhile {
+                    condition,
+                    body: vec![stmt],
+                    position,
+                });
+            }
             Ok(Statement::While {
                 condition,
                 body: vec![stmt],
@@ -494,12 +552,20 @@ impl Parser {
             let position = self.advance().position; // consume 'until'
             self.skip_whitespace();
             let condition = self.parse_condition_expression()?;
-            Ok(Statement::While {
-                condition: crate::ast::Expression::UnaryOp {
-                    op: crate::ast::UnaryOp::Not,
-                    operand: Box::new(condition),
+            let condition = crate::ast::Expression::UnaryOp {
+                op: crate::ast::UnaryOp::Not,
+                operand: Box::new(condition),
+                position,
+            };
+            if runs_before_the_test(&stmt) {
+                return Ok(Statement::DoWhile {
+                    condition,
+                    body: vec![stmt],
                     position,
-                },
+                });
+            }
+            Ok(Statement::While {
+                condition,
                 body: vec![stmt],
                 position,
             })
@@ -531,10 +597,133 @@ impl Parser {
 
     /// Parse the right-hand side of an assignment, supporting chained assignments
     /// like `@a = @b = value`.
+    /// `x = 1 and y = 2` assigns each side in turn, since `and` and `or`
+    /// bind more loosely than an assignment does.
+    fn fold_keyword_logic(
+        &mut self,
+        stmt: Statement,
+    ) -> Result<Statement, crate::error::MetorexError> {
+        if !self.check(&[TokenKind::KeywordAnd, TokenKind::KeywordOr]) {
+            return Ok(stmt);
+        }
+        let Statement::Assignment {
+            target,
+            value,
+            position,
+        } = stmt
+        else {
+            return Ok(stmt);
+        };
+        let mut left = crate::ast::Expression::BinaryOp {
+            op: BinaryOp::Assign,
+            left: Box::new(target),
+            right: Box::new(value),
+            position,
+        };
+        while self.check(&[TokenKind::KeywordAnd, TokenKind::KeywordOr]) {
+            let keyword = self.advance();
+            self.skip_whitespace();
+            let op = if matches!(keyword.kind, TokenKind::KeywordAnd) {
+                BinaryOp::And
+            } else {
+                BinaryOp::Or
+            };
+            let right = self.parse_statement()?;
+            left = crate::ast::Expression::BinaryOp {
+                op,
+                left: Box::new(left),
+                right: Box::new(statement_as_expression(right, keyword.position)),
+                position: keyword.position,
+            };
+        }
+        Ok(Statement::Expression {
+            expression: left,
+            position,
+        })
+    }
+
+    /// The operation a compound assignment standing next in the stream
+    /// applies, where one stands there at all.
+    fn compound_assignment_ahead(&self) -> Option<BinaryOp> {
+        let paired = [
+            (TokenKind::PlusEqual, BinaryOp::Add),
+            (TokenKind::MinusEqual, BinaryOp::Subtract),
+            (TokenKind::StarEqual, BinaryOp::Multiply),
+            (TokenKind::SlashEqual, BinaryOp::Divide),
+            (TokenKind::PercentEqual, BinaryOp::Modulo),
+            (TokenKind::StarStarEqual, BinaryOp::Power),
+            (TokenKind::PipeEqual, BinaryOp::BitwiseOr),
+            (TokenKind::AmpersandEqual, BinaryOp::BitwiseAnd),
+            (TokenKind::CaretEqual, BinaryOp::Xor),
+            (TokenKind::LogicalOrAssign, BinaryOp::Or),
+            (TokenKind::LogicalAndAssign, BinaryOp::And),
+        ];
+        paired
+            .into_iter()
+            .find(|(kind, _)| self.check(std::slice::from_ref(kind)))
+            .map(|(_, operation)| operation)
+    }
+
+    /// The shift a `<<=` or `>>=` standing next in the stream applies. The
+    /// shifts are methods rather than operators, so they are named rather
+    /// than folded into a binary operation.
+    fn shift_assignment_ahead(&self) -> Option<&'static str> {
+        if self.check(&[TokenKind::ShovelEqual]) {
+            return Some("<<");
+        }
+        if self.check(&[TokenKind::RightShiftEqual]) {
+            return Some(">>");
+        }
+        None
+    }
+
     fn parse_assignment_rhs(
         &mut self,
     ) -> Result<crate::ast::Expression, crate::error::MetorexError> {
-        let expr = self.parse_expression_with_lambda()?;
+        self.assignment_rhs_depth += 1;
+        let parsed = self.parse_expression_with_lambda();
+        self.assignment_rhs_depth -= 1;
+        let expr = parsed?;
+        // `a <<= b <<= 2` works the shifts from the right the same way.
+        if let Some(named) = self.shift_assignment_ahead()
+            && is_assignable(&expr)
+        {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let value = self.parse_assignment_rhs()?;
+            return Ok(crate::ast::Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr.clone()),
+                right: Box::new(crate::ast::Expression::MethodCall {
+                    receiver: Box::new(expr),
+                    method: named.to_string(),
+                    arguments: vec![value],
+                    trailing_block: None,
+                    position,
+                }),
+                position,
+            });
+        }
+        // `a %= b %= 3` works the operators from the right, so a compound
+        // assignment on the right of one is carried out first.
+        if let Some(operation) = self.compound_assignment_ahead()
+            && is_assignable(&expr)
+        {
+            let position = self.advance().position;
+            self.skip_whitespace();
+            let value = self.parse_assignment_rhs()?;
+            return Ok(crate::ast::Expression::BinaryOp {
+                op: crate::ast::BinaryOp::Assign,
+                left: Box::new(expr.clone()),
+                right: Box::new(crate::ast::Expression::BinaryOp {
+                    op: operation,
+                    left: Box::new(expr),
+                    right: Box::new(value),
+                    position,
+                }),
+                position,
+            });
+        }
         // Check for chained assignment: if the parsed expression is followed by `=`
         // and the expression is an assignable target, parse as nested assignment.
         if self.check(&[crate::lexer::TokenKind::Equal])
@@ -573,5 +762,43 @@ impl Parser {
             // the right-hand side rather than to the assignment.
             self.wrap_with_rescue_modifier(expr)
         }
+    }
+}
+
+/// Whether a statement is the `begin ... end` block Ruby runs before it reads
+/// a trailing `while` or `until` condition.
+fn runs_before_the_test(stmt: &Statement) -> bool {
+    matches!(
+        stmt,
+        Statement::Begin { .. }
+            | Statement::Expression {
+                expression: crate::ast::Expression::BeginRescue { .. },
+                ..
+            }
+    )
+}
+
+/// One statement read as the expression it stands for, so a `and` or `or`
+/// can hold it as an operand.
+fn statement_as_expression(stmt: Statement, position: crate::lexer::Position) -> Expression {
+    match stmt {
+        Statement::Expression { expression, .. } => expression,
+        Statement::Assignment {
+            target,
+            value,
+            position,
+        } => Expression::BinaryOp {
+            op: BinaryOp::Assign,
+            left: Box::new(target),
+            right: Box::new(value),
+            position,
+        },
+        other => Expression::BeginRescue {
+            body: vec![other],
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
+            position,
+        },
     }
 }

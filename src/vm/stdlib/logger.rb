@@ -38,9 +38,11 @@ class Logger
     attr_reader :dev
     attr_reader :filename
 
-    def initialize(log = nil, shift_age: 0, shift_size: 1048576, **_rest)
+    def initialize(log = nil, shift_age: 0, shift_size: 1048576,
+                   shift_period_suffix: "%Y%m%d", **_rest)
       @shift_age = shift_age
       @shift_size = shift_size
+      @shift_period_suffix = shift_period_suffix
       @filename = nil
       # A stream is written to as it stands. Only a name opens a file, and
       # anything that is neither is refused: `to_s` on an object that is not
@@ -57,6 +59,7 @@ class Logger
       else
         raise ArgumentError, "#{log.inspect} is not a supported output target"
       end
+      start_period
     end
 
     def write(message)
@@ -113,13 +116,47 @@ class Logger
     end
 
     def shifting_needed?
+      return Time.now >= @next_period if period_rotation?
       return false if @shift_age.to_i < 1
       File.size(@filename) > @shift_size
+    end
+
+    # A shift age named rather than counted rotates on the calendar, and the
+    # file that is moved aside is named for the period it covered.
+    def period_rotation?
+      @shift_age.is_a? ::String
+    end
+
+    def start_period
+      return nil unless period_rotation? && !@filename.nil?
+      @period_started = Time.now
+      @next_period = next_period_after @period_started
+      nil
+    end
+
+    def next_period_after(moment)
+      day = Time.at(moment.to_i - moment.hour * 3600 - moment.min * 60 - moment.sec)
+      case @shift_age
+      when "weekly" then Time.at(day.to_i + 86_400 * (7 - moment.wday))
+      when "monthly" then Time.at(day.to_i + 86_400 * (32 - moment.mday))
+      else Time.at(day.to_i + 86_400)
+      end
+    end
+
+    # Rotation on the calendar moves the file aside under the period it
+    # covered and opens a fresh one for the period now running.
+    def shift_period_log
+      shifted = "#{@filename}.#{@period_started.strftime(@shift_period_suffix)}"
+      @dev.close unless @dev.closed?
+      File.rename @filename, shifted unless File.exist? shifted
+      @dev = create_logfile @filename
+      start_period
     end
 
     # Rotation moves the file aside under a numbered name and starts a new
     # one, keeping as many as the shift age asks for.
     def shift_log
+      return shift_period_log if period_rotation?
       kept = @shift_age.to_i - 1
       @dev.close unless @dev.closed?
       (kept - 1).downto(0) do |slot|
@@ -164,7 +201,8 @@ class Logger
   end
 
   def initialize(logdev, shift_age = 0, shift_size = 1048576, level: DEBUG,
-                 progname: nil, formatter: nil, datetime_format: nil, **_rest)
+                 progname: nil, formatter: nil, datetime_format: nil,
+                 shift_period_suffix: "%Y%m%d", **_rest)
     @level = coerce_level level
     @progname = progname
     @formatter = formatter
@@ -172,7 +210,8 @@ class Logger
     self.datetime_format = datetime_format
     @logdev = nil
     return if logdev.nil?
-    @logdev = LogDevice.new logdev, shift_age: shift_age, shift_size: shift_size
+    @logdev = LogDevice.new logdev, shift_age: shift_age, shift_size: shift_size,
+                            shift_period_suffix: shift_period_suffix
   end
 
   def datetime_format=(format)

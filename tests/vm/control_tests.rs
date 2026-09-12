@@ -100,7 +100,9 @@ for i in 5..3
 end
 result.length
 "#);
-    assert_eq!(result, Some(Object::Int(3)));
+    // A range whose start stands after its end holds nothing, so the loop
+    // runs no rounds.
+    assert_eq!(result, Some(Object::Int(0)));
 }
 
 // ── Float range bounds error in for loop (lines 136-138) ─────────────────────
@@ -114,12 +116,7 @@ for i in 1.5..3.5
 end
 "#,
     );
-    assert!(
-        err.contains("integer")
-            || err.contains("Integer")
-            || err.contains("Range")
-            || err.contains("bounds")
-    );
+    assert!(err.contains("can't iterate from Float"), "{}", err);
 }
 
 // ── Non-iterable type in for loop ────────────────────────────────────────────
@@ -133,12 +130,7 @@ for i in 42
 end
 "#,
     );
-    assert!(
-        err.contains("iterate")
-            || err.contains("Array")
-            || err.contains("Range")
-            || err.contains("type")
-    );
+    assert!(err.contains("undefined method 'each'"));
 }
 
 // ── From remaining_tests ────────────────────────────────────────────────────

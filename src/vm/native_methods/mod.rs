@@ -9,10 +9,12 @@ pub(crate) mod class_methods;
 pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
 pub(crate) use class_methods::is_native_kernel_method;
 pub(crate) use class_methods::native_module_method_stub;
+pub(crate) use method_object_methods::{block_parameter_list, method_parameter_list};
 pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod binding_methods;
 mod socket_addresses;
 pub(crate) use socket_addresses::OpenSockets;
+pub(crate) use streams::OpenStreams;
 mod complex_methods;
 mod constant_visibility;
 pub(crate) mod define_method;
@@ -27,14 +29,14 @@ mod io_methods;
 pub(crate) mod kernel_conversion;
 mod method_object_methods;
 mod module_methods;
-mod object_methods;
+pub(crate) mod object_methods;
 mod range_methods;
 pub(crate) mod rational_methods;
 mod syslog_write;
 mod zlib_streams;
 pub(crate) use object_methods::binary_op_for_method_name;
 pub(crate) use rational_methods::{complex_parts, rational_parts};
-mod regexp_methods;
+pub(crate) mod regexp_methods;
 pub(crate) use regexp_methods::{
     LAST_MATCH, capture_reference, comparable_flags, compile, subject_text,
 };
@@ -109,6 +111,7 @@ pub(crate) fn hash_subclass_value(receiver: &Object) -> Option<Object> {
         .cloned()
 }
 mod pack_format;
+mod streams;
 mod visibility;
 
 use super::VirtualMachine;
@@ -272,6 +275,19 @@ impl VirtualMachine {
             if let Some(result) =
                 self.call_array_method(&elements, method_name, arguments, position)?
             {
+                // A copy of a subclass instance is one of the same class,
+                // which is what `clone` and `dup` answer in Ruby.
+                if matches!(method_name, "clone" | "dup")
+                    && let Object::Array(_) = &result
+                    && let Object::Instance(instance) = receiver
+                {
+                    let class = Rc::clone(&instance.borrow().class);
+                    let mut made = crate::object::Instance::new(class);
+                    made.set_var(ARRAY_SUBCLASS_VAR.to_string(), result);
+                    return Ok(Some(Object::Instance(Rc::new(std::cell::RefCell::new(
+                        made,
+                    )))));
+                }
                 return Ok(Some(result));
             }
         }
@@ -292,6 +308,19 @@ impl VirtualMachine {
                 };
                 let copied = stored.borrow().clone();
                 return Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(copied)))));
+            }
+            // A subclass that writes its own `each` is what Enumerable is
+            // written over, so the walking methods go through that body
+            // rather than through the native table.
+            if let Object::Instance(instance) = receiver
+                && enumerable_walks_through_each(method_name)
+                && instance
+                    .borrow()
+                    .class
+                    .find_own_method("each")
+                    .is_some_and(|held| !held.body.is_empty())
+            {
+                return Ok(None);
             }
             if let Some(result) =
                 self.call_hash_method(&entries, method_name, arguments, position)?
@@ -328,6 +357,16 @@ impl VirtualMachine {
             }));
         }
 
+        // A pattern written as a literal is frozen where it stands. One
+        // built by `Regexp.new` is not, so a program may still change it.
+        if method_name == "frozen?"
+            && let Object::Regex(pattern, _) = receiver
+        {
+            let built = self
+                .built_patterns
+                .contains(&(Rc::as_ptr(pattern) as *const _ as usize));
+            return Ok(Some(Object::Bool(!built)));
+        }
         // A Regexp is a primitive rather than an instance, so its methods are
         // dispatched before the class-name table below.
         if let Object::Regex(pattern, flags) = receiver
@@ -399,9 +438,16 @@ impl VirtualMachine {
                         return Ok(Some(held));
                     }
                     "id2name" | "to_s" => {
-                        return Ok(Some(Object::String(Rc::new(
-                            crate::object::StringValue::with_encoding(text.to_text(), named_in),
-                        ))));
+                        let spelled =
+                            crate::object::StringValue::with_encoding(text.to_text(), named_in);
+                        // Ruby 3.4 hands this string back with notice that a
+                        // later release will freeze it, so the first change
+                        // made to it says so.
+                        spelled.chill(format!(
+                            "warning: string returned by :{}.to_s will be frozen in the future",
+                            text.as_str()
+                        ));
+                        return Ok(Some(Object::String(Rc::new(spelled))));
                     }
                     "encoding" => {
                         let named = Object::String(Rc::new(
@@ -586,12 +632,16 @@ impl VirtualMachine {
                 // duration of the block (and `Thread.current[:k] = v`
                 // writes thread-locals to this thread, not the caller).
                 self.thread_current_stack.push(receiver.clone());
+                // A thread starts with no child of its own behind it, which
+                // is what `Process.last_status` reports there.
+                let held_status = self.take_last_status();
                 let value_result: Result<Object, MetorexError> = if let Object::Block(b) = block_obj
                 {
                     self.execute_block_body(&b, vec![])
                 } else {
                     Ok(Object::Nil)
                 };
+                self.restore_last_status(held_status);
                 self.thread_current_stack.pop();
                 let value = value_result?;
                 inst.borrow_mut()
@@ -811,6 +861,10 @@ impl VirtualMachine {
                     .split_inclusive('\n')
                     .map(|line| Object::string(line.to_string()))
                     .collect();
+                // Reading every line leaves the stream at the end, which is
+                // what `pos` and `eof?` report afterwards.
+                let reached = handle_offset(&inst) + contents.len();
+                set_handle_offset(&inst, reached);
                 match self.pending_block.take() {
                     Some(Object::Block(block)) => {
                         for line in lines {
@@ -929,6 +983,19 @@ impl VirtualMachine {
                 Ok(Some(Object::string(character.to_string())))
             }
             "eof" | "eof?" => {
+                // A stream opened only for writing has nothing to read, and
+                // asking how far a reading has got is refused.
+                let mode = match inst.borrow().get_var("__file_mode") {
+                    Some(Object::String(text)) => text.as_str().to_string(),
+                    _ => String::new(),
+                };
+                if mode.starts_with('w') && !mode.contains('+') {
+                    return Err(crate::vm::errors::simple_exception(
+                        "IOError",
+                        "not opened for reading",
+                        _position,
+                    ));
+                }
                 let contents = read_handle(&path)?;
                 Ok(Some(Object::Bool(handle_offset(&inst) >= contents.len())))
             }
@@ -936,9 +1003,39 @@ impl VirtualMachine {
             // `seek` counts from the start, the end, or where the handle
             // already stands, which is what its second argument names.
             "pos=" | "seek" => {
+                // A place in the stream is named by an Integer, or by
+                // anything that spells itself as one.
                 let wanted = match arguments.first() {
                     Some(Object::Int(offset)) => *offset,
-                    _ => 0,
+                    Some(Object::BigInt(_)) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "RangeError",
+                            "bignum too big to convert into `long'",
+                            _position,
+                        ));
+                    }
+                    Some(held) => {
+                        let named = if method_name == "seek" {
+                            "seek"
+                        } else {
+                            "pos="
+                        };
+                        match self.integer_argument(named, held, _position) {
+                            Ok(offset) => offset,
+                            Err(_) => {
+                                let message = format!(
+                                    "no implicit conversion of {} into Integer",
+                                    self.builtins().class_of(held).ruby_name()
+                                );
+                                return Err(crate::vm::errors::simple_exception(
+                                    "TypeError",
+                                    &message,
+                                    _position,
+                                ));
+                            }
+                        }
+                    }
+                    None => 0,
                 };
                 let whence = match arguments.get(1) {
                     Some(Object::Int(whence)) => *whence,
@@ -949,7 +1046,16 @@ impl VirtualMachine {
                     2 => read_handle(&path)?.len() as i64,
                     _ => 0,
                 };
-                set_handle_offset(&inst, (anchor + wanted).max(0) as usize);
+                // A place before the start of the stream is no place at all.
+                let reached = anchor + wanted;
+                if reached < 0 {
+                    return Err(crate::vm::errors::simple_exception(
+                        "Errno::EINVAL",
+                        "Invalid argument",
+                        _position,
+                    ));
+                }
+                set_handle_offset(&inst, reached as usize);
                 Ok(Some(Object::Int(0)))
             }
             "rewind" => {
@@ -993,9 +1099,31 @@ impl VirtualMachine {
             // `reopen` points the handle at another name and starts it over,
             // which is how a closed stream is put back to work.
             "reopen" => {
-                if let Some(Object::String(named)) = arguments.first() {
+                // A name may be spelled out by anything answering `to_path`,
+                // which is what a Pathname hands over.
+                let named = match arguments.first() {
+                    Some(Object::String(named)) => Some(Object::String(Rc::clone(named))),
+                    // A stream stands for itself rather than for its name, so
+                    // only something that is not one is asked for a path.
+                    Some(other)
+                        if !self.responds_to(other, "to_io")
+                            && self.responds_to(other, "to_path") =>
+                    {
+                        Some(self.send_to_object(
+                            other.clone(),
+                            "to_path",
+                            Vec::new(),
+                            _position,
+                        )?)
+                    }
+                    // Anything else names a stream this one is pointed at,
+                    // which the core library's `reopen` does.
+                    Some(_) => return Ok(None),
+                    None => None,
+                };
+                if let Some(Object::String(named)) = named {
                     inst.borrow_mut()
-                        .set_var("__file_path".to_string(), Object::String(Rc::clone(named)));
+                        .set_var("__file_path".to_string(), Object::String(named));
                 }
                 if let Some(mode) = arguments.get(1) {
                     inst.borrow_mut()
@@ -1251,7 +1379,7 @@ impl VirtualMachine {
             Object::array(arguments.to_vec()),
             size,
         ];
-        self.send_to_object(enumerator, "new", call, position)
+        self.send_to_object(enumerator, "over", call, position)
     }
 }
 
@@ -1297,19 +1425,105 @@ fn carry_string_encoding(
         return answer;
     };
     let held = source.encoding_name();
-    if held == crate::object::string_value::DEFAULT_ENCODING {
+    if held == crate::object::string_value::DEFAULT_ENCODING && !source.holds_bytes() {
         return answer;
     }
-    if let Some(Object::String(derived)) = &answer
-        && derived.encoding_name() == crate::object::string_value::DEFAULT_ENCODING
-    {
-        derived.set_encoding(held);
+    let carry = |derived: &crate::object::StringValue| {
+        if derived.encoding_name() != crate::object::string_value::DEFAULT_ENCODING
+            || derived.holds_bytes()
+        {
+            return;
+        }
+        derived.set_encoding(held.clone());
+        // Characters that stand for bytes go on standing for bytes in
+        // whatever the method made out of them.
+        if source.holds_bytes() {
+            derived.mark_bytes();
+        }
+    };
+    match &answer {
+        Some(Object::String(derived)) => carry(derived),
+        // The pieces a string was cut into read the way the whole one did.
+        // A split around a separator hands that separator back as it was
+        // written, so its own reading stands.
+        Some(Object::Array(pieces)) if !matches!(method_name, "partition" | "rpartition") => {
+            for piece in pieces.borrow().iter() {
+                if let Object::String(derived) = piece {
+                    carry(derived);
+                }
+            }
+        }
+        _ => {}
     }
     answer
+}
+
+impl VirtualMachine {
+    /// Whether an object answers to a name, asking it with `respond_to?` when
+    /// it is one of the program's own, since its answer may be written rather
+    /// than declared.
+    pub(crate) fn answers_to(
+        &mut self,
+        held: &Object,
+        name: &str,
+        position: crate::lexer::Position,
+    ) -> Result<bool, crate::error::MetorexError> {
+        if self.responds_to(held, name) {
+            return Ok(true);
+        }
+        if !matches!(held, Object::Instance(_)) {
+            return Ok(false);
+        }
+        let answer = self.send_to_object(
+            held.clone(),
+            "respond_to?",
+            vec![Object::symbol(name.to_string())],
+            position,
+        )?;
+        Ok(answer.is_truthy())
+    }
+}
+
+/// Whether a name is one Module answers natively, which is what a method
+/// taken from a class reaches before the class's own instance methods.
+pub(crate) fn is_native_module_method(name: &str) -> bool {
+    class_methods::NATIVE_MODULE_METHODS
+        .iter()
+        .any(|(held, _, _)| *held == name)
 }
 
 /// Whether a name is one of the functions Kernel carries, which are reachable
 /// both without a receiver and through `Kernel` itself.
 pub(crate) fn is_kernel_private_function(name: &str) -> bool {
     class_methods::KERNEL_PRIVATE_FUNCTIONS.contains(&name)
+}
+
+/// Whether Enumerable writes a method over `each`, so a class of the
+/// program's own that writes `each` decides what it walks.
+fn enumerable_walks_through_each(name: &str) -> bool {
+    matches!(
+        name,
+        "map"
+            | "collect"
+            | "flat_map"
+            | "select"
+            | "filter"
+            | "reject"
+            | "find"
+            | "detect"
+            | "find_all"
+            | "each_with_object"
+            | "each_with_index"
+            | "inject"
+            | "reduce"
+            | "sort_by"
+            | "group_by"
+            | "partition"
+            | "min_by"
+            | "max_by"
+            | "sum"
+            | "count"
+            | "to_a"
+            | "entries"
+    )
 }

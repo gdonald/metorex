@@ -7,6 +7,44 @@ use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// A method taken from a class belongs to that class's objects alone, so
+    /// binding it to anything else is refused. One taken from a module binds
+    /// to any object at all.
+    fn check_bind_target(
+        &mut self,
+        method_obj: &Rc<crate::object::Method>,
+        target: &Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let Some(owner) = &method_obj.owner_class else {
+            return Ok(());
+        };
+        if owner.is_module() {
+            return Ok(());
+        }
+        // A class method records the class it was written in as its owner,
+        // and binds to any class that stands under that one.
+        if matches!(target, Object::Class(_) | Object::Module(_)) {
+            return Ok(());
+        }
+        let owner = Rc::clone(owner);
+        let named = owner.name().to_string();
+        let answer = self.send_to_object(
+            target.clone(),
+            "is_a?",
+            vec![Object::Class(owner)],
+            position,
+        )?;
+        if answer.is_truthy() {
+            return Ok(());
+        }
+        Err(crate::vm::errors::simple_exception(
+            "TypeError",
+            &format!("bind argument must be an instance of {}", named),
+            position,
+        ))
+    }
+
     pub(crate) fn call_method_object_methods(
         &mut self,
         receiver: &Object,
@@ -18,6 +56,7 @@ impl VirtualMachine {
             match method_name {
                 "bind" => {
                     let target = arguments.first().cloned().unwrap_or(Object::Nil);
+                    self.check_bind_target(method_obj, &target, position)?;
                     let bound = method_obj.bind(target);
                     return Ok(Some(Object::Method(Rc::new(bound))));
                 }
@@ -32,6 +71,7 @@ impl VirtualMachine {
                         ));
                     }
                     let target = arguments[0].clone();
+                    self.check_bind_target(method_obj, &target, position)?;
                     let bound = method_obj.bind(target.clone());
                     let owner = match &bound.owner_class {
                         Some(owner) => Rc::clone(owner),
@@ -109,12 +149,23 @@ impl VirtualMachine {
                 // the method came from when that differs, the name, the
                 // parameters, and where it was written.
                 "inspect" | "to_s" => {
-                    let owner = method_obj
-                        .owner_class
-                        .as_ref()
-                        .map(|owner| owner.ruby_name().to_string())
-                        .or_else(|| method_obj.owner.clone())
-                        .unwrap_or_default();
+                    // A module with no name of its own is written the way it
+                    // writes itself, which names the address it stands at.
+                    let owner = match &method_obj.owner_class {
+                        Some(held) if held.ruby_name().is_empty() => {
+                            let shown = if held.is_module() {
+                                Object::Module(Rc::clone(held))
+                            } else {
+                                Object::Class(Rc::clone(held))
+                            };
+                            match self.send_to_object(shown, "inspect", Vec::new(), position)? {
+                                Object::String(text) => text.as_str().to_string(),
+                                other => other.to_string(),
+                            }
+                        }
+                        Some(held) => held.ruby_name().to_string(),
+                        None => method_obj.owner.clone().unwrap_or_default(),
+                    };
                     let shape = method_parameter_shape(method_obj);
                     let where_written = self.method_source_label(method_obj);
                     let rendered = match &method_obj.receiver {
@@ -125,16 +176,72 @@ impl VirtualMachine {
                             )
                         }
                         Some(bound) => {
-                            let from = self.builtins().class_of(bound).ruby_name().to_string();
-                            let defining = if from == owner || owner.is_empty() {
-                                String::new()
-                            } else {
-                                format!("({})", owner)
+                            let bound: Object = (**bound).clone();
+                            // A method that lives on the receiver's own
+                            // singleton class is written against the object
+                            // itself rather than against a class.
+                            let on_singleton =
+                                method_obj.owner_class.as_ref().is_some_and(|owner| {
+                                    matches!(
+                                        owner.get_class_var("__singleton__"),
+                                        Some(Object::Bool(true))
+                                    )
+                                });
+                            let shown = match &bound {
+                                Object::Class(_) | Object::Module(_) => {
+                                    match self.send_to_object(
+                                        bound.clone(),
+                                        "inspect",
+                                        Vec::new(),
+                                        position,
+                                    )? {
+                                        Object::String(text) => text.as_str().to_string(),
+                                        other => other.to_string(),
+                                    }
+                                }
+                                _ if on_singleton => match self.send_to_object(
+                                    bound.clone(),
+                                    "inspect",
+                                    Vec::new(),
+                                    position,
+                                )? {
+                                    Object::String(text) => text.as_str().to_string(),
+                                    other => other.to_string(),
+                                },
+                                _ => String::new(),
                             };
-                            format!(
-                                "#<Method: {}{}#{}{}{}>",
-                                from, defining, method_obj.name, shape, where_written
-                            )
+                            if on_singleton {
+                                if matches!(bound, Object::Class(_) | Object::Module(_)) {
+                                    format!(
+                                        "#<Method: {}.{}{}{}>",
+                                        shown, method_obj.name, shape, where_written
+                                    )
+                                } else {
+                                    format!(
+                                        "#<Method: {}.{}{}{}>",
+                                        shown, method_obj.name, shape, where_written
+                                    )
+                                }
+                            } else {
+                                // A class or module is reached through its own
+                                // singleton class, which is what a method
+                                // taken from one names.
+                                let from = match &bound {
+                                    Object::Class(_) | Object::Module(_) => {
+                                        format!("#<Class:{}>", shown)
+                                    }
+                                    _ => self.builtins().class_of(&bound).ruby_name().to_string(),
+                                };
+                                let defining = if from == owner || owner.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!("({})", owner)
+                                };
+                                format!(
+                                    "#<Method: {}{}#{}{}{}>",
+                                    from, defining, method_obj.name, shape, where_written
+                                )
+                            }
                         }
                     };
                     return Ok(Some(Object::string(rendered)));
@@ -153,6 +260,24 @@ impl VirtualMachine {
                 // `Method#to_proc` stays attached to the receiver it was
                 // extracted from, so the Proc keeps calling against that
                 // object even after `define_method` installs it elsewhere.
+                // A Method stands for a lambda: it takes its arguments
+                // exactly, and `return` from it leaves the method.
+                "lambda?" => return Ok(Some(Object::Bool(true))),
+                // Currying a Method gathers arguments the way currying a
+                // lambda does, so Proc answers for both.
+                "curry" => {
+                    let wanted = arguments.first().cloned().unwrap_or(Object::Nil);
+                    let Some(proc_class) = self.globals().get("Proc") else {
+                        return Ok(None);
+                    };
+                    let curried = self.send_to_object(
+                        proc_class,
+                        "__curry_for__",
+                        vec![receiver.clone(), wanted, Object::Bool(true)],
+                        position,
+                    )?;
+                    return Ok(Some(curried));
+                }
                 "to_proc" => {
                     let mut as_proc = (**method_obj).clone();
                     as_proc.bound_self = method_obj.receiver.clone();
@@ -257,7 +382,7 @@ fn parameter_pair(kind: &str, name: &str) -> Object {
 
 /// The parameter list Ruby reports: positionals in the order they were
 /// declared, then the keywords, the keyword rest, and the block.
-fn method_parameter_list(method_obj: &crate::object::Method) -> Object {
+pub(crate) fn method_parameter_list(method_obj: &crate::object::Method) -> Object {
     let splat_index = method_obj.variadic_param.as_ref().map(|(index, _)| *index);
     let mut listed = Vec::new();
     for (index, name) in method_obj.parameters.iter().enumerate() {
@@ -363,7 +488,7 @@ fn block_parameter_parts(name: &str) -> Option<(BlockParameterKind, String)> {
 
 /// The parameter list a Proc reports. A proc that is not a lambda takes what
 /// it is handed, so it reports its positional parameters as optional.
-fn block_parameter_list(block_obj: &crate::object::BlockStatement) -> Object {
+pub(crate) fn block_parameter_list(block_obj: &crate::object::BlockStatement) -> Object {
     let required_kind = if block_obj.is_lambda { "req" } else { "opt" };
     let mut listed = Vec::new();
     for (index, name) in block_obj.parameters.iter().enumerate() {
@@ -525,6 +650,19 @@ impl VirtualMachine {
         // A method reached through a module extended onto the object alone
         // has an owner the class chain does not hold, so the walk starts at
         // the top of that chain.
+        // `super` carries on above the module that wrote the body, which is
+        // not always the class that reports as the owner: `public :name`
+        // makes the class that opened the method up the owner, and the body
+        // it opened up came from somewhere above.
+        let owner = if owner.has_public_override(&method_obj.name) {
+            method_obj
+                .origin_class
+                .as_ref()
+                .map(Rc::clone)
+                .unwrap_or(owner)
+        } else {
+            owner
+        };
         let owner_in_chain = chain.iter().any(|ancestor| {
             matches!(ancestor, Object::Class(current) | Object::Module(current)
                 if Rc::ptr_eq(current, &owner))

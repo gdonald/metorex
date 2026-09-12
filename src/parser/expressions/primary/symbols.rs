@@ -16,6 +16,9 @@ pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
             | TokenKind::ClassVar(_)
             | TokenKind::GlobalVar(_)
             | TokenKind::String(_)
+            | TokenKind::ByteString(_)
+            | TokenKind::BinaryString(_)
+            | TokenKind::FrozenString(_)
             | TokenKind::InterpolatedString(_)
             | TokenKind::Def
             | TokenKind::Class
@@ -147,6 +150,8 @@ impl Parser {
             TokenKind::Then => Ok(symbol("then", symbol_position)),
             TokenKind::Elsif => Ok(symbol("elsif", symbol_position)),
             TokenKind::In => Ok(symbol("in", symbol_position)),
+            TokenKind::KeywordAnd => Ok(symbol("and", symbol_position)),
+            TokenKind::KeywordOr => Ok(symbol("or", symbol_position)),
 
             // :[] and :[]= operator symbols
             TokenKind::LBracket => {
@@ -235,8 +240,9 @@ impl Parser {
 }
 
 fn symbol(value: impl Into<String>, position: Position) -> Expression {
-    Expression::Symbol {
-        value: value.into(),
-        position,
-    }
+    // Reading a symbol in the source interns it, so it is among the names
+    // `Symbol.all_symbols` reports even before the line runs.
+    let value: String = value.into();
+    crate::symbol_registry::record(&value);
+    Expression::Symbol { value, position }
 }

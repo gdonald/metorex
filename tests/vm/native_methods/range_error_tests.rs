@@ -88,19 +88,13 @@ fn range_map_exclusive_transforms() {
 // ══════════════════════════════════════════════════════════════════════════════
 
 #[test]
-fn range_each_return_in_method_errors() {
-    let err = run_err(
-        r#"
+fn range_each_return_in_block_ends_the_program() {
+    let result = run(r#"
 (1..3).each do |i|
   return i
 end
-"#,
-    );
-    assert!(
-        err.contains("return") || err.contains("control") || err.contains("loop"),
-        "Error was: {}",
-        err
-    );
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 #[test]
@@ -150,8 +144,8 @@ fn range_map_with_args_errors() {
 // ── range include? with non-comparable type falls back to Display (line 154) ──
 
 #[test]
-fn range_include_with_bool_elements() {
-    // Ranges of booleans use the Display fallback comparison
-    let result = run("(false..true).include?(false)");
-    assert!(result.is_some());
+fn range_over_bool_elements_is_refused() {
+    // Two booleans have no order, so they bound no range.
+    let err = run_err("(false..true).include?(false)");
+    assert!(err.contains("bad value for range"), "{}", err);
 }

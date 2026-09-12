@@ -43,13 +43,22 @@ impl VirtualMachine {
             ));
         }
 
-        if let Some(result) = self.call_native_method(
-            class.as_ref(),
-            &receiver,
-            &method_name,
-            &arguments,
-            position,
-        )? {
+        // An instance of a String, Array, Set, or Hash subclass answers the
+        // native table through the collection it is backed by, so a method the
+        // subclass writes itself has to run its own body rather than be
+        // shadowed by that table. Everything else reaches the native table
+        // first, which is what puts `Integer#div` ahead of the `Numeric#div`
+        // written for the subclasses a program defines.
+        let overrides_builtin = !method.body.is_empty() && backs_a_collection(&receiver);
+        if !overrides_builtin
+            && let Some(result) = self.call_native_method(
+                class.as_ref(),
+                &receiver,
+                &method_name,
+                &arguments,
+                position,
+            )?
+        {
             return Ok(result);
         }
 
@@ -67,6 +76,19 @@ impl VirtualMachine {
                 )? {
                     return Ok(result);
                 }
+            }
+            // Arithmetic on a number is not in any native table, and going
+            // back through the name would reach a redefinition rather than
+            // the operator this stub was cut from.
+            if arguments.len() == 1
+                && let Some(result) = self.builtin_number_operator(
+                    &target,
+                    receiver.clone(),
+                    arguments[0].clone(),
+                    position,
+                )
+            {
+                return result;
             }
             // `new` on a class is the constructor rather than an entry in any
             // native table, so it is reached through the class itself.
@@ -300,6 +322,9 @@ impl VirtualMachine {
             ))
         };
 
+        // A class variable written in this body belongs to this method's own
+        // class, not to a block somewhere up the call stack.
+        let saved_class_var_home = std::mem::take(&mut self.class_var_home);
         // The body runs in the file the method was defined in, which is what
         // a backtrace entry for a call made from here has to name.
         let saved_source_file = std::mem::replace(
@@ -357,17 +382,22 @@ impl VirtualMachine {
             // A body that came from a `define_method` block keeps the
             // `block_given?` of the frame the block was written in, which is
             // why Ruby answers false there however the method is called.
+            let from_a_block = method.captured_vars.is_some();
             let inherits_block_given = method
                 .captured_vars
                 .as_ref()
                 .is_some_and(|captured| captured.contains_key("block_given?"));
             if !inherits_block_given {
-                self.environment_mut()
-                    .define("block_given?".to_string(), Object::Bool(block.is_some()));
+                self.environment_mut().define(
+                    "block_given?".to_string(),
+                    Object::Bool(block.is_some() && !from_a_block),
+                );
             }
             if let Some(block_value) = block {
-                self.environment_mut()
-                    .define("__block__".to_string(), block_value.clone());
+                if !from_a_block {
+                    self.environment_mut()
+                        .define("__block__".to_string(), block_value.clone());
+                }
                 if let Some(block_param) = &method.block_parameter {
                     self.environment_mut()
                         .define(block_param.clone(), block_value);
@@ -384,8 +414,16 @@ impl VirtualMachine {
             self.def_scope_stack = previous;
         }
         self.current_source_file = saved_source_file;
+        self.class_var_home = saved_class_var_home;
         self.current_method_frame = saved_frame;
         self.live_frames.pop();
+        // A trace reading `binding` off a `return` event sees the method's
+        // own locals, which are gone once the scope is popped.
+        if !self.tracepoints.is_empty() {
+            self.traced_binding = self
+                .call_native_function("binding_kernel", Vec::new(), Position::new(0, 0, 0))
+                .ok();
+        }
         self.environment_mut().pop_scope();
         match result {
             Err(MetorexError::NonLocalReturn {
@@ -668,4 +706,17 @@ impl VirtualMachine {
 
         Ok(())
     }
+}
+
+/// Whether an object is an instance of a String, Array, Set, or Hash subclass,
+/// which holds the collection it stands for in an instance variable.
+fn backs_a_collection(receiver: &crate::object::Object) -> bool {
+    use crate::vm::native_methods::{
+        array_subclass_value, hash_subclass_value, set_subclass_value, string_subclass_value,
+    };
+    matches!(receiver, crate::object::Object::Instance(_))
+        && (hash_subclass_value(receiver).is_some()
+            || array_subclass_value(receiver).is_some()
+            || set_subclass_value(receiver).is_some()
+            || string_subclass_value(receiver).is_some())
 }

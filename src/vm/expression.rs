@@ -19,11 +19,33 @@ use super::core::VirtualMachine;
 use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
 
 impl VirtualMachine {
-    /// Evaluate string interpolation parts into a single owned string.
-    pub(crate) fn evaluate_interpolated_string(
+    /// The String an interpolated literal makes. A piece that holds bytes
+    /// rather than characters carries its encoding out to the whole, which is
+    /// what keeps a byte spliced into an ASCII literal a byte.
+    pub(crate) fn evaluate_interpolated_object(
         &mut self,
         parts: &[InterpolationPart],
-    ) -> Result<String, MetorexError> {
+    ) -> Result<Object, MetorexError> {
+        let (text, carried) = self.interpolate(parts)?;
+        let ascii_literal = parts.iter().all(|part| match part {
+            InterpolationPart::Text(written) => written.is_ascii(),
+            InterpolationPart::Expression(_) => true,
+        });
+        let Some(encoding) = carried.filter(|_| ascii_literal) else {
+            return Ok(Object::string(text));
+        };
+        let spelled = crate::object::StringValue::with_encoding(text, encoding);
+        spelled.mark_bytes();
+        Ok(Object::String(std::rc::Rc::new(spelled)))
+    }
+
+    /// The text the parts spell, along with the encoding of the first piece
+    /// that held bytes rather than characters.
+    fn interpolate(
+        &mut self,
+        parts: &[InterpolationPart],
+    ) -> Result<(String, Option<String>), MetorexError> {
+        let mut carried: Option<String> = None;
         let mut buffer = String::new();
 
         for part in parts {
@@ -52,13 +74,33 @@ impl VirtualMachine {
                                 other => buffer.push_str(&other.to_string()),
                             }
                         }
+                        // A pattern writes itself as the group it stands
+                        // for, which is what `Regexp#to_s` answers.
+                        Object::Regex(_, _) => {
+                            let written = self.send_to_object(
+                                value.clone(),
+                                "to_s",
+                                Vec::new(),
+                                expr.position(),
+                            )?;
+                            match written {
+                                Object::String(text) => buffer.push_str(&text.as_str()),
+                                other => buffer.push_str(&other.to_string()),
+                            }
+                        }
                         _ => buffer.push_str(&value.to_string()),
+                    }
+                    if let Object::String(spelled) = &value
+                        && spelled.holds_bytes()
+                        && carried.is_none()
+                    {
+                        carried = Some(spelled.encoding_name());
                     }
                 }
             }
         }
 
-        Ok(buffer)
+        Ok((buffer, carried))
     }
 
     /// Evaluate array literal expressions.
@@ -106,6 +148,16 @@ impl VirtualMachine {
         let mut key_objs: IndexMap<String, Object> = IndexMap::new();
 
         for (key_expr, value_expr) in entries {
+            // `{**held}` copies every pair `held` carries into the hash.
+            if let Expression::KeywordSplat { expression, .. } = key_expr {
+                let spread = self.evaluate_expression(expression)?;
+                if let Object::Dict(pairs) = spread {
+                    for (name, held) in pairs.borrow().iter() {
+                        map.insert(name.clone(), held.clone());
+                    }
+                }
+                continue;
+            }
             let key_value = self.evaluate_expression(key_expr)?;
             let key_string = object_to_dict_key(&key_value).unwrap_or_default();
             if !crate::vm::utils::is_primitive_key(&key_value) {
@@ -172,6 +224,21 @@ impl VirtualMachine {
         key: Object,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // The environment names its variables in text, so a lookup reads what
+        // it was handed as text first.
+        if let Object::Dict(dict_rc) = &collection
+            && self.dict_is_environment(dict_rc)
+        {
+            let held = Object::Dict(Rc::clone(dict_rc));
+            return self
+                .call_hash_method(&held, "[]", &[key], position)?
+                .ok_or_else(|| {
+                    MetorexError::runtime_error(
+                        "ENV lookup answered nothing",
+                        crate::vm::utils::position_to_location(position),
+                    )
+                });
+        }
         match collection {
             Object::Array(elements_rc) => match key {
                 Object::Int(index) => {
@@ -277,89 +344,110 @@ impl VirtualMachine {
                 self.evaluate_index_operation(as_string, key, position)
             }
 
-            Object::String(s) => match key {
-                Object::Int(i) => {
-                    let chars: Vec<char> = s.as_str().chars().collect();
-                    let len = chars.len() as i64;
-                    let idx = if i < 0 { len + i } else { i };
-                    if idx < 0 || idx >= len {
-                        Ok(Object::Nil)
-                    } else {
-                        Ok(Object::string(chars[idx as usize].to_string()))
-                    }
-                }
-                Object::Range {
-                    start,
-                    end,
-                    exclusive,
-                } => {
-                    let chars: Vec<char> = s.as_str().chars().collect();
-                    let len = chars.len() as i64;
-                    let s_idx = match start.as_ref() {
-                        Object::Int(n) => {
-                            let i = if *n < 0 { len + n } else { *n };
-                            i.max(0) as usize
+            // A String reads its own `[]`, which keeps one reading of the
+            // characters for both the index form and the method call.
+            Object::String(s) => {
+                let made = match key {
+                    Object::Int(i) => {
+                        let chars: Vec<char> = s.as_str().chars().collect();
+                        let len = chars.len() as i64;
+                        let idx = if i < 0 { len + i } else { i };
+                        if idx < 0 || idx >= len {
+                            Ok(Object::Nil)
+                        } else {
+                            Ok(Object::string(chars[idx as usize].to_string()))
                         }
-                        _ => 0,
-                    };
-                    let e_idx = match end.as_ref() {
-                        Object::Int(n) => {
-                            let i = if *n < 0 { len + n } else { *n };
-                            if exclusive {
+                    }
+                    Object::Range {
+                        start,
+                        end,
+                        exclusive,
+                    } => {
+                        let chars: Vec<char> = s.as_str().chars().collect();
+                        let len = chars.len() as i64;
+                        let s_idx = match start.as_ref() {
+                            Object::Int(n) => {
+                                let i = if *n < 0 { len + n } else { *n };
                                 i.max(0) as usize
-                            } else {
-                                (i + 1).max(0) as usize
                             }
+                            _ => 0,
+                        };
+                        let e_idx = match end.as_ref() {
+                            Object::Int(n) => {
+                                let i = if *n < 0 { len + n } else { *n };
+                                if exclusive {
+                                    i.max(0) as usize
+                                } else {
+                                    (i + 1).max(0) as usize
+                                }
+                            }
+                            _ => chars.len(),
+                        };
+                        let sliced: String = chars
+                            .get(s_idx..e_idx.min(chars.len()))
+                            .unwrap_or(&[])
+                            .iter()
+                            .collect();
+                        Ok(Object::string(sliced))
+                    }
+                    // `text[other]` answers the other string when it appears,
+                    // which is how Ruby looks a substring up.
+                    Object::String(ref wanted) => {
+                        if s.as_str().contains(&*wanted.as_str()) {
+                            Ok(Object::string(wanted.as_str().to_string()))
+                        } else {
+                            Ok(Object::Nil)
                         }
-                        _ => chars.len(),
-                    };
-                    let sliced: String = chars
-                        .get(s_idx..e_idx.min(chars.len()))
-                        .unwrap_or(&[])
-                        .iter()
-                        .collect();
-                    Ok(Object::string(sliced))
-                }
-                // `text[other]` answers the other string when it appears,
-                // which is how Ruby looks a substring up.
-                Object::String(ref wanted) => {
-                    if s.as_str().contains(&*wanted.as_str()) {
-                        Ok(Object::string(wanted.as_str().to_string()))
-                    } else {
-                        Ok(Object::Nil)
+                    }
+                    // `text[pattern]` answers what the pattern matched.
+                    Object::Regex(ref pattern, ref flags) => {
+                        let translated =
+                            crate::vm::native_methods::regexp_methods::uniquify_group_names(
+                                &pattern.as_str(),
+                            )
+                            .0;
+                        let mut builder = regex::RegexBuilder::new(&translated);
+                        builder.multi_line(true);
+                        if flags.contains('i') {
+                            builder.case_insensitive(true);
+                        }
+                        if flags.contains('m') {
+                            builder.dot_matches_new_line(true);
+                        }
+                        if flags.contains('x') {
+                            builder.ignore_whitespace(true);
+                        }
+                        let compiled = builder.build().map_err(|problem| {
+                            MetorexError::runtime_error(
+                                format!("invalid regex for []: {}", problem),
+                                position_to_location(position),
+                            )
+                        })?;
+                        match compiled.find(&s.as_str()) {
+                            Some(found) => Ok(Object::string(found.as_str().to_string())),
+                            None => Ok(Object::Nil),
+                        }
+                    }
+                    _ => Err(MetorexError::type_error(
+                        format!(
+                            "String index must be Integer or Range, found {}",
+                            key.type_name()
+                        ),
+                        position_to_location(position),
+                    )),
+                }?;
+                // A piece of a string is written in the same encoding, and
+                // its characters stand for what the whole one's stood for.
+                if let Object::String(piece) = &made
+                    && piece.encoding_name() == crate::object::string_value::DEFAULT_ENCODING
+                {
+                    piece.set_encoding(s.encoding_name());
+                    if s.holds_bytes() {
+                        piece.mark_bytes();
                     }
                 }
-                // `text[pattern]` answers what the pattern matched.
-                Object::Regex(ref pattern, ref flags) => {
-                    let mut builder = regex::RegexBuilder::new(pattern.as_str());
-                    if flags.contains('i') {
-                        builder.case_insensitive(true);
-                    }
-                    if flags.contains('m') {
-                        builder.dot_matches_new_line(true);
-                    }
-                    if flags.contains('x') {
-                        builder.ignore_whitespace(true);
-                    }
-                    let compiled = builder.build().map_err(|problem| {
-                        MetorexError::runtime_error(
-                            format!("invalid regex for []: {}", problem),
-                            position_to_location(position),
-                        )
-                    })?;
-                    match compiled.find(&s.as_str()) {
-                        Some(found) => Ok(Object::string(found.as_str().to_string())),
-                        None => Ok(Object::Nil),
-                    }
-                }
-                _ => Err(MetorexError::type_error(
-                    format!(
-                        "String index must be Integer or Range, found {}",
-                        key.type_name()
-                    ),
-                    position_to_location(position),
-                )),
-            },
+                Ok(made)
+            }
 
             Object::Class(_) | Object::Module(_) | Object::Instance(_) => {
                 // A user-defined `[]` wins: on a class or module that is

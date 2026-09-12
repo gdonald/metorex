@@ -15,7 +15,9 @@ impl Object {
 
     /// A Symbol, which carries its name the way a String carries its text.
     pub fn symbol(s: impl Into<String>) -> Self {
-        Object::Symbol(Rc::new(crate::object::StringValue::new(s)))
+        let named: String = s.into();
+        crate::symbol_registry::record(&named);
+        Object::Symbol(Rc::new(crate::object::StringValue::new(named)))
     }
 
     /// A run of bytes with no character meaning, which is what `pack` and the

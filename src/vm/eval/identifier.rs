@@ -145,11 +145,11 @@ impl VirtualMachine {
             // A `def` registers its name in the environment as a Method so the
             // function is reachable, but Ruby's bare `foo` is a call, not a
             // reference to the method. Invoke it when the environment entry is
-            // the very method the definee holds under that name and it needs
-            // no arguments. A Method held in a local (from `method(:x)` or
+            // the very method the definee holds under that name and every
+            // positional parameter it takes has a default. A Method held in a local (from `method(:x)` or
             // `instance_method(:x)`) is a different object, so it stays a value.
             if let Object::Method(method) = &val
-                && method.parameters.is_empty()
+                && method.parameters.len() == method.default_parameters.len()
                 && method.variadic_param.is_none()
                 && self.name_is_a_definition(name, &val)
             {

@@ -40,6 +40,20 @@ impl Parser {
                 // after a `.` we may skip newlines/comments before the method
                 // name. This lets multi-line method chains parse correctly.
                 self.skip_whitespace();
+                // `held.(args)` calls `call` on what stands to its left.
+                if self.check(&[TokenKind::LParen]) {
+                    let position = expr.position();
+                    self.advance();
+                    let arguments = self.parse_arguments()?;
+                    expr = Expression::MethodCall {
+                        receiver: Box::new(expr),
+                        method: "call".to_string(),
+                        arguments,
+                        trailing_block: None,
+                        position,
+                    };
+                    continue;
+                }
                 // Allow `.[]` to name the `[]` method explicitly.
                 if self.check(&[TokenKind::LBracket])
                     && matches!(self.peek_ahead(1).kind, TokenKind::RBracket)
@@ -144,7 +158,7 @@ impl Parser {
                 };
 
                 // Check for trailing block (both do...end and {...} syntax)
-                let trailing_block = if self.check(&[TokenKind::Do]) {
+                let trailing_block = if self.starts_do_block() {
                     Some(Box::new(self.parse_block()?))
                 } else if self.check(&[TokenKind::LBrace]) {
                     Some(Box::new(self.parse_brace_block()?))
@@ -167,6 +181,17 @@ impl Parser {
                         position,
                     }
                 } else {
+                    // `"text".freeze` stands for one frozen string shared by
+                    // every place the same literal is written.
+                    let method_name = if method_name == "freeze"
+                        && arguments.is_empty()
+                        && trailing_block.is_none()
+                        && matches!(expr, Expression::StringLiteral { .. })
+                    {
+                        "__frozen_literal__".to_string()
+                    } else {
+                        method_name
+                    };
                     Expression::MethodCall {
                         receiver: Box::new(expr),
                         method: method_name,
@@ -296,7 +321,7 @@ impl Parser {
                     } else {
                         Vec::new()
                     };
-                    let trailing_block = if self.check(&[TokenKind::Do]) {
+                    let trailing_block = if self.starts_do_block() {
                         Some(Box::new(self.parse_block()?))
                     } else if self.check(&[TokenKind::LBrace]) {
                         Some(Box::new(self.parse_brace_block()?))
@@ -338,7 +363,7 @@ impl Parser {
                 // outer call, not to this inner identifier.
                 self.skip_whitespace();
                 if self.check(&[TokenKind::LBrace])
-                    || (self.check(&[TokenKind::Do]) && self.paren_less_arg_depth == 0)
+                    || (self.starts_do_block() && self.paren_less_arg_depth == 0)
                 {
                     let position = expr.position();
                     let trailing_block = if self.check(&[TokenKind::Do]) {
@@ -377,6 +402,12 @@ impl Parser {
 
     /// of `parse_call` (e.g. `parse_arrow_lambda`) can still have method chains
     /// like `-> { ... }.should raise_error(NameError)`.
+    /// Whether a `do` here opens a block. Inside a loop's condition it closes
+    /// the condition instead, which is what `while x do y end` reads it as.
+    pub(crate) fn starts_do_block(&self) -> bool {
+        self.check(&[TokenKind::Do]) && self.condition_depth == 0
+    }
+
     pub(crate) fn parse_postfix_calls(
         &mut self,
         initial: Expression,
@@ -405,7 +436,7 @@ impl Parser {
                 } else {
                     Vec::new()
                 };
-                let trailing_block = if self.check(&[TokenKind::Do]) {
+                let trailing_block = if self.starts_do_block() {
                     Some(Box::new(self.parse_block()?))
                 } else if self.check(&[TokenKind::LBrace]) {
                     Some(Box::new(self.parse_brace_block()?))
@@ -413,6 +444,17 @@ impl Parser {
                     None
                 };
                 let position = expr.position();
+                // `"text".freeze` stands for one frozen string shared by
+                // every place the same literal is written.
+                let method_name = if method_name == "freeze"
+                    && arguments.is_empty()
+                    && trailing_block.is_none()
+                    && matches!(expr, Expression::StringLiteral { .. })
+                {
+                    "__frozen_literal__".to_string()
+                } else {
+                    method_name
+                };
                 expr = Expression::MethodCall {
                     receiver: Box::new(expr),
                     method: method_name,
@@ -434,7 +476,7 @@ impl Parser {
         let arguments = self.parse_arguments()?;
 
         // Check for trailing block (both do...end and {...} syntax)
-        let trailing_block = if self.check(&[TokenKind::Do]) {
+        let trailing_block = if self.starts_do_block() {
             Some(Box::new(self.parse_block()?))
         } else if self.check(&[TokenKind::LBrace]) {
             Some(Box::new(self.parse_brace_block()?))
@@ -797,6 +839,9 @@ impl Parser {
                 | TokenKind::Imaginary(_)
                 | TokenKind::Float(_)
                 | TokenKind::String(_)
+                | TokenKind::ByteString(_)
+                | TokenKind::BinaryString(_)
+                | TokenKind::FrozenString(_)
                 | TokenKind::InterpolatedString(_)
                 | TokenKind::Regex(_, _)
                 | TokenKind::True
@@ -814,10 +859,12 @@ impl Parser {
                 | TokenKind::MagicDir
                 | TokenKind::CommandString(_)
                 | TokenKind::CommandSymbol
+                | TokenKind::PercentSymbol(_)
                 | TokenKind::Ampersand
                 | TokenKind::Colon
                 | TokenKind::Include
                 | TokenKind::Extend
+                | TokenKind::Defined
         ) || (self.peek().kind == TokenKind::Arrow
             && self.arrow_starts_lambda_argument());
 
@@ -931,6 +978,9 @@ impl Parser {
                     | TokenKind::Imaginary(_)
                     | TokenKind::Float(_)
                     | TokenKind::String(_)
+                    | TokenKind::ByteString(_)
+                    | TokenKind::BinaryString(_)
+                    | TokenKind::FrozenString(_)
                     | TokenKind::InterpolatedString(_)
                     | TokenKind::Regex(_, _)
                     | TokenKind::True
@@ -947,12 +997,14 @@ impl Parser {
                     | TokenKind::MagicDir
                     | TokenKind::CommandString(_)
                     | TokenKind::CommandSymbol
+                    | TokenKind::PercentSymbol(_)
                     | TokenKind::PercentW(_, _)
                     | TokenKind::PercentI(_, _)
                     | TokenKind::Ampersand
                     | TokenKind::Colon
                     | TokenKind::Include
                     | TokenKind::Extend
+                    | TokenKind::Defined
                     | TokenKind::Arrow
             );
 
@@ -1221,7 +1273,7 @@ impl Parser {
         let arguments = self.parse_arguments_without_parens()?;
 
         // Check for trailing block (both do...end and {...} syntax)
-        let trailing_block = if self.check(&[TokenKind::Do]) {
+        let trailing_block = if self.starts_do_block() {
             Some(Box::new(self.parse_block()?))
         } else if self.check(&[TokenKind::LBrace]) {
             Some(Box::new(self.parse_brace_block()?))

@@ -19,6 +19,11 @@ pub const TRAILING_COMMA_PARAM: &str = ",";
 /// Marks a `|(a, b)|` group, whose names follow separated by commas. One
 /// array argument spreads across them.
 pub const DESTRUCTURED_GROUP_PREFIX: &str = "(";
+
+/// Marks a name written after the `;` in a block's parameter list. It is a
+/// local of the block rather than a parameter, so it starts as nil and takes
+/// no argument.
+pub const BLOCK_LOCAL_PREFIX: &str = ";";
 /// Marks a `|name:|` keyword parameter, which takes its value from the
 /// keyword arguments rather than by position.
 pub const KEYWORD_PARAM_PREFIX: &str = ":";
@@ -147,8 +152,18 @@ impl BlockStatement {
     pub fn binding_parameters(&self) -> Vec<String> {
         self.parameters
             .iter()
-            .filter(|p| *p != TRAILING_COMMA_PARAM)
+            .filter(|p| *p != TRAILING_COMMA_PARAM && !p.starts_with(BLOCK_LOCAL_PREFIX))
             .cloned()
+            .collect()
+    }
+
+    /// The names written after the `;`, which are locals of the block rather
+    /// than parameters.
+    pub fn block_locals(&self) -> Vec<String> {
+        self.parameters
+            .iter()
+            .filter_map(|p| p.strip_prefix(BLOCK_LOCAL_PREFIX))
+            .map(|name| name.to_string())
             .collect()
     }
 

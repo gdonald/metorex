@@ -255,6 +255,21 @@ impl VirtualMachine {
         if module_rc.name() == "Process" {
             match method_name {
                 "pid" => return Ok(Some(Object::Int(std::process::id() as i64))),
+                // The name the main script was run under, which is what
+                // `__FILE__` reports there too. The same frozen string
+                // answers every time.
+                "argv0" => {
+                    if let Some(held) = self.globals().get("__Process_argv0") {
+                        return Ok(Some(held));
+                    }
+                    let named = self.script_name().unwrap_or_else(|| "-e".to_string());
+                    let made = Object::string(named);
+                    if let Object::String(text) = &made {
+                        text.freeze();
+                    }
+                    self.globals_mut().set("__Process_argv0", made.clone());
+                    return Ok(Some(made));
+                }
                 // SAFETY: `getppid` reads the parent's process id and
                 // touches nothing else.
                 "ppid" => return Ok(Some(Object::Int(unsafe { libc::getppid() } as i64))),
@@ -309,10 +324,10 @@ impl VirtualMachine {
                     // nothing else. A priority of -1 is a real answer, so
                     // errno is cleared first to tell it from a failure.
                     let answered = unsafe {
-                        *libc::__error() = 0;
-                        libc::getpriority(which, who as u32)
+                        *errno_location() = 0;
+                        libc::getpriority(which as _, who as _)
                     };
-                    if answered == -1 && unsafe { *libc::__error() } != 0 {
+                    if answered == -1 && unsafe { *errno_location() } != 0 {
                         return Err(self.errno_error("getpriority", position));
                     }
                     return Ok(Some(Object::Int(answered as i64)));
@@ -321,7 +336,7 @@ impl VirtualMachine {
                     let which = self.process_id_argument(arguments.first(), position)?;
                     let who = self.process_id_argument(arguments.get(1), position)?;
                     let level = self.process_id_argument(arguments.get(2), position)?;
-                    let answered = unsafe { libc::setpriority(which, who as u32, level) };
+                    let answered = unsafe { libc::setpriority(which as _, who as _, level) };
                     return self
                         .process_result(answered, "setpriority", position)
                         .map(Some);
@@ -349,7 +364,7 @@ impl VirtualMachine {
                     };
                     // SAFETY: `initgroups` reads the name across the call and
                     // sets this process's group list.
-                    let answered = unsafe { libc::initgroups(named.as_ptr(), group) };
+                    let answered = unsafe { libc::initgroups(named.as_ptr(), group as _) };
                     if answered < 0 {
                         return Err(self.errno_error("initgroups", position));
                     }
@@ -373,7 +388,7 @@ impl VirtualMachine {
                         })
                         .collect();
                     // SAFETY: `setgroups` reads the list across the call.
-                    let answered = unsafe { libc::setgroups(held.len() as i32, held.as_ptr()) };
+                    let answered = unsafe { libc::setgroups(held.len() as _, held.as_ptr()) };
                     if answered < 0 {
                         return Err(self.errno_error("setgroups", position));
                     }
@@ -456,7 +471,18 @@ impl VirtualMachine {
                         )
                         .map(Some);
                 }
-                "last_status" => return Ok(Some(self.process_last_status())),
+                // `last_status` takes nothing at all, and answers the status
+                // of the last child this process waited for.
+                "last_status" => {
+                    if !arguments.is_empty() {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Exact(0),
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    return Ok(Some(self.process_last_status()));
+                }
                 // Ruby documents `warmup` as a hint the implementation is
                 // free to ignore, and answers true for having taken it.
                 "warmup" => return Ok(Some(Object::Bool(true))),
@@ -478,24 +504,64 @@ impl VirtualMachine {
                 }
                 // `Process.exit`, `.exit!`, and `.abort` end this process the
                 // way the bare forms do.
-                "exit" | "exit!" | "abort" => {
+                "exit" | "exit!" | "abort" | "spawn" => {
                     return self
                         .call_native_function(method_name, arguments.to_vec(), position)
                         .map(Some);
                 }
+
                 // `wait` and `waitpid` answer the child's process id, and
                 // `wait2` pairs it with the status. All three record `$?`.
                 "wait" | "waitpid" | "wait2" | "waitpid2" => {
+                    // A process id may be spelled by an object that answers
+                    // `to_int`, which is what Ruby reads it through.
                     let requested = match arguments.first() {
-                        Some(Object::Int(pid)) => *pid as i32,
-                        _ => -1,
+                        None | Some(Object::Nil) => -1,
+                        Some(held) => self.process_id_argument(Some(held), position)?,
                     };
-                    let (pid, status) = self.wait_for_child(requested, position)?;
+                    let flags = match arguments.get(1) {
+                        Some(Object::Int(held)) => *held as libc::c_int,
+                        _ => 0,
+                    };
+                    let (pid, status) = self.wait_for_child_with(requested, flags, position)?;
+                    // A child still running answers nothing at all.
+                    if pid == 0 {
+                        return Ok(Some(Object::Nil));
+                    }
                     if matches!(method_name, "wait2" | "waitpid2") {
                         let pair = vec![Object::Int(pid as i64), status];
                         return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(pair)))));
                     }
                     return Ok(Some(Object::Int(pid as i64)));
+                }
+                // The reading a clock gives, in the unit named or in float
+                // seconds when none is.
+                "clock_gettime" | "clock_getres" => {
+                    if arguments.is_empty() || arguments.len() > 2 {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Range(1, 2),
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let nanoseconds = if method_name == "clock_gettime" {
+                        self.clock_reading(&arguments[0], position)?
+                    } else {
+                        self.clock_resolution(&arguments[0], position)?
+                    };
+                    let unit = match arguments.get(1) {
+                        None | Some(Object::Nil) => "float_second".to_string(),
+                        Some(Object::Symbol(named)) => named.as_str().to_string(),
+                        Some(other) => {
+                            return Err(method_argument_type_error(
+                                method_name,
+                                "Symbol",
+                                other,
+                                position,
+                            ));
+                        }
+                    };
+                    return Ok(Some(clock_in_unit(nanoseconds, &unit, position)?));
                 }
                 "waitall" => {
                     // Ruby waits for every child there is, so there is
@@ -837,7 +903,7 @@ impl VirtualMachine {
         match argument {
             None | Some(Object::Nil) => Ok(0),
             Some(Object::Int(number)) => Ok(*number as i32),
-            Some(other) if self.responds_to(other, "to_int") => {
+            Some(other) if self.answers_to(other, "to_int", position)? => {
                 match self.send_to_object(other.clone(), "to_int", vec![], position)? {
                     Object::Int(number) => Ok(number as i32),
                     converted => Err(method_argument_type_error(
@@ -905,6 +971,12 @@ fn errno_constant(code: i32) -> &'static str {
 /// The supplementary groups this process belongs to, which is what decides
 /// whether a file it does not own is still one of its group's.
 fn current_groups() -> Object {
+    // The list the account belongs to, which is what `id -G` reports. The
+    // one the kernel caches for the process is cut off at sixteen entries on
+    // some systems, so the account database answers first.
+    if let Some(named) = account_groups() {
+        return Object::array(named.iter().map(|group| Object::Int(*group)).collect());
+    }
     let mut held = [0 as libc::gid_t; 64];
     // SAFETY: `getgroups` fills at most the count it is given and reports how
     // many it wrote.
@@ -916,6 +988,33 @@ fn current_groups() -> Object {
             .map(|group| Object::Int(*group as i64))
             .collect(),
     )
+}
+
+/// Every group the account this process runs as belongs to, read from the
+/// account database rather than from the process's own cached list.
+fn account_groups() -> Option<Vec<i64>> {
+    // SAFETY: `getpwuid` answers a pointer into a static the library owns,
+    // and `getgrouplist` fills the array it is handed up to the count it is
+    // told, reporting how many the account has.
+    unsafe {
+        let account = libc::getpwuid(libc::getuid());
+        if account.is_null() {
+            return None;
+        }
+        let mut held = vec![0 as libc::gid_t; 256];
+        let mut counted = held.len() as libc::c_int;
+        let answered = libc::getgrouplist(
+            (*account).pw_name,
+            (*account).pw_gid as _,
+            held.as_mut_ptr() as _,
+            &mut counted,
+        );
+        if answered < 0 || counted <= 0 {
+            return None;
+        }
+        held.truncate(counted as usize);
+        Some(held.into_iter().map(|group| group as i64).collect())
+    }
 }
 
 impl VirtualMachine {
@@ -970,5 +1069,110 @@ impl VirtualMachine {
             };
         }
         self.process_id_argument(argument, position)
+    }
+}
+
+/// Where the C library keeps the number of the last failure. Each system
+/// names the function that answers it differently.
+#[cfg(not(target_os = "linux"))]
+unsafe fn errno_location() -> *mut libc::c_int {
+    unsafe { libc::__error() }
+}
+
+#[cfg(target_os = "linux")]
+unsafe fn errno_location() -> *mut libc::c_int {
+    unsafe { libc::__errno_location() }
+}
+
+/// One clock reading written in the unit a caller named. Ruby counts whole
+/// units as Integers and fractional ones as Floats.
+fn clock_in_unit(nanoseconds: f64, unit: &str, position: Position) -> Result<Object, MetorexError> {
+    Ok(match unit {
+        "nanosecond" => Object::Int(nanoseconds as i64),
+        "microsecond" => Object::Int((nanoseconds / 1_000.0) as i64),
+        "millisecond" => Object::Int((nanoseconds / 1_000_000.0) as i64),
+        "second" => Object::Int((nanoseconds / 1_000_000_000.0) as i64),
+        "float_microsecond" => Object::Float(nanoseconds / 1_000.0),
+        "float_millisecond" => Object::Float(nanoseconds / 1_000_000.0),
+        "float_second" => Object::Float(nanoseconds / 1_000_000_000.0),
+        other => {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("unexpected unit: {other}"),
+                position,
+            ));
+        }
+    })
+}
+
+impl VirtualMachine {
+    /// What a clock reads, in nanoseconds. A clock is named by the number the
+    /// operating system holds it under.
+    fn clock_reading(&mut self, clock: &Object, position: Position) -> Result<f64, MetorexError> {
+        let Object::Int(number) = clock else {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("unexpected clock: {}", clock.type_name()),
+                position,
+            ));
+        };
+        let mut held = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // SAFETY: `clock_gettime` only writes through the pointer given.
+        if unsafe { libc::clock_gettime(*number as libc::clockid_t, &mut held) } != 0 {
+            return Err(crate::vm::errors::simple_exception(
+                "Errno::EINVAL",
+                "Invalid argument - clock_gettime",
+                position,
+            ));
+        }
+        Ok(held.tv_sec as f64 * 1_000_000_000.0 + held.tv_nsec as f64)
+    }
+
+    /// The smallest step a clock reports, in nanoseconds. The named clocks
+    /// stand for the system calls Ruby reads them through, each with a
+    /// resolution of its own.
+    fn clock_resolution(
+        &mut self,
+        clock: &Object,
+        position: Position,
+    ) -> Result<f64, MetorexError> {
+        if let Object::Symbol(named) = clock {
+            return Ok(match &*named.as_str() {
+                "GETTIMEOFDAY_BASED_CLOCK_REALTIME"
+                | "GETRUSAGE_BASED_CLOCK_PROCESS_CPUTIME_ID" => 1_000.0,
+                "TIME_BASED_CLOCK_REALTIME" => 1_000_000_000.0,
+                "CLOCK_BASED_CLOCK_PROCESS_CPUTIME_ID" => 10_000_000.0,
+                other => {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("unexpected clock: {other}"),
+                        position,
+                    ));
+                }
+            });
+        }
+        let Object::Int(number) = clock else {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("unexpected clock: {}", clock.type_name()),
+                position,
+            ));
+        };
+        let mut held = libc::timespec {
+            tv_sec: 0,
+            tv_nsec: 0,
+        };
+        // SAFETY: `clock_getres` only writes through the pointer given.
+        if unsafe { libc::clock_getres(*number as libc::clockid_t, &mut held) } != 0 {
+            return Err(crate::vm::errors::simple_exception(
+                "Errno::EINVAL",
+                "Invalid argument - clock_getres",
+                position,
+            ));
+        }
+        Ok(held.tv_sec as f64 * 1_000_000_000.0 + held.tv_nsec as f64)
     }
 }

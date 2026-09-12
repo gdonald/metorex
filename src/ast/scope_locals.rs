@@ -41,6 +41,15 @@ fn add(names: &mut Vec<String>, name: &str) {
 fn walk_statement(stmt: &Statement, names: &mut Vec<String>) {
     match stmt {
         Statement::Expression { expression, .. } => walk_expression(expression, names),
+        Statement::DeclareLocals {
+            names: declared, ..
+        } => names.extend(declared.iter().cloned()),
+        Statement::DoWhile {
+            condition, body, ..
+        } => {
+            walk_expression(condition, names);
+            walk_body(body, names);
+        }
         Statement::Assignment { target, value, .. } => {
             collect_target(target, names);
             walk_expression(value, names);

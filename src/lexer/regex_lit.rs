@@ -85,7 +85,6 @@ impl<'a> Lexer<'a> {
                         pattern.push(ch);
                         self.advance();
                     }
-                    '\n' => break,
                     _ => {
                         pattern.push(ch);
                         self.advance();
@@ -125,7 +124,8 @@ impl<'a> Lexer<'a> {
                     pattern.push(ch);
                     self.advance();
                 }
-                '\n' => break, // unterminated regex
+                // A pattern may run across lines, which is how one written
+                // with `x` is laid out.
                 _ => {
                     pattern.push(ch);
                     self.advance();

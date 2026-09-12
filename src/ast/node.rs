@@ -365,6 +365,10 @@ pub enum MatchPattern {
         name: String,
     },
 
+    // Anything else a `when` may be written with, such as a pattern literal
+    // or a call, which the case compares against with `===`.
+    Expression(Box<Expression>),
+
     // Range pattern: matches if value falls within start..end or start...end
     // Used in case/when: `when 1..10 then`
     Range {
@@ -534,6 +538,21 @@ pub enum Statement {
     Assignment {
         target: Expression,
         value: Expression,
+        position: Position,
+    },
+
+    // `begin ... end while cond`, which runs its body before it first reads
+    // the condition.
+    DoWhile {
+        condition: Expression,
+        body: Vec<Statement>,
+        position: Position,
+    },
+
+    // Names a `for` loop binds in the scope holding the loop, which is where
+    // Ruby puts them. A name already bound keeps the value it had.
+    DeclareLocals {
+        names: Vec<String>,
         position: Position,
     },
 
@@ -862,6 +881,8 @@ impl Statement {
             | Statement::Include { position, .. }
             | Statement::Extend { position, .. }
             | Statement::Alias { position, .. }
+            | Statement::DoWhile { position, .. }
+            | Statement::DeclareLocals { position, .. }
             | Statement::MultipleAssignment { position, .. } => *position,
         }
     }

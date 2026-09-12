@@ -599,3 +599,18 @@ fn test_stdlib_libraries_build_settings_no_parens_execution() {
     let output = run_example("stdlib_libraries/build_settings_no_parens.rb");
     assert_eq!(output, BUILD_SETTINGS_OUTPUT);
 }
+
+/// The expected output of both `stdlib_libraries/log_rotation` variants.
+const LOG_ROTATION_OUTPUT: &str = "true\ntrue\ntrue\n";
+
+#[test]
+fn test_stdlib_libraries_log_rotation_execution() {
+    let output = run_example("stdlib_libraries/log_rotation.rb");
+    assert_eq!(output, LOG_ROTATION_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_log_rotation_parens_execution() {
+    let output = run_example("stdlib_libraries/log_rotation_parens.rb");
+    assert_eq!(output, LOG_ROTATION_OUTPUT);
+}

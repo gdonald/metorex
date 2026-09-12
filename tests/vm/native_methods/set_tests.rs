@@ -147,17 +147,15 @@ count
 // ── set_methods.rs: each with return in block error ─────────────────────────
 
 #[test]
-fn set_each_return_in_block_error() {
-    let err = run_err(
-        r#"
+fn set_each_return_in_block_ends_the_program() {
+    let result = run(r#"
 s = Set.new
 s.add("a")
 s.each do |x|
   return x
 end
-"#,
-    );
-    assert!(err.contains("return") || err.contains("control") || err.contains("loop"));
+"#);
+    assert_eq!(result, Some(Object::string("a".to_string())));
 }
 
 // ── set_methods.rs: each with exception in block ────────────────────────────

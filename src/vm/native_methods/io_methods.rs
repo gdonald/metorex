@@ -12,6 +12,9 @@ use std::rc::Rc;
 const POPEN_OUTPUT: &str = "__popen_output";
 /// Instance variable holding the id of the child behind the handle.
 const POPEN_HANDLE: &str = "__popen_handle";
+/// Instance variables marking an end of a two-ended stream as closed.
+const WRITE_CLOSED: &str = "__popen_write_closed";
+const READ_CLOSED: &str = "__popen_read_closed";
 /// Instance variable holding what has been written to the child's input.
 const POPEN_INPUT: &str = "__popen_input";
 /// Instance variable holding the child's process id.
@@ -192,6 +195,17 @@ impl VirtualMachine {
             // Everything the child wrote that has not been read yet, which is
             // an empty string rather than nil once the handle is drained.
             "read" => {
+                // A stream whose reading end is closed hands back nothing more.
+                if matches!(
+                    instance.borrow().get_var(READ_CLOSED),
+                    Some(Object::Bool(true))
+                ) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "IOError",
+                        "not opened for reading",
+                        position,
+                    ));
+                }
                 let remaining = self.finish_popen(instance)?;
                 instance
                     .borrow_mut()
@@ -201,6 +215,17 @@ impl VirtualMachine {
             // Writing buffers until the input is closed, which is when the
             // child is handed everything at once.
             "puts" | "print" | "write" | "<<" => {
+                // A stream whose writing end is closed takes nothing more.
+                if matches!(
+                    instance.borrow().get_var(WRITE_CLOSED),
+                    Some(Object::Bool(true))
+                ) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "IOError",
+                        "not opened for writing",
+                        position,
+                    ));
+                }
                 let mut written = String::new();
                 for argument in arguments {
                     let text = self.get_string_representation(argument, position)?;
@@ -226,17 +251,41 @@ impl VirtualMachine {
                     Object::Nil
                 }))
             }
+            // Half of a stream with two ends may be closed on its own.
             "close_write" => {
                 self.finish_popen(instance)?;
+                instance
+                    .borrow_mut()
+                    .set_var(WRITE_CLOSED.to_string(), Object::Bool(true));
                 Ok(Some(Object::Nil))
             }
-            "pid" => Ok(Some(
+            "close_read" => {
                 instance
-                    .borrow()
-                    .get_var(POPEN_PID)
-                    .cloned()
-                    .unwrap_or(Object::Nil),
-            )),
+                    .borrow_mut()
+                    .set_var(READ_CLOSED.to_string(), Object::Bool(true));
+                Ok(Some(Object::Nil))
+            }
+            // A closed stream names no process, the same as it answers
+            // nothing else about itself.
+            "pid" => {
+                if matches!(
+                    instance.borrow().get_var(POPEN_CLOSED),
+                    Some(Object::Bool(true))
+                ) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "IOError",
+                        "closed stream",
+                        position,
+                    ));
+                }
+                Ok(Some(
+                    instance
+                        .borrow()
+                        .get_var(POPEN_PID)
+                        .cloned()
+                        .unwrap_or(Object::Nil),
+                ))
+            }
             "close" => {
                 self.finish_popen(instance)?;
                 instance
@@ -340,6 +389,20 @@ impl VirtualMachine {
             .unwrap_or(Object::Nil)
     }
 
+    /// Take the last status aside, leaving none behind. A thread body starts
+    /// with no child of its own, which is what Ruby reports inside one.
+    pub(crate) fn take_last_status(&mut self) -> Option<Object> {
+        let held = self.globals().get(LAST_STATUS_GLOBAL);
+        self.globals_mut().set(LAST_STATUS_GLOBAL, Object::Nil);
+        held
+    }
+
+    /// Put back what `take_last_status` set aside.
+    pub(crate) fn restore_last_status(&mut self, held: Option<Object>) {
+        self.globals_mut()
+            .set(LAST_STATUS_GLOBAL, held.unwrap_or(Object::Nil));
+    }
+
     /// Record a finished child's status so `Process.last_status` reads it back.
     pub(crate) fn record_last_status(
         &mut self,
@@ -377,7 +440,13 @@ impl VirtualMachine {
         if let Some(Object::Class(existing)) = self.globals().get(global) {
             return existing;
         }
-        let class = Rc::new(Class::new(name, None));
+        // The handle descends from the class it stands for, so the methods
+        // written for that class in the core library answer for it as well.
+        let parent = match self.globals().get(name) {
+            Some(Object::Class(held)) => Some(held),
+            _ => None,
+        };
+        let class = Rc::new(Class::new(name, parent));
         for method_name in methods {
             class.define_method(
                 *method_name,
@@ -457,9 +526,25 @@ impl VirtualMachine {
         requested: i32,
         position: Position,
     ) -> Result<(i32, Object), MetorexError> {
+        self.wait_for_child_with(requested, 0, position)
+    }
+
+    /// Wait for a child, with the flags Ruby's `waitpid` takes. `WNOHANG`
+    /// answers a pid of zero rather than waiting for one still running.
+    pub(crate) fn wait_for_child_with(
+        &mut self,
+        requested: i32,
+        flags: libc::c_int,
+        position: Position,
+    ) -> Result<(i32, Object), MetorexError> {
         let mut raw_status: libc::c_int = 0;
         // SAFETY: `waitpid` only writes through the status pointer given.
-        let pid = unsafe { libc::waitpid(requested, &mut raw_status, 0) };
+        let pid = unsafe { libc::waitpid(requested, &mut raw_status, flags) };
+        // A child that has not finished answers a pid of zero, which the
+        // caller reports as nil.
+        if pid == 0 && flags & libc::WNOHANG != 0 {
+            return Ok((0, Object::Nil));
+        }
         if pid <= 0 {
             let message = "No child processes".to_string();
             return Err(MetorexError::UncaughtException {

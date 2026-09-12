@@ -126,15 +126,13 @@ h.fetch("z", 42)
 // ── hash_methods.rs: each with return in block error (lines 200-205) ────────
 
 #[test]
-fn hash_each_return_in_block_error() {
-    let err = run_err(
-        r#"
+fn hash_each_return_in_block_ends_the_program() {
+    let result = run(r#"
 {"a" => 1}.each do |k, v|
   return k
 end
-"#,
-    );
-    assert!(err.contains("return") || err.contains("control") || err.contains("loop"));
+"#);
+    assert_eq!(result, Some(Object::string("a".to_string())));
 }
 
 // ── hash_methods.rs: each with exception in block ───────────────────────────

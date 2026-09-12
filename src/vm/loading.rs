@@ -97,6 +97,26 @@ impl VirtualMachine {
             .set_variable("VERBOSE", Object::Bool(verbose));
     }
 
+    /// Set `Encoding.default_external` or `Encoding.default_internal` to the
+    /// encoding a command line option named.
+    pub fn set_default_encoding(&mut self, setter: &str, named: &str) {
+        let Some(encoding) = self.globals().get("Encoding") else {
+            return;
+        };
+        let _ = self.send_to_object(
+            encoding,
+            setter,
+            vec![Object::string(named.to_string())],
+            crate::lexer::Position::new(0, 0, 0),
+        );
+    }
+
+    /// `-d`, which Ruby reports as `$DEBUG`.
+    pub fn set_debug(&mut self, debug: bool) {
+        self.globals_mut()
+            .set_variable("DEBUG", Object::Bool(debug));
+    }
+
     /// Record whether a command line flag was written, under the name Ruby
     /// reports it by: `-a` reads back as `$-a`.
     pub fn set_flag_global(&mut self, flag: &str, written: bool) {
@@ -125,6 +145,14 @@ impl VirtualMachine {
         self.globals_mut().set_variable("/", held.clone());
         // Ruby reports the separator the flag named under the flag's own name.
         self.globals_mut().set_variable("-0", held);
+    }
+
+    /// The name the main script was run under, which is what `Process.argv0`
+    /// and `__FILE__` report for it.
+    pub(crate) fn script_name(&self) -> Option<String> {
+        self.script_path
+            .as_ref()
+            .map(|(_, as_given)| as_given.display().to_string())
     }
 
     /// Record the main script's canonical path and the path it was named by.

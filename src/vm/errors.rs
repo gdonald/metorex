@@ -263,6 +263,13 @@ pub(super) fn binary_type_error(
     right: &Object,
     position: Position,
 ) -> MetorexError {
+    // A value with no arithmetic of its own has no such method, which is what
+    // Ruby reports rather than a mismatch of types.
+    if matches!(left, Object::Nil | Object::Bool(_))
+        && let Some(named) = crate::vm::eval::binary_op_method_name(&op)
+    {
+        return undefined_method_error(named, left, std::slice::from_ref(right), position);
+    }
     MetorexError::type_error(
         format!(
             "Cannot apply operator '{:?}' to types '{}' and '{}'",

@@ -32,7 +32,7 @@ impl VirtualMachine {
             Expression::BoolLiteral { value, .. } => Ok(Object::Bool(*value)),
             Expression::NilLiteral { .. } => Ok(Object::Nil),
             Expression::InterpolatedString { parts, .. } => {
-                self.evaluate_interpolated_string(parts).map(Object::string)
+                self.evaluate_interpolated_object(parts)
             }
 
             // ── Variables / identifiers ─────────────────────────────────────
@@ -63,6 +63,15 @@ impl VirtualMachine {
                     .unwrap_or_else(|| name.clone());
                 if name == "?" {
                     return Ok(self.process_last_status());
+                }
+                // `$@` is where the exception being handled was raised, which
+                // is the backtrace that exception carries.
+                if name == "@" {
+                    let raised = self.globals().get("!").unwrap_or(Object::Nil);
+                    if matches!(raised, Object::Nil) {
+                        return Ok(Object::Nil);
+                    }
+                    return self.send_to_object(raised, "backtrace", Vec::new(), *position);
                 }
                 Ok(self.globals().get(&name).unwrap_or(Object::Nil))
             }
@@ -202,6 +211,16 @@ impl VirtualMachine {
                         };
                     }
                     BinaryOp::Assign => {
+                        // `held&.name = value` writes nothing and answers nil
+                        // when there is no receiver to write to.
+                        if let Expression::MethodCall {
+                            receiver, method, ..
+                        } = left.as_ref()
+                            && method == crate::parser::SAFE_CALL
+                            && matches!(self.evaluate_expression(receiver)?, Object::Nil)
+                        {
+                            return Ok(Object::Nil);
+                        }
                         let value = self.evaluate_expression(right)?;
                         self.assign_value(left, value.clone())?;
                         return Ok(value);
@@ -501,6 +520,7 @@ impl VirtualMachine {
             } => {
                 let start_value = self.evaluate_expression(start)?;
                 let end_value = self.evaluate_expression(end)?;
+                self.check_range_ends(&start_value, &end_value, expression.position())?;
                 Ok(Object::Range {
                     start: Box::new(start_value),
                     end: Box::new(end_value),

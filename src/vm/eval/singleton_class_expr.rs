@@ -24,6 +24,13 @@ fn primitive_singleton_key(receiver: &Object) -> Option<String> {
         Object::Bool(true) => Some("__true__".to_string()),
         Object::Bool(false) => Some("__false__".to_string()),
         Object::Int(_) | Object::Float(_) => None,
+        // A collection and a string are each held by reference, so every one
+        // of them can carry methods of its own rather than sharing a table
+        // with every other collection of its kind.
+        Object::Array(held) => Some(format!("__array_{:p}", Rc::as_ptr(held))),
+        Object::Dict(held) => Some(format!("__dict_{:p}", Rc::as_ptr(held))),
+        Object::Set(held) => Some(format!("__set_{:p}", Rc::as_ptr(held))),
+        Object::String(held) => Some(format!("__string_{:p}", Rc::as_ptr(held))),
         _ => None,
     }
 }
@@ -131,6 +138,24 @@ impl VirtualMachine {
             other => Some(format!("__other_{}", other.type_name())),
         })?;
         self.primitive_singleton_classes.get(&key).map(Rc::clone)
+    }
+
+    /// Carry the methods an object was given of its own over to a copy of it,
+    /// which is what `clone` does and `dup` does not.
+    pub(crate) fn copy_singleton_methods(&mut self, source: &Object, copy: &Object) {
+        let Some(singleton) = self.existing_singleton_class(source) else {
+            return;
+        };
+        let names = singleton.method_names();
+        if names.is_empty() {
+            return;
+        }
+        let destination = self.singleton_class_of(copy);
+        for name in names {
+            if let Some(method) = singleton.find_own_method(&name) {
+                destination.define_method(name, method);
+            }
+        }
     }
 
     /// Evaluate `class << target; body; end`.

@@ -4,9 +4,11 @@ module Singleton
   def self.included(target)
     target.instance_variable_set(:@singleton__instance__, nil)
     class << target
+      # A copy of the class, or a class below it, has no instance of its own
+      # yet, so it builds one rather than handing back the original's.
       def instance
         held = instance_variable_get(:@singleton__instance__)
-        return held unless held.nil?
+        return held if !held.nil? && held.instance_of?(self)
         made = new_singleton_instance
         instance_variable_set(:@singleton__instance__, made)
         made
@@ -29,6 +31,13 @@ module Singleton
       def allocate_singleton_copy
         raise TypeError, "can't copy singleton class"
       end
+
+      # A singleton read back from a Marshal dump is the one instance the
+      # class already has, whatever the dump carried.
+      def _load(_held)
+        instance
+      end
+
     end
     # A singleton is reached through `instance` alone, so the two ways of
     # building one are not among the class's own methods.

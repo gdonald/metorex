@@ -211,6 +211,19 @@ impl Resolver {
                 self.resolve_expression(expression);
             }
 
+            Statement::DeclareLocals { .. } => {}
+
+            Statement::DoWhile {
+                condition, body, ..
+            } => {
+                self.resolve_expression(condition);
+                self.push_scope();
+                for stmt in body {
+                    self.resolve_statement(stmt);
+                }
+                self.pop_scope();
+            }
+
             Statement::Assignment { target, value, .. } => {
                 // Resolve the value first
                 self.resolve_expression(value);

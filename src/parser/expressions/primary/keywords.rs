@@ -127,16 +127,47 @@ impl Parser {
         position: Position,
     ) -> Result<Expression, MetorexError> {
         let expression = if self.match_token(&[TokenKind::LParen]) {
-            let expr = self.parse_expression()?;
+            let expr = self.defined_argument()?;
             self.expect(TokenKind::RParen, "Expected ')' after defined? argument")?;
             expr
         } else {
-            self.parse_expression()?
+            self.defined_argument()?
         };
         Ok(Expression::Defined {
             expression: Box::new(expression),
             position,
         })
+    }
+
+    /// What `defined?` was handed. An assignment is written there as often as
+    /// an expression is, and `defined?` reports on it without carrying it out,
+    /// so it is held as the statement it parses to.
+    fn defined_argument(&mut self) -> Result<Expression, MetorexError> {
+        let resume = self.stream.current_position();
+        let position = self.peek().position;
+        if let Ok(statement) = self.parse_statement()
+            && matches!(
+                statement,
+                crate::ast::Statement::Assignment { .. }
+                    | crate::ast::Statement::MultipleAssignment { .. }
+                    // A jump is written inside `defined?` as readily as an
+                    // expression is, and reporting on one never takes it.
+                    | crate::ast::Statement::Return { .. }
+                    | crate::ast::Statement::Break { .. }
+                    | crate::ast::Statement::Continue { .. }
+                    | crate::ast::Statement::Redo { .. }
+            )
+        {
+            return Ok(Expression::BeginRescue {
+                body: vec![statement],
+                rescue_clauses: Vec::new(),
+                else_clause: None,
+                ensure_block: None,
+                position,
+            });
+        }
+        self.stream.restore_position(resume);
+        self.parse_expression()
     }
 
     /// Whether a `+` or `-` after a bare `yield` is the infix operator rather
@@ -156,24 +187,9 @@ impl Parser {
     ) -> Result<Expression, MetorexError> {
         let arguments = if self.check(&[TokenKind::LParen]) {
             self.advance(); // consume (
-            let mut args = Vec::new();
-            self.skip_whitespace();
-
-            if !self.check(&[TokenKind::RParen]) {
-                loop {
-                    self.skip_whitespace();
-                    args.push(self.parse_expression()?);
-                    self.skip_whitespace();
-
-                    if !self.match_token(&[TokenKind::Comma]) {
-                        break;
-                    }
-                }
-            }
-
-            self.skip_whitespace();
-            self.expect(TokenKind::RParen, "Expected ')' after yield arguments")?;
-            args
+            // A yield takes what a call takes: splats, keywords, and a block
+            // argument all read the same way here.
+            self.parse_arguments()?
         } else if !self.check(&[
             TokenKind::Newline,
             TokenKind::Semicolon,

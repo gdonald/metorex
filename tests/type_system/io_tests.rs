@@ -434,6 +434,12 @@ class Capture
   def write(text)
     @written += text.to_s
   end
+  # Ruby hands `puts` to the stream itself, so a stand-in stream answers it.
+  def puts(*values)
+    return write("\n") if values.empty?
+    values.each { |value| write(value.to_s + "\n") }
+    nil
+  end
   def written
     @written
   end

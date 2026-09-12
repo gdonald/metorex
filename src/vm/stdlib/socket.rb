@@ -5,12 +5,13 @@
 class SocketError < StandardError; end
 
 # What every socket answers, whichever kind it is.
-class BasicSocket
+class BasicSocket < IO
   attr_reader :handle
 
   def initialize(handle)
     @handle = handle
     @closed = false
+    @do_not_reverse_lookup = BasicSocket.do_not_reverse_lookup
   end
 
   def closed?
@@ -33,7 +34,7 @@ class BasicSocket
 
   def local_address
     named = Socket.__net__ "address", @handle, "", 0
-    named.nil? ? nil : Addrinfo.tcp(named[0], named[1])
+    named.nil? ? nil : Addrinfo.stream(named[0], named[1])
   end
 
   def self.tuple_for(named)
@@ -44,6 +45,12 @@ class BasicSocket
   # The number the operating system holds this socket under.
   def fileno
     Socket.__net__ "fileno", @handle, "", 0
+  end
+
+  # A socket keeps its descriptor in a registry of its own rather than in the
+  # one an IO reads through, so it has no stream handle to offer.
+  def __stream_handle__
+    nil
   end
 
   # A socket carries bytes rather than characters, so it is always in binary
@@ -88,6 +95,15 @@ class BasicSocket
     self
   end
 
+  # A socket counts the lines read through it, which starts at none.
+  def lineno
+    @lineno.nil? ? 0 : @lineno
+  end
+
+  def lineno=(held)
+    @lineno = held.to_i
+  end
+
   def getsockname
     named = Socket.__net__ "address", @handle, "", 0
     return Socket.sockaddr_in 0, "0.0.0.0" if named.nil?
@@ -128,12 +144,60 @@ class BasicSocket
     nil
   end
 
+  # Whether a new socket looks names up. Metorex looks none up either way,
+  # so the setting is only read back rather than acted on.
   def self.do_not_reverse_lookup
-    true
+    @@do_not_reverse_lookup = true unless defined? @@do_not_reverse_lookup
+    @@do_not_reverse_lookup
   end
 
   def self.do_not_reverse_lookup=(held)
+    @@do_not_reverse_lookup = held
+  end
+
+  # A socket takes the setting as it stood when the socket was made, and
+  # keeps it from then on.
+  def do_not_reverse_lookup
+    @do_not_reverse_lookup = BasicSocket.do_not_reverse_lookup if @do_not_reverse_lookup.nil?
+    @do_not_reverse_lookup
+  end
+
+  def do_not_reverse_lookup=(held)
+    @do_not_reverse_lookup = held
+  end
+
+  # Another socket over a descriptor already open. The descriptor names a
+  # socket this program opened, and both objects then work the same one.
+  def self.for_fd(number)
+    handle = Socket.__net__ "handle_of_fd", 0, "", number.to_i
+    raise Errno::EBADF, "Bad file descriptor - fstat(2)" if handle.nil?
+    held = allocate
+    held.__send__ :__share_handle__, handle
     held
+  end
+
+  # Take up a handle another socket already holds.
+  def __share_handle__(handle)
+    @handle = handle
+    @closed = false
+    @autoclose = true
+    @socket_family = Socket::AF_INET
+    @socket_type = Socket::SOCK_STREAM
+    @path = Socket.__net__("unix_address", handle, "", 0).to_s
+    self
+  end
+
+  private :__share_handle__
+end
+
+# A socket reached by an address rather than by a path.
+class IPSocket < BasicSocket
+  # The address a host name stands for, answered as the address itself when
+  # one was written rather than a name.
+  def self.getaddress(host)
+    named = Socket.resolved host
+    raise SocketError, "getaddrinfo: nodename nor servname provided, or not known" if named.empty?
+    named.first
   end
 end
 
@@ -187,6 +251,14 @@ class Socket < BasicSocket
     AI_CANONNAME = 2
     AI_NUMERICHOST = 4
 
+    NI_NOFQDN = 1
+    NI_NUMERICHOST = 2
+    NI_NAMEREQD = 4
+    NI_NUMERICSERV = 8
+    NI_DGRAM = 16
+    NI_MAXHOST = 1025
+    NI_MAXSERV = 32
+
     SHUT_RD = 0
     SHUT_WR = 1
     SHUT_RDWR = 2
@@ -225,16 +297,58 @@ class Socket < BasicSocket
   end
 
   def self.unpack_sockaddr_un(held)
+    if held.is_a? Addrinfo
+      raise ArgumentError, "not an AF_UNIX sockaddr" unless held.unix?
+      return held.unix_path
+    end
+    raise ArgumentError, "not an AF_UNIX sockaddr" unless held.to_s.start_with? "\x6a\x01"
     held[2..-1].to_s.split("\x00").first.to_s
   end
 
   def self.unpack_sockaddr_in(held)
+    if held.is_a? Addrinfo
+      raise ArgumentError, "not an AF_INET/AF_INET6 sockaddr" unless held.ip?
+      return [held.ip_port, held.ip_address]
+    end
+    if held.to_s.start_with? "\x6a\x01"
+      raise ArgumentError, "not an AF_INET/AF_INET6 sockaddr"
+    end
     answered = Socket.__address__ "unpack", held, 0
     [answered[1], answered[0]]
   end
 
+  # The name a service goes by on a port. A port no service is known under
+  # has no name to give back.
+  def self.getservbyport(port, protocol = "tcp")
+    named = if protocol.to_s == "udp" && port.to_i == 514
+              "syslog"
+            elsif port.to_i == 514
+              "shell"
+            else
+              Socket.service_name port
+            end
+    raise SocketError, "no such service #{port}/#{protocol}" if named.nil?
+    named
+  end
+
   def self.gethostname
     Socket.__address__ "hostname", "", 0
+  end
+
+  # The name a port is known under, or nil for one with no name.
+  def self.service_name(port)
+    case port.to_i
+    when 9 then "discard"
+    when 21 then "ftp"
+    when 22 then "ssh"
+    when 23 then "telnet"
+    when 25 then "smtp"
+    when 53 then "domain"
+    when 80 then "http"
+    when 110 then "pop3"
+    when 143 then "imap"
+    when 443 then "https"
+    end
   end
 
   # A name with nothing in it stands for every address the machine answers
@@ -283,6 +397,9 @@ class Socket < BasicSocket
   # A port named by number, or by the name a service is known under.
   def self.port_number(port)
     return port if port.is_a? Integer
+    port = port.to_int if !port.is_a?(String) && port.respond_to?(:to_int)
+    return port if port.is_a? Integer
+    port = port.to_str if !port.is_a?(String) && port.respond_to?(:to_str)
     named = port.to_s
     return named.to_i if named =~ /\A\d+\z/
     case named
@@ -317,6 +434,12 @@ class Addrinfo
 
   def self.udp(host, port)
     Addrinfo.built host, port, Socket::SOCK_DGRAM, Socket::IPPROTO_UDP
+  end
+
+  # A connected endpoint, which names no protocol of its own since the
+  # connection already settled it.
+  def self.stream(host, port)
+    Addrinfo.built host, port, Socket::SOCK_STREAM, 0
   end
 
   # An address with no port behind it, which names a machine rather than a
@@ -551,6 +674,48 @@ class Addrinfo
 
   # ── the parts the answers above are built from ────────────────────────────
 
+  # A socket bound to this address, handed to a block and closed afterwards
+  # when one is given.
+  def bind
+    held = Socket.new @afamily, @socktype == 0 ? Socket::SOCK_STREAM : @socktype
+    held.bind Socket.sockaddr_in(@port.nil? ? 0 : @port, @address)
+    return held unless block_given?
+    begin
+      yield held
+    ensure
+      held.close unless held.closed?
+    end
+  end
+
+  # A socket bound to this address and waiting for connections to it.
+  def listen(backlog = 5)
+    held = Socket.new @afamily, Socket::SOCK_STREAM
+    held.bind Socket.sockaddr_in(@port.nil? ? 0 : @port, @address)
+    held.listen backlog
+    return held unless block_given?
+    begin
+      yield held
+    ensure
+      held.close unless held.closed?
+    end
+  end
+
+  # The names this address goes by: the machine and the service on it. A
+  # port with no service name behind it reads as the number itself, and
+  # `NI_NUMERICSERV` asks for the number either way.
+  def getnameinfo(flags = 0)
+    numeric_service = flags.is_a?(Integer) && (flags & Socket::NI_NUMERICSERV) != 0
+    return [Socket.gethostname, @address.to_s] if unix?
+    service = if @port.nil?
+                ""
+              elsif numeric_service
+                @port.to_s
+              else
+                Socket.service_name(@port) || @port.to_s
+              end
+    [@address.to_s, service]
+  end
+
   def fill_ip(host, port, socktype, protocol)
     named = Socket.resolved(host).first
     if named.nil?
@@ -640,12 +805,35 @@ end
 
 
 # One end of a connection someone made or accepted.
-class TCPSocket < BasicSocket
+class TCPSocket < IPSocket
   def initialize(host, port = nil, _local_host = nil, _local_port = nil)
     # An accepted connection is already open, and arrives as the number the
     # interpreter holds it under rather than as a name and a port.
     return super(host) if port.nil?
-    super Socket.__net__("connect", 0, Socket.resolved(host).first, port.to_i)
+    super TCPSocket.connected(host, Socket.port_number(port))
+  end
+
+  # A connection to the first address the host answers on. A host written as
+  # nothing names this machine, which may answer on either family, so each
+  # address is tried until one of them takes the connection.
+  def self.connected(host, port)
+    named = if host.nil? || host.to_s.empty?
+              ["127.0.0.1", "::1"]
+            else
+              Socket.resolved host
+            end
+    refused = nil
+    handle = nil
+    named.each do |address|
+      break unless handle.nil?
+      begin
+        handle = Socket.__net__ "connect", 0, address, port
+      rescue SystemCallError => problem
+        refused = problem
+      end
+    end
+    raise refused if handle.nil?
+    handle
   end
 
   def self.open(host, port = nil)
@@ -724,7 +912,7 @@ class TCPSocket < BasicSocket
 
   def remote_address
     named = Socket.__net__ "peer", @handle, "", 0
-    named.nil? ? nil : Addrinfo.tcp(named[0], named[1])
+    named.nil? ? nil : Addrinfo.stream(named[0], named[1])
   end
 end
 
@@ -732,7 +920,7 @@ end
 class TCPServer < BasicSocket
   def initialize(host, port = nil)
     named, wanted = port.nil? ? [nil, host] : [host, port]
-    super Socket.__net__("listen", 0, Socket.resolved(named).first, wanted.to_i)
+    super Socket.__net__("listen", 0, Socket.resolved(named).first, Socket.port_number(wanted))
   end
 
   def self.open(host, port = nil)
@@ -747,10 +935,19 @@ class TCPServer < BasicSocket
 
   # Take the next connection made to this socket.
   def accept
+    raise IOError, "closed stream" if closed?
     TCPSocket.new Socket.__net__("accept", @handle, "", 0)
   end
 
-  alias_method :accept_nonblock, :accept
+  def accept_nonblock(exception: true)
+    raise IOError, "closed stream" if closed?
+    handle = Socket.__net__ "accept_now", @handle, "", 0
+    if handle.nil?
+      return :wait_readable unless exception
+      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - accept(2) would block"
+    end
+    TCPSocket.new handle
+  end
 
   def listen(backlog)
     unless backlog.is_a? Integer
@@ -805,7 +1002,16 @@ class UNIXSocket < BasicSocket
       return super(path)
     end
     @path = path.to_s
+    UNIXSocket.__check_name__ @path
     super Socket.__net__("unix_connect", 0, @path, 0)
+  end
+
+  # A name the operating system reads as text stops at the first zero byte,
+  # so one written into the middle of a name is refused rather than cutting
+  # it short.
+  def self.__check_name__(named)
+    return named unless named.include?("\0")
+    raise ArgumentError, "path name contains null byte"
   end
 
   def self.open(path)
@@ -821,7 +1027,7 @@ class UNIXSocket < BasicSocket
   # A block handed to `new` is not used, since only `open` closes the socket
   # afterwards.
   def self.new(path = nil)
-    warn "warning: UNIXSocket::new() does not take block; use UNIXSocket::open() instead" if block_given?
+    warn "warning: #{name}::new() does not take block; use #{name}::open() instead" if block_given?
     held = allocate
     held.__send__ :initialize, path
     held
@@ -835,7 +1041,7 @@ class UNIXSocket < BasicSocket
     second = server.accept
     server.close
     File.delete path if File.exist? path
-    [first, second]
+    [first.__unname__, second.__unname__]
   end
 
   class << self
@@ -873,12 +1079,58 @@ class UNIXSocket < BasicSocket
     self
   end
 
+  # A socket reads and writes lines the way a stream does.
+  def puts(*lines)
+    return write "\n" if lines.empty?
+    lines.each do |line|
+      held = line.to_s
+      write(held.end_with?("\n") ? held : held + "\n")
+    end
+    nil
+  end
+
+  def print(*parts)
+    parts.each { |part| write part.to_s }
+    nil
+  end
+
+  def gets(separator = "\n")
+    collected = ""
+    while true
+      held = read 1
+      break if held.nil? || held.empty?
+      collected = collected + held
+      break if collected.end_with? separator.to_s
+    end
+    collected.empty? ? nil : collected
+  end
+
+  def readline(separator = "\n")
+    held = gets separator
+    raise EOFError, "end of file reached" if held.nil?
+    held
+  end
+
+  def each_line(separator = "\n")
+    while (held = gets(separator))
+      yield held
+    end
+    self
+  end
+
   def addr
-    ["AF_UNIX", Socket.__net__("unix_address", @handle, "", 0)]
+    ["AF_UNIX", @unnamed ? "" : Socket.__net__("unix_address", @handle, "", 0)]
   end
 
   def peeraddr
-    ["AF_UNIX", Socket.__net__("unix_peer", @handle, "", 0)]
+    ["AF_UNIX", @unnamed ? "" : Socket.__net__("unix_peer", @handle, "", 0)]
+  end
+
+  # A pair joined to each other carries no name, whatever it was reached by.
+  def __unname__
+    @unnamed = true
+    @path = ""
+    self
   end
 
   def local_address
@@ -912,15 +1164,20 @@ class UNIXSocket < BasicSocket
 end
 
 # A socket named by a path, waiting for connections to be made to it.
-class UNIXServer < BasicSocket
-  attr_reader :path
+class UNIXServer < UNIXSocket
+  # A server is reached by the name it was bound under, where a client end
+  # carries none of its own.
+  def path
+    @path
+  end
 
   def initialize(path)
-    if block_given?
-      warn "warning: UNIXServer::new() does not take block; use UNIXServer::open() instead"
-    end
-    @path = path.to_s
-    super Socket.__net__("unix_listen", 0, @path, 0)
+    named = path.to_s
+    UNIXSocket.__check_name__ named
+    # The name is recorded after the socket is open, since the client end
+    # this one descends from clears it on the way through.
+    super Socket.__net__("unix_listen", 0, named, 0)
+    @path = named
   end
 
   def self.open(path)
@@ -934,10 +1191,22 @@ class UNIXServer < BasicSocket
   end
 
   def accept
+    raise IOError, "closed stream" if closed?
     UNIXSocket.new Socket.__net__("unix_accept", @handle, "", 0)
   end
 
-  alias_method :accept_nonblock, :accept
+  # One try at taking a connection already waiting. With nothing waiting the
+  # caller is told to wait, either by an exception or by the answer when it
+  # asked for no exception.
+  def accept_nonblock(exception: true)
+    raise IOError, "closed stream" if closed?
+    handle = Socket.__net__ "unix_accept_now", @handle, "", 0
+    if handle.nil?
+      return :wait_readable unless exception
+      raise IO::EAGAINWaitReadable, "Resource temporarily unavailable - accept(2) would block"
+    end
+    UNIXSocket.new handle
+  end
 
   def sysaccept
     accept.fileno
@@ -970,7 +1239,7 @@ class UNIXServer < BasicSocket
 end
 
 # A socket that sends each message on its own rather than over a connection.
-class UDPSocket < BasicSocket
+class UDPSocket < IPSocket
   def initialize(family = nil)
     @family = family.nil? ? Socket::AF_INET : Socket.family_numbered(family)
     unless [Socket::AF_INET, Socket::AF_INET6].include? @family
@@ -999,8 +1268,10 @@ class UDPSocket < BasicSocket
 
   # A socket may be bound to a name and a port of its own before it sends.
   def bind(host, port)
+    raise Errno::EINVAL, "bind(2) for #{host.to_s.inspect} port #{port}" if @bound
     Socket.__net__ "close", @handle, "", 0
-    @handle = Socket.__net__ "udp_open", 0, Socket.resolved(host).first, port.to_i
+    @handle = Socket.__net__ "udp_open", 0, Socket.resolved(host).first, Socket.port_number(port)
+    @bound = true
     0
   end
 
@@ -1043,6 +1314,13 @@ class UDPSocket < BasicSocket
   def local_address
     named = Socket.__net__ "udp_address", @handle, "", 0
     named.nil? ? nil : Addrinfo.udp(named[0], named[1])
+  end
+
+  # Where this end sits, as the struct the operating system holds it in.
+  def getsockname
+    named = Socket.__net__ "udp_address", @handle, "", 0
+    return Socket.sockaddr_in 0, "0.0.0.0" if named.nil?
+    Socket.sockaddr_in named[1], named[0]
   end
 
   def inspect
@@ -1214,12 +1492,31 @@ class Socket
   attr_reader :socket_type
 
   def initialize(family, socktype, protocol = 0)
-    @socket_family = Socket.family_numbered family
-    @socket_type = Socket.socktype_numbered socktype
+    unless protocol.is_a? Integer
+      raise TypeError, "no implicit conversion of #{protocol.class} into Integer"
+    end
+    @socket_family = Socket.family_numbered Socket.named_part(family)
+    @socket_type = Socket.socktype_numbered Socket.named_part(socktype)
     @protocol = protocol
-    @handle = nil
     @closed = false
     @bound = nil
+    # A socket carrying each message on its own is opened straight away, so
+    # it has a descriptor of its own before it is bound to anything.
+    @handle = datagram? ? Socket.__net__("udp_open", 0, "0.0.0.0", 0) : nil
+  end
+
+  # A family or a socket kind may be named by an object that spells itself
+  # out, and what that spelling answers has to be a String.
+  def self.named_part(held)
+    return held if held.is_a?(Integer) || held.is_a?(Symbol) || held.is_a?(String)
+    unless held.respond_to? :to_str
+      raise TypeError, "no implicit conversion of #{held.class} into String"
+    end
+    named = held.to_str
+    unless named.is_a? String
+      raise TypeError, "can't convert #{held.class} to String (#{held.class}#to_str gives #{named.class})"
+    end
+    named
   end
 
   # A family or a socket kind may be named by symbol, by string, or by the
@@ -1396,5 +1693,65 @@ class Socket
 
   def self.gethostbyname(host)
     TCPSocket.gethostbyname host
+  end
+
+  # Take up a handle the operating system already holds open.
+  def __take_handle__(handle)
+    @handle = handle
+    self
+  end
+
+  private :__take_handle__
+
+  # Hand a socket to a block and close it once the block is done, which is
+  # what the `Socket.` openers do when one is given.
+  def self.opened_for(socket)
+    return socket unless block_given?
+    begin
+      yield socket
+    ensure
+      socket.close unless socket.closed?
+    end
+  end
+
+  # A stream socket joined to a name in the file system.
+  def self.unix(path, &block)
+    held = Socket.new :UNIX, :STREAM
+    held.__send__ :__take_handle__, Socket.__net__("unix_connect", 0, path.to_s, 0)
+    opened_for held, &block
+  end
+
+  # A socket waiting for connections under a name in the file system.
+  def self.unix_server_socket(path, &block)
+    held = Socket.new :UNIX, :STREAM
+    held.__send__ :__take_handle__, Socket.__net__("unix_listen", 0, path.to_s, 0)
+    opened_for held, &block
+  end
+
+  # The sockets a server listens on, which metorex answers as the one socket
+  # it opens for the address asked for.
+  def self.tcp_server_sockets(host = nil, port = nil, &block)
+    host, port = nil, host if port.nil?
+    held = Socket.new :INET, :STREAM
+    held.bind Socket.sockaddr_in(port.nil? ? 0 : port, host)
+    held.listen 5
+    sockets_opened_for [held], &block
+  end
+
+  def self.udp_server_sockets(host = nil, port = nil, &block)
+    host, port = nil, host if port.nil?
+    held = Socket.new :INET, :DGRAM
+    held.bind Socket.sockaddr_in(port.nil? ? 0 : port, host)
+    sockets_opened_for [held], &block
+  end
+
+  # Hand a list of sockets to a block and close them all afterwards.
+  def self.sockets_opened_for(sockets)
+    return sockets unless block_given?
+    begin
+      yield sockets
+    ensure
+      sockets.each { |socket| socket.close unless socket.closed? }
+    end
   end
 end

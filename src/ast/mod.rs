@@ -1,5 +1,6 @@
 // Abstract Syntax Tree module for Metorex
 
+pub mod for_loop;
 pub mod node;
 pub mod scope_locals;
 

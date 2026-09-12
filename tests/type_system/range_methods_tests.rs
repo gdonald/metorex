@@ -193,15 +193,13 @@ fn range_map_error_with_args() {
 // ── each/map: return and exception inside block ───────────────────────────────
 
 #[test]
-fn range_each_return_inside_block_error() {
-    let err = run_err(
-        r#"
+fn range_each_return_inside_block_ends_the_program() {
+    let result = run(r#"
 (1..3).each do |i|
   return i
 end
-"#,
-    );
-    assert!(err.contains("return") || err.contains("loop"));
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 #[test]

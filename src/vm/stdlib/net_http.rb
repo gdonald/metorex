@@ -1501,5 +1501,63 @@ module Net
     def trace path, initheader = nil
       request Trace.new(path, initheader)
     end
+
+    # The WebDAV methods, each of which sends its own verb.
+    def copy path, initheader = nil
+      request Copy.new(path, initheader)
+    end
+
+    def move path, initheader = nil
+      request Move.new(path, initheader)
+    end
+
+    def propfind path, body = nil, initheader = { 'Depth' => '0' }
+      request Propfind.new(path, initheader), body
+    end
+
+    def proppatch path, body, initheader = nil
+      request Proppatch.new(path, initheader), body
+    end
+
+    def mkcol path, body = nil, initheader = nil
+      request Mkcol.new(path, initheader), body
+    end
+
+    def lock path, body, initheader = nil
+      request Lock.new(path, initheader), body
+    end
+
+    def unlock path, body, initheader = nil
+      request Unlock.new(path, initheader), body
+    end
+
+    # The request forms that hand the response to a block rather than
+    # reading the body in one go.
+    def request_get path, initheader = nil, &block
+      request Get.new(path, initheader), nil, &block
+    end
+
+    def request_head path, initheader = nil, &block
+      request Head.new(path, initheader), nil, &block
+    end
+
+    def request_post path, data, initheader = nil, &block
+      request Post.new(path, initheader), data, &block
+    end
+
+    def request_put path, data, initheader = nil, &block
+      request Put.new(path, initheader), data, &block
+    end
+
+    alias_method :get2, :request_get
+    alias_method :head2, :request_head
+    alias_method :post2, :request_post
+    alias_method :put2, :request_put
+
+    # A request named by its verb rather than by a class of its own.
+    def send_request name, path, data = nil, header = nil
+      held = HTTPGenericRequest.new name, !data.nil?, name.to_s != 'HEAD', path, header
+      request held, data
+    end
   end
 end

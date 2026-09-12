@@ -2,7 +2,7 @@ use super::run_example;
 
 /// The expected output of both `enumerable/walking_a_collection` variants,
 /// which differ only in whether the calls are written with parentheses.
-const WALKING_A_COLLECTION_OUTPUT: &str = "[4, 1, 3, 2]\n[8, 2, 6, 4]\n[1, 3]\n[4, 2]\n[[4, 3], [1, 2]]\n{false => [4, 2], true => [1, 3]}\n[1, 2, 3, 4]\n[4, 3, 2, 1]\n1\n4\n[1, 2]\n[4, 3]\n4\n1\n[1, 4]\ntrue\n[4, 1]\n4\n[[4, 0], [1, 1], [3, 2], [2, 3]]\n[2, 3, 1, 4]\n10\n4\n4\n\"none\"\n4\n[[1, 2], [3, 4]]\n[[1, 2], [3, 4]]\n[[3, 4]]\n[5, 6, 7]\n[:hello, \"world\"]\n2\n";
+const WALKING_A_COLLECTION_OUTPUT: &str = "[4, 1, 3, 2]\n[8, 2, 6, 4]\n[1, 3]\n[4, 2]\n[[4, 3], [1, 2]]\n{false => [4, 2], true => [1, 3]}\n[1, 2, 3, 4]\n[4, 3, 2, 1]\n1\n4\n[1, 2]\n[4, 3]\n4\n1\n[1, 4]\ntrue\n[4, 1]\n4\n[[4, 0], [1, 1], [3, 2], [2, 3]]\n[2, 3, 1, 4]\n10\n4\n4\n\"none\"\n4\n[[1, 2], [3, 4]]\n[1, 3]\n[[3, 4]]\n[5, 6, 7]\n[:hello, \"world\"]\n2\n";
 
 #[test]
 fn test_enumerable_walking_a_collection_execution() {

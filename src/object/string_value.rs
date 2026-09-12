@@ -28,6 +28,14 @@ pub struct StringValue {
     /// bytes read off a file or unpacked from a format is built this way, and
     /// keeps saying so even after it is tagged with a text encoding.
     holds_bytes: std::cell::Cell<bool>,
+    /// Whether something else is reading the string right now and refuses to
+    /// have it changed underneath. An IO::Buffer over a string sets this for
+    /// as long as it is in use.
+    borrowed: std::cell::Cell<bool>,
+    /// The warning a change to this string prints, for one Ruby hands back
+    /// with notice that it will be frozen in a later release. Cleared once
+    /// the warning has been given, so it is printed only the first time.
+    chilled: RefCell<Option<String>>,
 }
 
 impl StringValue {
@@ -39,6 +47,8 @@ impl StringValue {
             object_id: std::cell::Cell::new(0),
             frozen: std::cell::Cell::new(false),
             holds_bytes: std::cell::Cell::new(false),
+            borrowed: std::cell::Cell::new(false),
+            chilled: RefCell::new(None),
         }
     }
 
@@ -51,6 +61,8 @@ impl StringValue {
             object_id: std::cell::Cell::new(0),
             frozen: std::cell::Cell::new(false),
             holds_bytes: std::cell::Cell::new(false),
+            borrowed: std::cell::Cell::new(false),
+            chilled: RefCell::new(None),
         }
     }
 
@@ -64,6 +76,12 @@ impl StringValue {
     /// Whether the characters stand for bytes rather than for text.
     pub fn holds_bytes(&self) -> bool {
         self.holds_bytes.get()
+    }
+
+    /// Say that the characters stand for bytes, which is what a copy built
+    /// from one that does has to carry.
+    pub fn mark_bytes(&self) {
+        self.holds_bytes.set(true);
     }
 
     /// The name of the encoding this string says it is in.
@@ -106,6 +124,27 @@ impl StringValue {
         *self.text.borrow_mut() = made;
     }
 
+    /// Whether something else is reading the string and refuses a change.
+    pub fn is_borrowed(&self) -> bool {
+        self.borrowed.get()
+    }
+
+    /// Say that something else is reading the string, or that it is done.
+    pub fn set_borrowed(&self, borrowed: bool) {
+        self.borrowed.set(borrowed);
+    }
+
+    /// Give the string notice that it will be frozen in a later release, so
+    /// the first change made to it says so.
+    pub fn chill(&self, warning: String) {
+        *self.chilled.borrow_mut() = Some(warning);
+    }
+
+    /// The notice a change to this string prints, taken so it prints once.
+    pub fn take_chill(&self) -> Option<String> {
+        self.chilled.borrow_mut().take()
+    }
+
     /// Whether the string refuses to change.
     pub fn is_frozen(&self) -> bool {
         self.frozen.get()
@@ -137,6 +176,8 @@ impl Clone for StringValue {
             object_id: std::cell::Cell::new(0),
             frozen: std::cell::Cell::new(false),
             holds_bytes: std::cell::Cell::new(self.holds_bytes.get()),
+            borrowed: std::cell::Cell::new(false),
+            chilled: RefCell::new(None),
         }
     }
 }

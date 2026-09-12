@@ -35,13 +35,24 @@ module CGI
   end
 
   # The five characters a page reads as markup.
+  # The five characters HTML reads as markup, written out as entities. The
+  # text is read one byte at a time, so bytes that spell no character in the
+  # encoding it is tagged with are carried through as they stand.
   def self.escapeHTML(text)
     held = CGI.coerced text
-    held = held.gsub "&", "&amp;"
-    held = held.gsub "<", "&lt;"
-    held = held.gsub ">", "&gt;"
-    held = held.gsub "\"", "&quot;"
-    held.gsub "'", "&#39;"
+    written = []
+    held.bytes.each do |byte|
+      case byte
+      when 38 then written.concat "&amp;".bytes
+      when 60 then written.concat "&lt;".bytes
+      when 62 then written.concat "&gt;".bytes
+      when 34 then written.concat "&quot;".bytes
+      when 39 then written.concat "&#39;".bytes
+      else written.push byte
+      end
+    end
+    made = written.pack "C*"
+    made.force_encoding held.encoding
   end
 
   # The same five read back, along with a character named by its number.

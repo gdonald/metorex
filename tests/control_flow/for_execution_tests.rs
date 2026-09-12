@@ -360,7 +360,9 @@ fn test_for_loop_variable_scope() {
     vm.execute_program(&program).unwrap();
 
     let x = vm.environment().get("x").unwrap();
-    assert_eq!(x, Object::Int(100)); // Should retain original value after loop
+    // A loop runs in the scope holding it, so the name it binds holds the
+    // last value it was given.
+    assert_eq!(x, Object::Int(42));
 }
 
 #[test]
@@ -471,5 +473,7 @@ fn test_for_loop_error_on_non_iterable() {
     let result = vm.execute_program(&program);
     assert!(result.is_err());
     let err = result.unwrap_err();
-    assert!(err.to_string().contains("Cannot iterate"));
+    // A value with no `each` cannot be looped over, which Ruby reports as
+    // the missing method rather than as a kind of value.
+    assert!(err.to_string().contains("undefined method 'each'"));
 }

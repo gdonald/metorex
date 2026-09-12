@@ -198,11 +198,77 @@ impl<'a> Lexer<'a> {
 
         // If interpolation is enabled and the body contains `#{`, split it
         // into Text/Expression parts. Otherwise return the raw String.
-        if interpolate && body.contains("#{") {
-            return Some(split_interpolated(&body));
+        if interpolate {
+            if body.contains("#{") {
+                return Some(split_interpolated(&body));
+            }
+            return Some(TokenKind::String(unescaped(&body)));
         }
         Some(TokenKind::String(body))
     }
+}
+
+/// A heredoc body with its escapes read, the way a double-quoted string reads
+/// them. A terminator written in quotes keeps its body as it stands, so only
+/// the interpolating forms reach here.
+pub(crate) fn unescaped(text: &str) -> String {
+    if !text.contains('\\') {
+        return text.to_string();
+    }
+    let letters: Vec<char> = text.chars().collect();
+    let mut held = String::new();
+    let mut at = 0;
+    while at < letters.len() {
+        if letters[at] != '\\' || at + 1 >= letters.len() {
+            held.push(letters[at]);
+            at += 1;
+            continue;
+        }
+        let escape = letters[at + 1];
+        at += 2;
+        match escape {
+            'n' => held.push('\n'),
+            't' => held.push('\t'),
+            'r' => held.push('\r'),
+            's' => held.push(' '),
+            'a' => held.push('\u{7}'),
+            'b' => held.push('\u{8}'),
+            'e' => held.push('\u{1b}'),
+            'f' => held.push('\u{c}'),
+            'v' => held.push('\u{b}'),
+            '0' => held.push('\0'),
+            'x' => {
+                let mut digits = String::new();
+                while digits.len() < 2 && at < letters.len() && letters[at].is_ascii_hexdigit() {
+                    digits.push(letters[at]);
+                    at += 1;
+                }
+                match u32::from_str_radix(&digits, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                {
+                    Some(letter) => held.push(letter),
+                    None => held.push('x'),
+                }
+            }
+            'u' => {
+                let mut digits = String::new();
+                while digits.len() < 4 && at < letters.len() && letters[at].is_ascii_hexdigit() {
+                    digits.push(letters[at]);
+                    at += 1;
+                }
+                match u32::from_str_radix(&digits, 16)
+                    .ok()
+                    .and_then(char::from_u32)
+                {
+                    Some(letter) => held.push(letter),
+                    None => held.push('u'),
+                }
+            }
+            other => held.push(other),
+        }
+    }
+    held
 }
 
 /// Split a heredoc body into interpolation parts. Mirrors the `#{expr}`
@@ -223,9 +289,16 @@ fn split_interpolated(body: &str) -> TokenKind {
                 joined.push_str(&t);
             }
         }
-        TokenKind::String(joined)
+        TokenKind::String(unescaped(&joined))
     } else {
-        TokenKind::InterpolatedString(parts)
+        let read = parts
+            .into_iter()
+            .map(|part| match part {
+                InterpolationPart::Text(text) => InterpolationPart::Text(unescaped(&text)),
+                held => held,
+            })
+            .collect();
+        TokenKind::InterpolatedString(read)
     }
 }
 

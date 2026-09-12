@@ -487,7 +487,9 @@ impl Parser {
                     };
                     params.push(Parameter::named_keyword(name, default, param_pos));
                 } else if self.match_token(&[TokenKind::Equal]) {
-                    let default = self.parse_expression()?;
+                    // `def foo(a = b = c = {})` sets all three to the one
+                    // value, so a default reads an assignment of its own.
+                    let default = self.parse_expression_with_assignment()?;
                     params.push(Parameter::with_default(name, default, param_pos));
                 } else {
                     params.push(Parameter::simple(name, param_pos));
@@ -599,7 +601,9 @@ impl Parser {
                     params.push(Parameter::named_keyword(name, default, param_pos));
                 // Check for positional default value
                 } else if self.match_token(&[TokenKind::Equal]) {
-                    let default = self.parse_expression()?;
+                    // `def foo(a = b = c = {})` sets all three to the one
+                    // value, so a default reads an assignment of its own.
+                    let default = self.parse_expression_with_assignment()?;
                     params.push(Parameter::with_default(name, default, param_pos));
                 } else {
                     params.push(Parameter::simple(name, param_pos));

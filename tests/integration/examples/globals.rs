@@ -29,6 +29,22 @@ fn test_expand_path_execution() {
     assert!(lines[1].ends_with("/tests/_examples/lib"));
 }
 
+/// The expected output of both `globals/expand_path/lexical` variants, which
+/// differ only in whether the calls are written with parentheses.
+const LEXICAL_EXPAND_PATH_OUTPUT: &str = "/tmp\n/one/two\n/\n/one/two/four\n";
+
+#[test]
+fn test_expand_path_lexical_execution() {
+    let output = run_example("globals/expand_path/lexical.rb");
+    assert_eq!(output, LEXICAL_EXPAND_PATH_OUTPUT);
+}
+
+#[test]
+fn test_expand_path_lexical_no_parens_execution() {
+    let output = run_example("globals/expand_path/lexical_no_parens.rb");
+    assert_eq!(output, LEXICAL_EXPAND_PATH_OUTPUT);
+}
+
 #[test]
 fn test_magic_file_and_line_execution() {
     let output = run_example("globals/magic_file.rb");

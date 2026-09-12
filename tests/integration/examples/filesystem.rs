@@ -63,3 +63,33 @@ fn test_filesystem_stream_paths_coercion_parens_execution() {
     let output = run_example("filesystem/stream_paths/coercion_parens.rb");
     assert_eq!(output, STREAM_PATHS_OUTPUT);
 }
+
+/// The expected output of both `filesystem/pipe_streams` variants.
+const PIPE_STREAMS_OUTPUT: &str = "true\ntrue\nIO\nfalse\n1\nover the pipe\ntrue\ntrue\ntrue\n";
+
+#[test]
+fn test_filesystem_pipe_streams_execution() {
+    let output = run_example("filesystem/pipe_streams.rb");
+    assert_eq!(output, PIPE_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_pipe_streams_no_parens_execution() {
+    let output = run_example("filesystem/pipe_streams_no_parens.rb");
+    assert_eq!(output, PIPE_STREAMS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/stream_redirection` variants.
+const STREAM_REDIRECTION_OUTPUT: &str = "0\n1\n\"from the first\\n\"\n\"metorex_stream_second.txt\"\n\"from the second\\n\"\n1\n2\n3\n\ntrue\n";
+
+#[test]
+fn test_filesystem_stream_redirection_execution() {
+    let output = run_example("filesystem/stream_redirection.rb");
+    assert_eq!(output, STREAM_REDIRECTION_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_stream_redirection_no_parens_execution() {
+    let output = run_example("filesystem/stream_redirection_no_parens.rb");
+    assert_eq!(output, STREAM_REDIRECTION_OUTPUT);
+}

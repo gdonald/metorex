@@ -721,25 +721,30 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                let held = array_rc.borrow().clone();
+                let wanted = held.len();
                 // Each argument is put through `to_ary`, and one that answers
-                // none is walked with `each` instead.
-                let mut other_arrays = Vec::new();
+                // none is walked with `each`, taking only as many values as
+                // this array holds so an endless walk still ends.
+                let mut columns = Vec::new();
                 for argument in arguments {
-                    other_arrays.push(self.coerce_to_walkable(argument, position)?);
+                    columns.push(self.zip_column(argument, wanted, position)?);
                 }
-                let array = array_rc.borrow();
-
                 let mut results = Vec::new();
-                for (i, element) in array.iter().enumerate() {
+                for (index, element) in held.iter().enumerate() {
                     let mut tuple = vec![element.clone()];
-                    for other_array in &other_arrays {
-                        if i < other_array.len() {
-                            tuple.push(other_array[i].clone());
-                        } else {
-                            tuple.push(Object::Nil);
-                        }
+                    for column in &columns {
+                        tuple.push(column.get(index).cloned().unwrap_or(Object::Nil));
                     }
                     results.push(Object::Array(Rc::new(RefCell::new(tuple))));
+                }
+                // With a block the rows are handed over one at a time and
+                // nothing is answered.
+                if let Some(Object::Block(block)) = self.pending_block.take() {
+                    for row in results {
+                        self.execute_block_callable(&block, vec![row], position)?;
+                    }
+                    return Ok(Some(Object::Nil));
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
             }
@@ -927,8 +932,13 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let array = array_rc.borrow();
-                Ok(Some(Object::Array(Rc::new(RefCell::new(array.clone())))))
+                let copied = Object::Array(Rc::new(RefCell::new(array_rc.borrow().clone())));
+                // `clone` carries the methods the object was given of its own
+                // across to the copy, where `dup` leaves them behind.
+                if method_name == "clone" {
+                    self.copy_singleton_methods(receiver, &copied);
+                }
+                Ok(Some(copied))
             }
             // `flatten` walks all the way down by default, or as many levels
             // as the argument names. `flatten!` writes the result back and
@@ -2361,11 +2371,17 @@ impl VirtualMachine {
                 Ok(num_bigint::BigInt::from(0).cmp(value).reverse() as i64)
             }
             Object::Instance(_) => {
-                match self.send_to_object(answer.clone(), "<=>", vec![Object::Int(0)], position)? {
-                    Object::Int(order) => Ok(order),
-                    Object::Float(order) => Ok(order as i64),
-                    _ => Err(comparison_failed(left, right, position)),
+                // Ruby asks a value that is not already a number which side
+                // of zero it falls on, reading `>` first and then `<`.
+                for (named, order) in [(">", 1), ("<", -1)] {
+                    if self
+                        .send_to_object(answer.clone(), named, vec![Object::Int(0)], position)?
+                        .is_truthy()
+                    {
+                        return Ok(order);
+                    }
                 }
+                Ok(0)
             }
             _ => Err(comparison_failed(left, right, position)),
         }
@@ -2400,6 +2416,64 @@ impl VirtualMachine {
     /// Whether two values are `eql?`, which is stricter than `==`: 1 and 1.0
     /// are equal but not eql, and an object of its own decides by answering
     /// `eql?` itself.
+    /// Whether two arrays hold equal elements. Ruby asks each pair with
+    /// `equal?` before `==`, and an array that reaches itself compares as
+    /// equal rather than recursing forever.
+    pub(crate) fn arrays_equal(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let mut in_flight = Vec::new();
+        self.arrays_equal_within(left, right, &mut in_flight, position)
+    }
+
+    fn arrays_equal_within(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        in_flight: &mut Vec<(usize, usize)>,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let (Object::Array(one), Object::Array(other)) = (left, right) else {
+            return Ok(false);
+        };
+        let pair = (Rc::as_ptr(one) as usize, Rc::as_ptr(other) as usize);
+        if pair.0 == pair.1 || in_flight.contains(&pair) {
+            return Ok(true);
+        }
+        let held = one.borrow().clone();
+        let against = other.borrow().clone();
+        if held.len() != against.len() {
+            return Ok(false);
+        }
+        in_flight.push(pair);
+        let mut same = true;
+        for (item, counterpart) in held.iter().zip(against.iter()) {
+            if identical(item, counterpart) {
+                continue;
+            }
+            let matched = if matches!((item, counterpart), (Object::Array(_), Object::Array(_))) {
+                self.arrays_equal_within(item, counterpart, in_flight, position)?
+            } else {
+                self.evaluate_binary_operation(
+                    &crate::ast::BinaryOp::Equal,
+                    item.clone(),
+                    counterpart.clone(),
+                    position,
+                )?
+                .is_truthy()
+            };
+            if !matched {
+                same = false;
+                break;
+            }
+        }
+        in_flight.pop();
+        Ok(same)
+    }
+
     pub(crate) fn values_eql(
         &mut self,
         left: &Object,
@@ -2424,6 +2498,7 @@ impl VirtualMachine {
         // asked, which is what Ruby does.
         if matches!(left, Object::Instance(_))
             && crate::vm::native_methods::array_subclass_value(left).is_none()
+            && crate::vm::native_methods::string_subclass_value(left).is_none()
         {
             if let Some((class, method)) = self.lookup_method(left, "eql?")
                 && !method.is_undefined
@@ -2437,8 +2512,18 @@ impl VirtualMachine {
             // defines none lands.
             return Ok(identical(left, right));
         }
-        let left = &elements_of(left).unwrap_or_else(|| left.clone());
-        let right = &elements_of(right).unwrap_or_else(|| right.clone());
+        // A String subclass holds its text behind the instance, and Ruby
+        // compares that text rather than the two objects.
+        let left = &crate::vm::native_methods::string_subclass_value(left)
+            .unwrap_or_else(|| elements_of(left).unwrap_or_else(|| left.clone()));
+        let right = &crate::vm::native_methods::string_subclass_value(right)
+            .unwrap_or_else(|| elements_of(right).unwrap_or_else(|| right.clone()));
+        if let (Object::String(text), Object::String(other)) = (left, right) {
+            use crate::vm::native_methods::string_methods::{binary_bytes, strings_comparable};
+            return Ok((binary_bytes(text) == binary_bytes(other)
+                || *text.as_str() == *other.as_str())
+                && strings_comparable(text, other));
+        }
         match (left, right) {
             (Object::Array(_), Object::Array(_)) => {}
             (Object::Array(_), _) | (_, Object::Array(_)) => return Ok(false),
@@ -2602,6 +2687,54 @@ impl VirtualMachine {
     /// The elements an argument to `zip` stands for: an Array, something that
     /// answers `to_ary`, or failing that anything that can be walked with
     /// `each`. An object with neither is refused the way Ruby refuses it.
+    /// The values one `zip` argument lines up against, taking at most
+    /// `wanted` of them so an endless walk still ends.
+    fn zip_column(
+        &mut self,
+        value: &Object,
+        wanted: usize,
+        position: Position,
+    ) -> Result<Vec<Object>, MetorexError> {
+        if let Object::Array(elements) = value {
+            return Ok(elements.borrow().clone());
+        }
+        if self.answers_to(value, "to_ary", position)?
+            && let Object::Array(elements) =
+                self.send_to_object(value.clone(), "to_ary", vec![], position)?
+        {
+            return Ok(elements.borrow().clone());
+        }
+        if self.answers_to(value, "each", position)? {
+            let walk = self.send_to_object(
+                value.clone(),
+                "to_enum",
+                vec![Object::symbol("each".to_string())],
+                position,
+            )?;
+            let mut taken = Vec::new();
+            for _ in 0..wanted {
+                match self.send_to_object(walk.clone(), "next", Vec::new(), position) {
+                    Ok(held) => taken.push(held),
+                    // The walk ran out, and the rest of the row is nothing.
+                    Err(_) => break,
+                }
+            }
+            return Ok(taken);
+        }
+        let named = match value {
+            Object::Bool(true) => "TrueClass".to_string(),
+            Object::Bool(false) => "FalseClass".to_string(),
+            Object::Nil => "NilClass".to_string(),
+            held => self.builtins().class_of(held).ruby_name().to_string(),
+        };
+        let message = format!("wrong argument type {} (must respond to :each)", named);
+        Err(crate::vm::errors::simple_exception(
+            "TypeError",
+            &message,
+            position,
+        ))
+    }
+
     fn coerce_to_walkable(
         &mut self,
         value: &Object,
@@ -2745,6 +2878,9 @@ fn identical(left: &Object, right: &Object) -> bool {
         (Object::Instance(one), Object::Instance(other)) => Rc::ptr_eq(one, other),
         (Object::Array(one), Object::Array(other)) => Rc::ptr_eq(one, other),
         (Object::Dict(one), Object::Dict(other)) => Rc::ptr_eq(one, other),
+        // A float is its own bits, which is how an array holding NaN equals
+        // another holding the same NaN even though NaN equals nothing.
+        (Object::Float(one), Object::Float(other)) => one.to_bits() == other.to_bits(),
         _ => false,
     }
 }

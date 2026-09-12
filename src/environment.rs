@@ -134,6 +134,18 @@ impl Environment {
         }
     }
 
+    /// The names a Binding captured here holds, which take in the locals a
+    /// block closed over as well as its own.
+    pub fn binding_variable_names(&self) -> Vec<String> {
+        let current = self.current_scope();
+        let scope = current.borrow();
+        if scope.is_root() {
+            scope.own_variable_names()
+        } else {
+            scope.collect_binding_variable_names()
+        }
+    }
+
     /// Whether `name` resolves to the very reference the root scope holds.
     /// A block captures enclosing names by reference, so a builtin or a
     /// top-level local reaches a block's own scope as the same reference

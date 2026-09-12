@@ -182,15 +182,15 @@ end
 }
 
 #[test]
-fn test_recovery_with_multiple_statements() {
+fn test_assignment_value_may_open_on_the_next_line() {
     let source = r#"
 x = 1
 y =
 z = 3
 "#;
-    // Should have error on incomplete 'y =' but might recover for 'z = 3'
+    // `y =` reads on: the value is the assignment that follows it.
     let errors = parse_and_get_errors(source);
-    assert!(!errors.is_empty());
+    assert!(errors.is_empty());
 }
 
 #[test]
@@ -343,9 +343,10 @@ fn test_shorthand_value_in_dictionary() {
 // ============================================================================
 
 #[test]
-fn test_missing_method_name() {
+fn test_dot_call_names_no_method() {
+    // `obj.()` is Ruby's shorthand for `obj.call()`, so it parses.
     let source = "obj.()";
-    assert!(parse_fails(source));
+    assert!(!parse_fails(source));
 }
 
 #[test]

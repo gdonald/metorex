@@ -210,6 +210,16 @@ impl Parser {
         if !prefix.is_empty() {
             self.skip_whitespace();
         }
+        // `-> (a, b) { }` spreads one array argument across the names in the
+        // group, the way a block's `|(a, b)|` does.
+        if prefix.is_empty() && self.check(&[TokenKind::LParen]) {
+            self.advance();
+            let names = self.read_parameter_group().ok()?;
+            return Some((
+                format!("{}{}", crate::object::DESTRUCTURED_GROUP_PREFIX, names),
+                None,
+            ));
+        }
         let TokenKind::Ident(name) = self.peek().kind.clone() else {
             // `-> * { }` takes any arguments and names none of them.
             return (!prefix.is_empty()).then(|| (prefix.to_string(), None));

@@ -8,6 +8,39 @@ use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// The name a value stands for: a String as itself, and anything else
+    /// through `to_path`, which is how Ruby reads a path argument.
+    fn path_text(
+        &mut self,
+        method_name: &str,
+        given: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(text) = given {
+            return Ok(text.as_str().to_string());
+        }
+        if self
+            .send_to_object(
+                given.clone(),
+                "respond_to?",
+                vec![Object::symbol("to_path".to_string())],
+                position,
+            )?
+            .is_truthy()
+        {
+            let named = self.send_to_object(given.clone(), "to_path", Vec::new(), position)?;
+            if let Object::String(text) = &named {
+                return Ok(text.as_str().to_string());
+            }
+        }
+        Err(method_argument_type_error(
+            method_name,
+            "String",
+            given,
+            position,
+        ))
+    }
+
     pub(crate) fn call_file_dir_methods(
         &mut self,
         class_rc: &Rc<Class>,
@@ -520,7 +553,41 @@ impl VirtualMachine {
             // `(File.umask & 0002) == 0` can run; this isn't
             // process-accurate but is enough for the autoload tmp-dir
             // bootstrap.
-            "umask" => Ok(Some(Object::Int(0o022))),
+            // The bits the operating system clears from the mode of every
+            // file this process makes. With an argument it is set to that
+            // and the one it held is answered.
+            "umask" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error("umask", 1, arguments.len(), position));
+                }
+                let Some(wanted) = arguments.first() else {
+                    let held = unsafe { libc::umask(0) };
+                    unsafe { libc::umask(held) };
+                    return Ok(Some(Object::Int(held as i64)));
+                };
+                let asked = match wanted {
+                    Object::Int(value) => *value,
+                    Object::BigInt(_) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "RangeError",
+                            "bignum too big to convert into `long'",
+                            position,
+                        ));
+                    }
+                    other => {
+                        match self.send_to_object(other.clone(), "to_int", Vec::new(), position)? {
+                            Object::Int(value) => value,
+                            _ => {
+                                return Err(method_argument_type_error(
+                                    "umask", "Integer", other, position,
+                                ));
+                            }
+                        }
+                    }
+                };
+                let held = unsafe { libc::umask(asked as libc::mode_t) };
+                Ok(Some(Object::Int(held as i64)))
+            }
             // File.stat — returns a stub File::Stat object. The class is
             // memoized as a global so subsequent stat()s share its method
             // table; `world_writable?` and `sticky?` are stubbed to return
@@ -637,8 +704,15 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // A time written as nil is this moment, which is what
+                // touching a file with no times given sets.
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|held| held.as_secs_f64())
+                    .unwrap_or_default();
                 let seconds = |value: &Object| -> f64 {
                     match value {
+                        Object::Nil => now,
                         Object::Int(held) => *held as f64,
                         Object::Float(held) => *held,
                         other => self_seconds(other).unwrap_or(0.0),
@@ -647,15 +721,11 @@ impl VirtualMachine {
                 let accessed = seconds(&arguments[0]);
                 let modified = seconds(&arguments[1]);
                 let mut touched = 0i64;
-                for argument in &arguments[2..] {
-                    let Object::String(path) = argument else {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            argument,
-                            position,
-                        ));
-                    };
+                let named: Vec<String> = arguments[2..]
+                    .iter()
+                    .map(|argument| self.path_text(method_name, argument, position))
+                    .collect::<Result<Vec<String>, MetorexError>>()?;
+                for path in &named {
                     let times = [
                         libc::timeval {
                             tv_sec: accessed.trunc() as libc::time_t,
@@ -868,7 +938,7 @@ impl VirtualMachine {
                 record("ftype", Object::string(ftype.to_string()));
                 Ok(Some(Object::Dict(Rc::new(std::cell::RefCell::new(fields)))))
             }
-            "new" | "open" => {
+            "new" | "open" | "__open_path__" => {
                 use crate::object::{Instance, Method};
                 if arguments.is_empty() {
                     return Err(method_argument_error("open", 1, 0, position));
@@ -930,8 +1000,22 @@ impl VirtualMachine {
                 inst_rc
                     .borrow_mut()
                     .set_var("__file_mode".to_string(), Object::string(mode));
+                // `encoding: "UTF-8:ISO-8859-1"` names the encodings a file
+                // is read and written in, the way a mode string's own suffix
+                // does.
+                if let Some(Object::Dict(options)) = arguments.last()
+                    && let Some(named) = options.borrow().get(":encoding")
+                {
+                    inst_rc
+                        .borrow_mut()
+                        .set_var("__file_encoding".to_string(), named.clone());
+                }
                 let handle = Object::Instance(inst_rc);
+                // Opening happens now rather than at the first read, so a
+                // name that stands for nothing is refused here, and a stream
+                // opened for writing brings the file into being.
                 let block = self.pending_block.take();
+                self.send_to_object(handle.clone(), "__stream_handle__", Vec::new(), position)?;
                 if let Some(Object::Block(b)) = block {
                     let result = self.execute_block_callable(&b, vec![handle], position);
                     return result.map(Some);
@@ -1158,14 +1242,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let path_str = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
-                    other => {
-                        return Err(method_argument_type_error(
-                            "realpath", "String", other, position,
-                        ));
-                    }
-                };
+                let path_str = self.path_text("realpath", &arguments[0], position)?;
                 let base = if arguments.len() == 2 {
                     match &arguments[1] {
                         Object::String(s) => s.as_str().to_string(),
@@ -1190,19 +1267,36 @@ impl VirtualMachine {
                     std::env::current_dir().unwrap_or_default().join(base_path)
                 };
                 let expanded = base_path.join(&path_str);
-                match expanded.canonicalize() {
+                let resolved = match expanded.canonicalize() {
+                    // `realdirpath` asks only that the directories exist, so
+                    // a last part that stands for nothing is kept as written.
+                    Err(problem)
+                        if method_name == "realdirpath"
+                            && problem.kind() == std::io::ErrorKind::NotFound =>
+                    {
+                        directory_real_path(&expanded)
+                    }
+                    other => other,
+                };
+                match resolved {
                     Ok(p) => Ok(Some(Object::string(p.to_string_lossy().to_string()))),
                     Err(e) => {
-                        let exc = if e.kind() == std::io::ErrorKind::NotFound {
-                            Object::exception(
+                        let exc = match e.raw_os_error() {
+                            Some(libc::ELOOP) => Object::exception(
+                                "Errno::ELOOP",
+                                format!(
+                                    "Too many levels of symbolic links @ realpath - {}",
+                                    path_str
+                                ),
+                            ),
+                            _ if e.kind() == std::io::ErrorKind::NotFound => Object::exception(
                                 "Errno::ENOENT",
                                 format!("No such file or directory @ realpath - {}", path_str),
-                            )
-                        } else {
-                            Object::exception(
+                            ),
+                            _ => Object::exception(
                                 "Errno::ENOTDIR",
                                 format!("Not a directory @ realpath - {}", path_str),
-                            )
+                            ),
                         };
                         Err(MetorexError::UncaughtException {
                             exception: exc.clone(),
@@ -1368,24 +1462,25 @@ impl VirtualMachine {
                     std::env::current_dir().unwrap_or_default().join(base_path)
                 };
                 let expanded = base_path.join(&path_str);
-                let result = match expanded.canonicalize() {
-                    Ok(p) => p.to_string_lossy().to_string(),
-                    Err(_) => {
-                        let mut components = Vec::new();
-                        for comp in expanded.components() {
-                            match comp {
-                                std::path::Component::ParentDir => {
-                                    components.pop();
-                                }
-                                std::path::Component::CurDir => {}
-                                _ => components.push(comp),
+                // Ruby reads the path itself rather than the filesystem, so a
+                // symlink along the way stands as it was written and `..`
+                // never climbs above the root.
+                let mut components = Vec::new();
+                for comp in expanded.components() {
+                    match comp {
+                        std::path::Component::ParentDir => {
+                            if components.len() > 1 {
+                                components.pop();
                             }
                         }
-                        let normalized: std::path::PathBuf = components.iter().collect();
-                        normalized.to_string_lossy().to_string()
+                        std::path::Component::CurDir => {}
+                        _ => components.push(comp),
                     }
-                };
-                Ok(Some(Object::string(result)))
+                }
+                let normalized: std::path::PathBuf = components.iter().collect();
+                Ok(Some(Object::string(
+                    normalized.to_string_lossy().to_string(),
+                )))
             }
             _ => Ok(None),
         }
@@ -1410,6 +1505,21 @@ impl VirtualMachine {
         // predicates read when they are handed one.
         if self.responds_to(candidate, "to_io") {
             let named = self.send_to_object(candidate.clone(), "to_io", vec![], position)?;
+            if let Object::Instance(_) = &named
+                && self.responds_to(&named, "fileno")
+            {
+                // A stream opened over a file names that file. One opened
+                // over anything else is named by its descriptor, which the
+                // system carries under a directory of its own.
+                let path = self.send_to_object(named.clone(), "path", vec![], position)?;
+                if matches!(path, Object::String(_)) {
+                    return Ok(Some(path));
+                }
+                let number = self.send_to_object(named.clone(), "fileno", vec![], position)?;
+                if let Object::Int(held) = number {
+                    return Ok(Some(Object::string(format!("/dev/fd/{held}"))));
+                }
+            }
             if matches!(named, Object::String(_) | Object::Instance(_)) {
                 return Ok(Some(named));
             }
@@ -1634,5 +1744,29 @@ fn expanded_home(path: &str) -> String {
             Err(_) => path.to_string(),
         },
         None => path.to_string(),
+    }
+}
+
+/// The path `realdirpath` answers for a name whose last part stands for
+/// nothing: the directories are resolved, a link in the last place is
+/// followed once, and the name itself is kept.
+fn directory_real_path(expanded: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    let followed = match std::fs::symlink_metadata(expanded) {
+        Ok(held) if held.file_type().is_symlink() => {
+            let target = std::fs::read_link(expanded)?;
+            if target.is_absolute() {
+                target
+            } else {
+                expanded
+                    .parent()
+                    .unwrap_or(std::path::Path::new("/"))
+                    .join(target)
+            }
+        }
+        _ => expanded.to_path_buf(),
+    };
+    match (followed.parent(), followed.file_name()) {
+        (Some(holding), Some(named)) => Ok(holding.canonicalize()?.join(named)),
+        _ => followed.canonicalize(),
     }
 }

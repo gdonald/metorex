@@ -34,7 +34,12 @@ impl VirtualMachine {
         // ends up reaching the parent method.
         let super_block = match trailing_block {
             Some(block) => Some(self.evaluate_expression(block)?),
-            None => None,
+            // With no block of its own, `super` hands the parent the block
+            // this method was called with.
+            None => self
+                .environment()
+                .get("__block__")
+                .filter(|held| matches!(held, Object::Block(_))),
         };
         // Get the current method name from the call stack.
         // The call stack stores method names as "Class#method".
@@ -213,17 +218,15 @@ impl VirtualMachine {
             .cloned()
             .flatten()
             .filter(|owner| chain.iter().any(|c| Rc::ptr_eq(c, owner)));
-        let defining_class = recorded_owner
-            .or_else(|| chain.iter().find(|c| c.name() == class_name).cloned())
-            .ok_or_else(|| {
-                MetorexError::runtime_error(
-                    format!(
-                        "Could not find defining class '{}' in inheritance chain",
-                        class_name
-                    ),
-                    position_to_location(position),
-                )
-            })?;
+        // A method bound into a hierarchy its own module is not part of has
+        // no place in the chain. `super` from it reaches whatever the
+        // receiver's own ancestors define, so the search starts at the top.
+        let placed =
+            recorded_owner.or_else(|| chain.iter().find(|c| c.name() == class_name).cloned());
+        let defining_class = match &placed {
+            Some(found) => Rc::clone(found),
+            None => Rc::clone(&chain[0]),
+        };
 
         // Locate the method in the ancestor chain AFTER the defining class.
         // In Ruby, `super` looks up the next method in the chain — that may
@@ -231,13 +234,20 @@ impl VirtualMachine {
         // defining class brings in, OR on a class/module further up.
         let next_in_chain: Option<(Rc<Class>, Rc<crate::object::Method>)> = {
             let mut found = None;
-            // Position in the overall chain where defining_class sits.
-            let start_idx = chain.iter().position(|c| Rc::ptr_eq(c, &defining_class));
-            if let Some(idx) = start_idx {
+            // How much of the chain the defining class stands above, which
+            // is the whole of it when the method belongs nowhere in it.
+            let start_at = match &placed {
+                Some(found) => chain
+                    .iter()
+                    .position(|c| Rc::ptr_eq(c, found))
+                    .map(|at| at + 1),
+                None => Some(0),
+            };
+            if let Some(idx) = start_at {
                 // The chain is already linearized, so each ancestor is asked
                 // only for its own method. Walking its mixins and prepends
                 // again would hand back the method `super` was called from.
-                for anc in chain.iter().skip(idx + 1) {
+                for anc in chain.iter().skip(idx) {
                     if let Some(method) = anc.find_own_method(&method_name) {
                         found = Some((Rc::clone(anc), method));
                         break;
@@ -383,6 +393,24 @@ impl VirtualMachine {
                 // nothing at all.
                 if method_name == "initialize" {
                     return Self::object_initialize(&evaluated_args, position);
+                }
+                // A collection the program subclassed answers the methods of
+                // the collection it is backed by, and those live in the
+                // native table rather than in any method map above. Only an
+                // instance is backed that way, and a class reaching its own
+                // native method through here would find this same method
+                // again.
+                let backing = self.builtins().class_of(&self_val);
+                if matches!(self_val, Object::Instance(_))
+                    && let Some(result) = self.call_native_method(
+                        backing.as_ref(),
+                        &self_val,
+                        &method_name,
+                        &evaluated_args,
+                        position,
+                    )?
+                {
+                    return Ok(result);
                 }
                 // Nothing above the defining class answers the call, which
                 // Ruby reports as a NoMethodError naming the method.

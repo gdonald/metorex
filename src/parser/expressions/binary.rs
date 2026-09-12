@@ -17,7 +17,7 @@ impl Parser {
     pub(crate) fn parse_logical_or(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_logical_and()?;
 
-        let keyword_binds_here = self.paren_less_arg_depth == 0;
+        let keyword_binds_here = self.paren_less_arg_depth == 0 && self.assignment_rhs_depth == 0;
         while self.check(&[TokenKind::LogicalOr])
             || (keyword_binds_here && self.check(&[TokenKind::KeywordOr]))
         {
@@ -41,7 +41,7 @@ impl Parser {
     pub(crate) fn parse_logical_and(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_equality()?;
 
-        let keyword_binds_here = self.paren_less_arg_depth == 0;
+        let keyword_binds_here = self.paren_less_arg_depth == 0 && self.assignment_rhs_depth == 0;
         while self.check(&[TokenKind::LogicalAnd])
             || (keyword_binds_here && self.check(&[TokenKind::KeywordAnd]))
         {
@@ -76,9 +76,15 @@ impl Parser {
                 // =~ and !~ are dispatched as method calls
                 self.skip_whitespace();
                 let right = self.parse_comparison()?;
+                // A pattern written out on the left leaves its named
+                // captures behind as local variables.
+                let named = matches!(op_token.kind, TokenKind::Match)
+                    && matches!(expr, Expression::RegexLiteral { .. });
                 let method_call = Expression::MethodCall {
                     receiver: Box::new(expr),
-                    method: if op_token.kind == TokenKind::Match {
+                    method: if named {
+                        "__match_named__".to_string()
+                    } else if op_token.kind == TokenKind::Match {
                         "=~".to_string()
                     } else {
                         "!~".to_string()

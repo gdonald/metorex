@@ -503,7 +503,10 @@ impl VirtualMachine {
             }
             "to_sym" => match receiver {
                 Object::Symbol(_) => Ok(Some(receiver.clone())),
-                Object::String(s) => Ok(Some(Object::Symbol(s.clone()))),
+                Object::String(s) => {
+                    crate::symbol_registry::record(&s.as_str());
+                    Ok(Some(Object::Symbol(s.clone())))
+                }
                 _ => Ok(None),
             },
             // Kernel's conversion functions are private instance methods on
@@ -952,6 +955,13 @@ impl VirtualMachine {
                 // A class is an instance of Class, a module an instance of
                 // Module. `class_of` answers Object for both because it drives
                 // `is_a?` over the inheritance chain.
+                // An encoding is held as a class whose parent is Encoding,
+                // and what it stands for is an Encoding rather than a class.
+                if self.names_an_encoding(receiver)
+                    && let Some(held @ Object::Class(_)) = self.globals().get("Encoding")
+                {
+                    return Ok(Some(held));
+                }
                 match receiver {
                     Object::Class(_) => {
                         if let Some(Object::Class(cls)) = self.globals().get("Class") {
@@ -1051,6 +1061,17 @@ impl VirtualMachine {
                         bound.owner = Some(owner.ruby_name());
                         bound.owner_class = Some(owner);
                     }
+                    // `public :name` inside a class makes that class the
+                    // owner of the method it opened up, whichever ancestor
+                    // wrote it. The ancestor that wrote it is kept, since
+                    // that is where `super` carries on from.
+                    if resolved_class.has_public_override(&name_str) {
+                        if bound.origin_class.is_none() {
+                            bound.origin_class = bound.owner_class.clone();
+                        }
+                        bound.owner = Some(resolved_class.ruby_name());
+                        bound.owner_class = Some(std::rc::Rc::clone(&resolved_class));
+                    }
                     if bound.owner_class.is_none() {
                         bound.owner_class = Some(resolved_class);
                     }
@@ -1124,7 +1145,12 @@ impl VirtualMachine {
                 // has a method as far as Ruby is concerned, so hand out one
                 // that routes through `method_missing`.
                 if self.responds_via_missing(receiver, &name_str, !public_only, position)? {
-                    let stub = method_missing_dispatcher(&name_str, receiver, position);
+                    let mut stub = method_missing_dispatcher(&name_str, receiver, position);
+                    // The method belongs to the class that claimed the name,
+                    // which is the receiver's own.
+                    let owner = self.builtins().class_of(receiver);
+                    stub.owner = Some(owner.ruby_name());
+                    stub.owner_class = Some(owner);
                     return Ok(Some(Object::Method(std::rc::Rc::new(stub))));
                 }
                 let cls = self.builtins().class_of(receiver);
@@ -1301,6 +1327,17 @@ impl VirtualMachine {
                         })
                         .map(|k| Object::symbol(format!("@{}", k)))
                         .collect()
+                } else if let Some(address) = Self::collection_address(receiver) {
+                    // A collection or a String keeps its instance variables
+                    // aside, since it has nowhere of its own to put them.
+                    self.collection_variables
+                        .get(&address)
+                        .map(|held| {
+                            held.keys()
+                                .map(|name| Object::symbol(format!("@{}", name)))
+                                .collect()
+                        })
+                        .unwrap_or_default()
                 } else {
                     vec![]
                 };
@@ -1370,13 +1407,15 @@ impl VirtualMachine {
                             .get_class_var(&format!("@{}", clean_name))
                             .unwrap_or(Object::Nil),
                     )),
-                    Object::Array(_) | Object::Dict(_) | Object::Set(_) => Ok(Some(
-                        Self::collection_address(receiver)
-                            .and_then(|address| self.collection_variables.get(&address))
-                            .and_then(|held| held.get(clean_name))
-                            .cloned()
-                            .unwrap_or(Object::Nil),
-                    )),
+                    Object::Array(_) | Object::Dict(_) | Object::Set(_) | Object::String(_) => {
+                        Ok(Some(
+                            Self::collection_address(receiver)
+                                .and_then(|address| self.collection_variables.get(&address))
+                                .and_then(|held| held.get(clean_name))
+                                .cloned()
+                                .unwrap_or(Object::Nil),
+                        ))
+                    }
                     Object::Module(module_rc) => Ok(Some(
                         module_rc
                             .get_class_var(&format!("@{}", clean_name))
@@ -1475,7 +1514,7 @@ impl VirtualMachine {
                     }
                     // A collection has nowhere of its own to keep an instance
                     // variable, so the VM records it against the collection.
-                    Object::Array(_) | Object::Dict(_) | Object::Set(_) => {
+                    Object::Array(_) | Object::Dict(_) | Object::Set(_) | Object::String(_) => {
                         if self.object_is_frozen(receiver) {
                             return Err(self.frozen_modification_error(receiver, position));
                         }
@@ -1539,6 +1578,11 @@ impl VirtualMachine {
                 if let Object::Exception(exc) = receiver {
                     let actual = exc.borrow().exception_type.clone();
                     return Ok(Some(Object::Bool(actual == target_class.name())));
+                }
+                // An encoding stands for an Encoding rather than for the
+                // class it is held as.
+                if self.names_an_encoding(receiver) {
+                    return Ok(Some(Object::Bool(target_class.name() == "Encoding")));
                 }
                 // A Class is an instance of Class and a Module of Module,
                 // which `class_of` does not report: it answers Object for
@@ -1904,8 +1948,22 @@ impl VirtualMachine {
                 } else {
                     self.coerce_method_name(&arguments.remove(0), method_name, position)?
                 };
-                self.build_enumerator(receiver.clone(), &enumerated, arguments, None, position)
-                    .map(Some)
+                // `to_enum { 100 }` names the size with a block, which is
+                // only run when the size is asked for.
+                let sizing = self.pending_block.take();
+                let held = self.build_enumerator(
+                    receiver.clone(),
+                    &enumerated,
+                    arguments,
+                    None,
+                    position,
+                )?;
+                if let (Some(block @ Object::Block(_)), Object::Instance(instance)) =
+                    (sizing, &held)
+                {
+                    instance.borrow_mut().set_var("size".to_string(), block);
+                }
+                Ok(Some(held))
             }
             "then" | "yield_self" | "tap" => {
                 let block = match self.pending_block.take() {
@@ -2501,11 +2559,69 @@ pub(crate) fn binary_op_for_method_name(name: &str) -> Option<crate::ast::Binary
 impl VirtualMachine {
     /// The integer `Object#hash` answers. Value types digest their canonical
     /// string form so equal values agree; everything else uses its identity.
+    /// The digest a value carries when it sits inside a collection. A
+    /// collection there stands for its kind and how much it holds, which is
+    /// what lets one holding itself be hashed at all.
+    pub(crate) fn shallow_digest(
+        &mut self,
+        held: &Object,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let marked = |kind: i64, count: usize| kind.wrapping_mul(1_000_003) ^ count as i64;
+        match held {
+            Object::Dict(entries) => Ok(marked(1, entries.borrow().len())),
+            Object::Array(items) => Ok(marked(2, items.borrow().len())),
+            Object::Set(items) => Ok(marked(3, items.borrow().len())),
+            other => self.hash_digest(other, position),
+        }
+    }
+
     pub(crate) fn hash_digest(
         &mut self,
         receiver: &Object,
         position: Position,
     ) -> Result<i64, MetorexError> {
+        // Two names for one method hash alike, so the hash comes from the
+        // definition they share rather than from the object holding it.
+        if let Object::Method(method) = receiver {
+            // The name the method was defined under tells two aliases apart
+            // from two different methods.
+            let named = method
+                .original_name
+                .clone()
+                .or_else(|| method.native_alias.clone())
+                .unwrap_or_else(|| method.name.clone());
+            // Two names for one native method stand for that method, so they
+            // hash alike.
+            let owner_name = method
+                .owner_class
+                .as_ref()
+                .map(|held| held.name().to_string())
+                .or_else(|| method.owner.clone())
+                .unwrap_or_default();
+            let named = native_alias_target(&owner_name, &named)
+                .unwrap_or(named.as_str())
+                .to_string();
+            // A method bound to an object belongs to that object's class,
+            // whatever the lookup walked past to reach it. Two names for one
+            // native method are reported under different owners, and they are
+            // still the one method.
+            let owner = match method.receiver.as_deref() {
+                Some(held) => self.builtins().class_of(held).name().to_string(),
+                None => method.owner.clone().unwrap_or_default(),
+            };
+            let mut digest: i64 = 0;
+            for byte in named.bytes().chain(owner.bytes()) {
+                digest = digest.wrapping_mul(31).wrapping_add(byte as i64);
+            }
+            if let Some(held) = method.receiver.as_deref() {
+                let id = self.call_object_method(held, "object_id", &[], position)?;
+                if let Some(Object::Int(id)) = id {
+                    digest = digest.wrapping_mul(31).wrapping_add(id);
+                }
+            }
+            return Ok(digest);
+        }
         if let Some(hashable) = crate::object::ObjectHash::from_object(receiver) {
             let mut digest: i64 = 0;
             for byte in hashable.hash_value.bytes() {
@@ -2638,11 +2754,15 @@ fn body_defines_a_method(body: &[crate::ast::Statement]) -> bool {
 
 /// The name a native method is really spelled with, for the aliases Ruby
 /// documents as the same method rather than a separate one.
-fn native_alias_target<'a>(class_name: &str, method_name: &'a str) -> Option<&'a str> {
+pub(crate) fn native_alias_target<'a>(class_name: &str, method_name: &'a str) -> Option<&'a str> {
     match (class_name, method_name) {
         // Integer answers these natively, so they are its own rather than
         // the Numeric versions the prelude also declares.
         ("Integer", "zero?") => Some("zero?"),
+        // An Array renders itself the same way whichever of the two names
+        // the call is written with.
+        ("Array", "to_s") => Some("inspect"),
+        ("Hash", "to_s") => Some("inspect"),
         ("Set", "to_s") => Some("inspect"),
         ("Set", "===") | ("Set", "member?") => Some("include?"),
         ("Set", "length") => Some("size"),
@@ -2685,5 +2805,19 @@ impl VirtualMachine {
         let made = Object::string(text);
         self.globals_mut().set(slot, made.clone());
         made
+    }
+}
+
+impl VirtualMachine {
+    /// Whether an object is one of the encodings, which metorex holds as a
+    /// class of its own under `Encoding`.
+    pub(crate) fn names_an_encoding(&self, receiver: &Object) -> bool {
+        let Object::Class(held) = receiver else {
+            return false;
+        };
+        let Some(parent) = held.superclass() else {
+            return false;
+        };
+        parent.name() == "Encoding"
     }
 }

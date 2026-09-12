@@ -598,15 +598,27 @@ impl VirtualMachine {
             // `quo(other)` — exact division, so Integer / Integer answers a
             // Rational rather than truncating.
             "quo" => {
-                let Some(Object::Int(divisor)) = arguments.first() else {
-                    if arguments.len() != 1 {
-                        return Err(method_argument_error(
-                            method_name,
-                            1,
-                            arguments.len(),
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                // Dividing by a Float answers a Float, and dividing by a
+                // number too large for a machine word answers one too.
+                if matches!(arguments[0], Object::Float(_) | Object::BigInt(_)) {
+                    return self
+                        .send_to_object(
+                            Object::Float(*n as f64),
+                            "/",
+                            vec![arguments[0].clone()],
                             position,
-                        ));
-                    }
+                        )
+                        .map(Some);
+                }
+                let Some(Object::Int(divisor)) = arguments.first() else {
                     return Err(method_argument_type_error(
                         method_name,
                         "Integer",
@@ -913,6 +925,28 @@ impl VirtualMachine {
             "integer?" => {
                 no_arguments(0)?;
                 Ok(Some(Object::Bool(true)))
+            }
+            // Exact division, which answers a Rational for a whole divisor
+            // and a Float for one that is not.
+            "quo" => {
+                no_arguments(1)?;
+                if matches!(arguments[0], Object::Float(_)) {
+                    let left = value.to_string().parse::<f64>().unwrap_or(f64::NAN);
+                    return self
+                        .send_to_object(
+                            Object::Float(left),
+                            "/",
+                            vec![arguments[0].clone()],
+                            position,
+                        )
+                        .map(Some);
+                }
+                let divisor = self.coerce_integer_argument(&arguments[0], position)?;
+                if divisor == BigInt::from(0) {
+                    return Err(super::super::errors::divide_by_zero_error(position));
+                }
+                self.make_rational((**value).clone(), divisor, position)
+                    .map(Some)
             }
             _ => Ok(None),
         }

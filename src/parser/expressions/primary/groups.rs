@@ -12,6 +12,18 @@ impl Parser {
         &mut self,
         token_position: Position,
     ) -> Result<Expression, MetorexError> {
+        // A group is its own run of expressions, so `and` and `or` bind
+        // inside it the way they do anywhere else.
+        let held = std::mem::take(&mut self.assignment_rhs_depth);
+        let parsed = self.parse_paren_group_body(token_position);
+        self.assignment_rhs_depth = held;
+        parsed
+    }
+
+    fn parse_paren_group_body(
+        &mut self,
+        token_position: Position,
+    ) -> Result<Expression, MetorexError> {
         // `()` holds no expression at all, which Ruby reads as nil.
         self.skip_whitespace();
         if self.match_token(&[TokenKind::RParen]) {
@@ -83,7 +95,12 @@ impl Parser {
             }
         }
         self.expect(TokenKind::RParen, "Expected ')' after expression")?;
-        if body.len() < 2 {
+        // One statement stands on its own here only when reading it as a
+        // plain expression would lose it, which is what a multiple assignment
+        // written inside a group does.
+        let holds_one_assignment =
+            body.len() == 1 && matches!(body[0], crate::ast::Statement::MultipleAssignment { .. });
+        if body.len() < 2 && !holds_one_assignment {
             return Err(self.error_at_previous("Expected ')' after expression"));
         }
         Ok(Expression::BeginRescue {
@@ -116,7 +133,11 @@ impl Parser {
                 | Expression::GlobalVariable { .. }
                 | Expression::Index { .. }
         ) || matches!(&expr, Expression::MethodCall { method, arguments, .. }
-            if method == "[]" || arguments.is_empty());
+            if method == "[]"
+                || arguments.is_empty()
+                // `held&.name = value` names the setter behind the safe call.
+                || (method == crate::parser::SAFE_CALL
+                    && matches!(arguments.as_slice(), [Expression::Symbol { .. }])));
         let compound = [
             (TokenKind::PlusEqual, crate::ast::BinaryOp::Add),
             (TokenKind::MinusEqual, crate::ast::BinaryOp::Subtract),
@@ -150,7 +171,9 @@ impl Parser {
         } else if assignable && self.check(&[TokenKind::Equal]) {
             let eq_pos = self.advance().position;
             self.skip_whitespace();
-            let value = self.parse_expression()?;
+            // `a = b = c` assigns rightward first, so the value is itself
+            // read as an assignment.
+            let value = self.parse_expression_with_assignment()?;
             Expression::BinaryOp {
                 op: crate::ast::BinaryOp::Assign,
                 left: Box::new(expr),
@@ -294,6 +317,24 @@ impl Parser {
                         value: name,
                         position: ident_token.position,
                     }
+                } else if self.check(&[TokenKind::StarStar]) {
+                    // `{**held, a: 1}` spreads what `held` holds into the
+                    // hash being built.
+                    let star = self.advance().position;
+                    self.skip_whitespace();
+                    let spread = self.parse_expression()?;
+                    entries.push((
+                        Expression::KeywordSplat {
+                            expression: Box::new(spread),
+                            position: star,
+                        },
+                        Expression::NilLiteral { position: star },
+                    ));
+                    self.skip_whitespace();
+                    if !self.match_token(&[TokenKind::Comma]) {
+                        break;
+                    }
+                    continue;
                 } else {
                     self.dict_literal_depth += 1;
                     let key_result = self.parse_expression();

@@ -145,6 +145,63 @@ end
 # methods a subclass supplies. Integer and Float reach their own native
 # implementations first, so what is here serves the subclasses a program writes.
 class Numeric
+  # Exact division. A number metorex has no arithmetic of its own for is
+  # asked for the rational it stands for, and that is divided instead.
+  def quo(other)
+    converted = to_r
+    unless converted.is_a?(Rational)
+      raise TypeError, "can't convert #{self.class} into Rational"
+    end
+    converted / other
+  end
+
+  # A real number stands at angle zero when it is positive and at Pi when it
+  # is negative, which is where it sits on the complex plane.
+  def arg
+    return self if respond_to?(:nan?) && nan?
+    self < 0 ? Math::PI : 0
+  end
+
+  alias_method :angle, :arg
+  alias_method :phase, :arg
+
+  # The same number written as a distance and an angle.
+  def polar
+    [abs, arg]
+  end
+
+  # A real number has no imaginary part, so its rectangular form is itself
+  # and zero.
+  def rect
+    [self, 0]
+  end
+
+  alias_method :rectangular, :rect
+
+  # The square of the distance from zero, which a number reaches by
+  # multiplying itself.
+  def abs2
+    self * self
+  end
+
+  # `2.i` is the complex number whose imaginary part is the number itself.
+  def i
+    Complex(0, self)
+  end
+
+  # A number stands as the real part of a complex number with no imaginary
+  # part of its own.
+  def to_c
+    Complex(self, 0)
+  end
+
+  # Ruby negates a number it has no arithmetic of its own for by asking it to
+  # coerce zero, then subtracting it from what came back.
+  def -@
+    first, second = coerce(0)
+    first - second
+  end
+
   def abs
     self < 0 ? -self : self
   end
@@ -243,11 +300,14 @@ class Numeric
   end
 
   # `remainder` truncates the division where `modulo` floors it, so the two
-  # differ by one divisor whenever the signs disagree.
+  # differ by one divisor whenever the signs disagree. Anything that is not
+  # a number is asked to coerce the pair first.
   def remainder(other)
-    left = self % other
+    mine = self
+    mine, other = other.coerce(self) unless other.is_a?(Numeric)
+    left = mine % other
     return left if left == 0
-    return left - other if (self < 0 && other > 0) || (self > 0 && other < 0)
+    return left - other if (mine < 0 && other > 0) || (mine > 0 && other < 0)
     left
   end
 
@@ -310,7 +370,7 @@ module Enumerable
   # carrying the receiver's own size so `enum.size` answers without walking
   # the values. A receiver that reports no size leaves the Enumerator's nil.
   def sized_enum(name, *args)
-    Enumerator.new(self, name, args, respond_to?(:size) ? size : nil)
+    Enumerator.over(self, name, args, respond_to?(:size) ? size : nil)
   end
   private :sized_enum
 
@@ -330,10 +390,21 @@ module Enumerable
     self
   end
 
-  def map
-    return sized_enum(:map) unless block_given?
+  # The walk hands the block whatever `each` yields, and the block written
+  # for the walk decides how many of those values it takes. The inner block
+  # takes the same count, so an `each` that reads the block it was handed
+  # sees the shape the caller wrote.
+  def map(&block)
+    return sized_enum(:map) if block.nil?
     collected = []
-    each { |*values| collected.push(yield(packed(values))) }
+    case block.arity
+    when 1
+      each { |one| collected.push(block.call(one)) }
+    when 2
+      each { |one, two| collected.push(block.call(one, two)) }
+    else
+      each { |*values| collected.push(block.call(*values)) }
+    end
     collected
   end
 
@@ -647,13 +718,51 @@ module Enumerable
     keyed.sort { |left, right| left[0] <=> right[0] }.map { |pair| pair[1] }
   end
 
+  # What a comparison block answered, read as an ordering. Ruby asks a value
+  # that is not already a number which side of zero it falls on.
+  def compared_to_zero(held)
+    return held if held.is_a?(Integer)
+    if held.nil?
+      raise ArgumentError, "comparison failed"
+    end
+    return 1 if held > 0
+    return -1 if held < 0
+    0
+  end
+  private :compared_to_zero
+
+  # The smallest value the walk hands over, decided by the block where one is
+  # given. The block is handed the value being looked at and the one held so
+  # far.
+  def pick_by_comparison(wanted, &block)
+    held = nil
+    seen = false
+    each do |*values|
+      value = packed(values)
+      if !seen
+        held = value
+        seen = true
+      elsif compared_to_zero(block.call(value, held)) == wanted
+        held = value
+      end
+    end
+    held
+  end
+  private :pick_by_comparison
+
   def min(*count, &block)
+    if !block.nil? && (count.empty? || count[0].nil?)
+      return pick_by_comparison(-1, &block)
+    end
     ordered = to_a.sort(&block)
     return ordered.first if count.empty? || count[0].nil?
     ordered.first(count[0])
   end
 
   def max(*count, &block)
+    if !block.nil? && (count.empty? || count[0].nil?)
+      return pick_by_comparison(1, &block)
+    end
     ordered = to_a.sort(&block)
     return ordered.last if count.empty? || count[0].nil?
     ordered.last(count[0]).reverse
@@ -767,7 +876,9 @@ module Enumerable
   def zip_partner(other)
     return other if other.is_a?(Array)
     return other.to_ary if other.respond_to?(:to_ary)
-    if other.respond_to?(:to_enum) || other.respond_to?(:each)
+    # Every object answers `to_enum`, so the walk is only taken where there
+    # is an `each` for it to run.
+    if other.respond_to?(:each)
       return other.to_enum(:each).to_a
     end
     raise TypeError, "wrong argument type #{other.class} (must respond to :each)"
@@ -803,7 +914,7 @@ module Enumerable
     size = slice_width(size)
     unless block_given?
       batches = respond_to?(:size) && !self.size.nil? ? (self.size + size - 1) / size : nil
-      return Enumerator.new(self, :each_slice, [size], batches)
+      return Enumerator.over(self, :each_slice, [size], batches)
     end
     batch = []
     each do |*values|
@@ -825,7 +936,7 @@ module Enumerable
         windows = self.size - size + 1
         windows = 0 if windows < 0
       end
-      return Enumerator.new(self, :each_cons, [size], windows)
+      return Enumerator.over(self, :each_cons, [size], windows)
     end
     window = []
     each do |*values|
@@ -968,7 +1079,7 @@ module Enumerable
       run.push(element)
     end
     grouped.push([key, run]) unless run.empty?
-    Enumerator.new(grouped, :each, [], grouped.size)
+    Enumerator.over(grouped, :each, [], grouped.size)
   end
 
   # The runs where each neighboring pair answers true, so a false answer
@@ -1012,7 +1123,7 @@ module Enumerable
       run.push(element)
     end
     grouped.push(run) unless run.empty?
-    Enumerator.new(grouped, :each, [], grouped.size)
+    Enumerator.over(grouped, :each, [], grouped.size)
   end
   private :grouped_runs
 
@@ -1030,7 +1141,7 @@ module Enumerable
       run.push(element)
     end
     grouped.push(run) unless run.empty?
-    Enumerator.new(grouped, :each, [], grouped.size)
+    Enumerator.over(grouped, :each, [], grouped.size)
   end
 
   # The runs that end at every element the pattern or block picks out.
@@ -1047,7 +1158,7 @@ module Enumerable
       end
     end
     grouped.push(run) unless run.empty?
-    Enumerator.new(grouped, :each, [], grouped.size)
+    Enumerator.over(grouped, :each, [], grouped.size)
   end
 
   # The walks run in order, which is what a chain is.
@@ -1306,6 +1417,12 @@ end
 
 class Thread
   class Backtrace
+    # How many frames under the top one a report writes out, which
+    # `--backtrace-limit` settles and which is -1 when it was not written.
+    def self.limit
+      $__backtrace_limit__.nil? ? -1 : $__backtrace_limit__
+    end
+
     class Location
       attr_reader :path, :lineno, :label, :absolute_path
 
@@ -1433,6 +1550,10 @@ class StringIO
   def pos=(offset)
     raise Errno::EINVAL, "Invalid argument" if offset < 0
     @position = characters_before offset
+    # An offset that lands inside a character leaves the cursor between
+    # two of them, which only a reader of code points minds.
+    @misaligned = @string[0, @position].bytesize != offset
+    offset
   end
 
   # The number of characters standing before a byte offset.
@@ -1443,7 +1564,10 @@ class StringIO
       seen += @string[at].bytesize
       at += 1
     end
-    at + (counted - seen)
+    # An offset past the end counts what lies beyond it, and one that lands
+    # inside a character stops at the character it landed in.
+    return at + (counted - seen) if seen < counted
+    at
   end
   private :characters_before
 
@@ -1818,6 +1942,9 @@ class StringIO
 
   def each_codepoint
     reading_allowed
+    if @misaligned
+      raise ArgumentError, "invalid byte sequence in #{external_encoding.name}"
+    end
     return sized_enum(:each_codepoint) unless block_given?
     while (letter = self.getc)
       yield letter.ord
@@ -1827,11 +1954,26 @@ class StringIO
 
   # ── Writing ──────────────────────────────────────────────────────────────
 
+  # Text written to a stream tagged with an encoding of its own is carried
+  # into that encoding first. Bytes stay as they are, since there is nothing
+  # to read them as.
+  def __for_writing__(text)
+    named = @encoding
+    return text if named.nil?
+    return text if text.encoding.name == "ASCII-8BIT"
+    return text if named.to_s == text.encoding.name
+    begin
+      text.encode named
+    rescue StandardError
+      text
+    end
+  end
+
   def write(*values)
     writing_allowed
     written = 0
     values.each do |value|
-      text = value.to_s
+      text = __for_writing__ value.to_s
       @position = @string.length if @appends
       landing = @position
       if landing > @string.length
@@ -2024,6 +2166,7 @@ class Enumerator
   end
 
   def initialize(receiver = nil, method_name = nil, arguments = [], size = nil, &generator)
+    raise ArgumentError, "wrong number of arguments (given 0, expected 1+)" if generator.nil?
     @receiver = receiver
     @method_name = method_name
     @arguments = arguments
@@ -2032,11 +2175,27 @@ class Enumerator
     @generator = generator
   end
 
+  # A walk over a method of another object, which is what `to_enum` and the
+  # methods that answer an Enumerator without a block build. `new` takes a
+  # block instead, so this one fills the same state without it.
+  def self.over(receiver, method_name = nil, arguments = [], size = nil)
+    made = allocate
+    made.instance_variable_set(:@receiver, receiver)
+    made.instance_variable_set(:@method_name, method_name)
+    made.instance_variable_set(:@arguments, arguments)
+    made.instance_variable_set(:@size, size)
+    made.instance_variable_set(:@position, 0)
+    made.instance_variable_set(:@generator, nil)
+    made
+  end
+
   # The count the walk will hand out, where that is known ahead of it. An
   # endpoint the walk cannot count to has no size to report, and asking is
   # refused rather than answered with a guess.
   def size
     raise ArgumentError, @size_error unless @size_error.nil?
+    # A size named by a block is worked out the first time it is asked for.
+    @size = @size.call if @size.is_a?(Proc)
     @size
   end
 
@@ -2134,10 +2293,28 @@ class Enumerator
     self
   end
 
+  # An endless walk built from a value and the block that answers the next
+  # one. Without a starting value the block is handed nil the first time.
+  def self.produce(*first, &step)
+    raise ArgumentError, "no block given" if step.nil?
+    if first.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{first.size}, expected 0..1)"
+    end
+    starts_empty = first.empty?
+    opening = first[0]
+    new do |yielder|
+      held = starts_empty ? step.call(nil) : opening
+      loop do
+        yielder << held
+        held = step.call(held)
+      end
+    end
+  end
+
   # The enumerator `loop` answers when called without a block: it yields
   # forever and reports an endless size.
   def self.endless
-    enumerator = new(nil, nil, [], Float::INFINITY)
+    enumerator = over(nil, nil, [], Float::INFINITY)
     enumerator.mark_endless
   end
 
@@ -2150,15 +2327,29 @@ class Enumerator
   # answers what that method answers, so `numbers.find(ifnone).each { }` is
   # the same call as `numbers.find(ifnone) { }`.
   def each(*args, &block)
-    return self if block.nil?
+    # `each(more)` with no block answers a walk carrying the extra values,
+    # which the method behind it is handed when the walk runs.
+    if block.nil?
+      return self if args.empty?
+      return Enumerator.over(@receiver, @method_name, @arguments + args, @size)
+    end
+    args = @arguments + args if !args.empty? && @generator.nil?
     if @endless
       while true
         block.call
       end
     end
-    return @receiver.send(@method_name, *@arguments, *args, &block) if @generator.nil?
-    to_a.each { |value| block.call(value) }
-    @receiver
+    if @generator.nil?
+      held = args.empty? ? @arguments : args
+      return @receiver.send(@method_name, *held, &block)
+    end
+    # The generator runs with the block standing behind the yielder, so a
+    # walk that has seen enough can stop it rather than waiting for a source
+    # that never ends.
+    @generator.call(Yielder.new { |*yielded|
+      block.call(*yielded)
+    })
+    self
   end
 
   def first(count = nil)
@@ -2168,7 +2359,13 @@ class Enumerator
 
   def map(&block)
     return self if block.nil?
-    to_a.map { |value| block.call(value) }
+    # The walk runs as it goes rather than collecting first, so what the
+    # method behind it sets, `$~` among them, is there for the block.
+    collected = []
+    # Several values yielded together reach the block as one array, which is
+    # what a walk over pairs hands over.
+    each { |*values| collected.push(block.call(packed(values))) }
+    collected
   end
 
   def collect(&block)
@@ -2178,7 +2375,7 @@ class Enumerator
   # Walks with a second value handed to the block each time, answering that
   # value once the walk is done.
   def with_object(memo)
-    return Enumerator.new(self, :with_object, [memo], @size) unless block_given?
+    return Enumerator.over(self, :with_object, [memo], @size) unless block_given?
     each { |*values| yield packed(values), memo }
     memo
   end
@@ -2252,11 +2449,11 @@ class Enumerator::Lazy < Enumerator
   end
 
   def eager
-    Enumerator.new(self, :each, [], @lazy_size)
+    Enumerator.over(self, :each, [], @lazy_size)
   end
 
   def to_enum(method_name = :each, *args)
-    Enumerator.new(self, method_name, args, nil)
+    Enumerator.over(self, method_name, args, nil)
   end
 
   def enum_for(method_name = :each, *args)
@@ -2708,7 +2905,7 @@ class Enumerator::Product < Enumerator
   private :initialize_copy
 
   def each
-    return Enumerator.new(self, :each, [], size) unless block_given?
+    return Enumerator.over(self, :each, [], size) unless block_given?
     combinations = [[]]
     @enumerables.each do |enumerable|
       entries = []
@@ -2779,7 +2976,14 @@ class Enumerator::ArithmeticSequence < Enumerator
     @source = source
     @written_as = written_as
     @step_given = step_given
-    super(self, :each, [])
+    # The walk is over this sequence's own `each`, which `Enumerator.over`
+    # fills in for a walk that has no block behind it.
+    @receiver = self
+    @method_name = :each
+    @arguments = []
+    @size = nil
+    @position = 0
+    @generator = nil
   end
   private_class_method :new
 
@@ -2970,7 +3174,7 @@ class Array
   # The Enumerator a walk hands back when it was called without its block,
   # carrying the count of what the walk would have yielded.
   def sized_walk(name, args, reach)
-    Enumerator.new(self, name, args, reach)
+    Enumerator.over(self, name, args, reach)
   end
   private :sized_walk
 
@@ -3114,7 +3318,7 @@ class Array
   # The element a block picks out of a sorted array, halving the search each
   # time rather than walking it.
   def bsearch
-    return Enumerator.new(self, :bsearch, [], nil) unless block_given?
+    return Enumerator.over(self, :bsearch, [], nil) unless block_given?
     found = nil
     low = 0
     high = size
@@ -3141,7 +3345,7 @@ class Array
   end
 
   def bsearch_index
-    return Enumerator.new(self, :bsearch_index, [], nil) unless block_given?
+    return Enumerator.over(self, :bsearch_index, [], nil) unless block_given?
     found = nil
     low = 0
     high = size
@@ -3172,7 +3376,7 @@ class Set
   # The elements grouped into sets under whatever the block answers for each
   # of them.
   def classify
-    return Enumerator.new(self, :classify, [], size) unless block_given?
+    return Enumerator.over(self, :classify, [], size) unless block_given?
     grouped = Hash.new { |held, key| held[key] = Set.new }
     each { |element| grouped[yield element].add(element) }
     grouped
@@ -3181,7 +3385,7 @@ class Set
   # The set of subsets a block cuts self into. A block of one parameter groups
   # by what it answers, and a block of two groups the elements it relates.
   def divide(&block)
-    return Enumerator.new(self, :divide, [], size) if block.nil?
+    return Enumerator.over(self, :divide, [], size) if block.nil?
     return Set.new(classify { |element| block.call(element) }.values) unless block.arity == 2
     walked = to_a
     group_of = {}
@@ -3964,11 +4168,56 @@ class Time
   end
   private :padded
 
-  def succ
-    self + 1
-  end
 end
 
+
+class Proc
+  # A curried proc gathers arguments until it holds as many as the proc it
+  # stands for takes, and answers another curried proc until then. A lambda
+  # curries into lambdas, a plain proc into plain procs.
+  def curry(count = nil)
+    Proc.__curry_for__(self, count, lambda?)
+  end
+
+  # The count of arguments a curried callable waits for, which is how many it
+  # requires. A strict callable refuses a count it could never be called with.
+  def self.__curry_for__(callable, count, strict)
+    required = 0
+    optional = 0
+    rest = false
+    callable.parameters.each do |entry|
+      case entry[0]
+      when :req then required += 1
+      when :opt then optional += 1
+      when :rest then rest = true
+      end
+    end
+    if count.nil?
+      count = callable.arity
+      count = -count - 1 if count < 0
+    else
+      count = count.to_int
+      if strict && (count < required || (!rest && count > required + optional))
+        raise ArgumentError, "wrong number of arguments (given #{count}, expected #{required})"
+      end
+    end
+    __curried__(callable, count, [], strict)
+  end
+
+  def self.__curried__(callable, count, collected, strict)
+    if strict
+      lambda { |*given| Proc.__curry_step__(callable, count, collected, strict, given) }
+    else
+      proc { |*given| Proc.__curry_step__(callable, count, collected, strict, given) }
+    end
+  end
+
+  def self.__curry_step__(callable, count, collected, strict, given)
+    gathered = collected + given
+    return callable.call(*gathered) if gathered.size >= count
+    __curried__(callable, count, gathered, strict)
+  end
+end
 
 class Random
   # The Mersenne Twister, which is the generator Ruby's own numbers come
@@ -4078,17 +4327,17 @@ class Random
 
   # A run of bytes, four to each word the generator answers.
   def bytes count
-    held = ""
+    held = []
     taken = 0
     while taken < count
       word = next_word
       4.times do
         break if taken >= count
-        held = held + ((word >> ((taken % 4) * 8)) & 0xff).chr
+        held.push((word >> ((taken % 4) * 8)) & 0xff)
         taken += 1
       end
     end
-    held.force_encoding Encoding::BINARY
+    held.pack "C*"
   end
 
   # A Float in [0, 1) when nothing bounds it, and a number under the bound
@@ -4308,10 +4557,544 @@ class IO
   # empty, which every system carries under this name.
   NULL = "/dev/null"
 
-  # Metorex runs one thing at a time, so nothing it is asked to wait on is
-  # ever busy: every reader and writer handed in is ready straight away.
-  def self.select(readers = nil, writers = nil, errored = nil, _timeout = nil)
-    [readers || [], writers || [], errored || []]
+  # Which of the streams handed in have something to read, or room to write,
+  # right now. Nothing is ready answers nil, which is what a caller waits on.
+  def self.select(readers = nil, writers = nil, errored = nil, timeout = nil)
+    ready_readers = (readers || []).select { |held| IO.__ready__ held, false }
+    ready_writers = (writers || []).select { |held| IO.__ready__ held, true }
+    if ready_readers.empty? && ready_writers.empty?
+      # Metorex runs one thing at a time, so a stream nothing is left to
+      # write to stays unready however long the caller waits.
+      return nil unless timeout.nil?
+      return nil
+    end
+    [ready_readers, ready_writers, errored || []]
+  end
+
+  def self.__ready__(held, writing)
+    stream = held.respond_to?(:to_io) ? held.to_io : held
+    return true unless stream.is_a? IO
+    return true if stream.__stream_handle__.nil?
+    IO.__stream__ "ready?", stream.__stream_handle__, "", writing ? 1 : 0
+  rescue IOError
+    false
+  end
+
+  # Two joined streams: what is written to the second is read from the first.
+  # With a block the pair is handed over and closed once the block is done.
+  def self.pipe(_external = nil, _internal = nil, **_options)
+    reading, writing = IO.__stream__ "pipe", 0, "", 0
+    pair = [IO.__over__(reading, nil, "r"), IO.__over__(writing, nil, "w")]
+    return pair unless block_given?
+    begin
+      yield pair[0], pair[1]
+    ensure
+      pair.each { |held| held.close unless held.closed? }
+    end
+  end
+
+  # An IO over a handle the interpreter already holds.
+  def self.__over__(handle, path = nil, mode = nil)
+    held = allocate
+    held.__send__ :__take__, handle, path, mode
+    held
+  end
+
+  # `IO.new(fd)` stands over a descriptor this program did not open, so
+  # closing the IO leaves the descriptor alone unless `autoclose` says
+  # otherwise. A subclass opened another way keeps the constructor of its
+  # own, which is why this is written as an `initialize` rather than as a
+  # `new`.
+  def initialize(number, _mode = nil, path: nil, autoclose: true)
+    if number.is_a? IO
+      return __take__(number.__stream_handle__, path.nil? ? number.path : path)
+    end
+    unless number.is_a? Integer
+      raise TypeError, "no implicit conversion of #{number.class} into Integer"
+    end
+    __take__ IO.__stream__("adopt", 0, "", number), path
+    self.autoclose = autoclose
+    self
+  end
+
+  def self.for_fd(number, mode = nil, **options)
+    new number, mode, **options
+  end
+
+  # The three streams the program started with, each over the descriptor the
+  # operating system opened for it.
+  def self.__standard__(number, named)
+    held = __over__ IO.__stream__("adopt", 0, "", number), named
+    held.__send__ :__name_standard__, named
+    held
+  end
+
+  def __name_standard__(named)
+    @standard = named
+    # Ruby writes the error stream straight through rather than holding what
+    # is written back, which is what `sync` reports for it.
+    @sync = true if named == "stderr"
+    self
+  end
+
+  def __take__(handle, path = nil, mode = nil)
+    @handle = handle
+    @path = path
+    @__file_mode = mode
+    @closed = false
+    @autoclose = true
+    @lineno = 0
+    @sync = false
+    self
+  end
+
+
+  def __stream_handle__
+    @handle
+  end
+
+  # The number the operating system holds this stream under.
+  def fileno
+    raise IOError, "closed stream" if closed?
+    IO.__stream__ "fileno", __stream_handle__, "", 0
+  end
+
+  alias_method :to_i, :fileno
+
+  # The file this stream was opened over, where it was opened over one.
+  def path
+    @path
+  end
+
+  # A stream not reading from a child process has no process to name.
+  def pid
+    raise IOError, "closed stream" if closed?
+    nil
+  end
+
+  def closed?
+    @closed == true
+  end
+
+  # A stream closes the descriptor it holds unless it was told not to, which
+  # only a stream built over a descriptor from outside is.
+  def autoclose?
+    raise IOError, "closed stream" if closed?
+    @autoclose.nil? ? true : @autoclose
+  end
+
+  def autoclose=(wanted)
+    raise IOError, "closed stream" if closed?
+    @autoclose = wanted ? true : false
+  end
+
+  def close
+    return nil if closed?
+    IO.__stream__ "close", __stream_handle__, "", 0 if autoclose?
+    @closed = true
+    nil
+  end
+
+  # A stream with two ends may have one of them closed on its own. A stream
+  # with a single end refuses, which is what Ruby does for a file.
+  def __duplex__
+    !@__popen_input.nil?
+  end
+
+  # Whether this stream was opened only for the side being closed, in which
+  # case closing that side closes the stream itself.
+  def __opened_for__(letter)
+    @__file_mode.to_s.start_with? letter
+  end
+
+  # Whether the stream was opened for both sides, which is what a mode
+  # carrying a plus says.
+  def __both_ways__
+    @__file_mode.to_s.include? "+"
+  end
+
+  def close_read
+    return nil if @read_closed
+    unless __duplex__
+      # A stream that was never writable has only the one side, so closing
+      # the reading side closes the stream.
+      return close if !__both_ways__ && __opened_for__("r")
+      raise IOError, "closing non-duplex IO for reading"
+    end
+    @read_closed = true
+    nil
+  end
+
+  def close_write
+    return nil if @write_closed
+    unless __duplex__
+      return close if !__both_ways__ && (__opened_for__("w") || __opened_for__("a"))
+      raise IOError, "closing non-duplex IO for writing"
+    end
+    @write_closed = true
+    nil
+  end
+
+  def write(*parts)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for writing" if @write_closed
+    held = parts.length == 1 ? parts[0].to_s : parts.map { |part| part.to_s }.join
+    # The streams the program started with are written through the
+    # interpreter's own writer, so what a program prints keeps the order it
+    # printed it in whichever route it took.
+    return IO.__stream__("write", __stream_handle__, held, 0) if @standard.nil?
+    IO.__write_standard__ @standard, held
+    held.bytesize
+  end
+
+  def <<(text)
+    write text
+    self
+  end
+
+  def print(*parts)
+    parts.each { |part| write part.to_s }
+    nil
+  end
+
+  def printf(format, *rest)
+    # A format may be written as anything that spells itself out.
+    spelled = format.is_a?(String) ? format : format.to_str
+    write spelled % rest
+    nil
+  end
+
+  def puts(*lines)
+    return write("\n") && nil if lines.empty?
+    __write_lines__ lines, []
+    nil
+  end
+
+  # One line per value, where an array is written out element by element. An
+  # array that reaches itself is written as `[...]` rather than followed.
+  def __write_lines__(values, walking)
+    if values.empty?
+      write "\n"
+      return
+    end
+    values.each do |value|
+      spread = value.is_a?(Array) ? value : (value.respond_to?(:to_ary) ? value.to_ary : nil)
+      if spread.nil?
+        held = value.nil? ? "" : value.to_s
+        write(held.end_with?("\n") ? held : held + "\n")
+      elsif walking.any? { |seen| seen.equal? value }
+        write "[...]\n"
+      else
+        __write_lines__ spread, walking + [value]
+      end
+    end
+  end
+  private :__write_lines__
+
+  def read(length = nil, buffer = nil)
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" if @read_closed
+    wanted = length.nil? ? 0 : length.to_i
+    waiting = @peeked
+    @peeked = nil
+    held = if waiting.nil?
+      IO.__stream__ "read", __stream_handle__, "", wanted
+    elsif wanted == 1
+      waiting
+    else
+      waiting + IO.__stream__("read", __stream_handle__, "", wanted == 0 ? 0 : wanted - 1)
+    end
+    return buffer.replace held unless buffer.nil?
+    return nil if length && held.empty?
+    held
+  end
+
+  def readpartial(length, buffer = nil)
+    held = read length, buffer
+    raise EOFError, "end of file reached" if held.nil? || held.empty?
+    held
+  end
+
+  alias_method :sysread, :readpartial
+  alias_method :read_nonblock, :readpartial
+  alias_method :syswrite, :write
+  alias_method :write_nonblock, :write
+
+  def gets(separator = "\n")
+    collected = ""
+    while true
+      held = read 1
+      break if held.nil? || held.empty?
+      collected = collected + held
+      break if collected.end_with? separator.to_s
+    end
+    return nil if collected.empty?
+    @lineno = @lineno + 1
+    collected
+  end
+
+  def readlines(separator = "\n")
+    collected = []
+    while (held = gets(separator))
+      collected.push held
+    end
+    collected
+  end
+
+  def each_line(separator = "\n")
+    while (held = gets(separator))
+      yield held
+    end
+    self
+  end
+
+  alias_method :each, :each_line
+
+  def lineno
+    @lineno.nil? ? 0 : @lineno
+  end
+
+  def lineno=(held)
+    @lineno = held.to_i
+  end
+
+  # Reading one character ahead is the only way to tell a stream that has
+  # nothing left from one whose writer has not written yet, so the character
+  # is held back for the next read to hand out.
+  def eof?
+    raise IOError, "closed stream" if closed?
+    raise IOError, "not opened for reading" if @read_closed
+    raise IOError, "not opened for reading" if __opened_for__("w") && !__both_ways__
+    return false unless @peeked.nil?
+    held = IO.__stream__ "read", __stream_handle__, "", 1
+    return true if held.nil? || held.empty?
+    @peeked = held
+    false
+  end
+
+  alias_method :eof, :eof?
+
+  # Metorex hands every write to the operating system as it is made, so
+  # nothing is ever waiting to be flushed.
+  def flush
+    raise IOError, "closed stream" if closed?
+    self
+  end
+
+  def fsync
+    0
+  end
+
+  def sync
+    @sync == true
+  end
+
+  def sync=(wanted)
+    @sync = wanted ? true : false
+  end
+
+  def tty?
+    raise IOError, "closed stream" if closed?
+    IO.__stream__ "tty?", __stream_handle__, "", 0
+  end
+
+  alias_method :isatty, :tty?
+
+  def nonblock?
+    raise IOError, "closed stream" if closed?
+    IO.__stream__ "nonblock?", __stream_handle__, "", 0
+  end
+
+  def nonblock=(wanted)
+    IO.__stream__ "nonblock=", __stream_handle__, "", wanted ? 1 : 0
+    wanted
+  end
+
+  def nonblock(wanted = true)
+    was = nonblock?
+    self.nonblock = wanted
+    return self unless block_given?
+    begin
+      yield self
+    ensure
+      self.nonblock = was
+    end
+  end
+
+  def close_on_exec?
+    raise IOError, "closed stream" if closed?
+    IO.__stream__ "close_on_exec?", __stream_handle__, "", 0
+  end
+
+  def close_on_exec=(wanted)
+    raise IOError, "closed stream" if closed?
+    IO.__stream__ "close_on_exec=", __stream_handle__, "", wanted ? 1 : 0
+    wanted
+  end
+
+  # Reading and writing bytes rather than characters: the stream is written
+  # in binary from here on, and nothing is converted on the way in.
+  def binmode
+    raise IOError, "closed stream" if closed?
+    @binmode = true
+    @__file_encoding = "ASCII-8BIT"
+    self
+  end
+
+  def binmode?
+    raise IOError, "closed stream" if closed?
+    @binmode == true
+  end
+
+  # Ask the operating system about this stream's descriptor, or set one of
+  # the flags it keeps. `Fcntl` names the numbers.
+  def fcntl(command, argument = 0)
+    raise IOError, "closed stream" if closed?
+    held = argument == true ? 1 : (argument == false || argument.nil? ? 0 : argument.to_i)
+    IO.__stream__ "fcntl", __stream_handle__, "", command.to_i, held
+  end
+
+  alias_method :ioctl, :fcntl
+
+  # Point this stream at another place. The descriptor keeps its number, so
+  # everything already reading or writing through it reaches the new place.
+  def reopen(target, mode = nil)
+    raise IOError, "closed stream" if closed?
+    other = __reopen_target__ target, mode
+    raise IOError, "closed stream" if other.closed?
+    IO.__stream__ "reopen", __stream_handle__, "", other.__stream_handle__
+    @__file_path = other.path
+    @__file_mode = mode.nil? ? other.instance_variable_get(:@__file_mode) : mode
+    @read_closed = false
+    @write_closed = false
+    @peeked = nil
+    @lineno = 0
+    self
+  end
+
+  # The stream a `reopen` was given. A name opens a file, and anything else
+  # spells itself out as the stream it stands for.
+  def __reopen_target__(target, mode)
+    if target.is_a?(String) || (!target.is_a?(IO) && target.respond_to?(:to_path))
+      path = target.is_a?(String) ? target : target.to_path
+      return File.open(path, mode.nil? ? "r" : mode)
+    end
+    return target if target.is_a?(IO)
+    spelled = target.to_io
+    unless spelled.is_a?(IO)
+      raise TypeError, "can't convert #{target.class} to IO (#{target.class}#to_io gives #{spelled.class})"
+    end
+    spelled
+  end
+  private :__reopen_target__
+
+  # Wait until there is something to read, or until the wait runs out. A
+  # timeout of nil waits for as long as it takes.
+  def wait_readable(timeout = nil)
+    __wait_ready__("read", timeout)
+  end
+
+  def wait_writable(timeout = nil)
+    __wait_ready__("write", timeout)
+  end
+
+  def wait(timeout = nil, mode = :read)
+    __wait_ready__(mode.to_s.include?("write") ? "write" : "read", timeout)
+  end
+
+  def __wait_ready__(mode, timeout)
+    raise IOError, "closed stream" if closed?
+    waited = timeout.nil? ? -1 : (timeout.to_f * 1000).to_i
+    # A wait longer than the counter holds is the same as waiting forever.
+    waited = -1 if waited > 2147483647 || waited < -1
+    IO.__stream__("wait", __stream_handle__, mode, waited) ? self : nil
+  end
+  private :__wait_ready__
+
+
+  def to_io
+    self
+  end
+
+  # The numbers the operating system keeps about this stream, read through
+  # the descriptor rather than through a name, since a stream is not always
+  # open on a file that has one.
+  def stat
+    raise IOError, "closed stream" if closed?
+    File::Stat.new(@handle.nil? ? IO::NULL : "/dev/fd/#{fileno}")
+  end
+
+  # A copy holds a descriptor of its own over the same file, so closing
+  # either one leaves the other open. The copy is never handed to a child
+  # process, which is what Ruby sets on it.
+  def dup
+    raise IOError, "closed stream" if closed?
+    copied = self.class.allocate
+    copied.__send__ :__take__, IO.__stream__("dup", __stream_handle__, "", 0), path
+    # A copy of a stream opened by name is opened on the same name, which is
+    # what the methods written for a file read.
+    ["@__file_path", "@__file_mode", "@__file_encoding", "@binmode"].each do |named|
+      held = instance_variable_get named
+      copied.instance_variable_set named, held unless held.nil?
+    end
+    copied.close_on_exec = true
+    copied
+  end
+
+  def inspect
+    return "#<IO: (closed)>" if closed?
+    "#<IO:fd #{fileno}>"
+  end
+end
+
+# A file opened by name answers the descriptor questions an IO answers, over
+# a descriptor opened the first time one of them is asked.
+class File
+  def __stream_handle__
+    return @handle unless @handle.nil?
+    written = @__file_mode.to_s
+    opening = if written.start_with?("a")
+      2
+    elsif written.start_with?("r") && written.include?("+")
+      3
+    elsif written.start_with?("w")
+      1
+    else
+      0
+    end
+    @handle = IO.__stream__ "open", 0, @__file_path.to_s, opening
+    @handle
+  end
+
+  def path
+    @__file_path
+  end
+
+  def pid
+    raise IOError, "closed stream" if closed?
+    nil
+  end
+
+  # The encodings named alongside the mode, as `"r:UTF-8:ISO-8859-1"` or as
+  # an `encoding:` keyword. The first is what the file is read as and the
+  # second what its text is carried into.
+  def __named_encodings__
+    written = @__file_encoding.to_s
+    written = @__file_mode.to_s.split(":", 2)[1].to_s if written.empty?
+    written.split(":")
+  end
+  private :__named_encodings__
+
+  def external_encoding
+    named = __named_encodings__[0]
+    return Encoding.default_external if named.nil? || named.empty?
+    Encoding.find named
+  end
+
+  def internal_encoding
+    named = __named_encodings__[1]
+    return nil if named.nil? || named.empty?
+    Encoding.find named
   end
 end
 
@@ -4545,6 +5328,18 @@ class File
     File::Stat.new(path, true).birthtime
   end
 
+  def self.atime(path)
+    File::Stat.new(path, true).atime
+  end
+
+  def self.mtime(path)
+    File::Stat.new(path, true).mtime
+  end
+
+  def self.ctime(path)
+    File::Stat.new(path, true).ctime
+  end
+
   # The questions about a file that read what the operating system keeps
   # about it. A name with nothing behind it answers the way Ruby's does
   # rather than raising.
@@ -4653,12 +5448,32 @@ class File
     File::Stat.new(path, false)
   end
 
+  # The numbers come from the descriptor rather than the name, so a file
+  # that was removed while it is still open still reports its own.
   def stat
-    File::Stat.new(self.path)
+    raise IOError, "closed stream" if closed?
+    File::Stat.new("/dev/fd/#{fileno}")
   end
 
   def lstat
+    raise IOError, "closed stream" if closed?
     File::Stat.new(self.path, false)
+  end
+
+  def atime
+    stat.atime
+  end
+
+  def mtime
+    stat.mtime
+  end
+
+  def ctime
+    stat.ctime
+  end
+
+  def birthtime
+    stat.birthtime
   end
 
   # A handle that was never opened has nothing behind it, so every reading
@@ -4810,6 +5625,27 @@ class TracePoint
 
   def defined_class
     __reading__(:defined_class)
+  end
+
+  # The scope the event fired in, as the Binding that reads its locals.
+  def binding
+    __reading__(:binding)
+  end
+
+  # The source a `script_compiled` event compiled, where it came from a
+  # string rather than a file.
+  def eval_script
+    __reading__(:eval_script)
+  end
+
+  # The exception a `raise` or a `rescue` event is about.
+  def raised_exception
+    __reading__(:raised_exception)
+  end
+
+  # What the block a `b_call` or `b_return` event is about takes.
+  def parameters
+    __reading__(:parameters)
   end
 
   def inspect
@@ -4970,9 +5806,23 @@ module ObjectSpace
       @entries = []
     end
 
+    # What an object calls its class, asked without going through the object
+    # itself, since one may answer nothing at all.
+    def self.named(held)
+      ::Kernel.instance_method(:class).bind(held).call.to_s
+    end
+
     def []=(key, value)
       unless collectable?(key)
         raise ArgumentError, "WeakKeyMap must be garbage collectable"
+      end
+      # A key is found again by its hash, so one that has none cannot be
+      # stored at all.
+      # An object that descends from BasicObject alone answers none of the
+      # names Kernel gives, `hash` among them.
+      unless key.respond_to?(:hash) && key.class != BasicObject
+        raise NoMethodError,
+              "undefined method 'hash' for an instance of #{ObjectSpace::WeakKeyMap.named(key)}"
       end
       place = place_of(key)
       if place.nil?
@@ -5212,13 +6062,41 @@ class Dir
   end
 
   def close
+    # A descriptor another Dir already closed is gone, which is what the
+    # operating system says when this one is asked to close it too.
+    unless @handle.nil?
+      unless IO.__stream__("live?", @handle, "", 0)
+        raise Errno::EBADF, "closedir"
+      end
+      IO.__stream__ "close", @handle, "", 0
+    end
     @closed = true
     nil
   end
 
+  # The number the operating system holds this directory under, opened the
+  # first time one is asked for.
   def fileno
     self.refuse_closed
-    raise NotImplementedError, "fileno() function is unimplemented on this machine"
+    @handle = IO.__stream__("open", 0, @path, 0) if @handle.nil?
+    IO.__stream__ "fileno", @handle, "", 0
+  end
+
+  # Another Dir over a descriptor already open, which reads the same
+  # directory and closes the same descriptor.
+  def self.for_fd(number)
+    made = allocate
+    made.__send__ :__adopt__, number
+    made
+  end
+
+  def __adopt__(number)
+    @handle = IO.__stream__ "adopt", 0, "", number
+    @path = nil
+    @names = []
+    @position = 0
+    @closed = false
+    self
   end
 
   # Every operation that walks the names needs the directory still open.
@@ -5294,6 +6172,20 @@ class Dir
 end
 
 module Kernel
+  # The encoding the file running now was written in.
+  def __ENCODING__
+    Encoding.__source__
+  end
+  private :__ENCODING__
+
+  # Which of the streams handed in are ready, which is IO.select under a name
+  # every object answers to.
+  def select(readers = nil, writers = nil, errored = nil, timeout = nil)
+    IO.select readers, writers, errored, timeout
+  end
+
+  private :select
+
   # `pretty_inspect` is what `pp` writes for an object, which is its own
   # `inspect` on a line of its own. `require "pp"` is what defines it in
   # Ruby, and metorex reports pp as already loaded.
@@ -5324,6 +6216,8 @@ end
 ArgfStream = ARGF.class
 
 class ArgfStream
+  include Enumerable
+
   def initialize(*names)
     @names = names.flatten
     @current = nil
@@ -5366,7 +6260,9 @@ class ArgfStream
   end
 
   def fileno
-    raise ArgumentError, "closed stream" if self.__names__.empty? && @current.nil?
+    if @drained || (self.__names__.empty? && @current.nil?)
+      raise ArgumentError, "closed stream"
+    end
     self.file.fileno
   end
 
@@ -5393,10 +6289,14 @@ class ArgfStream
   end
 
   def closed?
+    # Standard input belongs to the program, so ARGF never reports it closed.
+    return false if @reading_stdin
     self.file.closed?
   end
 
   def close
+    self.file
+    return self if @reading_stdin
     self.file.close
     self
   end
@@ -5429,7 +6329,8 @@ class ArgfStream
       end
       @lineno = self.__lineno__ + 1
       $. = @lineno
-      return line
+      # Reading in binary hands back bytes rather than text.
+      return @binmode ? line.b : line
     end
     nil
   end
@@ -5484,7 +6385,8 @@ class ArgfStream
       @current = nil
     end
     return nil if !length.nil? && length > 0 && collected.empty?
-    collected
+    # Reading in binary hands back bytes rather than text.
+    @binmode ? collected.b : collected
   end
 
   def getc
@@ -5549,7 +6451,16 @@ class ArgfStream
   def __open_current__
     return if @current
     return if self.__names__.empty?
-    @current = File.open(self.__names__.shift, "r")
+    named = self.__names__.shift
+    # A name of `-` stands for standard input, which the program owns rather
+    # than ARGF.
+    if named == "-"
+      @reading_stdin = true
+      @current = $stdin
+      return @current
+    end
+    @reading_stdin = false
+    @current = File.open(named, "r")
   end
   private :__open_current__
 
@@ -5582,7 +6493,46 @@ class Complex
   private :marshal_dump
 end
 
+class Float
+  # The simplest fraction standing no further away than the tolerance given.
+  # Without one the tolerance is half the gap to the next Float, so the
+  # answer reads back as this same Float.
+  def rationalize(*limits)
+    if limits.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{limits.size}, expected 0..1)"
+    end
+    raise FloatDomainError, to_s if nan? || infinite?
+    return to_r.rationalize(limits[0]) unless limits.empty?
+    to_r.rationalize(Rational(Math.ldexp(1, Math.frexp(self)[1] - 53).to_r, 2))
+  end
+end
+
 class Rational
+  # The simplest fraction standing no further away than the tolerance given.
+  # Without one the number stands for itself.
+  def rationalize(*limits)
+    if limits.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{limits.size}, expected 0..1)"
+    end
+    return self if limits.empty?
+    slack = limits[0].abs.to_r
+    low = self - slack
+    high = self + slack
+    return Rational(0, 1) if low <= 0 && high >= 0
+    return -Rational.__simplest_between__(-high, -low) if high < 0
+    Rational.__simplest_between__(low, high)
+  end
+
+  # The fraction with the smallest denominator lying between two positive
+  # bounds, found by the continued fraction the pair share.
+  def self.__simplest_between__(low, high)
+    whole = low.floor
+    return Rational(whole + 1, 1) if whole + 1 <= high
+    return Rational(whole, 1) if whole == low
+    inner = __simplest_between__(Rational(1, 1) / (high - whole), Rational(1, 1) / (low - whole))
+    Rational(whole * inner.numerator + inner.denominator, inner.numerator)
+  end
+
   # What `Marshal` writes for a Rational: the two parts, in the order
   # `Rational(numerator, denominator)` takes them.
   def marshal_dump
@@ -5613,11 +6563,52 @@ class Thread
 end
 
 class Regexp
-  # Whether a pattern is matched in time proportional to the subject's length.
-  # Metorex matches with a linear automaton, so every pattern is.
-  def self.linear_time?(pattern, options = nil)
-    true
+  IGNORECASE = 1
+  EXTENDED = 2
+  MULTILINE = 4
+  FIXEDENCODING = 16
+  NOENCODING = 32
+
+  # The pattern an object stands for, or nil where it stands for none. Only
+  # an object answering `to_regexp` is asked.
+  def self.try_convert(held)
+    return held if held.is_a?(Regexp)
+    return nil unless held.respond_to?(:to_regexp)
+    converted = held.to_regexp
+    return converted if converted.is_a?(Regexp)
+    raise TypeError,
+      "can't convert #{held.class} into Regexp (#{held.class}#to_regexp gives #{converted.class})"
   end
+
+  # Whether a pattern is matched in time proportional to the subject's length.
+  # Metorex matches with a linear automaton, which reads every pattern but a
+  # back reference that way.
+  def self.linear_time?(pattern, options = nil)
+    if pattern.is_a?(Regexp)
+      warn "warning: flags ignored" unless options.nil?
+      return !__reaches_back__(pattern.source)
+    end
+    unless pattern.is_a?(String)
+      raise TypeError, "wrong argument type #{pattern.class} (expected Regexp)"
+    end
+    !__reaches_back__(pattern)
+  end
+
+  # A Regexp is built once. Handing `initialize` to one that already holds a
+  # pattern refuses, which is what Ruby does for a literal and for one built
+  # by `new` alike.
+  def initialize(source = nil, options = nil, timeout: nil)
+    raise FrozenError, "can't modify frozen Regexp: #{inspect}" if frozen?
+    raise TypeError, "already initialized regexp"
+  end
+  private :initialize
+
+  # Whether a pattern names one of its own earlier groups, which no automaton
+  # reads in one pass.
+  def self.__reaches_back__(source)
+    !(source =~ /\\(?:[1-9]|k<[^>]+>)/).nil?
+  end
+  private_class_method :__reaches_back__
 end
 
 class Time
@@ -5687,6 +6678,12 @@ class ThreadGroup
 end
 
 class Thread
+  # A thread is set up when it is made. Calling `initialize` on one again is
+  # refused, since the thread it would start is already running.
+  def initialize(*_arguments)
+    raise ThreadError, "already initialized thread"
+  end
+
   # The group this thread belongs to, which is the default one until another
   # group takes it.
   def group
@@ -5701,6 +6698,41 @@ class Thread
 end
 
 module ObjectSpace
+  # The finalizers a program has asked for, under the id of the object each
+  # one belongs to. Metorex frees an object when its last reference goes and
+  # nothing watches for that, so a finalizer runs as the program ends.
+  def self.__finalizers__
+    @finalizers = {} if @finalizers.nil?
+    @finalizers
+  end
+
+  def self.define_finalizer(held, callable = nil, &block)
+    finalizer = callable.nil? ? block : callable
+    raise ArgumentError, "no finalizer given" if finalizer.nil?
+    unless finalizer.respond_to? :call
+      raise ArgumentError, "no finalizer given"
+    end
+    named = held.object_id
+    ObjectSpace.__finalizers__[named] = ObjectSpace.__finalizers__.fetch(named, []) + [finalizer]
+    unless @armed
+      @armed = true
+      at_exit do
+        ObjectSpace.__finalizers__.each do |id, listed|
+          listed.each { |one| one.call id }
+        end
+      end
+    end
+    [0, finalizer]
+  end
+
+  def self.undefine_finalizer(held)
+    if held.frozen?
+      raise FrozenError, "can't modify frozen #{held.class}: #{held.inspect}"
+    end
+    ObjectSpace.__finalizers__.delete held.object_id
+    held
+  end
+
   # Ruby 4.0 deprecated reading an object back from its id. Metorex keeps no
   # table of every live object, so only the values whose id is derived from
   # the value itself can be answered at all.
@@ -5809,8 +6841,101 @@ end
 
 
 class Encoding
+  # The encoding the machine's locale names. It is read once, so a program
+  # writing to the environment afterwards does not change it.
+  def self.locale_charmap
+    return @locale_charmap unless @locale_charmap.nil?
+    named = ENV["LC_ALL"] || ENV["LC_CTYPE"] || ENV["LANG"] || ""
+    @locale_charmap = if named.empty? || named == "C" || named == "POSIX"
+      "US-ASCII"
+    elsif named.include?(".")
+      named.split(".", 2)[1]
+    else
+      "UTF-8"
+    end
+  end
+
+  # Every name an encoding answers to, its own and the aliases pointing at it.
+  def self.name_list
+    named = list.map { |held| held.name }
+    aliases.each_key { |held| named.push(held) unless named.include?(held) }
+    named
+  end
+
+  # The names this encoding answers to, its own first.
+  def names
+    held = [name]
+    Encoding.aliases.each do |spelled, stands_for|
+      held.push(spelled) if stands_for == name && !held.include?(spelled)
+    end
+    held
+  end
+
+  # The encoding the source of a program is read as. `-K` names it, and
+  # without that flag it is UTF-8.
+  def self.__source__
+    @__source__ || Encoding::UTF_8
+  end
+
+  def self.__source__= named
+    @__source__ = named.is_a?(Encoding) ? named : Encoding.find(named)
+  end
+
   # A conversion from one encoding to another, along with the flags saying
   # what to do with what the destination cannot spell.
+  # What a conversion reports when the destination cannot spell a character.
+  class UndefinedConversionError
+    attr_reader :source_encoding
+    attr_reader :destination_encoding
+    attr_reader :error_char
+
+    def initialize message = nil, source = nil, destination = nil, character = nil
+      super message
+      @source_encoding = source
+      @destination_encoding = destination
+      @error_char = character
+    end
+
+    def source_encoding_name
+      @source_encoding.nil? ? nil : @source_encoding.name
+    end
+
+    def destination_encoding_name
+      @destination_encoding.nil? ? nil : @destination_encoding.name
+    end
+  end
+
+  # What a conversion reports when the source cannot read its own bytes.
+  class InvalidByteSequenceError
+    attr_reader :source_encoding
+    attr_reader :destination_encoding
+    attr_reader :error_bytes
+    attr_reader :readagain_bytes
+
+    def initialize message = nil, source = nil, destination = nil, wrong = nil, rest = nil, truncated = nil
+      super message
+      @source_encoding = source
+      @destination_encoding = destination
+      @error_bytes = wrong.nil? ? "" : wrong
+      @readagain_bytes = rest.nil? ? "" : rest
+      @truncated = truncated
+    end
+
+    def source_encoding_name
+      @source_encoding.nil? ? nil : @source_encoding.name
+    end
+
+    def destination_encoding_name
+      @destination_encoding.nil? ? nil : @destination_encoding.name
+    end
+
+    # A run cut off at the end of the text is incomplete rather than wrong.
+    # An error built by hand says nothing either way.
+    def incomplete_input?
+      @truncated
+    end
+  end
+
   class Converter
     INVALID_MASK = 0x0f
     INVALID_REPLACE = 0x02
@@ -5939,6 +7064,98 @@ class Encoding
       options[:crlf_newline] ? true : false
     end
 
+    # Carry text from the source encoding to the destination, refusing what
+    # neither one can spell.
+    def convert text
+      held = text.to_s
+      refuse_invalid held
+      converted = ""
+      held.each_char do |character|
+        refuse_undefined character unless spellable? character
+        converted = converted + character
+      end
+      @errinfo = [:finished, @source.name, @destination.name, "", ""]
+      converted.dup.force_encoding @destination.name
+    end
+
+
+    # What the last conversion ran into, as the tuple Ruby reports.
+    def primitive_errinfo
+      @errinfo.nil? ? [:source_buffer_empty, @source.name, @destination.name, "", ""] : @errinfo
+    end
+
+    # Whether the destination can spell a character at all. An encoding that
+    # covers only the ASCII letters spells nothing above them, and one that
+    # covers a single byte spells nothing wider.
+    def spellable? character
+      code = character.ord
+      case @destination.name
+      when "UTF-8", "UTF-16", "UTF-16BE", "UTF-16LE", "UTF-32", "UTF-32BE", "UTF-32LE", "CESU-8", "GB18030"
+        true
+      when "ISO-8859-1"
+        code < 256
+      else
+        code < 128
+      end
+    end
+    private :spellable?
+
+    # A run of bytes the source encoding cannot read is refused before any
+    # of it is carried over.
+    def refuse_invalid held
+      return if @source.name == "ASCII-8BIT"
+      return if held.dup.force_encoding(@source.name).valid_encoding?
+      # The bytes are cut apart rather than joined onto text, since joining
+      # would read each one as the character it spells.
+      bytes = held.bytes
+      start = 0
+      while start < bytes.length
+        break unless bytes[0..start].pack("C*").force_encoding(@source.name).valid_encoding?
+        start = start + 1
+      end
+      start = bytes.length - 1 if start >= bytes.length
+      # The run that opened the character, and the one byte after it that
+      # could not carry on.
+      stop = start + 1
+      stop = stop + 1 while stop < bytes.length && carries_on?(bytes[stop])
+      wrong = bytes[start..(stop - 1)].pack("C*")
+      rest = stop < bytes.length ? [bytes[stop]].pack("C") : ""
+      truncated = stop >= bytes.length
+      from, to = stage_for :invalid
+      @errinfo = [:invalid_byte_sequence, from.name, to.name, wrong, rest]
+      raise Encoding::InvalidByteSequenceError.new(
+        "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
+      )
+    end
+    private :refuse_invalid
+
+    def refuse_undefined character
+      spelled = "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
+      from, to = stage_for :undefined
+      @errinfo = [:undefined_conversion, from.name, to.name, character, ""]
+      raise Encoding::UndefinedConversionError.new(
+        "#{spelled} from #{from.name} to #{to.name}", from, to, character
+      )
+    end
+    private :refuse_undefined
+
+    # Whether a byte carries on the character the one before it opened.
+    def carries_on? byte
+      return byte >= 0xa1 && byte <= 0xfe if @source.name == "EUC-JP"
+      byte >= 0x80 && byte <= 0xbf
+    end
+    private :carries_on?
+
+    # The step of the conversion the trouble belongs to. Bytes the source
+    # cannot read stop the first step, while a character the destination
+    # cannot spell stops the last one.
+    def stage_for kind
+      steps = @convpath.select { |step| step.is_a? Array }
+      return [@source, @destination] if steps.empty?
+      kind == :invalid ? steps.first : steps.last
+    end
+    private :stage_for
+
     # The ASCII-compatible encoding that stands in for one that is not, and
     # nil for one that already is.
     def self.asciicompat_encoding held
@@ -5952,6 +7169,495 @@ class Encoding
       return Encoding.find "stateless-ISO-2022-JP" if found.name.start_with? "ISO-2022-JP"
       Encoding::UTF_8
     end
+  end
+end
+
+class IO
+  # A run of bytes a program reads and writes directly. A buffer either holds
+  # memory of its own or stands over a String or a file, and a slice of one
+  # shares the bytes it was cut from.
+  class Buffer
+    PAGE_SIZE = 4096
+    DEFAULT_SIZE = 65536
+
+    EXTERNAL = 1
+    INTERNAL = 2
+    MAPPED = 4
+    SHARED = 8
+    LOCKED = 32
+    PRIVATE = 64
+    READONLY = 128
+
+    class LockedError < RuntimeError
+    end
+
+    class AllocationError < RuntimeError
+    end
+
+    class AccessError < RuntimeError
+    end
+
+    class InvalidatedError < RuntimeError
+    end
+
+    class MaskError < ArgumentError
+    end
+
+    # A size or an offset arrives as an Integer and nothing else.
+    def self.whole_number(held)
+      raise TypeError, "not an Integer" unless held.is_a? Integer
+      if held > 9223372036854775807 || held < -9223372036854775808
+        raise RangeError, "bignum too big to convert into `long'"
+      end
+      held
+    end
+
+    # The text a run of bytes stands for. Bytes that spell characters in UTF-8
+    # read back as those characters, and bytes that spell nothing stand for
+    # themselves.
+    def self.text_of(bytes)
+      return "".b if bytes.empty?
+      bytes.pack "C*"
+    end
+
+    # Without flags the buffer picks where its bytes live by how many there
+    # are. Flags that name neither place leave it nowhere to put them.
+    def initialize(size = DEFAULT_SIZE, flags = nil)
+      size = IO::Buffer.whole_number size
+      flags = IO::Buffer.whole_number(flags) unless flags.nil?
+      raise ArgumentError, "Size can't be negative!" if size < 0
+      raise ArgumentError, "Flags can't be negative!" if !flags.nil? && flags < 0
+      @locked = false
+      @source = nil
+      @string_backed = false
+      if size == 0
+        nullify
+        return
+      end
+      kind = if flags.nil?
+        size < PAGE_SIZE ? INTERNAL : MAPPED
+      elsif (flags & MAPPED) != 0
+        MAPPED
+      elsif (flags & INTERNAL) != 0
+        INTERNAL
+      else
+        raise AllocationError, "Could not allocate buffer!"
+      end
+      @text = "\0" * size
+      @offset = 0
+      @size = size
+      @flags = kind | ((flags || 0) & (SHARED | PRIVATE | READONLY))
+    end
+
+    # A buffer over a String. Without a block the bytes are copied and the
+    # copy is read only, and with one the String itself is written through
+    # and left alone until the block ends.
+    def self.for(string)
+      unless block_given?
+        made = IO::Buffer.new 0
+        made.send :adopt_string, string.bytes.pack("C*"), EXTERNAL | READONLY
+        return made
+      end
+      made = IO::Buffer.new 0
+      made.send :adopt_string, string, EXTERNAL | (string.frozen? ? READONLY : 0)
+      string.__borrow__ unless string.frozen?
+      begin
+        yield made
+      ensure
+        string.__release__ unless string.frozen?
+        made.free unless made.null?
+      end
+    end
+
+    # A buffer over a String of the size asked for, which is answered once the
+    # block is done with it.
+    def self.string(length)
+      raise LocalJumpError, "no block given" unless block_given?
+      length = IO::Buffer.whole_number length
+      raise ArgumentError, "negative string size (or size too big)" if length < 0
+      held = "\0" * length
+      made = IO::Buffer.new 0
+      made.send :adopt_string, held, EXTERNAL
+      begin
+        yield made
+      ensure
+        made.free unless made.null?
+      end
+      held
+    end
+
+    # A buffer over what a file holds.
+    def self.map(file, size = nil, offset = 0, flags = 0)
+      offset = IO::Buffer.whole_number offset
+      flags = IO::Buffer.whole_number flags
+      raise ArgumentError, "Offset can't be negative!" if offset < 0
+      content = File.read(file.path).b
+      whole = content.bytesize
+      raise ArgumentError, "Invalid negative or zero file size!" if whole == 0
+      unless size.nil?
+        size = IO::Buffer.whole_number size
+        raise ArgumentError, "Size can't be negative!" if size < 0
+        raise ArgumentError, "Size can't be zero!" if size == 0
+        raise ArgumentError, "Size can't be larger than file size!" if size > whole
+        raise ArgumentError, "Offset too large!" if offset + size > whole
+      end
+      size = whole - offset if size.nil?
+      bytes = content.bytes[offset, size] || []
+      made = IO::Buffer.new 0
+      kind = if (flags & PRIVATE) != 0
+        MAPPED | PRIVATE
+      else
+        MAPPED | EXTERNAL | SHARED
+      end
+      made.send :adopt_string, IO::Buffer.text_of(bytes), kind | (flags & READONLY)
+      made.send :follow_file, file, offset if (flags & PRIVATE) == 0
+      made
+    end
+
+    def size
+      @size
+    end
+
+    def empty?
+      @size == 0
+    end
+
+    def null?
+      @text.nil?
+    end
+
+    def external?
+      !null? && (@flags & EXTERNAL) != 0
+    end
+
+    def internal?
+      !null? && (@flags & INTERNAL) != 0
+    end
+
+    def mapped?
+      !null? && (@flags & MAPPED) != 0
+    end
+
+    def shared?
+      !null? && (@flags & SHARED) != 0
+    end
+
+    def private?
+      !null? && (@flags & PRIVATE) != 0
+    end
+
+    def readonly?
+      !null? && (@flags & READONLY) != 0
+    end
+
+    def locked?
+      @locked == true
+    end
+
+    # A buffer under a lock refuses every change to itself, though what it
+    # holds is still read and written.
+    def locked
+      raise LockedError, "Buffer already locked!" if @locked
+      @locked = true
+      begin
+        yield
+      ensure
+        @locked = false
+      end
+    end
+
+    # A slice is valid while what it was cut from is still there and still
+    # covers it.
+    def valid?
+      return true if @source.nil?
+      return true if @source_string_backed
+      return false if @source.null?
+      return false unless @source.send(:holds_text?, @source_text)
+      @offset + @size <= @source.send(:end_offset)
+    end
+
+    def free
+      raise LockedError, "Buffer is locked!" if @locked
+      nullify
+      self
+    end
+
+    def transfer
+      raise LockedError, "Cannot transfer ownership of locked buffer!" if @locked
+      made = IO::Buffer.new 0
+      made.send :adopt, @text, @offset, @size, @flags, @source, @source_text,
+                @source_string_backed, @file, @file_offset
+      nullify
+      made
+    end
+
+    def slice(at = 0, length = nil)
+      ensure_valid
+      at = IO::Buffer.whole_number at
+      length = length.nil? ? @size - at : IO::Buffer.whole_number(length)
+      made = IO::Buffer.new 0
+      made.send :adopt, @text, @offset + at, length, @flags & ~READONLY, self,
+                @text, @string_backed, nil, 0
+      made
+    end
+
+    def resize(size)
+      raise LockedError, "Cannot resize locked buffer!" if @locked
+      size = IO::Buffer.whole_number size
+      raise ArgumentError, "Size can't be negative!" if size < 0
+      raise AccessError, "Cannot resize external buffer!" if external?
+      if size == 0
+        nullify
+        return self
+      end
+      held = null? ? [] : byte_view
+      made = Array.new size, 0
+      counted = size < held.length ? size : held.length
+      counted.times { |at| made[at] = held[at] }
+      kind = if null?
+        size < PAGE_SIZE ? INTERNAL : MAPPED
+      elsif mapped? && !private?
+        INTERNAL
+      else
+        @flags & (INTERNAL | MAPPED)
+      end
+      @text = IO::Buffer.text_of made
+      @offset = 0
+      @size = size
+      @flags = kind | (@flags & (SHARED | PRIVATE | READONLY))
+      self
+    end
+
+    def get_string(at = 0, length = nil, encoding = nil)
+      ensure_valid
+      at = IO::Buffer.whole_number at
+      length = length.nil? ? @size - at : IO::Buffer.whole_number(length)
+      taken = byte_view[at, length] || []
+      IO::Buffer.text_of taken
+    end
+
+    def set_string(text, at = 0, length = nil, source_offset = 0)
+      ensure_valid
+      raise AccessError, "Buffer is not writable!" if readonly?
+      at = IO::Buffer.whole_number at
+      source_offset = IO::Buffer.whole_number source_offset
+      given = text.bytes
+      given = given[source_offset..-1] || []
+      given = given[0, length] || [] unless length.nil?
+      room = @size - at
+      given = given[0, room] || [] if given.length > room
+      set_bytes given, at
+      given.length
+    end
+
+    def clear(value = 0, at = 0, length = nil)
+      ensure_valid
+      raise AccessError, "Buffer is not writable!" if readonly?
+      length = length.nil? ? @size - at : IO::Buffer.whole_number(length)
+      set_bytes Array.new(length, value), at
+      self
+    end
+
+    def each(kind = :U8)
+      held = byte_view
+      unless block_given?
+        made = []
+        at = 0
+        while at < held.length
+          made.push [at, held[at]]
+          at = at + 1
+        end
+        return made.each
+      end
+      at = 0
+      while at < held.length
+        yield at, held[at]
+        at = at + 1
+      end
+      self
+    end
+
+    def &(mask)
+      combined mask, :and, false
+    end
+
+    def |(mask)
+      combined mask, :or, false
+    end
+
+    def ^(mask)
+      combined mask, :xor, false
+    end
+
+    def ~
+      combined nil, :invert, false
+    end
+
+    def and!(mask)
+      combined mask, :and, true
+    end
+
+    def or!(mask)
+      combined mask, :or, true
+    end
+
+    def xor!(mask)
+      combined mask, :xor, true
+    end
+
+    def not!
+      combined nil, :invert, true
+    end
+
+    def to_s
+      return "#<IO::Buffer 0x0000000000000000 +0 0 NULL>" if null?
+      "#<IO::Buffer 0x%016x +%d %d %s>" % [@text.object_id, @offset, @size, flag_names]
+    end
+
+    def inspect
+      to_s
+    end
+
+    def hexdump(at = 0, length = nil, width = 16)
+      taken = byte_view[at, length.nil? ? @size - at : length] || []
+      taken.map { |value| "%02x" % value }.join(" ")
+    end
+
+    # ── What a buffer keeps to itself ────────────────────────────────────────
+
+    def adopt(text, offset, size, flags, source, source_text, source_string_backed, file, file_offset)
+      @text = text
+      @offset = offset
+      @size = size
+      @flags = flags
+      @source = source
+      @source_text = source_text
+      @source_string_backed = source_string_backed
+      @string_backed = source_string_backed
+      @file = file
+      @file_offset = file_offset
+      @locked = false
+      self
+    end
+
+    def adopt_string(text, flags)
+      @text = text
+      @offset = 0
+      @size = text.bytesize
+      @flags = flags
+      @source = nil
+      @source_text = nil
+      @source_string_backed = false
+      @string_backed = true
+      @locked = false
+      self
+    end
+
+    def follow_file(file, offset)
+      @file = file
+      @file_offset = offset
+      @string_backed = false
+      self
+    end
+
+    def nullify
+      @text = nil
+      @offset = 0
+      @size = 0
+      @flags = 0
+      @file = nil
+      @file_offset = 0
+    end
+
+    def holds_text?(other)
+      !@text.nil? && @text.equal?(other)
+    end
+
+    def end_offset
+      @offset + @size
+    end
+
+    def byte_view
+      return [] if @text.nil?
+      @text.bytes[@offset, @size] || []
+    end
+
+    def ensure_valid
+      raise InvalidatedError, "Buffer has been invalidated!" unless valid?
+    end
+
+    def set_bytes(values, at = 0)
+      held = @text.bytes
+      values.each_with_index do |value, step|
+        place = @offset + at + step
+        held[place] = value & 0xff if place < @offset + @size
+      end
+      made = IO::Buffer.text_of held
+      # The buffer is allowed to write through the very lock it put on the
+      # string it stands over.
+      @text.__release__
+      @text.replace made
+      @text.__borrow__ if @string_backed && !@source.nil? == false && borrowing?
+      write_through
+      self
+    end
+
+    def borrowing?
+      false
+    end
+
+    def write_through
+      return if @file.nil?
+      return unless shared?
+      File.write @file.path, IO::Buffer.text_of(@text.bytes)
+    end
+
+    def flag_names
+      named = []
+      named << "EXTERNAL" if external?
+      named << "INTERNAL" if internal?
+      named << "MAPPED" if mapped?
+      named << "SHARED" if shared?
+      named << "PRIVATE" if private?
+      named << "READONLY" if readonly?
+      named.empty? ? "NULL" : named.join("|")
+    end
+
+    def combined(mask, how, in_place)
+      ensure_valid
+      values = byte_view
+      made = if how == :invert
+        values.map { |value| ~value & 0xff }
+      else
+        unless mask.is_a? IO::Buffer
+          named = mask.nil? ? "nil" : mask.class.to_s
+          raise TypeError, "wrong argument type #{named} (expected IO::Buffer)"
+        end
+        over = mask.send :byte_view
+        raise MaskError, "Zero-length mask given!" if over.empty?
+        values.each_with_index.map do |value, at|
+          other = over[at % over.length]
+          if how == :and
+            value & other
+          elsif how == :or
+            value | other
+          else
+            value ^ other
+          end
+        end
+      end
+      if in_place
+        set_bytes made
+        return self
+      end
+      answer = IO::Buffer.new made.length, INTERNAL
+      answer.send :set_bytes, made
+      answer
+    end
+
+    private :adopt, :adopt_string, :follow_file, :nullify, :holds_text?,
+            :end_offset, :byte_view, :ensure_valid, :set_bytes, :borrowing?,
+            :write_through, :flag_names, :combined
   end
 end
 "##;
@@ -5985,7 +7691,7 @@ impl VirtualMachine {
                 None => Object::Nil,
             },
         ];
-        self.send_to_object(enumerator_class, "new", arguments, position)
+        self.send_to_object(enumerator_class, "over", arguments, position)
     }
 
     /// Evaluate the Ruby-level core library. A parse or runtime failure here

@@ -18,9 +18,9 @@ module SecureRandom
   # A run of bytes with no character meaning, which is what BINARY says.
   def self.random_bytes(count = nil)
     wanted = counted_length(count)
-    written = ""
-    wanted.times { written += DRAW.call(256).chr }
-    written.force_encoding(Encoding::BINARY)
+    drawn = []
+    wanted.times { drawn.push DRAW.call(256) }
+    drawn.pack("C*")
   end
 
   def self.hex(count = nil)

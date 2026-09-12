@@ -211,7 +211,7 @@ impl VirtualMachine {
                 };
                 let elements: Vec<ObjectHash> = set_rc.borrow().iter().cloned().collect();
                 self.iterating_sets.push(Rc::as_ptr(set_rc) as usize);
-                let walk = (|vm: &mut Self| -> Result<(), MetorexError> {
+                let walk = (|vm: &mut Self| -> Result<Option<Object>, MetorexError> {
                     for elem in elements {
                         let args = vec![elem.value.clone()];
                         match vm.execute_block_with_control_flow(&block, args)? {
@@ -221,7 +221,11 @@ impl VirtualMachine {
                             | super::super::ControlFlow::Continue { .. } => {
                                 continue;
                             }
-                            super::super::ControlFlow::Break { .. } => break,
+                            // `break` ends the walk and answers what it carried,
+                            // which is what the call reports.
+                            super::super::ControlFlow::Break { value, .. } => {
+                                return Ok(Some(value));
+                            }
                             super::super::ControlFlow::Return { value, position } => {
                                 return Err(MetorexError::NonLocalReturn {
                                     value,
@@ -244,10 +248,12 @@ impl VirtualMachine {
                             }
                         }
                     }
-                    Ok(())
+                    Ok(None)
                 })(self);
                 self.iterating_sets.pop();
-                walk?;
+                if let Some(broken) = walk? {
+                    return Ok(Some(broken));
+                }
                 Ok(Some(receiver.clone()))
             }
             "<<" | "add?" => {

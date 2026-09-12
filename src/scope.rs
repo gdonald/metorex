@@ -201,10 +201,39 @@ impl Scope {
     /// than to the block running inside it.
     pub fn collect_local_variable_names(&self) -> Vec<String> {
         let mut names = self.own_variable_names();
+        // A method's own locals end the chain: what encloses the method is
+        // not in scope inside it. A block, on the other hand, closes over the
+        // scope it was written in, so the walk carries on through it.
+        if self.is_method_boundary {
+            return names;
+        }
         if let Some(parent) = &self.parent {
             let parent_ref = parent.borrow();
-            if parent_ref.parent.is_some() && !parent_ref.is_method_boundary {
+            if parent_ref.parent.is_some() {
                 names.extend(parent_ref.collect_local_variable_names());
+            }
+        }
+        names
+    }
+
+    /// The names a Binding holds. A block closes over the locals of the scope
+    /// it was written in, and reading or writing one of those through a
+    /// binding reaches the same reference, so a captured name counts here
+    /// even though it is not the block's own.
+    pub fn collect_binding_variable_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self
+            .variables
+            .iter()
+            .filter(|(_, value)| !names_a_definition(&value.borrow()))
+            .map(|(name, _)| name.clone())
+            .collect();
+        if self.is_method_boundary {
+            return names;
+        }
+        if let Some(parent) = &self.parent {
+            let parent_ref = parent.borrow();
+            if parent_ref.parent.is_some() {
+                names.extend(parent_ref.collect_binding_variable_names());
             }
         }
         names
@@ -231,8 +260,13 @@ impl Scope {
     pub fn collect_all_var_refs(&self) -> HashMap<String, Rc<RefCell<Object>>> {
         let mut all_vars = HashMap::new();
 
-        // Start from parent and work backwards, so that closer scopes override farther ones
-        if let Some(parent) = &self.parent {
+        // Start from parent and work backwards, so that closer scopes override
+        // farther ones. A method body ends the walk: the scope above it holds
+        // the program's own top-level locals, which a block written inside a
+        // method does not close over.
+        if !self.is_method_boundary
+            && let Some(parent) = &self.parent
+        {
             all_vars = parent.borrow().collect_all_var_refs();
         }
 
@@ -249,4 +283,17 @@ impl Default for Scope {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Whether a binding holds a definition rather than a local: a method, a
+/// class, or a module reached by name is not one of a scope's locals.
+fn names_a_definition(value: &Object) -> bool {
+    matches!(
+        value,
+        Object::Method(_)
+            | Object::Class(_)
+            | Object::Module(_)
+            | Object::NativeFunction(_)
+            | Object::CompiledFunction(_)
+    )
 }

@@ -20,15 +20,13 @@ fn run_err(code: &str) -> String {
 // ── each/map/select: return and exception inside block ───────────────────────
 
 #[test]
-fn array_each_return_inside_block_error() {
-    let err = run_err(
-        r#"
+fn array_each_return_inside_block_ends_the_program() {
+    let result = run(r#"
 [1, 2, 3].each do |n|
   return n
 end
-"#,
-    );
-    assert!(err.contains("return") || err.contains("loop"));
+"#);
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 #[test]

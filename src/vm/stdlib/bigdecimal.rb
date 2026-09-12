@@ -458,17 +458,21 @@ class BigDecimal < Numeric
   # The written form. "F" spells the number out in full, a leading "+" asks
   # for a sign on a positive value, and a number asks for the digits to be
   # grouped that many at a time.
+  # The number written out. Nothing but digits and punctuation goes into it,
+  # so the answer is tagged US-ASCII the way Ruby tags it.
   def to_s(format = "")
     named = format.to_s
     grouping = named[/\d+/].to_i
     plain = named.include?("F") || named.include?("f")
     leading = named.include?("+") ? "+" : (named.include?(" ") ? " " : "")
     mark = @sign < 0 ? "-" : leading
-    return "#{mark}NaN" if nan?
-    return "#{mark}Infinity" if @special == :infinite
-    return "#{mark}0.0" if zero?
+    return "#{mark}NaN".force_encoding(Encoding::US_ASCII) if nan?
+    if @special == :infinite
+      return "#{mark}Infinity".force_encoding(Encoding::US_ASCII)
+    end
+    return "#{mark}0.0".force_encoding(Encoding::US_ASCII) if zero?
     body = plain ? plain_form(grouping) : scientific_form(grouping)
-    "#{mark}#{body}"
+    "#{mark}#{body}".force_encoding(Encoding::US_ASCII)
   end
 
   def round(digits = 0, mode = nil)

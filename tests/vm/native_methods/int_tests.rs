@@ -49,15 +49,13 @@ sum
 // ── int_methods.rs: times with return in block error (lines 102-104) ────────
 
 #[test]
-fn int_times_return_in_block_error() {
-    let err = run_err(
-        r#"
+fn int_times_return_in_block_ends_the_program() {
+    let result = run(r#"
 5.times do |i|
   return i
 end
-"#,
-    );
-    assert!(err.contains("return") || err.contains("control") || err.contains("loop"));
+"#);
+    assert_eq!(result, Some(Object::Int(0)));
 }
 
 // ── int_methods.rs: times with exception in block ───────────────────────────

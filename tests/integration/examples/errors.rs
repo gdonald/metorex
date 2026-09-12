@@ -1014,3 +1014,19 @@ fn test_errors_uncaught_throw_parens_execution() {
     let output = run_example("errors/uncaught_throw_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `errors/raised_position` variants, which differ
+/// only in whether the calls are written with parentheses.
+const RAISED_POSITION_OUTPUT: &str = "ZeroDivisionError\nArray\nArray\nErrno::ENOENT\n";
+
+#[test]
+fn test_errors_raised_position_execution() {
+    let output = run_example("errors/raised_position.rb");
+    assert_eq!(output, RAISED_POSITION_OUTPUT);
+}
+
+#[test]
+fn test_errors_raised_position_no_parens_execution() {
+    let output = run_example("errors/raised_position_no_parens.rb");
+    assert_eq!(output, RAISED_POSITION_OUTPUT);
+}

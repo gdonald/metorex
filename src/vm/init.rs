@@ -20,7 +20,7 @@ use std::rc::Rc;
 /// cannot convert through.
 /// The waiting, scheduling, and resource-limit settings the operating system
 /// names by number, which Ruby carries as constants on Process.
-pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 22] = [
+pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 26] = [
     ("WNOHANG", libc::WNOHANG as i64),
     ("WUNTRACED", libc::WUNTRACED as i64),
     ("PRIO_PROCESS", libc::PRIO_PROCESS as i64),
@@ -51,17 +51,34 @@ pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 22] = [
         "CLOCK_THREAD_CPUTIME_ID",
         libc::CLOCK_THREAD_CPUTIME_ID as i64,
     ),
+    // The clocks this platform keeps beyond the four every Unix has.
+    #[cfg(target_os = "macos")]
+    ("CLOCK_MONOTONIC_RAW", libc::CLOCK_MONOTONIC_RAW as i64),
+    #[cfg(target_os = "macos")]
+    (
+        "CLOCK_MONOTONIC_RAW_APPROX",
+        libc::CLOCK_MONOTONIC_RAW_APPROX as i64,
+    ),
+    #[cfg(target_os = "macos")]
+    ("CLOCK_UPTIME_RAW", libc::CLOCK_UPTIME_RAW as i64),
+    #[cfg(target_os = "macos")]
+    (
+        "CLOCK_UPTIME_RAW_APPROX",
+        libc::CLOCK_UPTIME_RAW_APPROX as i64,
+    ),
 ];
 
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 48] = [
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 52] = [
     ("UTF_8", "UTF-8", false),
+    ("CESU_8", "CESU-8", false),
     ("US_ASCII", "US-ASCII", false),
+    ("ASCII", "US-ASCII", false),
     ("ASCII_8BIT", "ASCII-8BIT", false),
     ("BINARY", "ASCII-8BIT", false),
-    ("UTF_16", "UTF-16", false),
+    ("UTF_16", "UTF-16", true),
     ("UTF_16BE", "UTF-16BE", false),
     ("UTF_16LE", "UTF-16LE", false),
-    ("UTF_32", "UTF-32", false),
+    ("UTF_32", "UTF-32", true),
     ("UTF_32BE", "UTF-32BE", false),
     ("UTF_32LE", "UTF-32LE", false),
     ("ISO_8859_1", "ISO-8859-1", false),
@@ -95,6 +112,7 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 48] = [
     ("GB18030", "GB18030", false),
     ("GBK", "GBK", false),
     ("IBM437", "IBM437", false),
+    ("Windows_1250", "Windows-1250", false),
     ("IBM866", "IBM866", false),
     ("MacJapanese", "MacJapanese", false),
     // The dummy encodings: Ruby names them and tags strings with them, but
@@ -102,6 +120,7 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 48] = [
     ("ISO_2022_JP", "ISO-2022-JP", true),
     ("ISO_2022_JP_2", "ISO-2022-JP-2", true),
     ("UTF_7", "UTF-7", true),
+    ("CP50221", "CP50221", true),
     ("Stateless_ISO_2022_JP", "stateless-ISO-2022-JP", true),
     ("STATELESS_ISO_2022_JP", "stateless-ISO-2022-JP", true),
 ];
@@ -109,14 +128,14 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 48] = [
 /// The flags `File.open` accepts in `flags:`, and the ones a glob or fnmatch
 /// is narrowed with. File, IO, and File::Constants all carry them.
 const FILE_OPEN_FLAGS: [(&str, i64); 15] = [
-    ("RDONLY", 0),
-    ("WRONLY", 1),
-    ("RDWR", 2),
-    ("CREAT", 0o100),
-    ("EXCL", 0o200),
-    ("TRUNC", 0o1000),
-    ("APPEND", 0o2000),
-    ("NONBLOCK", 0o4000),
+    ("RDONLY", libc::O_RDONLY as i64),
+    ("WRONLY", libc::O_WRONLY as i64),
+    ("RDWR", libc::O_RDWR as i64),
+    ("CREAT", libc::O_CREAT as i64),
+    ("EXCL", libc::O_EXCL as i64),
+    ("TRUNC", libc::O_TRUNC as i64),
+    ("APPEND", libc::O_APPEND as i64),
+    ("NONBLOCK", libc::O_NONBLOCK as i64),
     ("FNM_NOESCAPE", 0x01),
     ("FNM_PATHNAME", 0x02),
     ("FNM_DOTMATCH", 0x04),
@@ -137,6 +156,7 @@ pub(super) fn initialize_builtin_methods(builtins: &BuiltinClasses) {
     builtin_classes::init_integer_methods(builtins.integer_class.as_ref());
     builtin_classes::init_float_methods(builtins.float_class.as_ref());
     builtin_classes::init_hash_methods(builtins.hash_class.as_ref());
+    builtin_classes::init_range_methods(builtins.range_class.as_ref());
     builtin_classes::init_exception_methods(builtins.exception_class.as_ref());
 }
 
@@ -166,11 +186,7 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     );
     globals.set(
         "RUBY_DESCRIPTION",
-        Object::string(format!(
-            "metorex {} (ruby-compatible) [{}]",
-            crate::reported_ruby_version(),
-            crate::reported_ruby_platform()
-        )),
+        Object::string(crate::ruby_description()),
     );
     // The patch number the version carries, which Ruby reports apart from
     // the version itself.
@@ -786,6 +802,7 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     globals.set("exit!", Object::NativeFunction("exit!".to_string()));
     globals.set("abort", Object::NativeFunction("abort".to_string()));
     globals.set("system", Object::NativeFunction("system".to_string()));
+    globals.set("spawn", Object::NativeFunction("spawn".to_string()));
     globals.set("fork", Object::NativeFunction("fork".to_string()));
     globals.set("load", Object::NativeFunction("load".to_string()));
     // Refinements — `using` activates a refinement module (stub for now).
@@ -823,6 +840,14 @@ pub(super) fn register_native_functions(globals: &mut GlobalRegistry) {
     // Lifecycle hooks — accept and discard the block, never run it.
     globals.set("at_exit", Object::NativeFunction("at_exit".to_string()));
     globals.set("END", Object::NativeFunction("at_exit".to_string()));
+    globals.set(
+        "__begin_once__",
+        Object::NativeFunction("__begin_once__".to_string()),
+    );
+    globals.set(
+        "__end_once__",
+        Object::NativeFunction("__end_once__".to_string()),
+    );
     globals.set("trace_var", Object::NativeFunction("trace_var".to_string()));
     globals.set(
         "untrace_var",

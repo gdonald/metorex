@@ -74,6 +74,13 @@ impl VirtualMachine {
         };
         // Capture stack trace and add source location to exception
         let exception_obj = self.add_stack_trace_to_exception(exception_obj, position);
+        // A trace sees the exception on its way up, before anything has had
+        // the chance to handle it.
+        self.fire_event(
+            "raise",
+            position,
+            vec![("raised_exception", exception_obj.clone())],
+        )?;
 
         Ok(ControlFlow::Exception {
             exception: exception_obj,
@@ -137,7 +144,11 @@ impl VirtualMachine {
     }
 
     /// Add stack trace and source location to an exception object
-    fn add_stack_trace_to_exception(&self, exception: Object, position: Position) -> Object {
+    pub(crate) fn add_stack_trace_to_exception(
+        &self,
+        exception: Object,
+        position: Position,
+    ) -> Object {
         if let Object::Exception(exc_ref) = exception {
             let mut exc = exc_ref.borrow_mut();
 
@@ -304,6 +315,12 @@ impl VirtualMachine {
             // Try each rescue clause in order
             for rescue_clause in rescue_clauses {
                 if self.exception_matches(exception, &rescue_clause.exception_types)? {
+                    // A trace sees the clause take the exception.
+                    self.fire_event(
+                        "rescue",
+                        rescue_clause.position,
+                        vec![("raised_exception", exception.clone())],
+                    )?;
                     // Bind exception to variable if specified (=> e)
                     if let Some(var_name) = &rescue_clause.variable_name {
                         match var_name.strip_prefix('$') {
@@ -452,12 +469,20 @@ impl VirtualMachine {
                     _ => None,
                 },
             };
-            let raised_class = exception_class.clone().or_else(|| {
-                match self.environment().get(&exception_type_name) {
+            let raised_class = exception_class
+                .clone()
+                .or_else(|| match self.environment().get(&exception_type_name) {
                     Some(Object::Class(class)) => Some(class),
                     _ => None,
-                }
-            });
+                })
+                // A name written with its namespace, as `Errno::ENOENT` is,
+                // is not a name the environment holds on its own.
+                .or_else(
+                    || match self.resolve_qualified_constant(&exception_type_name) {
+                        Some(Object::Class(class)) => Some(class),
+                        _ => None,
+                    },
+                );
             if let (Some(target_class), Some(raised_class)) = (target_class, raised_class)
                 && Self::is_class_or_subclass(&raised_class, &target_class)
             {

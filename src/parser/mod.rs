@@ -32,6 +32,18 @@ pub struct Parser {
     /// identifier-valued arguments must NOT absorb a trailing `do...end` —
     /// the block belongs to the outer method call, per Ruby precedence.
     pub(crate) paren_less_arg_depth: usize,
+
+    /// How deep the walk is inside a `while`, `until` or `for` condition,
+    /// where a `do` closes the condition rather than opening a block.
+    pub(crate) condition_depth: usize,
+
+    /// Whether the walk is reading a `when` clause, where a `*` spreads a
+    /// list of choices rather than naming a rest pattern.
+    pub(crate) in_when_clause: bool,
+
+    /// How deep the walk is inside the right-hand side of an assignment,
+    /// where `and` and `or` bind more loosely than the assignment itself.
+    pub(crate) assignment_rhs_depth: usize,
     /// Depth of dictionary-literal key/value parsing currently active. Used
     /// to disambiguate `{x 1}` (dict-with-missing-colon, not a paren-less call)
     /// from `Class.new { attr o }` (brace block where `attr o` is a method call).
@@ -128,6 +140,9 @@ impl Parser {
             in_class_body: false,
             ternary_depth: 0,
             paren_less_arg_depth: 0,
+            condition_depth: 0,
+            in_when_clause: false,
+            assignment_rhs_depth: 0,
             dict_literal_depth: 0,
             bound_names: collect_bound_names(&tokens_for_names),
         }
@@ -191,6 +206,25 @@ impl Parser {
     /// Get a reference to the token stream for advanced operations
     pub(crate) fn stream(&self) -> &TokenStream {
         &self.stream
+    }
+
+    /// Expect a token, reporting a miss where the construct it closes was
+    /// opened rather than where the walk gave up. A body that runs off the
+    /// end of the file points at the keyword that opened it, which is where
+    /// the missing `end` belongs.
+    fn expect_closing(
+        &mut self,
+        kind: TokenKind,
+        message: &str,
+        opened_at: crate::lexer::Position,
+    ) -> Result<Token, MetorexError> {
+        if self.match_kind(&kind) {
+            return Ok(self.advance());
+        }
+        Err(MetorexError::syntax_error(
+            message,
+            crate::error::SourceLocation::new(opened_at.line, opened_at.column, opened_at.offset),
+        ))
     }
 
     /// Create an error at the current token

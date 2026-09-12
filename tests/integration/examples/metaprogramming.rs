@@ -1087,3 +1087,19 @@ fn test_metaprogramming_caller_entries_parens_execution() {
     let output = run_example("metaprogramming/caller_entries_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `metaprogramming/instance_exec/singleton_def`
+/// variants.
+const INSTANCE_EXEC_SINGLETON_DEF_OUTPUT: &str = "hello\n[:greeting]\nfalse\n1\n2\n";
+
+#[test]
+fn test_metaprogramming_instance_exec_singleton_def_execution() {
+    let output = run_example("metaprogramming/instance_exec/singleton_def.rb");
+    assert_eq!(output, INSTANCE_EXEC_SINGLETON_DEF_OUTPUT);
+}
+
+#[test]
+fn test_metaprogramming_instance_exec_singleton_def_parens_execution() {
+    let output = run_example("metaprogramming/instance_exec/singleton_def_parens.rb");
+    assert_eq!(output, INSTANCE_EXEC_SINGLETON_DEF_OUTPUT);
+}

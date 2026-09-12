@@ -428,7 +428,6 @@ fn test_basics_warn_categories_execution() {
         "true\n",
         "Warning\n",
         "nil\n",
-        "printed\n",
         "{key: :value2}\n",
         "1\n",
         "true\n"
@@ -451,7 +450,6 @@ fn test_basics_warn_categories_parens_execution() {
         "true\n",
         "Warning\n",
         "nil\n",
-        "printed\n",
         "{key: :value2}\n",
         "1\n",
         "true\n"
@@ -1000,4 +998,20 @@ fn test_basics_string_bytes_execution() {
 fn test_basics_string_bytes_no_parens_execution() {
     let output = run_example("basics/string_bytes_no_parens.rb");
     assert_eq!(output, STRING_BYTES_OUTPUT);
+}
+
+/// The expected output of both `basics/logical_keyword_precedence` variants.
+const LOGICAL_KEYWORD_PRECEDENCE_OUTPUT: &str =
+    "[1, 2]\n[false, 7]\n4\n[92, 110, 92, 116]\n\"set\"\n\"set\"\nnil\nnil\n5\n";
+
+#[test]
+fn test_basics_logical_keyword_precedence_execution() {
+    let output = run_example("basics/logical_keyword_precedence.rb");
+    assert_eq!(output, LOGICAL_KEYWORD_PRECEDENCE_OUTPUT);
+}
+
+#[test]
+fn test_basics_logical_keyword_precedence_no_parens_execution() {
+    let output = run_example("basics/logical_keyword_precedence_no_parens.rb");
+    assert_eq!(output, LOGICAL_KEYWORD_PRECEDENCE_OUTPUT);
 }

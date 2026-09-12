@@ -112,8 +112,9 @@ fn test_lexer_string_with_byte_escape() {
     let mut lexer = Lexer::new(r#""test\xabc""#);
     let token = lexer.next_token();
     // `\xab` names a byte, which stands alone as a character here, and the
-    // `c` that follows is an ordinary letter.
-    assert_eq!(token.kind, TokenKind::String("test\u{ab}c".to_string()));
+    // `c` that follows is an ordinary letter. The byte spells no text, so the
+    // literal says it holds bytes.
+    assert_eq!(token.kind, TokenKind::ByteString("test\u{ab}c".to_string()));
 }
 
 #[test]

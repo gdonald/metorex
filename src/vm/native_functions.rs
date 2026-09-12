@@ -9,6 +9,29 @@ use crate::object::Object;
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// What a command wrote, as a String in the encoding this process reads
+    /// and writes. Bytes that spell no text stand for themselves.
+    pub(crate) fn command_output(&mut self, written: &[u8]) -> Object {
+        let held = self.globals().get("__Encoding_default_external");
+        let named = match held {
+            Some(setting) => {
+                match self.send_to_object(setting, "name", Vec::new(), Position::default()) {
+                    Ok(Object::String(text)) => text.as_str().to_string(),
+                    _ => "UTF-8".to_string(),
+                }
+            }
+            None => "UTF-8".to_string(),
+        };
+        let made = match std::str::from_utf8(written) {
+            Ok(text) => crate::object::StringValue::new(text),
+            Err(_) => crate::object::StringValue::from_bytes(
+                written.iter().map(|byte| *byte as char).collect::<String>(),
+            ),
+        };
+        made.set_encoding(named);
+        Object::String(std::rc::Rc::new(made))
+    }
+
     /// Call a native function by name.
     pub(crate) fn call_native_function(
         &mut self,
@@ -162,6 +185,42 @@ impl VirtualMachine {
                     location: crate::vm::utils::position_to_location(position),
                     message: msg.to_string(),
                 })
+            }
+            // `BEGIN { ... }` runs its body the first time the line is
+            // reached, so a program read one line at a time runs it once.
+            "__begin_once__" => {
+                let Some(block) = self.pending_block.take() else {
+                    let message = "called without a block".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                };
+                let written = (position.line, position.column);
+                if !self.opened_blocks.insert(written) {
+                    return Ok(Object::Nil);
+                }
+                let Object::Block(body) = block else {
+                    return Ok(Object::Nil);
+                };
+                self.execute_block_callable(&body, Vec::new(), position)
+            }
+            // `END { ... }` registers its body once, however many times the
+            // line holding it is read.
+            "__end_once__" => {
+                let Some(block) = self.pending_block.take() else {
+                    let message = "called without a block".to_string();
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("ArgumentError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                };
+                if self.opened_blocks.insert((position.line, position.column)) {
+                    self.at_exit_handlers.push(block.clone());
+                }
+                Ok(block)
             }
             "at_exit" => {
                 let Some(block) = self.pending_block.take() else {
@@ -323,7 +382,7 @@ impl VirtualMachine {
                 // Only the locals in force where the call sits belong to a
                 // binding. The builtins the root scope holds are constants
                 // and methods, which `local_variables` does not name.
-                let named = self.environment().local_variable_names();
+                let named = self.environment().binding_variable_names();
                 let mut variables = std::collections::HashMap::new();
                 for name in named {
                     // At the top level the root scope also holds the builtins,
@@ -506,22 +565,29 @@ impl VirtualMachine {
                     ));
                 }
                 let seed = match arguments.first() {
-                    None => crate::vm::core::seed_from_clock() as i64,
+                    None => Object::Int(crate::vm::core::seed_from_clock() as i64),
                     Some(given) => self.coerce_to_seed(given, position)?,
                 };
-                let previous = self.random_seed;
-                self.random_seed = seed;
+                let machine_word = seed_low_bits(&seed);
+                let previous = std::mem::replace(&mut self.random_seed, seed);
                 // The generator takes the seed as-is; a seed of zero still has
                 // to produce a usable sequence, so it is mixed rather than
                 // used directly.
-                self.random_state = (seed as u64) ^ 0x9E3779B97F4A7C15;
-                Ok(Object::Int(previous))
+                self.random_state = machine_word ^ 0x9E3779B97F4A7C15;
+                Ok(previous)
             }
             "sleep" => Ok(Object::Int(0)),
             // The primitive behind the Math module: the function named by the
             // first argument, applied to the numbers that follow.
             "__math_function__" => self.apply_math_function(&arguments, position),
             "puts" => {
+                // Ruby's `puts` hands its arguments to `$stdout.puts`, which
+                // is what a program replacing that stream relies on.
+                let target = self.globals().get("stdout").unwrap_or(Object::Nil);
+                if !matches!(target, Object::Nil) && self.responds_to(&target, "puts") {
+                    self.send_to_object(target, "puts", arguments, position)?;
+                    return Ok(Object::Nil);
+                }
                 if arguments.is_empty() {
                     self.write_to_stdout("\n", position)?;
                 }
@@ -616,12 +682,23 @@ impl VirtualMachine {
                     ));
                 };
                 let command = self.coerce_command_argument(argument, position)?;
+                // The shell reads bytes, so a command whose characters stand
+                // for bytes is handed those rather than their text form.
+                let written: std::ffi::OsString = match argument {
+                    Object::String(text) if text.holds_bytes() => {
+                        use std::os::unix::ffi::OsStringExt;
+                        std::ffi::OsString::from_vec(
+                            crate::vm::native_methods::string_methods::binary_bytes(text),
+                        )
+                    }
+                    _ => std::ffi::OsString::from(command.clone()),
+                };
                 // Spawn rather than run to completion in one step, so the
                 // child's process id is read before it is waited for and
                 // `$?.pid` can report it.
                 let spawned = std::process::Command::new("/bin/sh")
                     .arg("-c")
-                    .arg(&command)
+                    .arg(&written)
                     .stdout(std::process::Stdio::piped())
                     .stderr(std::process::Stdio::inherit())
                     .spawn();
@@ -655,9 +732,7 @@ impl VirtualMachine {
                         message,
                     });
                 }
-                Ok(Object::string(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ))
+                Ok(self.command_output(&output.stdout))
             }
             // `chomp` and `chop` with no receiver rewrite `$_` in place, which
             // is the line `-n` read. `chomp` takes the separator from `$/`.
@@ -889,8 +964,15 @@ impl VirtualMachine {
                     }
                 };
 
-                // Get current file path
-                let current_file = self.get_current_file().ok_or_else(|| {
+                // Ruby resolves the path against the file the call was
+                // written in, which is not the file being loaded when a
+                // method defined elsewhere is what is running.
+                let written_in = self
+                    .current_source_file
+                    .as_ref()
+                    .map(std::path::PathBuf::from)
+                    .filter(|path| path.is_file());
+                let current_file = written_in.as_ref().or_else(|| self.get_current_file()).ok_or_else(|| {
                     MetorexError::runtime_error(
                         "require_relative cannot be used without a current file context (e.g., in REPL)"
                             .to_string(),
@@ -1252,6 +1334,13 @@ impl VirtualMachine {
                         };
                         crate::vm::errors::syntax_error(message, filename.as_deref(), position)
                     })?;
+                // Ruby reports every string it compiles, which is what a
+                // trace reads the source back out of.
+                self.fire_event(
+                    "script_compiled",
+                    position,
+                    vec![("eval_script", Object::string(code.clone()))],
+                )?;
                 // A Binding argument re-establishes the frame it captured:
                 // its locals (shared cells, so assignment through the eval is
                 // visible to a later one) and the `self` in force there.
@@ -1295,6 +1384,15 @@ impl VirtualMachine {
                         )));
                     }
                 }
+                // The code was written where the eval stands, so it names
+                // that place rather than the file the caller's method came
+                // from.
+                let prev_source_file = std::mem::replace(
+                    &mut self.current_source_file,
+                    self.current_file
+                        .as_ref()
+                        .map(|file| file.display().to_string()),
+                );
                 // The eval'd string runs in the caller's body, so it sees the
                 // visibility state in force there. A toggle it sets belongs to
                 // the eval and is restored afterwards.
@@ -1320,6 +1418,7 @@ impl VirtualMachine {
                     class.set_current_visibility(visibility);
                 }
                 self.current_file = prev_file;
+                self.current_source_file = prev_source_file;
                 self.pop_refinement_scope();
                 self.user_def_nesting = saved_nesting;
                 Ok(result?.unwrap_or(Object::Nil))
@@ -1751,6 +1850,93 @@ impl VirtualMachine {
                     Ok(status) => std::process::exit(status.code().unwrap_or(0)),
                     Err(_) => {
                         let message = format!("No such file or directory - {}", program);
+                        Err(MetorexError::UncaughtException {
+                            exception: Object::exception("Errno::ENOENT", message.clone()),
+                            location: crate::vm::utils::position_to_location(position),
+                            message,
+                        })
+                    }
+                }
+            }
+            // `spawn` starts a command and answers its process id without
+            // waiting for it, which is what `Process.wait` is then given.
+            "spawn" => {
+                // A Hash in front names the environment the child runs with,
+                // and one at the back names how it is run rather than what it
+                // is run with.
+                let mut given: &[Object] = &arguments;
+                let mut environment = None;
+                if let Some(Object::Dict(entries)) = given.first() {
+                    environment = Some(entries.borrow().clone());
+                    given = &given[1..];
+                }
+                let mut settings = None;
+                if given.len() > 1
+                    && let Some(Object::Dict(entries)) = given.last()
+                {
+                    settings = Some(entries.borrow().clone());
+                    given = &given[..given.len() - 1];
+                }
+                let Some(command) = given.first() else {
+                    return Err(MetorexError::runtime_error(
+                        "spawn requires at least 1 argument".to_string(),
+                        crate::vm::utils::position_to_location(position),
+                    ));
+                };
+                let program = self.get_string_representation(command, position)?;
+                let mut rest = Vec::new();
+                for argument in &given[1..] {
+                    rest.push(self.get_string_representation(argument, position)?);
+                }
+                let mut running = if rest.is_empty() {
+                    let mut shell = std::process::Command::new("/bin/sh");
+                    shell.arg("-c").arg(&program);
+                    shell
+                } else {
+                    let mut named = std::process::Command::new(&program);
+                    named.args(&rest);
+                    named
+                };
+                if let Some(environment) = environment {
+                    for (name, value) in environment.iter() {
+                        let name = name.trim_start_matches(':');
+                        match value {
+                            Object::Nil => {
+                                running.env_remove(name);
+                            }
+                            held => {
+                                running.env(name, self.get_string_representation(held, position)?);
+                            }
+                        }
+                    }
+                }
+                if let Some(settings) = &settings
+                    && let Some(Object::String(directory)) = settings.get(":chdir")
+                {
+                    running.current_dir(directory.as_str().to_string());
+                }
+                // `pgroup: true` starts the child in a process group of its
+                // own, which is what keeps a signal to this group from
+                // reaching it.
+                let own_group = matches!(
+                    settings.as_ref().and_then(|held| held.get(":pgroup")),
+                    Some(Object::Bool(true)) | Some(Object::Int(0))
+                );
+                if own_group {
+                    use std::os::unix::process::CommandExt;
+                    // SAFETY: the child calls `setpgid` on itself between the
+                    // fork and the exec, which is what it is for.
+                    unsafe {
+                        running.pre_exec(|| {
+                            libc::setpgid(0, 0);
+                            Ok(())
+                        });
+                    }
+                }
+                match running.spawn() {
+                    Ok(child) => Ok(Object::Int(i64::from(child.id()))),
+                    Err(problem) => {
+                        let message = format!("No such file or directory - {program} ({problem})");
                         Err(MetorexError::UncaughtException {
                             exception: Object::exception("Errno::ENOENT", message.clone()),
                             location: crate::vm::utils::position_to_location(position),
@@ -2337,18 +2523,17 @@ impl VirtualMachine {
         Ok(format!("{}", obj))
     }
 
-    /// The Integer `srand` seeds with. A Float truncates and any other object
-    /// must answer `#to_int`, as Ruby requires.
-    fn coerce_to_seed(&mut self, given: &Object, position: Position) -> Result<i64, MetorexError> {
+    /// The Integer `srand` seeds with, kept at its full width so the next
+    /// call answers the same number back. A Float truncates and any other
+    /// object must answer `#to_int`, as Ruby requires.
+    fn coerce_to_seed(
+        &mut self,
+        given: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         match given {
-            Object::Int(seed) => Ok(*seed),
-            Object::Float(seed) => Ok(*seed as i64),
-            // A seed wider than a machine word keeps its low bits, which is
-            // all the generator reads.
-            Object::BigInt(seed) => {
-                let (_, digits) = seed.to_u64_digits();
-                Ok(digits.first().copied().unwrap_or(0) as i64)
-            }
+            Object::Int(_) | Object::BigInt(_) => Ok(given.clone()),
+            Object::Float(seed) => Ok(Object::Int(*seed as i64)),
             other => {
                 let Some((class, method)) = self.lookup_method(other, "to_int") else {
                     let message = format!(
@@ -2735,6 +2920,24 @@ fn numeric_value(object: &Object) -> Option<f64> {
 }
 
 /// The global's name without its `$`, however it was named.
+/// The low machine word of a seed, which is all the generator reads. A seed
+/// wider than 64 bits still has to drive the same state word.
+fn seed_low_bits(seed: &Object) -> u64 {
+    match seed {
+        Object::BigInt(wide) => {
+            let (sign, digits) = wide.to_u64_digits();
+            let magnitude = digits.first().copied().unwrap_or(0);
+            if matches!(sign, num_bigint::Sign::Minus) {
+                (magnitude as i64).wrapping_neg() as u64
+            } else {
+                magnitude
+            }
+        }
+        Object::Int(narrow) => *narrow as u64,
+        _ => 0,
+    }
+}
+
 fn global_name_from(named: &Object) -> String {
     let text = match named {
         Object::Symbol(name) | Object::String(name) => name.as_str().to_string(),
@@ -2764,7 +2967,7 @@ fn chomped(line: &str, separator: Option<&str>) -> String {
 
 /// Libraries metorex provides itself, which `require` answers for without
 /// looking for a file.
-const BUILT_IN_FEATURES: &[&str] = &["stringio", "set", "enumerator", "pp", "prettyprint"];
+const BUILT_IN_FEATURES: &[&str] = &["stringio", "set", "enumerator", "prettyprint"];
 
 impl VirtualMachine {
     /// The Math module's functions. Each takes its arguments as Floats, which
@@ -2920,8 +3123,26 @@ impl VirtualMachine {
                 if first == 0.0 {
                     return Ok(Object::Float(f64::INFINITY * first.signum()));
                 }
+                if first.is_infinite() {
+                    if first.is_sign_negative() {
+                        return Err(out_of_domain("gamma"));
+                    }
+                    return Ok(Object::Float(f64::INFINITY));
+                }
                 if first < 0.0 && first.fract() == 0.0 {
                     return Err(out_of_domain("gamma"));
+                }
+                // A whole number's gamma is a factorial, and multiplying the
+                // factors keeps every digit a double can hold, which the
+                // series approximation does not.
+                if first > 0.0 && first.fract() == 0.0 && first <= LARGEST_EXACT_FACTORIAL {
+                    let mut product = 1.0;
+                    let mut factor = 2.0;
+                    while factor < first {
+                        product *= factor;
+                        factor += 1.0;
+                    }
+                    return Ok(Object::Float(product));
                 }
                 gamma_function(first)
             }
@@ -3049,6 +3270,10 @@ fn error_function(value: f64) -> f64 {
     let answer = 1.0 - polynomial * (-magnitude * magnitude).exp();
     answer * value.signum()
 }
+
+/// The largest whole number whose factorial a double still holds. Above it
+/// the product overflows to infinity, which is what Ruby answers there too.
+const LARGEST_EXACT_FACTORIAL: f64 = 171.0;
 
 /// The gamma function, by the Lanczos approximation.
 fn gamma_function(value: f64) -> f64 {

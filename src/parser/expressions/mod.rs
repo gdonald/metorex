@@ -16,6 +16,48 @@ use crate::parser::Parser;
 type BlockParams = (Vec<String>, Vec<(usize, Expression)>);
 
 impl Parser {
+    /// The names inside a destructuring group, written back out so the binder
+    /// can walk them. A group may hold groups of its own, and one name in it
+    /// may take whatever the others leave.
+    pub(crate) fn read_parameter_group(&mut self) -> Result<String, MetorexError> {
+        let mut names: Vec<String> = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if self.match_token(&[TokenKind::RParen]) {
+                break;
+            }
+            if self.match_token(&[TokenKind::LParen]) {
+                let nested = self.read_parameter_group()?;
+                names.push(format!("({})", nested));
+            } else {
+                let star = if self.match_token(&[TokenKind::Star]) {
+                    "*"
+                } else {
+                    ""
+                };
+                self.skip_whitespace();
+                // `(*)` takes what the named parts leave without naming it.
+                if !star.is_empty() && self.check(&[TokenKind::RParen, TokenKind::Comma]) {
+                    names.push("*".to_string());
+                } else {
+                    match self.advance().kind {
+                        TokenKind::Ident(name) => names.push(format!("{}{}", star, name)),
+                        _ => {
+                            return Err(self.error_at_previous("Expected parameter name in group"));
+                        }
+                    }
+                }
+            }
+            self.skip_whitespace();
+            if !self.match_token(&[TokenKind::Comma]) {
+                self.skip_whitespace();
+                self.expect(TokenKind::RParen, "Expected ')' after group")?;
+                break;
+            }
+        }
+        Ok(names.join(","))
+    }
+
     /// Parse an expression using operator precedence climbing
     pub(crate) fn parse_expression(&mut self) -> Result<Expression, MetorexError> {
         let expr = self.parse_assignment()?;
@@ -200,7 +242,10 @@ impl Parser {
     /// Parse a condition expression that may contain an inline assignment.
     /// Used in if/unless/while conditions where `var = expr` is valid.
     pub(crate) fn parse_condition(&mut self) -> Result<Expression, MetorexError> {
-        let expr = self.parse_expression()?;
+        self.condition_depth += 1;
+        let parsed = self.parse_expression();
+        self.condition_depth -= 1;
+        let expr = parsed?;
 
         // Check for inline assignment: ident = expr (in condition context)
         if matches!(expr, Expression::Identifier { .. }) && self.check(&[TokenKind::Equal]) {
@@ -287,31 +332,11 @@ impl Parser {
                 // `|(a, b)|` spreads one array argument across the names in
                 // the group, which the binder undoes by the marker.
                 if prefix.is_empty() && self.match_token(&[TokenKind::LParen]) {
-                    let mut names = Vec::new();
-                    loop {
-                        self.skip_whitespace();
-                        if self.match_token(&[TokenKind::RParen]) {
-                            break;
-                        }
-                        match self.advance().kind {
-                            TokenKind::Ident(name) => names.push(name),
-                            _ => {
-                                return Err(
-                                    self.error_at_previous("Expected parameter name in group")
-                                );
-                            }
-                        }
-                        self.skip_whitespace();
-                        if !self.match_token(&[TokenKind::Comma]) {
-                            self.skip_whitespace();
-                            self.expect(TokenKind::RParen, "Expected ')' after group")?;
-                            break;
-                        }
-                    }
+                    let names = self.read_parameter_group()?;
                     params.push(format!(
                         "{}{}",
                         crate::object::DESTRUCTURED_GROUP_PREFIX,
-                        names.join(",")
+                        names
                     ));
                 } else if !prefix.is_empty() && self.check(&[TokenKind::Pipe, TokenKind::Comma]) {
                     // `|*|`, `|**|`, and `|&|` take the values without naming
@@ -347,6 +372,9 @@ impl Parser {
                         _ => return Err(self.error_at_previous("Expected parameter name")),
                     }
                 }
+                if self.check(&[TokenKind::Semicolon]) {
+                    break;
+                }
                 self.skip_whitespace();
                 if self.match_token(&[TokenKind::Equal]) {
                     self.skip_whitespace();
@@ -366,6 +394,26 @@ impl Parser {
                 }
             }
         }
+        // `|a; held|` names locals of the block's own, which start as nil and
+        // never take an argument.
+        if self.match_token(&[TokenKind::Semicolon]) {
+            loop {
+                self.skip_whitespace();
+                if self.check(&[TokenKind::Pipe]) {
+                    break;
+                }
+                match self.advance().kind {
+                    TokenKind::Ident(name) => {
+                        params.push(format!("{}{}", crate::object::BLOCK_LOCAL_PREFIX, name))
+                    }
+                    _ => return Err(self.error_at_previous("Expected a name after ';'")),
+                }
+                self.skip_whitespace();
+                if !self.match_token(&[TokenKind::Comma]) {
+                    break;
+                }
+            }
+        }
         self.skip_whitespace();
         self.expect(TokenKind::Pipe, "Expected '|' after block parameters")?;
         Ok((params, defaults))
@@ -373,6 +421,15 @@ impl Parser {
 
     /// Parse a block: `do |param1, param2| ... end`
     pub(crate) fn parse_block(&mut self) -> Result<Expression, MetorexError> {
+        // A block body is its own run of statements, so `and` and `or` bind
+        // there the way they do anywhere else.
+        let held = std::mem::take(&mut self.assignment_rhs_depth);
+        let parsed = self.parse_block_body();
+        self.assignment_rhs_depth = held;
+        parsed
+    }
+
+    pub(crate) fn parse_block_body(&mut self) -> Result<Expression, MetorexError> {
         let start_pos = self.peek().position;
 
         // Expect 'do' keyword
@@ -467,6 +524,15 @@ impl Parser {
 
     /// Parse a block with brace syntax: { |x| ... }
     pub(crate) fn parse_brace_block(&mut self) -> Result<Expression, MetorexError> {
+        // A block body is its own run of statements, so `and` and `or` bind
+        // there the way they do anywhere else.
+        let held = std::mem::take(&mut self.assignment_rhs_depth);
+        let parsed = self.parse_brace_block_body();
+        self.assignment_rhs_depth = held;
+        parsed
+    }
+
+    pub(crate) fn parse_brace_block_body(&mut self) -> Result<Expression, MetorexError> {
         let start_pos = self.peek().position;
 
         // Expect '{' to start block

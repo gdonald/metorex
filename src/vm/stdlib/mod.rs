@@ -29,6 +29,8 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
         "bigdecimal/util" => Some(include_str!("bigdecimal.rb")),
         "abbrev" => Some(include_str!("abbrev.rb")),
         "etc" => Some(include_str!("etc.rb")),
+        "pp" => Some(include_str!("pp.rb")),
+        "fcntl" => Some(include_str!("fcntl.rb")),
         "find" => Some(include_str!("find.rb")),
         "getoptlong" => Some(include_str!("getoptlong.rb")),
         "io/console" => Some(include_str!("io_console.rb")),

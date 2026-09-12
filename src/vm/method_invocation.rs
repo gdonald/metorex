@@ -40,7 +40,11 @@ impl VirtualMachine {
             // answers to only because it extended a module sits behind those,
             // which is what lets `def Mod.name` override an extended one and
             // reach it again through `super`.
-            let module_method = crate::vm::method_lookup::module_own_method(class, name)
+            let module_method = class
+                .singleton_class_slot()
+                .as_ref()
+                .and_then(|singleton| singleton.find_own_method(name))
+                .or_else(|| crate::vm::method_lookup::module_own_method(class, name))
                 .or_else(|| {
                     class
                         .singleton_class_slot()
@@ -382,6 +386,7 @@ impl VirtualMachine {
         // rather than something a subclass can carry state on.
         if descends_from(&class, "Range") && (2..=3).contains(&arguments.len()) {
             self.pending_block.take();
+            self.check_range_ends(&arguments[0], &arguments[1], position)?;
             return Ok(Object::Range {
                 start: Box::new(arguments[0].clone()),
                 end: Box::new(arguments[1].clone()),

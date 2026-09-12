@@ -74,7 +74,11 @@ impl Parser {
             None
         };
 
-        self.expect(TokenKind::End, "Expected 'end' after if statement")?;
+        self.expect_closing(
+            TokenKind::End,
+            "Expected 'end' after if statement",
+            start_pos,
+        )?;
 
         Ok(Statement::If {
             condition,
@@ -154,21 +158,23 @@ impl Parser {
         let start_pos = self.expect(TokenKind::For, "Expected 'for'")?.position;
         self.skip_whitespace();
 
-        // Parse the loop variable
-        let variable = if let TokenKind::Ident(name) = &self.peek().kind {
-            let var_name = name.clone();
-            self.advance();
-            var_name
-        } else {
-            return Err(MetorexError::syntax_error(
-                "Expected identifier after 'for'",
-                SourceLocation::new(
-                    self.peek().position.line,
-                    self.peek().position.column,
-                    self.peek().position.offset,
-                ),
-            ));
-        };
+        // Parse the loop variables. Ruby names one or more assignment
+        // targets here, and a comma with nothing after it is a target list
+        // that takes the first element alone.
+        let mut targets = vec![self.parse_for_target()?];
+        let mut destructures = false;
+        loop {
+            self.skip_whitespace();
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+            destructures = true;
+            self.skip_whitespace();
+            if self.check(&[TokenKind::In]) {
+                break;
+            }
+            targets.push(self.parse_for_target()?);
+        }
 
         self.skip_whitespace();
 
@@ -197,12 +203,61 @@ impl Parser {
 
         self.expect(TokenKind::End, "Expected 'end' after for loop")?;
 
-        Ok(Statement::For {
-            variable,
+        // A loop naming one plain local keeps its own node, which the
+        // bytecode compiler reads. The rest stand for the `each` call that
+        // binds their targets.
+        if !destructures && let [Expression::Identifier { name, .. }] = targets.as_slice() {
+            return Ok(Statement::For {
+                variable: name.clone(),
+                iterable,
+                body,
+                position: start_pos,
+            });
+        }
+        Ok(crate::ast::for_loop::for_over_each(
+            targets,
+            destructures,
             iterable,
             body,
-            position: start_pos,
-        })
+            start_pos,
+        ))
+    }
+
+    /// One assignment target named between `for` and `in`. A bare `*` stands
+    /// for the elements no other target takes, under a name nothing reads.
+    fn parse_for_target(&mut self) -> Result<Expression, MetorexError> {
+        if self.check(&[TokenKind::Star]) {
+            let star = self.advance();
+            self.skip_whitespace();
+            let discards = self.check(&[TokenKind::In, TokenKind::Comma]);
+            let expression = if discards {
+                Expression::Identifier {
+                    name: "_".to_string(),
+                    position: star.position,
+                }
+            } else {
+                self.parse_expression_with_lambda()?
+            };
+            return Ok(Expression::Splat {
+                expression: Box::new(expression),
+                position: star.position,
+            });
+        }
+        let target = self.parse_expression_with_lambda()?;
+        // Only a form a value can be stored in names a loop variable.
+        if !matches!(
+            target,
+            Expression::Identifier { .. }
+                | Expression::InstanceVariable { .. }
+                | Expression::ClassVariable { .. }
+                | Expression::GlobalVariable { .. }
+                | Expression::MethodCall { .. }
+                | Expression::Index { .. }
+                | Expression::ScopeResolution { .. }
+        ) {
+            return Err(self.error_at_previous("Cannot assign to this expression"));
+        }
+        Ok(target)
     }
 
     /// Parse a break statement, optionally with a value (e.g. `break 42`).
@@ -220,11 +275,16 @@ impl Parser {
                 TokenKind::If,
                 TokenKind::Unless,
                 TokenKind::While,
+                TokenKind::Until,
                 TokenKind::RBrace,
-            ]) {
+                TokenKind::RParen,
+                TokenKind::Comment(String::new()),
+            ])
+            || (self.ternary_depth > 0 && self.check(&[TokenKind::Colon]))
+        {
             None
         } else {
-            Some(Box::new(self.parse_expression()?))
+            Some(Box::new(self.parse_jump_value()?))
         };
         let stmt = Statement::Break {
             value,
@@ -247,17 +307,50 @@ impl Parser {
                 TokenKind::If,
                 TokenKind::Unless,
                 TokenKind::While,
+                TokenKind::Until,
                 TokenKind::RBrace,
-            ]) {
+                TokenKind::RParen,
+                TokenKind::Comment(String::new()),
+            ])
+            || (self.ternary_depth > 0 && self.check(&[TokenKind::Colon]))
+        {
             None
         } else {
-            Some(Box::new(self.parse_expression()?))
+            // `next 1, 2, 3` hands the block an Array of what follows.
+            let first = self.parse_jump_value()?;
+            let mut values = vec![first];
+            while self.match_token(&[TokenKind::Comma]) {
+                self.skip_whitespace();
+                values.push(self.parse_expression()?);
+            }
+            if values.len() == 1 {
+                Some(Box::new(values.remove(0)))
+            } else {
+                Some(Box::new(crate::ast::Expression::Array {
+                    elements: values,
+                    position: pos,
+                }))
+            }
         };
         let stmt = Statement::Continue {
             value,
             position: pos,
         };
         self.wrap_with_modifier(stmt)
+    }
+
+    /// The value a `break`, `next`, or `return` carries. `and` and `or` bind
+    /// more loosely than the jump, so one written after the value has nothing
+    /// on its left to read, which Ruby refuses.
+    fn parse_jump_value(&mut self) -> Result<Expression, MetorexError> {
+        self.assignment_rhs_depth += 1;
+        let parsed = self.parse_expression();
+        self.assignment_rhs_depth -= 1;
+        let value = parsed?;
+        if self.check(&[TokenKind::KeywordAnd, TokenKind::KeywordOr]) {
+            return Err(self.error_at_current("void value expression"));
+        }
+        Ok(value)
     }
 
     /// Parse a redo statement, which re-runs the enclosing body from the top.
@@ -341,11 +434,13 @@ impl Parser {
             TokenKind::When,
             TokenKind::Rescue,
             TokenKind::Ensure,
+            // `defined?(return)` names the jump without giving it a value.
+            TokenKind::RParen,
         ]) || self.is_at_end()
         {
             None
         } else {
-            let mut first = self.parse_expression()?;
+            let mut first = self.parse_jump_value()?;
             // Allow assignment in return value: `return x = value`
             if self.check(&[TokenKind::Equal])
                 && matches!(
@@ -402,12 +497,90 @@ impl Parser {
     ///   else
     ///     else_body
     ///   end
+    /// `case` written with no subject, where each `when` holds conditions
+    /// rather than patterns. Ruby reads it as the `if` chain it stands for.
+    pub(crate) fn parse_subjectless_case(
+        &mut self,
+        start_pos: crate::lexer::Position,
+    ) -> Result<Statement, MetorexError> {
+        let mut branches: Vec<crate::ast::ElsifBranch> = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if !self.match_token(&[TokenKind::When]) {
+                break;
+            }
+            let when_pos = self.previous().position;
+            self.skip_whitespace();
+            let mut condition = self.parse_expression()?;
+            while self.match_token(&[TokenKind::Comma]) {
+                self.skip_whitespace();
+                let another = self.parse_expression()?;
+                condition = Expression::BinaryOp {
+                    op: crate::ast::BinaryOp::Or,
+                    left: Box::new(condition),
+                    right: Box::new(another),
+                    position: when_pos,
+                };
+            }
+            self.skip_whitespace();
+            self.match_token(&[TokenKind::Then]);
+            branches.push(crate::ast::ElsifBranch {
+                condition,
+                body: self.parse_clause_body()?,
+                position: when_pos,
+            });
+        }
+        self.skip_whitespace();
+        let else_branch = if self.match_token(&[TokenKind::Else]) {
+            self.skip_whitespace();
+            Some(self.parse_clause_body()?)
+        } else {
+            None
+        };
+        self.skip_whitespace();
+        self.expect(TokenKind::End, "Expected 'end' after case statement")?;
+
+        let mut branches = branches.into_iter();
+        let first = branches
+            .next()
+            .expect("a case with no subject holds at least one when");
+        Ok(Statement::If {
+            condition: first.condition,
+            then_branch: first.body,
+            elsif_branches: branches.collect(),
+            else_branch,
+            position: start_pos,
+        })
+    }
+
+    /// The statements of one `when` or `else` clause, read up to whatever
+    /// closes it.
+    fn parse_clause_body(&mut self) -> Result<Vec<Statement>, MetorexError> {
+        let mut body = Vec::new();
+        loop {
+            self.skip_whitespace();
+            if self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End]) || self.is_at_end() {
+                break;
+            }
+            body.push(self.parse_statement()?);
+        }
+        Ok(body)
+    }
+
     pub(crate) fn parse_case_statement(&mut self) -> Result<Statement, MetorexError> {
         let start_pos = self.expect(TokenKind::Case, "Expected 'case'")?.position;
         self.skip_whitespace();
 
-        // Parse the expression to match against
-        let expression = self.parse_expression()?;
+        // `case` with nothing to match against tests each `when` for truth,
+        // which is the `if` chain it stands for.
+        self.skip_whitespace();
+        if self.check(&[TokenKind::When]) {
+            return self.parse_subjectless_case(start_pos);
+        }
+        // Parse the expression to match against. A `case name = value` binds
+        // the name in the scope holding the case, so the assignment is part
+        // of the subject.
+        let expression = self.parse_condition()?;
         self.skip_whitespace();
 
         // Detect whether this is case/when or case/in
@@ -429,7 +602,7 @@ impl Parser {
             // Note: do NOT call skip_whitespace here — we need to be able to
             // distinguish a guard on the same line (`when pat if guard`) from
             // an `if` statement on the next line (which is a body statement).
-            let pattern = self.parse_case_pattern_with_alternatives()?;
+            let pattern = self.parse_when_pattern_with_alternatives()?;
 
             // Parse optional guard clause (`if expr`) on the SAME line as the
             // pattern. We only consume horizontal whitespace, not newlines.
@@ -670,6 +843,15 @@ impl Parser {
     /// by both statement parsing (case statements) and expression parsing (case expressions)
     /// Parse a pattern that may include comma-separated alternatives
     /// Returns a MatchPattern::Multiple if multiple patterns are found, otherwise a single pattern
+    pub(in crate::parser) fn parse_when_pattern_with_alternatives(
+        &mut self,
+    ) -> Result<MatchPattern, MetorexError> {
+        self.in_when_clause = true;
+        let parsed = self.parse_case_pattern_with_alternatives();
+        self.in_when_clause = false;
+        parsed
+    }
+
     pub(in crate::parser) fn parse_case_pattern_with_alternatives(
         &mut self,
     ) -> Result<MatchPattern, MetorexError> {
@@ -903,11 +1085,43 @@ impl Parser {
                 }
                 Ok(MatchPattern::Type(type_name))
             }
+            // A call written where a pattern goes, such as `when klass.new`,
+            // stands for what it answers.
+            TokenKind::Ident(_)
+                if matches!(
+                    self.peek_ahead(1).kind,
+                    TokenKind::Dot | TokenKind::SafeDot | TokenKind::LParen
+                ) =>
+            {
+                let held = self.parse_expression()?;
+                Ok(MatchPattern::Expression(Box::new(held)))
+            }
             // Variable binding pattern
             TokenKind::Ident(name) => {
                 let var_name = name.clone();
                 self.advance();
                 Ok(MatchPattern::Identifier(var_name))
+            }
+            // `when (expr; expr)` reads a parenthesized run of statements,
+            // whose last value is what the case compares against.
+            TokenKind::LParen => {
+                let held = self.parse_expression()?;
+                Ok(MatchPattern::Expression(Box::new(held)))
+            }
+            // `when *values` names each of the values as a choice.
+            TokenKind::Star if self.in_when_clause => {
+                let star = self.advance().position;
+                let spread = self.parse_expression()?;
+                Ok(MatchPattern::Expression(Box::new(Expression::Splat {
+                    expression: Box::new(spread),
+                    position: star,
+                })))
+            }
+            // A `when` may be written with anything that answers `===`, such
+            // as a pattern literal, so what is left is read as an expression.
+            TokenKind::Regex(_, _) => {
+                let held = self.parse_primary()?;
+                Ok(MatchPattern::Expression(Box::new(held)))
             }
             _ => Err(MetorexError::syntax_error(
                 format!("Expected pattern, found {:?}", token.kind),

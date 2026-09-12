@@ -40,7 +40,7 @@ pub struct VirtualMachine {
     pub(crate) tracepoints: Vec<Object>,
     /// The line a `:line` event was last fired for, so one statement does not
     /// fire twice and a multi-line expression fires once.
-    pub(crate) traced_line: Option<usize>,
+    pub(crate) traced_line: Option<(String, usize)>,
     /// Whether a tracepoint handler is running. Ruby does not call a handler
     /// from inside its own.
     pub(crate) tracing: bool,
@@ -53,11 +53,26 @@ pub struct VirtualMachine {
     /// is over. One registered while they run goes to the end, so it runs
     /// right after the handler that registered it.
     pub(crate) at_exit_handlers: Vec<Object>,
+    /// The places a `BEGIN` block was written, so one reached again while a
+    /// program reads its input line by line runs only the first time.
+    pub(crate) opened_blocks: std::collections::HashSet<(usize, usize)>,
+    /// How many frames under the top one a report writes out, or -1 when it
+    /// writes every one of them. `--backtrace-limit` settles it.
+    pub(crate) backtrace_limit: i64,
+    /// Where a class variable written inside `instance_exec` or
+    /// `instance_eval` belongs: the class or module the block was written in,
+    /// rather than the object it runs against.
+    pub(crate) class_var_home: Vec<Rc<crate::class::Class>>,
+    /// The frozen strings `dedup` and `-@` share, keyed by the text and the
+    /// encoding it is written in. Two equal strings deduplicate to one object.
+    pub(crate) deduped_strings: HashMap<(String, String), Rc<crate::object::StringValue>>,
     /// Children spawned by `IO.popen` that have not been waited for, keyed by
     /// the id their handle carries.
     pub(crate) popen_children: HashMap<u64, std::process::Child>,
     /// The listeners and connections a program holds open.
     pub(crate) open_sockets: crate::vm::native_methods::OpenSockets,
+    /// The file descriptors an IO object of this program stands over.
+    pub(crate) open_streams: crate::vm::native_methods::OpenStreams,
     /// The id the next `IO.popen` handle takes.
     pub(crate) next_popen_id: u64,
     /// The file whose code is running right now, which differs from
@@ -119,7 +134,7 @@ pub struct VirtualMachine {
     /// State for `Kernel#rand`, advanced on each draw and reset by `srand`.
     pub(crate) random_state: u64,
     /// The seed `srand` last installed, which it answers on the next call.
-    pub(crate) random_seed: i64,
+    pub(crate) random_seed: Object,
     /// True while a FrozenError message is being built. Inspecting the object
     /// can itself try to modify it, and the nested error must not recurse.
     pub(crate) rendering_frozen_error: bool,
@@ -128,6 +143,10 @@ pub struct VirtualMachine {
     /// value keeps the collection alive, so its address cannot be recycled by
     /// a later one and read back as frozen.
     pub(crate) frozen_collections: HashMap<usize, Object>,
+
+    /// Patterns built by `Regexp.new`, which a program may still change. A
+    /// pattern written as a literal is frozen where it stands.
+    pub(crate) built_patterns: std::collections::HashSet<usize>,
     /// The instance variables set on an Array, Hash, or Set. A collection has
     /// nowhere of its own to keep them, so the VM records them against the
     /// address it lives at.
@@ -162,6 +181,10 @@ pub struct VirtualMachine {
     /// Pushed on entering a `class`/`module` body; popped on exit. Does NOT
     /// track method call receivers — only lexical nesting.
     pub(crate) def_scope_stack: Vec<Rc<crate::class::Class>>,
+    /// The binding of the method body that just finished, which a trace
+    /// reading `binding` off a `return` event is handed. Captured before the
+    /// body's scope is popped, since the locals are gone after that.
+    pub(crate) traced_binding: Option<Object>,
     /// Lazily-populated singleton classes for value-kind receivers that
     /// have no per-object storage (Nil / true / false / Int / Float /
     /// Symbol / String). Keyed by a stable string tag so every lookup for
@@ -236,8 +259,13 @@ impl VirtualMachine {
             next_object_id: 1,
             script_path: None,
             at_exit_handlers: Vec::new(),
+            opened_blocks: std::collections::HashSet::new(),
+            backtrace_limit: -1,
+            class_var_home: Vec::new(),
+            deduped_strings: HashMap::new(),
             popen_children: HashMap::new(),
             open_sockets: Default::default(),
+            open_streams: Default::default(),
             next_popen_id: 0,
             current_source_file: None,
             current_method_frame: Some(TOP_LEVEL_FRAME),
@@ -253,9 +281,10 @@ impl VirtualMachine {
             pending_block: None,
             pending_block_from_ampersand: false,
             random_state: seed_from_clock(),
-            random_seed: seed_from_clock() as i64,
+            random_seed: Object::Int(seed_from_clock() as i64),
             rendering_frozen_error: false,
             frozen_collections: HashMap::new(),
+            built_patterns: std::collections::HashSet::new(),
             collection_variables: HashMap::new(),
             signal_handlers: HashMap::new(),
             traced_globals: HashMap::new(),
@@ -265,6 +294,7 @@ impl VirtualMachine {
             user_def_nesting: 0,
             refinement_scopes: vec![Vec::new()],
             def_scope_stack: Vec::new(),
+            traced_binding: None,
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
             method_owner_stack: Vec::new(),
@@ -277,6 +307,7 @@ impl VirtualMachine {
         // works whether or not a caller has handed one over.
         vm.set_argv(Vec::new());
         vm.load_prelude();
+        vm.open_standard_streams();
         // The prelude's own class and module names are part of the core
         // library, not locals the program declared, so `local_variables` and
         // friends have to keep skipping them.
@@ -311,6 +342,21 @@ impl VirtualMachine {
         {
             details.borrow_mut().cause = Some(Box::new(active.clone()));
         }
+        // An exception raised by the interpreter itself carries no backtrace
+        // of its own, and one being handled has to report where it came from,
+        // so the stack it was raised on is recorded here.
+        let exception = match &exception {
+            Object::Exception(details) if details.borrow().backtrace.is_none() => {
+                let position = details
+                    .borrow()
+                    .location
+                    .as_ref()
+                    .map(|held| crate::lexer::Position::new(held.line, held.column, 0))
+                    .unwrap_or_else(|| crate::lexer::Position::new(0, 0, 0));
+                self.add_stack_trace_to_exception(exception.clone(), position)
+            }
+            _ => exception,
+        };
         self.environment_mut()
             .define("$!".to_string(), exception.clone());
         let backtrace = match &exception {

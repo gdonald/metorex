@@ -11,7 +11,7 @@ fn parse_err(code: &str) -> String {
 #[test]
 fn parse_for_missing_identifier_error() {
     let err = parse_err("for 42 in [1, 2]\nend");
-    assert!(err.contains("identifier") || err.contains("'for'") || err.contains("Expected"));
+    assert!(err.contains("Cannot assign"), "{}", err);
 }
 
 // ── From additional_tests ───────────────────────────────────────────────────

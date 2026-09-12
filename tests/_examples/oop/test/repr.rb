@@ -9,4 +9,4 @@ class Point
 end
 
 point = Point.new
-puts point
+p point

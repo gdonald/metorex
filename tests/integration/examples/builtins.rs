@@ -11,14 +11,14 @@ fn test_builtins_type_introspection() {
 
 #[test]
 fn test_defined_keyword_execution() {
-    let expected = "local-variable\nnil\nmethod\nconstant\nnil\nglobal-variable\nnil\nexpression\nexpression\nexpression\nexpression\nlocal-variable\n";
+    let expected = "local-variable\n\nmethod\nconstant\n\nglobal-variable\n\nexpression\nexpression\nexpression\nexpression\nlocal-variable\n";
     let output = run_example("builtins/defined_keyword.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_defined_keyword_parens_execution() {
-    let expected = "local-variable\nnil\nmethod\nconstant\nexpression\n";
+    let expected = "local-variable\n\nmethod\nconstant\nexpression\n";
     let output = run_example("builtins/defined_keyword_parens.rb");
     assert_eq!(output, expected);
 }
@@ -67,7 +67,7 @@ fn test_or_assign_parens_execution() {
 
 #[test]
 fn test_defined_extended_execution() {
-    let expected = "local-variable\nmethod\nconstant\nnil\nglobal-variable\nnil\ninstance-variable\nnil\nexpression\nexpression\nexpression\nexpression\nyield\nnil\nnil\n";
+    let expected = "local-variable\nmethod\nconstant\n\nglobal-variable\n\ninstance-variable\n\nexpression\nexpression\nexpression\nexpression\nyield\n\n\n";
     let output = run_example("builtins/defined_extended.rb");
     assert_eq!(output, expected);
 }
@@ -594,7 +594,7 @@ fn test_builtins_kernel_open_execution() {
         "[]\n",
         "wrong number of arguments (given 0, expected 1..3)\n",
         "wrong number of arguments (given 4, expected 1..3)\n",
-        "64\n",
+        "true\n",
         "true\n"
     );
     let output = run_example("builtins/kernel_open.rb");
@@ -614,7 +614,7 @@ fn test_builtins_kernel_open_parens_execution() {
         "[]\n",
         "wrong number of arguments (given 0, expected 1..3)\n",
         "wrong number of arguments (given 4, expected 1..3)\n",
-        "64\n",
+        "true\n",
         "true\n"
     );
     let output = run_example("builtins/kernel_open_parens.rb");
@@ -1374,4 +1374,86 @@ fn test_builtins_byte_views_reading_execution() {
 fn test_builtins_byte_views_reading_parens_execution() {
     let output = run_example("builtins/byte_views/reading_parens.rb");
     assert_eq!(output, BYTE_VIEWS_OUTPUT);
+}
+
+/// The expected output of both `builtins/encoding_converter/converting`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const ENCODING_CONVERTING_OUTPUT: &str = "\"plain\"\n\"UTF-8\"\n\"US-ASCII\"\n\"\u{8765}\"\n\"UTF-8\"\n\"ISO-8859-1\"\n[241]\n[97]\n\"UTF-8\"\nEncoding\ntrue\n";
+
+#[test]
+fn test_builtins_encoding_converting_execution() {
+    let output = run_example("builtins/encoding_converter/converting.rb");
+    assert_eq!(output, ENCODING_CONVERTING_OUTPUT);
+}
+
+#[test]
+fn test_builtins_encoding_converting_no_parens_execution() {
+    let output = run_example("builtins/encoding_converter/converting_no_parens.rb");
+    assert_eq!(output, ENCODING_CONVERTING_OUTPUT);
+}
+
+/// The expected output of both `builtins/numeric_parts` variants.
+const NUMERIC_PARTS_OUTPUT: &str = "(0+3i)\n(3+0i)\n[5, 0]\n[5, 3.141592653589793]\n[5, 0]\ntrue\n0\n0\n9\n(5/2)\n0.8\n1\n-1\n1\n-100\n(1/3)\n(3/10)\n(4806858197361/1421)\n(4+6i)\n(Infinity+Infinity*i)\n(2.0+6.0i)\n((1/1)+(3/1)*i)\n[2, 1024, -1021]\nnil\nnil\n";
+
+#[test]
+fn test_builtins_numeric_parts_execution() {
+    let output = run_example("builtins/numeric_parts.rb");
+    assert_eq!(output, NUMERIC_PARTS_OUTPUT);
+}
+
+#[test]
+fn test_builtins_numeric_parts_no_parens_execution() {
+    let output = run_example("builtins/numeric_parts_no_parens.rb");
+    assert_eq!(output, NUMERIC_PARTS_OUTPUT);
+}
+
+/// The expected output of both `builtins/range_bounds` variants.
+const RANGE_BOUNDS_OUTPUT: &str =
+    "true\ntrue\ntrue\nfalse\nfalse\ntrue\nfalse\ntrue\nfalse\n\"bad value for range\"\n";
+
+#[test]
+fn test_builtins_range_bounds_execution() {
+    let output = run_example("builtins/range_bounds.rb");
+    assert_eq!(output, RANGE_BOUNDS_OUTPUT);
+}
+
+#[test]
+fn test_builtins_range_bounds_no_parens_execution() {
+    let output = run_example("builtins/range_bounds_no_parens.rb");
+    assert_eq!(output, RANGE_BOUNDS_OUTPUT);
+}
+
+/// The expected output of both `builtins/comparing_values` variants, which
+/// differ only in whether the calls are written with parentheses.
+const COMPARING_VALUES_OUTPUT: &str = concat!(
+    "true\ntrue\ntrue\ntrue\ntrue\ntrue\nfalse\nfalse\n4\n5\n",
+    "\"cannot exclude non Integer end value\"\ntrue\nfalse\nfalse\ntrue\n"
+);
+
+#[test]
+fn test_builtins_comparing_values_execution() {
+    let output = run_example("builtins/comparing_values.rb");
+    assert_eq!(output, COMPARING_VALUES_OUTPUT);
+}
+
+#[test]
+fn test_builtins_comparing_values_no_parens_execution() {
+    let output = run_example("builtins/comparing_values_no_parens.rb");
+    assert_eq!(output, COMPARING_VALUES_OUTPUT);
+}
+
+/// The expected output of both `builtins/optimized_redefinition` variants.
+const OPTIMIZED_REDEFINITION_OUTPUT: &str = "[performance] Redefining 'Integer#+' disables interpreter and JIT optimizations\nreplaced\n3\nquiet\n85968058271978839505040\n";
+
+#[test]
+fn test_builtins_optimized_redefinition_execution() {
+    let output = run_example("builtins/optimized_redefinition.rb");
+    assert_eq!(output, OPTIMIZED_REDEFINITION_OUTPUT);
+}
+
+#[test]
+fn test_builtins_optimized_redefinition_parens_execution() {
+    let output = run_example("builtins/optimized_redefinition_parens.rb");
+    assert_eq!(output, OPTIMIZED_REDEFINITION_OUTPUT);
 }

@@ -3,7 +3,6 @@
 //! This module handles evaluating begin/rescue blocks as expressions,
 //! returning the value of the last successfully executed statement.
 
-use super::errors::*;
 use super::utils::*;
 use super::{ControlFlow, VirtualMachine};
 use crate::ast::Statement;
@@ -60,6 +59,12 @@ impl VirtualMachine {
             self.set_current_exception(exception.clone());
             for rescue_clause in rescue_clauses {
                 if self.exception_matches(exception, &rescue_clause.exception_types)? {
+                    // A trace sees the clause take the exception.
+                    self.fire_event(
+                        "rescue",
+                        rescue_clause.position,
+                        vec![("raised_exception", exception.clone())],
+                    )?;
                     if let Some(var_name) = &rescue_clause.variable_name {
                         self.environment_mut()
                             .define(var_name.clone(), exception.clone());
@@ -146,10 +151,18 @@ impl VirtualMachine {
                     });
                 }
                 ControlFlow::Redo { position } => {
-                    return Err(loop_control_error("redo", position));
+                    // Like `break` above, `redo` and `next` written where a
+                    // value goes unwind to the enclosing body rather than
+                    // being swallowed by the begin-as-expression wrapper.
+                    return Err(MetorexError::BlockRedo {
+                        location: position_to_location(position),
+                    });
                 }
-                ControlFlow::Continue { position, .. } => {
-                    return Err(loop_control_error("continue", position));
+                ControlFlow::Continue { value, position } => {
+                    return Err(MetorexError::BlockNext {
+                        value,
+                        location: position_to_location(position),
+                    });
                 }
             }
         }

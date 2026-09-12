@@ -39,6 +39,51 @@ fn exponent_notation(value: f64, precision: usize) -> String {
 }
 
 impl VirtualMachine {
+    /// The method a program of its own put on Integer or Float for an
+    /// operator, or None where the numbers answer for themselves.
+    fn redefined_number_operator(
+        &mut self,
+        held: &Object,
+        named: &str,
+    ) -> Option<(Rc<crate::class::Class>, Rc<crate::object::Method>)> {
+        let class = self.builtins().class_of(held);
+        let found = class.find_own_method(named)?;
+        if found.is_undefined || found.body.is_empty() {
+            return None;
+        }
+        Some((class, found))
+    }
+
+    /// The arithmetic a number answers for an operator on its own, reached
+    /// without consulting a redefinition. An UnboundMethod cut from Integer
+    /// before the program replaced `+` calls through here, so binding it back
+    /// runs the original rather than the replacement.
+    pub(crate) fn builtin_number_operator(
+        &mut self,
+        named: &str,
+        left: Object,
+        right: Object,
+        position: Position,
+    ) -> Option<Result<Object, MetorexError>> {
+        if !matches!(left, Object::Int(_) | Object::BigInt(_) | Object::Float(_)) {
+            return None;
+        }
+        // Anything but a number on the right is asked to `coerce`, which is
+        // the ordinary dispatch rather than the arithmetic underneath.
+        if !matches!(right, Object::Int(_) | Object::BigInt(_) | Object::Float(_)) {
+            return None;
+        }
+        match named {
+            "+" => Some(self.evaluate_addition(left, right, position)),
+            "-" => Some(self.evaluate_numeric_binary(&BinaryOp::Subtract, left, right, position)),
+            "*" => Some(self.evaluate_numeric_binary(&BinaryOp::Multiply, left, right, position)),
+            "/" => Some(self.evaluate_numeric_binary(&BinaryOp::Divide, left, right, position)),
+            "%" => Some(self.evaluate_numeric_binary(&BinaryOp::Modulo, left, right, position)),
+            "**" => Some(self.evaluate_numeric_binary(&BinaryOp::Power, left, right, position)),
+            _ => None,
+        }
+    }
+
     /// Evaluate a unary operation (`+` or `-`).
     pub(crate) fn evaluate_unary_operation(
         &self,
@@ -263,6 +308,15 @@ impl VirtualMachine {
                 }
                 Ok(Object::array(remaining))
             }
+            // An operator the program redefined on Integer or Float answers
+            // for it, whatever the numbers underneath would have done.
+            Add | Subtract | Multiply | Divide | Modulo | Power
+                if matches!(left, Object::Int(_) | Object::BigInt(_) | Object::Float(_))
+                    && let Some(named) = comparison_free_operator_name(op)
+                    && let Some((owner, method)) = self.redefined_number_operator(&left, named) =>
+            {
+                self.invoke_method(owner, method, left, vec![right], position)
+            }
             Add => self.evaluate_addition(left, right, position),
             Modulo if matches!(left, Object::String(_)) => {
                 self.evaluate_string_format(left, right, position)
@@ -445,36 +499,52 @@ impl VirtualMachine {
                         return Ok(Object::Bool(true));
                     }
                 }
-                // Two arrays holding objects of the program's own are equal
-                // when those objects say so, so each pair is asked with `==`
-                // rather than compared as data.
-                if let (Object::Array(one), Object::Array(other)) = (&left, &right) {
-                    if Rc::ptr_eq(one, other) {
-                        return Ok(Object::Bool(true));
-                    }
-                    let held = one.borrow().clone();
-                    let against = other.borrow().clone();
-                    if held
-                        .iter()
-                        .chain(against.iter())
-                        .any(|item| matches!(item, Object::Instance(_)))
-                    {
-                        if held.len() != against.len() {
-                            return Ok(Object::Bool(false));
-                        }
-                        for (item, counterpart) in held.iter().zip(against.iter()) {
-                            let answer = self.evaluate_binary_operation(
-                                &BinaryOp::Equal,
-                                item.clone(),
-                                counterpart.clone(),
-                                position,
-                            )?;
-                            if !answer.is_truthy() {
-                                return Ok(Object::Bool(false));
-                            }
-                        }
-                        return Ok(Object::Bool(true));
-                    }
+                // Two arrays are equal when their elements are, which asks
+                // each pair rather than comparing the two as data.
+                if matches!((&left, &right), (Object::Array(_), Object::Array(_))) {
+                    let same = self.arrays_equal(&left, &right, position)?;
+                    return Ok(Object::Bool(same));
+                }
+                // An object that spells itself as an array answers for the
+                // pair, which is how a wrapper around one compares.
+                if matches!(left, Object::Array(_))
+                    && matches!(right, Object::Instance(_))
+                    && crate::vm::native_methods::array_subclass_value(&right).is_none()
+                    && self
+                        .send_to_object(
+                            right.clone(),
+                            "respond_to?",
+                            vec![Object::symbol("to_ary".to_string())],
+                            position,
+                        )?
+                        .is_truthy()
+                {
+                    let answer =
+                        self.send_to_object(right.clone(), "==", vec![left.clone()], position)?;
+                    return Ok(Object::Bool(answer.is_truthy()));
+                }
+                // Two strings are equal when they spell the same thing,
+                // whether that is read as bytes or as characters, and their
+                // encodings can be compared at all.
+                if let (Object::String(text), Object::String(other)) = (&left, &right) {
+                    use crate::vm::native_methods::string_methods::{
+                        binary_bytes, strings_comparable,
+                    };
+                    return Ok(Object::Bool(
+                        (binary_bytes(text) == binary_bytes(other)
+                            || *text.as_str() == *other.as_str())
+                            && strings_comparable(text, other),
+                    ));
+                }
+                // Anything else that spells itself as text answers for the
+                // pair, which is how a wrapper around a String compares.
+                if matches!(left, Object::String(_))
+                    && crate::vm::native_methods::string_subclass_value(&right).is_none()
+                    && self.responds_to(&right, "to_str")
+                {
+                    let answer =
+                        self.send_to_object(right.clone(), "==", vec![left.clone()], position)?;
+                    return Ok(Object::Bool(answer.is_truthy()));
                 }
                 Ok(Object::Bool(left.equals(&right)))
             }
@@ -626,6 +696,11 @@ impl VirtualMachine {
                     }
                     return self.evaluate_binary_operation(&Equal, left, right, position);
                 }
+                // A String's `===` is its `==`, down to the encodings it
+                // refuses to compare.
+                if matches!(left, Object::String(_)) {
+                    return self.evaluate_binary_operation(&Equal, left, right, position);
+                }
                 Ok(Object::Bool(left.equals(&right)))
             }
             // Ruby defines `!=` as the negation of `==`, so a class that
@@ -698,6 +773,23 @@ impl VirtualMachine {
                         return self.order_arrays(&left_elements, &right_elements, position);
                     }
                     return Ok(Object::Nil);
+                }
+                // An endless Float orders against anything that reports
+                // which end it stands at, and against a finite value it is
+                // simply greater.
+                if let Object::Float(held) = &left
+                    && held.is_infinite()
+                    && matches!(right, Object::Instance(_))
+                    && self.responds_to(&right, "infinite?")
+                {
+                    let reported =
+                        self.send_to_object(right.clone(), "infinite?", Vec::new(), position)?;
+                    let theirs = match reported {
+                        Object::Int(held) => held,
+                        _ => 0,
+                    };
+                    let mine = if *held > 0.0 { 1 } else { -1 };
+                    return Ok(Object::Int(mine.cmp(&theirs) as i64));
                 }
                 self.evaluate_spaceship(left, right, position)
             }
@@ -822,7 +914,26 @@ impl VirtualMachine {
             (Object::String(a), Object::String(b)) => {
                 let mut combined = a.as_str().to_string();
                 combined.push_str(&b.as_ref().as_str());
-                Ok(Object::string(combined))
+                let joined = Object::string(combined);
+                // The result is written in the receiver's encoding, unless
+                // the receiver is empty or nothing but ASCII and the other
+                // side is not, where that side's reading carries over.
+                if let Object::String(made) = &joined {
+                    let plain = |side: &crate::object::StringValue| {
+                        side.as_str().is_empty()
+                            || (side.as_str().is_ascii() && !side.holds_bytes())
+                    };
+                    let carried = if plain(a.as_ref()) && !plain(b.as_ref()) {
+                        b.as_ref()
+                    } else {
+                        a.as_ref()
+                    };
+                    made.set_encoding(carried.encoding_name());
+                    if carried.holds_bytes() {
+                        made.mark_bytes();
+                    }
+                }
+                Ok(joined)
             }
             (Object::Array(a), Object::Array(b)) => {
                 let mut combined = a.borrow().clone();
@@ -1664,22 +1775,27 @@ impl VirtualMachine {
             let b = right.as_big_integer().expect("integer-kinded");
             return Ok(Object::Int(a.cmp(&b) as i64));
         }
+        // Nothing compares against a value that is not a number, which is
+        // what a NaN on either side makes the answer.
+        if matches!(&left, Object::Float(held) if held.is_nan())
+            || matches!(&right, Object::Float(held) if held.is_nan())
+        {
+            return Ok(Object::Nil);
+        }
         match (&left, &right) {
             (Object::Int(a), Object::Int(b)) => Ok(Object::Int(a.cmp(b) as i64)),
             // A bignum carries more digits than a Float has, so the two are
             // ordered exactly rather than by rounding the bignum.
-            (Object::BigInt(a), Object::Float(b)) => Ok(Object::Int(
-                compare_integer_to_float(a, *b).map_or(0, |order| order as i64),
-            )),
-            (Object::Float(a), Object::BigInt(b)) => Ok(Object::Int(
-                compare_integer_to_float(b, *a).map_or(0, |order| order.reverse() as i64),
-            )),
-            (Object::Float(a), Object::Float(b)) => {
-                Ok(Object::Int(a.partial_cmp(b).map_or(0, |o| o as i64)))
+            (Object::BigInt(a), Object::Float(b)) => {
+                Ok(compare_or_nil(compare_integer_to_float(a, *b)))
             }
+            (Object::Float(a), Object::BigInt(b)) => Ok(compare_or_nil(
+                compare_integer_to_float(b, *a).map(std::cmp::Ordering::reverse),
+            )),
+            (Object::Float(a), Object::Float(b)) => Ok(compare_or_nil(a.partial_cmp(b))),
             (Object::Int(a), Object::Float(b)) => {
                 let a = *a as f64;
-                Ok(Object::Int(a.partial_cmp(b).map_or(0, |o| o as i64)))
+                Ok(compare_or_nil(a.partial_cmp(b)))
             }
             (Object::Float(a), Object::Int(b)) => {
                 let b = *b as f64;
@@ -1741,7 +1857,20 @@ impl VirtualMachine {
         // apply, which for an ordering means the two have no order at all.
         let parts = match &pair {
             Object::Array(parts) if parts.borrow().len() == 2 => parts.borrow().clone(),
-            _ if matches!(op, BinaryOp::Spaceship) => return Ok(Some(Object::Nil)),
+            // A `coerce` that answers no pair leaves the operator with
+            // nothing to apply. Ruby refuses it for a Float, where the
+            // comparison is a relational one, and reports no order at all
+            // for the rest.
+            _ if matches!(op, BinaryOp::Spaceship) && !matches!(left, Object::Float(_)) => {
+                return Ok(Some(Object::Nil));
+            }
+            _ if matches!(op, BinaryOp::Spaceship) => {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "coerce must return [x, y]",
+                    position,
+                ));
+            }
             _ => return Ok(None),
         };
         let name = crate::vm::native_methods::ast_methods::binary_op_str(op);
@@ -1988,5 +2117,27 @@ impl VirtualMachine {
                 )),
             },
         }
+    }
+}
+
+/// One ordering as `<=>` reports it, where an absent ordering is nil.
+fn compare_or_nil(order: Option<std::cmp::Ordering>) -> Object {
+    match order {
+        Some(order) => Object::Int(order as i64),
+        None => Object::Nil,
+    }
+}
+
+/// The name a numeric operator is written under, for looking one up that the
+/// program defined of its own.
+fn comparison_free_operator_name(op: &BinaryOp) -> Option<&'static str> {
+    match op {
+        BinaryOp::Add => Some("+"),
+        BinaryOp::Subtract => Some("-"),
+        BinaryOp::Multiply => Some("*"),
+        BinaryOp::Divide => Some("/"),
+        BinaryOp::Modulo => Some("%"),
+        BinaryOp::Power => Some("**"),
+        _ => None,
     }
 }

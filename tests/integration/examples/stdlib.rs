@@ -145,28 +145,28 @@ fn test_stdlib_string_format_extended_parens_execution() {
 
 #[test]
 fn test_stdlib_regex_contexts_execution() {
-    let expected = "/hello/\n/foo/\n/bar/i\n/[a-z]+/\n/path\\/to\\/file/\n5\n4\n5\n";
+    let expected = "(?-mix:hello)\n(?-mix:foo)\n(?i-mx:bar)\n(?-mix:[a-z]+)\n(?-mix:path\\/to\\/file)\n5\n4\n5\n";
     let output = run_example("stdlib/regex/contexts.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_regex_contexts_parens_execution() {
-    let expected = "/hello/\n/foo/\n/bar/i\n/[a-z]+/\n/path\\/to\\/file/\n5\n4\n5\n";
+    let expected = "(?-mix:hello)\n(?-mix:foo)\n(?i-mx:bar)\n(?-mix:[a-z]+)\n(?-mix:path\\/to\\/file)\n5\n4\n5\n";
     let output = run_example("stdlib/regex/contexts_parens.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_regex_literals_execution() {
-    let expected = "/hello/\n/world/i\n5\n/[a-z]+\\d+/\n/hello\\/world/\n";
+    let expected = "(?-mix:hello)\n(?i-mx:world)\n5\n(?-mix:[a-z]+\\d+)\n(?-mix:hello\\/world)\n";
     let output = run_example("stdlib/regex/literals.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_regex_literals_parens_execution() {
-    let expected = "/hello/\n/world/i\n5\n/[a-z]+\\d+/\n/hello\\/world/\n";
+    let expected = "(?-mix:hello)\n(?i-mx:world)\n5\n(?-mix:[a-z]+\\d+)\n(?-mix:hello\\/world)\n";
     let output = run_example("stdlib/regex/literals_parens.rb");
     assert_eq!(output, expected);
 }
@@ -231,7 +231,7 @@ fn test_stdlib_array_extended_parens_execution() {
 
 #[test]
 fn test_stdlib_array_new_methods_execution() {
-    let expected = "15\n25\n12345\n3\n4\n3\n1\n2\n3\n4\n1\n2\n3\ntrue\nfalse\n10\n30\nnil\nnil\ntrue\nfalse\ntrue\n1\n8\n1.2\n3.5\nnil\nnil\n3\n1\n2\n";
+    let expected = "15\n25\n12345\n3\n4\n3\n1\n2\n3\n4\n1\n2\n3\ntrue\nfalse\n10\n30\n\n\ntrue\nfalse\ntrue\n1\n8\n1.2\n3.5\n\n\n3\n1\n2\n";
     let output = run_example("stdlib/array/new_methods.rb");
     assert_eq!(output, expected);
 }
@@ -262,7 +262,7 @@ fn test_stdlib_string_new_methods_parens_execution() {
 
 #[test]
 fn test_stdlib_error_paths_test_execution() {
-    let expected = "3.14\n3.14\n4\n3\n4\n3\n3.14\n42.0\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\nnil\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
+    let expected = "3.14\n3.14\n4\n3\n4\n3\n3.14\n42.0\n42\n42\n2\nell\ntrue\ntrue\ntrue\nhello\nhello\nHELLO\nolleh\n1, 2, 3\n2, 1, 3\n3\n0\n0\n123\n\nfalse\ntrue\n3\n15\n3\nerror_paths_test passed\n";
     let output = run_example("stdlib/error_paths_test.rb");
     assert_eq!(output, expected);
 }

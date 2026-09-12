@@ -43,6 +43,6 @@ rescue ArgumentError => error
   puts(error.message)
 end
 
-puts(File::CREAT)
+puts(File::CREAT == File::Constants::CREAT)
 puts(Kernel.private_instance_methods.include?(:open))
 File.delete(path)

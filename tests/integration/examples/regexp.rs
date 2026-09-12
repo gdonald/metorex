@@ -31,3 +31,18 @@ fn test_regexp_named_groups_no_parens_execution() {
     let output = run_example("regexp/named_groups_no_parens.rb");
     assert_eq!(output, NAMED_GROUPS_OUTPUT);
 }
+
+/// The expected output of both `regexp/pattern_readings` variants.
+const PATTERN_READINGS_OUTPUT: &str = "\"\\\\*\\\\?\\\\{\\\\}\\\\.\\\\+\\\\^\\\\$\\\\[\\\\]\\\\(\\\\)\\\\-\\\\ \"\n\"\\\\n\\\\r\\\\f\\\\t\"\n#<Encoding:US-ASCII>\n\"a\\\\.b\"\n\"(?i-mx:nothing)\"\n\"(?i-mx:abc)\"\n\"(?-mix:abc)\"\n\"@\"\n\"\\\\+\"\n#<Encoding:US-ASCII>\n#<Encoding:UTF-8>\n/foo/\nnil\ntrue\nfalse\n[1, 2, 4]\nfalse\ntrue\n:\"foo bar\"\n";
+
+#[test]
+fn test_regexp_pattern_readings_execution() {
+    let output = run_example("regexp/pattern_readings.rb");
+    assert_eq!(output, PATTERN_READINGS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_pattern_readings_no_parens_execution() {
+    let output = run_example("regexp/pattern_readings_no_parens.rb");
+    assert_eq!(output, PATTERN_READINGS_OUTPUT);
+}

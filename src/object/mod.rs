@@ -21,7 +21,8 @@ mod types;
 // Re-export core types and traits
 pub use binding::Binding;
 pub use block::{
-    BlockStatement, DESTRUCTURED_GROUP_PREFIX, KEYWORD_PARAM_PREFIX, TRAILING_COMMA_PARAM,
+    BLOCK_LOCAL_PREFIX, BlockStatement, DESTRUCTURED_GROUP_PREFIX, KEYWORD_PARAM_PREFIX,
+    TRAILING_COMMA_PARAM,
 };
 pub use compiled_function::CompiledFunction;
 pub use exception::{Exception, SourceLocation};

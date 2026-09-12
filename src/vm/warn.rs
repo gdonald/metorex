@@ -210,6 +210,30 @@ impl VirtualMachine {
         Ok(())
     }
 
+    /// Report that a program replaced a method the interpreter otherwise
+    /// answers without a dispatch. `Warning[:performance]` asks for these,
+    /// and they are silent by default.
+    pub(crate) fn warn_redefined_optimized_method(
+        &mut self,
+        class_name: &str,
+        method_name: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if !disables_optimization(class_name, method_name)
+            || !self.warning_category_enabled("performance")
+        {
+            return Ok(());
+        }
+        let text = format!(
+            "{}Redefining '{}#{}' disables interpreter and JIT optimizations\n",
+            self.warning_prefix(0, position),
+            class_name,
+            method_name,
+        );
+        self.dispatch_to_warning_module(text, Object::symbol("performance".to_string()), position)?;
+        Ok(())
+    }
+
     /// Hand the assembled text to `Warning.warn`. MRI passes `category:` only
     /// when the method in force takes more than the one message argument, so
     /// a replacement written as `def warn(message)` still works.
@@ -329,4 +353,29 @@ fn is_no_method_error(exception: &Object) -> bool {
         }
         _ => false,
     }
+}
+
+/// The core classes whose methods the interpreter answers without a dispatch,
+/// with the method names it does that for.
+fn disables_optimization(class_name: &str, method_name: &str) -> bool {
+    let optimized: &[&str] = match class_name {
+        "Integer" | "Float" => &[
+            "+", "-", "*", "/", "%", "==", "<", "<=", ">", ">=", "<=>", "succ",
+        ],
+        "String" => &[
+            "+", "*", "%", "==", "<=>", "[]", "[]=", "<<", "length", "size", "empty?", "succ",
+            "include?",
+        ],
+        "Array" => &[
+            "+", "-", "*", "==", "[]", "[]=", "<<", "length", "size", "empty?", "min", "max",
+            "include?", "pack",
+        ],
+        "Hash" => &["==", "[]", "[]=", "length", "size", "empty?", "default"],
+        "Symbol" => &["==", "<=>", "succ", "length", "size", "empty?"],
+        "NilClass" | "TrueClass" | "FalseClass" => &["==", "&", "|", "nil?"],
+        "Regexp" => &["==", "==="],
+        "Proc" => &["call"],
+        _ => return false,
+    };
+    optimized.contains(&method_name)
 }

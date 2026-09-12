@@ -35,6 +35,15 @@ impl<'a> Lexer<'a> {
             self.advance(); // consume q
             return self.lex_percent_raw(position);
         }
+        // `%s{name}` names a symbol, reading its text the way `%q` does.
+        if self.peek() == Some('s') {
+            self.advance(); // consume s
+            let held = self.lex_percent_raw(position);
+            if let TokenKind::String(text) = held.kind {
+                return Token::new(TokenKind::PercentSymbol(text), position);
+            }
+            return held;
+        }
         if self.peek() == Some('x') {
             self.advance(); // consume x
             return self.lex_percent_command(position);
@@ -65,7 +74,7 @@ impl<'a> Lexer<'a> {
     /// Lex `%x(...)`, which runs its text as a command the way a backtick
     /// literal does.
     fn lex_percent_command(&mut self, position: Position) -> Token {
-        let parts = self.read_percent_parts();
+        let (parts, _) = self.read_percent_parts();
         Token::new(TokenKind::CommandString(parts), position)
     }
 
@@ -77,9 +86,37 @@ impl<'a> Lexer<'a> {
         self.advance(); // consume opening delimiter
         let mut pattern = String::new();
         let mut escaped = false;
+        // `#{ ... }` holds an expression rather than pattern text, so the
+        // braces inside it are counted rather than read as the delimiter.
+        let mut interpolating: usize = 0;
         while let Some(ch) = self.peek() {
+            if interpolating > 0 {
+                if ch == '{' {
+                    interpolating += 1;
+                } else if ch == '}' {
+                    interpolating -= 1;
+                }
+                pattern.push(ch);
+                self.advance();
+                continue;
+            }
+            if ch == '#' {
+                self.advance();
+                pattern.push('#');
+                if self.peek() == Some('{') {
+                    pattern.push('{');
+                    self.advance();
+                    interpolating = 1;
+                }
+                continue;
+            }
             if escaped {
-                pattern.push('\\');
+                // A delimiter escaped inside the pattern stands for itself.
+                // Ruby keeps the backslash only where the character means
+                // something to the pattern.
+                if !(ch == close || ch == open) || pattern_metacharacter(ch) {
+                    pattern.push('\\');
+                }
                 pattern.push(ch);
                 self.advance();
                 escaped = false;
@@ -157,10 +194,16 @@ impl<'a> Lexer<'a> {
 
     /// Lex `%Q[...]`, `%[...]`, `%(...)`, `%{...}`, `%<...>` string literals.
     fn lex_percent_string(&mut self, position: Position) -> Token {
-        let parts = self.read_percent_parts();
+        let (parts, holds_bytes) = self.read_percent_parts();
         if parts.len() == 1
             && let super::InterpolationPart::Text(text) = &parts[0]
         {
+            if holds_bytes {
+                if self.binary_source {
+                    return Token::new(TokenKind::BinaryString(text.clone()), position);
+                }
+                return Token::new(TokenKind::ByteString(text.clone()), position);
+            }
             return Token::new(TokenKind::String(text.clone()), position);
         }
         if parts.is_empty() {
@@ -171,14 +214,21 @@ impl<'a> Lexer<'a> {
 
     /// The text and `#{}` parts a percent literal holds, read up to the
     /// delimiter that closes it.
-    fn read_percent_parts(&mut self) -> Vec<super::InterpolationPart> {
+    fn read_percent_parts(&mut self) -> (Vec<super::InterpolationPart>, bool) {
         let open = self.peek().unwrap_or('(');
         let close = matching_close(open);
         self.advance(); // consume opening delimiter
         let mut parts = Vec::new();
         let mut content = String::new();
+        let mut holds_bytes = false;
         let mut depth = 1;
         while let Some(ch) = self.peek() {
+            // A backslash standing as the delimiter closes the literal
+            // rather than opening an escape.
+            if ch == '\\' && close == '\\' {
+                self.advance();
+                break;
+            }
             if ch == '\\' {
                 self.advance();
                 if let Some(esc) = self.peek() {
@@ -225,9 +275,11 @@ impl<'a> Lexer<'a> {
                         }
                         'x' => {
                             self.advance();
-                            self.read_escaped_bytes(&mut content, 16);
+                            holds_bytes |= self.read_escaped_bytes(&mut content, 16);
                         }
-                        '0'..='7' => self.read_escaped_bytes(&mut content, 8),
+                        '0'..='7' => {
+                            holds_bytes |= self.read_escaped_bytes(&mut content, 8);
+                        }
                         other if other == close || other == open => {
                             content.push(other);
                             self.advance();
@@ -272,7 +324,7 @@ impl<'a> Lexer<'a> {
         if !content.is_empty() || parts.is_empty() {
             parts.push(super::InterpolationPart::Text(content));
         }
-        parts
+        (parts, holds_bytes)
     }
 
     /// The source of one `#{}` hole, read up to the brace that closes it.
@@ -379,7 +431,9 @@ impl super::Lexer<'_> {
     /// The bytes a run of `\xNN` or `\NNN` escapes names, decoded together so
     /// that the bytes of one character spell that character. A run that is
     /// not text keeps each byte as its own character.
-    fn read_escaped_bytes(&mut self, content: &mut String, radix: u32) {
+    /// Read a run of numeric escapes. The answer says whether the bytes
+    /// spelled no text, leaving the characters standing for the bytes.
+    fn read_escaped_bytes(&mut self, content: &mut String, radix: u32) -> bool {
         let wanted = if radix == 16 { 2 } else { 3 };
         let mut bytes = Vec::new();
         loop {
@@ -412,12 +466,25 @@ impl super::Lexer<'_> {
             break;
         }
         match super::strings::binary_run(self.binary_source, &bytes) {
-            Ok(text) => content.push_str(&text),
+            Ok(text) => {
+                content.push_str(&text);
+                false
+            }
             Err(_) => {
                 for byte in bytes {
                     content.push(byte as char);
                 }
+                true
             }
         }
     }
+}
+
+/// Whether a character means something to a pattern, so an escape of it is
+/// part of what the pattern says rather than a way past a delimiter.
+fn pattern_metacharacter(letter: char) -> bool {
+    matches!(
+        letter,
+        '.' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '^' | '$' | '\\'
+    )
 }

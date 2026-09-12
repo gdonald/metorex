@@ -87,6 +87,8 @@ pub enum TokenKind {
     CommandString(Vec<InterpolationPart>),
     /// `:` followed by a backtick, which names the command method.
     CommandSymbol,
+    /// `%s{name}`, a symbol written the way a `%q` string is.
+    PercentSymbol(String),
     Regex(String, String),  // pattern, flags
     PercentW(String, bool), // %w[...] words, true when %W fills in `#{}`
     PercentI(String, bool), // %i[...] symbols, true when %I fills in `#{}`
@@ -156,6 +158,17 @@ pub enum TokenKind {
     LogicalOr,  // ||
     // `and` and `or` are the same test as `&&` and `||`, but they bind more
     // loosely than everything else, so `take x and y` calls `take x` first.
+    /// A string literal whose escapes named bytes that spell no text, so the
+    /// characters stand for those bytes rather than for what they read as.
+    ByteString(String),
+    /// A backtick command whose escapes named bytes rather than characters.
+    ByteCommandString(String),
+    /// A literal in a source written in bytes, which stands for those bytes
+    /// rather than for the characters they spell.
+    BinaryString(String),
+    /// A literal in a source that asked for frozen literals, which stands for
+    /// the one frozen string every place writing it shares.
+    FrozenString(String),
     KeywordAnd,       // and
     KeywordOr,        // or
     LogicalOrAssign,  // ||=
@@ -254,6 +267,7 @@ impl fmt::Display for TokenKind {
             TokenKind::PercentW(s, _) => write!(f, "%w[{}]", s),
             TokenKind::PercentI(s, _) => write!(f, "%i[{}]", s),
             TokenKind::CommandSymbol => write!(f, ":`"),
+            TokenKind::PercentSymbol(name) => write!(f, "%s{{{}}}", name),
             TokenKind::CommandString(parts) => {
                 write!(f, "`")?;
                 for part in parts {
@@ -342,6 +356,10 @@ impl fmt::Display for TokenKind {
             TokenKind::SafeDot => write!(f, "&."),
             TokenKind::NotKeyword => write!(f, "not"),
             TokenKind::LogicalAnd => write!(f, "&&"),
+            TokenKind::ByteString(text) => write!(f, "{}", text),
+            TokenKind::ByteCommandString(text) => write!(f, "`{}`", text),
+            TokenKind::BinaryString(text) => write!(f, "{}", text),
+            TokenKind::FrozenString(text) => write!(f, "{}", text),
             TokenKind::KeywordAnd => write!(f, "and"),
             TokenKind::KeywordOr => write!(f, "or"),
             TokenKind::LogicalOr => write!(f, "||"),

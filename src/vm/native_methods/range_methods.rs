@@ -103,7 +103,11 @@ impl VirtualMachine {
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
                         | super::super::ControlFlow::Continue { .. } => continue,
-                        super::super::ControlFlow::Break { .. } => break,
+                        // `break` ends the walk and answers what it carried,
+                        // which is what the call reports.
+                        super::super::ControlFlow::Break { value, .. } => {
+                            return Ok(Some(value));
+                        }
                         super::super::ControlFlow::Return { value, position } => {
                             return Err(MetorexError::NonLocalReturn {
                                 value,
@@ -214,12 +218,29 @@ impl VirtualMachine {
                 // Only a range of names is walked; every other kind answers
                 // by comparing against the ends, which is what an object with
                 // no `succ` of its own needs.
-                let walks = matches!(start.as_ref(), Object::String(_) | Object::Symbol(_))
-                    || self.responds_to(start, "succ");
+                // A range of numbers answers by comparing against its ends,
+                // which is what lets a value coerce itself into the
+                // comparison rather than being looked for one step at a time.
+                let counts = matches!(
+                    start.as_ref(),
+                    Object::Int(_) | Object::Float(_) | Object::BigInt(_)
+                );
+                let walks = !counts
+                    && (matches!(start.as_ref(), Object::String(_) | Object::Symbol(_))
+                        || self.responds_to(start, "succ"));
                 if !walks {
                     let covered =
                         self.range_covers(start, end, *exclusive, &arguments[0], position)?;
                     return Ok(Some(Object::Bool(covered)));
+                }
+                // A range of names the same length as the value reads like an
+                // odometer: each place must stand between the two ends.
+                if let (Object::String(low), Object::String(high), Object::String(held)) =
+                    (start.as_ref(), end.as_ref(), &arguments[0])
+                    && let Some(answer) =
+                        place_by_place(&low.as_str(), &high.as_str(), &held.as_str(), *exclusive)
+                {
+                    return Ok(Some(Object::Bool(answer)));
                 }
                 let elements = self.range_elements(start, end, *exclusive, position)?;
                 for element in elements {
@@ -365,6 +386,15 @@ impl VirtualMachine {
                     ));
                 }
                 let has_block = matches!(self.pending_block, Some(Object::Block(_)));
+                // A beginless range has no value to start a comparison from,
+                // so a custom order cannot pick a largest value.
+                if matches!(start.as_ref(), Object::Nil) && (has_block || !arguments.is_empty()) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        "cannot get the maximum of beginless range with custom comparison method",
+                        position,
+                    ));
+                }
                 // Without a block or a count, the ends answer directly, which
                 // works for a range too large to walk.
                 if !has_block && arguments.is_empty() && method_name != "minmax" {
@@ -378,7 +408,33 @@ impl VirtualMachine {
                         if matches!(order, Object::Int(value) if value > 0) {
                             return Ok(Some(Object::Nil));
                         }
+                        // A range that leaves its end out and begins there
+                        // holds nothing at all.
+                        if *exclusive && matches!(order, Object::Int(0)) {
+                            return Ok(Some(Object::Nil));
+                        }
                         return Ok(Some((**start).clone()));
+                    }
+                    // Leaving the end out only makes sense over whole
+                    // numbers, where the value below it is known.
+                    let last = end.as_big_integer();
+                    let ends_beginless = matches!(start.as_ref(), Object::Nil);
+                    if *exclusive
+                        && last.is_none()
+                        && (ends_beginless || counts_as_a_number(end.as_ref()))
+                    {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            "cannot exclude non Integer end value",
+                            position,
+                        ));
+                    }
+                    let begins_whole = start.as_big_integer().is_some();
+                    if ends_beginless {
+                        if let (true, Some(reached)) = (*exclusive, last.as_ref()) {
+                            return Ok(Some(Object::integer(reached.clone() - 1)));
+                        }
+                        return Ok(Some((**end).clone()));
                     }
                     let order = self.evaluate_binary_operation(
                         &crate::ast::BinaryOp::Spaceship,
@@ -392,13 +448,18 @@ impl VirtualMachine {
                     if !*exclusive {
                         return Ok(Some((**end).clone()));
                     }
-                    // The largest value below an exclusive integer end is the
-                    // one before it, which needs no walk.
-                    if let Some(last) = end.as_big_integer() {
+                    if let Some(reached) = last {
+                        if !begins_whole {
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                "cannot exclude end value with non Integer begin value",
+                                position,
+                            ));
+                        }
                         if matches!(order, Object::Int(0)) {
                             return Ok(Some(Object::Nil));
                         }
-                        return Ok(Some(Object::integer(last - 1)));
+                        return Ok(Some(Object::integer(reached - 1)));
                     }
                 }
                 let elements = self.range_elements(start, end, *exclusive, position)?;
@@ -407,8 +468,9 @@ impl VirtualMachine {
                     .map(Some)
             }
             // `cover?` asks whether a value falls between the ends, which
-            // needs no walk, and takes another Range too.
-            "cover?" => {
+            // needs no walk, and takes another Range too. `===` picks the
+            // same answer, which is how a Range reads in a `case`.
+            "cover?" | "===" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         method_name,
@@ -423,12 +485,24 @@ impl VirtualMachine {
                     exclusive: other_exclusive,
                 } = &arguments[0]
                 {
-                    let starts_within =
-                        self.range_covers(start, end, *exclusive, other_start, position)?;
+                    let starts_within = match (start.as_ref(), other_start.as_ref()) {
+                        // A range with no start of its own covers one that
+                        // has none either, and a range that starts somewhere
+                        // covers no beginless range at all.
+                        (Object::Nil, _) => true,
+                        (_, Object::Nil) => false,
+                        _ => self.range_covers(start, end, *exclusive, other_start, position)?,
+                    };
                     let ends_within = if *other_exclusive {
                         match (end.as_ref(), other_end.as_ref()) {
                             (Object::Nil, _) => true,
                             (_, Object::Nil) => false,
+                            // An exclusive end over whole numbers stops one
+                            // short, so the range reaches that number instead.
+                            (_, Object::Int(last)) => {
+                                let reached = Object::Int(last - 1);
+                                self.range_covers(start, end, *exclusive, &reached, position)?
+                            }
                             _ => {
                                 let order = self.evaluate_binary_operation(
                                     &crate::ast::BinaryOp::Spaceship,
@@ -473,6 +547,31 @@ impl VirtualMachine {
                         position,
                     ));
                 };
+                // A range holding no value shares none, and two ranges over
+                // values that do not compare share none either.
+                if self.range_holds_nothing(start, end, *exclusive, position)?
+                    || self.range_holds_nothing(
+                        other_start,
+                        other_end,
+                        *other_exclusive,
+                        position,
+                    )?
+                {
+                    return Ok(Some(Object::Bool(false)));
+                }
+                if !matches!(start.as_ref(), Object::Nil)
+                    && !matches!(other_start.as_ref(), Object::Nil)
+                {
+                    let compared = self.evaluate_binary_operation(
+                        &crate::ast::BinaryOp::Spaceship,
+                        (**start).clone(),
+                        (**other_start).clone(),
+                        position,
+                    )?;
+                    if matches!(compared, Object::Nil) {
+                        return Ok(Some(Object::Bool(false)));
+                    }
+                }
                 let before = self.range_ends_before(end, *exclusive, other_start, position)?;
                 let after = self.range_ends_before(other_end, *other_exclusive, start, position)?;
                 Ok(Some(Object::Bool(!before && !after)))
@@ -595,6 +694,31 @@ fn endless_int_start(start: &Object, end: &Object) -> Option<i64> {
 impl VirtualMachine {
     /// The values a range walks: integers count up, and anything else follows
     /// `succ` until it passes the end.
+    /// Whether a range holds no value at all, which is the case when it
+    /// begins past its end, or ends where it begins and leaves that out.
+    fn range_holds_nothing(
+        &mut self,
+        start: &Object,
+        end: &Object,
+        exclusive: bool,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        if matches!(start, Object::Nil) || matches!(end, Object::Nil) {
+            return Ok(false);
+        }
+        let order = self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::Spaceship,
+            start.clone(),
+            end.clone(),
+            position,
+        )?;
+        match order {
+            Object::Int(0) => Ok(exclusive),
+            Object::Int(value) => Ok(value > 0),
+            _ => Ok(false),
+        }
+    }
+
     pub(crate) fn range_elements(
         &mut self,
         start: &Object,
@@ -713,6 +837,33 @@ fn single_ascii(value: &Object) -> Option<u32> {
 
 impl VirtualMachine {
     /// Whether a value falls between the ends of a range, without walking it.
+    /// Ruby refuses a range whose ends cannot be ordered, which is what
+    /// `beg <=> end` answering nil says.
+    pub(crate) fn check_range_ends(
+        &mut self,
+        start: &Object,
+        end: &Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        if matches!(start, Object::Nil) || matches!(end, Object::Nil) {
+            return Ok(());
+        }
+        let order = self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::Spaceship,
+            start.clone(),
+            end.clone(),
+            position,
+        )?;
+        if matches!(order, Object::Int(_)) {
+            return Ok(());
+        }
+        Err(crate::vm::errors::simple_exception(
+            "ArgumentError",
+            "bad value for range",
+            position,
+        ))
+    }
+
     fn range_covers(
         &mut self,
         start: &Object,
@@ -722,14 +873,16 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<bool, MetorexError> {
         if !matches!(start, Object::Nil) {
+            // Ruby asks the start where the value stands, so a value that
+            // knows how to coerce the start is asked to.
             let order = self.evaluate_binary_operation(
                 &crate::ast::BinaryOp::Spaceship,
-                value.clone(),
                 start.clone(),
+                value.clone(),
                 position,
             )?;
             match order {
-                Object::Int(value) if value >= 0 => {}
+                Object::Int(order) if order <= 0 => {}
                 _ => return Ok(false),
             }
         }
@@ -801,6 +954,40 @@ fn end_is_whole(value: &Object) -> bool {
     match value {
         Object::Int(_) | Object::BigInt(_) => true,
         Object::Float(number) => number.fract() == 0.0,
+        _ => false,
+    }
+}
+
+/// Whether a name stands inside a range of names of the same length, read one
+/// place at a time. Ruby reads the places as bytes, so a character spelled
+/// with several of them is read one byte at a time. Answers None where the
+/// three do not line up that way.
+fn place_by_place(low: &str, high: &str, held: &str, exclusive: bool) -> Option<bool> {
+    let low: Vec<u8> = low.bytes().collect();
+    let high: Vec<u8> = high.bytes().collect();
+    let held: Vec<u8> = held.bytes().collect();
+    if low.len() != high.len() || low.len() != held.len() {
+        return None;
+    }
+    for ((low, high), held) in low.iter().zip(high.iter()).zip(held.iter()) {
+        if held < low || held > high {
+            return Some(false);
+        }
+    }
+    if exclusive && held == high {
+        return Some(false);
+    }
+    Some(true)
+}
+
+/// Ruby treats a range end as numeric when it is an Integer, a Float, or one
+/// of the Numeric classes the prelude defines as instances.
+fn counts_as_a_number(held: &Object) -> bool {
+    match held {
+        Object::Int(_) | Object::BigInt(_) | Object::Float(_) => true,
+        Object::Instance(instance) => {
+            matches!(instance.borrow().class.name(), "Complex" | "Rational")
+        }
         _ => false,
     }
 }

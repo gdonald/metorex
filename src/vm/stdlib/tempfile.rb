@@ -63,7 +63,7 @@ class Tempfile < DelegateClass(File)
   def initialize(basename = "", tmpdir = nil, **options)
     @path = Tempfile.reserve_path basename, tmpdir
     @unlinked = false
-    @handle = File.open @path, "w+"
+    @handle = File.open @path, "w+", **options
     super(@handle)
   end
 

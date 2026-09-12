@@ -31,3 +31,20 @@ fn test_callables_lambda_parameters_no_parens_execution() {
     let output = run_example("callables/lambda_parameters_no_parens.rb");
     assert_eq!(output, LAMBDA_PARAMETERS_OUTPUT);
 }
+
+/// The expected output of both `callables/currying_and_forwarding` variants,
+/// which differ only in whether the calls are written with parentheses.
+const CURRYING_AND_FORWARDING_OUTPUT: &str =
+    "6\ntrue\nfalse\n[1, 2]\ntrue\n9\n[true, 2]\n[1, 2, 3]\n[1, 2]\n";
+
+#[test]
+fn test_callables_currying_and_forwarding_execution() {
+    let output = run_example("callables/currying_and_forwarding.rb");
+    assert_eq!(output, CURRYING_AND_FORWARDING_OUTPUT);
+}
+
+#[test]
+fn test_callables_currying_and_forwarding_no_parens_execution() {
+    let output = run_example("callables/currying_and_forwarding_no_parens.rb");
+    assert_eq!(output, CURRYING_AND_FORWARDING_OUTPUT);
+}

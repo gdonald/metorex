@@ -85,6 +85,87 @@ impl VirtualMachine {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                // A number written in Ruby says whether it stands on the
+                // real line, which decides how it joins the arithmetic.
+                if matches!(other, Object::Instance(_))
+                    && complex_parts(other).is_none()
+                    && super::rational_methods::rational_parts(other).is_none()
+                    && self.value_is_numeric(other)
+                    && self.responds_to(other, "real?")
+                {
+                    let stands_real = self
+                        .send_to_object(other.clone(), "real?", Vec::new(), position)?
+                        .is_truthy();
+                    // Dividing by a number keeps the exact answer, which is
+                    // what `quo` gives where `/` would truncate.
+                    let applied = if method_name == "/" {
+                        "quo"
+                    } else {
+                        method_name
+                    };
+                    if stands_real {
+                        // Multiplying and dividing reach both parts. Adding
+                        // and subtracting reach the real part alone, which is
+                        // what the operand coerces against.
+                        if matches!(method_name, "*" | "/" | "quo") {
+                            let scaled_real = self.send_to_object(
+                                real.clone(),
+                                applied,
+                                vec![other.clone()],
+                                position,
+                            )?;
+                            let scaled_imaginary = self.send_to_object(
+                                imaginary.clone(),
+                                applied,
+                                vec![other.clone()],
+                                position,
+                            )?;
+                            return self
+                                .make_complex(scaled_real, scaled_imaginary, position)
+                                .map(Some);
+                        }
+                        let pair = self.send_to_object(
+                            other.clone(),
+                            "coerce",
+                            vec![real.clone()],
+                            position,
+                        )?;
+                        if let Object::Array(parts) = &pair {
+                            let parts = parts.borrow().clone();
+                            if parts.len() == 2 {
+                                let joined = self.send_to_object(
+                                    parts[0].clone(),
+                                    applied,
+                                    vec![parts[1].clone()],
+                                    position,
+                                )?;
+                                return self
+                                    .make_complex(joined, imaginary.clone(), position)
+                                    .map(Some);
+                            }
+                        }
+                    } else if self.responds_to(other, "coerce") {
+                        let pair = self.send_to_object(
+                            other.clone(),
+                            "coerce",
+                            vec![receiver.clone()],
+                            position,
+                        )?;
+                        if let Object::Array(parts) = &pair {
+                            let parts = parts.borrow().clone();
+                            if parts.len() == 2 {
+                                return self
+                                    .send_to_object(
+                                        parts[0].clone(),
+                                        applied,
+                                        vec![parts[1].clone()],
+                                        position,
+                                    )
+                                    .map(Some);
+                            }
+                        }
+                    }
+                }
                 // An operand that is neither a Complex nor a real number is
                 // asked to coerce, and the operator is applied to the pair it
                 // answers.
@@ -120,6 +201,30 @@ impl VirtualMachine {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
                 };
+                // A String spells out a number for `Complex()` but is not one
+                // to divide by.
+                if matches!(other, Object::String(_))
+                    || (!self.is_real_operand(other) && complex_parts(other).is_none())
+                {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "Numeric",
+                        other,
+                        position,
+                    ));
+                }
+                // A divisor standing on the real line divides each part on
+                // its own, so an infinite part stays infinite.
+                if complex_parts(other).is_none() {
+                    let divisor = self.part_to_float(other, position)?;
+                    let left_real = self.part_to_float(&real, position)?;
+                    let left_imaginary = self.part_to_float(&imaginary, position)?;
+                    let new_real = self.divide_parts(&left_real, &divisor, position)?;
+                    let new_imaginary = self.divide_parts(&left_imaginary, &divisor, position)?;
+                    return self
+                        .make_complex(new_real, new_imaginary, position)
+                        .map(Some);
+                }
                 let real = self.part_to_float(&real, position)?;
                 let imaginary = self.part_to_float(&imaginary, position)?;
                 let left = self.make_complex(real, imaginary, position)?;
@@ -928,6 +1033,14 @@ impl VirtualMachine {
             // Dividing multiplies by the conjugate of the divisor, which
             // leaves a real denominator to divide each part by.
             _ => {
+                // A divisor that stands on the real line divides each part on
+                // its own, so dividing by zero answers infinities rather than
+                // the NaN the conjugate form would give.
+                if matches!(other_imaginary, Object::Int(0)) {
+                    let new_real = self.divide_parts(real, &other_real, position)?;
+                    let new_imaginary = self.divide_parts(imaginary, &other_real, position)?;
+                    return self.make_complex(new_real, new_imaginary, position);
+                }
                 let cc = self.multiply_parts(&other_real, &other_real, position)?;
                 let dd = self.multiply_parts(&other_imaginary, &other_imaginary, position)?;
                 let denominator = self.add_parts(&cc, &dd, position)?;

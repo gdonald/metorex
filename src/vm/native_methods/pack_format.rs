@@ -103,6 +103,16 @@ pub(crate) fn parse_format(
             }
             let digits: String = characters[start..index].iter().collect();
             match digits.parse::<usize>() {
+                // A count past what a native signed word holds is refused
+                // rather than wrapped, the way Ruby refuses one.
+                Ok(number) if number > isize::MAX as usize => {
+                    let message = format!("{verb} length too big");
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        &message,
+                        position,
+                    ));
+                }
                 Ok(number) => Count::Exactly(number),
                 Err(_) => {
                     let message = format!("{verb} length too big");

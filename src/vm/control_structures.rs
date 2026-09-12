@@ -8,7 +8,6 @@ use super::utils::*;
 use crate::ast::{ElsifBranch, Expression, Statement};
 use crate::error::MetorexError;
 use crate::lexer::Position;
-use crate::object::Object;
 
 impl VirtualMachine {
     /// Execute an if/elsif/else statement.
@@ -72,9 +71,16 @@ impl VirtualMachine {
                 break;
             }
 
-            match self.execute_statements_internal(body)? {
+            // `redo` runs the body again without reading the condition.
+            let mut pass = self.loop_pass(body)?;
+            while matches!(pass, ControlFlow::Redo { .. }) {
+                pass = self.loop_pass(body)?;
+            }
+            match pass {
                 ControlFlow::Next | ControlFlow::Value(_) => continue,
-                ControlFlow::Break { .. } => break,
+                // A loop answers nil, except when a `break` carried a value
+                // out of it, which is what the loop then answers.
+                ControlFlow::Break { value, .. } => return Ok(ControlFlow::Value(value)),
                 ControlFlow::Redo { .. } | ControlFlow::Continue { .. } => continue,
                 ControlFlow::Return { value, position } => {
                     return Ok(ControlFlow::Return { value, position });
@@ -94,6 +100,69 @@ impl VirtualMachine {
         Ok(ControlFlow::Next)
     }
 
+    /// `begin ... end while cond`, which runs its body once before it first
+    /// reads the condition.
+    pub(crate) fn execute_do_while(
+        &mut self,
+        condition: &Expression,
+        body: &[Statement],
+    ) -> Result<ControlFlow, MetorexError> {
+        loop {
+            // `redo` runs the body again without reading the condition.
+            loop {
+                match self.loop_pass(body)? {
+                    ControlFlow::Redo { .. } => continue,
+                    ControlFlow::Next | ControlFlow::Value(_) | ControlFlow::Continue { .. } => {
+                        break;
+                    }
+                    ControlFlow::Break { value, .. } => return Ok(ControlFlow::Value(value)),
+                    ControlFlow::Return { value, position } => {
+                        return Ok(ControlFlow::Return { value, position });
+                    }
+                    ControlFlow::Exception {
+                        exception,
+                        position,
+                    } => {
+                        return Ok(ControlFlow::Exception {
+                            exception,
+                            position,
+                        });
+                    }
+                }
+            }
+            let tested = self.evaluate_expression(condition)?;
+            if !is_truthy(&tested) {
+                return Ok(ControlFlow::Value(crate::object::Object::Nil));
+            }
+        }
+    }
+
+    /// One turn through a loop body. A `next`, `redo`, or `break` written
+    /// where a value goes arrives as an unwinding signal rather than as plain
+    /// control flow, and the loop reads it as the jump it stands for.
+    fn loop_pass(&mut self, body: &[Statement]) -> Result<ControlFlow, MetorexError> {
+        match self.execute_statements_internal(body) {
+            Ok(flow) => Ok(flow),
+            Err(MetorexError::BlockNext { .. }) => Ok(ControlFlow::Next),
+            Err(MetorexError::BlockRedo { .. }) => Ok(ControlFlow::Redo {
+                position: Position::default(),
+            }),
+            // A `break` written where a value goes unwinds as a signal. One
+            // that has passed a block boundary already carries the frame it
+            // belongs to and is on its way somewhere else, so only a signal
+            // raised inside this body is the loop's own.
+            Err(MetorexError::BlockBreak {
+                value,
+                home_frame: None,
+                ..
+            }) => Ok(ControlFlow::Break {
+                value,
+                position: Position::default(),
+            }),
+            Err(other) => Err(other),
+        }
+    }
+
     /// Execute a for loop over an iterable.
     pub(crate) fn execute_for(
         &mut self,
@@ -102,82 +171,16 @@ impl VirtualMachine {
         body: &[Statement],
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
-        let iterable = self.evaluate_expression(iterable_expr)?;
-
-        let elements = match iterable {
-            Object::Array(array_rc) => {
-                let arr = array_rc.borrow();
-                arr.clone()
-            }
-            Object::Range {
-                start,
-                end,
-                exclusive,
-            } => {
-                // Convert range to array of integers
-                match (*start, *end) {
-                    (Object::Int(start_val), Object::Int(end_val)) => {
-                        let mut elements = Vec::new();
-                        let end_inclusive = if exclusive { end_val - 1 } else { end_val };
-
-                        if start_val <= end_inclusive {
-                            for i in start_val..=end_inclusive {
-                                elements.push(Object::Int(i));
-                            }
-                        } else {
-                            // Reverse range
-                            for i in (end_inclusive..=start_val).rev() {
-                                elements.push(Object::Int(i));
-                            }
-                        }
-                        elements
-                    }
-                    _ => {
-                        return Err(MetorexError::type_error(
-                            "Range bounds must be integers for iteration",
-                            position_to_location(position),
-                        ));
-                    }
-                }
-            }
-            other => {
-                return Err(MetorexError::type_error(
-                    format!(
-                        "Cannot iterate over type '{}', expected Array or Range",
-                        other.type_name()
-                    ),
-                    position_to_location(position),
-                ));
-            }
-        };
-
-        for element in elements {
-            self.environment_mut().push_scope();
-            self.environment_mut().define(variable.to_string(), element);
-
-            let result = self.execute_statements_internal(body);
-
-            self.environment_mut().pop_scope();
-
-            match result? {
-                ControlFlow::Next | ControlFlow::Value(_) => continue,
-                ControlFlow::Break { .. } => break,
-                ControlFlow::Redo { .. } | ControlFlow::Continue { .. } => continue,
-                ControlFlow::Return { value, position } => {
-                    return Ok(ControlFlow::Return { value, position });
-                }
-                ControlFlow::Exception {
-                    exception,
-                    position,
-                } => {
-                    return Ok(ControlFlow::Exception {
-                        exception,
-                        position,
-                    });
-                }
-            }
-        }
-
-        Ok(ControlFlow::Next)
+        let looped = crate::ast::for_loop::for_over_each(
+            vec![Expression::Identifier {
+                name: variable.to_string(),
+                position,
+            }],
+            false,
+            iterable_expr.clone(),
+            body.to_vec(),
+            position,
+        );
+        self.execute_statement(&looped)
     }
 }

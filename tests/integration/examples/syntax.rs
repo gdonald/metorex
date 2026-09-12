@@ -63,3 +63,19 @@ fn test_syntax_binary_source_bytes_parens_execution() {
     let output = run_example("syntax/binary_source/bytes_parens.rb");
     assert_eq!(output, BINARY_SOURCE_OUTPUT);
 }
+
+/// The expected output of both `syntax/grouped_assignment` variants, which
+/// differ only in whether the calls are written with parentheses.
+const GROUPED_ASSIGNMENT_OUTPUT: &str = "[1, 2]\n[1, 2]\n1\n[1, nil, nil]\n\"assignment\"\n\"assignment\"\n\"assignment\"\n\"assignment\"\n\"method\"\n[]\n";
+
+#[test]
+fn test_syntax_grouped_assignment_execution() {
+    let output = run_example("syntax/grouped_assignment.rb");
+    assert_eq!(output, GROUPED_ASSIGNMENT_OUTPUT);
+}
+
+#[test]
+fn test_syntax_grouped_assignment_no_parens_execution() {
+    let output = run_example("syntax/grouped_assignment_no_parens.rb");
+    assert_eq!(output, GROUPED_ASSIGNMENT_OUTPUT);
+}

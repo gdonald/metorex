@@ -46,7 +46,7 @@ module Base64
         bytes.push((held >> bits) & 0xff)
       end
     end
-    bytes.map { |byte| byte.chr }.join.force_encoding(Encoding::BINARY)
+    bytes.pack("C*")
   end
 
   def self.strict_decode64(text)
@@ -69,7 +69,7 @@ module Base64
       end
       index += 4
     end
-    (bytes.map { |byte| byte.chr }.join).force_encoding(Encoding::BINARY)
+    bytes.pack("C*")
   end
 
   def self.urlsafe_encode64(text, padding: true)

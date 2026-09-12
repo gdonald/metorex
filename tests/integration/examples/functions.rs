@@ -273,3 +273,18 @@ fn test_procs_lambda_chained_comparison_parens_execution() {
     let output = run_example("procs/lambda_chained_comparison_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `functions/chained_defaults` variants.
+const CHAINED_DEFAULTS_OUTPUT: &str = "[{}, {}, {}]\n[1, nil, nil]\n[2, 6]\n[5, 15]\n";
+
+#[test]
+fn test_functions_chained_defaults_execution() {
+    let output = run_example("functions/chained_defaults.rb");
+    assert_eq!(output, CHAINED_DEFAULTS_OUTPUT);
+}
+
+#[test]
+fn test_functions_chained_defaults_parens_execution() {
+    let output = run_example("functions/chained_defaults_parens.rb");
+    assert_eq!(output, CHAINED_DEFAULTS_OUTPUT);
+}

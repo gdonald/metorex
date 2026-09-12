@@ -23,16 +23,78 @@ fn define_block_param(vm: &mut VirtualMachine, param: &str, value: Object) {
         vm.environment_mut().define(param.to_string(), value);
         return;
     };
+    bind_group_names(vm, names, value);
+}
+
+/// The names a destructuring group holds, split at the commas that stand
+/// outside any nested group.
+fn group_parts(names: &str) -> Vec<String> {
+    let mut parts = Vec::new();
+    let mut held = String::new();
+    let mut depth = 0usize;
+    for letter in names.chars() {
+        match letter {
+            '(' => {
+                depth += 1;
+                held.push(letter);
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                held.push(letter);
+            }
+            ',' if depth == 0 => parts.push(std::mem::take(&mut held)),
+            _ => held.push(letter),
+        }
+    }
+    if !held.is_empty() {
+        parts.push(held);
+    }
+    parts
+}
+
+/// Spread one value across the names of a destructuring group. A group may
+/// hold groups of its own, and one name may take whatever the others leave.
+fn bind_group_names(vm: &mut VirtualMachine, names: &str, value: Object) {
     let spread = match &value {
         Object::Array(elements) => elements.borrow().clone(),
         other => vec![other.clone()],
     };
-    for (index, name) in names.split(',').enumerate() {
-        if name.is_empty() {
+    let parts = group_parts(names);
+    let star_at = parts.iter().position(|part| part.starts_with('*'));
+    for (index, part) in parts.iter().enumerate() {
+        if part.is_empty() {
             continue;
         }
-        let bound = spread.get(index).cloned().unwrap_or(Object::Nil);
-        vm.environment_mut().define(name.to_string(), bound);
+        // Everything the named parts do not take goes to the starred one.
+        let taken = match star_at {
+            Some(star) if index == star => {
+                let after = parts.len() - index - 1;
+                let upto = spread.len().saturating_sub(after).max(index);
+                Object::array(spread.get(index..upto).unwrap_or(&[]).to_vec())
+            }
+            Some(star) if index > star => {
+                let from_end = parts.len() - index;
+                spread
+                    .len()
+                    .checked_sub(from_end)
+                    .and_then(|at| spread.get(at).cloned())
+                    .unwrap_or(Object::Nil)
+            }
+            _ => spread.get(index).cloned().unwrap_or(Object::Nil),
+        };
+        match part
+            .strip_prefix('(')
+            .and_then(|rest| rest.strip_suffix(')'))
+        {
+            Some(nested) => bind_group_names(vm, nested, taken),
+            None => {
+                let name = part.strip_prefix('*').unwrap_or(part);
+                if name.is_empty() {
+                    continue;
+                }
+                vm.environment_mut().define(name.to_string(), taken);
+            }
+        }
     }
 }
 
@@ -259,6 +321,9 @@ impl VirtualMachine {
         let result = (|| -> Result<(), MetorexError> {
             for statement in &statements {
                 if let Statement::Expression { expression, .. } = statement {
+                    if !self.tracepoints.is_empty() {
+                        self.fire_line_event(statement.position())?;
+                    }
                     last = self.evaluate_expression(expression)?;
                     continue;
                 }
@@ -298,6 +363,46 @@ impl VirtualMachine {
             .clone()
             .or_else(|| self.current_source_file.clone());
         let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        // A `def` in the body defines a method on the receiver alone, and a
+        // class variable written there belongs to the class or module the
+        // block was written in.
+        // The class or module the block was written in. A block written in a
+        // method body belongs to the class holding that method, whatever
+        // scope was open where the method was called from.
+        let lexical = self
+            .method_owner_stack
+            .last()
+            .cloned()
+            .flatten()
+            .or_else(|| block.captured_def_scope.last().cloned())
+            .or_else(|| {
+                self.method_nesting_stack
+                    .last()
+                    .and_then(|nesting| nesting.last().cloned())
+            })
+            .or_else(|| self.def_scope_stack.last().cloned())
+            .or_else(|| match self.environment().get("self") {
+                Some(Object::Class(held) | Object::Module(held)) => Some(held),
+                _ => None,
+            });
+
+        let carried = lexical.is_some();
+        if let Some(home) = lexical {
+            self.class_var_home.push(home);
+        }
+        // A `def` written at the top of the body belongs to the receiver
+        // alone. Anything the body calls out to keeps its own definee, so
+        // this reaches only the statements written here.
+        let definee = block
+            .body()
+            .iter()
+            .any(|statement| {
+                matches!(
+                    statement,
+                    Statement::MethodDef { .. } | Statement::FunctionDef { .. }
+                )
+            })
+            .then(|| self.singleton_class_of(&receiver));
         let execution_result = self.with_call_frame(frame, move |vm| {
             vm.environment_mut().push_isolated_scope();
             let result = (|| -> Result<Object, MetorexError> {
@@ -321,51 +426,74 @@ impl VirtualMachine {
                     }
                 }
 
-                let mut last_value = Object::Nil;
-                for statement in block.body() {
-                    if let Statement::Expression { expression, .. } = statement {
-                        last_value = vm.evaluate_expression(expression)?;
-                        continue;
+                let mut last_value;
+                // `redo` runs the block's body again over the same arguments.
+                'again: loop {
+                    last_value = Object::Nil;
+                    for statement in block.body() {
+                        if let Some(definee) = &definee
+                            && matches!(
+                                statement,
+                                Statement::MethodDef { .. } | Statement::FunctionDef { .. }
+                            )
+                        {
+                            let definee = std::rc::Rc::clone(definee);
+                            last_value = vm.apply_class_body_statements(
+                                &definee,
+                                std::slice::from_ref(statement),
+                                statement.position(),
+                            )?;
+                            continue;
+                        }
+                        if let Statement::Expression { expression, .. } = statement {
+                            if !vm.tracepoints.is_empty() {
+                                vm.fire_line_event(statement.position())?;
+                            }
+                            last_value = vm.evaluate_expression(expression)?;
+                            continue;
+                        }
+                        match vm.execute_statement(statement)? {
+                            ControlFlow::Next => {}
+                            ControlFlow::Value(value) => {
+                                last_value = value;
+                            }
+                            ControlFlow::Return { value, .. } => {
+                                last_value = value;
+                                break 'again;
+                            }
+                            ControlFlow::Exception {
+                                exception,
+                                position,
+                            } => {
+                                return Err(MetorexError::UncaughtException {
+                                    exception: exception.clone(),
+                                    location: position_to_location(position),
+                                    message: format_exception(&exception),
+                                });
+                            }
+                            ControlFlow::Break { value, position } => {
+                                return Err(MetorexError::BlockBreak {
+                                    value,
+                                    location: position_to_location(position),
+                                    home_frame: None,
+                                });
+                            }
+                            ControlFlow::Redo { .. } => continue 'again,
+                            ControlFlow::Continue { position, .. } => {
+                                return Err(loop_control_error("continue", position));
+                            }
+                        }
                     }
-                    match vm.execute_statement(statement)? {
-                        ControlFlow::Next => {}
-                        ControlFlow::Value(value) => {
-                            last_value = value;
-                        }
-                        ControlFlow::Return { value, .. } => {
-                            last_value = value;
-                            break;
-                        }
-                        ControlFlow::Exception {
-                            exception,
-                            position,
-                        } => {
-                            return Err(MetorexError::UncaughtException {
-                                exception: exception.clone(),
-                                location: position_to_location(position),
-                                message: format_exception(&exception),
-                            });
-                        }
-                        ControlFlow::Break { value, position } => {
-                            return Err(MetorexError::BlockBreak {
-                                value,
-                                location: position_to_location(position),
-                                home_frame: None,
-                            });
-                        }
-                        ControlFlow::Redo { position } => {
-                            return Err(loop_control_error("redo", position));
-                        }
-                        ControlFlow::Continue { position, .. } => {
-                            return Err(loop_control_error("continue", position));
-                        }
-                    }
+                    break;
                 }
                 Ok(last_value)
             })();
             vm.environment_mut().pop_scope();
             result
         });
+        if carried {
+            self.class_var_home.pop();
+        }
         self.current_source_file = saved_source_file;
 
         match execution_result {
@@ -394,6 +522,20 @@ impl VirtualMachine {
         let saved_def_scope =
             std::mem::replace(&mut self.def_scope_stack, block.captured_def_scope.clone());
 
+        // A trace sees a block body opening and closing, and reads the
+        // parameters the block declared off either event.
+        let block_position = block
+            .body
+            .first()
+            .map(|held| held.position())
+            .unwrap_or_else(|| Position::new(0, 0, 0));
+        let declared = crate::vm::native_methods::block_parameter_list(block);
+        self.fire_event(
+            "b_call",
+            block_position,
+            vec![("parameters", declared.clone())],
+        )?;
+
         let result = (|| -> Result<Object, MetorexError> {
             // Define captured variables using shared references
             for (name, value_ref) in block.captured_vars() {
@@ -415,6 +557,12 @@ impl VirtualMachine {
                 arguments,
             );
 
+            // A name written after the `;` in the parameter list is a local
+            // of the block, which starts as nil however the outer scope reads.
+            for name in block.block_locals() {
+                self.environment_mut().define(name, Object::Nil);
+            }
+
             // Pre-define every local syntactically assigned-to in this block
             // body as `nil`, so a read that runs before its assignment line
             // (e.g. inside an `ensure` clause that fires after an early raise)
@@ -426,73 +574,85 @@ impl VirtualMachine {
                 }
             }
 
-            let mut last_value = Object::Nil;
+            let mut last_value;
 
-            for statement in block.body() {
-                if let Statement::Expression { expression, .. } = statement {
-                    last_value = self.evaluate_expression(expression)?;
-                    continue;
-                }
-
-                match self.execute_statement(statement)? {
-                    ControlFlow::Next => {}
-                    ControlFlow::Value(value) => {
-                        last_value = value;
+            // `redo` runs the block's body again over the same arguments.
+            'again: loop {
+                last_value = Object::Nil;
+                for statement in block.body() {
+                    if let Statement::Expression { expression, .. } = statement {
+                        if !self.tracepoints.is_empty() {
+                            self.fire_line_event(statement.position())?;
+                        }
+                        last_value = self.evaluate_expression(expression)?;
+                        continue;
                     }
-                    // `return` in a lambda returns from the lambda. In a
-                    // proc or ordinary block it is a long return: it unwinds
-                    // to the method that lexically created the block.
-                    ControlFlow::Return { value, position } => {
-                        if block.is_lambda {
+
+                    match self.execute_statement(statement)? {
+                        ControlFlow::Next => {}
+                        ControlFlow::Value(value) => {
                             last_value = value;
-                            break;
                         }
-                        // The invocation the block was written in may have
-                        // returned already, and then the return has nowhere
-                        // to go.
-                        if let Some(home) = block.home_frame
-                            && !self.live_frames.contains(&home)
-                        {
-                            return Err(orphaned_return_error(value, position));
+                        // `return` in a lambda returns from the lambda. In a
+                        // proc or ordinary block it is a long return: it unwinds
+                        // to the method that lexically created the block.
+                        ControlFlow::Return { value, position } => {
+                            if block.is_lambda {
+                                last_value = value;
+                                break 'again;
+                            }
+                            // The invocation the block was written in may have
+                            // returned already, and then the return has nowhere
+                            // to go.
+                            if let Some(home) = block.home_frame
+                                && !self.live_frames.contains(&home)
+                            {
+                                return Err(orphaned_return_error(value, position));
+                            }
+                            return Err(MetorexError::NonLocalReturn {
+                                value,
+                                location: position_to_location(position),
+                                home_frame: block.home_frame,
+                            });
                         }
-                        return Err(MetorexError::NonLocalReturn {
-                            value,
-                            location: position_to_location(position),
-                            home_frame: block.home_frame,
-                        });
-                    }
-                    ControlFlow::Exception {
-                        exception,
-                        position,
-                    } => {
-                        return Err(MetorexError::UncaughtException {
-                            exception: exception.clone(),
-                            location: position_to_location(position),
-                            message: format_exception(&exception),
-                        });
-                    }
-                    ControlFlow::Break { value, position } => {
-                        // Ruby: `break <value>` inside a block unwinds to the
-                        // method that received the block, returning `value`
-                        // from that method call. Uses BlockBreak so the signal
-                        // survives `execute_method_body` (which only swallows
-                        // NonLocalReturn) and is caught at the invoke boundary.
-                        return Err(MetorexError::BlockBreak {
-                            value,
-                            location: position_to_location(position),
-                            home_frame: None,
-                        });
-                    }
-                    ControlFlow::Redo { position } => {
-                        return Err(loop_control_error("redo", position));
-                    }
-                    // `next <value>` ends this run of the block with that
-                    // value, which is what the method holding the block sees.
-                    ControlFlow::Continue { value, .. } => {
-                        last_value = value;
-                        break;
+                        ControlFlow::Exception {
+                            exception,
+                            position,
+                        } => {
+                            return Err(MetorexError::UncaughtException {
+                                exception: exception.clone(),
+                                location: position_to_location(position),
+                                message: format_exception(&exception),
+                            });
+                        }
+                        ControlFlow::Break { value, position } => {
+                            // `break` in a lambda ends the lambda, the way a
+                            // `return` written there does.
+                            if block.is_lambda {
+                                last_value = value;
+                                break 'again;
+                            }
+                            // Ruby: `break <value>` inside a block unwinds to the
+                            // method that received the block, returning `value`
+                            // from that method call. Uses BlockBreak so the signal
+                            // survives `execute_method_body` (which only swallows
+                            // NonLocalReturn) and is caught at the invoke boundary.
+                            return Err(MetorexError::BlockBreak {
+                                value,
+                                location: position_to_location(position),
+                                home_frame: None,
+                            });
+                        }
+                        ControlFlow::Redo { .. } => continue 'again,
+                        // `next <value>` ends this run of the block with that
+                        // value, which is what the method holding the block sees.
+                        ControlFlow::Continue { value, .. } => {
+                            last_value = value;
+                            break 'again;
+                        }
                     }
                 }
+                break;
             }
 
             Ok(last_value)
@@ -569,20 +729,29 @@ impl VirtualMachine {
                 }
             }
 
-            for statement in block.body() {
-                match self.execute_statement(statement)? {
-                    ControlFlow::Next | ControlFlow::Value(_) => {}
-                    flow @ (ControlFlow::Return { .. }
-                    | ControlFlow::Break { .. }
-                    | ControlFlow::Redo { .. }
-                    | ControlFlow::Continue { .. }
-                    | ControlFlow::Exception { .. }) => {
-                        return Ok(flow);
+            // `redo` runs the block's body again over the same arguments,
+            // which are already bound in this scope.
+            loop {
+                let mut again = false;
+                for statement in block.body() {
+                    match self.execute_statement(statement)? {
+                        ControlFlow::Next | ControlFlow::Value(_) => {}
+                        ControlFlow::Redo { .. } => {
+                            again = true;
+                            break;
+                        }
+                        flow @ (ControlFlow::Return { .. }
+                        | ControlFlow::Break { .. }
+                        | ControlFlow::Continue { .. }
+                        | ControlFlow::Exception { .. }) => {
+                            return Ok(flow);
+                        }
                     }
                 }
+                if !again {
+                    return Ok(ControlFlow::Next);
+                }
             }
-
-            Ok(ControlFlow::Next)
         })();
 
         self.current_source_file = saved_source_file;

@@ -140,7 +140,8 @@ fn float_int_modulo_by_zero_raises() {
 #[test]
 fn addition_type_error_nil() {
     let err = run_err("nil + 1");
-    assert!(err.contains("operator") || err.contains("type") || err.contains("Nil"));
+    // Ruby reports arithmetic on nil as the method nil does not have.
+    assert!(err.contains("undefined method"), "{}", err);
 }
 
 #[test]
@@ -163,7 +164,8 @@ fn float_plus_int() {
 #[test]
 fn subtract_type_error_nil_minus_int() {
     let err = run_err("nil - 1");
-    assert!(err.contains("operator") || err.contains("type") || err.contains("Nil"));
+    // Ruby reports arithmetic on nil as the method nil does not have.
+    assert!(err.contains("undefined method"), "{}", err);
 }
 
 #[test]

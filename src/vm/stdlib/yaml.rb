@@ -473,7 +473,12 @@ module Psych
   def self.emit_object held, depth
     # The bookkeeping metorex keeps on an object of its own is not state the
     # program set, so it is left out.
-    names = held.instance_variables.reject { |name| name.to_s.start_with? "@__" }
+    names = held.instance_variables.reject do |name|
+      spelled = name.to_s
+      # The names a stream keeps for its own bookkeeping stand for state the
+      # operating system holds, which no document can carry.
+      spelled.start_with?("@__") || (held.is_a?(IO) && spelled == "@handle")
+    end
     tag = "!ruby/object:#{held.class.name}"
     return "#{tag} {}" if names.empty?
     lines = ["--- #{tag}"]

@@ -98,6 +98,11 @@ impl VirtualMachine {
         }
 
         let receiver = self.evaluate_expression(receiver_expr)?;
+        // `held&.name(args) { block }` runs none of what follows when there
+        // is no receiver, so the arguments are never evaluated.
+        if method_name == crate::parser::SAFE_CALL && matches!(receiver, Object::Nil) {
+            return Ok(Object::Nil);
+        }
         let arguments = self.evaluate_arguments(argument_exprs)?;
 
         // If there's a trailing block, evaluate it and store as pending_block.
@@ -122,7 +127,15 @@ impl VirtualMachine {
         // must reach the copy rather than trip visibility enforcement.
         if let Object::Class(class_rc) | Object::Module(class_rc) = &receiver {
             let class_rc = Rc::clone(class_rc);
-            if let Some(method) = module_level_method(&class_rc, method_name) {
+            // A method put on the class's own singleton class stands ahead of
+            // one written as `def self.name`, which is how a later
+            // `define_singleton_method` replaces it.
+            let own = class_rc
+                .singleton_class_slot()
+                .as_ref()
+                .and_then(|singleton| singleton.find_own_method(method_name))
+                .or_else(|| module_level_method(&class_rc, method_name));
+            if let Some(method) = own {
                 let is_explicit_receiver = !names_self(receiver_expr);
                 if is_explicit_receiver && self.method_is_restricted(&receiver, method_name) {
                     if let Some(handled) = self.restricted_call_via_method_missing(
@@ -683,6 +696,14 @@ impl VirtualMachine {
                 // superclass chain, so a method from the singleton's ancestors
                 // (e.g. Object#describe, when Object has been reopened) does
                 // not shadow the class's own class-level method.
+                // A method put on the class's own singleton class stands
+                // ahead of one written as `def self.name`, which is how a
+                // later `define_singleton_method` replaces it.
+                if let Some(sc) = class_rc.singleton_class_slot().clone()
+                    && let Some(method) = sc.find_own_method(method_name)
+                {
+                    return Some((sc, method));
+                }
                 if let Some(method) = module_level_method(class_rc, method_name) {
                     return Some((Rc::clone(class_rc), method));
                 }
@@ -698,6 +719,28 @@ impl VirtualMachine {
                         return Some((sc, method));
                     }
                     cursor = current.superclass();
+                }
+                // What Class and Module themselves define answers before an
+                // instance method of the class does, the way Ruby's singleton
+                // chain reaches Class and Module before Object. A name Module
+                // answers natively counts as one of its own.
+                for global_name in ["Class", "Module"] {
+                    if let Some(Object::Class(global_class)) = self.globals().get(global_name)
+                        && let Some(method) = global_class.find_own_method(method_name)
+                    {
+                        return Some((global_class, method));
+                    }
+                }
+                if crate::vm::native_methods::is_native_module_method(method_name)
+                    && let Some(Object::Class(module_class)) = self.globals().get("Module")
+                {
+                    let stub = Rc::new(crate::object::Method::with_owner(
+                        method_name.to_string(),
+                        Vec::new(),
+                        Vec::new(),
+                        "Module".to_string(),
+                    ));
+                    return Some((module_class, stub));
                 }
                 // A class renders as its own name, so an `inspect` or `to_s`
                 // written for its instances does not answer for the class
@@ -723,6 +766,11 @@ impl VirtualMachine {
                 None
             }
             Object::Module(module_rc) => {
+                if let Some(sc) = module_rc.singleton_class_slot().clone()
+                    && let Some(method) = sc.find_own_method(method_name)
+                {
+                    return Some((sc, method));
+                }
                 if let Some(method) = module_level_method(module_rc, method_name) {
                     return Some((Rc::clone(module_rc), method));
                 }
@@ -795,6 +843,9 @@ fn reopened_class_name(receiver: &Object) -> Option<&'static str> {
         Object::Bool(true) => Some("TrueClass"),
         Object::Bool(false) => Some("FalseClass"),
         Object::Symbol(_) => Some("Symbol"),
+        // The core library reopens Regexp, so what a program writes there
+        // lands on the class in globals rather than on the builtin.
+        Object::Regex(_, _) => Some("Regexp"),
         _ => None,
     }
 }

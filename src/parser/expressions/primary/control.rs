@@ -38,6 +38,18 @@ impl Parser {
     ) -> Result<Expression, MetorexError> {
         self.skip_whitespace();
 
+        // `case` with nothing to match against tests each `when` for truth,
+        // which is the `if` chain it stands for.
+        if self.check(&[TokenKind::When]) {
+            let held = self.parse_subjectless_case(start_pos)?;
+            return Ok(Expression::BeginRescue {
+                body: vec![held],
+                rescue_clauses: Vec::new(),
+                else_clause: None,
+                ensure_block: None,
+                position: start_pos,
+            });
+        }
         // Parse the expression to match against
         let expression = Box::new(self.parse_expression()?);
         self.skip_whitespace();
@@ -53,7 +65,7 @@ impl Parser {
             self.skip_whitespace();
 
             // Parse the pattern using the shared pattern parser (may include comma-separated alternatives)
-            let pattern = self.parse_case_pattern_with_alternatives()?;
+            let pattern = self.parse_when_pattern_with_alternatives()?;
             self.skip_whitespace();
 
             // Parse optional guard clause (if ...)
@@ -69,13 +81,12 @@ impl Parser {
             // Two syntaxes supported:
             // 1. Inline: when pattern then expression
             // 2. Block: when pattern newline expression(s)
-            let body = if self.match_token(&[TokenKind::Then]) {
-                // Inline syntax: parse expression after 'then'
-                self.skip_whitespace();
-                self.parse_expression()?
+            self.match_token(&[TokenKind::Then]);
+            self.skip_whitespace();
+            // A clause with nothing written under it answers nil.
+            let body = if self.check(&[TokenKind::When, TokenKind::Else, TokenKind::End]) {
+                Expression::NilLiteral { position: when_pos }
             } else {
-                // Block syntax: parse expression after whitespace
-                self.skip_whitespace();
                 self.parse_expression()?
             };
 
@@ -89,10 +100,16 @@ impl Parser {
             self.skip_whitespace();
         }
 
-        // Parse optional else clause
+        // Parse optional else clause, which answers nil when nothing is
+        // written under it.
         let else_case = if self.match_token(&[TokenKind::Else]) {
+            let else_pos = self.previous().position;
             self.skip_whitespace();
-            Some(Box::new(self.parse_expression()?))
+            if self.check(&[TokenKind::End]) {
+                Some(Box::new(Expression::NilLiteral { position: else_pos }))
+            } else {
+                Some(Box::new(self.parse_expression()?))
+            }
         } else {
             None
         };
@@ -236,6 +253,24 @@ impl Parser {
 impl crate::parser::Parser {
     /// A loop read for its value. The loop stays a statement, held in a body
     /// so what surrounds it can chain onto what the loop answered.
+    /// `for ... end` read as an expression, which is what a call written on
+    /// the loop's own `end` reads it as.
+    pub(super) fn parse_for_expression(
+        &mut self,
+        position: crate::lexer::Position,
+    ) -> Result<Expression, MetorexError> {
+        let keyword = self.stream.current_position().saturating_sub(1);
+        self.stream.restore_position(keyword);
+        let looped = self.parse_for_statement()?;
+        Ok(Expression::BeginRescue {
+            body: vec![looped],
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
+            position,
+        })
+    }
+
     pub(super) fn parse_loop_expression(
         &mut self,
         position: crate::lexer::Position,

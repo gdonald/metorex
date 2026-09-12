@@ -258,6 +258,10 @@ impl Parser {
                 TokenKind::If,
                 TokenKind::Unless,
                 TokenKind::While,
+                // `raise until cond` re-raises under a modifier, the way
+                // `raise while cond` does.
+                TokenKind::Until,
+                TokenKind::RParen,
                 TokenKind::Else,
                 TokenKind::Elsif,
                 TokenKind::When,

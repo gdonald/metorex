@@ -11,6 +11,11 @@ use super::literals;
 impl Parser {
     /// Parse primary expressions (literals, identifiers, groups).
     pub(crate) fn parse_primary(&mut self) -> Result<Expression, MetorexError> {
+        // Nothing is left to read, and advancing past the end would hand back
+        // the token already read, which would be read again without end.
+        if self.is_at_end() {
+            return Err(self.error_at_previous("Unexpected end of input"));
+        }
         let token = self.advance();
         let position = token.position;
 
@@ -46,6 +51,17 @@ impl Parser {
                 position,
             }),
             TokenKind::String(value) => Ok(literals::string_literal(value, position)),
+            TokenKind::ByteString(value) => Ok(literals::byte_string_literal(value, position)),
+            TokenKind::BinaryString(value) => Ok(literals::binary_string_literal(value, position)),
+            // A literal in a source that asked for frozen literals stands for
+            // the one frozen string every place writing it shares.
+            TokenKind::FrozenString(value) => Ok(Expression::MethodCall {
+                receiver: Box::new(Expression::StringLiteral { value, position }),
+                method: "__frozen_literal__".to_string(),
+                arguments: Vec::new(),
+                trailing_block: None,
+                position,
+            }),
             TokenKind::Regex(pattern, flags) => self.regex_expression(pattern, flags, position),
             TokenKind::PercentW(value, filled) => {
                 Ok(self.primary_percent_w(value, filled, position))
@@ -56,14 +72,49 @@ impl Parser {
             TokenKind::InterpolatedString(parts) => {
                 self.primary_interpolated_string(parts, position)
             }
+            TokenKind::PercentSymbol(name) => Ok(Expression::Symbol {
+                value: name,
+                position,
+            }),
             TokenKind::CommandSymbol => Ok(Expression::Symbol {
                 value: "`".to_string(),
                 position,
             }),
             // A backtick literal is a call to Kernel#` with the command it
             // spells out, interpolation and all.
+            // A command written with byte escapes runs those bytes.
+            TokenKind::ByteCommandString(text) => Ok(Expression::Call {
+                callee: Box::new(Expression::Identifier {
+                    name: "`".to_string(),
+                    position,
+                }),
+                arguments: vec![Expression::MethodCall {
+                    receiver: Box::new(literals::byte_string_literal(text, position)),
+                    method: "freeze".to_string(),
+                    arguments: Vec::new(),
+                    trailing_block: None,
+                    position,
+                }],
+                trailing_block: None,
+                position,
+            }),
             TokenKind::CommandString(parts) => {
+                let written = parts.len() == 1
+                    && matches!(parts[0], crate::lexer::InterpolationPart::Text(_));
                 let command = self.primary_interpolated_string(parts, position)?;
+                // A command written out in full is handed over frozen, the
+                // way Ruby hands one to a `` ` `` of the program's own.
+                let command = if written {
+                    Expression::MethodCall {
+                        receiver: Box::new(command),
+                        method: "freeze".to_string(),
+                        arguments: Vec::new(),
+                        trailing_block: None,
+                        position,
+                    }
+                } else {
+                    command
+                };
                 Ok(Expression::Call {
                     callee: Box::new(Expression::Identifier {
                         name: "`".to_string(),
@@ -116,6 +167,32 @@ impl Parser {
             TokenKind::Arrow => self.parse_stabby_lambda(position),
 
             // ── Keyword-led expressions ─────────────────────────────────────
+            // `a ||= raise "..."` puts a raise where a value goes, which
+            // reads as a call to `raise` with what follows it.
+            TokenKind::Raise => {
+                let arguments = if self.check(&[TokenKind::LParen]) {
+                    self.advance();
+                    self.parse_arguments()?
+                } else if self.check(&[
+                    TokenKind::Newline,
+                    TokenKind::Semicolon,
+                    TokenKind::EOF,
+                    TokenKind::End,
+                    TokenKind::RParen,
+                    TokenKind::RBrace,
+                ]) {
+                    Vec::new()
+                } else {
+                    self.parse_arguments_without_parens()?
+                };
+                Ok(Expression::MethodCall {
+                    receiver: Box::new(Expression::SelfExpr { position }),
+                    method: "raise".to_string(),
+                    arguments,
+                    trailing_block: None,
+                    position,
+                })
+            }
             TokenKind::Super => self.parse_super_call(position),
             TokenKind::Defined => self.parse_defined_expression(position),
             TokenKind::Yield => self.parse_yield_expression(position),
@@ -131,11 +208,44 @@ impl Parser {
                 self.parse_singleton_class_after_shovel(position)
             }
 
+            // `name = def held; end` reads the definition where a value goes,
+            // and what it answers is the name it defined.
+            TokenKind::Def => {
+                self.stream
+                    .restore_position(self.stream.current_position() - 1);
+                let defined = self.parse_statement()?;
+                Ok(Expression::BeginRescue {
+                    body: vec![defined],
+                    rescue_clauses: Vec::new(),
+                    else_clause: None,
+                    ensure_block: None,
+                    position,
+                })
+            }
+
+            // ── Jumps where a value goes ────────────────────────────────────
+            // `found or next`, `(break 123 while true)`: Ruby reads a jump as
+            // an expression, which stands for the one-statement `begin` that
+            // holds it.
+            TokenKind::Break | TokenKind::Continue | TokenKind::Redo | TokenKind::Return => {
+                self.stream
+                    .restore_position(self.stream.current_position() - 1);
+                let jump = self.parse_statement()?;
+                Ok(Expression::BeginRescue {
+                    body: vec![jump],
+                    rescue_clauses: Vec::new(),
+                    else_clause: None,
+                    ensure_block: None,
+                    position,
+                })
+            }
+
             // ── Control-flow expressions ────────────────────────────────────
             TokenKind::Case => self.parse_case_expression(position),
             TokenKind::If => self.parse_if_expression(position),
             TokenKind::Unless => self.parse_unless_expression(position),
             TokenKind::While | TokenKind::Until => self.parse_loop_expression(position),
+            TokenKind::For => self.parse_for_expression(position),
 
             other => Err(self.error_at_previous(&format!("Unexpected token: {:?}", other))),
         }
