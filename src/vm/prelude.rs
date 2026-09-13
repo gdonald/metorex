@@ -2343,7 +2343,13 @@ class Enumerator
     @size = size
     @position = 0
     @generator = generator
+    @stepping_walk = nil
+    @walk_started = false
+    @raw_values = nil
+    @values = nil
+    self
   end
+  private :initialize
 
   # A walk over a method of another object, which is what `to_enum` and the
   # methods that answer an Enumerator without a block build. `new` takes a
@@ -2403,26 +2409,91 @@ class Enumerator
 
   # `next_values` and `peek_values` answer what the walk yielded as an array,
   # where `next` and `peek` unwrap a lone value.
-  def next_values
-    values = raw_to_a
-    if @position >= values.size
-      ended = StopIteration.new("iteration reached an end")
-      ended.result = @result
-      raise ended
+  # The walk a stepped read is part-way through. It runs on a fiber of its
+  # own, so the values arrive one at a time rather than all at once, and a
+  # walk that never ends can still be stepped through.
+  def stepping_walk
+    return @stepping_walk unless @stepping_walk.nil?
+    @stepping_walk = Fiber.new do
+      @result = if singleton_methods.include?(:each)
+        each { |*yielded| Fiber.yield [:value, yielded] }
+      elsif @generator.nil?
+        @receiver.send(@method_name, *@arguments) { |*yielded| Fiber.yield [:value, yielded] }
+      else
+        @generator.call(Yielder.new { |*yielded| Fiber.yield [:value, yielded] })
+      end
+      [:done, @result]
     end
-    value = values[@position]
-    @position = @position + 1
-    value
+  end
+  private :stepping_walk
+
+  # The next run of values the walk hands over, or the end of it.
+  def step_walk
+    unless @peeked.nil?
+      held = @peeked
+      @peeked = nil
+      return held
+    end
+    walker = stepping_walk
+    refuse_ended unless walker.alive?
+    # A value fed in reaches the `yield` the walk is parked at, so it is
+    # handed over on the step that starts the walk again rather than the one
+    # that opens it.
+    if @walk_started
+      fed = @fed
+      @fed = nil
+      @fed_given = false
+    else
+      fed = nil
+      @walk_started = true
+    end
+    begin
+      handed = walker.resume(fed)
+    rescue Exception
+      # A walk that ended in an exception starts again from the beginning,
+      # which is what Ruby does with the one that raised.
+      @stepping_walk = nil
+      @walk_started = false
+      raise
+    end
+    refuse_ended if handed.nil? || handed[0] == :done
+    handed[1]
+  end
+  private :step_walk
+
+  def refuse_ended
+    ended = StopIteration.new("iteration reached an end")
+    ended.result = @result
+    raise ended
+  end
+  private :refuse_ended
+
+  def next_values
+    step_walk
   end
 
   def peek_values
-    values = raw_to_a
-    if @position >= values.size
-      ended = StopIteration.new("iteration reached an end")
-      ended.result = @result
-      raise ended
-    end
-    values[@position]
+    @peeked = step_walk if @peeked.nil?
+    @peeked
+  end
+
+  def peek
+    values = peek_values
+    values.empty? ? nil : (values.size == 1 ? values[0] : values)
+  end
+
+  def next
+    values = next_values
+    values.empty? ? nil : (values.size == 1 ? values[0] : values)
+  end
+
+  # The value the next `yield` in the walk answers. Ruby holds one at a time,
+  # and refuses a second before the walk has moved on.
+  def feed(value)
+    raise TypeError, "feed value already set" if @fed_given
+    @fed = value
+    @fed_given = true
+    nil
   end
 
   def raw_to_a
@@ -2449,27 +2520,16 @@ class Enumerator
     @raw_values
   end
 
-  def peek
-    values = to_a
-    if @position >= values.size
-      ended = StopIteration.new("iteration reached an end")
-      ended.result = @result
-      raise ended
-    end
-    values[@position]
-  end
-
-  def next
-    value = peek
-    @position = @position + 1
-    value
-  end
-
   # Ruby hands the rewind on to the object the walk was cut from when that
   # object can be rewound, so a source with a place of its own goes back to
-  # the start too.
+  # the start too. The stepped walk starts again from nothing.
   def rewind
     @position = 0
+    @stepping_walk = nil
+    @walk_started = false
+    @peeked = nil
+    @fed = nil
+    @fed_given = false
     if !@receiver.nil? && !@receiver.equal?(self) && @receiver.respond_to?(:rewind)
       @receiver.rewind
     end
@@ -2760,7 +2820,14 @@ class Enumerator::Lazy < Enumerator
         seen += 1
       when :zip
         subject = packed(values)
-        yield [subject] + @count.map { |other| other[seen] }
+        alongside = @count.map do |other|
+          begin
+            other.next
+          rescue StopIteration
+            nil
+          end
+        end
+        yield [subject] + alongside
         seen += 1
       when :chunk
         subject = packed(values)
@@ -2992,12 +3059,26 @@ class Enumerator::Lazy < Enumerator
     with_step(:with_index, block, start)
   end
 
-  def zip(*others)
-    walked = others.map do |other|
-      raise TypeError, "wrong argument type #{other.class} (must respond to :each)" unless other.respond_to?(:to_a)
-      other.to_a
+  # A lazy zip pulls one value at a time from the others, so a walk with no
+  # end can still be zipped against.
+  def zip(*others, &block)
+    # Ruby treats a lazy zip given a block as the eager one, walking every
+    # element and answering nil rather than a lazy enumerator.
+    unless block.nil?
+      each_with_index do |*values, index|
+        subject = values.size == 1 ? values[0] : values
+        alongside = others.map { |other| other.to_a[index] }
+        block.call([subject] + alongside)
+      end
+      return nil
     end
-    with_step(:zip, nil, walked)
+    stepped = others.map do |other|
+      unless other.respond_to?(:to_a)
+        raise TypeError, "wrong argument type #{other.class} (must respond to :each)"
+      end
+      other.respond_to?(:next) ? other : other.to_enum(:each)
+    end
+    with_step(:zip, nil, stepped)
   end
 
   # The elements pulled out of the walk so far. `next` and `peek` read from

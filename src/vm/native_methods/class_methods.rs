@@ -1413,6 +1413,130 @@ impl VirtualMachine {
             self.pending_threads.push(obj.clone());
             return Ok(Some(obj));
         }
+        // `Fiber.new { ... }` makes a fiber the block runs on when it is
+        // first resumed.
+        if method_name == "new" && class_named_in_chain(class_rc, "Fiber") {
+            use crate::object::Instance;
+            let Some(Object::Block(block)) = self.pending_block.take() else {
+                return Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    "tried to create a Fiber without a block",
+                    position,
+                ));
+            };
+            // `Fiber.new(blocking: true)` asks for a fiber that blocks when
+            // it waits rather than handing control to a scheduler.
+            let blocking = match arguments.last() {
+                Some(Object::Dict(options)) => options
+                    .borrow()
+                    .get(":blocking")
+                    .is_some_and(|held| held.is_truthy()),
+                _ => false,
+            };
+            // `storage:` names what the fiber keeps for itself. Without it
+            // the fiber inherits what the one making it held.
+            let named = match arguments.last() {
+                Some(Object::Dict(options)) => options.borrow().get(":storage").cloned(),
+                _ => None,
+            };
+            let storage = match named {
+                // A fiber inherits a copy of what the one making it keeps, so
+                // writing a name in the new fiber leaves the old one alone.
+                None => {
+                    let holder = self.fiber_current_handle();
+                    match self.fiber_storage_if_held(holder) {
+                        Some(Object::Dict(held)) => {
+                            let copied = held.borrow().clone();
+                            Some(Object::Dict(Rc::new(std::cell::RefCell::new(copied))))
+                        }
+                        other => other,
+                    }
+                }
+                Some(Object::Nil) => None,
+                Some(held) => {
+                    self.check_fiber_storage(&held, position)?;
+                    Some(held)
+                }
+            };
+            let handle = self.fiber_create(block, blocking, storage);
+            let instance = Instance::new(Rc::clone(class_rc));
+            let inst_rc = Rc::new(std::cell::RefCell::new(instance));
+            inst_rc
+                .borrow_mut()
+                .set_var("__fiber__".to_string(), Object::Int(handle as i64));
+            return Ok(Some(Object::Instance(inst_rc)));
+        }
+        if class_named_in_chain(class_rc, "Fiber") {
+            match method_name {
+                // `Fiber.yield` suspends the fiber holding the interpreter,
+                // handing its arguments to whoever resumed it.
+                "yield" => {
+                    let handed = match arguments.len() {
+                        0 => Object::Nil,
+                        1 => arguments[0].clone(),
+                        _ => Object::array(arguments.to_vec()),
+                    };
+                    let given = self.fiber_suspend(handed, position)?;
+                    return Ok(Some(match given.len() {
+                        0 => Object::Nil,
+                        1 => given[0].clone(),
+                        _ => Object::array(given),
+                    }));
+                }
+                "current" => {
+                    return Ok(Some(self.fiber_current()));
+                }
+                // `Fiber.blocking { |f| ... }` runs the block with the
+                // running fiber blocking, and puts back what it was after.
+                "blocking" if self.pending_block.is_some() => {
+                    let Some(Object::Block(block)) = self.pending_block.take() else {
+                        return Ok(Some(Object::Nil));
+                    };
+                    let held = self.fiber_current_handle();
+                    let was = self.fiber_set_blocking(held, true);
+                    let current = self.fiber_current();
+                    let answered = self.execute_block_body(&block, vec![current]);
+                    self.fiber_set_blocking(held, was);
+                    return answered.map(Some);
+                }
+                // `Fiber[:name]` reads what the running fiber keeps under
+                // that name, and `Fiber[:name] = held` writes it.
+                "[]" if arguments.len() == 1 => {
+                    let named = self.fiber_storage_name(&arguments[0], position)?;
+                    let running = self.fiber_current_handle();
+                    let Some(Object::Dict(held)) = self.fiber_storage_if_held(running) else {
+                        return Ok(Some(Object::Nil));
+                    };
+                    let found = held.borrow().get(&named).cloned();
+                    return Ok(Some(found.unwrap_or(Object::Nil)));
+                }
+                "[]=" if arguments.len() == 2 => {
+                    let named = self.fiber_storage_name(&arguments[0], position)?;
+                    let running = self.fiber_current_handle();
+                    let Object::Dict(held) = self.fiber_storage(running) else {
+                        return Ok(Some(arguments[1].clone()));
+                    };
+                    // A name given nil is dropped rather than kept as nil.
+                    if matches!(arguments[1], Object::Nil) {
+                        held.borrow_mut().shift_remove(&named);
+                    } else {
+                        held.borrow_mut().insert(named, arguments[1].clone());
+                    }
+                    return Ok(Some(arguments[1].clone()));
+                }
+                // Ruby answers the number of the blocking level here rather
+                // than a flag, and false where nothing is blocking.
+                "blocking?" => {
+                    let held = self.fiber_current_handle();
+                    return Ok(Some(if self.fiber_is_blocking(held) {
+                        Object::Int(1)
+                    } else {
+                        Object::Bool(false)
+                    }));
+                }
+                _ => {}
+            }
+        }
         // Thread.pass / Thread.current / Thread.report_on_exception= — minimal
         // stubs sufficient for fixture and spec helpers.
         if class_rc.name() == "Thread" {
@@ -4409,4 +4533,86 @@ fn sample_of_class(named: &str) -> Option<Object> {
         "FalseClass" => Some(Object::Bool(false)),
         _ => None,
     }
+}
+
+impl VirtualMachine {
+    /// The name a fiber keeps a value under. Ruby takes a Symbol, reads a
+    /// String as one, and refuses anything else.
+    pub(crate) fn fiber_storage_name(
+        &mut self,
+        given: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match given {
+            Object::Symbol(name) => Ok(format!(":{name}")),
+            Object::String(name) => Ok(format!(":{}", name.as_str())),
+            other if self.responds_to(other, "to_str") => {
+                match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                    Object::String(name) => Ok(format!(":{}", name.as_str())),
+                    _ => Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "wrong argument type (expected a Symbol)",
+                        position,
+                    )),
+                }
+            }
+            _ => Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                "wrong argument type (expected a Symbol)",
+                position,
+            )),
+        }
+    }
+
+    /// Refuse anything a fiber cannot keep its names in: it has to be a Hash
+    /// that may still be written to, and every name in it has to be a Symbol.
+    pub(crate) fn check_fiber_storage(
+        &mut self,
+        given: &Object,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let Object::Dict(entries) = given else {
+            return Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!(
+                    "no implicit conversion of {} into Hash",
+                    self.builtins().class_of(given).name()
+                ),
+                position,
+            ));
+        };
+        if self.object_is_frozen(given) {
+            return Err(self.frozen_modification_error(given, position));
+        }
+        let named: Vec<Object> = {
+            let held = entries.borrow();
+            held.keys()
+                .filter(|slot| !slot.starts_with("__MX_"))
+                .map(|slot| crate::vm::utils::dict_key_to_object(slot))
+                .collect()
+        };
+        for key in named {
+            if !matches!(key, Object::Symbol(_)) {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "wrong argument type (expected a Symbol)",
+                    position,
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Whether a class is the named one or descends from it, which is what makes
+/// a subclass answer the same native methods.
+fn class_named_in_chain(class_rc: &Rc<Class>, wanted: &str) -> bool {
+    let mut cursor = Some(Rc::clone(class_rc));
+    while let Some(held) = cursor {
+        if held.name() == wanted {
+            return true;
+        }
+        cursor = held.superclass();
+    }
+    false
 }

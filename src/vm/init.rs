@@ -654,6 +654,20 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     ));
     globals.set("Thread", Object::Class(Rc::clone(&thread)));
 
+    // Fiber — a block that runs on a stack of its own and suspends part-way
+    // through. Its methods are answered natively, since the coroutine behind
+    // one lives in the interpreter rather than in the object.
+    let fiber = Rc::new(Class::new(
+        "Fiber",
+        Some(Rc::new(Class::new("Object", None))),
+    ));
+    globals.set("Fiber", Object::Class(Rc::clone(&fiber)));
+    let fiber_error = Rc::new(Class::new(
+        "FiberError",
+        Some(Rc::new(Class::new("StandardError", None))),
+    ));
+    globals.set("FiberError", Object::Class(fiber_error));
+
     // Queue / SizedQueue — minimal FIFO stub. metorex runs Thread blocks
     // synchronously, so blocking-pop semantics aren't meaningful;
     // `pop` returns nil on an empty queue rather than blocking. Enough

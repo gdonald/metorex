@@ -1191,8 +1191,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.27.20. core/enumerator/each_with_object_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
   - [x] 4.27.21. core/enumerator/enum_for_spec - 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.27.22. core/enumerator/enumerator_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
-  - [ ] 4.27.23. core/enumerator/feed_spec
-  - [x] 4.27.24. core/enumerator/first_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
+  - [x] 4.27.23. core/enumerator/feed_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.27.25. core/enumerator/generator/each_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
   - [x] 4.27.26. core/enumerator/generator/initialize_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [ ] 4.27.27. core/enumerator/initialize_spec
@@ -1226,8 +1225,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.27.55. core/enumerator/lazy/to_enum_spec
   - [x] 4.27.56. core/enumerator/lazy/uniq_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.27.57. core/enumerator/lazy/with_index_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
-  - [ ] 4.27.58. core/enumerator/lazy/zip_spec
-  - [x] 4.27.59. core/enumerator/new_spec - 1 file, 6 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.27.58. core/enumerator/lazy/zip_spec - 1 file, 11 examples, 15 expectations, 0 failures, 0 errors
   - [x] 4.27.60. core/enumerator/next_spec - 1 file, 4 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.27.61. core/enumerator/next_values_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.27.62. core/enumerator/peek_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
@@ -1241,8 +1239,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.27.70. core/enumerator/product/rewind_spec - 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.27.71. core/enumerator/product/size_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.27.72. core/enumerator/product_spec - 1 file, 12 examples, 16 expectations, 0 failures, 0 errors
-  - [ ] 4.27.73. core/enumerator/rewind_spec
-  - [x] 4.27.74. core/enumerator/size_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.27.73. core/enumerator/rewind_spec - 1 file, 8 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.27.75. core/enumerator/to_enum_spec - 1 file, 7 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.27.76. core/enumerator/with_index_spec - 1 file, 18 examples, 25 expectations, 0 failures, 0 errors
   - [x] 4.27.77. core/enumerator/with_object_spec - 1 file, 5 examples, 8 expectations, 0 failures, 0 errors
@@ -1957,7 +1954,7 @@ Parser fixes during Phase 4 work:
 
 ### Concurrency
 
-- [ ] 4.43. core/thread - 14 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [ ] 4.43. core/thread - 15 pass, 1 file has no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
   - [ ] 4.43.1. core/thread/abort_on_exception_spec
   - [ ] 4.43.2. core/thread/add_trace_func_spec
   - [ ] 4.43.3. core/thread/alive_spec
@@ -1972,8 +1969,7 @@ Parser fixes during Phase 4 work:
   - [ ] 4.43.12. core/thread/backtrace/location/to_s_spec
   - [ ] 4.43.13. core/thread/backtrace_locations_spec
   - [ ] 4.43.14. core/thread/backtrace_spec
-  - [ ] 4.43.15. core/thread/current_spec
-  - [ ] 4.43.16. core/thread/each_caller_location_spec
+  - [x] 4.43.15. core/thread/current_spec - 1 file, 3 examples, 7 expectations, 0 failures, 0 errors
   - [x] 4.43.17. core/thread/element_reference_spec - 1 file, 5 examples, 12 expectations, 0 failures, 0 errors
   - [ ] 4.43.19. core/thread/exit_spec
   - [ ] 4.43.20. core/thread/fetch_spec
@@ -2006,23 +2002,20 @@ Parser fixes during Phase 4 work:
   - [x] 4.43.47. core/thread/thread_variable_get_spec - 1 file, 7 examples, 9 expectations, 0 failures, 0 errors
   - [x] 4.43.48. core/thread/thread_variable_set_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.43.49. core/thread/thread_variable_spec - 1 file, 10 examples, 15 expectations, 0 failures, 0 errors
+  - [x] 4.43.50. core/thread/thread_variables_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [ ] 4.43.52. core/thread/value_spec
   - [ ] 4.43.53. core/thread/wakeup_spec
-- [ ] 4.44. core/fiber
-  - [ ] 4.44.1. core/fiber/alive_spec
-  - [ ] 4.44.2. core/fiber/blocking_spec
-  - [ ] 4.44.3. core/fiber/current_spec
-  - [ ] 4.44.4. core/fiber/inspect_spec
-  - [ ] 4.44.5. core/fiber/kill_spec
-  - [ ] 4.44.6. core/fiber/new_spec
-  - [ ] 4.44.7. core/fiber/raise_spec
-  - [ ] 4.44.8. core/fiber/resume_spec
-  - [ ] 4.44.9. core/fiber/scheduler_spec
+- [ ] 4.44. core/fiber - 9 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.44.1. core/fiber/alive_spec - 1 file, 6 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.44.2. core/fiber/blocking_spec - 1 file, 13 examples, 13 expectations, 0 failures, 0 errors
+  - [x] 4.44.3. core/fiber/current_spec - 1 file, 3 examples, 18 expectations, 0 failures, 0 errors
+  - [x] 4.44.4. core/fiber/inspect_spec - 1 file, 6 examples, 6 expectations, 0 failures, 0 errors
+  - [x] 4.44.5. core/fiber/kill_spec - 1 file, 7 examples, 11 expectations, 0 failures, 0 errors
+  - [x] 4.44.7. core/fiber/new_spec - 1 file, 5 examples, 5 expectations, 0 failures, 0 errors
+  - [x] 4.44.8. core/fiber/resume_spec - 1 file, 17 examples, 20 expectations, 0 failures, 0 errors
   - [ ] 4.44.10. core/fiber/set_scheduler_spec
-  - [ ] 4.44.11. core/fiber/storage_spec
-  - [ ] 4.44.12. core/fiber/transfer_spec
-  - [ ] 4.44.13. core/fiber/yield_spec
-- [ ] 4.45. core/mutex
+  - [x] 4.44.11. core/fiber/storage_spec - 1 file, 30 examples, 35 expectations, 0 failures, 0 errors
+  - [x] 4.44.13. core/fiber/yield_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
   - [ ] 4.45.1. core/mutex/lock_spec
   - [ ] 4.45.2. core/mutex/locked_spec
   - [ ] 4.45.3. core/mutex/owned_spec
@@ -3652,7 +3645,15 @@ acceptance criterion for calling it done.
     - [ ] 6.1.3.4. The fiber-local store separated per fiber, which needs 6.1.5
   - [ ] 6.1.4. `ThreadGroup` with `Thread.main.group` and `#list`
   - [ ] 6.1.5. A `Fiber` class with `resume`, `yield`, `alive?`, `Fiber.current`, and the transfer form
-  - [ ] 6.1.6. `Enumerator#next`, `#peek` and `#feed` suspending the walk instead of collecting every value up front, which is what `feed` needs
+    - [x] 6.1.5.1. A fiber runs its block on a stack of its own, through corosensei, with `resume` and `Fiber.yield` handing values both ways
+    - [x] 6.1.5.2. Each fiber carries its own scopes and call frames, swapped in on resume, so a suspended one leaves the interpreter as it found it
+    - [x] 6.1.5.3. `Fiber#alive?`, `Fiber.current`, the root fiber, and a subclass answering the same methods
+    - [x] 6.1.5.4. `Fiber#transfer` handing control on rather than nesting: a fiber suspends with the request and the loop driving the chain runs it, going back to the fiber the chain started from when a transferred-to one runs out
+    - [x] 6.1.5.5. `Fiber#kill` unwinding a suspended fiber through its own `ensure` blocks, deferred when the fiber is the one running, and `Fiber#inspect` reporting created, resumed, suspended or terminated
+    - [x] 6.1.5.6. `Fiber.blocking?`, `Fiber#blocking?`, `Fiber.blocking`, `Fiber#storage`, `Fiber#storage=`, `Fiber.[]` and `Fiber.[]=`, with a fiber inheriting a copy of what the one making it kept
+    - [x] 6.1.5.7. A fiber belongs to the thread that made it, a fiber cannot resume itself or a fiber part-way through resuming another, and a stray `break` in a fiber's block is a LocalJumpError
+    - [ ] 6.1.5.8. `Fiber#raise` matching Kernel#raise across the whole shared spec, and the scheduler hooks
+  - [x] 6.1.6. `Enumerator#next`, `#peek` and `#feed` suspending the walk instead of collecting every value up front: the walk runs on a fiber, so an endless source can be stepped through, a fed value reaches the `yield` the walk is parked at, and a walk that raised starts again. `Enumerator::Lazy#zip` pulls one value at a time for the same reason
   - [x] 6.1.9. Backtrace labels: a block's `base_label` names the method holding it, a class or module body names itself unqualified, and a singleton class body reports `singleton class`
   - [ ] 6.1.7. Acceptance: `core/thread`, `core/fiber`, `core/mutex`, `core/queue`, `core/sizedqueue`, `core/conditionvariable`, `core/threadgroup`, `library/monitor`, `core/enumerator/feed_spec` and `core/enumerator/rewind_spec` enabled in the runner, roughly 45 files
   - [ ] 6.1.8. Blocked separately: the integer specs that call mspec's `fixnum_max`/`fixnum_min`. The vendored helper raises for any engine it does not name, and `RUBY_ENGINE` is `metorex`. Not reachable without editing `ruby/mspec`, so `core/integer/pred_spec`, `uminus_spec`, `next_spec`, `succ_spec`, `bit_length_spec`, `div_spec`, `exponent_spec`, `pow_spec`, `element_reference_spec`, `left_shift_spec` and `core/array/fill_spec` stay commented out

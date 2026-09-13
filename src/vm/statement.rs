@@ -713,8 +713,16 @@ impl VirtualMachine {
                             )?;
                             Ok(())
                         } else if self
-                            .call_warning_methods(&cls, "[]=", &[idx, value], *position)?
+                            .call_warning_methods(
+                                &cls,
+                                "[]=",
+                                &[idx.clone(), value.clone()],
+                                *position,
+                            )?
                             .is_some()
+                            || self
+                                .call_class_methods(&cls, "[]=", &[idx, value], *position)?
+                                .is_some()
                         {
                             Ok(())
                         } else {

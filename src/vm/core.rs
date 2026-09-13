@@ -55,6 +55,17 @@ pub struct VirtualMachine {
     /// from its length alone, so the whole walk collapses once that happens.
     pub(crate) hash_walk: Vec<usize>,
     pub(crate) hash_walk_looped: bool,
+    /// Every fiber the program has made, named by its place here. A `Fiber`
+    /// object carries that number rather than the coroutine itself.
+    pub(crate) fibers: Vec<crate::vm::fibers::FiberState>,
+    /// The fibers holding the interpreter, innermost last. A fiber suspends
+    /// through the handle the innermost frame carries.
+    pub(crate) fiber_frames: Vec<crate::vm::fibers::FiberFrame>,
+    /// The fiber the program starts on, which every other one is resumed
+    /// from. It is made the first time something asks for it.
+    pub(crate) root_fiber: Option<Object>,
+    /// The names the fiber a program starts on keeps for itself.
+    pub(crate) root_storage: Option<Object>,
     /// The main script's canonical path paired with the path it was named by,
     /// which is what `__FILE__` reports while it is the file running.
     pub(crate) script_path: Option<(PathBuf, PathBuf)>,
@@ -281,6 +292,10 @@ impl VirtualMachine {
             hash_comparisons: Vec::new(),
             hash_walk: Vec::new(),
             hash_walk_looped: false,
+            fibers: Vec::new(),
+            fiber_frames: Vec::new(),
+            root_fiber: None,
+            root_storage: None,
             script_path: None,
             at_exit_handlers: Vec::new(),
             opened_blocks: std::collections::HashSet::new(),

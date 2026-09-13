@@ -13,6 +13,7 @@ pub(crate) mod errors;
 mod eval;
 mod exceptions;
 mod expression;
+pub(crate) mod fibers;
 mod global_registry;
 mod heap;
 mod init;
