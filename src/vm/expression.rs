@@ -16,7 +16,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use super::core::VirtualMachine;
-use super::utils::{format_exception, is_truthy, object_to_dict_key, position_to_location};
+use super::utils::{format_exception, is_truthy, position_to_location};
 
 impl VirtualMachine {
     /// The String an interpolated literal makes. A piece that holds bytes
@@ -159,9 +159,20 @@ impl VirtualMachine {
                 continue;
             }
             let key_value = self.evaluate_expression(key_expr)?;
-            let key_string = object_to_dict_key(&key_value).unwrap_or_default();
+            let key_position = key_expr.position();
+            let mut probe = map.clone();
+            for (slot, held) in &key_objs {
+                probe.entry(slot.clone()).or_insert_with(|| held.clone());
+            }
+            probe.insert(
+                "__MX_KEY_OBJECTS__".to_string(),
+                Object::Dict(Rc::new(RefCell::new(key_objs.clone()))),
+            );
+            let key_string = self.dict_slot_in(&probe, &key_value, false, key_position)?;
             if !crate::vm::utils::is_primitive_key(&key_value) {
-                key_objs.insert(key_string.clone(), key_value.clone());
+                key_objs
+                    .entry(key_string.clone())
+                    .or_insert_with(|| key_value.clone());
             }
 
             let value = self.evaluate_expression(value_expr)?;
@@ -218,6 +229,28 @@ impl VirtualMachine {
     }
 
     /// Evaluate indexing operations on arrays and dictionaries.
+    /// The number an end of a span names, read through `to_int` when it is
+    /// not already an Integer. A nil end names no number at all.
+    pub(crate) fn span_end_index(
+        &mut self,
+        edge: &Object,
+        position: Position,
+    ) -> Result<Option<i64>, MetorexError> {
+        match edge {
+            Object::Nil => Ok(None),
+            Object::Int(number) => Ok(Some(*number)),
+            Object::Float(number) => Ok(Some(*number as i64)),
+            other if self.responds_to(other, "to_int") => {
+                match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                    Object::Int(number) => Ok(Some(number)),
+                    Object::Float(number) => Ok(Some(number as i64)),
+                    _ => Ok(None),
+                }
+            }
+            _ => Ok(None),
+        }
+    }
+
     pub(crate) fn evaluate_index_operation(
         &mut self,
         collection: Object,
@@ -295,15 +328,8 @@ impl VirtualMachine {
                 )),
             },
             Object::Dict(dict_rc) => {
-                let key_string = object_to_dict_key(&key).ok_or_else(|| {
-                    MetorexError::type_error(
-                        format!(
-                            "Dictionary index must be String, Symbol, Integer, Float, Bool, or Nil, found {}",
-                            key.type_name()
-                        ),
-                        position_to_location(position),
-                    )
-                })?;
+                let (fresh, held) = self.hash_locate_key(&dict_rc, &key, position)?;
+                let key_string = held.unwrap_or(fresh);
 
                 let dict = dict_rc.borrow();
                 if let Some(value) = dict.get(&key_string) {
@@ -327,10 +353,8 @@ impl VirtualMachine {
                     if let Some(value) = stored {
                         Ok(value)
                     } else {
-                        // Block didn't set the key — store the return value
-                        dict_rc
-                            .borrow_mut()
-                            .insert(key_string, block_result.clone());
+                        // Ruby keeps nothing for a key the block did not
+                        // store, so the next read calls the block again.
                         Ok(block_result)
                     }
                 } else {
@@ -347,6 +371,22 @@ impl VirtualMachine {
             // A String reads its own `[]`, which keeps one reading of the
             // characters for both the index form and the method call.
             Object::String(s) => {
+                // A Float or an object that names an index arrives as one,
+                // and a Range subclass stands for the span it holds.
+                let key = match &key {
+                    Object::Int(_)
+                    | Object::Range { .. }
+                    | Object::String(_)
+                    | Object::Regex(_, _) => key,
+                    Object::Float(number) => Object::Int(*number as i64),
+                    other => match crate::vm::native_methods::as_range(other) {
+                        Some(span) => span,
+                        None if self.responds_to(other, "to_int") => {
+                            self.send_to_object(other.clone(), "to_int", vec![], position)?
+                        }
+                        None => key,
+                    },
+                };
                 let made = match key {
                     Object::Int(i) => {
                         let chars: Vec<char> = s.as_str().chars().collect();
@@ -365,29 +405,26 @@ impl VirtualMachine {
                     } => {
                         let chars: Vec<char> = s.as_str().chars().collect();
                         let len = chars.len() as i64;
-                        let s_idx = match start.as_ref() {
-                            Object::Int(n) => {
-                                let i = if *n < 0 { len + n } else { *n };
-                                i.max(0) as usize
-                            }
-                            _ => 0,
-                        };
-                        let e_idx = match end.as_ref() {
-                            Object::Int(n) => {
-                                let i = if *n < 0 { len + n } else { *n };
-                                if exclusive {
-                                    i.max(0) as usize
-                                } else {
-                                    (i + 1).max(0) as usize
+                        let from = match self.span_end_index(start.as_ref(), position)? {
+                            Some(number) => {
+                                let placed = if number < 0 { len + number } else { number };
+                                if placed < 0 || placed > len {
+                                    return Ok(Object::Nil);
                                 }
+                                placed
                             }
-                            _ => chars.len(),
+                            None => 0,
                         };
-                        let sliced: String = chars
-                            .get(s_idx..e_idx.min(chars.len()))
-                            .unwrap_or(&[])
-                            .iter()
-                            .collect();
+                        let last = match self.span_end_index(end.as_ref(), position)? {
+                            Some(number) => {
+                                let placed = if number < 0 { len + number } else { number };
+                                if exclusive { placed - 1 } else { placed }
+                            }
+                            None => len - 1,
+                        };
+                        let count = (last - from + 1).max(0);
+                        let stop = (from + count).min(len);
+                        let sliced: String = chars[from as usize..stop as usize].iter().collect();
                         Ok(Object::string(sliced))
                     }
                     // `text[other]` answers the other string when it appears,
@@ -399,32 +436,16 @@ impl VirtualMachine {
                             Ok(Object::Nil)
                         }
                     }
-                    // `text[pattern]` answers what the pattern matched.
+                    // `text[pattern]` answers what the pattern matched, and
+                    // the match is recorded so `$~` names it afterwards.
                     Object::Regex(ref pattern, ref flags) => {
-                        let translated =
-                            crate::vm::native_methods::regexp_methods::uniquify_group_names(
-                                pattern.as_str(),
-                            )
-                            .0;
-                        let mut builder = regex::RegexBuilder::new(&translated);
-                        builder.multi_line(true);
-                        if flags.contains('i') {
-                            builder.case_insensitive(true);
-                        }
-                        if flags.contains('m') {
-                            builder.dot_matches_new_line(true);
-                        }
-                        if flags.contains('x') {
-                            builder.ignore_whitespace(true);
-                        }
-                        let compiled = builder.build().map_err(|problem| {
-                            MetorexError::runtime_error(
-                                format!("invalid regex for []: {}", problem),
-                                position_to_location(position),
-                            )
-                        })?;
-                        match compiled.find(&s.as_str()) {
-                            Some(found) => Ok(Object::string(found.as_str().to_string())),
+                        let (pattern, flags) =
+                            (pattern.as_str().to_string(), flags.as_str().to_string());
+                        let subject = s.as_str().to_string();
+                        match self.regexp_match_data(&pattern, &flags, &subject, 0, position)? {
+                            Some(found) => self
+                                .send_to_object(found, "[]", vec![Object::Int(0)], position)
+                                .map(Ok)?,
                             None => Ok(Object::Nil),
                         }
                     }

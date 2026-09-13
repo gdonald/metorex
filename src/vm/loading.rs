@@ -772,8 +772,19 @@ impl VirtualMachine {
             "<file:{}>",
             named_path.display()
         )));
-        // Execute the parsed statements (always restore current_file, even on error).
+        // A file loaded from another one keeps its own top-level locals, so a
+        // name it binds there is gone once the file has run and never shows
+        // up among the locals of the file that loaded it. The script the
+        // program was started from is the top level itself, and its locals
+        // stay where they are.
+        let own_locals = previous_file.is_some();
+        if own_locals {
+            self.environment_mut().push_isolated_scope();
+        }
         let result = self.execute_program(&statements);
+        if own_locals {
+            self.environment_mut().pop_scope();
+        }
         self.call_stack_pop();
         self.method_nesting_stack = caller_nesting;
         self.def_scope_stack = caller_def_scope;

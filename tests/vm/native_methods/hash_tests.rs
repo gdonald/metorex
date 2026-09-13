@@ -285,13 +285,13 @@ fn bool_as_hash_key_misc() {
 // ── compare_by_identity ─────────────────────────────────────────────────────
 
 #[test]
-fn hash_compare_by_identity_returns_self() {
+fn hash_compare_by_identity_looks_keys_up_by_object() {
     let result = run(r#"
 h = {"a" => 1}
 h.compare_by_identity
 h["a"]
 "#);
-    assert_eq!(result, Some(Object::Int(1)));
+    assert_eq!(result, Some(Object::Nil));
 }
 
 #[test]

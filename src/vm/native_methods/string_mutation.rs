@@ -19,6 +19,7 @@ pub(crate) const MUTATING_STRING_METHODS: &[&str] = &[
     "insert",
     "clear",
     "setbyte",
+    "append_as_bytes",
     "slice!",
     "sub!",
     "gsub!",
@@ -180,6 +181,39 @@ impl VirtualMachine {
             }
             "clear" => {
                 target.replace_text(String::new());
+                Ok(Some(receiver.clone()))
+            }
+            // `append_as_bytes` puts the bytes on the end without reading
+            // them in any encoding, so the string it is called on keeps the
+            // encoding it had however broken the result is.
+            "append_as_bytes" => {
+                let mut bytes = super::string_methods::binary_bytes(target);
+                for given in arguments {
+                    match given {
+                        Object::String(text) => {
+                            bytes.extend(super::string_methods::binary_bytes(text));
+                        }
+                        Object::Int(number) => bytes.push(number.rem_euclid(256) as u8),
+                        Object::BigInt(number) => {
+                            let wrapped = ((number.as_ref() % 256u32) + 256u32) % 256u32;
+                            let digits = wrapped.to_u32_digits().1;
+                            bytes.push(digits.first().copied().unwrap_or(0) as u8);
+                        }
+                        other => {
+                            let message = format!(
+                                "wrong argument type {} (expected String or Integer)",
+                                self.builtins().class_of(other).name()
+                            );
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                &message,
+                                position,
+                            ));
+                        }
+                    }
+                }
+                target.replace_text(super::string_methods::bytes_as_text(&bytes));
+                target.mark_bytes();
                 Ok(Some(receiver.clone()))
             }
             "setbyte" => {

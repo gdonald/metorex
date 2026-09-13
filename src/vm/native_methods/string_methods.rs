@@ -11,6 +11,38 @@ use std::rc::Rc;
 
 impl VirtualMachine {
     /// Execute native methods for the String class.
+    /// The number a slice argument names, which Ruby reads through `to_int`
+    /// and refuses when the object names none.
+    fn coerce_slice_number(
+        &mut self,
+        given: &Object,
+        method_name: &str,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        match given {
+            Object::Int(number) => Ok(*number),
+            Object::Float(number) => Ok(*number as i64),
+            other if self.responds_to(other, "to_int") => {
+                match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                    Object::Int(number) => Ok(number),
+                    Object::Float(number) => Ok(number as i64),
+                    _ => Err(method_argument_type_error(
+                        method_name,
+                        "Integer",
+                        given,
+                        position,
+                    )),
+                }
+            }
+            other => Err(method_argument_type_error(
+                method_name,
+                "Integer",
+                other,
+                position,
+            )),
+        }
+    }
+
     pub(crate) fn call_string_method(
         &mut self,
         receiver: &Object,
@@ -46,9 +78,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(
-                    string_value.as_str().chars().count() as i64
-                )))
+                Ok(Some(Object::Int(character_count(string_value))))
             }
             // `dump` renders the string as source that reads back as itself.
             // It escapes what `inspect` does, plus every non-printable and
@@ -114,9 +144,49 @@ impl VirtualMachine {
                     ));
                 }
                 // Render with double-quotes and minimal escaping. Mirrors
-                // Ruby's String#inspect output for the common cases.
+                // Ruby's String#inspect output for the common cases. A run of
+                // bytes shows the bytes themselves, since the characters they
+                // would spell are not what the string holds.
+                let binary = matches!(
+                    string_value.encoding_name().as_str(),
+                    "ASCII-8BIT" | "BINARY"
+                );
                 let mut out = String::with_capacity(string_value.as_str().len() + 2);
                 out.push('"');
+                if binary || string_value.holds_bytes() {
+                    let bytes = binary_bytes(string_value);
+                    let mut at = 0;
+                    while at < bytes.len() {
+                        let byte = bytes[at];
+                        // A byte that opens a character the encoding can spell
+                        // is written as that character; anything else is
+                        // written as the byte it is.
+                        let width = if binary {
+                            0
+                        } else {
+                            utf8_sequence_width(&bytes[at..])
+                        };
+                        if width > 1
+                            && let Ok(text) = std::str::from_utf8(&bytes[at..at + width])
+                        {
+                            out.push_str(text);
+                            at += width;
+                            continue;
+                        }
+                        match byte {
+                            b'"' => out.push_str("\\\""),
+                            b'\\' => out.push_str("\\\\"),
+                            b'\n' => out.push_str("\\n"),
+                            b'\r' => out.push_str("\\r"),
+                            b'\t' => out.push_str("\\t"),
+                            0x20..=0x7e => out.push(byte as char),
+                            _ => out.push_str(&format!("\\x{byte:02X}")),
+                        }
+                        at += 1;
+                    }
+                    out.push('"');
+                    return Ok(Some(Object::string(out)));
+                }
                 for c in string_value.as_str().chars() {
                     match c {
                         '"' => out.push_str("\\\""),
@@ -466,19 +536,53 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                match &arguments[0] {
-                    Object::String(rhs) => {
-                        let mut combined = string_value.as_str().to_string();
-                        combined.push_str(&rhs.as_str());
-                        Ok(Some(Object::string(combined)))
+                // Anything that spells itself as text is joined as the text
+                // it spells, which is what `to_str` is asked for.
+                let given = match &arguments[0] {
+                    held @ Object::String(_) => held.clone(),
+                    other if self.responds_to(other, "to_str") => {
+                        self.send_to_object(other.clone(), "to_str", vec![], position)?
                     }
-                    _ => Err(method_argument_type_error(
+                    other => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &format!(
+                                "no implicit conversion of {} into String",
+                                self.builtins().class_of(other).name()
+                            ),
+                            position,
+                        ));
+                    }
+                };
+                let Object::String(rhs) = &given else {
+                    return Err(method_argument_type_error(
                         method_name,
                         "String",
                         &arguments[0],
                         position,
-                    )),
+                    ));
+                };
+                // Two strings written in encodings that cannot be read
+                // alongside each other are refused, unless one of them is
+                // empty, which carries the other's encoding.
+                let joined_encoding = if rhs.as_str().is_empty() {
+                    string_value.encoding_name()
+                } else if string_value.as_str().is_empty() {
+                    rhs.encoding_name()
+                } else if !strings_comparable(string_value, rhs) {
+                    return Err(clashing_encodings_error(string_value, rhs, position));
+                } else if string_value.as_str().is_ascii() && !rhs.as_str().is_ascii() {
+                    rhs.encoding_name()
+                } else {
+                    string_value.encoding_name()
+                };
+                let mut combined = string_value.as_str().to_string();
+                combined.push_str(&rhs.as_str());
+                let made = Object::string(combined);
+                if let Object::String(built) = &made {
+                    built.set_encoding(joined_encoding);
                 }
+                Ok(Some(made))
             }
             "trim" => {
                 if !arguments.is_empty() {
@@ -674,6 +778,71 @@ impl VirtualMachine {
                     ));
                 }
                 Ok(Some(Object::Int(binary_bytes(string_value).len() as i64)))
+            }
+            // `byteslice` cuts by byte position rather than by character,
+            // and what it hands back is tagged the way the whole string is.
+            "byteslice" => {
+                if arguments.is_empty() || arguments.len() > 2 {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(1, 2),
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let bytes = binary_bytes(string_value);
+                let total = bytes.len() as i64;
+                let (from, count) = if let Some(span) =
+                    crate::vm::native_methods::as_range(&arguments[0])
+                    && arguments.len() == 1
+                {
+                    let Object::Range {
+                        start,
+                        end,
+                        exclusive,
+                    } = span
+                    else {
+                        return Ok(Some(Object::Nil));
+                    };
+                    let opening = match self.span_end_index(start.as_ref(), position)? {
+                        Some(number) => {
+                            if number < 0 {
+                                total + number
+                            } else {
+                                number
+                            }
+                        }
+                        None => 0,
+                    };
+                    let closing = match self.span_end_index(end.as_ref(), position)? {
+                        Some(number) => {
+                            let placed = if number < 0 { total + number } else { number };
+                            if exclusive { placed - 1 } else { placed }
+                        }
+                        None => total - 1,
+                    };
+                    (opening, (closing - opening + 1).max(0))
+                } else {
+                    let opening = self.coerce_slice_number(&arguments[0], method_name, position)?;
+                    let opening = if opening < 0 {
+                        total + opening
+                    } else {
+                        opening
+                    };
+                    let wanted = if arguments.len() == 2 {
+                        self.coerce_slice_number(&arguments[1], method_name, position)?
+                    } else {
+                        1
+                    };
+                    (opening, wanted)
+                };
+                if from < 0 || from > total || count < 0 {
+                    return Ok(Some(Object::Nil));
+                }
+                let stop = (from + count).min(total);
+                let cut = &bytes[from as usize..stop as usize];
+                let made = crate::object::StringValue::from_bytes(bytes_as_text(cut));
+                made.set_encoding(string_value.encoding_name());
+                Ok(Some(Object::String(Rc::new(made))))
             }
             "bytes" | "each_byte" => {
                 if !arguments.is_empty() {
@@ -1007,7 +1176,17 @@ impl VirtualMachine {
                     ));
                 }
                 let named = self.encoding_name_argument(&arguments[0], position)?;
+                // Re-tagging says how to read the bytes the string already
+                // holds, so from here on they are read as bytes rather than
+                // as the characters they were written as.
+                let fixed_width = matches!(
+                    named.as_str(),
+                    "UTF-16" | "UTF-16BE" | "UTF-16LE" | "UTF-32" | "UTF-32BE" | "UTF-32LE"
+                );
                 string_value.set_encoding(named);
+                if fixed_width {
+                    string_value.mark_bytes();
+                }
                 Ok(Some(receiver.clone()))
             }
             // The encoding this string says it is in.
@@ -1032,9 +1211,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(
-                    string_value.as_str().chars().count() as i64
-                )))
+                Ok(Some(Object::Int(character_count(string_value))))
             }
             // Stream-like predicates so STDOUT/STDERR (stored as String) can be checked
             "tty?" | "isatty" => Ok(Some(Object::Bool(false))),
@@ -1073,35 +1250,47 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let width = match &arguments[0] {
-                    Object::Int(n) => *n,
-                    _ => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Integer",
-                            &arguments[0],
-                            position,
-                        ));
-                    }
-                };
+                let width = self.coerce_slice_number(&arguments[0], method_name, position)?;
+                let mut pad_encoding = None;
                 let pad = if arguments.len() == 2 {
-                    match &arguments[1] {
-                        Object::String(s) if !s.as_str().is_empty() => s.as_str().to_string(),
-                        Object::String(_) => {
-                            return Err(MetorexError::runtime_error(
-                                format!("zero width padding for {}", method_name),
-                                crate::vm::utils::position_to_location(position),
-                            ));
+                    // Anything that spells itself as text pads with those
+                    // characters, which is what `to_str` is asked for.
+                    let given = match &arguments[1] {
+                        held @ Object::String(_) => held.clone(),
+                        other if self.responds_to(other, "to_str") => {
+                            self.send_to_object(other.clone(), "to_str", vec![], position)?
                         }
-                        _ => {
+                        other => {
                             return Err(method_argument_type_error(
                                 method_name,
                                 "String",
-                                &arguments[1],
+                                other,
                                 position,
                             ));
                         }
+                    };
+                    let Object::String(text) = &given else {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "String",
+                            &arguments[1],
+                            position,
+                        ));
+                    };
+                    if text.as_str().is_empty() {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            "zero width padding",
+                            position,
+                        ));
                     }
+                    // A pattern written in an encoding this string cannot be
+                    // read alongside is refused rather than padded with.
+                    if !strings_comparable(string_value, text) {
+                        return Err(clashing_encodings_error(string_value, text, position));
+                    }
+                    pad_encoding = Some(text.encoding_name().to_string());
+                    text.as_str().to_string()
                 } else {
                     " ".to_string()
                 };
@@ -1120,7 +1309,25 @@ impl VirtualMachine {
                 } else {
                     format!("{}{}", padding, string_value)
                 };
-                Ok(Some(Object::string(result)))
+                let made = Object::string(result);
+                // The padded string is written in whichever of the two
+                // encodings holds both, which is the pattern's when the
+                // padding brought characters the receiver's cannot spell.
+                if let Object::String(built) = &made {
+                    let wider = match &pad_encoding {
+                        Some(name)
+                            if *name != string_value.encoding_name() && !padding.is_ascii() =>
+                        {
+                            name.clone()
+                        }
+                        _ => string_value.encoding_name(),
+                    };
+                    built.set_encoding(wider);
+                    if string_value.holds_bytes() {
+                        built.mark_bytes();
+                    }
+                }
+                Ok(Some(made))
             }
             "strip" => {
                 if !arguments.is_empty() {
@@ -1307,17 +1514,10 @@ impl VirtualMachine {
                         .send_to_object(matched, "[]", vec![arguments[1].clone()], position)
                         .map(Some);
                 }
-                let (start, len) = match (&arguments[0], &arguments[1]) {
-                    (Object::Int(s), Object::Int(l)) => (*s, *l),
-                    _ => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Integer",
-                            &arguments[0],
-                            position,
-                        ));
-                    }
-                };
+                // A Float or an object that names a number arrives as one,
+                // which is what `to_int` is asked for.
+                let start = self.coerce_slice_number(&arguments[0], method_name, position)?;
+                let len = self.coerce_slice_number(&arguments[1], method_name, position)?;
                 let chars: Vec<char> = string_value.as_str().chars().collect();
                 let char_count = chars.len() as i64;
                 // A start past the end names no substring at all, where a
@@ -2472,6 +2672,10 @@ pub(crate) fn holds_valid_text(string_value: &crate::object::StringValue) -> boo
         "EUC-JP" if string_value.holds_bytes() => {
             euc_jp_reads(&super::pack_format::string_to_bytes(&string_value.as_str()))
         }
+        // A fixed-width encoding reads whole units, so a run of bytes that
+        // does not divide into them spells no characters at all.
+        "UTF-16" | "UTF-16BE" | "UTF-16LE" => binary_bytes(string_value).len().is_multiple_of(2),
+        "UTF-32" | "UTF-32BE" | "UTF-32LE" => binary_bytes(string_value).len().is_multiple_of(4),
         _ => true,
     }
 }
@@ -2647,4 +2851,79 @@ fn expand_whole_match(written: &str, matched: &str) -> String {
         }
     }
     out
+}
+
+/// How many bytes the character opening a run takes in UTF-8, or 0 when the
+/// run does not open a whole one.
+fn utf8_sequence_width(bytes: &[u8]) -> usize {
+    let Some(first) = bytes.first().copied() else {
+        return 0;
+    };
+    let width = match first {
+        0x00..=0x7f => return 1,
+        0xc2..=0xdf => 2,
+        0xe0..=0xef => 3,
+        0xf0..=0xf4 => 4,
+        _ => return 0,
+    };
+    if bytes.len() < width {
+        return 0;
+    }
+    if bytes[1..width]
+        .iter()
+        .all(|held| (0x80..=0xbf).contains(held))
+    {
+        width
+    } else {
+        0
+    }
+}
+
+/// How many characters a string holds, counted the way the encoding it is
+/// tagged with reads them. A string that carries text rather than a run of
+/// bytes is counted by its characters, since relabelling it leaves the text
+/// as it was.
+pub(crate) fn character_count(string_value: &crate::object::StringValue) -> i64 {
+    let named = string_value.encoding_name();
+    match named.as_str() {
+        // A run of bytes has one character to the byte however it is tagged.
+        "ASCII-8BIT" | "BINARY" => binary_bytes(string_value).len() as i64,
+        // A fixed-width encoding reads whole units, and a unit left short at
+        // the end still counts as the one broken character it spells.
+        "UTF-16" | "UTF-16BE" | "UTF-16LE" if string_value.holds_bytes() => {
+            utf16_unit_count(&binary_bytes(string_value), named.ends_with("BE"))
+        }
+        "UTF-32" | "UTF-32BE" | "UTF-32LE" if string_value.holds_bytes() => {
+            binary_bytes(string_value).len().div_ceil(4) as i64
+        }
+        _ => string_value.as_str().chars().count() as i64,
+    }
+}
+
+/// How many characters a run of UTF-16 bytes spells. A high surrogate paired
+/// with a low one stands for a single character, and one left on its own
+/// stands for itself.
+fn utf16_unit_count(bytes: &[u8], big_endian: bool) -> i64 {
+    let unit_at = |at: usize| -> u16 {
+        let (first, second) = (bytes[at] as u16, bytes[at + 1] as u16);
+        if big_endian {
+            (first << 8) | second
+        } else {
+            (second << 8) | first
+        }
+    };
+    let mut counted = 0i64;
+    let mut at = 0usize;
+    while at + 1 < bytes.len() {
+        let unit = unit_at(at);
+        let paired = (0xd800..0xdc00).contains(&unit)
+            && at + 3 < bytes.len()
+            && (0xdc00..0xe000).contains(&unit_at(at + 2));
+        at += if paired { 4 } else { 2 };
+        counted += 1;
+    }
+    if at < bytes.len() {
+        counted += 1;
+    }
+    counted
 }

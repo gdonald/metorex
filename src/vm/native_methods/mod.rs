@@ -9,6 +9,7 @@ pub(crate) mod class_methods;
 pub(crate) use class_methods::MODULE_FUNCTION_VISIBILITY;
 pub(crate) use class_methods::is_native_kernel_method;
 pub(crate) use class_methods::native_module_method_stub;
+pub(crate) use hash_methods::remember_key_object;
 pub(crate) use method_object_methods::{block_parameter_list, method_parameter_list};
 pub(crate) use module_methods::{REFINEMENT_KEY_PREFIX, REFINEMENT_LABEL_KEY};
 mod binding_methods;
@@ -190,7 +191,7 @@ impl VirtualMachine {
         // Block/Lambda methods
         if let Object::Block(block) = receiver {
             match method_name {
-                "call" | "[]" => {
+                "call" | "[]" | "===" => {
                     return Ok(Some(block.call(self, arguments.to_vec(), position)?));
                 }
                 "binding" => {
@@ -367,6 +368,27 @@ impl VirtualMachine {
                     .is_some_and(|held| !held.body.is_empty())
             {
                 return Ok(None);
+            }
+            // A subclass that writes its own `default` decides what a missing
+            // key reads as, and the backing hash knows nothing of it.
+            if method_name == "[]"
+                && arguments.len() == 1
+                && let Object::Dict(dict_rc) = &entries
+                && let Some((owner, method)) = self.lookup_method(receiver, "default")
+                && !method.is_undefined
+                && self
+                    .hash_find_key(dict_rc, &arguments[0], position)?
+                    .is_none()
+            {
+                return self
+                    .invoke_method(
+                        owner,
+                        method,
+                        receiver.clone(),
+                        vec![arguments[0].clone()],
+                        position,
+                    )
+                    .map(Some);
             }
             if let Some(result) =
                 self.call_hash_method(&entries, method_name, arguments, position)?
@@ -630,6 +652,41 @@ impl VirtualMachine {
 
     /// Instance-level Thread methods. The "thread" runs synchronously when
     /// `value`/`join` is called for the first time.
+    /// The name a thread-local is kept under. Ruby takes a String or a
+    /// Symbol, asks anything else for `to_str`, and refuses what answers
+    /// none.
+    fn thread_local_name(
+        &mut self,
+        given: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match given {
+            Object::Symbol(name) | Object::String(name) => Ok(name.as_str().to_string()),
+            other if self.responds_to(other, "to_str") => {
+                match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                    Object::String(name) => Ok(name.as_str().to_string()),
+                    answered => Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!("{} is not a symbol nor a string", answered),
+                        position,
+                    )),
+                }
+            }
+            other => {
+                let rendered = match self.send_to_object(other.clone(), "inspect", vec![], position)
+                {
+                    Ok(Object::String(text)) => text.as_str().to_string(),
+                    _ => crate::vm::native_methods::array_methods::inspect_element(other),
+                };
+                Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!("{rendered} is not a symbol nor a string"),
+                    position,
+                ))
+            }
+        }
+    }
+
     pub(crate) fn call_thread_method(
         &mut self,
         receiver: &Object,
@@ -699,53 +756,96 @@ impl VirtualMachine {
             }
             // Thread-local storage: `t[:k]` and `t[:k] = v`. Backed by an
             // ivar Hash on the Thread instance.
-            "[]" => {
+            "[]" | "thread_variable_get" => {
                 if arguments.len() != 1 {
                     return Err(crate::vm::errors::method_argument_error(
-                        "[]",
+                        method_name,
                         1,
                         arguments.len(),
                         position,
                     ));
                 }
-                let key_str = match &arguments[0] {
-                    Object::Symbol(s) => s.as_str().to_string(),
-                    Object::String(s) => s.as_str().to_string(),
-                    _ => return Ok(Some(Object::Nil)),
-                };
-                let locals = inst.borrow().get_var("__thread_locals").cloned();
-                if let Some(Object::Dict(d)) = locals {
+                let key_str = self.thread_local_name(&arguments[0], position)?;
+                let store = thread_local_store(method_name);
+                let locals = inst.borrow().get_var(store).cloned();
+                if let Some(Object::Dict(held)) = locals {
                     return Ok(Some(
-                        d.borrow().get(&key_str).cloned().unwrap_or(Object::Nil),
+                        held.borrow().get(&key_str).cloned().unwrap_or(Object::Nil),
                     ));
                 }
                 Ok(Some(Object::Nil))
             }
-            "[]=" => {
+            "key?" | "thread_variable?" => {
+                if arguments.len() != 1 {
+                    return Err(crate::vm::errors::method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let key_str = self.thread_local_name(&arguments[0], position)?;
+                let store = thread_local_store(method_name);
+                let locals = inst.borrow().get_var(store).cloned();
+                let held = matches!(locals, Some(Object::Dict(ref names)) if names.borrow().contains_key(&key_str));
+                Ok(Some(Object::Bool(held)))
+            }
+            "keys" | "thread_variables" => {
+                if !arguments.is_empty() {
+                    return Err(crate::vm::errors::method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let store = thread_local_store(method_name);
+                let locals = inst.borrow().get_var(store).cloned();
+                let Some(Object::Dict(held)) = locals else {
+                    return Ok(Some(Object::array(Vec::new())));
+                };
+                let named: Vec<Object> = held
+                    .borrow()
+                    .keys()
+                    .map(|name| Object::symbol(name.clone()))
+                    .collect();
+                Ok(Some(Object::array(named)))
+            }
+            "[]=" | "thread_variable_set" => {
+                if self.object_is_frozen(receiver) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "FrozenError",
+                        "can't modify frozen thread locals",
+                        position,
+                    ));
+                }
                 if arguments.len() != 2 {
                     return Err(crate::vm::errors::method_argument_error(
-                        "[]=",
+                        method_name,
                         2,
                         arguments.len(),
                         position,
                     ));
                 }
-                let key_str = match &arguments[0] {
-                    Object::Symbol(s) => s.as_str().to_string(),
-                    Object::String(s) => s.as_str().to_string(),
-                    _ => return Ok(Some(arguments[1].clone())),
-                };
-                let existing = inst.borrow().get_var("__thread_locals").cloned();
+                let key_str = self.thread_local_name(&arguments[0], position)?;
+                let store = thread_local_store(method_name);
+                let existing = inst.borrow().get_var(store).cloned();
                 let dict = match existing {
-                    Some(Object::Dict(d)) => d,
+                    Some(Object::Dict(held)) => held,
                     _ => {
-                        let d = Rc::new(std::cell::RefCell::new(indexmap::IndexMap::new()));
+                        let held = Rc::new(std::cell::RefCell::new(indexmap::IndexMap::new()));
                         inst.borrow_mut()
-                            .set_var("__thread_locals".to_string(), Object::Dict(Rc::clone(&d)));
-                        d
+                            .set_var(store.to_string(), Object::Dict(Rc::clone(&held)));
+                        held
                     }
                 };
-                dict.borrow_mut().insert(key_str, arguments[1].clone());
+                // A thread variable set to nil is gone rather than held as
+                // nil, so the thread stops naming it among its variables.
+                if method_name == "thread_variable_set" && matches!(arguments[1], Object::Nil) {
+                    dict.borrow_mut().shift_remove(&key_str);
+                } else {
+                    dict.borrow_mut().insert(key_str, arguments[1].clone());
+                }
                 Ok(Some(arguments[1].clone()))
             }
             // A thread runs when it is joined, so one that has not been is
@@ -1034,7 +1134,7 @@ fn carry_string_encoding(
 ) -> Option<Object> {
     // A method that pads with a string of its own works out which encoding
     // the two have in common, so its answer is already tagged.
-    if matches!(method_name, "center") {
+    if matches!(method_name, "center" | "ljust" | "rjust" | "+") {
         return answer;
     }
     let Object::String(source) = receiver else {
@@ -1142,4 +1242,15 @@ fn enumerable_walks_through_each(name: &str) -> bool {
             | "to_a"
             | "entries"
     )
+}
+
+/// Which store a thread-local method reads. Ruby keeps the fiber-local names
+/// `Thread#[]` reaches apart from the thread-wide ones `thread_variable_get`
+/// reaches, and a name set through one is not seen through the other.
+fn thread_local_store(method_name: &str) -> &'static str {
+    if method_name.starts_with("thread_variable") {
+        "__thread_variables"
+    } else {
+        "__thread_locals"
+    }
 }

@@ -558,6 +558,12 @@ pub(crate) fn block_parameter_list(block_obj: &crate::object::BlockStatement) ->
             Object::array(vec![Object::symbol("rest".to_string())]),
         ]);
     }
+    // The parameter a block takes because its body mentions `it` has no name
+    // of its own, which is what Ruby reports for it.
+    if block_obj.parameters.len() == 1 && block_obj.parameters[0] == "it" {
+        let kind = if block_obj.is_lambda { "req" } else { "opt" };
+        return Object::array(vec![Object::array(vec![Object::symbol(kind.to_string())])]);
+    }
     let required_kind = if block_obj.is_lambda { "req" } else { "opt" };
     let mut listed = Vec::new();
     for (index, name) in block_obj.parameters.iter().enumerate() {

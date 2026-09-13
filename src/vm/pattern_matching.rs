@@ -24,6 +24,7 @@ impl VirtualMachine {
     ) -> Result<ControlFlow, MetorexError> {
         // Evaluate the value to match against
         let match_value = self.evaluate_expression(expression)?;
+        self.warn_duplicated_when_clauses(cases, position)?;
 
         // Try each case in order
         for case in cases {
@@ -65,6 +66,32 @@ impl VirtualMachine {
         // evaluates to nil; only `case/in` raises.
         let _ = match_value;
         Ok(ControlFlow::Value(Object::Nil))
+    }
+
+    /// Ruby names a `when` clause written twice with the same literal, since
+    /// the second one can never be reached.
+    fn warn_duplicated_when_clauses(
+        &mut self,
+        cases: &[crate::ast::MatchCase],
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let mut seen: Vec<(String, usize)> = Vec::new();
+        for case in cases {
+            let Some(spelling) = literal_pattern_spelling(&case.pattern) else {
+                continue;
+            };
+            let line = case.position.line;
+            if let Some((_, first)) = seen.iter().find(|(held, _)| *held == spelling) {
+                let message = format!(
+                    "warning: 'when' clause on line {} duplicates 'when' clause on line {} and is ignored\n",
+                    line, first
+                );
+                self.warn_through_warning_module(message, position)?;
+                continue;
+            }
+            seen.push((spelling, line));
+        }
+        Ok(())
     }
 
     /// Execute a `case/in` statement (Ruby 2.7+ pattern matching).
@@ -564,5 +591,27 @@ impl VirtualMachine {
         } else {
             Ok(Object::Nil)
         }
+    }
+}
+
+/// How a `when` pattern is written, for the literals that can be compared as
+/// text. Anything else answers None, since two expressions that happen to
+/// name the same value are not a duplicate as written.
+fn literal_pattern_spelling(pattern: &crate::ast::MatchPattern) -> Option<String> {
+    use crate::ast::{Expression, MatchPattern};
+    match pattern {
+        MatchPattern::IntLiteral(held) => Some(format!("i{held}")),
+        MatchPattern::StringLiteral(held) => Some(format!("s{held}")),
+        MatchPattern::SymbolLiteral(held) => Some(format!("y{held}")),
+        MatchPattern::BoolLiteral(held) => Some(format!("b{held}")),
+        MatchPattern::NilLiteral => Some("nil".to_string()),
+        MatchPattern::Expression(held) => match held.as_ref() {
+            Expression::IntLiteral { value, .. } => Some(format!("i{value}")),
+            Expression::StringLiteral { value, .. } => Some(format!("s{value}")),
+            Expression::Symbol { value, .. } => Some(format!("y{value}")),
+            Expression::BoolLiteral { value, .. } => Some(format!("b{value}")),
+            _ => None,
+        },
+        _ => None,
     }
 }

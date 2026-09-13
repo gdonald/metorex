@@ -252,6 +252,14 @@ impl VirtualMachine {
         }
 
         match op {
+            // `"a" + other` puts the right operand through `to_str`, which
+            // String answers from its own method table.
+            Add if matches!(left, Object::String(_)) && !matches!(right, Object::String(_)) => {
+                match self.call_string_method(&left, "+", std::slice::from_ref(&right), position)? {
+                    Some(answered) => Ok(answered),
+                    None => Err(binary_type_error(BinaryOp::Add, &left, &right, position)),
+                }
+            }
             // `[1] + other` puts the right operand through `to_ary`, so an
             // object standing for an array concatenates the way one does.
             Add if matches!(left, Object::Array(_)) && !matches!(right, Object::Array(_)) => {
@@ -283,7 +291,7 @@ impl VirtualMachine {
                 };
                 self.evaluate_binary_operation(op, left, Object::Array(elements), position)
             }
-            Subtract | BitwiseAnd | BitwiseOr
+            Subtract | BitwiseAnd | BitwiseOr | Multiply
                 if crate::vm::native_methods::array_subclass_value(&left).is_some() =>
             {
                 let elements = self
@@ -347,6 +355,15 @@ impl VirtualMachine {
                         pattern == other
                             && comparable_flags(flags) == comparable_flags(other_flags),
                     ));
+                }
+                // Two hashes compare entry by entry, looking each key up in
+                // the other hash the way any key is looked up, which Hash
+                // answers from its own method table.
+                if matches!((&left, &right), (Object::Dict(_), Object::Dict(_)))
+                    && let Some(answer) =
+                        self.call_hash_method(&left, "==", std::slice::from_ref(&right), position)?
+                {
+                    return Ok(Object::Bool(answer.is_truthy()));
                 }
                 // Two ranges compare by their ends and their exclusivity,
                 // which Range answers from its own method table.
@@ -587,6 +604,12 @@ impl VirtualMachine {
                         (pattern.as_str().to_string(), flags.as_str().to_string());
                     let found = self.regexp_match_data(&pattern, &flags, &subject, 0, position)?;
                     return Ok(Object::Bool(found.is_some()));
+                }
+                // A callable answers for itself: `===` hands the value to
+                // the proc and reports whatever it returns, so a proc can
+                // stand in for a pattern in a `case`.
+                if let Object::Block(block) = &left {
+                    return block.call(self, vec![right], position);
                 }
                 // A Set holds a value or it does not, which is the branch a
                 // `case` over one picks.
@@ -1073,33 +1096,20 @@ impl VirtualMachine {
                     ),
                 )))
             }
-            // `[1, 2] * 3` repeats the array, and `[1, 2] * ", "` joins it
-            // with that separator.
-            (Object::Array(elements), Object::Int(count)) if matches!(op, BinaryOp::Multiply) => {
-                let Ok(count) = usize::try_from(count) else {
-                    return Err(crate::vm::errors::simple_exception(
-                        "ArgumentError",
-                        "negative argument",
-                        position,
-                    ));
-                };
-                let source = elements.borrow().clone();
-                let mut repeated = Vec::with_capacity(source.len() * count);
-                for _ in 0..count {
-                    repeated.extend(source.iter().cloned());
-                }
-                Ok(Object::array(repeated))
-            }
-            (Object::Array(elements), Object::String(separator))
-                if matches!(op, BinaryOp::Multiply) =>
+            // `[1, 2] * 3` repeats the array and `[1, 2] * ", "` joins it,
+            // which Array answers from its own method table.
+            (left, right)
+                if matches!(op, BinaryOp::Multiply)
+                    && (matches!(left, Object::Array(_))
+                        || matches!(
+                            crate::vm::native_methods::array_subclass_value(&left),
+                            Some(Object::Array(_))
+                        )) =>
             {
-                let joined = elements
-                    .borrow()
-                    .iter()
-                    .map(|element| format!("{}", element))
-                    .collect::<Vec<_>>()
-                    .join(&*separator.as_str());
-                Ok(Object::string(joined))
+                match self.call_array_method(&left, "*", std::slice::from_ref(&right), position)? {
+                    Some(answered) => Ok(answered),
+                    None => Err(binary_type_error(op.clone(), &left, &right, position)),
+                }
             }
             (lhs, rhs) => Err(binary_type_error(op.clone(), &lhs, &rhs, position)),
         }

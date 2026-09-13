@@ -1,12 +1,16 @@
-# Test that variables, functions, and classes from required files are accessible
+# Constants, methods, and classes from a required file are reachable, and its
+# local variables are not: each file keeps its own top-level locals.
 require_relative "lib/shared_scope"
 
-# Access variable from required file
-puts shared_var
+puts SHARED_VALUE
 
-# Call function from required file
 puts shared_function()
 
-# Instantiate class from required file
 obj = SharedClass.new
 puts obj.name
+
+begin
+  puts shared_var
+rescue NameError => refused
+  puts refused.message
+end

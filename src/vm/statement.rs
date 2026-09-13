@@ -638,26 +638,10 @@ impl VirtualMachine {
                             self.call_hash_method(&environment, "[]=", &given, *position)?;
                             return Ok(());
                         }
-                        // Hash/Dict index assignment — Ruby allows any object as a key
-                        let key_str =
-                            crate::vm::utils::object_to_dict_key(&idx).unwrap_or_default();
-                        let is_primitive = crate::vm::utils::is_primitive_key(&idx);
-                        let mut dict = dict_rc.borrow_mut();
-                        // Store non-primitive key objects in a sentinel sub-map
-                        if !is_primitive {
-                            let key_objs_key = "__MX_KEY_OBJECTS__".to_string();
-                            let mut key_objs = match dict.get(&key_objs_key) {
-                                Some(Object::Dict(d)) => d.borrow().clone(),
-                                _ => indexmap::IndexMap::new(),
-                            };
-                            key_objs.insert(key_str.clone(), idx.clone());
-                            dict.insert(
-                                key_objs_key,
-                                Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(key_objs))),
-                            );
-                        }
-                        dict.insert(key_str, value.clone());
-                        drop(dict);
+                        // Hash/Dict index assignment. Ruby allows any object
+                        // as a key, and a key carrying its own `#hash` takes
+                        // the slot that number and `#eql?` place it in.
+                        self.hash_store(&dict_rc, &idx, value.clone(), *position)?;
                         self.record_environment_change(&dict_rc, &idx, &value);
                         Ok(())
                     }
@@ -696,32 +680,16 @@ impl VirtualMachine {
                             )?;
                             Ok(())
                         } else if class.name() == "Thread" {
-                            // Thread-local storage: `t[:k] = v`. Targeted
-                            // here to avoid recursing through a general
-                            // native-method fallback.
-                            let key_str = match &idx {
-                                Object::Symbol(s) => Some(s.as_str().to_string()),
-                                Object::String(s) => Some(s.as_str().to_string()),
-                                _ => None,
-                            };
-                            if let Some(k) = key_str {
-                                let existing =
-                                    instance_rc.borrow().get_var("__thread_locals").cloned();
-                                let dict = match existing {
-                                    Some(Object::Dict(d)) => d,
-                                    _ => {
-                                        let d = Rc::new(std::cell::RefCell::new(
-                                            indexmap::IndexMap::new(),
-                                        ));
-                                        instance_rc.borrow_mut().set_var(
-                                            "__thread_locals".to_string(),
-                                            Object::Dict(Rc::clone(&d)),
-                                        );
-                                        d
-                                    }
-                                };
-                                dict.borrow_mut().insert(k, value);
-                            }
+                            // A Thread keeps its locals under `t[:k] = v`,
+                            // which the Thread method table writes. Going
+                            // through it keeps one reading of the key for the
+                            // subscript and the call.
+                            self.call_thread_method(
+                                &Object::Instance(Rc::clone(&instance_rc)),
+                                "[]=",
+                                &[idx, value],
+                                *position,
+                            )?;
                             Ok(())
                         } else {
                             Err(MetorexError::runtime_error(

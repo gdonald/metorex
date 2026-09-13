@@ -396,13 +396,16 @@ impl Parser {
                     _ => return false,
                 }
             }
-            // Expect an identifier (or @ivar, @@cvar, $gvar)
+            // Expect an identifier (or @ivar, @@cvar, $gvar). `lambda` is a
+            // method rather than syntax, so a program may name a local after
+            // it and assign to that name.
             if !matches!(
                 tok.kind,
                 TokenKind::Ident(_)
                     | TokenKind::InstanceVar(_)
                     | TokenKind::ClassVar(_)
                     | TokenKind::GlobalVar(_)
+                    | TokenKind::Lambda
             ) {
                 return false;
             }

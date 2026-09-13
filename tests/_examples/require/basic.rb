@@ -1,4 +1,4 @@
 require_relative("lib/helper")
 
-puts helper_var
+puts HELPER_VALUE
 puts helper_method()

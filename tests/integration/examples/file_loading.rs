@@ -77,8 +77,9 @@ fn test_require_extension_explicit() {
 
 #[test]
 fn test_require_scope_sharing() {
-    // Variables, functions, and classes defined in required files are accessible
-    let expected = "shared value\nshared function result\nSharedClass instance\n";
+    // Constants, methods, and classes defined in a required file are reachable,
+    // and its local variables are not.
+    let expected = "shared value\nshared function result\nSharedClass instance\nundefined local variable or method 'shared_var' for main\n";
     let output = run_example("require/scope_sharing.rb");
     assert_eq!(output, expected);
 }
@@ -301,4 +302,20 @@ fn test_require_autoload_in_a_module_execution() {
 fn test_require_autoload_in_a_module_parens_execution() {
     let output = run_example("require/autoload_in_a_module_parens.rb");
     assert_eq!(output, AUTOLOAD_IN_A_MODULE_OUTPUT);
+}
+
+/// The expected output of both `file_loader/own_top_level_locals` variants, which differ only
+/// in whether the calls are written with parentheses.
+const OWN_TOP_LEVEL_LOCALS_OUTPUT: &str = "\"shared\"\n\"shared method\"\n\"undefined local variable or method 'loaded_local' for main\"\n[:refused]\n";
+
+#[test]
+fn test_file_loader_own_top_level_locals_execution() {
+    let output = run_example("file_loader/own_top_level_locals.rb");
+    assert_eq!(output, OWN_TOP_LEVEL_LOCALS_OUTPUT);
+}
+
+#[test]
+fn test_file_loader_own_top_level_locals_no_parens_execution() {
+    let output = run_example("file_loader/own_top_level_locals_no_parens.rb");
+    assert_eq!(output, OWN_TOP_LEVEL_LOCALS_OUTPUT);
 }

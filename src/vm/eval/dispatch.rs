@@ -1,7 +1,6 @@
 // Expression-evaluation dispatch: a thin `match` over `Expression` variants
 // that delegates each variant to a helper in the sibling modules.
 
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -396,23 +395,23 @@ impl VirtualMachine {
                             *position,
                         );
                     }
-                    // Thread instances support thread-local storage via
-                    // `t[:k]`. Targeted dispatch (gated on the class name)
-                    // so the call doesn't recurse through a generic
-                    // native-method fallback.
+                    // A Thread keeps its locals under `t[:k]`, which the
+                    // Thread method table reads. Going through it here keeps
+                    // one reading of the key for the subscript and the call.
                     if class.name() == "Thread" {
-                        let key_str = match &key {
-                            Object::Symbol(s) => Some(s.as_str().to_string()),
-                            Object::String(s) => Some(s.as_str().to_string()),
-                            _ => None,
-                        };
-                        if let Some(k) = key_str {
-                            let locals = instance_rc.borrow().get_var("__thread_locals").cloned();
-                            if let Some(Object::Dict(d)) = locals {
-                                return Ok(d.borrow().get(&k).cloned().unwrap_or(Object::Nil));
-                            }
-                        }
-                        return Ok(Object::Nil);
+                        return self
+                            .call_thread_method(
+                                &collection,
+                                "[]",
+                                std::slice::from_ref(&key),
+                                *position,
+                            )?
+                            .ok_or_else(|| {
+                                MetorexError::runtime_error(
+                                    "Thread lookup answered nothing",
+                                    position_to_location(*position),
+                                )
+                            });
                     }
                 }
                 self.evaluate_index_operation(collection, key, *position)
@@ -463,12 +462,24 @@ impl VirtualMachine {
             Expression::Defined { expression, .. } => self.eval_defined(expression),
 
             // ── Other producers ─────────────────────────────────────────────
-            Expression::Splat { expression, .. } => {
-                // Outside of argument lists, splat evaluates to the array itself
+            Expression::Splat {
+                expression,
+                position,
+            } => {
+                // Outside of argument lists, splat evaluates to the array
+                // itself. Splatting nil names nothing at all, which is what
+                // `[*nil]` and `x = *nil` both answer.
                 let value = self.evaluate_expression(expression)?;
                 match value {
                     arr @ Object::Array(_) => Ok(arr),
-                    other => Ok(Object::Array(Rc::new(RefCell::new(vec![other])))),
+                    Object::Nil => Ok(Object::array(Vec::new())),
+                    other if self.responds_to(&other, "to_a") => {
+                        match self.send_to_object(other.clone(), "to_a", vec![], *position)? {
+                            arr @ Object::Array(_) => Ok(arr),
+                            _ => Ok(Object::array(vec![other])),
+                        }
+                    }
+                    other => Ok(Object::array(vec![other])),
                 }
             }
             // An integer literal past the i64 range, parsed exactly.

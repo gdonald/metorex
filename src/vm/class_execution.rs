@@ -724,10 +724,9 @@ impl VirtualMachine {
         // A class body is not a method activation, so `__callee__` and
         // `__method__` inside one answer nil rather than reporting whichever
         // method happens to be running further down the stack.
-        self.call_stack_push(crate::vm::CallFrame::boundary(format!(
-            "<class:{}>",
-            class.name()
-        )));
+        // Ruby names the body by the class alone, without the namespace it
+        // was written in, and a singleton class body by what it is.
+        self.call_stack_push(crate::vm::CallFrame::boundary(class_body_label(class)));
         let body_result = self.apply_class_body_statements(class, body, position);
         self.call_stack_pop();
         body_result
@@ -1243,9 +1242,20 @@ impl VirtualMachine {
                             _ => String::new(),
                         };
                         if !new_name.is_empty() && !old_name.is_empty() {
-                            class.alias_method(&new_name, &old_name);
-                            let hook = Self::method_added_hook_for(class);
-                            self.invoke_class_hook(class, hook, &new_name, position)?;
+                            // A name the class holds no entry for, such as one
+                            // the interpreter answers natively, is aliased
+                            // through the full method so the stub that reaches
+                            // it is made.
+                            if class.alias_method(&new_name, &old_name) {
+                                let hook = Self::method_added_hook_for(class);
+                                self.invoke_class_hook(class, hook, &new_name, position)?;
+                            } else {
+                                let given = vec![
+                                    Object::symbol(new_name.clone()),
+                                    Object::symbol(old_name.clone()),
+                                ];
+                                self.call_class_methods(class, "alias_method", &given, position)?;
+                            }
                         }
                     }
                     // Handle define_method(:name) { |args| body } calls in class body
@@ -2727,4 +2737,19 @@ fn build_method_from_params(
     m.captured_refinements = refinements;
     m.captured_nesting = nesting;
     m
+}
+
+/// How a class or module body names itself in a backtrace: `<class:Name>`,
+/// `<module:Name>`, or `singleton class` for one opened with `class << x`.
+fn class_body_label(class: &Rc<Class>) -> String {
+    if class.is_singleton_class() {
+        return "singleton class".to_string();
+    }
+    let named = class.name();
+    let unqualified = named.rsplit("::").next().unwrap_or(named);
+    if class.is_module() {
+        format!("<module:{unqualified}>")
+    } else {
+        format!("<class:{unqualified}>")
+    }
 }

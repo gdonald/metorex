@@ -2825,6 +2825,92 @@ impl VirtualMachine {
         }
     }
 
+    /// The number Ruby mixes in for a collection that was found to hold
+    /// itself, which is the hash of the Array class in MRI.
+    const LOOPED_COLLECTION_MIX: i64 = 0x5bf0_3635;
+
+    /// The hash of an Array or a Hash: the length mixed with each element's
+    /// own `#hash`, read through `to_int`. A walk that reaches a collection
+    /// it is already inside answers from the outermost length alone, so a
+    /// list holding itself hashes the same however deeply it is wrapped.
+    fn collection_hash_digest(
+        &mut self,
+        receiver: &Object,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let address = match receiver {
+            Object::Array(held) => std::rc::Rc::as_ptr(held) as usize,
+            Object::Dict(held) => std::rc::Rc::as_ptr(held) as usize,
+            _ => return Ok(0),
+        };
+        if self.hash_walk.contains(&address) {
+            self.hash_walk_looped = true;
+            return Ok(0);
+        }
+        let outermost = self.hash_walk.is_empty();
+        if outermost {
+            self.hash_walk_looped = false;
+        }
+        self.hash_walk.push(address);
+        let parts: Vec<Object> = match receiver {
+            Object::Array(held) => held.borrow().clone(),
+            Object::Dict(held) => {
+                let mut listed = Vec::new();
+                for (key, value) in self.hash_pairs_for_digest(held) {
+                    listed.push(key);
+                    listed.push(value);
+                }
+                listed
+            }
+            _ => Vec::new(),
+        };
+        let length = match receiver {
+            Object::Dict(_) => parts.len() / 2,
+            _ => parts.len(),
+        };
+        let mut digest = (length as i64).wrapping_mul(0x9e37_79b9);
+        let mut walked = Ok(());
+        for part in parts {
+            match self.element_hash_number(&part, position) {
+                Ok(number) => {
+                    digest = digest.rotate_left(5).wrapping_mul(31).wrapping_add(number);
+                }
+                Err(trouble) => {
+                    walked = Err(trouble);
+                    break;
+                }
+            }
+        }
+        self.hash_walk.pop();
+        walked?;
+        if outermost && self.hash_walk_looped {
+            self.hash_walk_looped = false;
+            let folded = (length as i64).wrapping_mul(0x9e37_79b9);
+            return Ok(folded
+                .rotate_left(5)
+                .wrapping_mul(31)
+                .wrapping_add(Self::LOOPED_COLLECTION_MIX));
+        }
+        Ok(digest)
+    }
+
+    /// The number an element contributes: its own `#hash`, read through
+    /// `to_int` when what it answers is not already an Integer.
+    fn element_hash_number(
+        &mut self,
+        element: &Object,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let hashed = self.send_to_object(element.clone(), "hash", vec![], position)?;
+        match hashed {
+            Object::Int(number) => Ok(number),
+            other => match self.send_to_object(other, "to_int", vec![], position)? {
+                Object::Int(number) => Ok(number),
+                _ => Ok(0),
+            },
+        }
+    }
+
     pub(crate) fn hash_digest(
         &mut self,
         receiver: &Object,
@@ -2871,6 +2957,20 @@ impl VirtualMachine {
             }
             return Ok(digest);
         }
+        // A collection is hashed from what it holds, asking each element for
+        // its own `#hash`, and a collection that reaches itself is answered
+        // from its length the way Ruby answers one. A subclass hashes as the
+        // collection behind it, so the class it was made from makes no
+        // difference to the number.
+        if matches!(receiver, Object::Array(_) | Object::Dict(_)) {
+            return self.collection_hash_digest(receiver, position);
+        }
+        if let Some(backing @ (Object::Array(_) | Object::Dict(_))) =
+            crate::vm::native_methods::array_subclass_value(receiver)
+                .or_else(|| crate::vm::native_methods::hash_subclass_value(receiver))
+        {
+            return self.collection_hash_digest(&backing, position);
+        }
         if let Some(hashable) = crate::object::ObjectHash::from_object(receiver) {
             let mut digest: i64 = 0;
             for byte in hashable.hash_value.bytes() {
@@ -2887,7 +2987,7 @@ impl VirtualMachine {
 
 /// Whether two values are the same object. Reference types compare by
 /// identity, immediates by value.
-fn same_object(left: &Object, right: &Object) -> bool {
+pub(crate) fn same_object(left: &Object, right: &Object) -> bool {
     use std::rc::Rc;
     match (left, right) {
         (Object::Instance(a), Object::Instance(b)) => Rc::ptr_eq(a, b),

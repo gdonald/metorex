@@ -177,8 +177,8 @@ C.new.foo
 }
 
 #[test]
-fn continue_inside_method_body_error() {
-    let err = run_err(
+fn continue_inside_method_body_is_refused_when_parsed() {
+    let tokens = Lexer::new(
         r#"
 class C
   def foo
@@ -187,8 +187,16 @@ class C
 end
 C.new.foo
 "#,
+    )
+    .tokenize();
+    let refused = Parser::new(tokens).parse().unwrap_err();
+    assert!(
+        refused
+            .iter()
+            .any(|problem| problem.to_string().contains("Invalid next")),
+        "unexpected {:?}",
+        refused
     );
-    assert!(err.contains("continue") || err.contains("loop") || err.contains("control"));
 }
 
 // ── Exception.new with zero args ──────────────────────────────────────────────

@@ -59,6 +59,10 @@ pub struct Parser {
     /// How deep the walk is inside a `def` body, where an `END` block is
     /// registered once for every call rather than once for the program.
     pub(crate) def_body_depth: usize,
+    /// How deep the walk is inside something a `next` belongs to: a loop
+    /// body or a block. A `next` written straight in a method body, with
+    /// none of those around it, has nothing to jump to.
+    pub(crate) jump_target_depth: usize,
     /// Names the file binds somewhere: assignment targets, method parameters,
     /// and block parameters. `foo [1]` indexes a name in this set and passes
     /// an array to a name that is not, which is the rule Ruby applies.
@@ -128,6 +132,17 @@ fn collect_bound_names(tokens: &[Token]) -> std::collections::HashSet<String> {
                     names.insert(name.clone());
                 }
             }
+            // `lambda` is a method rather than syntax, so a program may name
+            // a local after it. The lexer gives it a token of its own, so the
+            // name is collected here rather than among the identifiers.
+            TokenKind::Lambda
+                if matches!(
+                    tokens.get(index + 1).map(|next| &next.kind),
+                    Some(TokenKind::Equal)
+                ) =>
+            {
+                names.insert("lambda".to_string());
+            }
             _ => {
                 // An operator name (`def <=>`) is not an Ident, and the
                 // parameter list starts right after it.
@@ -158,6 +173,7 @@ impl Parser {
             assignment_rhs_depth: 0,
             dict_literal_depth: 0,
             def_body_depth: 0,
+            jump_target_depth: 0,
             bound_names: collect_bound_names(&tokens_for_names),
         }
     }

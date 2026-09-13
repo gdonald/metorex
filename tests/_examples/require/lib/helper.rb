@@ -1,4 +1,4 @@
-helper_var = "from helper"
+HELPER_VALUE = "from helper"
 
 def helper_method
   "helper method called"

@@ -79,3 +79,35 @@ fn test_callables_curried_shapes_parens_execution() {
     let output = run_example("callables/curried_shapes_parens.rb");
     assert_eq!(output, CURRIED_SHAPES_OUTPUT);
 }
+
+/// The expected output of both `callables/proc_case_compare` variants, which
+/// differ only in whether the calls are written with parentheses.
+const PROC_CASE_COMPARE_OUTPUT: &str = "true\nfalse\n[1, 2]\n[1, 2]\n\"wrong number of arguments (given 1, expected 2)\"\n\"even\"\n\"small and odd\"\n\"large and odd\"\n";
+
+#[test]
+fn test_callables_proc_case_compare_execution() {
+    let output = run_example("callables/proc_case_compare.rb");
+    assert_eq!(output, PROC_CASE_COMPARE_OUTPUT);
+}
+
+#[test]
+fn test_callables_proc_case_compare_no_parens_execution() {
+    let output = run_example("callables/proc_case_compare_no_parens.rb");
+    assert_eq!(output, PROC_CASE_COMPARE_OUTPUT);
+}
+
+/// The expected output of both `callables/implicit_it_parameter` variants,
+/// which differ only in whether the calls are written with parentheses.
+const IMPLICIT_IT_PARAMETER_OUTPUT: &str = "\"a\"\n\"b\"\n[\"c\", \"d\"]\n[[:opt]]\n[[:req]]\n1\nnil\n[\"F\"]\n[1, 2]\n[[:req, :first], [:req, :second]]\n";
+
+#[test]
+fn test_callables_implicit_it_parameter_execution() {
+    let output = run_example("callables/implicit_it_parameter.rb");
+    assert_eq!(output, IMPLICIT_IT_PARAMETER_OUTPUT);
+}
+
+#[test]
+fn test_callables_implicit_it_parameter_no_parens_execution() {
+    let output = run_example("callables/implicit_it_parameter_no_parens.rb");
+    assert_eq!(output, IMPLICIT_IT_PARAMETER_OUTPUT);
+}

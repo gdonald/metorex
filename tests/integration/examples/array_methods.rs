@@ -48,3 +48,35 @@ fn test_array_methods_pickings_and_search_no_parens_execution() {
     let output = run_example("array_methods/pickings_and_search_no_parens.rb");
     assert_eq!(output, PICKINGS_AND_SEARCH_OUTPUT);
 }
+
+/// The expected output of both `array_methods/to_h_pairs` variants, which
+/// differ only in whether the calls are written with parentheses.
+const TO_H_PAIRS_OUTPUT: &str = "{1 => 2, 3 => 4}\n{\"1\" => 4}\n\"wrong array length at 0 (expected 2, was 3)\"\n\"wrong element type String at 0 (expected array)\"\n{key: :value}\n[[1, 1], [2, 2]]\n";
+
+#[test]
+fn test_array_methods_to_h_pairs_execution() {
+    let output = run_example("array_methods/to_h_pairs.rb");
+    assert_eq!(output, TO_H_PAIRS_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_to_h_pairs_no_parens_execution() {
+    let output = run_example("array_methods/to_h_pairs_no_parens.rb");
+    assert_eq!(output, TO_H_PAIRS_OUTPUT);
+}
+
+/// The expected output of both `array_methods/fill_and_hash` variants, which
+/// differ only in whether the calls are written with parentheses.
+const FILL_AND_HASH_OUTPUT: &str = "[:x, :x, :x, :x]\n[1, 2, :x, :x]\n[1, :x, :x, 4]\n[1, :x, :x, 4]\n[0, 2, 4, 6]\n[1, 2, 20, 30]\n\"no implicit conversion of String into Integer\"\ntrue\ntrue\nfalse\n";
+
+#[test]
+fn test_array_methods_fill_and_hash_execution() {
+    let output = run_example("array_methods/fill_and_hash.rb");
+    assert_eq!(output, FILL_AND_HASH_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_fill_and_hash_no_parens_execution() {
+    let output = run_example("array_methods/fill_and_hash_no_parens.rb");
+    assert_eq!(output, FILL_AND_HASH_OUTPUT);
+}

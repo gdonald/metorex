@@ -345,3 +345,20 @@ fn test_control_flow_post_test_loops_no_parens_execution() {
     let output = run_example("control_flow/post_test_loops_no_parens.rb");
     assert_eq!(output, POST_TEST_LOOPS_OUTPUT);
 }
+
+/// The expected output of both `control_flow/case_when_forms` variants, which differ only
+/// in whether the calls are written with parentheses.
+const CASE_WHEN_FORMS_OUTPUT: &str =
+    "\"second\"\n\"even\"\n\"small and odd\"\n\"large and odd\"\n[]\n[1, 2]\n42\n[2, 2, 6]\n";
+
+#[test]
+fn test_control_flow_case_when_forms_execution() {
+    let output = run_example("control_flow/case_when_forms.rb");
+    assert_eq!(output, CASE_WHEN_FORMS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_case_when_forms_no_parens_execution() {
+    let output = run_example("control_flow/case_when_forms_no_parens.rb");
+    assert_eq!(output, CASE_WHEN_FORMS_OUTPUT);
+}

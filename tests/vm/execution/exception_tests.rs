@@ -262,8 +262,8 @@ broken
 }
 
 #[test]
-fn next_inside_begin_body_errors() {
-    let err = run_err(
+fn next_inside_begin_body_is_refused_when_parsed() {
+    let tokens = Lexer::new(
         r#"
 class NextTest
   def test
@@ -274,14 +274,15 @@ class NextTest
 end
 NextTest.new.test
 "#,
-    );
+    )
+    .tokenize();
+    let refused = Parser::new(tokens).parse().unwrap_err();
     assert!(
-        err.contains("next")
-            || err.contains("loop")
-            || err.contains("outside")
-            || err.contains("continue"),
-        "Error was: {}",
-        err
+        refused
+            .iter()
+            .any(|problem| problem.to_string().contains("Invalid next")),
+        "Error was: {:?}",
+        refused
     );
 }
 

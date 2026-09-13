@@ -851,11 +851,11 @@ end
 }
 
 #[test]
-fn test_parse_case_expression_with_identifier_binding_pattern() {
+fn test_parse_case_expression_with_bare_name_in_when_clause() {
     let source = r#"
 case value
-when x
-  x * 2
+when pattern
+  pattern * 2
 else
   0
 end
@@ -867,13 +867,13 @@ end
         Expression::Case { cases, .. } => {
             assert_eq!(cases.len(), 1);
 
-            // Check identifier pattern
             match &cases[0].pattern {
-                MatchPattern::Identifier(name) => assert_eq!(name, "x"),
-                _ => panic!("Expected Identifier pattern"),
+                MatchPattern::Expression(held) => {
+                    assert!(matches!(held.as_ref(), Expression::Identifier { .. }))
+                }
+                _ => panic!("Expected Expression pattern"),
             }
 
-            // Body should use the bound variable
             assert!(matches!(cases[0].body, Expression::BinaryOp { .. }));
         }
         _ => panic!("Expected Expression::Case"),

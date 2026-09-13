@@ -114,7 +114,11 @@ fn test_type_error_has_location() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("Cannot apply operator"));
+    assert!(
+        error
+            .to_string()
+            .contains("no implicit conversion of Integer into String")
+    );
     assert!(error.to_string().contains("7:1"));
 }
 

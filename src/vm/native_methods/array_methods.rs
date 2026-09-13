@@ -32,6 +32,81 @@ fn compare_for_sort(a: &Object, b: &Object) -> std::cmp::Ordering {
 
 impl VirtualMachine {
     /// Execute native methods for the Array class.
+    /// The text an array joins to. An element that names an array of its own
+    /// is joined with the same separator however deeply they nest, and any
+    /// other element is asked for `to_str`, then `to_ary`, then `to_s`, which
+    /// is the order Ruby tries. An array that reaches itself is refused.
+    fn joined_text(
+        &mut self,
+        elements: &[Object],
+        separator: &str,
+        in_flight: &mut Vec<usize>,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let mut written = Vec::with_capacity(elements.len());
+        for element in elements {
+            written.push(self.joined_element(element, separator, in_flight, position)?);
+        }
+        Ok(written.join(separator))
+    }
+
+    /// One element's contribution to a join.
+    fn joined_element(
+        &mut self,
+        element: &Object,
+        separator: &str,
+        in_flight: &mut Vec<usize>,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        match element {
+            Object::Symbol(name) => return Ok(name.as_str().to_string()),
+            Object::String(text) => return Ok(text.as_str().to_string()),
+            _ => {}
+        }
+        let nested = match element {
+            Object::Array(held) => Some(Rc::clone(held)),
+            other => match crate::vm::native_methods::array_subclass_value(other) {
+                Some(Object::Array(held)) => Some(held),
+                _ => None,
+            },
+        };
+        if let Some(held) = nested {
+            let address = Rc::as_ptr(&held) as usize;
+            if in_flight.contains(&address) {
+                return Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    "recursive array join",
+                    position,
+                ));
+            }
+            in_flight.push(address);
+            let inner = held.borrow().clone();
+            let joined = self.joined_text(&inner, separator, in_flight, position);
+            in_flight.pop();
+            return joined;
+        }
+        for name in ["to_str", "to_ary", "to_s"] {
+            if !self.responds_to(element, name) {
+                continue;
+            }
+            let answered = self.send_to_object(element.clone(), name, vec![], position)?;
+            if name == "to_ary" {
+                return self.joined_element(&answered, separator, in_flight, position);
+            }
+            if let Object::String(text) = answered {
+                return Ok(text.as_str().to_string());
+            }
+        }
+        Err(crate::vm::errors::simple_exception(
+            "NoMethodError",
+            &format!(
+                "undefined method 'to_str' for an instance of {}",
+                self.builtins().class_of(element).name()
+            ),
+            position,
+        ))
+    }
+
     pub(crate) fn call_array_method(
         &mut self,
         receiver: &Object,
@@ -892,6 +967,62 @@ impl VirtualMachine {
                 reversed.reverse();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(reversed)))))
             }
+            // `ary * other` joins with a separator when the other object
+            // names one, and repeats the array when it names a count. Ruby
+            // asks for the separator first.
+            "*" => {
+                if arguments.len() != 1 {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Exact(1),
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let given = arguments[0].clone();
+                if matches!(given, Object::String(_)) {
+                    return self.call_array_method(receiver, "join", &[given], position);
+                }
+                if self.responds_to(&given, "to_str") {
+                    let separator = self.send_to_object(given, "to_str", vec![], position)?;
+                    return self.call_array_method(receiver, "join", &[separator], position);
+                }
+                let count = match given {
+                    Object::Int(_) => given,
+                    other if self.responds_to(&other, "to_int") => {
+                        self.send_to_object(other, "to_int", vec![], position)?
+                    }
+                    other => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &format!(
+                                "no implicit conversion of {} into Integer",
+                                self.builtins().class_of(&other).name()
+                            ),
+                            position,
+                        ));
+                    }
+                };
+                let Object::Int(count) = count else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "can't convert to Integer",
+                        position,
+                    ));
+                };
+                let Ok(count) = usize::try_from(count) else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "negative argument",
+                        position,
+                    ));
+                };
+                let source = array_rc.borrow().clone();
+                let mut repeated = Vec::with_capacity(source.len() * count);
+                for _ in 0..count {
+                    repeated.extend(source.iter().cloned());
+                }
+                Ok(Some(Object::array(repeated)))
+            }
             "join" => {
                 if arguments.len() > 1 {
                     return Err(method_argument_error(
@@ -904,7 +1035,18 @@ impl VirtualMachine {
                 let sep = if arguments.is_empty() {
                     String::new()
                 } else {
-                    match &arguments[0] {
+                    // An empty array never asks the separator for anything,
+                    // which is what Ruby does.
+                    let given = if array_rc.borrow().is_empty() {
+                        Object::Nil
+                    } else if matches!(arguments[0], Object::String(_) | Object::Nil) {
+                        arguments[0].clone()
+                    } else if self.responds_to(&arguments[0], "to_str") {
+                        self.send_to_object(arguments[0].clone(), "to_str", vec![], position)?
+                    } else {
+                        arguments[0].clone()
+                    };
+                    match &given {
                         Object::String(s) => s.as_str().to_string(),
                         // A nil separator joins with nothing between.
                         Object::Nil => String::new(),
@@ -922,7 +1064,9 @@ impl VirtualMachine {
                 // the name it is spelled with rather than the leading colon.
                 // An element that is itself an array is joined with the same
                 // separator, however deeply they nest.
-                let parts = joined_parts(&array_rc.borrow(), &sep);
+                let elements = array_rc.borrow().clone();
+                let mut in_flight = vec![Rc::as_ptr(array_rc) as usize];
+                let parts = self.joined_text(&elements, &sep, &mut in_flight, position)?;
                 Ok(Some(Object::string(parts)))
             }
             // `flatten` walks all the way down by default, or as many levels
@@ -1406,8 +1550,7 @@ impl VirtualMachine {
                     Some(Object::Block(block)) => Some(block),
                     _ => None,
                 };
-                let elements = array_rc.borrow().clone();
-                let unique = self.unique_elements(&elements, block, position)?;
+                let unique = self.unique_live_elements(array_rc, block, position)?;
                 Ok(Some(Object::array(unique)))
             }
             // `min`, `max`, and `minmax` order with `<=>`, or with the block
@@ -2145,9 +2288,8 @@ impl VirtualMachine {
                     Some(Object::Block(block)) => Some(block),
                     _ => None,
                 };
-                let elements = array_rc.borrow().clone();
-                let unique = self.unique_elements(&elements, block, position)?;
-                let changed = unique.len() != elements.len();
+                let unique = self.unique_live_elements(array_rc, block, position)?;
+                let changed = unique.len() != array_rc.borrow().len();
                 *array_rc.borrow_mut() = unique;
                 Ok(Some(if changed {
                     receiver.clone()
@@ -2379,26 +2521,34 @@ impl VirtualMachine {
 
     /// The elements of `elements` with later duplicates dropped. A block
     /// decides what counts as a duplicate by naming a key for each element.
-    pub(crate) fn unique_elements(
+    /// The unique elements of an array as it stands, read one index at a
+    /// time so an element appended while the walk runs is visited too.
+    pub(crate) fn unique_live_elements(
         &mut self,
-        elements: &[Object],
+        array_rc: &Rc<std::cell::RefCell<Vec<Object>>>,
         block: Option<Rc<crate::object::BlockStatement>>,
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
-        let mut seen: Vec<String> = Vec::new();
+        let mut seen: indexmap::IndexMap<String, Object> = indexmap::IndexMap::new();
         let mut unique = Vec::new();
-        for element in elements {
+        let mut index = 0usize;
+        loop {
+            let Some(element) = array_rc.borrow().get(index).cloned() else {
+                break;
+            };
             let key = match &block {
                 None => element.clone(),
                 Some(block) => {
                     self.execute_block_callable(block, vec![element.clone()], position)?
                 }
             };
-            let rendered = format!("{}", key);
-            if !seen.contains(&rendered) {
-                seen.push(rendered);
-                unique.push(element.clone());
+            let slot = self.dict_slot_in(&seen, &key, false, position)?;
+            if !seen.contains_key(&slot) {
+                crate::vm::native_methods::remember_key_object(&mut seen, &slot, &key);
+                seen.insert(slot, Object::Nil);
+                unique.push(element);
             }
+            index += 1;
         }
         Ok(unique)
     }
@@ -2841,18 +2991,4 @@ fn identical(left: &Object, right: &Object) -> bool {
         (Object::Float(one), Object::Float(other)) => one.to_bits() == other.to_bits(),
         _ => false,
     }
-}
-
-/// The elements written out and joined, with a nested array joined the same
-/// way rather than rendered as one.
-fn joined_parts(elements: &[Object], separator: &str) -> String {
-    let mut written = Vec::with_capacity(elements.len());
-    for element in elements {
-        written.push(match element {
-            Object::Symbol(name) => name.as_str().to_string(),
-            Object::Array(nested) => joined_parts(&nested.borrow(), separator),
-            other => format!("{other}"),
-        });
-    }
-    written.join(separator)
 }

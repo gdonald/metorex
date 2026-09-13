@@ -11,6 +11,7 @@ mod data_objects;
 mod data_structures;
 mod dates;
 mod dsl;
+mod encodings;
 mod enumerable;
 mod errors;
 mod file_loading;

@@ -150,7 +150,7 @@ fn require_relative_makes_variables_accessible() {
     let helper_file = temp_dir.join("require_test_helper3.rb");
 
     fs::write(&main_file, "require_relative(\"require_test_helper3\")").unwrap();
-    fs::write(&helper_file, "shared_var = \"from helper\"").unwrap();
+    fs::write(&helper_file, "SHARED_CONST = \"from helper\"").unwrap();
 
     let mut vm = VirtualMachine::new();
     let result = vm.execute_file(Path::new(&main_file));
@@ -162,7 +162,7 @@ fn require_relative_makes_variables_accessible() {
     assert!(result.is_ok());
 
     // Check that the variable from the helper file is accessible
-    let var = vm.environment().get("shared_var");
+    let var = vm.globals().get("SHARED_CONST");
     assert_eq!(var, Some(Object::string(String::from("from helper"))));
 }
 
@@ -179,7 +179,7 @@ fn require_relative_auto_detects_rb_extension() {
 
     // Require without .rb extension — should auto-detect
     fs::write(&main_file, "require_relative(\"require_ext_helper\")").unwrap();
-    fs::write(&helper_file, "ext_var = \"found\"").unwrap();
+    fs::write(&helper_file, "EXT_CONST = \"found\"").unwrap();
 
     let mut vm = VirtualMachine::new();
     let result = vm.execute_file(Path::new(&main_file));
@@ -188,7 +188,7 @@ fn require_relative_auto_detects_rb_extension() {
     let _ = fs::remove_file(&helper_file);
 
     assert!(result.is_ok());
-    let var = vm.environment().get("ext_var");
+    let var = vm.globals().get("EXT_CONST");
     assert_eq!(var, Some(Object::string(String::from("found"))));
 }
 
@@ -203,7 +203,7 @@ fn require_relative_with_explicit_rb_extension() {
 
     // Require with explicit .rb extension
     fs::write(&main_file, "require_relative(\"require_ext2_helper.rb\")").unwrap();
-    fs::write(&helper_file, "ext2_var = \"found explicit\"").unwrap();
+    fs::write(&helper_file, "EXT2_CONST = \"found explicit\"").unwrap();
 
     let mut vm = VirtualMachine::new();
     let result = vm.execute_file(Path::new(&main_file));
@@ -212,7 +212,7 @@ fn require_relative_with_explicit_rb_extension() {
     let _ = fs::remove_file(&helper_file);
 
     assert!(result.is_ok());
-    let var = vm.environment().get("ext2_var");
+    let var = vm.globals().get("EXT2_CONST");
     assert_eq!(var, Some(Object::string(String::from("found explicit"))));
 }
 
@@ -291,9 +291,17 @@ fn require_relative_nested_chain() {
     let file_b = sub_dir.join("chain_b.rb");
     let file_a = sub_dir.join("chain_a.rb");
 
-    fs::write(&file_c, "c_var = \"from_c\"").unwrap();
-    fs::write(&file_b, "require_relative(\"chain_c\")\nb_var = \"from_b\"").unwrap();
-    fs::write(&file_a, "require_relative(\"chain_b\")\na_var = \"from_a\"").unwrap();
+    fs::write(&file_c, "C_CONST = \"from_c\"").unwrap();
+    fs::write(
+        &file_b,
+        "require_relative(\"chain_c\")\nB_CONST = \"from_b\"",
+    )
+    .unwrap();
+    fs::write(
+        &file_a,
+        "require_relative(\"chain_b\")\nA_CONST = \"from_a\"",
+    )
+    .unwrap();
 
     let mut vm = VirtualMachine::new();
     let result = vm.execute_file(Path::new(&file_a));
@@ -302,15 +310,15 @@ fn require_relative_nested_chain() {
 
     assert!(result.is_ok());
     assert_eq!(
-        vm.environment().get("c_var"),
+        vm.globals().get("C_CONST"),
         Some(Object::string(String::from("from_c")))
     );
     assert_eq!(
-        vm.environment().get("b_var"),
+        vm.globals().get("B_CONST"),
         Some(Object::string(String::from("from_b")))
     );
     assert_eq!(
-        vm.environment().get("a_var"),
+        vm.globals().get("A_CONST"),
         Some(Object::string(String::from("from_a")))
     );
 }
@@ -369,17 +377,17 @@ fn require_relative_diamond_dependency_loads_once() {
     let file_a = sub_dir.join("dia_a.rb");
 
     // D is the shared dependency
-    fs::write(&file_d, "dia_d_var = \"d_value\"").unwrap();
+    fs::write(&file_d, "DIA_D_CONST = \"d_value\"").unwrap();
     // B requires D
     fs::write(
         &file_b,
-        "require_relative(\"dia_d\")\ndia_b_var = \"b_value\"",
+        "require_relative(\"dia_d\")\nDIA_B_CONST = \"b_value\"",
     )
     .unwrap();
     // C requires D
     fs::write(
         &file_c,
-        "require_relative(\"dia_d\")\ndia_c_var = \"c_value\"",
+        "require_relative(\"dia_d\")\nDIA_C_CONST = \"c_value\"",
     )
     .unwrap();
     // A requires both B and C
@@ -396,17 +404,17 @@ fn require_relative_diamond_dependency_loads_once() {
 
     assert!(result.is_ok());
 
-    // All variables should be accessible
+    // Every constant the chain defined is reachable
     assert_eq!(
-        vm.environment().get("dia_d_var"),
+        vm.globals().get("DIA_D_CONST"),
         Some(Object::string(String::from("d_value")))
     );
     assert_eq!(
-        vm.environment().get("dia_b_var"),
+        vm.globals().get("DIA_B_CONST"),
         Some(Object::string(String::from("b_value")))
     );
     assert_eq!(
-        vm.environment().get("dia_c_var"),
+        vm.globals().get("DIA_C_CONST"),
         Some(Object::string(String::from("c_value")))
     );
 }

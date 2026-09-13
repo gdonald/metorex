@@ -16,10 +16,11 @@ else 0
 end
 puts sum
 
-# Variable binding pattern
+# A name written in a when clause stands for what it holds
 value = 42
+answer = ->(number) { number == 42 }
 bound = case value
-when x then x * 2
+when answer then value * 2
 end
 puts bound
 

@@ -312,8 +312,12 @@ fn invalid_binary_operands_raise_type_error() {
     }];
 
     match vm.execute_program(&statements) {
-        Err(MetorexError::TypeError { message, .. }) => {
-            assert!(message.contains("operator"), "unexpected {}", message);
+        Err(MetorexError::UncaughtException { message, .. }) => {
+            assert!(
+                message.contains("no implicit conversion of Integer into String"),
+                "unexpected {}",
+                message
+            );
         }
         other => panic!("expected type error, got {:?}", other),
     }

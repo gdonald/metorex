@@ -619,7 +619,7 @@ fn continue_inside_case_when_at_top_level_error() {
     let err = run_err(
         r#"
 case 42
-when x
+when Integer
   continue
 end
 "#,
@@ -688,16 +688,24 @@ foo
 }
 
 #[test]
-fn continue_inside_function_body_error() {
-    let err = run_err(
+fn continue_inside_function_body_is_refused_when_parsed() {
+    let tokens = Lexer::new(
         r#"
 def foo
   continue
 end
 foo
 "#,
+    )
+    .tokenize();
+    let refused = Parser::new(tokens).parse().unwrap_err();
+    assert!(
+        refused
+            .iter()
+            .any(|problem| problem.to_string().contains("Invalid next")),
+        "unexpected {:?}",
+        refused
     );
-    assert!(err.contains("continue") || err.contains("loop") || err.contains("outside"));
 }
 
 // ── break/continue inside block called via .call (method_invocation.rs 184-188) ─

@@ -707,14 +707,16 @@ fn test_errors_stop_iteration_result_parens_execution() {
 
 #[test]
 fn test_errors_backtrace_locations_fields_execution() {
-    let expected = "true\nObject#inner\n2\ntrue\ntrue\ntrue\n<main>\nObject#inner\nnil\ntrue\nObject#inner\ntrue\n";
+    let expected =
+        "true\nObject#inner\n2\ntrue\ntrue\ntrue\n<main>\ninner\nnil\ntrue\nObject#inner\ntrue\n";
     let output = run_example("errors/backtrace_locations/fields.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_errors_backtrace_locations_fields_parens_execution() {
-    let expected = "true\nObject#inner\n2\ntrue\ntrue\ntrue\n<main>\nObject#inner\nnil\ntrue\nObject#inner\ntrue\n";
+    let expected =
+        "true\nObject#inner\n2\ntrue\ntrue\ntrue\n<main>\ninner\nnil\ntrue\nObject#inner\ntrue\n";
     let output = run_example("errors/backtrace_locations/fields_parens.rb");
     assert_eq!(output, expected);
 }

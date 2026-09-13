@@ -61,9 +61,10 @@ fn match_arm_body_with_assignment_statement() {
     let result = run(r#"
 x = 42
 result = 0
+matcher = ->(number) { number == 42 }
 case x
-when n
-  result = n * 2
+when matcher
+  result = x * 2
   result
 end
 "#);
@@ -75,9 +76,9 @@ fn match_arm_body_with_return_exits_method() {
     let result = run(r#"
 def doubled(n)
   case n
-  when x
-    return x * 2
-    x
+  when Integer
+    return n * 2
+    n
   end
 end
 doubled 7

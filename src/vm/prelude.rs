@@ -1279,8 +1279,15 @@ class MatchData
     key = keys[0]
     return to_a[key] if key.is_a?(Range)
     if key.is_a?(Integer)
-      index = key < 0 ? key + @begins.size : key
-      return nil if index < 0 || index >= @begins.size
+      # A negative index counts back over the groups the pattern named, so it
+      # never reaches the whole match at index 0.
+      if key < 0
+        index = key + @begins.size
+        return nil if index < 1
+      else
+        index = key
+      end
+      return nil if index >= @begins.size
       return group_text(index)
     end
     group_text(group_index(key))
@@ -1502,10 +1509,14 @@ class Thread
     class Location
       attr_reader :path, :lineno, :label, :absolute_path
 
+      # The label without what it was reached through: a block's label names
+      # the method holding it, and a method's label names the method alone
+      # rather than the class or module it was found on.
       def base_label
         return @label if @label.nil?
-        return @label unless @label.start_with?("block ")
-        @label.split(" in ", 2).last
+        held = @label.start_with?("block ") ? @label.split(" in ", 2).last : @label
+        return held if held.start_with?("<")
+        held.split(/[.#]/).last
       end
 
       def to_s
@@ -2367,7 +2378,14 @@ class Enumerator
   def to_a
     if @values.nil?
       collected = []
-      if @generator.nil?
+      # An enumerator given an `each` of its own is walked through that body
+      # rather than through the object it was cut from.
+      if singleton_methods.include?(:each)
+        @result = each do |*yielded|
+          collected.push(yielded.empty? ? nil : (yielded.size == 1 ? yielded[0] : yielded))
+          nil
+        end
+      elsif @generator.nil?
         @result = @receiver.send(@method_name, *@arguments) do |*yielded|
           collected.push(yielded.empty? ? nil : (yielded.size == 1 ? yielded[0] : yielded))
           nil
@@ -2410,7 +2428,12 @@ class Enumerator
   def raw_to_a
     if @raw_values.nil?
       collected = []
-      if @generator.nil?
+      if singleton_methods.include?(:each)
+        @result = each do |*yielded|
+          collected.push(yielded)
+          nil
+        end
+      elsif @generator.nil?
         @result = @receiver.send(@method_name, *@arguments) do |*yielded|
           collected.push(yielded)
           nil
@@ -3393,6 +3416,94 @@ class Range
 end
 
 class Array
+  # The number an index or a length arrives as, which Ruby reads through
+  # `to_int` and refuses when the object names none.
+  def fill_count(given)
+    return given if given.is_a?(Integer)
+    unless given.respond_to?(:to_int)
+      raise TypeError, "no implicit conversion of #{given.class} into Integer"
+    end
+    read = given.to_int
+    unless read.is_a?(Integer)
+      raise TypeError, "can\'t convert #{given.class} to Integer (#{given.class}#to_int gives #{read.class})"
+    end
+    read
+  end
+  private :fill_count
+
+  # `fill` writes over a stretch of the array: everything, from an index on,
+  # a run of a given length, or the span a Range names. A block is handed each
+  # index and writes what it answers.
+  def fill(*given, &block)
+    limit = block.nil? ? 3 : 2
+    if given.size > limit
+      raise ArgumentError, "wrong number of arguments (given #{given.size}, expected #{block.nil? ? "1..3" : "0..2"})"
+    end
+    if block.nil?
+      raise ArgumentError, "wrong number of arguments (given 0, expected 1..3)" if given.empty?
+      value = given.shift
+    else
+      value = nil
+    end
+    if given.empty?
+      from = 0
+      count = size
+    elsif given[0].is_a?(Range)
+      raise TypeError, "wrong number of arguments (given 3, expected 1..2)" if given.size > 1
+      span = given[0]
+      from = span.begin.nil? ? 0 : fill_count(span.begin)
+      from += size if from < 0
+      raise RangeError, "#{span} out of range" if from < 0
+      endless = span.end.nil?
+      last = endless ? size - 1 : fill_count(span.end)
+      last += size if last < 0
+      last -= 1 if span.exclude_end? && !endless
+      count = last - from + 1
+      count = 0 if count < 0
+    else
+      from = given[0].nil? ? 0 : fill_count(given[0])
+      from += size if from < 0
+      from = 0 if from < 0
+      if given.size > 1 && !given[1].nil?
+        count = fill_count(given[1])
+      else
+        count = size - from
+      end
+    end
+    return self if count <= 0
+    index = from
+    stop = from + count
+    while index < stop
+      self[index] = block.nil? ? value : block.call(index)
+      index += 1
+    end
+    self
+  end
+
+  # Array#to_h names the index of the element it refused, which the shared
+  # Enumerable version has no position to report.
+  def to_h(&block)
+    built = {}
+    index = 0
+    while index < size
+      element = self[index]
+      pair = block.nil? ? element : block.call(element)
+      unless pair.is_a? Array
+        converted = pair.respond_to?(:to_ary) ? pair.to_ary : nil
+        unless converted.is_a? Array
+          raise TypeError, "wrong element type #{pair.class} at #{index} (expected array)"
+        end
+        pair = converted
+      end
+      unless pair.size == 2
+        raise ArgumentError, "wrong array length at #{index} (expected 2, was #{pair.size})"
+      end
+      built[pair[0]] = pair[1]
+      index += 1
+    end
+    built
+  end
+
   # The length a walk was asked for, which may arrive as a Float or as an
   # object that converts to an Integer.
   def walk_length(count)
@@ -8796,8 +8907,27 @@ class Encoding
       unless held.is_a? String
         raise TypeError, "no implicit conversion of #{held.class} into String"
       end
+      # A replacement the destination cannot spell is refused, and the one
+      # already in use stays.
+      held.each_char do |character|
+        next if spellable? character
+        spelled = "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
+        from, to = stage_for :undefined
+        raise Encoding::UndefinedConversionError.new(
+          "#{spelled} #{undefined_path}", from, to, character
+        )
+      end
       @replacement = held
     end
+
+    # Whether the conversion was told to stand a replacement in for what the
+    # destination cannot spell.
+    def replacing_undefined?
+      return (@options & UNDEF_MASK) == UNDEF_REPLACE if @options.is_a? Integer
+      return false unless @options.is_a? Hash
+      @options[:undef] == :replace
+    end
+    private :replacing_undefined?
 
     def inspect
       "#<Encoding::Converter: #{@source.name} to #{@destination.name}>"
@@ -8854,19 +8984,133 @@ class Encoding
     def convert text
       held = text.to_s
       refuse_invalid held
+      unless @pending.nil? || @pending.empty?
+        held = held.byteslice(0, held.bytesize - @pending.bytesize)
+      end
       converted = ""
       held.each_char do |character|
         refuse_undefined character unless spellable? character
         converted = converted + character
       end
-      @errinfo = [:finished, @source.name, @destination.name, "", ""]
+      @errinfo = [:source_buffer_empty, nil, nil, nil, nil]
+      @last_error = nil
       converted.dup.force_encoding @destination.name
     end
 
+    # What went wrong the last time text was carried over, or nil when the
+    # last attempt made it through.
+    def last_error
+      @last_error
+    end
+
+    # Carry what it can from `source` into `destination`, reporting how it
+    # stopped rather than raising. The source is left holding whatever was
+    # not read.
+    def primitive_convert source, destination, destination_byteoffset = nil, destination_bytesize = nil, options = 0
+      unless destination_byteoffset.nil?
+        destination.replace destination.byteslice(0, destination_byteoffset)
+      end
+      held = source.dup.force_encoding "ASCII-8BIT"
+      trouble = invalid_run held
+      readable = trouble.nil? ? held : held.byteslice(0, trouble[0])
+      written = ""
+      consumed = 0
+      status = nil
+      readable.dup.force_encoding(@source.name).each_char do |character|
+        if !destination_bytesize.nil? && written.bytesize + character.bytesize > destination_bytesize
+          @errinfo = [:destination_buffer_full, nil, nil, nil, nil]
+          @last_error = nil
+          status = :destination_buffer_full
+          break
+        end
+        unless spellable? character
+          if replacing_undefined?
+            written = written + @replacement
+            consumed = consumed + character.bytesize
+            next
+          end
+          from, to = stage_for :undefined
+          bytes = character.dup.force_encoding("ASCII-8BIT")
+          spelled = "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
+          @errinfo = [:undefined_conversion, from.name, to.name, bytes, ""]
+          @last_error = Encoding::UndefinedConversionError.new(
+            "#{spelled} from #{from.name} to #{to.name}", from, to, character
+          )
+          status = :undefined_conversion
+          break
+        end
+        written = written + character
+        consumed = consumed + character.bytesize
+      end
+      destination.replace destination + written.dup.force_encoding(@destination.name)
+      if status.nil? && !trouble.nil?
+        from, to = stage_for :invalid
+        wrong = trouble[1]
+        rest = trouble[2]
+        truncated = trouble[3]
+        status = truncated ? :incomplete_input : :invalid_byte_sequence
+        @errinfo = [status, from.name, to.name, wrong, rest]
+        @last_error = Encoding::InvalidByteSequenceError.new(
+          "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
+        )
+        # The bytes that could not carry on are read too, and held for a
+        # `putback` to hand to the next piece of text.
+        consumed = trouble[0] + wrong.bytesize + rest.bytesize
+      end
+      if status.nil?
+        status = partial_input_wanted(options) ? :source_buffer_empty : :finished
+        @errinfo = [status, nil, nil, nil, nil]
+        @last_error = nil
+      end
+      source.replace held.byteslice(consumed, held.bytesize - consumed)
+      status
+    end
+
+    # Whether the caller said more text is still to come, which leaves the
+    # conversion open rather than finishing it.
+    def partial_input_wanted options
+      return false unless options.is_a? Hash
+      options[:partial_input] ? true : false
+    end
+    private :partial_input_wanted
+
+
+    # Close the conversion, reporting a character the text stopped part-way
+    # through. There is nothing more to carry over once it has been called.
+    def finish
+      pending = @pending
+      @pending = nil
+      unless pending.nil? || pending.empty?
+        from, to = stage_for :invalid
+        @errinfo = [:incomplete_input, from.name, to.name, pending, ""]
+        trouble = Encoding::InvalidByteSequenceError.new(
+          "#{pending.inspect} on #{from.name}", from, to, pending, "", true
+        )
+        @last_error = trouble
+        raise trouble
+      end
+      "".dup.force_encoding @destination.name
+    end
+
+    # The bytes held back after a run the source encoding could not read,
+    # which the caller may put in front of the next piece of text. Reading
+    # them takes them, so a second call answers nothing.
+    def putback count = nil
+      held = @errinfo.nil? ? "" : @errinfo[4]
+      held = "" if held.nil?
+      wanted = count.nil? ? held.bytesize : count
+      taken = held.byteslice(held.bytesize - wanted, wanted)
+      taken = "" if taken.nil?
+      unless @errinfo.nil?
+        @errinfo = @errinfo.dup
+        @errinfo[4] = held.byteslice(0, held.bytesize - taken.bytesize)
+      end
+      taken.dup.force_encoding @source.name
+    end
 
     # What the last conversion ran into, as the tuple Ruby reports.
     def primitive_errinfo
-      @errinfo.nil? ? [:source_buffer_empty, @source.name, @destination.name, "", ""] : @errinfo
+      @errinfo.nil? ? [:source_buffer_empty, nil, nil, nil, nil] : @errinfo
     end
 
     # Whether the destination can spell a character at all. An encoding that
@@ -8885,11 +9129,11 @@ class Encoding
     end
     private :spellable?
 
-    # A run of bytes the source encoding cannot read is refused before any
-    # of it is carried over.
-    def refuse_invalid held
-      return if @source.name == "ASCII-8BIT"
-      return if held.dup.force_encoding(@source.name).valid_encoding?
+    # The run of bytes the source encoding cannot read, as
+    # `[offset, wrong, rest, truncated]`, or nil when every byte reads.
+    def invalid_run held
+      return nil if @source.name == "ASCII-8BIT"
+      return nil if held.dup.force_encoding(@source.name).valid_encoding?
       # The bytes are cut apart rather than joined onto text, since joining
       # would read each one as the character it spells.
       bytes = held.bytes
@@ -8903,14 +9147,33 @@ class Encoding
       # could not carry on.
       stop = start + 1
       stop = stop + 1 while stop < bytes.length && carries_on?(bytes[stop])
-      wrong = bytes[start..(stop - 1)].pack("C*")
-      rest = stop < bytes.length ? [bytes[stop]].pack("C") : ""
-      truncated = stop >= bytes.length
+      wrong = bytes[start..(stop - 1)].pack("C*").force_encoding "ASCII-8BIT"
+      rest = stop < bytes.length ? [bytes[stop]].pack("C").force_encoding("ASCII-8BIT") : ""
+      [start, wrong, rest, stop >= bytes.length]
+    end
+    private :invalid_run
+
+    # A run of bytes the source encoding cannot read is refused before any
+    # of it is carried over.
+    def refuse_invalid held
+      found = invalid_run held
+      return if found.nil?
+      # A character the text stops part-way through is held back, since more
+      # of it may still arrive. `finish` is where that is reported.
+      if found[3]
+        @pending = found[1]
+        return
+      end
+      wrong = found[1]
+      rest = found[2]
+      truncated = found[3]
       from, to = stage_for :invalid
       @errinfo = [:invalid_byte_sequence, from.name, to.name, wrong, rest]
-      raise Encoding::InvalidByteSequenceError.new(
+      trouble = Encoding::InvalidByteSequenceError.new(
         "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
       )
+      @last_error = trouble
+      raise trouble
     end
     private :refuse_invalid
 
@@ -8918,10 +9181,23 @@ class Encoding
       spelled = "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
       from, to = stage_for :undefined
       @errinfo = [:undefined_conversion, from.name, to.name, character, ""]
-      raise Encoding::UndefinedConversionError.new(
-        "#{spelled} from #{from.name} to #{to.name}", from, to, character
+      trouble = Encoding::UndefinedConversionError.new(
+        "#{spelled} #{undefined_path}", from, to, character
       )
+      @last_error = trouble
+      raise trouble
     end
+
+    # The steps the message names, which is every encoding the conversion
+    # passes through rather than only the step that refused the character.
+    def undefined_path
+      steps = @convpath.select { |step| step.is_a? Array }
+      return "from #{@source.name} to #{@destination.name}" if steps.empty?
+      names = [steps.first[0].name]
+      steps.each { |step| names.push step[1].name }
+      "from " + names.join(" to ")
+    end
+    private :undefined_path
     private :refuse_undefined
 
     # Whether a byte carries on the character the one before it opened.

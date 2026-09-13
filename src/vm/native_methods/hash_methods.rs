@@ -425,9 +425,15 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                if self.object_is_frozen(receiver) {
+                    return Err(self.frozen_modification_error(receiver, position));
+                }
                 dict_rc
                     .borrow_mut()
                     .insert(BY_IDENTITY_KEY.to_string(), Object::Bool(true));
+                // Entries already held were placed by value, so they are put
+                // back where their identity belongs.
+                self.call_hash_method(receiver, "rehash", &[], position)?;
                 Ok(Some(receiver.clone()))
             }
             "compare_by_identity?" => {
@@ -703,6 +709,24 @@ impl VirtualMachine {
                         arguments.len(),
                         position,
                     ));
+                }
+                // A subclass that writes its own `default` decides what a
+                // missing key reads as, which is what Ruby asks before it
+                // falls back to the default value or block.
+                let found = self.hash_find_key(dict_rc, &arguments[0], position)?;
+                if found.is_none()
+                    && let Some((owner, method)) = self.lookup_method(receiver, "default")
+                    && !method.is_undefined
+                {
+                    return self
+                        .invoke_method(
+                            owner,
+                            method,
+                            receiver.clone(),
+                            vec![arguments[0].clone()],
+                            position,
+                        )
+                        .map(Some);
                 }
                 Ok(Some(self.evaluate_index_operation(
                     receiver.clone(),
@@ -1076,9 +1100,80 @@ impl VirtualMachine {
                 // keys were matched under does not carry over.
                 Ok(Some(Object::Dict(Rc::new(RefCell::new(inverted)))))
             }
+            // Two hashes are equal when they hold the same entries, and
+            // each key is looked up in the other hash the way any key is,
+            // through `#hash` and `#eql?`. `eql?` compares the values the
+            // same strict way; `==` asks them `==`.
+            "==" | "eql?" if arguments.len() == 1 => {
+                let other = match &arguments[0] {
+                    held @ Object::Dict(_) => held.clone(),
+                    held => match crate::vm::native_methods::hash_subclass_value(held) {
+                        Some(backing @ Object::Dict(_)) => backing,
+                        _ => return Ok(Some(Object::Bool(false))),
+                    },
+                };
+                let Object::Dict(other_rc) = &other else {
+                    return Ok(Some(Object::Bool(false)));
+                };
+                if Rc::ptr_eq(dict_rc, other_rc) {
+                    return Ok(Some(Object::Bool(true)));
+                }
+                let pair = (Rc::as_ptr(dict_rc) as usize, Rc::as_ptr(other_rc) as usize);
+                if self.hash_comparisons.contains(&pair) {
+                    return Ok(Some(Object::Bool(true)));
+                }
+                self.hash_comparisons.push(pair);
+                let answer = self.hash_entries_match(dict_rc, other_rc, method_name, position);
+                self.hash_comparisons.pop();
+                answer.map(|same| Some(Object::Bool(same)))
+            }
             // `to_h` without a block answers the hash itself, and `to_hash`
             // always does.
             "to_hash" => Ok(Some(receiver.clone())),
+            // Ruby recomputes every key's place, so a key whose `#hash`
+            // changed since it was stored is found again and two keys that
+            // have become equal collapse into the entry stored first.
+            "rehash" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if self.object_is_frozen(receiver) {
+                    return Err(self.frozen_modification_error(receiver, position));
+                }
+                let by_identity = dict_rc.borrow().contains_key(BY_IDENTITY_KEY);
+                let held: Vec<(Object, Object)> = {
+                    let dict = dict_rc.borrow();
+                    dict.iter()
+                        .filter(|(slot, _)| !is_internal_key(slot))
+                        .map(|(slot, value)| (reconstruct_key(&dict, slot), value.clone()))
+                        .collect()
+                };
+                let carried: Vec<(String, Object)> = {
+                    let dict = dict_rc.borrow();
+                    dict.iter()
+                        .filter(|(slot, _)| is_internal_key(slot) && *slot != KEY_OBJECTS_KEY)
+                        .map(|(slot, value)| (slot.clone(), value.clone()))
+                        .collect()
+                };
+                let mut rebuilt = indexmap::IndexMap::new();
+                for (key, value) in held {
+                    let slot = self.dict_slot_in(&rebuilt, &key, by_identity, position)?;
+                    if !rebuilt.contains_key(&slot) {
+                        remember_key_object(&mut rebuilt, &slot, &key);
+                    }
+                    rebuilt.insert(slot, value);
+                }
+                for (slot, value) in carried {
+                    rebuilt.insert(slot, value);
+                }
+                *dict_rc.borrow_mut() = rebuilt;
+                Ok(Some(receiver.clone()))
+            }
             "store" => {
                 if arguments.len() != 2 {
                     return Err(method_argument_error(
@@ -1088,7 +1183,10 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                self.hash_store(dict_rc, &arguments[0], arguments[1].clone());
+                if self.object_is_frozen(receiver) {
+                    return Err(self.frozen_modification_error(receiver, position));
+                }
+                self.hash_store(dict_rc, &arguments[0], arguments[1].clone(), position)?;
                 self.record_environment_change(dict_rc, &arguments[0], &arguments[1]);
                 Ok(Some(arguments[1].clone()))
             }
@@ -1397,7 +1495,7 @@ impl VirtualMachine {
                 if self.object_is_frozen(receiver) {
                     return Err(self.frozen_modification_error(receiver, position));
                 }
-                self.hash_store(dict_rc, &arguments[0], arguments[1].clone());
+                self.hash_store(dict_rc, &arguments[0], arguments[1].clone(), position)?;
                 self.record_environment_change(dict_rc, &arguments[0], &arguments[1]);
                 Ok(Some(arguments[1].clone()))
             }
@@ -1760,9 +1858,30 @@ impl VirtualMachine {
     }
 }
 
+/// The object a hash keeps for a key it was handed. Ruby stores a String key
+/// as a frozen copy, so a later write through the original text leaves the
+/// hash alone; a key already frozen is kept as it stands.
+pub(crate) fn stored_key_object(key: &Object) -> Object {
+    let Object::String(text) = key else {
+        return key.clone();
+    };
+    if text.is_frozen() {
+        return key.clone();
+    }
+    let copy = Object::string(text.as_str().to_string());
+    if let Object::String(copied) = &copy {
+        copied.freeze();
+    }
+    copy
+}
+
+/// The prefix on every slot name a key's own `#hash` produced, chosen from
+/// the control range so no rendered key can collide with one.
+const HASHED_SLOT_PREFIX: char = '\u{1}';
+
 /// A hash key that is not a primitive is recorded in the sentinel sub-map, so
 /// the original object comes back when the hash is walked.
-fn remember_key_object(
+pub(crate) fn remember_key_object(
     pairs: &mut indexmap::IndexMap<String, Object>,
     rendered: &str,
     key: &Object,
@@ -1779,7 +1898,140 @@ fn remember_key_object(
 }
 
 impl VirtualMachine {
+    /// The slot an object occupies in a hash. A key that carries its own
+    /// `#hash` is placed by that number and then told apart from anything
+    /// sharing it by `#eql?`, which is how Ruby decides whether two keys name
+    /// the same entry. A hash comparing by identity places every key by its
+    /// object id instead, so two equal strings stay two entries.
+    pub(crate) fn dict_slot_in(
+        &mut self,
+        pairs: &indexmap::IndexMap<String, Object>,
+        key: &Object,
+        by_identity: bool,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if by_identity {
+            let id = self.object_identity(key, position)?;
+            return Ok(format!("{HASHED_SLOT_PREFIX}i{id}"));
+        }
+        if !self.key_hashes_for_itself(key) {
+            return Ok(crate::vm::utils::object_to_dict_key(key).unwrap_or_default());
+        }
+        let hashed = match self.send_to_object(key.clone(), "hash", vec![], position)? {
+            Object::Int(number) => number,
+            other => self.object_identity(&other, position)?,
+        };
+        let mut slot = 0usize;
+        loop {
+            let candidate = format!("{HASHED_SLOT_PREFIX}h{hashed}#{slot}");
+            if !pairs.contains_key(&candidate) {
+                return Ok(candidate);
+            }
+            let stored = reconstruct_key(pairs, &candidate);
+            // A key looks itself up without being asked, so a class whose
+            // `#eql?` refuses its own object still finds its entry.
+            if crate::vm::native_methods::object_methods::same_object(&stored, key) {
+                return Ok(candidate);
+            }
+            let same = self
+                .send_to_object(key.clone(), "eql?", vec![stored], position)?
+                .is_truthy();
+            if same {
+                return Ok(candidate);
+            }
+            slot += 1;
+        }
+    }
+
+    /// The slot an object occupies in a live hash, reading the hash's own
+    /// identity setting.
+    pub(crate) fn dict_slot_for(
+        &mut self,
+        dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+        key: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let (pairs, by_identity) = {
+            let dict = dict_rc.borrow();
+            (dict.clone(), dict.contains_key(BY_IDENTITY_KEY))
+        };
+        self.dict_slot_in(&pairs, key, by_identity, position)
+    }
+
+    /// Whether a key answers `#hash` and `#eql?` of its own, which is what
+    /// makes the bucket-and-compare placement the right one for it. Anything
+    /// else is placed by how it renders, which is cheaper and keeps the
+    /// primitives reading back from their slot names.
+    fn key_hashes_for_itself(&mut self, key: &Object) -> bool {
+        if matches!(key, Object::Instance(_)) {
+            return true;
+        }
+        // Ruby places the immediates by value without asking them, so a
+        // `TrueClass#hash` written in the program is never reached.
+        if matches!(
+            key,
+            Object::Bool(_)
+                | Object::Int(_)
+                | Object::BigInt(_)
+                | Object::Float(_)
+                | Object::String(_)
+                | Object::Symbol(_)
+                | Object::Nil
+        ) {
+            return false;
+        }
+        matches!(self.lookup_method(key, "hash"), Some((_, method)) if !method.is_undefined)
+    }
+
+    /// The object id a hash comparing by identity places a key by.
+    fn object_identity(&mut self, key: &Object, position: Position) -> Result<i64, MetorexError> {
+        match self.send_to_object(key.clone(), "object_id", vec![], position)? {
+            Object::Int(number) => Ok(number),
+            _ => Ok(0),
+        }
+    }
+
+    /// Whether two hashes hold the same entries. Each of the receiver's keys
+    /// is looked up in the other hash the way any key is, and the values are
+    /// compared the strict way for `eql?` and the ordinary way for `==`.
+    fn hash_entries_match(
+        &mut self,
+        dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+        other_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+        method_name: &str,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let ours = self.hash_pairs(dict_rc);
+        let theirs = self.hash_pairs(other_rc);
+        if ours.len() != theirs.len() {
+            return Ok(false);
+        }
+        let comparison = if method_name == "eql?" { "eql?" } else { "==" };
+        for (key, value) in ours {
+            let Some(slot) = self.hash_find_key(other_rc, &key, position)? else {
+                return Ok(false);
+            };
+            let Some(held) = other_rc.borrow().get(&slot).cloned() else {
+                return Ok(false);
+            };
+            let same = self
+                .send_to_object(value, comparison, vec![held], position)?
+                .is_truthy();
+            if !same {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     /// The key and value of every entry, with the sentinels left out.
+    pub(crate) fn hash_pairs_for_digest(
+        &self,
+        dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+    ) -> Vec<(Object, Object)> {
+        self.hash_pairs(dict_rc)
+    }
+
     fn hash_pairs(
         &self,
         dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
@@ -1804,19 +2056,36 @@ impl VirtualMachine {
             .collect()
     }
 
-    /// Store one entry, recording the key object when it is not a primitive.
-    fn hash_store(
-        &self,
+    /// Store one entry, recording the key object beside it. A hash that
+    /// already holds a matching key keeps the object it was given the first
+    /// time, which is what `keys` reports afterwards.
+    pub(crate) fn hash_store(
+        &mut self,
         dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
         key: &Object,
         value: Object,
-    ) {
-        let rendered = crate::vm::utils::object_to_dict_key(key).unwrap_or_default();
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let rendered = self.dict_slot_for(dict_rc, key, position)?;
         let mut dict = dict_rc.borrow_mut();
-        if !crate::vm::utils::is_primitive_key(key) {
-            remember_key_object(&mut dict, &rendered, key);
+        let already_held = dict.contains_key(&rendered);
+        if !already_held {
+            // A hash comparing by identity keeps the key it was handed, since
+            // a copy would be a different object and never found again.
+            let stored = if rendered.starts_with("\u{1}i") {
+                key.clone()
+            } else {
+                stored_key_object(key)
+            };
+            if !crate::vm::utils::is_primitive_key(key)
+                || rendered.starts_with(HASHED_SLOT_PREFIX)
+                || matches!(stored, Object::String(_))
+            {
+                remember_key_object(&mut dict, &rendered, &stored);
+            }
         }
         dict.insert(rendered, value);
+        Ok(())
     }
 }
 
@@ -1857,39 +2126,55 @@ impl VirtualMachine {
         wanted: &Object,
         position: Position,
     ) -> Result<Option<String>, MetorexError> {
+        Ok(self.hash_locate_key(dict_rc, wanted, position)?.1)
+    }
+
+    /// The slot a key would take, and the slot it already occupies when the
+    /// hash holds it. Both come back from one walk so a key is asked for its
+    /// `#hash` once per lookup.
+    pub(crate) fn hash_locate_key(
+        &mut self,
+        dict_rc: &Rc<RefCell<indexmap::IndexMap<String, Object>>>,
+        wanted: &Object,
+        position: Position,
+    ) -> Result<(String, Option<String>), MetorexError> {
+        let slot = self.dict_slot_for(dict_rc, wanted, position)?;
+        if dict_rc.borrow().contains_key(&slot) {
+            return Ok((slot.clone(), Some(slot)));
+        }
+        // A hash built outside the program, such as the environment, holds
+        // keys placed by how they render rather than by `#hash`, and the
+        // environment places one by the text it names. Those are found by
+        // walking the keys the hash recorded.
         let rendered = crate::vm::utils::object_to_dict_key(wanted).unwrap_or_default();
         if dict_rc.borrow().contains_key(&rendered) {
-            return Ok(Some(rendered));
+            return Ok((slot, Some(rendered)));
         }
         if crate::vm::utils::is_primitive_key(wanted) {
-            return Ok(None);
+            return Ok((slot, None));
         }
-        let wanted_hash = self.send_to_object(wanted.clone(), "hash", vec![], position)?;
         let stored: Vec<(String, Object)> = {
             let dict = dict_rc.borrow();
             dict.keys()
-                .filter(|key| !is_internal_key(key))
-                .map(|key| (key.clone(), reconstruct_key(&dict, key)))
+                .filter(|slot| !is_internal_key(slot) && !slot.starts_with(HASHED_SLOT_PREFIX))
+                .map(|slot| (slot.clone(), reconstruct_key(&dict, slot)))
                 .collect()
         };
-        for (key, candidate) in stored {
+        for (held, candidate) in stored {
+            if crate::vm::native_methods::object_methods::same_object(&candidate, wanted) {
+                return Ok((slot.clone(), Some(held)));
+            }
             if crate::vm::utils::is_primitive_key(&candidate) {
                 continue;
             }
-            let candidate_hash =
-                self.send_to_object(candidate.clone(), "hash", vec![], position)?;
-            if !candidate_hash.equals(&wanted_hash) {
-                continue;
-            }
-            // The key being looked up is the one asked, which is what Ruby's
-            // hash lookup does.
-            let same =
-                self.send_to_object(wanted.clone(), "eql?", vec![candidate.clone()], position)?;
-            if same.is_truthy() {
-                return Ok(Some(key));
+            let same = self
+                .send_to_object(wanted.clone(), "eql?", vec![candidate], position)?
+                .is_truthy();
+            if same {
+                return Ok((slot.clone(), Some(held)));
             }
         }
-        Ok(None)
+        Ok((slot, None))
     }
 }
 

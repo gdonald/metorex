@@ -319,6 +319,7 @@ impl Parser {
         // Parse function body
         let mut body = Vec::new();
         self.def_body_depth += 1;
+        let enclosing_jump_targets = std::mem::take(&mut self.jump_target_depth);
         let collected = (|| -> Result<(), MetorexError> {
             while !self.check(&[TokenKind::End, TokenKind::Rescue, TokenKind::Ensure])
                 && !self.is_at_end()
@@ -333,6 +334,7 @@ impl Parser {
             Ok(())
         })();
         self.def_body_depth -= 1;
+        self.jump_target_depth = enclosing_jump_targets;
         collected?;
 
         // Check for method-level rescue/ensure (implicit begin)

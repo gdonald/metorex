@@ -460,10 +460,14 @@ impl Parser {
         self.skip_whitespace();
 
         let body_opened_at = self.stream.current_position();
-        let body = self.parse_block_body_with_optional_rescue_ensure(start_pos)?;
+        self.jump_target_depth += 1;
+        let body = self.parse_block_body_with_optional_rescue_ensure(start_pos);
+        self.jump_target_depth -= 1;
+        let body = body?;
         let body_closed_at = self.stream.current_position();
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
-        let parameters = self.with_numbered_parameters(parameters, body_opened_at, body_closed_at);
+        let parameters =
+            self.block_parameters_or_refuse(parameters, body_opened_at, body_closed_at)?;
 
         Ok(Expression::Lambda {
             parameters,
@@ -548,6 +552,38 @@ impl Parser {
     /// The parameters a block declares, or the numbered ones its body names
     /// when it declares none. `{ _1 + _2 }` takes two parameters, spelled
     /// `_1` and `_2`, which is how Ruby reads a block written that way.
+    /// The parameters a block takes, refusing a body that mixes `it` with
+    /// parameters written in pipes or with numbered ones.
+    fn block_parameters_or_refuse(
+        &self,
+        declared: Vec<String>,
+        opened_at: usize,
+        closed_at: usize,
+    ) -> Result<Vec<String>, MetorexError> {
+        let mentions_it = self.mentions_implicit_it(opened_at, closed_at);
+        let position = self.peek().position;
+        // A block that names `it` among its parameters means that name where
+        // it is written, so the body reads it as an ordinary variable.
+        let names_it = declared.iter().any(|held| {
+            held.trim_start_matches(['*', '&']) == "it"
+                || held.trim_start_matches(crate::object::KEYWORD_PARAM_PREFIX) == "it"
+        });
+        if mentions_it && !declared.is_empty() && !names_it {
+            return Err(MetorexError::syntax_error(
+                "'it' is not allowed when an ordinary parameter is defined".to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
+        let settled = self.with_numbered_parameters(declared, opened_at, closed_at);
+        if mentions_it && settled.first().is_some_and(|held| held.starts_with('_')) {
+            return Err(MetorexError::syntax_error(
+                "numbered parameters are not allowed when 'it' is already used".to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
+        Ok(settled)
+    }
+
     fn with_numbered_parameters(
         &self,
         declared: Vec<String>,
@@ -568,7 +604,81 @@ impl Parser {
                 highest = highest.max(place as usize);
             }
         }
-        (1..=highest).map(|place| format!("_{}", place)).collect()
+        if highest > 0 {
+            return (1..=highest).map(|place| format!("_{}", place)).collect();
+        }
+        // A block that names no parameters and mentions a bare `it` takes the
+        // first argument under that name, which is the implicit parameter
+        // Ruby gives it.
+        if self.mentions_implicit_it(opened_at, closed_at) {
+            return vec!["it".to_string()];
+        }
+        Vec::new()
+    }
+
+    /// Whether a block body reads a bare `it` as a value. A name written
+    /// where a call goes, after a dot, or as the target of an assignment is
+    /// not the implicit parameter.
+    fn mentions_implicit_it(&self, opened_at: usize, closed_at: usize) -> bool {
+        let tokens = self.stream.tokens();
+        for (offset, token) in tokens[opened_at..closed_at].iter().enumerate() {
+            let TokenKind::Ident(name) = &token.kind else {
+                continue;
+            };
+            if name != "it" {
+                continue;
+            }
+            let at = opened_at + offset;
+            if at > 0
+                && matches!(
+                    tokens[at - 1].kind,
+                    TokenKind::Dot | TokenKind::SafeDot | TokenKind::Def
+                )
+            {
+                continue;
+            }
+            // `it` stands for the argument only where a value stands. A name
+            // followed by anything that could open an argument list or a
+            // block is the method of that name being called.
+            let reads_as_value = matches!(
+                tokens.get(at + 1).map(|held| &held.kind),
+                None | Some(TokenKind::Newline)
+                    | Some(TokenKind::Semicolon)
+                    | Some(TokenKind::Comment(_))
+                    | Some(TokenKind::RBrace)
+                    | Some(TokenKind::RParen)
+                    | Some(TokenKind::RBracket)
+                    | Some(TokenKind::Comma)
+                    | Some(TokenKind::End)
+                    | Some(TokenKind::Dot)
+                    | Some(TokenKind::SafeDot)
+                    | Some(TokenKind::Plus)
+                    | Some(TokenKind::Minus)
+                    | Some(TokenKind::Star)
+                    | Some(TokenKind::Slash)
+                    | Some(TokenKind::Percent)
+                    | Some(TokenKind::EqualEqual)
+                    | Some(TokenKind::BangEqual)
+                    | Some(TokenKind::Less)
+                    | Some(TokenKind::Greater)
+                    | Some(TokenKind::LessEqual)
+                    | Some(TokenKind::GreaterEqual)
+                    | Some(TokenKind::Spaceship)
+                    | Some(TokenKind::LogicalAnd)
+                    | Some(TokenKind::LogicalOr)
+                    | Some(TokenKind::KeywordAnd)
+                    | Some(TokenKind::KeywordOr)
+                    | Some(TokenKind::Question)
+                    | Some(TokenKind::Then)
+                    | Some(TokenKind::If)
+                    | Some(TokenKind::Unless)
+            );
+            if !reads_as_value {
+                continue;
+            }
+            return true;
+        }
+        false
     }
 
     pub(crate) fn parse_brace_block(&mut self) -> Result<Expression, MetorexError> {
@@ -594,16 +704,23 @@ impl Parser {
         // Parse block body (single expression or statements)
         let body_opened_at = self.stream.current_position();
         let mut body = Vec::new();
-        while !self.check(&[TokenKind::RBrace]) && !self.is_at_end() {
-            // For brace blocks, we typically expect a single expression
-            // but we'll parse statements to be flexible
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
+        self.jump_target_depth += 1;
+        let collected = (|| -> Result<(), MetorexError> {
+            while !self.check(&[TokenKind::RBrace]) && !self.is_at_end() {
+                // For brace blocks, we typically expect a single expression
+                // but we'll parse statements to be flexible
+                body.push(self.parse_statement()?);
+                self.skip_whitespace();
+            }
+            Ok(())
+        })();
+        self.jump_target_depth -= 1;
+        collected?;
         let body_closed_at = self.stream.current_position();
 
         self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
-        let parameters = self.with_numbered_parameters(parameters, body_opened_at, body_closed_at);
+        let parameters =
+            self.block_parameters_or_refuse(parameters, body_opened_at, body_closed_at)?;
 
         Ok(Expression::Lambda {
             parameters,

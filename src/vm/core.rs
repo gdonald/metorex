@@ -46,6 +46,15 @@ pub struct VirtualMachine {
     pub(crate) tracing: bool,
     /// The id the next object to be asked for one takes.
     pub(crate) next_object_id: u64,
+    /// Pairs of hashes a comparison is part-way through, so a hash holding
+    /// itself is answered by the structure around it rather than followed
+    /// forever.
+    pub(crate) hash_comparisons: Vec<(usize, usize)>,
+    /// Collections a hash walk is part-way through, and whether the walk
+    /// reached one of them again. Ruby answers a collection that holds itself
+    /// from its length alone, so the whole walk collapses once that happens.
+    pub(crate) hash_walk: Vec<usize>,
+    pub(crate) hash_walk_looped: bool,
     /// The main script's canonical path paired with the path it was named by,
     /// which is what `__FILE__` reports while it is the file running.
     pub(crate) script_path: Option<(PathBuf, PathBuf)>,
@@ -269,6 +278,9 @@ impl VirtualMachine {
             traced_line: None,
             tracing: false,
             next_object_id: 1,
+            hash_comparisons: Vec::new(),
+            hash_walk: Vec::new(),
+            hash_walk_looped: false,
             script_path: None,
             at_exit_handlers: Vec::new(),
             opened_blocks: std::collections::HashSet::new(),
