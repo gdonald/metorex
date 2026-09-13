@@ -606,3 +606,23 @@ fn test_introspection_script_compiled_parens_execution() {
     let output = run_example("introspection/script_compiled_parens.rb");
     assert_eq!(output, SCRIPT_COMPILED_OUTPUT);
 }
+
+/// The expected output of both `introspection/local_variables_order`
+/// variants.
+const LOCAL_VARIABLES_ORDER_OUTPUT: &str = concat!(
+    "[:third, :first, :second]\n",
+    "[:inner_one, :outer_one, :outer_two]\n",
+    "[:p]\n"
+);
+
+#[test]
+fn test_introspection_local_variables_order_execution() {
+    let output = run_example("introspection/local_variables_order.rb");
+    assert_eq!(output, LOCAL_VARIABLES_ORDER_OUTPUT);
+}
+
+#[test]
+fn test_introspection_local_variables_order_no_parens_execution() {
+    let output = run_example("introspection/local_variables_order_no_parens.rb");
+    assert_eq!(output, LOCAL_VARIABLES_ORDER_OUTPUT);
+}

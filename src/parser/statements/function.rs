@@ -477,6 +477,14 @@ impl Parser {
                     };
                     params.push(Parameter::variadic(name, param_pos));
                 }
+            } else if self.match_token(&[TokenKind::LParen]) {
+                // `def f((a, b))` spreads one array argument across the names
+                // in the group, which the binder undoes by the marker.
+                let names = self.read_parameter_group()?;
+                params.push(Parameter::simple(
+                    format!("{}{}", crate::object::DESTRUCTURED_GROUP_PREFIX, names),
+                    param_pos,
+                ));
             } else {
                 let name = match self.advance().kind {
                     TokenKind::Ident(name) => name,
@@ -590,6 +598,14 @@ impl Parser {
                     };
                     params.push(Parameter::variadic(name, param_pos));
                 }
+            } else if self.match_token(&[TokenKind::LParen]) {
+                // `def f((a, b))` spreads one array argument across the names
+                // in the group, which the binder undoes by the marker.
+                let names = self.read_parameter_group()?;
+                params.push(Parameter::simple(
+                    format!("{}{}", crate::object::DESTRUCTURED_GROUP_PREFIX, names),
+                    param_pos,
+                ));
             } else {
                 let name = match self.advance().kind {
                     TokenKind::Ident(name) => name,

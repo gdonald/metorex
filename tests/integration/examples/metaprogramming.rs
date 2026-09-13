@@ -1103,3 +1103,19 @@ fn test_metaprogramming_instance_exec_singleton_def_parens_execution() {
     let output = run_example("metaprogramming/instance_exec/singleton_def_parens.rb");
     assert_eq!(output, INSTANCE_EXEC_SINGLETON_DEF_OUTPUT);
 }
+
+/// The expected output of both `metaprogramming/alias_over_native` variants,
+/// which differ only in whether the calls are written with parentheses.
+const ALIAS_OVER_NATIVE_OUTPUT: &str = "-1\n\"replaced\"\n-1\n[1, 2, 3]\ntrue\n";
+
+#[test]
+fn test_metaprogramming_alias_over_native_execution() {
+    let output = run_example("metaprogramming/alias_over_native.rb");
+    assert_eq!(output, ALIAS_OVER_NATIVE_OUTPUT);
+}
+
+#[test]
+fn test_metaprogramming_alias_over_native_no_parens_execution() {
+    let output = run_example("metaprogramming/alias_over_native_no_parens.rb");
+    assert_eq!(output, ALIAS_OVER_NATIVE_OUTPUT);
+}

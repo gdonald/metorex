@@ -1830,6 +1830,21 @@ impl VirtualMachine {
                 {
                     return Ok(Some(Object::Method(Rc::new(stub))));
                 }
+                // `Class#new` is answered natively too, and belongs to Class
+                // rather than to Module.
+                if class_rc.name() == "Class" && name_str == "new" {
+                    let mut stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                        "Class".to_string(),
+                    );
+                    stub.variadic_param = Some((0, "args".to_string()));
+                    stub.native_alias = Some(name_str.clone());
+                    stub.original_name = Some(name_str.clone());
+                    stub.owner_class = Some(Rc::clone(class_rc));
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
                 // Kernel methods are implemented natively rather than living
                 // in Object's method table. A body-less stub reaches the same
                 // native implementation when invoked, so `Object` can hand out
@@ -3148,83 +3163,7 @@ impl VirtualMachine {
                         message: msg,
                     });
                 }
-                if !class_rc.alias_method(&new_name, &old_name) {
-                    let mut found = false;
-                    if let Some(Object::Class(object_class)) = self.globals().get("Object")
-                        && let Some(method) = object_class.find_method(&old_name)
-                    {
-                        class_rc.define_method(&new_name, method);
-                        found = true;
-                    }
-                    // Kernel methods live in the native dispatch tables, so
-                    // there is no entry to copy. A stub carrying the name
-                    // keeps the alias present for later removal.
-                    if !found && is_native_kernel_method(&old_name) {
-                        let mut stub = Method::with_owner(
-                            new_name.clone(),
-                            vec!["args".to_string()],
-                            vec![],
-                            "Kernel".to_string(),
-                        );
-                        stub.variadic_param = Some((0, "args".to_string()));
-                        stub.native_alias = Some(old_name.clone());
-                        class_rc.define_method(&new_name, Rc::new(stub));
-                        found = true;
-                    }
-                    // A singleton class aliasing one of the attached object's
-                    // native methods has no entry to copy either, so the stub
-                    // records the name it was cut from and the call reaches
-                    // the native implementation through that.
-                    if !found
-                        && let Some(attached) = class_rc.get_class_var("__attached__")
-                        && self.responds_to(&attached, &old_name)
-                    {
-                        let mut stub = Method::with_owner(
-                            new_name.clone(),
-                            vec!["args".to_string()],
-                            vec![],
-                            class_rc.name().to_string(),
-                        );
-                        stub.variadic_param = Some((0, "args".to_string()));
-                        stub.original_name = Some(old_name.clone());
-                        stub.native_alias = Some(old_name.clone());
-                        class_rc.define_method(&new_name, Rc::new(stub));
-                        found = true;
-                    }
-                    // A builtin class answers many of its methods natively,
-                    // with no entry to copy. A stub carrying the name keeps
-                    // the alias reaching the native one.
-                    if !found
-                        && let Some(probe) = sample_of_class(class_rc.name())
-                        && self.responds_to(&probe, &old_name)
-                    {
-                        let mut stub = Method::with_owner(
-                            new_name.clone(),
-                            vec!["args".to_string()],
-                            vec![],
-                            class_rc.name().to_string(),
-                        );
-                        stub.variadic_param = Some((0, "args".to_string()));
-                        stub.original_name = Some(old_name.clone());
-                        stub.native_alias = Some(old_name.clone());
-                        class_rc.define_method(&new_name, Rc::new(stub));
-                        found = true;
-                    }
-                    if !found {
-                        let msg = format!(
-                            "undefined method '{}' for {} '{}'",
-                            old_name,
-                            class_rc.kind_name().to_lowercase(),
-                            class_rc.name()
-                        );
-                        let exc = Object::exception("NameError", msg.clone());
-                        return Err(MetorexError::UncaughtException {
-                            exception: exc,
-                            location: position_to_location(position),
-                            message: msg,
-                        });
-                    }
-                }
+                self.install_alias(class_rc, &new_name, &old_name, position)?;
                 if matches!(
                     new_name.as_str(),
                     "initialize"
@@ -3293,7 +3232,11 @@ impl VirtualMachine {
                     &Object::Class(Rc::clone(class_rc)),
                     position,
                 )?;
-                class_rc.set_class_var(key, arguments[1].clone());
+                // A write reaches the ancestor furthest up the chain that
+                // already holds the name, which is the one every class below
+                // it reads.
+                crate::vm::core::VirtualMachine::class_var_owner(class_rc, &key)
+                    .set_class_var(key, arguments[1].clone());
                 return Ok(Some(arguments[1].clone()));
             }
             "class_variable_get" => {
@@ -3310,6 +3253,20 @@ impl VirtualMachine {
                     &Object::Class(Rc::clone(class_rc)),
                     position,
                 )?;
+                // A class variable an ancestor defines after a class below
+                // it already had one is ambiguous, so reading it is refused.
+                if let Some(overtaken) = overtaking_ancestor(class_rc, &key) {
+                    let msg = format!(
+                        "class variable @@{} of {} is overtaken by {}",
+                        key,
+                        class_rc.inspect_name(),
+                        overtaken.inspect_name()
+                    );
+                    return Err(MetorexError::runtime_error(
+                        msg,
+                        position_to_location(position),
+                    ));
+                }
                 match class_rc.lookup_class_var(&key) {
                     Some(value) => return Ok(Some(value)),
                     None => {
@@ -4615,4 +4572,114 @@ fn class_named_in_chain(class_rc: &Rc<Class>, wanted: &str) -> bool {
         cursor = held.superclass();
     }
     false
+}
+
+impl VirtualMachine {
+    /// Point `new_name` at whatever `old_name` already names on `class_rc`.
+    /// A method written in Ruby is copied; one answered natively has no entry
+    /// to copy, so a stub records the name to dispatch under instead.
+    pub(crate) fn install_alias(
+        &mut self,
+        class_rc: &Rc<crate::class::Class>,
+        new_name: &str,
+        old_name: &str,
+        position: Position,
+    ) -> Result<(), MetorexError> {
+        let new_name = new_name.to_string();
+        let old_name = old_name.to_string();
+        if !class_rc.alias_method(&new_name, &old_name) {
+            let mut found = false;
+            if let Some(Object::Class(object_class)) = self.globals().get("Object")
+                && let Some(method) = object_class.find_method(&old_name)
+            {
+                class_rc.define_method(&new_name, method);
+                found = true;
+            }
+            // Kernel methods live in the native dispatch tables, so
+            // there is no entry to copy. A stub carrying the name
+            // keeps the alias present for later removal.
+            if !found && is_native_kernel_method(&old_name) {
+                let mut stub = Method::with_owner(
+                    new_name.clone(),
+                    vec!["args".to_string()],
+                    vec![],
+                    "Kernel".to_string(),
+                );
+                stub.variadic_param = Some((0, "args".to_string()));
+                stub.native_alias = Some(old_name.clone());
+                class_rc.define_method(&new_name, Rc::new(stub));
+                found = true;
+            }
+            // A singleton class aliasing one of the attached object's
+            // native methods has no entry to copy either, so the stub
+            // records the name it was cut from and the call reaches
+            // the native implementation through that.
+            if !found
+                && let Some(attached) = class_rc.get_class_var("__attached__")
+                && self.responds_to(&attached, &old_name)
+            {
+                let mut stub = Method::with_owner(
+                    new_name.clone(),
+                    vec!["args".to_string()],
+                    vec![],
+                    class_rc.name().to_string(),
+                );
+                stub.variadic_param = Some((0, "args".to_string()));
+                stub.original_name = Some(old_name.clone());
+                stub.native_alias = Some(old_name.clone());
+                class_rc.define_method(&new_name, Rc::new(stub));
+                found = true;
+            }
+            // A builtin class answers many of its methods natively,
+            // with no entry to copy. A stub carrying the name keeps
+            // the alias reaching the native one.
+            if !found
+                && let Some(probe) = sample_of_class(class_rc.name())
+                && self.responds_to(&probe, &old_name)
+            {
+                let mut stub = Method::with_owner(
+                    new_name.clone(),
+                    vec!["args".to_string()],
+                    vec![],
+                    class_rc.name().to_string(),
+                );
+                stub.variadic_param = Some((0, "args".to_string()));
+                stub.original_name = Some(old_name.clone());
+                stub.native_alias = Some(old_name.clone());
+                class_rc.define_method(&new_name, Rc::new(stub));
+                found = true;
+            }
+            if !found {
+                let msg = format!(
+                    "undefined method '{}' for {} '{}'",
+                    old_name,
+                    class_rc.kind_name().to_lowercase(),
+                    class_rc.name()
+                );
+                let exc = Object::exception("NameError", msg.clone());
+                return Err(MetorexError::UncaughtException {
+                    exception: exc,
+                    location: position_to_location(position),
+                    message: msg,
+                });
+            }
+        }
+
+        Ok(())
+    }
+}
+
+/// The ancestor above `class_rc` that holds `name` when `class_rc` holds it
+/// too. Ruby refuses to read a class variable in that state: which of the two
+/// the name stands for is no longer settled.
+fn overtaking_ancestor(class_rc: &Rc<Class>, name: &str) -> Option<Rc<Class>> {
+    class_rc.get_class_var(name)?;
+    let mut cursor = class_rc.superclass();
+    while let Some(current) = cursor {
+        if current.get_class_var(name).is_some() {
+            return Some(current);
+        }
+        cursor = current.superclass();
+    }
+    None
 }

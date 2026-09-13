@@ -79,7 +79,7 @@ impl VirtualMachine {
         if let Err(MetorexError::UncaughtException { exception, .. }) = &body_result {
             self.set_current_exception(exception.clone());
             for rescue_clause in rescue_clauses {
-                if self.exception_matches(exception, &rescue_clause.exception_types)? {
+                if self.rescue_clause_matches(rescue_clause, exception, rescue_clause.position)? {
                     // A trace sees the clause take the exception.
                     self.fire_event(
                         "rescue",
@@ -89,6 +89,11 @@ impl VirtualMachine {
                     if let Some(var_name) = &rescue_clause.variable_name {
                         self.environment_mut()
                             .define(var_name.clone(), exception.clone());
+                    }
+                    // `rescue E => held.error` stores the exception wherever
+                    // the target names, the way an assignment would.
+                    if let Some(target) = &rescue_clause.variable_target {
+                        self.assign_value(target, exception.clone())?;
                     }
                     final_value = self.execute_statements_for_value(&rescue_clause.body);
                     // An exception raised by the rescue body takes the one

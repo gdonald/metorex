@@ -97,7 +97,27 @@ impl Parser {
                     self.peek_ahead(name_at + 1).kind,
                     TokenKind::Dot | TokenKind::LParen
                 );
-            if call_form {
+            // A superclass that is not written as a name at all, such as
+            // `class Held < ""`, is an expression too. Whether it answers a
+            // class is settled where the definition runs.
+            let named_form = matches!(self.peek_ahead(name_at).kind, TokenKind::Ident(_));
+            // A superclass has to be written where the `<` stands. A line
+            // ending there, or a definition opening on the next one, names
+            // nothing for the class to inherit from.
+            let names_nothing = matches!(
+                self.peek().kind,
+                TokenKind::Newline
+                    | TokenKind::Semicolon
+                    | TokenKind::EOF
+                    | TokenKind::Def
+                    | TokenKind::Class
+                    | TokenKind::Module
+                    | TokenKind::End
+            );
+            if names_nothing {
+                return Err(self.error_at_current("Expected superclass name"));
+            }
+            if call_form || !named_form {
                 superclass_expression = Some(Box::new(self.parse_expression()?));
                 None
             } else {
@@ -134,15 +154,10 @@ impl Parser {
         let was_in_class = self.in_class_body;
         self.in_class_body = true;
 
-        let mut body = Vec::new();
-        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-            self.skip_whitespace();
-            if self.check(&[TokenKind::End]) {
-                break;
-            }
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
+        // A class body takes `rescue` and `ensure` clauses of its own, the
+        // way a method body does.
+        self.skip_whitespace();
+        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position)?;
 
         // Restore the previous state
         self.in_class_body = was_in_class;
@@ -187,15 +202,10 @@ impl Parser {
         };
         self.skip_whitespace();
 
-        let mut body = Vec::new();
-        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-            self.skip_whitespace();
-            if self.check(&[TokenKind::End]) {
-                break;
-            }
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
+        // A class body takes `rescue` and `ensure` clauses of its own, the
+        // way a method body does.
+        self.skip_whitespace();
+        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position)?;
         self.expect(TokenKind::End, "Expected 'end' after 'class << ...' body")?;
 
         // With an assignment the value is what gets a singleton class, and
@@ -277,15 +287,10 @@ impl Parser {
         let was_in_class = self.in_class_body;
         self.in_class_body = true;
 
-        let mut body = Vec::new();
-        while !self.check(&[TokenKind::End]) && !self.is_at_end() {
-            self.skip_whitespace();
-            if self.check(&[TokenKind::End]) {
-                break;
-            }
-            body.push(self.parse_statement()?);
-            self.skip_whitespace();
-        }
+        // A class body takes `rescue` and `ensure` clauses of its own, the
+        // way a method body does.
+        self.skip_whitespace();
+        let body = self.parse_block_body_with_optional_rescue_ensure(self.peek().position)?;
 
         self.in_class_body = was_in_class;
         self.expect(TokenKind::End, "Expected 'end' after module body")?;

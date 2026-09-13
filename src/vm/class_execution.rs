@@ -37,10 +37,11 @@ impl VirtualMachine {
         let parent_scope = if let Some(expr) = namespace_expr {
             match self.evaluate_expression(expr)? {
                 Object::Class(c) | Object::Module(c) => Some(c),
-                _ => {
-                    return Err(MetorexError::runtime_error(
-                        "left of `::` in class definition is not a class/module",
-                        position_to_location(position),
+                held => {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!("{} is not a class/module", held.type_name()),
+                        position,
                     ));
                 }
             }
@@ -95,10 +96,11 @@ impl VirtualMachine {
             };
             match resolved {
                 Some(Object::Class(class)) => Some(class),
-                Some(_) => {
-                    return Err(MetorexError::runtime_error(
-                        format!("Superclass '{}' must be a class", super_name),
-                        position_to_location(position),
+                Some(held) => {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!("superclass must be a Class ({} given)", held.type_name()),
+                        position,
                     ));
                 }
                 None => {
@@ -211,6 +213,7 @@ impl VirtualMachine {
         self.environment_mut()
             .define("self".to_string(), Object::Class(Rc::clone(&class)));
         self.def_scope_stack.push(Rc::clone(&class));
+        self.class_var_cref_stack.push(Some(Rc::clone(&class)));
         // Record the class definition's source location for
         // `Module#const_source_location`. Done here (alongside the
         // eager bind) so the location is available even mid-load.
@@ -265,12 +268,15 @@ impl VirtualMachine {
         self.fire_event("end", position, Vec::new())?;
         self.environment_mut().pop_scope();
         self.def_scope_stack.pop();
+        self.class_var_cref_stack.pop();
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
         } else {
             self.environment_mut().undefine("self");
         }
-        body_result?;
+        // A class definition answers what its body answered, which is what
+        // `eval("class C; :v; end")` hands back.
+        let body_value = body_result?;
 
         let class_obj = Object::Class(Rc::clone(&class));
         if let Some(parent) = parent_scope {
@@ -288,7 +294,7 @@ impl VirtualMachine {
             self.trigger_inherited_hook(&sc, Rc::clone(&class), position)?;
         }
 
-        Ok(ControlFlow::Next)
+        Ok(ControlFlow::Value(body_value))
     }
 
     /// Invoke `superclass.inherited(child)` if the hook is defined. Walks the
@@ -431,6 +437,7 @@ impl VirtualMachine {
             self.environment_mut().define(pname, self_obj);
         }
         self.def_scope_stack.push(Rc::clone(class));
+        self.class_var_cref_stack.push(Some(Rc::clone(class)));
         // A class/module body is not a method context, so `using` is permitted
         // even when this block runs deep inside method calls (e.g. mspec's
         // runner invoking `Class.new do using ...; end`). The refinements it
@@ -442,6 +449,7 @@ impl VirtualMachine {
         self.pop_refinement_scope();
         self.user_def_nesting = saved_nesting;
         self.def_scope_stack.pop();
+        self.class_var_cref_stack.pop();
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
         } else {
@@ -483,11 +491,13 @@ impl VirtualMachine {
                 .define(param.as_str().to_string(), value);
         }
         self.def_scope_stack.push(Rc::clone(class));
+        self.class_var_cref_stack.push(Some(Rc::clone(class)));
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
         let result = self.apply_class_body(class, &block.body, position);
         self.user_def_nesting = saved_nesting;
         self.def_scope_stack.pop();
+        self.class_var_cref_stack.pop();
         if let Some(prev) = prev_self {
             self.environment_mut().define("self".to_string(), prev);
         } else {
@@ -625,6 +635,7 @@ impl VirtualMachine {
             }
         }
         self.def_scope_stack.push(Rc::clone(class_rc));
+        self.class_var_cref_stack.push(Some(Rc::clone(class_rc)));
         let prev_file = self.current_file.clone();
         self.current_file = Some(std::path::PathBuf::from(&filename));
         let prev_source_file = self.current_source_file.replace(filename.clone());
@@ -635,6 +646,7 @@ impl VirtualMachine {
         self.current_file = prev_file;
         self.current_source_file = prev_source_file;
         self.def_scope_stack.pop();
+        self.class_var_cref_stack.pop();
         for _ in 0..enclosing_pushed {
             self.def_scope_stack.pop();
         }
@@ -730,6 +742,26 @@ impl VirtualMachine {
         let body_result = self.apply_class_body_statements(class, body, position);
         self.call_stack_pop();
         body_result
+    }
+
+    /// Run a `class`, `module`, or `class << x` body. Such a body is a scope
+    /// of its own: a local of the method or block holding it is not in scope
+    /// inside, so a bare name there reads as a method the way Ruby reads it.
+    /// A `class_eval` block is not one of these and keeps its own scope.
+    pub(crate) fn apply_written_class_body(
+        &mut self,
+        class: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let held_self = self.environment().get("self");
+        self.environment_mut().push_isolated_scope();
+        if let Some(receiver) = held_self {
+            self.environment_mut().define("self".to_string(), receiver);
+        }
+        let answered = self.apply_class_body(class, body, position);
+        self.environment_mut().pop_scope();
+        answered
     }
 
     pub(crate) fn apply_class_body_statements(
@@ -1148,7 +1180,7 @@ impl VirtualMachine {
                     old_name,
                     position: alias_pos,
                 } => {
-                    class.alias_method(new_name, old_name);
+                    self.install_alias(class, new_name, old_name, *alias_pos)?;
                     let hook = Self::method_added_hook_for(class);
                     self.invoke_class_hook(class, hook, new_name, *alias_pos)?;
                 }
@@ -1637,6 +1669,7 @@ impl VirtualMachine {
         self.environment_mut()
             .define("self".to_string(), Object::Module(Rc::clone(&module)));
         self.def_scope_stack.push(Rc::clone(&module));
+        self.class_var_cref_stack.push(Some(Rc::clone(&module)));
 
         // Eagerly publish the (possibly freshly-created) module to its
         // parent / globals BEFORE running the body. Without this, code
@@ -1699,6 +1732,7 @@ impl VirtualMachine {
 
         self.environment_mut().pop_scope();
         self.def_scope_stack.pop();
+        self.class_var_cref_stack.pop();
 
         // Restore previous self
         if let Some(prev) = prev_self {
@@ -1706,7 +1740,9 @@ impl VirtualMachine {
         } else {
             self.environment_mut().undefine("self");
         }
-        body_result?;
+        // A module definition answers what its body answered, which is what
+        // `eval("module M; :v; end")` hands back.
+        let body_value = body_result?;
 
         let module_obj = if existing_as_class {
             Object::Class(module)
@@ -1723,7 +1759,7 @@ impl VirtualMachine {
             self.globals_mut().set(name.to_string(), module_obj);
         }
 
-        Ok(ControlFlow::Next)
+        Ok(ControlFlow::Value(body_value))
     }
 
     /// Execute a `module` keyword body's statements against `module`. Split
@@ -1733,7 +1769,7 @@ impl VirtualMachine {
         &mut self,
         module: &Rc<Class>,
         body: &[Statement],
-    ) -> Result<(), MetorexError> {
+    ) -> Result<Object, MetorexError> {
         // A class variable written in this body belongs to this module, not
         // to whatever block the body happens to be running inside.
         let held_home = std::mem::take(&mut self.class_var_home);
@@ -1746,8 +1782,9 @@ impl VirtualMachine {
         &mut self,
         module: &Rc<Class>,
         body: &[Statement],
-    ) -> Result<(), MetorexError> {
+    ) -> Result<Object, MetorexError> {
         module.set_current_visibility("public");
+        let mut last_value = Object::Nil;
         for statement in body {
             // Bare `private` / `public` / `protected` toggle the default
             // visibility for the method definitions that follow, the same way
@@ -2007,16 +2044,20 @@ impl VirtualMachine {
                     old_name,
                     position: alias_pos,
                 } => {
-                    module.alias_method(new_name, old_name);
+                    self.install_alias(module, new_name, old_name, *alias_pos)?;
                     self.invoke_class_hook(module, "method_added", new_name, *alias_pos)?;
                 }
                 // Other statements in module body
                 _ => {
-                    self.execute_statement(statement)?;
+                    if let ControlFlow::Value(value) | ControlFlow::Return { value, .. } =
+                        self.execute_statement(statement)?
+                    {
+                        last_value = value;
+                    }
                 }
             }
         }
-        Ok(())
+        Ok(last_value)
     }
 
     /// Whether an unqualified constant may fall through to the top level.
@@ -2613,7 +2654,7 @@ impl VirtualMachine {
             return Ok(ControlFlow::Next);
         }
         if let Some(enclosing) = self.def_scope_stack.last().cloned() {
-            enclosing.alias_method(new_name, old_name);
+            self.install_alias(&enclosing, new_name, old_name, position)?;
             self.invoke_class_hook(&enclosing, "method_added", new_name, position)?;
             return Ok(ControlFlow::Next);
         }

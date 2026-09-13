@@ -568,7 +568,7 @@ pub fn init_integer_methods(integer_class: &Class) {
     // The arithmetic operators answer natively. A stub carrying the name
     // keeps `respond_to?` and `alias_method` honest about them, and a call
     // through one reaches the native implementation.
-    for name in ["+", "-", "*", "/", "%", "**"] {
+    for name in ["+", "-", "*", "/", "%", "**", "<=>"] {
         let mut stub = Method::new(name.to_string(), vec!["other".to_string()], vec![]);
         stub.native_alias = Some(name.to_string());
         integer_class.define_method(name, Rc::new(stub));

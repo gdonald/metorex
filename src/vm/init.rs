@@ -245,6 +245,16 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     // Class and Module — used by `Class.new { ... }` and `Module.new { ... }`.
     let module_class = Rc::new(Class::new("Module", Some(Rc::clone(&object))));
     globals.set("Module", Object::Class(Rc::clone(&module_class)));
+    // `include` and `prepend` answer natively, with no entry on Module to
+    // find. A stub keeps them ahead of a method of the same name that a
+    // program mixed into Object, which is where Ruby's own lookup stops.
+    for name in ["include", "prepend"] {
+        let mut stub =
+            crate::object::Method::new(name.to_string(), vec!["args".to_string()], vec![]);
+        stub.variadic_param = Some((0, "args".to_string()));
+        stub.native_alias = Some(name.to_string());
+        module_class.define_method(name, Rc::new(stub));
+    }
     let class_class = Rc::new(Class::new("Class", Some(Rc::clone(&module_class))));
     // Class#initialize is private (Ruby semantics); the method itself is
     // implemented natively in call_class_methods, so the name only needs to

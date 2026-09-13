@@ -1734,41 +1734,27 @@ impl VirtualMachine {
                     ));
                 }
                 // A base of its own reads the digits of that base, so
-                // `"ff".to_i(16)` is 255.
+                // `"ff".to_i(16)` is 255. Zero means "read the prefix".
                 let base = match arguments.first() {
-                    None => 10u32,
-                    Some(Object::Int(held)) if (2..=36).contains(held) => *held as u32,
-                    Some(Object::Int(held)) => {
-                        return Err(crate::vm::errors::simple_exception(
-                            "ArgumentError",
-                            &format!("invalid radix {}", held),
-                            position,
-                        ));
-                    }
+                    None => 10i64,
+                    Some(Object::Int(held)) => *held,
                     Some(other) => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Integer",
-                            other,
-                            position,
-                        ));
+                        let coerced = self.coerce_integer_argument(other, position)?;
+                        coerced.try_into().unwrap_or(i64::MAX)
                     }
                 };
-                let held_trimmed = string_value.to_text();
-                let trimmed = held_trimmed.as_str().trim();
-                let digits: String = trimmed
-                    .chars()
-                    .take_while(|held| held.is_digit(base) || *held == '-' || *held == '+')
-                    .collect();
-                // Digits that do not fit a machine word still name a number,
-                // so the wider type carries them rather than answering zero.
-                match i64::from_str_radix(&digits, base) {
-                    Ok(held) => Ok(Some(Object::Int(held))),
-                    Err(_) => match num_bigint::BigInt::parse_bytes(digits.as_bytes(), base) {
-                        Some(held) => Ok(Some(Object::integer(held))),
-                        None => Ok(Some(Object::Int(0))),
-                    },
+                if base != 0 && !(2..=36).contains(&base) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("invalid radix {base}"),
+                        position,
+                    ));
                 }
+                let held = string_value.to_text();
+                Ok(Some(Object::integer(leading_integer(
+                    held.as_str(),
+                    base as u32,
+                ))))
             }
             // `to_c` reads the leading complex value and answers (0+0i)
             // when the string does not start with one.
@@ -2926,4 +2912,71 @@ fn utf16_unit_count(bytes: &[u8], big_endian: bool) -> i64 {
         counted += 1;
     }
     counted
+}
+
+/// The number a string starts with, the way `String#to_i` reads one: leading
+/// whitespace, one sign, a radix prefix that agrees with the base, then
+/// digits with lone underscores between them. Reading stops at the first
+/// character the base does not name, and a string that starts with none is
+/// zero.
+pub(crate) fn leading_integer(text: &str, base: u32) -> num_bigint::BigInt {
+    let mut rest = text.trim_start_matches(|c: char| c.is_whitespace());
+    let mut negative = false;
+    if let Some(stripped) = rest.strip_prefix('+') {
+        rest = stripped;
+    } else if let Some(stripped) = rest.strip_prefix('-') {
+        negative = true;
+        rest = stripped;
+    }
+
+    let lowered = rest.to_ascii_lowercase();
+    let prefix_radix = if lowered.starts_with("0x") {
+        Some(16)
+    } else if lowered.starts_with("0b") {
+        Some(2)
+    } else if lowered.starts_with("0o") {
+        Some(8)
+    } else if lowered.starts_with("0d") {
+        Some(10)
+    } else {
+        None
+    };
+
+    let mut radix = base;
+    match prefix_radix {
+        Some(prefix) if base == 0 || base == prefix => {
+            radix = prefix;
+            rest = &rest[2..];
+        }
+        // Only a base left to the string reads a bare leading zero as octal.
+        _ if base == 0 && rest.len() > 1 && rest.starts_with('0') => {
+            radix = 8;
+            rest = &rest[1..];
+        }
+        _ => {}
+    }
+    if radix == 0 {
+        radix = 10;
+    }
+
+    let mut digits = String::with_capacity(rest.len());
+    let mut previous_underscore = false;
+    for character in rest.chars() {
+        if character == '_' {
+            // A pair of them ends the number, and so does one before any
+            // digit at all.
+            if digits.is_empty() || previous_underscore {
+                break;
+            }
+            previous_underscore = true;
+            continue;
+        }
+        if character.to_digit(radix).is_none() {
+            break;
+        }
+        digits.push(character);
+        previous_underscore = false;
+    }
+    let magnitude = num_bigint::BigInt::parse_bytes(digits.as_bytes(), radix).unwrap_or_default();
+    if negative { -magnitude } else { magnitude }
 }

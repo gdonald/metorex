@@ -64,29 +64,45 @@ impl VirtualMachine {
         }
     }
 
+    /// The class or module a class variable belongs to where the walk
+    /// stands: the one the running method was written in, then the one an
+    /// `instance_exec` block was written in, then the body being run. A
+    /// class variable names what this one and its ancestors hold, whatever
+    /// the receiver is.
+    pub(crate) fn class_variable_home(&self) -> Option<std::rc::Rc<crate::class::Class>> {
+        let cref = match self.class_var_cref_stack.last() {
+            // A body being run names its own home, and a block written where
+            // no class stood names none.
+            Some(held) => held.as_ref()?,
+            None => self
+                .def_scope_stack
+                .last()
+                .or_else(|| self.class_var_home.last())?,
+        };
+        // A singleton class holds no class variables of its own: one written
+        // there belongs to the class it stands for.
+        if cref.get_class_var("__singleton__").is_some()
+            && let Some(Object::Class(attached) | Object::Module(attached)) =
+                cref.get_class_var("__attached__")
+        {
+            return Some(attached);
+        }
+        Some(std::rc::Rc::clone(cref))
+    }
+
     /// Evaluate a class variable read (`@@name`).
     pub(super) fn eval_class_var_read(
         &self,
         name: &str,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        match self.environment().get("self") {
-            Some(Object::Instance(instance_rc)) => {
-                let class = std::rc::Rc::clone(&instance_rc.borrow().class);
-                Self::inherited_class_var(&class, name)
-                    .ok_or_else(|| uninitialized_class_var_error(name, &class, position))
-            }
-            Some(Object::Class(class)) => Self::inherited_class_var(&class, name)
-                .ok_or_else(|| uninitialized_class_var_error(name, &class, position)),
-            Some(_) => Err(MetorexError::runtime_error(
-                format!("Cannot read class variable @@{} in this context", name),
-                position_to_location(position),
-            )),
+        match self.class_variable_home() {
+            Some(home) => Self::inherited_class_var(&home, name)
+                .ok_or_else(|| uninitialized_class_var_error(name, &home, position)),
+            // With no class or module open, there is nothing for the variable
+            // to belong to, which Ruby refuses outright.
             None => Err(MetorexError::runtime_error(
-                format!(
-                    "Class variable @@{} can only be used within a class or method",
-                    name
-                ),
+                "class variable access from toplevel".to_string(),
                 position_to_location(position),
             )),
         }
@@ -94,15 +110,46 @@ impl VirtualMachine {
 
     /// A class variable as seen from `class`, which Ruby looks for up the
     /// superclass chain rather than on the one class alone.
-    fn inherited_class_var(class: &std::rc::Rc<crate::class::Class>, name: &str) -> Option<Object> {
+    pub(crate) fn inherited_class_var(
+        class: &std::rc::Rc<crate::class::Class>,
+        name: &str,
+    ) -> Option<Object> {
         let mut cursor = Some(std::rc::Rc::clone(class));
         while let Some(current) = cursor {
             if let Some(value) = current.get_class_var(name) {
                 return Some(value);
             }
+            // A module the class mixes in shares its class variables with it.
+            for mixin in current.transitive_mixins() {
+                if let Some(value) = mixin.get_class_var(name) {
+                    return Some(value);
+                }
+            }
             cursor = current.superclass();
         }
         None
+    }
+
+    /// The class or module a write to `name` belongs to: the one furthest up
+    /// the chain that already holds it, or `class` when none does.
+    pub(crate) fn class_var_owner(
+        class: &std::rc::Rc<crate::class::Class>,
+        name: &str,
+    ) -> std::rc::Rc<crate::class::Class> {
+        let mut owner = None;
+        let mut cursor = Some(std::rc::Rc::clone(class));
+        while let Some(current) = cursor {
+            if current.get_class_var(name).is_some() {
+                owner = Some(std::rc::Rc::clone(&current));
+            }
+            for mixin in current.transitive_mixins() {
+                if mixin.get_class_var(name).is_some() {
+                    owner = Some(mixin);
+                }
+            }
+            cursor = current.superclass();
+        }
+        owner.unwrap_or_else(|| std::rc::Rc::clone(class))
     }
 }
 

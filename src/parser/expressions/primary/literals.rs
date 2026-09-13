@@ -13,7 +13,7 @@ impl Parser {
         filled: bool,
         position: Position,
     ) -> Expression {
-        let elements: Vec<Expression> = split_percent_words(&value)
+        let elements: Vec<Expression> = split_percent_words(&value, filled)
             .into_iter()
             .map(|word| percent_word(&word, filled, position))
             .collect();
@@ -27,7 +27,7 @@ impl Parser {
         filled: bool,
         position: Position,
     ) -> Expression {
-        let elements: Vec<Expression> = split_percent_words(&value)
+        let elements: Vec<Expression> = split_percent_words(&value, filled)
             .into_iter()
             .map(|word| match percent_word(&word, filled, position) {
                 Expression::StringLiteral { value, position } => {
@@ -209,13 +209,22 @@ fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
         value: word.to_string(),
         position,
     };
-    if !filled || !word.contains("#{") {
+    // `%W` fills in `#{}` and reads escape sequences, which a double-quoted
+    // string already does, so the word is read back as one.
+    if !filled || !(word.contains("#{") || word.contains('\\')) {
         return plain;
     }
-    let source = format!("\"{}\"", word);
+    let source = format!("\"{}\"", word.replace('"', "\\\""));
     let tokens = crate::lexer::Lexer::new(&source).tokenize();
-    let Some(TokenKind::InterpolatedString(parts)) = tokens.first().map(|token| token.kind.clone())
-    else {
+    let read = tokens.first().map(|token| token.kind.clone());
+    // A word with escapes but no interpolation reads back as a plain string.
+    if let Some(TokenKind::String(text)) = read {
+        return Expression::StringLiteral {
+            value: text,
+            position,
+        };
+    }
+    let Some(TokenKind::InterpolatedString(parts)) = read else {
         return plain;
     };
     let mut built = Vec::new();
@@ -248,12 +257,17 @@ fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
 /// The words a percent list holds. Whitespace separates them unless a
 /// backslash escapes it, and the backslash before any character is dropped
 /// once the word it belongs to is settled.
-fn split_percent_words(value: &str) -> Vec<String> {
+fn split_percent_words(value: &str, filled: bool) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     let mut current = String::new();
     let mut escaped = false;
     for character in value.chars() {
         if escaped {
+            // `%W` reads `\t` as a tab, so the escape travels with the word.
+            // An escaped space is the word's own space either way.
+            if filled && !character.is_whitespace() {
+                current.push('\\');
+            }
             current.push(character);
             escaped = false;
             continue;

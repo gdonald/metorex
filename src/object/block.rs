@@ -31,6 +31,12 @@ pub const BLOCK_LOCAL_PREFIX: &str = ";";
 /// keyword arguments rather than by position.
 pub const KEYWORD_PARAM_PREFIX: &str = ":";
 
+/// The parameter a block takes because its body reads a bare `it`. It is
+/// spelled apart from an ordinary `it` so the block can tell the implicit
+/// parameter from a name of its own: the implicit one is not a local the
+/// block declared, and it gives way to an `it` already in scope.
+pub const IMPLICIT_IT_PARAM: &str = "~it";
+
 /// Block/lambda/closure with captured variables
 #[derive(Debug, Clone)]
 pub struct BlockStatement {

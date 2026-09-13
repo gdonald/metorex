@@ -83,9 +83,50 @@ impl Parser {
         {
             return Ok(expr);
         }
+        // A `rescue` modifier written straight into an argument list is
+        // ambiguous, so Ruby asks for parentheses around it.
+        if self.call_argument_depth > 0 {
+            return Err(MetorexError::syntax_error(
+                "a rescue modifier in an argument list needs parentheses of its own",
+                crate::error::SourceLocation::new(
+                    self.peek().position.line,
+                    self.peek().position.column,
+                    self.peek().position.offset,
+                ),
+            ));
+        }
         let position = self.advance().position;
         self.skip_whitespace();
-        let fallback = self.parse_assignment()?;
+        // The fallback is one expression, so a name followed by an argument
+        // written without parentheses is not one Ruby reads here.
+        self.refuse_paren_less_args += 1;
+        let fallback = self.parse_assignment();
+        self.refuse_paren_less_args -= 1;
+        let fallback = fallback?;
+        if !self.check(&[
+            TokenKind::Newline,
+            TokenKind::Semicolon,
+            TokenKind::EOF,
+            TokenKind::RParen,
+            TokenKind::RBrace,
+            TokenKind::RBracket,
+            TokenKind::Comma,
+            TokenKind::End,
+            TokenKind::Dot,
+            TokenKind::Then,
+            TokenKind::Rescue,
+            TokenKind::Ensure,
+            TokenKind::Else,
+        ]) {
+            return Err(MetorexError::syntax_error(
+                "unexpected argument after a rescue modifier",
+                crate::error::SourceLocation::new(
+                    self.peek().position.line,
+                    self.peek().position.column,
+                    self.peek().position.offset,
+                ),
+            ));
+        }
         Ok(Expression::BeginRescue {
             body: vec![Statement::Expression {
                 expression: expr,
@@ -94,6 +135,8 @@ impl Parser {
             rescue_clauses: vec![crate::ast::RescueClause {
                 exception_types: vec!["StandardError".to_string()],
                 variable_name: None,
+                variable_target: None,
+                splatted_types: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: fallback,
                     position,
@@ -190,8 +233,18 @@ impl Parser {
         // Try to parse as regular expression first
         let expr = self.parse_assignment()?;
 
+        // `x -> expr` names `x` as the lambda's parameter, but only where the
+        // two are written as one expression. A `;` or a newline between them
+        // ends the statement, so what follows is a lambda of its own.
+        let at = self.stream.current_position();
+        let after_a_terminator = at > 0
+            && matches!(
+                self.stream.tokens()[at - 1].kind,
+                TokenKind::Semicolon | TokenKind::Newline | TokenKind::Comment(_)
+            );
+
         // Check if there's an arrow after the expression
-        if self.check(&[TokenKind::Arrow]) {
+        if !after_a_terminator && self.check(&[TokenKind::Arrow]) {
             let arrow_pos = self.advance().position;
             self.skip_whitespace();
 
@@ -313,13 +366,16 @@ impl Parser {
     pub(crate) fn parse_block_pipe_params(&mut self) -> Result<BlockParams, MetorexError> {
         let mut params = Vec::new();
         let mut defaults = Vec::new();
+        self.wrote_block_parameter_list = false;
         if self.match_token(&[TokenKind::LogicalOr]) {
             // Empty parameter list: ||
+            self.wrote_block_parameter_list = true;
             return Ok((params, defaults));
         }
         if !self.match_token(&[TokenKind::Pipe]) {
             return Ok((params, defaults));
         }
+        self.wrote_block_parameter_list = true;
         self.skip_whitespace();
         if !self.check(&[TokenKind::Pipe]) {
             loop {
@@ -456,18 +512,25 @@ impl Parser {
         self.skip_whitespace();
 
         let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
+        let wrote_parameter_list = self.wrote_block_parameter_list;
 
         self.skip_whitespace();
 
         let body_opened_at = self.stream.current_position();
         self.jump_target_depth += 1;
+        self.enter_block_parameters(&parameters);
         let body = self.parse_block_body_with_optional_rescue_ensure(start_pos);
+        self.leave_block_parameters();
         self.jump_target_depth -= 1;
         let body = body?;
         let body_closed_at = self.stream.current_position();
         self.expect(TokenKind::End, "Expected 'end' to close block")?;
-        let parameters =
-            self.block_parameters_or_refuse(parameters, body_opened_at, body_closed_at)?;
+        let parameters = self.block_parameters_or_refuse(
+            parameters,
+            wrote_parameter_list,
+            body_opened_at,
+            body_closed_at,
+        )?;
 
         Ok(Expression::Lambda {
             parameters,
@@ -555,22 +618,55 @@ impl Parser {
     /// The parameters a block takes, refusing a body that mixes `it` with
     /// parameters written in pipes or with numbered ones.
     fn block_parameters_or_refuse(
-        &self,
+        &mut self,
         declared: Vec<String>,
+        wrote_parameter_list: bool,
         opened_at: usize,
         closed_at: usize,
     ) -> Result<Vec<String>, MetorexError> {
         let mentions_it = self.mentions_implicit_it(opened_at, closed_at);
         let position = self.peek().position;
+        // The body has been read, so a bare `it` inside a block written
+        // within it belongs to that block rather than to this one.
+        self.block_body_ranges.push((opened_at, closed_at));
         // A block that names `it` among its parameters means that name where
         // it is written, so the body reads it as an ordinary variable.
         let names_it = declared.iter().any(|held| {
             held.trim_start_matches(['*', '&']) == "it"
                 || held.trim_start_matches(crate::object::KEYWORD_PARAM_PREFIX) == "it"
         });
-        if mentions_it && !declared.is_empty() && !names_it {
+        if mentions_it && wrote_parameter_list && !names_it {
             return Err(MetorexError::syntax_error(
                 "'it' is not allowed when an ordinary parameter is defined".to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
+        let numbered_at = self.mentions_a_numbered_parameter(opened_at, closed_at);
+        if numbered_at.is_some() && wrote_parameter_list {
+            return Err(MetorexError::syntax_error(
+                "a numbered parameter is not allowed when an ordinary parameter is defined"
+                    .to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
+        // A block whose body reads a numbered parameter cannot hold another
+        // that reads one: which block the name belongs to is ambiguous.
+        if numbered_at.is_some()
+            && self.numbered_parameter_ranges.iter().any(|(from, to)| {
+                (*from, *to) != (opened_at, closed_at) && *from >= opened_at && *to <= closed_at
+            })
+        {
+            return Err(MetorexError::syntax_error(
+                "numbered parameter is already used in an outer block".to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
+        if numbered_at.is_some() {
+            self.numbered_parameter_ranges.push((opened_at, closed_at));
+        }
+        if mentions_it && self.numbered_parameter_comes_first(opened_at, closed_at) {
+            return Err(MetorexError::syntax_error(
+                "'it' is not allowed when a numbered parameter is already used".to_string(),
                 crate::error::SourceLocation::new(position.line, position.column, position.offset),
             ));
         }
@@ -582,6 +678,79 @@ impl Parser {
             ));
         }
         Ok(settled)
+    }
+
+    /// Where this block's body reads a numbered parameter, ignoring the
+    /// blocks written inside it, which take numbered parameters of their own.
+    fn mentions_a_numbered_parameter(&self, opened_at: usize, closed_at: usize) -> Option<usize> {
+        let tokens = self.stream.tokens();
+        for (offset, token) in tokens[opened_at..closed_at].iter().enumerate() {
+            let at = opened_at + offset;
+            let TokenKind::Ident(name) = &token.kind else {
+                continue;
+            };
+            if !crate::parser::names_a_numbered_parameter(name) {
+                continue;
+            }
+            // `:_1` names a symbol and `held._1` a method, neither of which
+            // is the numbered parameter.
+            if at > 0
+                && matches!(
+                    tokens[at - 1].kind,
+                    TokenKind::Colon | TokenKind::Dot | TokenKind::SafeDot | TokenKind::Def
+                )
+            {
+                continue;
+            }
+            if self.inside_a_nested_block(at, opened_at, closed_at) {
+                continue;
+            }
+            return Some(at);
+        }
+        None
+    }
+
+    /// Whether a numbered parameter is written before the first bare `it` in
+    /// this block's body. Ruby names whichever came first in the refusal.
+    fn numbered_parameter_comes_first(&self, opened_at: usize, closed_at: usize) -> bool {
+        let tokens = self.stream.tokens();
+        for (offset, token) in tokens[opened_at..closed_at].iter().enumerate() {
+            let at = opened_at + offset;
+            if self.inside_a_nested_block(at, opened_at, closed_at) {
+                continue;
+            }
+            let TokenKind::Ident(name) = &token.kind else {
+                continue;
+            };
+            if name == "it" {
+                return false;
+            }
+            if let Some(digit) = name.strip_prefix('_')
+                && digit.len() == 1
+                && digit
+                    .chars()
+                    .next()
+                    .is_some_and(|held| held.is_ascii_digit())
+            {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Whether the token at `at` sits inside a block written within the
+    /// body running from `opened_at` to `closed_at`.
+    fn inside_a_nested_block(&self, at: usize, opened_at: usize, closed_at: usize) -> bool {
+        self.block_body_ranges.iter().any(|(from, to)| {
+            // A body read twice, as the walk does when it backtracks over a
+            // lambda's parameters, records the same range again. That is
+            // this body, not a block written inside it.
+            (*from, *to) != (opened_at, closed_at)
+                && *from >= opened_at
+                && *to <= closed_at
+                && at >= *from
+                && at < *to
+        })
     }
 
     fn with_numbered_parameters(
@@ -611,7 +780,7 @@ impl Parser {
         // first argument under that name, which is the implicit parameter
         // Ruby gives it.
         if self.mentions_implicit_it(opened_at, closed_at) {
-            return vec!["it".to_string()];
+            return vec![crate::object::IMPLICIT_IT_PARAM.to_string()];
         }
         Vec::new()
     }
@@ -629,6 +798,11 @@ impl Parser {
                 continue;
             }
             let at = opened_at + offset;
+            // A bare `it` inside a block written in this body is that
+            // block's implicit parameter, not this one's.
+            if self.inside_a_nested_block(at, opened_at, closed_at) {
+                continue;
+            }
             if at > 0
                 && matches!(
                     tokens[at - 1].kind,
@@ -698,6 +872,7 @@ impl Parser {
         self.skip_whitespace();
 
         let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
+        let wrote_parameter_list = self.wrote_block_parameter_list;
 
         self.skip_whitespace();
 
@@ -705,6 +880,7 @@ impl Parser {
         let body_opened_at = self.stream.current_position();
         let mut body = Vec::new();
         self.jump_target_depth += 1;
+        self.enter_block_parameters(&parameters);
         let collected = (|| -> Result<(), MetorexError> {
             while !self.check(&[TokenKind::RBrace]) && !self.is_at_end() {
                 // For brace blocks, we typically expect a single expression
@@ -714,13 +890,18 @@ impl Parser {
             }
             Ok(())
         })();
+        self.leave_block_parameters();
         self.jump_target_depth -= 1;
         collected?;
         let body_closed_at = self.stream.current_position();
 
         self.expect(TokenKind::RBrace, "Expected '}' to close block")?;
-        let parameters =
-            self.block_parameters_or_refuse(parameters, body_opened_at, body_closed_at)?;
+        let parameters = self.block_parameters_or_refuse(
+            parameters,
+            wrote_parameter_list,
+            body_opened_at,
+            body_closed_at,
+        )?;
 
         Ok(Expression::Lambda {
             parameters,

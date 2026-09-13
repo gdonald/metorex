@@ -45,11 +45,20 @@ impl Parser {
                     let position = expr.position();
                     self.advance();
                     let arguments = self.parse_arguments()?;
+                    // `held.(args) { }` hands the block to `call` the way any
+                    // other method call written out would.
+                    let trailing_block = if self.starts_do_block() {
+                        Some(Box::new(self.parse_block()?))
+                    } else if self.starts_brace_block() {
+                        Some(Box::new(self.parse_brace_block()?))
+                    } else {
+                        None
+                    };
                     expr = Expression::MethodCall {
                         receiver: Box::new(expr),
                         method: "call".to_string(),
                         arguments,
-                        trailing_block: None,
+                        trailing_block,
                         position,
                     };
                     continue;
@@ -160,7 +169,7 @@ impl Parser {
                 // Check for trailing block (both do...end and {...} syntax)
                 let trailing_block = if self.starts_do_block() {
                     Some(Box::new(self.parse_block()?))
-                } else if self.check(&[TokenKind::LBrace]) {
+                } else if self.starts_brace_block() {
                     Some(Box::new(self.parse_brace_block()?))
                 } else {
                     None
@@ -228,12 +237,16 @@ impl Parser {
                     let first_arg = if opens_hash {
                         None
                     } else {
-                        Some(self.parse_expression_with_assignment()?)
+                        Some(self.parse_bracket_argument()?)
                     };
                     if first_arg.is_some() {
                         self.skip_whitespace();
                     }
+                    // `held[&block]` hands `[]` a block, which makes the
+                    // subscript a call rather than a plain index.
+                    let carries_a_block = matches!(first_arg, Some(Expression::BlockArg { .. }));
                     if opens_hash
+                        || carries_a_block
                         || self.check(&[TokenKind::FatArrow])
                         || self.check(&[TokenKind::Comma])
                     {
@@ -259,7 +272,7 @@ impl Parser {
                                 pairs.push(pair);
                                 continue;
                             }
-                            let argument = self.parse_expression()?;
+                            let argument = self.parse_bracket_argument()?;
                             self.skip_whitespace();
                             if self.match_token(&[TokenKind::FatArrow]) {
                                 self.skip_whitespace();
@@ -323,7 +336,7 @@ impl Parser {
                     };
                     let trailing_block = if self.starts_do_block() {
                         Some(Box::new(self.parse_block()?))
-                    } else if self.check(&[TokenKind::LBrace]) {
+                    } else if self.starts_brace_block() {
                         Some(Box::new(self.parse_brace_block()?))
                     } else {
                         None
@@ -404,6 +417,29 @@ impl Parser {
     /// like `-> { ... }.should raise_error(NameError)`.
     /// Whether a `do` here opens a block. Inside a loop's condition it closes
     /// the condition instead, which is what `while x do y end` reads it as.
+    /// One argument inside a subscript. A `&` hands `[]` a block, the way it
+    /// does in any other argument list.
+    fn parse_bracket_argument(&mut self) -> Result<Expression, MetorexError> {
+        if !self.check(&[TokenKind::Ampersand]) {
+            return self.parse_expression_with_assignment();
+        }
+        let position = self.peek().position;
+        self.advance();
+        self.skip_whitespace();
+        let expression = if self.check(&[TokenKind::Comma, TokenKind::RBracket]) {
+            Expression::Identifier {
+                name: crate::parser::ANONYMOUS_BLOCK.to_string(),
+                position,
+            }
+        } else {
+            self.parse_expression()?
+        };
+        Ok(Expression::BlockArg {
+            expression: Box::new(expression),
+            position,
+        })
+    }
+
     pub(crate) fn starts_do_block(&self) -> bool {
         self.check(&[TokenKind::Do]) && self.condition_depth == 0
     }
@@ -438,7 +474,7 @@ impl Parser {
                 };
                 let trailing_block = if self.starts_do_block() {
                     Some(Box::new(self.parse_block()?))
-                } else if self.check(&[TokenKind::LBrace]) {
+                } else if self.starts_brace_block() {
                     Some(Box::new(self.parse_brace_block()?))
                 } else {
                     None
@@ -478,7 +514,7 @@ impl Parser {
         // Check for trailing block (both do...end and {...} syntax)
         let trailing_block = if self.starts_do_block() {
             Some(Box::new(self.parse_block()?))
-        } else if self.check(&[TokenKind::LBrace]) {
+        } else if self.starts_brace_block() {
             Some(Box::new(self.parse_brace_block()?))
         } else {
             None
@@ -496,6 +532,21 @@ impl Parser {
 
     /// Parse function/method arguments (with parentheses)
     pub(crate) fn parse_arguments(&mut self) -> Result<Vec<Expression>, MetorexError> {
+        // `held.name (value rescue other)` writes the parentheses apart from
+        // the name, which makes them a group around one argument rather than
+        // the argument list itself.
+        let written_apart = self.previous().had_leading_space;
+        if !written_apart {
+            self.call_argument_depth += 1;
+        }
+        let read = self.parse_arguments_inside_parens();
+        if !written_apart {
+            self.call_argument_depth -= 1;
+        }
+        read
+    }
+
+    fn parse_arguments_inside_parens(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut arguments = Vec::new();
         self.skip_whitespace();
 
@@ -581,6 +632,11 @@ impl Parser {
                 // A bare `*` forwards the anonymous splat `def foo(*)` bound.
                 let position = self.previous().position;
                 let expr = if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    if self.block_declares_anonymous(|declared| declared.rest) {
+                        return Err(self.error_at_previous(
+                            "anonymous rest parameter is also used within block",
+                        ));
+                    }
                     Expression::Identifier {
                         name: crate::parser::ANONYMOUS_SPLAT.to_string(),
                         position,
@@ -597,6 +653,11 @@ impl Parser {
                 // A bare `**` forwards what `def foo(**)` bound.
                 let position = self.previous().position;
                 let expr = if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    if self.block_declares_anonymous(|declared| declared.keyword_rest) {
+                        return Err(self.error_at_previous(
+                            "anonymous keyword rest parameter is also used within block",
+                        ));
+                    }
                     Expression::Identifier {
                         name: crate::parser::ANONYMOUS_KWREST.to_string(),
                         position,
@@ -615,6 +676,11 @@ impl Parser {
                 // block parameter the enclosing `def foo(&)` bound.
                 let position = self.previous().position;
                 let expr = if self.check(&[TokenKind::Comma, TokenKind::RParen]) {
+                    if self.block_declares_anonymous(|declared| declared.block) {
+                        return Err(self.error_at_previous(
+                            "anonymous block parameter is also used within block",
+                        ));
+                    }
                     Expression::Identifier {
                         name: crate::parser::ANONYMOUS_BLOCK.to_string(),
                         position,
@@ -794,6 +860,11 @@ impl Parser {
     }
 
     fn can_start_argument_for_call(&mut self, _callee: &Expression) -> bool {
+        // Where arguments written without parentheses are not read at all,
+        // as in the value of a `rescue` modifier, a name stands alone.
+        if self.refuse_paren_less_args > 0 {
+            return false;
+        }
         // Don't skip whitespace yet - we need to check if there's a statement
         // terminator first. Newlines, comments, and semicolons all end a
         // paren-less call and must NOT be eaten by skip_whitespace below.
@@ -875,6 +946,7 @@ impl Parser {
                 | TokenKind::Include
                 | TokenKind::Extend
                 | TokenKind::Defined
+                | TokenKind::Def
         ) || (self.peek().kind == TokenKind::Arrow
             && self.arrow_starts_lambda_argument());
 
@@ -1015,6 +1087,7 @@ impl Parser {
                     | TokenKind::Include
                     | TokenKind::Extend
                     | TokenKind::Defined
+                    | TokenKind::Def
                     | TokenKind::Arrow
             );
 
@@ -1285,7 +1358,7 @@ impl Parser {
         // Check for trailing block (both do...end and {...} syntax)
         let trailing_block = if self.starts_do_block() {
             Some(Box::new(self.parse_block()?))
-        } else if self.check(&[TokenKind::LBrace]) {
+        } else if self.starts_brace_block() {
             Some(Box::new(self.parse_brace_block()?))
         } else {
             None

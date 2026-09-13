@@ -177,6 +177,8 @@ fn resolver_begin_with_rescue_else_ensure() {
     let rescue = RescueClause {
         exception_types: vec![],
         variable_name: Some("ex".to_string()),
+        variable_target: None,
+        splatted_types: Vec::new(),
         body: vec![assign("err", ident("ex"))],
         position: pos(),
     };

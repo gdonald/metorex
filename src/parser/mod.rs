@@ -8,6 +8,7 @@ mod statements;
 pub(crate) use statements::function::{
     ANONYMOUS_BLOCK, ANONYMOUS_KWREST, ANONYMOUS_SPLAT, SOLE_INSTANCE_RECEIVER,
 };
+pub(crate) use statements::names_a_numbered_parameter;
 mod token_stream;
 
 use crate::ast::Statement;
@@ -67,6 +68,50 @@ pub struct Parser {
     /// and block parameters. `foo [1]` indexes a name in this set and passes
     /// an array to a name that is not, which is the rule Ruby applies.
     pub(crate) bound_names: std::collections::HashSet<String>,
+
+    /// For each block the walk is inside, which anonymous parameters that
+    /// block declared: `|*|`, `|**|`, `|&|`. Forwarding one of those on from
+    /// inside the block is ambiguous, so Ruby refuses it.
+    pub(crate) block_anonymous_params: Vec<AnonymousBlockParams>,
+
+    /// The token range of every block body read so far. A bare `it` inside
+    /// one of these belongs to that block, not to the block enclosing it.
+    pub(crate) block_body_ranges: Vec<(usize, usize)>,
+
+    /// How deep the walk is somewhere a name may not take arguments written
+    /// without parentheses, such as the value of a `rescue` modifier.
+    pub(crate) refuse_paren_less_args: usize,
+
+    /// How deep the walk is inside the parentheses of a call's arguments,
+    /// where a `rescue` modifier needs parentheses of its own.
+    pub(crate) call_argument_depth: usize,
+
+    /// An expression already read that the next primary stands for. Used to
+    /// carry a definition read as a statement into the expression parser, so
+    /// `class Held; end.name` chains onto what the body answered.
+    pub(crate) seeded_primary: Option<crate::ast::Expression>,
+
+    /// How deep the walk is inside the default value of a lambda parameter,
+    /// where the `{` that follows opens the lambda's body rather than a
+    /// block for the call the default is made of.
+    pub(crate) lambda_default_depth: usize,
+
+    /// The token range of every block body that took numbered parameters.
+    /// A block holding one of these cannot take numbered parameters itself.
+    pub(crate) numbered_parameter_ranges: Vec<(usize, usize)>,
+
+    /// Whether the block last read wrote a parameter list at all. `{ || it }`
+    /// declares no parameters but did write the list, which is enough to
+    /// rule out the implicit `it`.
+    pub(crate) wrote_block_parameter_list: bool,
+}
+
+/// The anonymous parameters one block declared.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct AnonymousBlockParams {
+    pub(crate) rest: bool,
+    pub(crate) keyword_rest: bool,
+    pub(crate) block: bool,
 }
 
 /// Every name the token stream binds. Over-approximate on purpose: a name
@@ -175,7 +220,45 @@ impl Parser {
             def_body_depth: 0,
             jump_target_depth: 0,
             bound_names: collect_bound_names(&tokens_for_names),
+            block_anonymous_params: Vec::new(),
+            block_body_ranges: Vec::new(),
+            lambda_default_depth: 0,
+            seeded_primary: None,
+            refuse_paren_less_args: 0,
+            call_argument_depth: 0,
+            numbered_parameter_ranges: Vec::new(),
+            wrote_block_parameter_list: false,
         }
+    }
+
+    /// Whether a `{` here opens a block for the call just read. Inside a
+    /// lambda parameter's default it opens the lambda's body instead.
+    pub(crate) fn starts_brace_block(&self) -> bool {
+        self.check(&[TokenKind::LBrace]) && self.lambda_default_depth == 0
+    }
+
+    /// Record what anonymous parameters the block now being read declared,
+    /// so an attempt to forward one on from inside it can be refused.
+    pub(crate) fn enter_block_parameters(&mut self, parameters: &[String]) {
+        self.block_anonymous_params.push(AnonymousBlockParams {
+            rest: parameters.iter().any(|name| name == "*"),
+            keyword_rest: parameters.iter().any(|name| name == "**"),
+            block: parameters.iter().any(|name| name == "&"),
+        });
+    }
+
+    /// Leave the block whose parameters `enter_block_parameters` recorded.
+    pub(crate) fn leave_block_parameters(&mut self) {
+        self.block_anonymous_params.pop();
+    }
+
+    /// Whether an enclosing block declared the anonymous parameter a bare
+    /// `*`, `**`, or `&` in an argument list would forward on.
+    pub(crate) fn block_declares_anonymous(
+        &self,
+        which: fn(&AnonymousBlockParams) -> bool,
+    ) -> bool {
+        self.block_anonymous_params.iter().any(which)
     }
 
     /// Get the current token without consuming it

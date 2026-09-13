@@ -288,3 +288,50 @@ fn test_functions_chained_defaults_parens_execution() {
     let output = run_example("functions/chained_defaults_parens.rb");
     assert_eq!(output, CHAINED_DEFAULTS_OUTPUT);
 }
+
+/// The expected output of both `functions/destructured_params` variants.
+const DESTRUCTURED_PARAMS_OUTPUT: &str = concat!(
+    "7\n",
+    "[1, 2, [3, 4], 5]\n",
+    "[1, 2, 3]\n",
+    "[0, 1, 2, 3]\n",
+    "[9, nil]\n",
+    "1\n",
+    "[[:req]]\n"
+);
+
+#[test]
+fn test_functions_destructured_params_execution() {
+    let output = run_example("functions/destructured_params.rb");
+    assert_eq!(output, DESTRUCTURED_PARAMS_OUTPUT);
+}
+
+#[test]
+fn test_functions_destructured_params_no_parens_execution() {
+    let output = run_example("functions/destructured_params_no_parens.rb");
+    assert_eq!(output, DESTRUCTURED_PARAMS_OUTPUT);
+}
+
+/// The expected output of both `functions/anonymous_parameter_forwarding`
+/// variants.
+const ANONYMOUS_PARAMETER_FORWARDING_OUTPUT: &str = concat!(
+    "[[1, 2], {}, true]\n",
+    "[[], {a: 1}, true]\n",
+    "[[], {}, false]\n",
+    "[[1], {a: 2}, true]\n",
+    "true\n",
+    "true\n",
+    "true\n"
+);
+
+#[test]
+fn test_functions_anonymous_parameter_forwarding_execution() {
+    let output = run_example("functions/anonymous_parameter_forwarding.rb");
+    assert_eq!(output, ANONYMOUS_PARAMETER_FORWARDING_OUTPUT);
+}
+
+#[test]
+fn test_functions_anonymous_parameter_forwarding_no_parens_execution() {
+    let output = run_example("functions/anonymous_parameter_forwarding_no_parens.rb");
+    assert_eq!(output, ANONYMOUS_PARAMETER_FORWARDING_OUTPUT);
+}

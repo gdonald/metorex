@@ -370,6 +370,15 @@ impl VirtualMachine {
                 .map(|result| result.unwrap_or(Object::Nil));
         }
 
+        // A fiber body runs with a scope of its own, which does not reach
+        // the one the interpreter's own functions were registered in. The
+        // bare name still names one of them.
+        if let Some(Object::NativeFunction(fn_name)) = self.globals().get(name)
+            && runs_when_named_bare(&fn_name)
+        {
+            return self.call_native_function(&fn_name, vec![], position);
+        }
+
         Err(undefined_variable_error(
             name,
             self.name_error_receiver(name),
@@ -408,7 +417,6 @@ pub(crate) fn runs_when_named_bare(name: &str) -> bool {
             | "pp"
             | "proc"
             | "print"
-            | "putc"
             | "puts"
             | "rand"
             | "sleep"

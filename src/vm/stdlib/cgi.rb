@@ -22,16 +22,57 @@ module CGI
   # `escapeURIComponent` writes a piece of a URL, where a space is written in
   # hex like anything else and the tilde stands for itself.
   def self.escapeURIComponent(text)
-    CGI.coerced(text).each_char.map { |held| CGI.escaped_for_uri(held) }.join
+    held = CGI.coerced(text)
+    written = held.each_byte.map { |byte| CGI.escaped_for_uri(byte) }.join
+    written.force_encoding(held.encoding)
   end
 
-  def self.escaped_for_uri(held)
-    return held if held =~ /\A[a-zA-Z0-9_\-.~]\z/
-    CGI.hex_bytes held
+  # One byte as it stands where the URI syntax leaves it alone, and in hex
+  # otherwise. Reading a byte at a time is what carries a run that spells no
+  # character through unchanged.
+  def self.escaped_for_uri(byte)
+    spelling = byte.chr
+    return spelling if spelling =~ /\A[a-zA-Z0-9_\-.~]\z/
+    "%%%02X" % byte
   end
 
-  def self.unescapeURIComponent(text, _encoding = nil)
-    CGI.read_percent CGI.coerced(text)
+  # The encoding a decoded string is tagged with when the call names none.
+  @@accept_charset = "UTF-8"
+
+  def self.unescapeURIComponent(text, encoding = nil)
+    held = CGI.coerced(text)
+    wanted = encoding.nil? ? CGI.class_variable_get(:@@accept_charset) : encoding
+    target = wanted.is_a?(Encoding) ? wanted : Encoding.find(wanted.to_s)
+    written = CGI.read_percent_bytes(held)
+    tagged = written.dup.force_encoding(target)
+    return tagged if tagged.valid_encoding?
+    # Bytes that spell nothing in the encoding asked for keep the encoding
+    # the text they came from was tagged with.
+    written.dup.force_encoding(held.encoding)
+  end
+
+  # Read every `%NN` back into the byte it names, a byte at a time, so a run
+  # that spells no character is carried through as it stands.
+  def self.read_percent_bytes(held)
+    source = held.bytes
+    written = []
+    at = 0
+    while at < source.length
+      if source[at] == 37 && at + 2 < source.length &&
+         CGI.hex_digit?(source[at + 1]) && CGI.hex_digit?(source[at + 2])
+        written.push((source[at + 1].chr + source[at + 2].chr).to_i(16))
+        at = at + 3
+      else
+        written.push source[at]
+        at = at + 1
+      end
+    end
+    return "".dup.force_encoding(Encoding::BINARY) if written.empty?
+    written.map { |byte| byte.chr }.join
+  end
+
+  def self.hex_digit?(byte)
+    (48..57).include?(byte) || (65..70).include?(byte) || (97..102).include?(byte)
   end
 
   # The five characters a page reads as markup.
@@ -213,7 +254,13 @@ module CGI
   def self.coerced(text)
     return text if text.is_a? ::String
     unless text.respond_to? :to_str
-      raise TypeError, "no implicit conversion of #{text.class} into String"
+      named = case text
+      when nil then "nil"
+      when true then "true"
+      when false then "false"
+      else text.class.to_s
+      end
+      raise TypeError, "no implicit conversion of #{named} into String"
     end
     text.to_str
   end

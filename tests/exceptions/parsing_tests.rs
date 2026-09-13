@@ -75,6 +75,8 @@ fn test_begin_with_single_rescue() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["IOError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Error reading file".to_string(),
@@ -112,6 +114,8 @@ fn test_begin_with_multiple_rescue_clauses() {
             RescueClause {
                 exception_types: vec!["NetworkError".to_string()],
                 variable_name: Some("e".to_string()),
+                variable_target: None,
+                splatted_types: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::StringLiteral {
                         value: "Network error".to_string(),
@@ -124,6 +128,8 @@ fn test_begin_with_multiple_rescue_clauses() {
             RescueClause {
                 exception_types: vec!["TimeoutError".to_string()],
                 variable_name: Some("e".to_string()),
+                variable_target: None,
+                splatted_types: Vec::new(),
                 body: vec![Statement::Expression {
                     expression: Expression::StringLiteral {
                         value: "Timeout".to_string(),
@@ -155,6 +161,8 @@ fn test_begin_with_catch_all_rescue() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec![], // Empty means catch all
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Caught something".to_string(),
@@ -184,6 +192,8 @@ fn test_begin_with_else_clause() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["StandardError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Error".to_string(),
@@ -219,6 +229,8 @@ fn test_begin_with_ensure_block() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["StandardError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Error".to_string(),
@@ -266,6 +278,8 @@ fn test_begin_with_all_clauses() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["IOError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Error".to_string(),
@@ -317,6 +331,8 @@ fn test_begin_with_multiple_exception_types() {
                 "ConnectionError".to_string(),
             ],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Network problem".to_string(),
@@ -346,6 +362,8 @@ fn test_rescue_without_variable_binding() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["StandardError".to_string()],
             variable_name: None, // No variable binding
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Error occurred".to_string(),
@@ -377,6 +395,8 @@ fn test_nested_begin_blocks() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["InnerError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Inner error".to_string(),
@@ -396,6 +416,8 @@ fn test_nested_begin_blocks() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["OuterError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Expression {
                 expression: Expression::StringLiteral {
                     value: "Outer error".to_string(),
@@ -426,6 +448,8 @@ fn test_raise_in_rescue_clause() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["StandardError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![
                 Statement::Expression {
                     expression: Expression::MethodCall {
@@ -471,6 +495,8 @@ fn test_begin_in_method() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["StandardError".to_string()],
             variable_name: Some("e".to_string()),
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![Statement::Return {
                 value: Some(Expression::NilLiteral {
                     position: pos(4, 12),
@@ -508,6 +534,8 @@ fn test_empty_rescue_body() {
         rescue_clauses: vec![RescueClause {
             exception_types: vec!["StandardError".to_string()],
             variable_name: None,
+            variable_target: None,
+            splatted_types: Vec::new(),
             body: vec![], // Empty rescue - just swallow the exception
             position: pos(3, 1),
         }],

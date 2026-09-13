@@ -138,8 +138,8 @@ module M
   end
 end
 "#);
-    // Module definition returns nil
-    assert!(result.is_none() || result == Some(Object::Nil));
+    // A module definition answers what its body answered.
+    assert_eq!(result, Some(Object::Int(42)));
 }
 
 // ── define_method with captured vars closure (line 299) ──────────────────────

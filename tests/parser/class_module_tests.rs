@@ -36,9 +36,14 @@ fn extend_with_non_ident_name_error() {
 }
 
 #[test]
-fn class_with_non_ident_parent_error() {
-    let err = parse_err("class Foo < 42\nend");
-    assert!(err.contains("class") || err.contains("Expected") || err.contains("Unexpected"));
+fn class_with_non_ident_parent_runtime_error() {
+    // A superclass is an expression, so whether it names a class is settled
+    // where the definition runs rather than where it is read.
+    let tokens = Lexer::new("class Foo < 42\nend").tokenize();
+    let stmts = Parser::new(tokens).parse().expect("parse failed");
+    let mut vm = VirtualMachine::new();
+    let err = vm.execute_program(&stmts).unwrap_err().to_string();
+    assert!(err.contains("superclass must be a Class"));
 }
 
 #[test]

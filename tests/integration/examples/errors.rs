@@ -1083,3 +1083,28 @@ fn test_errors_backtrace_frame_labels_no_parens_execution() {
     let output = run_example("errors/backtrace/frame_labels_no_parens.rb");
     assert_eq!(output, BACKTRACE_FRAME_LABELS_OUTPUT);
 }
+
+/// The expected output of both `errors/rescue_handler_shapes` variants.
+const RESCUE_HANDLER_SHAPES_OUTPUT: &str = concat!(
+    "caught\n",
+    "by_case_equality\n",
+    "class or module required for rescue clause\n",
+    "held\n",
+    "global\n",
+    "[1, 2]\n",
+    "SyntaxError\n",
+    "SyntaxError\n",
+    "SyntaxError\n"
+);
+
+#[test]
+fn test_errors_rescue_handler_shapes_execution() {
+    let output = run_example("errors/rescue_handler_shapes.rb");
+    assert_eq!(output, RESCUE_HANDLER_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_errors_rescue_handler_shapes_no_parens_execution() {
+    let output = run_example("errors/rescue_handler_shapes_no_parens.rb");
+    assert_eq!(output, RESCUE_HANDLER_SHAPES_OUTPUT);
+}

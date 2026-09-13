@@ -83,6 +83,12 @@ pub struct VirtualMachine {
     /// `instance_eval` belongs: the class or module the block was written in,
     /// rather than the object it runs against.
     pub(crate) class_var_home: Vec<Rc<crate::class::Class>>,
+
+    /// The class or module a class variable belongs to, one entry per method
+    /// body or block body being run. A block written where no class or
+    /// module is open records None, which is what makes `@@x` there a read
+    /// from the top level.
+    pub(crate) class_var_cref_stack: Vec<Option<Rc<crate::class::Class>>>,
     /// The frozen strings `dedup` and `-@` share, keyed by the text and the
     /// encoding it is written in. Two equal strings deduplicate to one object.
     pub(crate) deduped_strings: HashMap<(String, String), Rc<crate::object::StringValue>>,
@@ -301,6 +307,7 @@ impl VirtualMachine {
             opened_blocks: std::collections::HashSet::new(),
             backtrace_limit: -1,
             class_var_home: Vec::new(),
+            class_var_cref_stack: Vec::new(),
             deduped_strings: HashMap::new(),
             popen_children: HashMap::new(),
             open_sockets: Default::default(),

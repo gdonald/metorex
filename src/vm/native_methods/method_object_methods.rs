@@ -403,6 +403,10 @@ fn declared_parameter_name(name: &str) -> Option<Object> {
     if name == ANONYMOUS_SPLAT || name == ANONYMOUS_KWREST || name == ANONYMOUS_BLOCK {
         return None;
     }
+    // A `def f((a, b))` group is one parameter under no name of its own.
+    if name.starts_with(crate::object::DESTRUCTURED_GROUP_PREFIX) {
+        return None;
+    }
     Some(Object::symbol(name.to_string()))
 }
 
@@ -560,7 +564,9 @@ pub(crate) fn block_parameter_list(block_obj: &crate::object::BlockStatement) ->
     }
     // The parameter a block takes because its body mentions `it` has no name
     // of its own, which is what Ruby reports for it.
-    if block_obj.parameters.len() == 1 && block_obj.parameters[0] == "it" {
+    if block_obj.parameters.len() == 1
+        && block_obj.parameters[0] == crate::object::IMPLICIT_IT_PARAM
+    {
         let kind = if block_obj.is_lambda { "req" } else { "opt" };
         return Object::array(vec![Object::array(vec![Object::symbol(kind.to_string())])]);
     }

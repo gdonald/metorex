@@ -189,6 +189,15 @@ impl Parser {
         &mut self,
         position: Position,
     ) -> Result<Expression, MetorexError> {
+        // A yield hands values to the block the enclosing method was called
+        // with, so there has to be an enclosing method. Written anywhere
+        // else there is no block for it to reach.
+        if self.def_body_depth == 0 {
+            return Err(MetorexError::syntax_error(
+                "Invalid yield".to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
         let arguments = if self.check(&[TokenKind::LParen]) {
             self.advance(); // consume (
             // A yield takes what a call takes: splats, keywords, and a block

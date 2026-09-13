@@ -59,7 +59,10 @@ module SecureRandom
   def self.random_number(limit = nil)
     return DRAW.call(nil) if limit.nil?
     return DRAW.call(limit) if limit.is_a?(Range)
-    return DRAW.call(nil) if limit.is_a?(Numeric) && limit <= 0
+    unless limit.is_a?(Numeric)
+      raise ArgumentError, "invalid argument - #{limit}"
+    end
+    return DRAW.call(nil) if limit <= 0
     DRAW.call(limit)
   end
 

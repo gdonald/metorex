@@ -50,6 +50,9 @@ impl VirtualMachine {
                     Object::Array(elements) => {
                         evaluated_args.extend(elements.borrow().iter().cloned());
                     }
+                    // Splatting nil names nothing at all, so `yield(*nil)`
+                    // hands the block no values.
+                    Object::Nil => {}
                     other => evaluated_args.push(other),
                 }
                 continue;

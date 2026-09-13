@@ -129,7 +129,6 @@ impl VirtualMachine {
                     | "pp"
                     | "proc"
                     | "print"
-                    | "putc"
                     | "puts"
                     | "rand"
                     | "readline"

@@ -337,7 +337,7 @@ impl VirtualMachine {
 
             // Try each rescue clause in order
             for rescue_clause in rescue_clauses {
-                if self.exception_matches(exception, &rescue_clause.exception_types)? {
+                if self.rescue_clause_matches(rescue_clause, exception, rescue_clause.position)? {
                     // A trace sees the clause take the exception.
                     self.fire_event(
                         "rescue",
@@ -355,6 +355,12 @@ impl VirtualMachine {
                                     .define(var_name.clone(), exception.clone());
                             }
                         }
+                    }
+                    // `rescue E => held.error` stores the exception wherever
+                    // the target names, the way an assignment would.
+                    if let Some(target) = &rescue_clause.variable_target {
+                        let target = target.clone();
+                        self.assign_value(&target, exception.clone())?;
                     }
 
                     // Execute the rescue block
@@ -444,6 +450,105 @@ impl VirtualMachine {
             Some(v) => Ok(ControlFlow::Value(v)),
             None => Ok(ControlFlow::Next),
         }
+    }
+
+    /// Whether a rescue clause handles this exception. The classes it names
+    /// are read where the clause is reached, which is what lets a local hold
+    /// one and a splat name several.
+    pub(crate) fn rescue_clause_matches(
+        &mut self,
+        rescue_clause: &crate::ast::RescueClause,
+        exception: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        for expression in rescue_clause.splatted_types.clone() {
+            let spread = self.evaluate_expression(&expression)?;
+            // Ruby asks a splatted value for its Array form, which is what
+            // lets anything answering `to_a` name the classes.
+            let listed = match self.splat_through_to_a(spread, position)? {
+                Ok(items) => items,
+                Err(held) => vec![held],
+            };
+            for held in listed {
+                if self.rescue_handler_matches(&held, exception, position)? {
+                    return Ok(true);
+                }
+            }
+        }
+        for name in &rescue_clause.exception_types {
+            // A name the program bound reaches whatever it holds, which may
+            // be a class of its own with a `===` written for it.
+            let held = self
+                .environment()
+                .get(name)
+                .or_else(|| self.resolve_qualified_constant(name));
+            if let Some(held) = &held {
+                if !matches!(held, Object::Class(_) | Object::Module(_)) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "class or module required for rescue clause",
+                        position,
+                    ));
+                }
+                if self.rescue_handler_has_own_case_equality(held) {
+                    let held = held.clone();
+                    if self.rescue_handler_matches(&held, exception, position)? {
+                        return Ok(true);
+                    }
+                    continue;
+                }
+            }
+            if self.exception_matches(exception, std::slice::from_ref(name))? {
+                return Ok(true);
+            }
+        }
+        if rescue_clause.exception_types.is_empty() && rescue_clause.splatted_types.is_empty() {
+            return self.exception_matches(exception, &[]);
+        }
+        Ok(false)
+    }
+
+    /// Whether one rescue handler takes this exception. Only a class or a
+    /// module may stand there, and one carrying a `===` of its own decides
+    /// for itself.
+    fn rescue_handler_matches(
+        &mut self,
+        handler: &Object,
+        exception: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let named = match handler {
+            Object::Class(class) | Object::Module(class) => class.name().to_string(),
+            _ => {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "class or module required for rescue clause",
+                    position,
+                ));
+            }
+        };
+        if self.rescue_handler_has_own_case_equality(handler) {
+            let answered =
+                self.send_to_object(handler.clone(), "===", vec![exception.clone()], position)?;
+            return Ok(answered.is_truthy());
+        }
+        self.exception_matches(exception, &[named])
+    }
+
+    /// Whether the program wrote a `===` for this class rather than leaving
+    /// it the one every class answers with.
+    fn rescue_handler_has_own_case_equality(&self, handler: &Object) -> bool {
+        let (Object::Class(class) | Object::Module(class)) = handler else {
+            return false;
+        };
+        if class
+            .singleton_class_slot()
+            .as_ref()
+            .is_some_and(|singleton| singleton.find_own_method("===").is_some())
+        {
+            return true;
+        }
+        class.find_own_method("__class__===").is_some()
     }
 
     /// Check if an exception matches the given exception type list.

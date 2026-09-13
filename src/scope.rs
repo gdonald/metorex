@@ -14,6 +14,10 @@ pub struct Scope {
     /// This allows closures to mutate captured variables
     variables: HashMap<String, Rc<RefCell<Object>>>,
 
+    /// The names in `variables` in the order they were first bound, which is
+    /// the order `local_variables` reports them in.
+    order: Vec<String>,
+
     /// Reference to the parent scope (None for global scope)
     parent: Option<Rc<RefCell<Scope>>>,
 
@@ -24,6 +28,16 @@ pub struct Scope {
     /// Names this scope holds only because a block captured them from the
     /// scope it was written in. They are not locals of this scope.
     captured_names: HashSet<String>,
+
+    /// Names bound without the program declaring them, which are not locals
+    /// of this scope and so are left out of `local_variables`.
+    hidden_names: HashSet<String>,
+
+    /// Names bound ahead of the assignment that introduces them, the way
+    /// Ruby's parser reserves a local for the rest of the body. A block
+    /// written before that assignment does not close over one of these:
+    /// Ruby's local does not exist yet where the block was written.
+    hoisted_names: HashSet<String>,
 }
 
 impl Scope {
@@ -31,9 +45,12 @@ impl Scope {
     pub fn new() -> Self {
         Scope {
             variables: HashMap::new(),
+            order: Vec::new(),
             parent: None,
             is_method_boundary: false,
             captured_names: HashSet::new(),
+            hidden_names: HashSet::new(),
+            hoisted_names: HashSet::new(),
         }
     }
 
@@ -41,9 +58,12 @@ impl Scope {
     pub fn with_parent(parent: Rc<RefCell<Scope>>) -> Self {
         Scope {
             variables: HashMap::new(),
+            order: Vec::new(),
             parent: Some(parent),
             is_method_boundary: false,
             captured_names: HashSet::new(),
+            hidden_names: HashSet::new(),
+            hoisted_names: HashSet::new(),
         }
     }
 
@@ -51,6 +71,9 @@ impl Scope {
     /// If the variable already exists in this scope, it will be overwritten
     pub fn define(&mut self, name: String, value: Object) {
         self.captured_names.remove(&name);
+        self.hidden_names.remove(&name);
+        self.hoisted_names.remove(&name);
+        self.remember_order(&name);
         self.variables.insert(name, Rc::new(RefCell::new(value)));
     }
 
@@ -58,6 +81,9 @@ impl Scope {
     /// Used when a closure defines a captured variable
     pub fn define_shared(&mut self, name: String, value: Rc<RefCell<Object>>) {
         self.captured_names.remove(&name);
+        self.hidden_names.remove(&name);
+        self.hoisted_names.remove(&name);
+        self.remember_order(&name);
         self.variables.insert(name, value);
     }
 
@@ -66,12 +92,61 @@ impl Scope {
     /// so `local_variables` leaves it out.
     pub fn define_captured(&mut self, name: String, value: Rc<RefCell<Object>>) {
         self.captured_names.insert(name.clone());
+        self.remember_order(&name);
         self.variables.insert(name, value);
+    }
+
+    /// Binds a name the program did not declare, so `local_variables` and a
+    /// Binding leave it out. The implicit `it` parameter is bound this way.
+    pub fn define_hidden(&mut self, name: String, value: Object) {
+        self.captured_names.remove(&name);
+        self.hoisted_names.remove(&name);
+        self.hidden_names.insert(name.clone());
+        self.remember_order(&name);
+        self.variables.insert(name, Rc::new(RefCell::new(value)));
+    }
+
+    /// Reserves `name` for the rest of this scope, the way Ruby's parser
+    /// does at the assignment that introduces a local. Reading it answers
+    /// nil, and a block written before the assignment does not close over it.
+    pub fn hoist(&mut self, name: String) {
+        self.remember_order(&name);
+        self.hoisted_names.insert(name.clone());
+        self.variables
+            .insert(name, Rc::new(RefCell::new(Object::Nil)));
+    }
+
+    /// Say that the assignment `name` was reserved for has begun, so code
+    /// written in its value closes over the name.
+    pub fn unhoist(&mut self, name: &str) {
+        if self.hoisted_names.remove(name) {
+            return;
+        }
+        if let Some(parent) = &self.parent
+            && !self.is_method_boundary
+        {
+            parent.borrow_mut().unhoist(name);
+        }
     }
 
     /// Remove a variable from the current scope only (does not walk parents).
     pub fn undefine(&mut self, name: &str) {
         self.variables.remove(name);
+        self.order.retain(|held| held != name);
+    }
+
+    /// Records a name the first time this scope binds it.
+    fn remember_order(&mut self, name: &str) {
+        if !self.variables.contains_key(name) {
+            self.order.push(name.to_string());
+        }
+    }
+
+    /// This scope's names in the order they were first bound.
+    fn ordered_names(&self) -> impl Iterator<Item = &String> {
+        self.order
+            .iter()
+            .filter(|name| self.variables.contains_key(*name))
     }
 
     /// Gets a variable value by traversing the scope chain
@@ -115,6 +190,9 @@ impl Scope {
         // First, check if the variable exists in this scope
         if let Some(value_ref) = self.variables.get(name) {
             *value_ref.borrow_mut() = value;
+            // The assignment the parser reserved the name for has now run,
+            // so a block written from here on closes over it.
+            self.hoisted_names.remove(name);
             return true;
         }
 
@@ -188,9 +266,9 @@ impl Scope {
 
     /// Names bound in this scope alone, excluding those a block captured.
     pub fn own_variable_names(&self) -> Vec<String> {
-        self.variables
-            .keys()
+        self.ordered_names()
             .filter(|name| !self.captured_names.contains(*name))
+            .filter(|name| !self.hidden_names.contains(*name))
             .cloned()
             .collect()
     }
@@ -221,21 +299,44 @@ impl Scope {
     /// binding reaches the same reference, so a captured name counts here
     /// even though it is not the block's own.
     pub fn collect_binding_variable_names(&self) -> Vec<String> {
+        let holds_a_local = |name: &String| {
+            !self.hidden_names.contains(name)
+                && self
+                    .variables
+                    .get(name)
+                    .is_some_and(|value| !names_a_definition(&value.borrow()))
+        };
+        // A scope's own locals come before the ones it can see through the
+        // scopes enclosing it, which is the order Ruby reports them in.
         let mut names: Vec<String> = self
-            .variables
-            .iter()
-            .filter(|(_, value)| !names_a_definition(&value.borrow()))
-            .map(|(name, _)| name.clone())
+            .ordered_names()
+            .filter(|name| !self.captured_names.contains(*name))
+            .filter(|name| holds_a_local(name))
+            .cloned()
             .collect();
-        if self.is_method_boundary {
-            return names;
-        }
-        if let Some(parent) = &self.parent {
+        if !self.is_method_boundary
+            && let Some(parent) = &self.parent
+        {
             let parent_ref = parent.borrow();
             if parent_ref.parent.is_some() {
                 names.extend(parent_ref.collect_binding_variable_names());
             }
         }
+        // A name a block captured is a local of the scope the block was
+        // written in. That scope is normally the one the walk above reaches,
+        // but a block outliving it keeps the name and nothing else does.
+        let mut closed_over: Vec<String> = self
+            .ordered_names()
+            .filter(|name| self.captured_names.contains(*name))
+            .filter(|name| holds_a_local(name))
+            .filter(|name| !names.contains(name))
+            .cloned()
+            .collect();
+        // A capture is taken from a map, so the order it comes back in is
+        // not the order the enclosing scope declared the names. Sorting
+        // makes what `local_variables` reports the same on every run.
+        closed_over.sort();
+        names.extend(closed_over);
         names
     }
 
@@ -272,6 +373,12 @@ impl Scope {
 
         // Now add this scope's variables (potentially overriding parent values)
         for (name, value_ref) in &self.variables {
+            // A name the program never declared is not one a block closes
+            // over: a block reading `it` takes the argument it was handed
+            // rather than the `it` of the block around it.
+            if self.hoisted_names.contains(name) || self.hidden_names.contains(name) {
+                continue;
+            }
             all_vars.insert(name.clone(), value_ref.clone());
         }
 

@@ -407,7 +407,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::symbol(text)))
+                self.interned_symbol(string_value, position).map(Some)
             }
             "sum" => {
                 if arguments.len() > 1 {

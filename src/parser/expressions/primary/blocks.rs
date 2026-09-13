@@ -65,7 +65,10 @@ impl Parser {
         let (parameters, parameter_defaults) = self.parse_block_pipe_params()?;
 
         self.skip_whitespace();
-        let body = self.parse_block_body_with_optional_rescue_ensure(token_position)?;
+        self.enter_block_parameters(&parameters);
+        let body = self.parse_block_body_with_optional_rescue_ensure(token_position);
+        self.leave_block_parameters();
+        let body = body?;
         self.expect(TokenKind::End, "Expected 'end' after block body")?;
 
         Ok(Expression::Lambda {
@@ -220,6 +223,12 @@ impl Parser {
             ""
         };
         if !prefix.is_empty() {
+            // `**nil` says the lambda takes no keyword arguments at all,
+            // which is a declaration rather than a parameter.
+            if prefix == "**" && self.check(&[TokenKind::Nil]) {
+                self.advance();
+                return Some((crate::object::NO_KEYWORDS_PARAM.to_string(), None));
+            }
             self.skip_whitespace();
         }
         // `-> (a, b) { }` spreads one array argument across the names in the
@@ -251,14 +260,22 @@ impl Parser {
             ]) {
                 return Some((named, None));
             }
-            let default = self.parse_range().ok()?;
-            return Some((named, Some(default)));
+            self.lambda_default_depth += 1;
+            // `-> (a: @a = 1)` sets the default through an assignment, so
+            // the default reads one of its own.
+            let default = self.parse_expression_with_assignment();
+            self.lambda_default_depth -= 1;
+            return Some((named, Some(default.ok()?)));
         }
         self.skip_whitespace();
         if prefix.is_empty() && self.match_token(&[TokenKind::Equal]) {
             self.skip_whitespace();
-            let default = self.parse_range().ok()?;
-            return Some((name, Some(default)));
+            // The `{` after the default opens the lambda's body, so a call
+            // written as the default does not take it as its block.
+            self.lambda_default_depth += 1;
+            let default = self.parse_expression_with_assignment();
+            self.lambda_default_depth -= 1;
+            return Some((name, Some(default.ok()?)));
         }
         Some((format!("{}{}", prefix, name), None))
     }
@@ -295,7 +312,39 @@ impl Parser {
             } else {
                 self.parse_block()?
             };
-            if let Expression::Lambda { body, position, .. } = block {
+            if let Expression::Lambda {
+                body,
+                position,
+                parameters: read,
+                ..
+            } = block
+            {
+                // `-> () { it }` and `-> (x) { it }` wrote a parameter list,
+                // which rules out the implicit `it` the body was read as
+                // taking.
+                let refusal = if read.len() == 1 && read[0] == crate::object::IMPLICIT_IT_PARAM {
+                    Some("'it' is not allowed when an ordinary parameter is defined")
+                } else if !read.is_empty()
+                    && read
+                        .iter()
+                        .all(|held| crate::parser::names_a_numbered_parameter(held))
+                {
+                    Some(
+                        "a numbered parameter is not allowed when an ordinary parameter is defined",
+                    )
+                } else {
+                    None
+                };
+                if let Some(message) = refusal {
+                    return Err(MetorexError::syntax_error(
+                        message.to_string(),
+                        crate::error::SourceLocation::new(
+                            position.line,
+                            position.column,
+                            position.offset,
+                        ),
+                    ));
+                }
                 // A lambda literal is a receiver like any other, so
                 // `-> (a) { a }.call(1)` chains onto it.
                 return self.parse_postfix_calls(Expression::Lambda {

@@ -523,7 +523,7 @@ impl VirtualMachine {
                     ));
                 }
                 let written = num_bigint::BigInt::from(*n).to_str_radix(base as u32);
-                Ok(Some(Object::string(written)))
+                Ok(Some(ascii_string(written)))
             }
             "to_s" => {
                 if !arguments.is_empty() {
@@ -534,7 +534,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::string(n.to_string())))
+                Ok(Some(ascii_string(n.to_string())))
             }
             "times" => {
                 if !arguments.is_empty() {
@@ -838,9 +838,35 @@ impl VirtualMachine {
             }
         };
         match method_name {
+            "to_s" | "inspect" if !arguments.is_empty() => {
+                if arguments.len() != 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let Object::Int(base) = arguments[0] else {
+                    return Err(method_argument_type_error(
+                        method_name,
+                        "Integer",
+                        &arguments[0],
+                        position,
+                    ));
+                };
+                if !(2..=36).contains(&base) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("invalid radix {base}"),
+                        position,
+                    ));
+                }
+                Ok(Some(ascii_string(value.to_str_radix(base as u32))))
+            }
             "to_s" | "inspect" => {
                 no_arguments(0)?;
-                Ok(Some(Object::string(value.to_string())))
+                Ok(Some(ascii_string(value.to_string())))
             }
             "to_i" | "to_int" | "ord" => Ok(Some(Object::BigInt(Rc::clone(value)))),
             "to_f" => {
@@ -1673,4 +1699,12 @@ fn integer_square_root(value: num_bigint::BigInt) -> num_bigint::BigInt {
     }
     let _ = zero;
     guess
+}
+
+/// The digits of a number as a String, which Ruby hands back in US-ASCII
+/// whatever the default encodings are set to.
+fn ascii_string(written: String) -> Object {
+    let made = crate::object::StringValue::new(written);
+    made.set_encoding("US-ASCII");
+    Object::String(std::rc::Rc::new(made))
 }

@@ -868,7 +868,7 @@ pub(crate) fn module_level_method(class_rc: &Rc<Class>, method_name: &str) -> Op
 
 /// A method written on the module itself with `def self.name` or `def Mod.name`.
 pub(crate) fn module_own_method(class_rc: &Rc<Class>, method_name: &str) -> Option<Rc<Method>> {
-    class_rc.find_method(&format!("__class__{}", method_name))
+    class_rc.find_inherited_method(&format!("__class__{}", method_name))
 }
 
 /// A method the module answers to because it extended a module, its own

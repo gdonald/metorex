@@ -36,14 +36,30 @@ f(*x, 10)
 }
 
 #[test]
-fn splat_with_nil_value_treated_as_single_arg() {
+fn splat_of_nil_spreads_into_no_arguments() {
     let result = run(r#"
-def f(x)
-  x.nil?
+def f(*given)
+  given.length
 end
 f(*nil)
 "#);
-    assert_eq!(result, Some(Object::Bool(true)));
+    assert_eq!(result, Some(Object::Int(0)));
+}
+
+#[test]
+fn splat_of_nil_leaves_a_required_parameter_unfilled() {
+    let message = run_err(
+        r#"
+def f(x)
+  x
+end
+f(*nil)
+"#,
+    );
+    assert!(
+        message.contains("wrong number of arguments"),
+        "unexpected message: {message}"
+    );
 }
 
 // ── From vm/additional_tests ────────────────────────────────────────────────

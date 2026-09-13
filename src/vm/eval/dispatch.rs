@@ -603,9 +603,12 @@ impl VirtualMachine {
                         // here too.
                         self.dispatch_const_missing(&class_rc, name, *position)
                     }
-                    _ => Err(MetorexError::runtime_error(
-                        "'::' scope resolution requires a class or module as namespace".to_string(),
-                        position_to_location(*position),
+                    // Only a class or module holds constants, so reading one
+                    // out of anything else is refused by its type.
+                    held => Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!("{} is not a class/module", held.type_name()),
+                        *position,
                     )),
                 }
             }

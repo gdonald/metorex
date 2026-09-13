@@ -577,10 +577,7 @@ impl VirtualMachine {
             }
             "to_sym" => match receiver {
                 Object::Symbol(_) => Ok(Some(receiver.clone())),
-                Object::String(s) => {
-                    crate::symbol_registry::record(&s.as_str());
-                    Ok(Some(Object::Symbol(s.clone())))
-                }
+                Object::String(s) => self.interned_symbol(s, position).map(Some),
                 _ => Ok(None),
             },
             // Kernel's conversion functions are private instance methods on
@@ -1442,6 +1439,15 @@ impl VirtualMachine {
                                 .collect()
                         })
                         .unwrap_or_default()
+                } else if let Object::Class(class_rc) | Object::Module(class_rc) = receiver {
+                    // A class keeps its own instance variables among its
+                    // class-level storage, under an `@` prefix.
+                    class_rc
+                        .class_var_names()
+                        .into_iter()
+                        .filter(|name| name.starts_with('@') && !name.starts_with("@@"))
+                        .map(Object::symbol)
+                        .collect()
                 } else {
                     vec![]
                 };
@@ -3213,4 +3219,36 @@ fn class_defines(receiver: &Object, method_name: &str) -> bool {
     class
         .find_method(method_name)
         .is_some_and(|method| !method.is_undefined)
+}
+
+impl VirtualMachine {
+    /// The Symbol a String names. The symbol keeps the encoding the string
+    /// was in, and a run of bytes that spells no characters in that encoding
+    /// names no symbol at all.
+    pub(crate) fn interned_symbol(
+        &mut self,
+        text: &std::rc::Rc<crate::object::StringValue>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if !super::string_methods::holds_valid_text(text) {
+            let spelled = Object::String(std::rc::Rc::clone(text));
+            let written = self.send_to_object(spelled, "inspect", vec![], position)?;
+            let message = format!(
+                "invalid symbol in encoding {} :{}",
+                text.encoding_name(),
+                written
+            );
+            return Err(crate::vm::errors::simple_exception(
+                "EncodingError",
+                &message,
+                position,
+            ));
+        }
+        crate::symbol_registry::record(&text.as_str());
+        let named = crate::object::StringValue::with_encoding(text.to_text(), text.encoding_name());
+        if text.holds_bytes() {
+            named.mark_bytes();
+        }
+        Ok(Object::Symbol(std::rc::Rc::new(named)))
+    }
 }

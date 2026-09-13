@@ -384,11 +384,16 @@ impl VirtualMachine {
                 // and methods, which `local_variables` does not name.
                 let named = self.environment().binding_variable_names();
                 let mut variables = std::collections::HashMap::new();
+                let mut order: Vec<String> = Vec::new();
                 for name in named {
-                    // At the top level the root scope also holds the builtins,
-                    // which are constants and methods rather than locals of
-                    // the program, so the globals settle which is which.
-                    if self.globals().get(&name).is_some() {
+                    // The root scope also holds the builtins, which are not
+                    // locals of the program. A name the globals hold is one
+                    // of those only while it still answers with the same
+                    // object: a local of the same name shadows it, and that
+                    // one is a local like any other.
+                    if let Some(builtin) = self.globals().get(&name)
+                        && self.environment().get(&name) == Some(builtin)
+                    {
                         continue;
                     }
                     // A local is named the way Ruby lets one be named, which
@@ -396,7 +401,11 @@ impl VirtualMachine {
                     if !name.starts_with(|held: char| held == '_' || held.is_lowercase()) {
                         continue;
                     }
+                    if variables.contains_key(&name) {
+                        continue;
+                    }
                     if let Some(cell) = self.environment().get_ref(&name) {
+                        order.push(name.clone());
                         variables.insert(name, cell);
                     }
                 }
@@ -411,6 +420,7 @@ impl VirtualMachine {
                     })
                     .unwrap_or(Object::Nil);
                 let held = crate::object::Binding::with_receiver(variables, receiver);
+                held.set_order(order);
                 // Where the call sits, which `source_location` reports.
                 *held.source.borrow_mut() = Some((
                     self.current_file
@@ -1380,6 +1390,18 @@ impl VirtualMachine {
                     Some(Object::Binding(b)) => Some(std::rc::Rc::clone(b)),
                     _ => None,
                 };
+                // Code run through a binding sees the class the binding was
+                // taken in, which is what a class variable written there
+                // belongs to.
+                let carried_cref = binding.as_ref().and_then(|held| match &held.receiver {
+                    Some(Object::Class(class) | Object::Module(class)) => Some(Rc::clone(class)),
+                    Some(Object::Instance(instance)) => Some(Rc::clone(&instance.borrow().class)),
+                    _ => None,
+                });
+                let carried_cref_pushed = carried_cref.is_some();
+                if let Some(cref) = carried_cref {
+                    self.class_var_cref_stack.push(Some(cref));
+                }
                 if let Some(b) = &binding {
                     self.environment_mut().push_isolated_scope();
                     for (name, cell) in b.variables.borrow().iter() {
@@ -1435,6 +1457,9 @@ impl VirtualMachine {
                     _ => None,
                 };
                 let result = self.execute_program(&statements);
+                if carried_cref_pushed {
+                    self.class_var_cref_stack.pop();
+                }
                 if let Some(held) = &binding {
                     // A local the code named that the binding did not have is
                     // added to it, which is how `eval("x = 1", b)` leaves `x`
@@ -2155,7 +2180,7 @@ impl VirtualMachine {
                 .map(|frame| frame.name().to_string())
                 .unwrap_or_else(|| "<main>".to_string());
             if name != "<block>" {
-                return name;
+                return backtrace_label(&name);
             }
             let holder = frames
                 .get(index + 1)
@@ -2645,6 +2670,24 @@ impl VirtualMachine {
         (self.next_random_bits() >> 11) as f64 / (1u64 << 53) as f64
     }
 
+    /// The next draw as an Integer in [0, bound) for a bound past the
+    /// machine word. Words are drawn until the value is under the bound,
+    /// which keeps every value in the range equally likely.
+    pub(crate) fn next_random_big(&mut self, bound: &num_bigint::BigInt) -> num_bigint::BigInt {
+        let width = bound.bits();
+        let words = width.div_ceil(64) as usize;
+        loop {
+            let mut drawn = num_bigint::BigInt::from(0);
+            for _ in 0..words {
+                drawn = (drawn << 64) + num_bigint::BigInt::from(self.next_random_bits());
+            }
+            drawn >>= (words as u64 * 64) - width;
+            if drawn < *bound {
+                return drawn;
+            }
+        }
+    }
+
     /// The next draw as an Integer in [0, bound).
     pub(crate) fn next_random_int(&mut self, bound: i64) -> i64 {
         if bound <= 0 {
@@ -2668,6 +2711,19 @@ impl VirtualMachine {
                 0 => Ok(Object::Float(self.next_random_float())),
                 magnitude => Ok(Object::Int(self.next_random_int(magnitude))),
             },
+            // A bound past the machine word is drawn word by word, since
+            // there is no single draw wide enough to cover it.
+            Object::BigInt(ref bound) => {
+                let magnitude = if **bound < num_bigint::BigInt::from(0) {
+                    -(**bound).clone()
+                } else {
+                    (**bound).clone()
+                };
+                if magnitude == num_bigint::BigInt::from(0) {
+                    return Ok(Object::Float(self.next_random_float()));
+                }
+                Ok(Object::integer(self.next_random_big(&magnitude)))
+            }
             Object::Range {
                 ref start,
                 ref end,
@@ -3370,5 +3426,18 @@ fn bad_range_value(position: Position) -> MetorexError {
         exception: Object::exception("ArgumentError", message.clone()),
         location: crate::vm::utils::position_to_location(position),
         message,
+    }
+}
+
+/// The name a backtrace entry reads. A method defined on one object alone is
+/// named by itself: the singleton class holding it has no name a reader would
+/// know, so only the method's own name is written.
+pub(crate) fn backtrace_label(name: &str) -> String {
+    match name.strip_prefix("#<Class:#<") {
+        Some(_) => match name.rfind('#') {
+            Some(at) if at + 1 < name.len() => name[at + 1..].to_string(),
+            _ => name.to_string(),
+        },
+        None => name.to_string(),
     }
 }

@@ -108,6 +108,19 @@ impl Parser {
 
         self.expect(TokenKind::End, "Expected 'end' after begin block")?;
 
+        // An `else` answers what runs when nothing was raised, so with no
+        // `rescue` beside it there is nothing for it to stand against.
+        if else_clause.is_some() && rescue_clauses.is_empty() && ensure_block.is_none() {
+            return Err(MetorexError::syntax_error(
+                "else without rescue is useless",
+                SourceLocation::new(
+                    self.previous().position.line,
+                    self.previous().position.column,
+                    self.previous().position.offset,
+                ),
+            ));
+        }
+
         Ok(BeginParts {
             body,
             rescue_clauses,
@@ -146,6 +159,20 @@ impl Parser {
         // An exception type is present if:
         // 1. There's no newline after rescue
         // 2. We see an identifier that's NOT followed by '=' (which would be an assignment)
+        // `rescue *handled` names the classes through a splat, which is read
+        // where the clause is reached rather than written out here.
+        let mut splatted_types = Vec::new();
+        while !has_newline && self.check(&[TokenKind::Star]) {
+            self.advance();
+            self.skip_whitespace();
+            // The classes stand on the `rescue` line, so the walk stops at
+            // the end of it rather than reading the body as part of them.
+            splatted_types.push(self.parse_range()?);
+            if !self.match_token(&[TokenKind::Comma]) {
+                break;
+            }
+            self.skip_whitespace();
+        }
         if !has_newline && self.check(&[TokenKind::Ident(String::new())]) {
             // Peek ahead to see if this looks like an exception type or an assignment
             // If the next token after the identifier is '=', it's an assignment, not an exception type
@@ -180,22 +207,50 @@ impl Parser {
                         break;
                     }
                     self.skip_whitespace();
+                    // A splat may follow a name written out, as
+                    // `rescue Held, *handled` does.
+                    while self.check(&[TokenKind::Star]) {
+                        self.advance();
+                        self.skip_whitespace();
+                        splatted_types.push(self.parse_range()?);
+                        if !self.match_token(&[TokenKind::Comma]) {
+                            break;
+                        }
+                        self.skip_whitespace();
+                    }
                 }
             }
         }
 
         // Check for variable binding (=> var)
+        let mut variable_target = None;
         if self.match_token(&[TokenKind::FatArrow]) {
             self.skip_whitespace();
-            // The target may be a local, or a global such as
-            // `rescue => $exception`, which binds the global instead.
-            if let TokenKind::Ident(name) = &self.peek().kind {
-                variable_name = Some(name.clone());
-                self.advance();
+            // A plain name reaches a local, and one written with a sigil the
+            // global of that name. Anything else — `held.error`,
+            // `held&.error`, `held[:error]` — is a target of its own.
+            let names_a_local = matches!(
+                &self.peek().kind,
+                TokenKind::Ident(name)
+                    if name.starts_with(|first: char| first.is_lowercase() || first == '_')
+            ) && !matches!(
+                self.peek_ahead(1).kind,
+                TokenKind::Dot | TokenKind::SafeDot | TokenKind::LBracket | TokenKind::ColonColon
+            );
+            if names_a_local {
+                match self.advance().kind {
+                    TokenKind::Ident(name) => variable_name = Some(name),
+                    _ => unreachable!("only a name reaches here"),
+                }
                 self.skip_whitespace();
-            } else if let TokenKind::GlobalVar(name) = &self.peek().kind {
-                variable_name = Some(format!("${}", name));
-                self.advance();
+            } else if matches!(
+                self.peek().kind,
+                TokenKind::Ident(_)
+                    | TokenKind::GlobalVar(_)
+                    | TokenKind::InstanceVar(_)
+                    | TokenKind::ClassVar(_)
+            ) {
+                variable_target = Some(self.parse_expression()?);
                 self.skip_whitespace();
             } else {
                 return Err(MetorexError::syntax_error(
@@ -237,6 +292,8 @@ impl Parser {
         Ok(RescueClause {
             exception_types,
             variable_name,
+            variable_target,
+            splatted_types,
             body,
             position: start_pos,
         })

@@ -279,6 +279,16 @@ impl VirtualMachine {
         // defined, not the scopes open at the call site.
         self.method_nesting_stack
             .push(method.captured_nesting.clone());
+        // A class variable written in the body belongs to the class or
+        // module the method was written in, whatever the receiver is.
+        self.class_var_cref_stack.push(
+            method
+                .captured_nesting
+                .first()
+                .cloned()
+                .or_else(|| method.captured_def_scope.last().cloned())
+                .or_else(|| Some(Rc::clone(&class))),
+        );
         self.fire_method_event("call", &method_name, &method, &class, None, position)?;
         let execution_result = self.with_call_frame(
             CallFrame::method(
@@ -297,6 +307,7 @@ impl VirtualMachine {
             },
         );
         self.method_nesting_stack.pop();
+        self.class_var_cref_stack.pop();
         self.method_owner_stack.pop();
         self.method_arg_stack.pop();
         self.refinement_scopes = caller_scopes;
@@ -632,7 +643,7 @@ impl VirtualMachine {
         // before the assignment actually ran.
         for name in collect_assigned_locals(body) {
             if self.environment().get(&name).is_none() {
-                self.environment_mut().define(name, Object::Nil);
+                self.environment_mut().hoist(name);
             }
         }
 

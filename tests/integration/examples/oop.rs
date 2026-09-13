@@ -1453,3 +1453,70 @@ fn test_oop_basic_object_answers_nothing_no_parens_execution() {
     let output = run_example("oop/basic_object/answers_nothing_no_parens.rb");
     assert_eq!(output, BASIC_OBJECT_ANSWERS_NOTHING_OUTPUT);
 }
+
+/// The expected output of both `oop/class_variable_home` variants.
+const CLASS_VARIABLE_HOME_OUTPUT: &str = concat!(
+    "module\n",
+    "written\n",
+    "from_child\n",
+    "true\n",
+    "class variable access from toplevel\n"
+);
+
+#[test]
+fn test_oop_class_variable_home_execution() {
+    let output = run_example("oop/class_variable_home.rb");
+    assert_eq!(output, CLASS_VARIABLE_HOME_OUTPUT);
+}
+
+#[test]
+fn test_oop_class_variable_home_no_parens_execution() {
+    let output = run_example("oop/class_variable_home_no_parens.rb");
+    assert_eq!(output, CLASS_VARIABLE_HOME_OUTPUT);
+}
+
+/// The expected output of both `oop/class_body_clauses` variants.
+const CLASS_BODY_CLAUSES_OUTPUT: &str = concat!(
+    "body\n",
+    "stopped\n",
+    "module ensured\n",
+    "singleton stopped\n",
+    "TrueClass\n",
+    "NilClass\n",
+    "can't define singleton for Int\n"
+);
+
+#[test]
+fn test_oop_class_body_clauses_execution() {
+    let output = run_example("oop/class_body_clauses.rb");
+    assert_eq!(output, CLASS_BODY_CLAUSES_OUTPUT);
+}
+
+#[test]
+fn test_oop_class_body_clauses_no_parens_execution() {
+    let output = run_example("oop/class_body_clauses_no_parens.rb");
+    assert_eq!(output, CLASS_BODY_CLAUSES_OUTPUT);
+}
+
+/// The expected output of both `oop/definition_values` variants.
+const DEFINITION_VALUES_OUTPUT: &str = concat!(
+    "20\n",
+    "held\n",
+    "nil\n",
+    "[:@tally]\n",
+    "[:@@shared]\n",
+    "superclass must be a Class (String given)\n",
+    "inner\n"
+);
+
+#[test]
+fn test_oop_definition_values_execution() {
+    let output = run_example("oop/definition_values.rb");
+    assert_eq!(output, DEFINITION_VALUES_OUTPUT);
+}
+
+#[test]
+fn test_oop_definition_values_no_parens_execution() {
+    let output = run_example("oop/definition_values_no_parens.rb");
+    assert_eq!(output, DEFINITION_VALUES_OUTPUT);
+}

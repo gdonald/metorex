@@ -120,23 +120,37 @@ impl VirtualMachine {
                 match self.evaluate_expression(expression)? {
                     Object::Array(items) => evaluated.extend(items.borrow().iter().cloned()),
                     Object::Nil => {}
-                    // A Range spreads into the values it covers, which is
-                    // what `[*"a".."z"]` names.
-                    held @ Object::Range { .. } => {
-                        match self.send_to_object(held.clone(), "to_a", vec![], *splat_at)? {
-                            Object::Array(items) => {
-                                evaluated.extend(items.borrow().iter().cloned())
-                            }
-                            other => evaluated.push(other),
+                    other => {
+                        // Anything else that answers `to_a` spreads into what
+                        // that gives, which is what `[*"a".."z"]` names.
+                        match self.splat_through_to_a(other, *splat_at)? {
+                            Ok(items) => evaluated.extend(items),
+                            Err(held) => evaluated.push(held),
                         }
                     }
-                    other => evaluated.push(other),
                 }
                 continue;
             }
             evaluated.push(self.evaluate_expression(element)?);
         }
         Ok(Object::Array(Rc::new(RefCell::new(evaluated))))
+    }
+
+    /// What a splat spreads a value into. A value answering `to_a` spreads
+    /// into what that gives; anything else stands for itself, which the Err
+    /// side carries back.
+    pub(crate) fn splat_through_to_a(
+        &mut self,
+        value: Object,
+        position: crate::lexer::Position,
+    ) -> Result<Result<Vec<Object>, Object>, MetorexError> {
+        if !self.responds_to(&value, "to_a") {
+            return Ok(Err(value));
+        }
+        match self.send_to_object(value.clone(), "to_a", vec![], position)? {
+            Object::Array(items) => Ok(Ok(items.borrow().clone())),
+            _ => Ok(Err(value)),
+        }
     }
 
     /// Evaluate dictionary literal expressions.

@@ -229,16 +229,22 @@ impl VirtualMachine {
         let mut args = Vec::with_capacity(argument_exprs.len());
         for arg in argument_exprs {
             match arg {
-                Expression::Splat { expression, .. } => {
+                Expression::Splat {
+                    expression,
+                    position: splat_at,
+                } => {
                     let value = self.evaluate_expression(expression)?;
                     match value {
                         Object::Array(arr) => {
                             args.extend(arr.borrow().iter().cloned());
                         }
-                        other => {
-                            // Non-array splat: treat as single argument
-                            args.push(other);
-                        }
+                        // `*nil` spreads into nothing, the way `[*nil]` does,
+                        // so a call written with one passes no argument there.
+                        Object::Nil => {}
+                        other => match self.splat_through_to_a(other, *splat_at)? {
+                            Ok(items) => args.extend(items),
+                            Err(held) => args.push(held),
+                        },
                     }
                 }
                 Expression::KeywordSplat {

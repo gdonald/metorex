@@ -169,26 +169,57 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let target_obj = self.evaluate_expression(target)?;
+        // `true`, `false`, and `nil` each have exactly one instance, so the
+        // class itself is the singleton class. A number or a symbol has no
+        // singleton class at all.
+        match &target_obj {
+            Object::Bool(_) | Object::Nil => {
+                let named = match &target_obj {
+                    Object::Bool(true) => "TrueClass",
+                    Object::Bool(false) => "FalseClass",
+                    _ => "NilClass",
+                };
+                if let Some(Object::Class(held)) = self.globals().get(named) {
+                    let singleton = Rc::clone(&held);
+                    if let Some(destination) = assign_to {
+                        self.assign_value(destination, target_obj.clone())?;
+                    }
+                    return self.run_singleton_class_body(&singleton, body, position);
+                }
+            }
+            Object::Int(_) | Object::BigInt(_) | Object::Float(_) | Object::Symbol(_) => {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &format!("can't define singleton for {}", target_obj.type_name()),
+                    position,
+                ));
+            }
+            _ => {}
+        }
         // `class << @receiver = Object.new` stores the object first, so the
         // body's `def`s land on the same one the name now holds.
         if let Some(destination) = assign_to {
             self.assign_value(destination, target_obj.clone())?;
         }
         let singleton_cls = self.singleton_class_of(&target_obj);
+        self.run_singleton_class_body(&singleton_cls, body, position)
+    }
 
-        // Enter the singleton class as both the lexical def scope and `self`
-        // so nested `def` lands on it.
+    /// Run a `class << x` body with the singleton class as both the lexical
+    /// def scope and `self`, so a nested `def` lands on it. The body's own
+    /// last value is the result.
+    fn run_singleton_class_body(
+        &mut self,
+        singleton_cls: &Rc<Class>,
+        body: &[Statement],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
         let prev_self = self.environment().get("self");
         self.environment_mut()
-            .define("self".to_string(), Object::Class(Rc::clone(&singleton_cls)));
-        self.def_scope_stack.push(Rc::clone(&singleton_cls));
+            .define("self".to_string(), Object::Class(Rc::clone(singleton_cls)));
+        self.def_scope_stack.push(Rc::clone(singleton_cls));
 
-        // Apply class-body semantics (attr_*, def, include, etc.) to the
-        // singleton class itself.
-        // The body's own last value is the result, so `class << x; self; end`
-        // evaluates to the singleton class. Re-evaluating the last statement
-        // here instead would run its side effects a second time.
-        let apply_result = self.apply_class_body(&singleton_cls, body, position);
+        let apply_result = self.apply_written_class_body(singleton_cls, body, position);
         let last = match &apply_result {
             Ok(value) => value.clone(),
             Err(_) => Object::Nil,

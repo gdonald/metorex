@@ -34,6 +34,15 @@ pub(crate) fn positional_arg_count_for(arguments: &[Object], takes_keywords: boo
     arguments.len()
 }
 
+/// Bind one positional parameter. A `def f((a, b))` group spreads the value
+/// it is given across the names in the group, the same way a block's does.
+fn define_positional_param(vm: &mut VirtualMachine, param: &str, value: Object) {
+    match param.strip_prefix(crate::object::DESTRUCTURED_GROUP_PREFIX) {
+        Some(names) => crate::vm::block_execution::bind_group_names(vm, names, value),
+        None => vm.environment_mut().define(param.to_string(), value),
+    }
+}
+
 /// Bind positional parameters to arguments, handling variadic (splat) parameters.
 ///
 /// When a variadic param is present at index `vi`, parameters before it get one arg each,
@@ -87,7 +96,7 @@ pub(crate) fn bind_params(
                 let idx = positional.len().saturating_sub(offset_from_end);
                 positional.get(idx).cloned().unwrap_or(Object::Nil)
             };
-            vm.environment_mut().define(param.clone(), value);
+            define_positional_param(vm, param, value);
         }
     } else if let (Some(first_optional), Some(last_optional)) = (
         default_parameters.iter().map(|(index, _)| *index).min(),
@@ -120,7 +129,7 @@ pub(crate) fn bind_params(
                 let index = positional.len().saturating_sub(offset_from_end);
                 positional.get(index).cloned().unwrap_or(Object::Nil)
             };
-            vm.environment_mut().define(param.clone(), value);
+            define_positional_param(vm, param, value);
         }
     } else {
         for (i, param) in params.iter().enumerate() {
@@ -129,7 +138,7 @@ pub(crate) fn bind_params(
             } else {
                 Object::Nil
             };
-            vm.environment_mut().define(param.clone(), value);
+            define_positional_param(vm, param, value);
         }
     }
     Ok(())

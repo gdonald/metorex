@@ -81,6 +81,24 @@ impl Environment {
         self.current_scope().borrow_mut().define(name, value);
     }
 
+    /// Reserves a name for the rest of the current scope ahead of the
+    /// assignment that introduces it, the way Ruby's parser does.
+    pub fn hoist(&mut self, name: String) {
+        self.current_scope().borrow_mut().hoist(name);
+    }
+
+    /// Binds a name the program did not declare, which `local_variables`
+    /// and a Binding leave out.
+    pub fn define_hidden(&mut self, name: String, value: Object) {
+        self.current_scope().borrow_mut().define_hidden(name, value);
+    }
+
+    /// Say that the assignment a hoisted name was reserved for has begun,
+    /// so a block written in its value closes over the name.
+    pub fn unhoist(&mut self, name: &str) {
+        self.current_scope().borrow_mut().unhoist(name);
+    }
+
     /// Remove a variable from the current scope (does not touch parent scopes).
     pub fn undefine(&mut self, name: &str) {
         self.current_scope().borrow_mut().undefine(name);

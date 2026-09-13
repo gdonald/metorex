@@ -23,12 +23,11 @@ impl VirtualMachine {
             "local_variables" => {
                 // `self` is bound in the scope but is not a local, so it is
                 // not one of the names a binding reports.
-                let mut names: Vec<String> = binding
+                let names: Vec<String> = binding
                     .keys()
                     .into_iter()
                     .filter(|held| held != "self")
                     .collect();
-                names.sort();
                 Ok(Some(Object::array(
                     names.into_iter().map(Object::symbol).collect(),
                 )))

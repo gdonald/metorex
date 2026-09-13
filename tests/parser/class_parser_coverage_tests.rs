@@ -82,7 +82,7 @@ class Foo <
 end
 "#,
     );
-    assert!(err.contains("superclass") || err.contains("Expected"));
+    assert!(err.contains("superclass") || err.contains("Expected") || err.contains("Unexpected"));
 }
 
 // ── Fully qualified superclass (lines 76-88) ─────────────────────────────────

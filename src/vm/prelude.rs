@@ -1548,7 +1548,8 @@ class StringIO
     @closed_write = false
     @ungotten = ""
     read_mode(mode)
-    @string = "" if @truncates
+    # Truncating empties the buffer without changing what it is written in.
+    @string = "".dup.force_encoding(@string.encoding) if @truncates
     self
   end
 
@@ -1730,7 +1731,8 @@ class StringIO
     @position = 0
     @lineno = 0
     read_mode(mode)
-    @string = "" if @truncates
+    # Truncating empties the buffer without changing what it is written in.
+    @string = "".dup.force_encoding(@string.encoding) if @truncates
     self
   end
 
@@ -2273,8 +2275,24 @@ class StringIO
     self
   end
 
+  # Read the byte-order mark the stream starts with, if any, and take the
+  # encoding it names. The mark is consumed; anything else is left in place.
   def set_encoding_by_bom
-    nil
+    raise FrozenError, "can't modify frozen StringIO: #{inspect}" if frozen?
+    return nil unless @readable
+    source = @string.bytes
+    found, width = StringIO.bom_encoding(source[@position, 4] || [])
+    return nil if found.nil?
+    @position = @position + width
+    @encoding = found
+    @binary = false
+    found
+  end
+
+  # The encoding a leading byte-order mark names, with how many bytes it
+  # takes. A mark that runs out part way names nothing.
+  def self.bom_encoding(bytes)
+    IO.bom_encoding(bytes)
   end
 
   def fcntl(*args)
@@ -3497,6 +3515,17 @@ class Range
 end
 
 class Array
+  # The array an object stands for, or nil where it stands for none. Only an
+  # object answering `to_ary` is asked.
+  def self.try_convert(held)
+    return held if held.is_a?(Array)
+    return nil unless held.respond_to?(:to_ary)
+    converted = held.to_ary
+    return converted if converted.nil? || converted.is_a?(Array)
+    raise TypeError,
+      "can't convert #{held.class} into Array (#{held.class}#to_ary gives #{converted.class})"
+  end
+
   # The number an index or a length arrives as, which Ruby reads through
   # `to_int` and refuses when the object names none.
   def fill_count(given)
@@ -3920,6 +3949,17 @@ class Set
 end
 
 class Hash
+  # The hash an object stands for, or nil where it stands for none. Only an
+  # object answering `to_hash` is asked.
+  def self.try_convert(held)
+    return held if held.is_a?(Hash)
+    return nil unless held.respond_to?(:to_hash)
+    converted = held.to_hash
+    return converted if converted.nil? || converted.is_a?(Hash)
+    raise TypeError,
+      "can't convert #{held.class} into Hash (#{held.class}#to_hash gives #{converted.class})"
+  end
+
   # The hook behind `Hash.new`, which a subclass reaches through `super` and
   # a program may call again to set a new default. The pairs already stored
   # are left alone.
@@ -4660,6 +4700,32 @@ end
 
 
 class Proc
+  # `self >> other` reads left to right: self is called first and hands its
+  # answer to other. The composition is strict about its arguments when self
+  # is, since self is the one the arguments reach.
+  def >>(other)
+    raise TypeError, "callable object is expected" unless other.respond_to?(:call)
+    held = self
+    if lambda?
+      lambda { |*given, &block| other.call(held.call(*given, &block)) }
+    else
+      proc { |*given, &block| other.call(held.call(*given, &block)) }
+    end
+  end
+
+  # `self << other` reads right to left: other is called first and hands its
+  # answer to self, so the composition follows other's strictness.
+  def <<(other)
+    raise TypeError, "callable object is expected" unless other.respond_to?(:call)
+    held = self
+    strict = other.respond_to?(:lambda?) && other.lambda?
+    if strict
+      lambda { |*given, &block| held.call(other.call(*given, &block)) }
+    else
+      proc { |*given, &block| held.call(other.call(*given, &block)) }
+    end
+  end
+
   # A curried proc gathers arguments until it holds as many as the proc it
   # stands for takes, and answers another curried proc until then. A lambda
   # curries into lambdas, a plain proc into plain procs.
@@ -6003,6 +6069,44 @@ class IO
     access.start_with?("w") || access.start_with?("a") || access.include?("+")
   end
   private :__writing_mode__
+
+  # The encoding a leading byte-order mark names, with how many bytes it
+  # takes. A mark that runs out part way names nothing.
+  def self.bom_encoding(bytes)
+    return [Encoding::UTF_8, 3] if bytes[0, 3] == [0xEF, 0xBB, 0xBF]
+    if bytes[0, 2] == [0xFF, 0xFE]
+      return [Encoding::UTF_32LE, 4] if bytes[2, 2] == [0x00, 0x00]
+      return [Encoding::UTF_16LE, 2]
+    end
+    return [Encoding::UTF_16BE, 2] if bytes[0, 2] == [0xFE, 0xFF]
+    return [Encoding::UTF_32BE, 4] if bytes[0, 4] == [0x00, 0x00, 0xFE, 0xFF]
+    [nil, 0]
+  end
+
+  # Read the byte-order mark the stream starts with, if any, and take the
+  # encoding it names. The mark is consumed; anything else is left in place.
+  def set_encoding_by_bom
+    named = __named_encodings__
+    unless named.length < 2
+      raise ArgumentError, "encoding conversion is set"
+    end
+    unless named.empty? || named[0].to_s.casecmp("ASCII-8BIT").zero? ||
+           named[0].to_s.casecmp("BINARY").zero?
+      raise ArgumentError, "encoding is set to #{Encoding.find(named[0])} already"
+    end
+    unless external_encoding == Encoding::BINARY
+      raise ArgumentError, "ASCII incompatible encoding needs binmode"
+    end
+    return nil if __writing_mode__ && !@__file_mode.to_s.include?("+")
+    start = pos
+    head = read(4)
+    self.pos = start
+    found, width = IO.bom_encoding(head.nil? ? [] : head.bytes)
+    return nil if found.nil?
+    self.pos = start + width
+    set_encoding found
+    found
+  end
 
   # The encoding a stream reads as. A stream that names none reads as the
   # program's external encoding, which a stream opened while an internal
@@ -7933,6 +8037,52 @@ class Dir
 end
 
 module Kernel
+  # `putc` writes one character to the standard output stream.
+  def putc(held)
+    $stdout.putc held
+  end
+  module_function :putc
+
+  # `test` names a file test by a single character, the way the shell's own
+  # tests are spelled. The two-file tests take a second path.
+  def test(command, first, second = nil)
+    named = command.is_a?(Integer) ? command.chr : command.to_s
+    case named
+    when "b" then File.blockdev?(first)
+    when "c" then File.chardev?(first)
+    when "d" then File.directory?(first)
+    when "e" then File.exist?(first)
+    when "f" then File.file?(first)
+    when "g" then File.setgid?(first)
+    when "G" then File.grpowned?(first)
+    when "k" then File.sticky?(first)
+    when "l" then File.symlink?(first)
+    when "o" then File.owned?(first)
+    when "O" then File.owned?(first)
+    when "p" then File.pipe?(first)
+    when "r" then File.readable?(first)
+    when "R" then File.readable_real?(first)
+    when "s" then File.size?(first)
+    when "S" then File.socket?(first)
+    when "u" then File.setuid?(first)
+    when "w" then File.writable?(first)
+    when "W" then File.writable_real?(first)
+    when "x" then File.executable?(first)
+    when "X" then File.executable_real?(first)
+    when "z" then File.zero?(first)
+    when "A" then File.atime(first)
+    when "C" then File.ctime(first)
+    when "M" then File.mtime(first)
+    when "-" then File.identical?(first, second)
+    when "=" then File.mtime(first) == File.mtime(second)
+    when "<" then File.mtime(first) < File.mtime(second)
+    when ">" then File.mtime(first) > File.mtime(second)
+    else
+      raise ArgumentError, "unknown command #{named.inspect}"
+    end
+  end
+  module_function :test
+
   # The encoding the file running now was written in.
   def __ENCODING__
     Encoding.__source__
@@ -8496,6 +8646,44 @@ class Set
 end
 
 class Thread
+  # Whether an exception a thread dies of is reported, and whether it takes
+  # the program down with it. Both are settings a program may read back, and
+  # a thread of its own overrides what the class says.
+  def self.abort_on_exception
+    @abort_on_exception == true
+  end
+
+  def self.abort_on_exception=(wanted)
+    @abort_on_exception = wanted
+  end
+
+  def report_on_exception
+    @__report_on_exception__.nil? ? Thread.report_on_exception : @__report_on_exception__
+  end
+
+  def report_on_exception=(wanted)
+    @__report_on_exception__ = wanted
+  end
+
+  def abort_on_exception
+    @__abort_on_exception__.nil? ? Thread.abort_on_exception : @__abort_on_exception__
+  end
+
+  def abort_on_exception=(wanted)
+    @__abort_on_exception__ = wanted
+  end
+end
+
+class Thread
+  # A thread that stops waits to be woken. Metorex runs a thread's block on
+  # the thread that made it, so there is nothing to wait for and nothing to
+  # wake it from.
+  def self.stop
+    nil
+  end
+end
+
+class Thread
   # Ruby reports a deadlock among its threads unless this is switched off.
   # Metorex runs a thread's block on the thread that made it, so nothing can
   # deadlock, and the reading is kept because a program may set it.
@@ -8518,6 +8706,14 @@ class Regexp
   # A Regexp that was made without a pattern has nothing to answer about,
   # which Ruby reports rather than treating it as an empty pattern.
   def options
+    raise TypeError, "uninitialized Regexp"
+  end
+
+  def match(*_arguments)
+    raise TypeError, "uninitialized Regexp"
+  end
+
+  def match?(*_arguments)
     raise TypeError, "uninitialized Regexp"
   end
 
@@ -8627,6 +8823,24 @@ class ThreadGroup
   end
 
   Default = new
+end
+
+class Thread
+  # One fiber-local by name, with a default or a block standing in when the
+  # thread never stored it. A default and a block together are an ambiguity
+  # Ruby warns about and settles in the block's favor.
+  def fetch(name, *default, &block)
+    if default.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{1 + default.size}, expected 1..2)"
+    end
+    return self[name] if key?(name)
+    unless block.nil?
+      warn "warning: block supersedes default value argument" unless default.empty?
+      return block.call(name)
+    end
+    return default[0] unless default.empty?
+    raise KeyError, "key not found: #{name.inspect}"
+  end
 end
 
 class Thread
@@ -9311,6 +9525,26 @@ class Encoding
       return Encoding.find "stateless-ISO-2022-JP" if found.name.start_with? "ISO-2022-JP"
       Encoding::UTF_8
     end
+  end
+end
+
+class IO
+  # `putc` writes one character: the first of a String, or the low byte of a
+  # number. It answers what it was given rather than what it wrote.
+  def putc(held)
+    if held.is_a? String
+      write held[0]
+      return held
+    end
+    number = if held.is_a? Integer
+      held
+    elsif held.respond_to? :to_int
+      held.to_int
+    else
+      raise TypeError, "no implicit conversion of #{held.class} into Integer"
+    end
+    write (number & 0xFF).chr
+    held
   end
 end
 

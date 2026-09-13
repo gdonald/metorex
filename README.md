@@ -257,6 +257,11 @@ See [ROADMAP.md](ROADMAP.md) for detailed implementation plans.
 - **String#gsub and #sub take a block**: the block is called with each match and answers what replaces it
 - **String#split takes a limit**: a positive one caps the fields, and trailing empty fields are dropped unless the limit is negative
 - **String#to_i takes a base**: `"ff".to_i(16)` is 255
+- **String#to_i reads a radix prefix and underscores**: `"+0d56".to_i` is 56, `"0xFAZ".to_i(0)` is 250, `"1_2_3asdf".to_i` is 123, and reading stops at the first character the base does not name. `Integer#to_s` takes the same base at any width
+- **Array.try_convert and Hash.try_convert**: an object answering `to_ary` or `to_hash` converts, one answering neither is nil, and one answering with the wrong type raises TypeError
+- **Array#sample takes a count and a generator**: `sample(n)` draws that many without replacement, and `random:` names an object asked for `rand`, refusing an answer outside the range with RangeError
+- **Proc#>> and Proc#<<**: compose two callables, taking any object answering `call`, and the composition is a lambda when the callable reached first is one
+- **`alias` reaches a native method**: `alias old_spaceship <=>` inside `class Integer` keeps the original reachable after a redefinition replaces it, the way `alias_method` already did
 - **String#slice and #[] take one argument**: an Integer, a Range, another String, or a pattern
 - **A quoted string may run across lines**: a newline inside `"..."` is content rather than the end of the literal
 - **`next` ends a block with its value**: `values.map { |held| next 0 if held.nil?; held }` answers 0 for the nil ones
@@ -886,6 +891,22 @@ See [ROADMAP.md](ROADMAP.md) for complete details.
 - `Proc#curry` and `Method#curry` gather arguments until the callable holds as many as it takes, keeping a lambda a lambda and a proc a proc, and a Method reports `lambda?` as true and reaches a block through `&`
 - `Enumerable#map` hands the block whatever `each` yielded rather than packing the values into an array, and the block it walks with takes the same count the caller's block does, which is what an `each` that reads the block it was handed sees
 - A lambda's parameters may be destructured: `-> (a, (b, c)) { }` spreads one array argument across the names in the group, nested groups and splats among them
+- A method's parameters may be destructured the same way: `def pair_sum((left, right))` spreads one array argument across the names in the group, nested groups and splats among them, and the group counts as one parameter, which is what `arity` and `parameters` report
+- A bare `*`, `**`, or `&` forwards the anonymous parameter the enclosing `def` bound. Writing one inside a block that declared the same anonymous parameter is ambiguous, so it raises SyntaxError
+- A block does not close over a local the enclosing scope binds after the block was written: the assignment introduces the local where it stands, so a name the block assigns before then is the block's own
+- `Binding#local_variables` reports names in the order they were bound, a scope's own before the ones it can see through the scopes enclosing it, and a local shadowing a builtin is reported like any other
+- A block's implicit `it` and its numbered parameters `_1` through `_9` are parameters rather than locals: `binding.local_variables` leaves them out, a nested block reading `it` takes its own argument, and a local named `it` already in scope keeps its meaning. Writing one alongside a parameter list, alongside the other kind, or assigning to `_1`, raises SyntaxError
+- `yield` is written inside a method and nowhere else, so one in a class body, a module body, or a block at the top level raises SyntaxError. `yield(*nil)` hands the block no values
+- A lambda takes its arguments the way a method does: `(a:)` refuses a call that leaves the keyword out, `(**nil)` refuses keywords outright, `(**rest)` collects them, and a parameter with a default takes an argument only once the ones that require one have theirs
+- A class variable belongs to the class or module the code was written in rather than to the receiver, so a method a module defines reads the module's. A write reaches the ancestor furthest up the chain that already holds the name, reading one the ancestors overtook raises RuntimeError, and reading or writing one where no class is open raises RuntimeError
+- A `class`, `module`, or `class << x` body takes `rescue` and `ensure` clauses of its own, and the definition answers what its body answered
+- `class << true`, `class << false`, and `class << nil` open TrueClass, FalseClass, and NilClass; a number or a symbol has no singleton class and raises TypeError
+- A splat spreads anything answering `to_a`, `held[*subscripts] = value` spreads the subscript, and `%W` reads escape sequences the way a double-quoted string does
+- A `rescue` clause reads the classes it handles where it is reached, so a local may hold one and `rescue Held, *handled` may name several at once. A class carrying a `===` of its own decides for itself, anything that is not a class or module raises TypeError, and `rescue E => held.error` stores the exception wherever the target names, a constant and a global among them
+- `begin ... else ... end` with no `rescue` beside the `else` raises SyntaxError, a `rescue` modifier written straight into an argument list asks for parentheses of its own, and the value of a `rescue` modifier is one expression rather than a call written without them
+- `require_relative 'fixtures/held'` names `fixtures/held.rb` even where a `fixtures/held/` directory stands beside it
+- A class or module definition answers what its body answered, and a call may be written onto its `end`. A superclass is an expression, so whether it names a class is settled where the definition runs
+- `Module#instance_variables` reports the class-level instance variables a class body wrote
 - `Enumerator.new` takes a block, and `&object` reaches a block through `to_proc`, so a Yielder can be handed to a method that takes one
 - Two strings are equal when their bytes match and their encodings can be compared: text that is nothing but ASCII goes with anything, and `==`, `eql?`, and `===` all read it the same way. Two arrays compare element by element, asking `equal?` before `==`, so `[Float::NAN] == [Float::NAN]`
 - `require_relative` resolves against the file the call was written in rather than the file being loaded, so a fixture that requires another from a method reaches the same place Ruby does

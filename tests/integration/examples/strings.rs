@@ -114,3 +114,33 @@ fn test_strings_encoding_aware_length_no_parens_execution() {
     let output = run_example("strings/encoding_aware_length_no_parens.rb");
     assert_eq!(output, ENCODING_AWARE_LENGTH_OUTPUT);
 }
+
+/// The expected output of both `strings/radix_reading` variants, which differ
+/// only in whether the calls are written with parentheses.
+const RADIX_READING_OUTPUT: &str = concat!(
+    "123\n",
+    "0\n",
+    "56\n",
+    "250\n",
+    "3\n",
+    "127\n",
+    "2833\n",
+    "-18306744\n",
+    "22452257707354557240087211123792674815\n",
+    "245789127594125924165923648312749312749327482\n",
+    "\"invalid radix 37\"\n",
+    "\"ff\"\n",
+    "\"5gv2rma270x9hhj4\"\n"
+);
+
+#[test]
+fn test_strings_radix_reading_execution() {
+    let output = run_example("strings/radix_reading.rb");
+    assert_eq!(output, RADIX_READING_OUTPUT);
+}
+
+#[test]
+fn test_strings_radix_reading_no_parens_execution() {
+    let output = run_example("strings/radix_reading_no_parens.rb");
+    assert_eq!(output, RADIX_READING_OUTPUT);
+}

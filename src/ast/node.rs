@@ -403,6 +403,12 @@ pub struct ExprMatchCase {
 pub struct RescueClause {
     pub exception_types: Vec<String>, // Exception types to catch (empty means catch all)
     pub variable_name: Option<String>, // Variable to bind the exception to (e.g., "=> e")
+    /// Where the exception is stored when it is not a plain local or global:
+    /// `rescue E => held.error` and `rescue E => held[:error]` both name one.
+    pub variable_target: Option<Expression>,
+    /// Classes named by a splat rather than written out, as
+    /// `rescue *handled` does. They are read where the clause is reached.
+    pub splatted_types: Vec<Expression>,
     pub body: Vec<Statement>,
     pub position: Position,
 }

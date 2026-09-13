@@ -15,8 +15,14 @@ impl Parser {
         // A group is its own run of expressions, so `and` and `or` bind
         // inside it the way they do anywhere else.
         let held = std::mem::take(&mut self.assignment_rhs_depth);
+        // Parentheses of its own are what a `rescue` modifier needs inside an
+        // argument list, so a group resets that count.
+        let held_arguments = std::mem::take(&mut self.call_argument_depth);
+        let held_refusal = std::mem::take(&mut self.refuse_paren_less_args);
         let parsed = self.parse_paren_group_body(token_position);
         self.assignment_rhs_depth = held;
+        self.call_argument_depth = held_arguments;
+        self.refuse_paren_less_args = held_refusal;
         parsed
     }
 

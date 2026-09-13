@@ -48,6 +48,13 @@ impl VirtualMachine {
                 value,
                 position: _,
             } => {
+                // Ruby's parser introduces the local where the assignment is
+                // written, ahead of the value, so a block on the right-hand
+                // side closes over the name being assigned. That is what
+                // lets `walk = -> { walk.call }` call itself.
+                if let crate::ast::Expression::Identifier { name, .. } = target {
+                    self.environment_mut().unhoist(name);
+                }
                 let evaluated = match self.conditional_assignment_to_new_constant(target, value) {
                     // `CONST ||= value` where CONST is not defined yet: Ruby
                     // reads the undefined constant as nil rather than raising,
@@ -161,6 +168,11 @@ impl VirtualMachine {
                 for name in names {
                     if self.environment().get(name).is_none() {
                         self.environment_mut().define(name.clone(), Object::Nil);
+                    } else {
+                        // A `for` loop names what its body binds so the scope
+                        // holding the loop still reads it afterwards, which
+                        // means the block the loop runs closes over the name.
+                        self.environment_mut().unhoist(name);
                     }
                 }
                 Ok(ControlFlow::Next)
@@ -562,56 +574,17 @@ impl VirtualMachine {
                 }
             }
             Expression::ClassVariable { name, position } => {
-                // A class variable written inside `instance_exec` belongs to
-                // the class or module the block was written in.
-                if let Some(home) = self.class_var_home.last() {
-                    // A singleton class holds no class variables of its own:
-                    // one written there belongs to the class it stands for.
-                    if home.get_class_var("__singleton__").is_some()
-                        && let Some(Object::Class(attached) | Object::Module(attached)) =
-                            home.get_class_var("__attached__")
-                    {
-                        attached.set_class_var(name.clone(), value);
-                    } else {
-                        home.set_class_var(name.clone(), value);
-                    }
+                // A class variable belongs to the class or module the code
+                // was written in, and a write reaches the one furthest up the
+                // chain that already holds it.
+                if let Some(home) = self.class_variable_home() {
+                    Self::class_var_owner(&home, name).set_class_var(name.clone(), value);
                     return Ok(());
                 }
-                // Class variables can only be set within a method or class context
-                // For now, we'll look for 'self' to get the class
-                match self.environment().get("self") {
-                    Some(Object::Instance(instance_rc)) => {
-                        let instance = instance_rc.borrow();
-                        instance.class.set_class_var(name.clone(), value);
-                        Ok(())
-                    }
-                    Some(Object::Class(class)) | Some(Object::Module(class)) => {
-                        // A class variable assigned in a singleton class body
-                        // (`class << self`) attaches to the lexical enclosing
-                        // class, not the singleton itself. Redirect to the
-                        // attached object when it is a class or module.
-                        if class.get_class_var("__singleton__").is_some()
-                            && let Some(Object::Class(attached) | Object::Module(attached)) =
-                                class.get_class_var("__attached__")
-                        {
-                            attached.set_class_var(name.clone(), value);
-                        } else {
-                            class.set_class_var(name.clone(), value);
-                        }
-                        Ok(())
-                    }
-                    Some(_) => Err(MetorexError::runtime_error(
-                        format!("Cannot set class variable @@{} in this context", name),
-                        position_to_location(*position),
-                    )),
-                    None => Err(MetorexError::runtime_error(
-                        format!(
-                            "Class variable @@{} can only be used within a class or method",
-                            name
-                        ),
-                        position_to_location(*position),
-                    )),
-                }
+                Err(MetorexError::runtime_error(
+                    "class variable access from toplevel".to_string(),
+                    position_to_location(*position),
+                ))
             }
             Expression::Index {
                 array,
@@ -620,6 +593,15 @@ impl VirtualMachine {
             } => {
                 // Evaluate the array/object and index
                 let obj = self.evaluate_expression(array)?;
+                // `held[*subscripts] = value` spreads the values across the
+                // subscript, the same way `held.[]=(*subscripts, value)` does.
+                if let Expression::Splat { .. } = index.as_ref() {
+                    let mut spread =
+                        self.evaluate_arguments(std::slice::from_ref(index.as_ref()))?;
+                    spread.push(value);
+                    self.send_to_object(obj, "[]=", spread, *position)?;
+                    return Ok(());
+                }
                 let idx = self.evaluate_expression(index)?;
 
                 match obj {

@@ -80,3 +80,56 @@ fn test_array_methods_fill_and_hash_no_parens_execution() {
     let output = run_example("array_methods/fill_and_hash_no_parens.rb");
     assert_eq!(output, FILL_AND_HASH_OUTPUT);
 }
+
+/// The expected output of both `array_methods/conversion_and_draws` variants,
+/// which differ only in whether the calls are written with parentheses.
+const CONVERSION_AND_DRAWS_OUTPUT: &str = concat!(
+    "[1, 2]\n",
+    "nil\n",
+    "{a: 1}\n",
+    "nil\n",
+    "[3, 4]\n",
+    "\"can't convert Object into Hash (Object#to_hash gives Symbol)\"\n",
+    "4\n",
+    "[4, 1]\n",
+    "[1, 2, 3]\n",
+    "nil\n",
+    "\"negative sample number\"\n",
+    "RangeError\n"
+);
+
+#[test]
+fn test_array_methods_conversion_and_draws_execution() {
+    let output = run_example("array_methods/conversion_and_draws.rb");
+    assert_eq!(output, CONVERSION_AND_DRAWS_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_conversion_and_draws_no_parens_execution() {
+    let output = run_example("array_methods/conversion_and_draws_no_parens.rb");
+    assert_eq!(output, CONVERSION_AND_DRAWS_OUTPUT);
+}
+
+/// The expected output of both `array_methods/splat_coercion` variants.
+const SPLAT_COERCION_OUTPUT: &str = concat!(
+    "[1, 2, 3, 4]\n",
+    "Array\n",
+    "[1, 2, 3, 4]\n",
+    "[\"a\", \"x\", \"e\"]\n",
+    "[]\n",
+    "[1, 2]\n",
+    "[\"a \", \"b\\tc\"]\n",
+    "[\"a\", \"b c\"]\n"
+);
+
+#[test]
+fn test_array_methods_splat_coercion_execution() {
+    let output = run_example("array_methods/splat_coercion.rb");
+    assert_eq!(output, SPLAT_COERCION_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_splat_coercion_no_parens_execution() {
+    let output = run_example("array_methods/splat_coercion_no_parens.rb");
+    assert_eq!(output, SPLAT_COERCION_OUTPUT);
+}

@@ -541,6 +541,8 @@ fn test_function_with_exception_handling() {
             rescue_clauses: vec![metorex::ast::RescueClause {
                 exception_types: vec!["ZeroDivisionError".to_string()],
                 variable_name: None,
+                variable_target: None,
+                splatted_types: Vec::new(),
                 body: vec![Statement::Return {
                     value: Some(Expression::NilLiteral {
                         position: pos(5, 5),

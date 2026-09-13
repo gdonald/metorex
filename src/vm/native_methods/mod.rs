@@ -499,9 +499,9 @@ impl VirtualMachine {
                 // A symbol named in ASCII is written in ASCII, and one with
                 // any other character is written in UTF-8.
                 let named_in = if text.as_str().is_ascii() {
-                    "US-ASCII"
+                    "US-ASCII".to_string()
                 } else {
-                    "UTF-8"
+                    text.encoding_name()
                 };
                 match method_name {
                     // `name` answers one frozen string per symbol, where
@@ -510,14 +510,16 @@ impl VirtualMachine {
                         let slot = format!("__symbol_name_{}", text.as_str());
                         let held = self.memoized_text(&slot, &text.as_str());
                         if let Object::String(made) = &held {
-                            made.set_encoding(named_in);
+                            made.set_encoding(named_in.clone());
                             made.freeze();
                         }
                         return Ok(Some(held));
                     }
                     "id2name" | "to_s" => {
-                        let spelled =
-                            crate::object::StringValue::with_encoding(text.to_text(), named_in);
+                        let spelled = crate::object::StringValue::with_encoding(
+                            text.to_text(),
+                            named_in.clone(),
+                        );
                         // Ruby 3.4 hands this string back with notice that a
                         // later release will freeze it, so the first change
                         // made to it says so.
@@ -838,6 +840,8 @@ impl VirtualMachine {
                 }
                 let cached = inst.borrow().get_var("__thread_value").cloned();
                 if let Some(val) = cached {
+                    inst.borrow_mut()
+                        .set_var("__thread_reaped".to_string(), Object::Bool(true));
                     return Ok(Some(if method_name == "join" {
                         receiver.clone()
                     } else {
@@ -876,6 +880,8 @@ impl VirtualMachine {
                 let value = value_result?;
                 inst.borrow_mut()
                     .set_var("__thread_value".to_string(), value.clone());
+                inst.borrow_mut()
+                    .set_var("__thread_reaped".to_string(), Object::Bool(true));
                 Ok(Some(if method_name == "join" {
                     receiver.clone()
                 } else {
@@ -894,8 +900,8 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = self.thread_local_name(&arguments[0], position)?;
-                let store = thread_local_store(method_name);
-                let locals = inst.borrow().get_var(store).cloned();
+                let store = self.thread_local_store(method_name);
+                let locals = inst.borrow().get_var(&store).cloned();
                 if let Some(Object::Dict(held)) = locals {
                     return Ok(Some(
                         held.borrow().get(&key_str).cloned().unwrap_or(Object::Nil),
@@ -913,8 +919,8 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = self.thread_local_name(&arguments[0], position)?;
-                let store = thread_local_store(method_name);
-                let locals = inst.borrow().get_var(store).cloned();
+                let store = self.thread_local_store(method_name);
+                let locals = inst.borrow().get_var(&store).cloned();
                 let held = matches!(locals, Some(Object::Dict(ref names)) if names.borrow().contains_key(&key_str));
                 Ok(Some(Object::Bool(held)))
             }
@@ -927,8 +933,8 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let store = thread_local_store(method_name);
-                let locals = inst.borrow().get_var(store).cloned();
+                let store = self.thread_local_store(method_name);
+                let locals = inst.borrow().get_var(&store).cloned();
                 let Some(Object::Dict(held)) = locals else {
                     return Ok(Some(Object::array(Vec::new())));
                 };
@@ -956,14 +962,14 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = self.thread_local_name(&arguments[0], position)?;
-                let store = thread_local_store(method_name);
-                let existing = inst.borrow().get_var(store).cloned();
+                let store = self.thread_local_store(method_name);
+                let existing = inst.borrow().get_var(&store).cloned();
                 let dict = match existing {
                     Some(Object::Dict(held)) => held,
                     _ => {
                         let held = Rc::new(std::cell::RefCell::new(indexmap::IndexMap::new()));
                         inst.borrow_mut()
-                            .set_var(store.to_string(), Object::Dict(Rc::clone(&held)));
+                            .set_var(store.clone(), Object::Dict(Rc::clone(&held)));
                         held
                     }
                 };
@@ -993,7 +999,43 @@ impl VirtualMachine {
                 });
                 inst.borrow_mut()
                     .set_var("__thread_value".to_string(), Object::Nil);
+                inst.borrow_mut()
+                    .set_var("__thread_reaped".to_string(), Object::Bool(true));
                 Ok(Some(receiver.clone()))
+            }
+            // Waking a thread that has already finished is an error; one
+            // that has not run yet wakes to no effect, since it runs when it
+            // is joined.
+            "wakeup" | "run" => {
+                if matches!(
+                    inst.borrow().get_var("__thread_reaped"),
+                    Some(Object::Bool(true))
+                ) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "killed thread",
+                        position,
+                    ));
+                }
+                Ok(Some(receiver.clone()))
+            }
+            // The number the operating system knows the thread by. Only the
+            // thread running now has one; the rest have not been handed to
+            // the system at all.
+            "native_thread_id" => {
+                let running = match self.thread_current_stack.last() {
+                    Some(current) => current.clone(),
+                    None => self.globals().get("__Thread_main").unwrap_or(Object::Nil),
+                };
+                let is_running = matches!(
+                    (&running, receiver),
+                    (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b)
+                );
+                if !is_running {
+                    return Ok(Some(Object::Nil));
+                }
+                // SAFETY: `getpid` reads a number and touches nothing else.
+                Ok(Some(Object::Int(unsafe { libc::getpid() } as i64)))
             }
             // A thread runs when it is joined, so one that has not been is
             // not running: `stop?` is true until it does.
@@ -1128,10 +1170,9 @@ impl VirtualMachine {
         }
     }
 
-    /// Mutex instance methods. Single-threaded stubs: `synchronize` just
-    /// invokes the block, `lock`/`unlock` are no-ops, and `locked?` always
-    /// reports false. Enough for `Mutex.new.synchronize { ... }` patterns
-    /// in spec fixtures (CyclicBarrier, ThreadSafeCounter).
+    /// Mutex instance methods. Metorex runs a thread's block on the thread
+    /// that made it, so a lock never has to wait: it records who holds it and
+    /// refuses a second taking, which is what the visible behavior rests on.
     pub(crate) fn call_mutex_method(
         &mut self,
         receiver: &Object,
@@ -1139,29 +1180,104 @@ impl VirtualMachine {
         _arguments: &[Object],
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::Instance(inst) = receiver else {
+            return Ok(None);
+        };
+        let inst = Rc::clone(inst);
+        let held = matches!(
+            inst.borrow().get_var("__mutex_locked"),
+            Some(Object::Bool(true))
+        );
         match method_name {
             "synchronize" => {
                 let block = self.pending_block.take();
-                if let Some(Object::Block(b)) = block {
-                    let result = self.execute_block_body(&b, vec![])?;
-                    Ok(Some(result))
-                } else {
-                    let exc = Object::exception(
+                let Some(Object::Block(body)) = block else {
+                    return Err(crate::vm::errors::simple_exception(
                         "ArgumentError",
-                        "Mutex#synchronize requires a block".to_string(),
-                    );
-                    Err(MetorexError::UncaughtException {
-                        exception: exc,
-                        location: super::utils::position_to_location(position),
-                        message: "Mutex#synchronize requires a block".to_string(),
-                    })
-                }
+                        "Mutex#synchronize requires a block",
+                        position,
+                    ));
+                };
+                self.call_mutex_method(receiver, "lock", &[], position)?;
+                let answer = self.execute_block_body(&body, vec![]);
+                self.call_mutex_method(receiver, "unlock", &[], position)?;
+                Ok(Some(answer?))
             }
-            "lock" | "unlock" => Ok(Some(receiver.clone())),
-            "locked?" => Ok(Some(Object::Bool(false))),
-            "try_lock" => Ok(Some(Object::Bool(true))),
-            "owned?" => Ok(Some(Object::Bool(false))),
+            "lock" => {
+                if held && self.mutex_is_owned(&inst) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "deadlock; recursive locking",
+                        position,
+                    ));
+                }
+                self.mark_mutex_held(&inst);
+                Ok(Some(receiver.clone()))
+            }
+            "try_lock" => {
+                if held {
+                    return Ok(Some(Object::Bool(false)));
+                }
+                self.mark_mutex_held(&inst);
+                Ok(Some(Object::Bool(true)))
+            }
+            "unlock" => {
+                if !held {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "Attempt to unlock a mutex which is not locked",
+                        position,
+                    ));
+                }
+                if !self.mutex_is_owned(&inst) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "Attempt to unlock a mutex which is locked by another thread",
+                        position,
+                    ));
+                }
+                inst.borrow_mut()
+                    .set_var("__mutex_locked".to_string(), Object::Bool(false));
+                Ok(Some(receiver.clone()))
+            }
+            "locked?" => Ok(Some(Object::Bool(held))),
+            "owned?" => Ok(Some(Object::Bool(held && self.mutex_is_owned(&inst)))),
             _ => Ok(None),
+        }
+    }
+
+    /// Record the thread and fiber running now as the ones holding the lock.
+    fn mark_mutex_held(&mut self, inst: &Rc<std::cell::RefCell<crate::object::Instance>>) {
+        let holder = self.running_thread();
+        let fiber = self.fiber_current_handle() as i64;
+        let mut held = inst.borrow_mut();
+        held.set_var("__mutex_locked".to_string(), Object::Bool(true));
+        held.set_var("__mutex_thread".to_string(), holder);
+        held.set_var("__mutex_fiber".to_string(), Object::Int(fiber));
+    }
+
+    /// Whether the thread and fiber running now are the ones holding the
+    /// lock. Ruby holds a lock per fiber, so a fiber the holder started does
+    /// not own it.
+    fn mutex_is_owned(&mut self, inst: &Rc<std::cell::RefCell<crate::object::Instance>>) -> bool {
+        let fiber = self.fiber_current_handle() as i64;
+        if !matches!(inst.borrow().get_var("__mutex_fiber"), Some(Object::Int(held)) if *held == fiber)
+        {
+            return false;
+        }
+        let holder = inst.borrow().get_var("__mutex_thread").cloned();
+        let running = self.running_thread();
+        matches!(
+            (holder, running),
+            (Some(Object::Instance(a)), Object::Instance(b)) if Rc::ptr_eq(&a, &b)
+        )
+    }
+
+    /// The Thread whose block is running, which is the main one outside any.
+    fn running_thread(&mut self) -> Object {
+        match self.thread_current_stack.last() {
+            Some(current) => current.clone(),
+            None => self.globals().get("__Thread_main").unwrap_or(Object::Nil),
         }
     }
 
@@ -1375,10 +1491,15 @@ fn enumerable_walks_through_each(name: &str) -> bool {
 /// Which store a thread-local method reads. Ruby keeps the fiber-local names
 /// `Thread#[]` reaches apart from the thread-wide ones `thread_variable_get`
 /// reaches, and a name set through one is not seen through the other.
-fn thread_local_store(method_name: &str) -> &'static str {
-    if method_name.starts_with("thread_variable") {
-        "__thread_variables"
-    } else {
-        "__thread_locals"
+impl VirtualMachine {
+    /// The instance variable one of the two thread-local stores lives under.
+    /// `thread_variable_*` is shared by every fiber the thread runs, while
+    /// `[]` and its family belong to the fiber that wrote them, so the fiber
+    /// running now is part of that store's name.
+    fn thread_local_store(&self, method_name: &str) -> String {
+        if method_name.starts_with("thread_variable") {
+            return "__thread_variables".to_string();
+        }
+        format!("__thread_locals_{}", self.fiber_current_handle())
     }
 }

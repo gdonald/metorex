@@ -362,3 +362,18 @@ fn test_control_flow_case_when_forms_no_parens_execution() {
     let output = run_example("control_flow/case_when_forms_no_parens.rb");
     assert_eq!(output, CASE_WHEN_FORMS_OUTPUT);
 }
+
+/// The expected output of both `control_flow/yield_placement` variants.
+const YIELD_PLACEMENT_OUTPUT: &str = "2\ntrue\ntrue\ntrue\n";
+
+#[test]
+fn test_control_flow_yield_placement_execution() {
+    let output = run_example("control_flow/yield_placement.rb");
+    assert_eq!(output, YIELD_PLACEMENT_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_yield_placement_no_parens_execution() {
+    let output = run_example("control_flow/yield_placement_no_parens.rb");
+    assert_eq!(output, YIELD_PLACEMENT_OUTPUT);
+}

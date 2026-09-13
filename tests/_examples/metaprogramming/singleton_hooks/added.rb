@@ -35,11 +35,13 @@ class Host
   end
 end
 
-# A class body body value is the body's own last value, not a re-run of it.
-counted = 0
+# A class body is a scope of its own, so it names a global rather than a
+# local of the code around it. Its value is the body's own last value, not a
+# re-run of it.
+$counted = 0
 adder = class << object
-  counted += 1
+  $counted += 1
   self
 end
-puts counted.to_s
+puts $counted.to_s
 puts adder.instance_of?(Class).to_s

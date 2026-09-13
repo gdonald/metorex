@@ -311,6 +311,44 @@ impl VirtualMachine {
                     let answered = unsafe { libc::getsid(pid) };
                     return self.process_result(answered, "getsid", position).map(Some);
                 }
+                // The soft and hard bounds the operating system keeps on
+                // one kind of resource.
+                "getrlimit" => {
+                    let resource = self.rlimit_resource(arguments.first(), position)?;
+                    let mut limits = libc::rlimit {
+                        rlim_cur: 0,
+                        rlim_max: 0,
+                    };
+                    // SAFETY: `getrlimit` fills the struct handed to it and
+                    // touches nothing else.
+                    let answered = unsafe { libc::getrlimit(resource, &mut limits) };
+                    if answered != 0 {
+                        return Err(self.errno_error("getrlimit", position));
+                    }
+                    return Ok(Some(Object::array(vec![
+                        Object::Int(limits.rlim_cur as i64),
+                        Object::Int(limits.rlim_max as i64),
+                    ])));
+                }
+                "setrlimit" => {
+                    let resource = self.rlimit_resource(arguments.first(), position)?;
+                    let soft = self.rlimit_value(arguments.get(1), position)?;
+                    let hard = match arguments.get(2) {
+                        None => soft,
+                        held => self.rlimit_value(held, position)?,
+                    };
+                    let limits = libc::rlimit {
+                        rlim_cur: soft,
+                        rlim_max: hard,
+                    };
+                    // SAFETY: `setrlimit` reads the struct handed to it and
+                    // touches nothing else.
+                    let answered = unsafe { libc::setrlimit(resource, &limits) };
+                    if answered != 0 {
+                        return Err(self.errno_error("setrlimit", position));
+                    }
+                    return Ok(Some(Object::Nil));
+                }
                 "setsid" => {
                     let answered = unsafe { libc::setsid() };
                     return self.process_result(answered, "setsid", position).map(Some);
@@ -1182,5 +1220,67 @@ impl VirtualMachine {
             ));
         }
         Ok(held.tv_sec as f64 * 1_000_000_000.0 + held.tv_nsec as f64)
+    }
+}
+
+impl VirtualMachine {
+    /// The resource number `getrlimit` and `setrlimit` were given. Ruby takes
+    /// the number itself, the short name the `RLIMIT_` constant is spelled
+    /// with, or an object that answers with either.
+    fn rlimit_resource(
+        &mut self,
+        argument: Option<&Object>,
+        position: Position,
+    ) -> Result<crate::vm::RlimitResource, MetorexError> {
+        let named = match argument {
+            Some(Object::Int(number)) => return Ok(*number as crate::vm::RlimitResource),
+            Some(Object::Symbol(name)) => Some(name.as_str().to_string()),
+            Some(Object::String(name)) => Some(name.as_str().to_string()),
+            Some(other) if self.answers_to(other, "to_str", position)? => {
+                match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                    Object::String(name) => Some(name.as_str().to_string()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        if let Some(named) = named {
+            let full = format!("RLIMIT_{named}");
+            for (name, value) in crate::vm::init::PROCESS_CONSTANTS {
+                if name == full {
+                    return Ok(value as crate::vm::RlimitResource);
+                }
+            }
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &format!("invalid resource name: {named}"),
+                position,
+            ));
+        }
+        let number = self.process_id_argument(argument, position)?;
+        Ok(number as crate::vm::RlimitResource)
+    }
+
+    /// One of the two bounds a resource limit is made of.
+    fn rlimit_value(
+        &mut self,
+        argument: Option<&Object>,
+        position: Position,
+    ) -> Result<libc::rlim_t, MetorexError> {
+        match argument {
+            Some(Object::Int(number)) => Ok(*number as libc::rlim_t),
+            Some(other) if self.answers_to(other, "to_int", position)? => {
+                match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                    Object::Int(number) => Ok(number as libc::rlim_t),
+                    converted => Err(method_argument_type_error(
+                        "Process", "Integer", &converted, position,
+                    )),
+                }
+            }
+            Some(other) => Err(method_argument_type_error(
+                "Process", "Integer", other, position,
+            )),
+            None => Err(method_argument_error("setrlimit", 2, 1, position)),
+        }
     }
 }

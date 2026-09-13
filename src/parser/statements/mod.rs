@@ -87,22 +87,6 @@ impl Parser {
             });
         }
 
-        // Recognize `private def …` / `public def …` / `protected def …` /
-        // `module_function def …` as a special two-keyword form. The
-        // visibility modifier is parsed and discarded; the wrapped `def`
-        // becomes a normal method definition.
-        if let TokenKind::Ident(name) = &self.peek().kind
-            && matches!(
-                name.as_str(),
-                "private" | "public" | "protected" | "module_function"
-            )
-            && matches!(self.peek_ahead(1).kind, TokenKind::Def)
-        {
-            self.advance(); // consume the visibility ident
-            self.skip_whitespace();
-            return self.parse_function_def();
-        }
-
         let token = self.peek().clone();
         match &token.kind {
             TokenKind::Class => {
@@ -118,7 +102,8 @@ impl Parser {
                     };
                     self.wrap_with_modifier(stmt)
                 } else {
-                    self.parse_class_def()
+                    let definition = self.parse_class_def()?;
+                    self.definition_chained_onto(definition, token.position)
                 }
             }
             TokenKind::Def => self.parse_function_def(),
@@ -153,7 +138,10 @@ impl Parser {
             TokenKind::AttrReader => self.parse_attr_reader(),
             TokenKind::AttrWriter => self.parse_attr_writer(),
             TokenKind::AttrAccessor => self.parse_attr_accessor(),
-            TokenKind::Module => self.parse_module_def(),
+            TokenKind::Module => {
+                let definition = self.parse_module_def()?;
+                self.definition_chained_onto(definition, token.position)
+            }
             TokenKind::Include => self.parse_include(),
             TokenKind::Extend => self.parse_extend(),
             TokenKind::Alias => self.parse_alias(),
@@ -218,6 +206,13 @@ impl Parser {
                 ]) {
                     if !is_assignable(&expr) {
                         return Err(self.error_at_current("Cannot assign to this expression"));
+                    }
+                    if let Expression::Identifier { name, .. } = &expr
+                        && names_a_numbered_parameter(name)
+                    {
+                        return Err(self.error_at_current(&format!(
+                            "{name} is reserved for numbered parameter"
+                        )));
                     }
                     let op_token = self.advance();
                     // The value may open on the next line, which is how a
@@ -380,12 +375,47 @@ impl Parser {
                                 break;
                             }
                         }
-                        TokenKind::EOF | TokenKind::Newline => return false,
+                        // A target list may be written across lines, so a
+                        // newline inside the group is not the end of it.
+                        TokenKind::EOF => return false,
                         _ => {}
                     }
                     offset += 1;
                 }
                 offset += 1;
+                // `(held; object).name` writes the receiver in parentheses,
+                // and `(held; object)[key]` subscripts it, so what follows
+                // the group names the target on it.
+                loop {
+                    match self.peek_ahead(offset).kind {
+                        TokenKind::Dot | TokenKind::SafeDot | TokenKind::ColonColon => {
+                            offset += 1;
+                            if !matches!(self.peek_ahead(offset).kind, TokenKind::Ident(_)) {
+                                return false;
+                            }
+                            offset += 1;
+                        }
+                        TokenKind::LBracket => {
+                            let mut depth = 0;
+                            loop {
+                                match &self.peek_ahead(offset).kind {
+                                    TokenKind::LBracket => depth += 1,
+                                    TokenKind::RBracket => {
+                                        depth -= 1;
+                                        if depth == 0 {
+                                            break;
+                                        }
+                                    }
+                                    TokenKind::EOF => return false,
+                                    _ => {}
+                                }
+                                offset += 1;
+                            }
+                            offset += 1;
+                        }
+                        _ => break,
+                    }
+                }
                 match &self.peek_ahead(offset).kind {
                     TokenKind::Equal => return true,
                     TokenKind::Comma => {
@@ -503,24 +533,41 @@ impl Parser {
         // `(a, b), c = pair, held` groups targets, and a group may hold
         // further groups, which is what takes a nested Array apart.
         if self.check(&[TokenKind::LParen]) {
+            // `(held; object).name = value` writes the receiver in
+            // parentheses rather than grouping targets, so a group that does
+            // not stand on its own is read again as an expression.
+            let saved = self.stream().current_position();
             let opened = self.advance();
-            let mut grouped = Vec::new();
-            loop {
-                self.skip_whitespace();
-                if self.check(&[TokenKind::RParen]) {
-                    break;
+            let grouped = (|| -> Result<Vec<Expression>, MetorexError> {
+                let mut grouped = Vec::new();
+                loop {
+                    self.skip_whitespace();
+                    if self.check(&[TokenKind::RParen]) {
+                        break;
+                    }
+                    grouped.push(self.parse_assignment_target()?);
+                    self.skip_whitespace();
+                    if !self.match_token(&[TokenKind::Comma]) {
+                        break;
+                    }
                 }
-                grouped.push(self.parse_assignment_target()?);
-                self.skip_whitespace();
-                if !self.match_token(&[TokenKind::Comma]) {
-                    break;
-                }
+                self.expect(TokenKind::RParen, "Expected ')' after grouped targets")?;
+                Ok(grouped)
+            })();
+            let stands_alone = grouped.is_ok()
+                && !self.check(&[
+                    TokenKind::Dot,
+                    TokenKind::SafeDot,
+                    TokenKind::LBracket,
+                    TokenKind::ColonColon,
+                ]);
+            if stands_alone {
+                return Ok(Expression::Array {
+                    elements: grouped.expect("the group was read"),
+                    position: opened.position,
+                });
             }
-            self.expect(TokenKind::RParen, "Expected ')' after grouped targets")?;
-            return Ok(Expression::Array {
-                elements: grouped,
-                position: opened.position,
-            });
+            self.stream.restore_position(saved);
         }
         if self.check(&[TokenKind::Star]) {
             let star = self.advance();
@@ -578,6 +625,13 @@ impl Parser {
         while self.match_token(&[TokenKind::Comma]) {
             self.skip_whitespace();
             values.push(self.parse_expression_with_lambda()?);
+        }
+        // `a, b = raise rescue [1, 2]` assigns what the rescue answered, so
+        // the modifier belongs to the value rather than to the assignment.
+        if values.len() == 1
+            && let Some(last) = values.pop()
+        {
+            values.push(self.wrap_with_rescue_modifier(last)?);
         }
         Ok(Statement::MultipleAssignment {
             targets,
@@ -641,6 +695,8 @@ impl Parser {
                     rescue_clauses: vec![crate::ast::RescueClause {
                         exception_types: vec!["StandardError".to_string()],
                         variable_name: None,
+                        variable_target: None,
+                        splatted_types: Vec::new(),
                         body: vec![Statement::Expression {
                             expression: fallback,
                             position,
@@ -972,5 +1028,44 @@ fn statement_as_expression(stmt: Statement, position: crate::lexer::Position) ->
             ensure_block: None,
             position,
         },
+    }
+}
+
+/// Whether `name` is one of `_1` through `_9`, which Ruby keeps for the
+/// numbered parameters a block takes and refuses to let a program bind.
+pub(crate) fn names_a_numbered_parameter(name: &str) -> bool {
+    name.len() == 2
+        && name.starts_with('_')
+        && name[1..]
+            .chars()
+            .next()
+            .is_some_and(|held| held.is_ascii_digit() && held != '0')
+}
+
+impl Parser {
+    /// A `class` or `module` definition with a call written onto its `end`,
+    /// as `class Held; end.name` does. The definition answers what its body
+    /// answered, and the call reads from there.
+    fn definition_chained_onto(
+        &mut self,
+        definition: Statement,
+        position: crate::lexer::Position,
+    ) -> Result<Statement, MetorexError> {
+        if !self.check(&[TokenKind::Dot, TokenKind::SafeDot]) {
+            return Ok(definition);
+        }
+        self.seeded_primary = Some(Expression::BeginRescue {
+            body: vec![definition],
+            rescue_clauses: Vec::new(),
+            else_clause: None,
+            ensure_block: None,
+            position,
+        });
+        let expression = self.parse_expression()?;
+        let statement = Statement::Expression {
+            expression,
+            position,
+        };
+        self.wrap_with_modifier(statement)
     }
 }

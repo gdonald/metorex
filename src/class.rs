@@ -677,6 +677,19 @@ impl Class {
             .and_then(|superclass| superclass.find_method(name))
     }
 
+    /// Look for a method along the superclass chain alone, skipping the
+    /// modules mixed in along the way. A module's own methods are not
+    /// inherited by whatever includes it, so a class method has to be found
+    /// this way rather than through the full ancestry.
+    pub fn find_inherited_method(&self, name: &str) -> Option<Rc<Method>> {
+        if let Some(method) = self.methods.borrow().get(name) {
+            return Some(Rc::clone(method));
+        }
+        self.superclass
+            .as_ref()
+            .and_then(|superclass| superclass.find_inherited_method(name))
+    }
+
     /// Look up a method the same way `find_method` does, returning the module
     /// that actually defines it alongside the method itself.
     pub fn find_method_with_owner(self: &Rc<Class>, name: &str) -> Option<(Rc<Class>, Rc<Method>)> {

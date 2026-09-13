@@ -1067,7 +1067,20 @@ impl VirtualMachine {
                 let elements = array_rc.borrow().clone();
                 let mut in_flight = vec![Rc::as_ptr(array_rc) as usize];
                 let parts = self.joined_text(&elements, &sep, &mut in_flight, position)?;
-                Ok(Some(Object::string(parts)))
+                // A run of bytes joined with others is still a run of bytes,
+                // so the result says so rather than reading them as
+                // characters.
+                let holds_bytes = elements.iter().any(|element| {
+                    matches!(element, Object::String(text)
+                        if text.holds_bytes()
+                            || matches!(text.encoding_name().as_str(), "ASCII-8BIT" | "BINARY"))
+                });
+                if !holds_bytes {
+                    return Ok(Some(Object::string(parts)));
+                }
+                let made = crate::object::StringValue::with_encoding(parts, "ASCII-8BIT");
+                made.mark_bytes();
+                Ok(Some(Object::String(Rc::new(made))))
             }
             // `flatten` walks all the way down by default, or as many levels
             // as the argument names. `flatten!` writes the result back and
@@ -2046,6 +2059,24 @@ impl VirtualMachine {
             }
             // `pack` writes the items out as the directives describe them.
             "pack" => {
+                // `buffer:` names a String the result is written into, which
+                // is the object the call answers.
+                let mut arguments = arguments;
+                let mut buffer = None;
+                if let Some(Object::Dict(entries)) = arguments.last()
+                    && let Some(named) = entries.borrow().get(":buffer").cloned()
+                {
+                    if !matches!(named, Object::String(_)) {
+                        let holds = self.builtins().class_of(&named).ruby_name();
+                        return Err(simple_exception(
+                            "TypeError",
+                            &format!("buffer must be String, not {holds}"),
+                            position,
+                        ));
+                    }
+                    buffer = Some(named);
+                    arguments = &arguments[..arguments.len() - 1];
+                }
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
                         method_name,
@@ -2079,7 +2110,12 @@ impl VirtualMachine {
                     }
                 };
                 let items = array_rc.borrow().clone();
-                self.array_pack(&items, &format, position).map(Some)
+                let packed = self.array_pack(&items, &format, position)?;
+                let Some(buffer) = buffer else {
+                    return Ok(Some(packed));
+                };
+                self.pack_into_buffer(buffer, &format, &packed, position)
+                    .map(Some)
             }
             // `to_a` and `entries` answer the array itself, which is what
             // Ruby returns for an Array that is not a subclass instance.
@@ -2343,20 +2379,36 @@ impl VirtualMachine {
                 Ok(Some(Object::array(elements)))
             }
             "sample" => {
-                if !arguments.is_empty() {
-                    return Err(method_argument_error(
-                        method_name,
-                        0,
-                        arguments.len(),
+                let (count, source) = self.sample_arguments(method_name, arguments, position)?;
+                let mut elements = array_rc.borrow().clone();
+                let Some(count) = count else {
+                    if elements.is_empty() {
+                        return Ok(Some(Object::Nil));
+                    }
+                    let index =
+                        self.random_upto(source.as_ref(), elements.len() as i64, position)?
+                            as usize;
+                    return Ok(Some(elements[index].clone()));
+                };
+                if count < 0 {
+                    return Err(simple_exception(
+                        "ArgumentError",
+                        "negative sample number",
                         position,
                     ));
                 }
-                let elements = array_rc.borrow().clone();
-                if elements.is_empty() {
-                    return Ok(Some(Object::Nil));
+                // Drawing without replacement is a partial Fisher-Yates: each
+                // pick is swapped to the front, so the stretch already taken
+                // is never drawn from again.
+                let wanted = (count as usize).min(elements.len());
+                for taken in 0..wanted {
+                    let remaining = (elements.len() - taken) as i64;
+                    let drawn =
+                        taken + self.random_upto(source.as_ref(), remaining, position)? as usize;
+                    elements.swap(taken, drawn);
                 }
-                let index = self.next_random_int(elements.len() as i64) as usize;
-                Ok(Some(elements[index].clone()))
+                elements.truncate(wanted);
+                Ok(Some(Object::array(elements)))
             }
             _ => Ok(None),
         }
@@ -2991,4 +3043,119 @@ fn identical(left: &Object, right: &Object) -> bool {
         (Object::Float(one), Object::Float(other)) => one.to_bits() == other.to_bits(),
         _ => false,
     }
+}
+
+impl VirtualMachine {
+    /// The count and the `random:` source `Array#sample` was called with.
+    fn sample_arguments(
+        &mut self,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<(Option<i64>, Option<Object>), MetorexError> {
+        let mut positional = arguments;
+        let mut source = None;
+        if let Some(Object::Dict(entries)) = arguments.last() {
+            let named = entries.borrow().get(":random").cloned();
+            if let Some(named) = named {
+                source = Some(named);
+                positional = &arguments[..arguments.len() - 1];
+            }
+        }
+        if positional.len() > 1 {
+            return Err(method_argument_error(
+                method_name,
+                1,
+                positional.len(),
+                position,
+            ));
+        }
+        let count = match positional.first() {
+            None => None,
+            Some(Object::Int(count)) => Some(*count),
+            Some(other) => {
+                let counted = self.coerce_integer_argument(other, position)?;
+                Some(counted.try_into().unwrap_or(i64::MAX))
+            }
+        };
+        Ok((count, source))
+    }
+
+    /// An index below `limit`, drawn either from the interpreter's own
+    /// generator or from the object a `random:` keyword named. Ruby asks such
+    /// an object for `rand(limit)` and refuses an answer outside the range.
+    pub(crate) fn random_upto(
+        &mut self,
+        source: Option<&Object>,
+        limit: i64,
+        position: Position,
+    ) -> Result<i64, MetorexError> {
+        let Some(source) = source else {
+            return Ok(self.next_random_int(limit));
+        };
+        if limit <= 0 {
+            return Ok(0);
+        }
+        let drawn =
+            self.send_to_object(source.clone(), "rand", vec![Object::Int(limit)], position)?;
+        let index = match drawn {
+            Object::Int(index) => index,
+            Object::Float(index) => index.trunc() as i64,
+            other => {
+                let drawn = self.coerce_integer_argument(&other, position)?;
+                drawn.try_into().unwrap_or(i64::MAX)
+            }
+        };
+        if index < 0 || index >= limit {
+            return Err(simple_exception(
+                "RangeError",
+                &format!("random number too big {index}"),
+                position,
+            ));
+        }
+        Ok(index)
+    }
+}
+
+impl VirtualMachine {
+    /// Write a packed result into the String a `buffer:` keyword named. The
+    /// writing starts at the end of what the buffer holds, or at the offset a
+    /// leading `@` directive names, and the buffer is the answer.
+    fn pack_into_buffer(
+        &mut self,
+        buffer: Object,
+        format: &str,
+        packed: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let Object::String(held) = &buffer else {
+            return Ok(buffer);
+        };
+        if held.is_frozen() {
+            return Err(self.frozen_modification_error(&buffer, position));
+        }
+        let existing = super::pack_format::string_to_bytes(&held.as_str());
+        let written = match packed {
+            Object::String(text) => super::pack_format::string_to_bytes(&text.as_str()),
+            _ => Vec::new(),
+        };
+        let (start, tail) = match leading_pack_offset(format) {
+            Some(offset) => (offset, written.get(offset..).unwrap_or(&[]).to_vec()),
+            None => (existing.len(), written),
+        };
+        let mut made = existing;
+        made.resize(start, 0);
+        made.extend_from_slice(&tail);
+        held.replace_text(made.iter().map(|byte| *byte as char).collect::<String>());
+        held.mark_bytes();
+        Ok(buffer)
+    }
+}
+
+/// The absolute offset a format's leading `@` directive names, where it has
+/// one. Any other format writes at the end of what the buffer holds.
+fn leading_pack_offset(format: &str) -> Option<usize> {
+    let digits = format.strip_prefix('@')?;
+    let counted: String = digits.chars().take_while(char::is_ascii_digit).collect();
+    counted.parse().ok()
 }

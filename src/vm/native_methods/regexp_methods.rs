@@ -328,6 +328,7 @@ impl VirtualMachine {
                         position,
                     ));
                 };
+                refuse_invalid_subject(&arguments[0], position)?;
                 let start = match arguments.get(1) {
                     Some(Object::Int(offset)) => resolve_offset(&text, *offset),
                     _ => Some(0),
@@ -361,8 +362,17 @@ impl VirtualMachine {
                 let Some(text) = subject_text(&arguments[0]) else {
                     return Ok(Some(Object::Bool(false)));
                 };
+                refuse_invalid_subject(&arguments[0], position)?;
+                let start = match arguments.get(1) {
+                    Some(Object::Int(offset)) => resolve_offset(&text, *offset),
+                    _ => Some(0),
+                };
+                let Some(start) = start else {
+                    return Ok(Some(Object::Bool(false)));
+                };
+                let byte_start: usize = text.chars().take(start).map(char::len_utf8).sum();
                 let matched = compile(pattern, flags)
-                    .map(|compiled| compiled.is_match(&text))
+                    .map(|compiled| compiled.is_match(&text[byte_start..]))
                     .unwrap_or(false);
                 Ok(Some(Object::Bool(matched)))
             }
@@ -386,6 +396,12 @@ impl VirtualMachine {
                     self.environment_mut().define(name, value);
                 }
                 Ok(answer)
+            }
+            // `~ /pattern/` matches against the line `$_` holds, which is
+            // what the line-reading command-line switches leave there.
+            "~" => {
+                let line = self.globals().get("_").unwrap_or(Object::Nil);
+                self.call_regexp_method(pattern, flags, "=~", &[line], position)
             }
             "=~" => {
                 if arguments.is_empty() {
@@ -702,4 +718,20 @@ fn named_groups(pattern: &str, flags: &str) -> Vec<(usize, String)> {
         .enumerate()
         .map(|(slot, name)| (slot + 1, original_group_name(name).to_string()))
         .collect()
+}
+
+/// Refuse a subject whose bytes do not spell characters in the encoding it
+/// carries, which Ruby reports before looking for a match at all.
+fn refuse_invalid_subject(subject: &Object, position: Position) -> Result<(), MetorexError> {
+    let Object::String(text) = subject else {
+        return Ok(());
+    };
+    if super::string_methods::holds_valid_text(text) {
+        return Ok(());
+    }
+    Err(crate::vm::errors::simple_exception(
+        "ArgumentError",
+        &format!("invalid byte sequence in {}", text.encoding_name()),
+        position,
+    ))
 }

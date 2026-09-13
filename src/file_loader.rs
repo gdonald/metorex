@@ -143,8 +143,10 @@ fn levenshtein_distance(a: &str, b: &str) -> usize {
 /// * `Ok(PathBuf)` - The actual file path that exists
 /// * `Err(MetorexError)` - If the file doesn't exist with any extension
 pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
-    // Try the path as given first
-    if path.exists() {
+    // Try the path as given first. A directory of that name is not the file
+    // being asked for: `require_relative 'fixtures/rescue'` names
+    // `fixtures/rescue.rb` even where `fixtures/rescue/` stands beside it.
+    if path.is_file() {
         return Ok(path.to_path_buf());
     }
 

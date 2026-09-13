@@ -16,7 +16,15 @@ mod expression;
 pub(crate) mod fibers;
 mod global_registry;
 mod heap;
-mod init;
+pub(crate) mod init;
+
+/// The type the operating system names a resource limit with, which is a
+/// plain int on the BSDs and a typed enum on Linux.
+#[cfg(target_os = "linux")]
+pub(crate) type RlimitResource = libc::__rlimit_resource_t;
+#[cfg(not(target_os = "linux"))]
+pub(crate) type RlimitResource = libc::c_int;
+
 mod loading;
 mod method_execution;
 pub(crate) mod method_invocation;

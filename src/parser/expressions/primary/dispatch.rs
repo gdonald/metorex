@@ -11,6 +11,11 @@ use super::literals;
 impl Parser {
     /// Parse primary expressions (literals, identifiers, groups).
     pub(crate) fn parse_primary(&mut self) -> Result<Expression, MetorexError> {
+        // A definition already read stands where the next primary would, so
+        // the operators and calls written after it apply to what it answered.
+        if let Some(seed) = self.seeded_primary.take() {
+            return self.parse_postfix_calls(seed);
+        }
         // Nothing is left to read, and advancing past the end would hand back
         // the token already read, which would be read again without end.
         if self.is_at_end() {
