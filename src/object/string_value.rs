@@ -141,6 +141,12 @@ impl StringValue {
     }
 
     /// The notice a change to this string prints, taken so it prints once.
+    /// Whether the string carries notice that it will be frozen in a later
+    /// release.
+    pub fn is_chilled(&self) -> bool {
+        self.chilled.borrow().is_some()
+    }
+
     pub fn take_chill(&self) -> Option<String> {
         self.chilled.borrow_mut().take()
     }

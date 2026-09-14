@@ -163,6 +163,7 @@ impl<'a> Lexer<'a> {
             "__FILE__" => TokenKind::MagicFile,
             "__LINE__" => TokenKind::MagicLine,
             "__dir__" => TokenKind::MagicDir,
+            "__ENCODING__" => TokenKind::SourceEncoding(self.source_encoding.clone()),
             "and" => TokenKind::KeywordAnd,
             "or" => TokenKind::KeywordOr,
             "not" => TokenKind::NotKeyword,

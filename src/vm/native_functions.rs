@@ -1331,8 +1331,8 @@ impl VirtualMachine {
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
-                let code = match &arguments[0] {
-                    Object::String(s) => s.as_str().to_string(),
+                let (code, code_encoding) = match &arguments[0] {
+                    Object::String(s) => (s.as_str().to_string(), s.encoding_name()),
                     other => {
                         return Err(MetorexError::runtime_error(
                             format!(
@@ -1343,6 +1343,13 @@ impl VirtualMachine {
                         ));
                     }
                 };
+                // Code is written in the encoding a magic comment of its own
+                // names, and otherwise in the one the string carrying it is
+                // tagged with, which is what `__ENCODING__` answers inside.
+                let previous_source_encoding = self.current_source_encoding.replace(
+                    crate::lexer::named_source_encoding(&code)
+                        .unwrap_or_else(|| code_encoding.clone()),
+                );
                 // Optional filename (arg 3) and lineno (arg 4) shape the
                 // positions recorded for code inside the eval'd string
                 // (`__LINE__`, const_source_location, backtraces).
@@ -1354,7 +1361,12 @@ impl VirtualMachine {
                     Some(Object::Int(n)) => (*n).max(1) as usize,
                     _ => 1,
                 };
-                let tokens = crate::lexer::Lexer::with_start_line(&code, lineno).tokenize();
+                let tokens = crate::lexer::Lexer::with_start_line(&code, lineno)
+                    .with_source_encoding(Some(
+                        crate::lexer::named_source_encoding(&code)
+                            .unwrap_or_else(|| code_encoding.clone()),
+                    ))
+                    .tokenize();
                 let statements = crate::parser::Parser::new(tokens)
                     .parse()
                     .map_err(|errors| {
@@ -1476,6 +1488,7 @@ impl VirtualMachine {
                 }
                 self.current_file = prev_file;
                 self.current_source_file = prev_source_file;
+                self.current_source_encoding = previous_source_encoding;
                 self.pop_refinement_scope();
                 self.user_def_nesting = saved_nesting;
                 Ok(result?.unwrap_or(Object::Nil))
@@ -2556,6 +2569,33 @@ impl VirtualMachine {
         }
     }
 
+    /// The string `inspect` produces for an object, tagged with the encoding
+    /// it is written in. Text that encoding has no room for is escaped rather
+    /// than refused.
+    pub(crate) fn inspected_object(
+        &mut self,
+        obj: &Object,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let rendered = self.inspect_object(obj, position)?;
+        let Object::String(text) = &rendered else {
+            return Ok(rendered);
+        };
+        let writing = self.inspect_result_encoding();
+        let held = text.encoding_name();
+        // Text in an encoding that spells ASCII its own way is never read as
+        // ASCII, however small the numbers its bytes happen to be.
+        let reads_as_ascii =
+            crate::vm::native_methods::string_methods::encoding_is_ascii_compatible(&held)
+                && text.as_str().is_ascii();
+        if held == writing || reads_as_ascii {
+            return Ok(rendered);
+        }
+        Ok(crate::vm::native_methods::string_methods::escaped_text(
+            text,
+        ))
+    }
+
     /// The string `inspect` produces for an object, preferring a method the
     /// object defines over the native rendering.
     pub(crate) fn get_inspect_representation(
@@ -2563,21 +2603,45 @@ impl VirtualMachine {
         obj: &Object,
         position: Position,
     ) -> Result<String, MetorexError> {
+        let rendered = self.inspect_object(obj, position)?;
+        Ok(match &rendered {
+            Object::String(text) => text.to_string(),
+            other => format!("{}", other),
+        })
+    }
+
+    /// What `inspect` answered for an object, as the object it answered. A
+    /// method the object defines is preferred over the native rendering.
+    fn inspect_object(&mut self, obj: &Object, position: Position) -> Result<Object, MetorexError> {
         if let Some((class, method)) = self.lookup_method(obj, "inspect")
             && !method.is_undefined
         {
             let result = self.invoke_method(class, method, obj.clone(), vec![], position)?;
-            if let Object::String(text) = result {
-                return Ok(text.to_string());
+            if matches!(result, Object::String(_)) {
+                return Ok(result);
             }
+            // Ruby asks whatever `inspect` answered for its own `to_s`, and
+            // shows that object's default form when `to_s` is no String
+            // either. Neither one is asked for `to_str`.
+            if let Some((class, method)) = self.lookup_method(&result, "to_s")
+                && !method.is_undefined
+            {
+                let spelled =
+                    self.invoke_method(class, method, result.clone(), vec![], position)?;
+                if matches!(spelled, Object::String(_)) {
+                    return Ok(spelled);
+                }
+                return Ok(Object::string(format!("{}", spelled)));
+            }
+            return Ok(Object::string(format!("{}", result)));
         }
         let class = self.builtins().class_of(obj);
-        if let Some(Object::String(rendered)) =
+        if let Some(rendered @ Object::String(_)) =
             self.call_native_method(&class, obj, "inspect", &[], position)?
         {
-            return Ok(rendered.to_string());
+            return Ok(rendered);
         }
-        Ok(format!("{}", obj))
+        Ok(Object::string(format!("{}", obj)))
     }
 
     /// The Integer `srand` seeds with, kept at its full width so the next

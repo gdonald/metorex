@@ -56,6 +56,13 @@ pub struct Lexer<'a> {
     pub(super) binary_source: bool,
     /// Whether the source asked for its string literals to be frozen.
     pub(super) frozen_literals: bool,
+    /// Whether the source asked outright for its string literals to stay
+    /// mutable. A source that says nothing either way gets the literals Ruby
+    /// hands back with notice that a later release will freeze them.
+    pub(super) mutable_literals: bool,
+    /// The encoding the source says it is written in, which is what
+    /// `__ENCODING__` answers where it is written.
+    pub(super) source_encoding: String,
 }
 
 impl<'a> Lexer<'a> {
@@ -67,9 +74,34 @@ impl<'a> Lexer<'a> {
     /// A lexer over the core library metorex loads at startup. Every position
     /// it hands out says so, which is how a tracepoint knows to pass over the
     /// library's own statements the way Ruby passes over its C code.
+    /// A lexer over a library metorex carries. Like the prelude, it is
+    /// metorex's own source rather than the program's, so a setting the
+    /// program was started with says nothing about its literals.
+    pub fn for_embedded_library(source: &'a str) -> Self {
+        let mut made = Self::with_start_line(source, 1);
+        made.frozen_literals = false;
+        made.mutable_literals = false;
+        made
+    }
+
+    /// Say what encoding the source is written in, for code that arrives as a
+    /// string rather than as a file: an eval takes the encoding of the string
+    /// it was handed, unless the code names one of its own.
+    pub fn with_source_encoding(mut self, named: Option<String>) -> Self {
+        if let Some(named) = named {
+            self.source_encoding = named;
+        }
+        self
+    }
+
     pub fn for_prelude(source: &'a str) -> Self {
         let mut made = Self::with_start_line(source, 1);
         made.prelude = true;
+        // The library metorex loads at startup is its own rather than the
+        // program's, so a setting the program was started with says nothing
+        // about it.
+        made.frozen_literals = false;
+        made.mutable_literals = false;
         made
     }
 
@@ -81,7 +113,18 @@ impl<'a> Lexer<'a> {
         // the encoding rather than anything the program says.
         let source = source.strip_prefix('\u{feff}').unwrap_or(source);
         let binary_source = names_binary_encoding(source);
-        let frozen_literals = freezes_string_literals(source);
+        // A magic comment decides for the source it is written in; without
+        // one the setting the program was started with decides.
+        let (frozen_literals, mutable_literals) = if names_string_literal_setting(source) {
+            let frozen = freezes_string_literals(source);
+            (frozen, !frozen)
+        } else {
+            match literal_default() {
+                LiteralDefault::Frozen => (true, false),
+                LiteralDefault::Mutable => (false, true),
+                LiteralDefault::Chilled => (false, false),
+            }
+        };
         Self {
             chars: source.chars().peekable(),
             prepend: Vec::new(),
@@ -94,6 +137,8 @@ impl<'a> Lexer<'a> {
             prelude: false,
             binary_source,
             frozen_literals,
+            mutable_literals,
+            source_encoding: named_source_encoding(source).unwrap_or_else(default_source_encoding),
         }
     }
 
@@ -198,6 +243,101 @@ fn freezes_string_literals(source: &str) -> bool {
         return named.starts_with("true");
     }
     false
+}
+
+/// What a literal is in a source that says nothing about frozen string
+/// literals: frozen, mutable, or handed back with notice that a later
+/// release will freeze it.
+#[derive(Clone, Copy, PartialEq)]
+pub enum LiteralDefault {
+    Frozen,
+    Mutable,
+    Chilled,
+}
+
+static LITERAL_DEFAULT: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+/// The encoding a source is read as when it names none of its own, which is
+/// what `-K` and `-U` say for the whole run.
+static DEFAULT_SOURCE_ENCODING: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Say what encoding a source is written in when it names none of its own.
+pub fn set_default_source_encoding(named: &str) {
+    if let Ok(mut held) = DEFAULT_SOURCE_ENCODING.write() {
+        *held = Some(named.to_string());
+    }
+}
+
+fn default_source_encoding() -> String {
+    DEFAULT_SOURCE_ENCODING
+        .read()
+        .ok()
+        .and_then(|held| held.clone())
+        .unwrap_or_else(|| "UTF-8".to_string())
+}
+
+/// Say what a literal is in a source that names no setting of its own, which
+/// is what `--enable-frozen-string-literal` and its opposite decide.
+pub fn set_literal_default(setting: LiteralDefault) {
+    let held = match setting {
+        LiteralDefault::Chilled => 0,
+        LiteralDefault::Frozen => 1,
+        LiteralDefault::Mutable => 2,
+    };
+    LITERAL_DEFAULT.store(held, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn literal_default() -> LiteralDefault {
+    match LITERAL_DEFAULT.load(std::sync::atomic::Ordering::Relaxed) {
+        1 => LiteralDefault::Frozen,
+        2 => LiteralDefault::Mutable,
+        _ => LiteralDefault::Chilled,
+    }
+}
+
+/// Whether a magic comment says anything at all about frozen string
+/// literals, whichever way it says it.
+fn names_string_literal_setting(source: &str) -> bool {
+    for line in source.lines().take(3) {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !trimmed.starts_with('#') {
+            break;
+        }
+        if trimmed
+            .to_ascii_lowercase()
+            .contains("frozen_string_literal")
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// The encoding a magic comment on one of the first two lines names, or None
+/// when the source names none.
+pub fn named_source_encoding(source: &str) -> Option<String> {
+    for line in source.lines().take(2) {
+        let trimmed = line.trim_start();
+        if !trimmed.starts_with('#') {
+            continue;
+        }
+        let lowered = trimmed.to_ascii_lowercase();
+        let at = lowered.find("coding")?;
+        let named = lowered[at + "coding".len()..].trim_start();
+        let named = named.strip_prefix(':').unwrap_or(named).trim_start();
+        let spelled: String = named
+            .chars()
+            .take_while(|held| held.is_alphanumeric() || *held == '-' || *held == '_')
+            .collect();
+        if spelled.is_empty() {
+            return None;
+        }
+        return Some(spelled);
+    }
+    None
 }
 
 fn names_binary_encoding(source: &str) -> bool {

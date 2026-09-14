@@ -290,6 +290,13 @@ impl VirtualMachine {
             if let Some(result) =
                 self.call_string_method(&text, method_name, arguments, position)?
             {
+                // A method that answers the string it was called on answers
+                // the subclass instance, not the characters behind it.
+                if let (Object::String(answered), Object::String(backing)) = (&result, &text)
+                    && Rc::ptr_eq(answered, backing)
+                {
+                    return Ok(Some(receiver.clone()));
+                }
                 return Ok(Some(result));
             }
         }
@@ -536,6 +543,17 @@ impl VirtualMachine {
                         return self.call_string_method(&named, method_name, arguments, position);
                     }
                     "intern" | "to_sym" => return Ok(Some(receiver.clone())),
+                    // A Symbol compares its case only against another Symbol,
+                    // where a String compares against anything that reads as
+                    // one.
+                    "casecmp" | "casecmp?" if arguments.len() == 1 => {
+                        let Object::Symbol(other) = &arguments[0] else {
+                            return Ok(Some(Object::Nil));
+                        };
+                        let left = Object::String(Rc::clone(text));
+                        let right = Object::String(Rc::clone(other));
+                        return self.call_string_method(&left, method_name, &[right], position);
+                    }
                     _ => {}
                 }
                 if let Some(result) =
@@ -1377,8 +1395,13 @@ fn carry_string_encoding(
     answer: Option<Object>,
 ) -> Option<Object> {
     // A method that pads with a string of its own works out which encoding
-    // the two have in common, so its answer is already tagged.
-    if matches!(method_name, "center" | "ljust" | "rjust" | "+") {
+    // the two have in common, `encode` is named an encoding outright, and
+    // `inspect` writes its answer in the encoding answers are written in, so
+    // each is already tagged.
+    if matches!(
+        method_name,
+        "center" | "ljust" | "rjust" | "+" | "encode" | "inspect"
+    ) {
         return answer;
     }
     let Object::String(source) = receiver else {

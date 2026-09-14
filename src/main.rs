@@ -79,18 +79,36 @@ struct Cli {
     #[arg(long = "enable", hide = true)]
     _enable: Option<String>,
 
-    /// Ignored: Ruby --enable-frozen-string-literal, spelled either way.
-    /// Metorex has no in-place String mutation, so its literals already
-    /// behave as frozen ones do.
+    /// Ruby --enable-frozen-string-literal: every literal in a source that
+    /// says nothing about it is frozen.
     #[arg(
         long = "enable-frozen-string-literal",
         alias = "enable-frozen_string_literal",
-        alias = "disable-frozen-string-literal",
+        hide = true,
+        action = clap::ArgAction::SetTrue
+    )]
+    enable_frozen_string_literal: bool,
+
+    /// Ruby --disable-frozen-string-literal: every literal in a source that
+    /// says nothing about it changes, and carries no notice that a later
+    /// release will freeze it.
+    #[arg(
+        long = "disable-frozen-string-literal",
         alias = "disable-frozen_string_literal",
         hide = true,
         action = clap::ArgAction::SetTrue
     )]
-    _frozen_string_literal: bool,
+    disable_frozen_string_literal: bool,
+
+    /// Ruby --debug-frozen-string-literal: a literal remembers where it was
+    /// written, which is named when something tries to change it.
+    #[arg(
+        long = "debug-frozen-string-literal",
+        alias = "debug-frozen_string_literal",
+        hide = true,
+        action = clap::ArgAction::SetTrue
+    )]
+    debug_frozen_string_literal: bool,
 
     /// Ignored: Ruby --enable-gems
     #[arg(long = "enable-gems", hide = true, action = clap::ArgAction::SetTrue)]
@@ -569,6 +587,22 @@ fn real_main() {
         .collect();
     let cli = Cli::parse_from(arguments);
 
+    // Without a magic comment of its own, a source takes the setting the
+    // program was started with. Said here rather than with the rest of the
+    // flags, since a source is read before a VM is built for it.
+    if cli.enable_frozen_string_literal {
+        metorex::lexer::set_literal_default(metorex::lexer::LiteralDefault::Frozen);
+    } else if cli.disable_frozen_string_literal {
+        metorex::lexer::set_literal_default(metorex::lexer::LiteralDefault::Mutable);
+    }
+    // `-K` names the encoding every source is read as, so it has to be known
+    // before any of them is read.
+    if let Some(written) = &cli.source_encoding
+        && let Some(named) = source_encoding_letter(written)
+    {
+        metorex::lexer::set_default_source_encoding(named);
+    }
+
     // `-C` and `-X` both name the directory the rest of the run works from.
     if let Some(directory) = cli
         .working_directory
@@ -615,6 +649,7 @@ fn real_main() {
         // Code given on the command line is named `-e`, which is what a
         // report and `__FILE__` say of it.
         vm.set_current_file(std::path::PathBuf::from("-e"));
+        vm.set_source_encoding(None);
         vm.set_script_path(
             std::path::PathBuf::from("-e"),
             std::path::PathBuf::from("-e"),
@@ -758,6 +793,7 @@ fn real_main() {
 
     // Set the current file path and mark it as loaded
     vm.set_current_file(absolute_path.clone());
+    vm.set_source_encoding(metorex::lexer::named_source_encoding(&source));
     // `__FILE__` reports the path the script was named by on the command
     // line, while everything that resolves a path uses the canonical one.
     vm.set_script_path(absolute_path.clone(), std::path::PathBuf::from(filename));

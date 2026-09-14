@@ -556,7 +556,7 @@ fn test_stdlib_libraries_socket_settings_no_parens_execution() {
 }
 
 /// The expected output of both `stdlib_libraries/yaml_documents` variants.
-const YAML_DOCUMENTS_OUTPUT: &str = "\"str\"\n:locked\n47\n[\"a\", \"b\", \"c\"]\n[\"a\", \"b\", \"c\"]\n{\"a\" => \"b\", \"c\" => 2}\n[[[\"one\", \"two\", \"three\"]]]\n{:\"user name\" => \"This is the user name.\"}\nnil\n[[\"Mark McGwire\", \"Sammy Sosa\"], [\"Chicago Cubs\"]]\n2\n\"--- :locked\\n\"\n\"--- str\\n\"\n\"--- \\na: b\\n\"\n\"--- \\n- a\\n- b\\n- c\\n\"\n\"--- foo\\n--- 20\\n--- []\\n\\n--- {}\\n\\n\"\n\"--- \\n- a: b\\n- b: c\\n\"\n\"--- !ruby/module 'Enumerable'\\n\"\n\"--- !ruby/exception:StandardError\\nmessage: foobar\\nbacktrace: \\n\"\n\"--- !ruby/range\\nbegin: 1\\nend: 3\\nexcl: false\\n\"\n\"--- .nan\\n\"\n{[\"Detroit Tigers\", \"Chicago Cubs\"] => [\"first\"]}\nPsych::SyntaxError\n";
+const YAML_DOCUMENTS_OUTPUT: &str = "\"str\"\n:locked\n47\n[\"a\", \"b\", \"c\"]\n[\"a\", \"b\", \"c\"]\n{\"a\" => \"b\", \"c\" => 2}\n[[[\"one\", \"two\", \"three\"]]]\n{\"user name\": \"This is the user name.\"}\nnil\n[[\"Mark McGwire\", \"Sammy Sosa\"], [\"Chicago Cubs\"]]\n2\n\"--- :locked\\n\"\n\"--- str\\n\"\n\"--- \\na: b\\n\"\n\"--- \\n- a\\n- b\\n- c\\n\"\n\"--- foo\\n--- 20\\n--- []\\n\\n--- {}\\n\\n\"\n\"--- \\n- a: b\\n- b: c\\n\"\n\"--- !ruby/module 'Enumerable'\\n\"\n\"--- !ruby/exception:StandardError\\nmessage: foobar\\nbacktrace: \\n\"\n\"--- !ruby/range\\nbegin: 1\\nend: 3\\nexcl: false\\n\"\n\"--- .nan\\n\"\n{[\"Detroit Tigers\", \"Chicago Cubs\"] => [\"first\"]}\nPsych::SyntaxError\n";
 
 #[test]
 fn test_stdlib_libraries_yaml_documents_execution() {

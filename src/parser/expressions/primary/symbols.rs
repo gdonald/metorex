@@ -19,6 +19,7 @@ pub(crate) fn starts_symbol_literal(kind: &TokenKind) -> bool {
             | TokenKind::ByteString(_)
             | TokenKind::BinaryString(_)
             | TokenKind::FrozenString(_)
+            | TokenKind::MutableString(_)
             | TokenKind::InterpolatedString(_)
             | TokenKind::Def
             | TokenKind::Class

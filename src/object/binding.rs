@@ -62,6 +62,8 @@ impl Binding {
     }
 
     /// Bind `name` to a cell, adding it when the binding had no such local.
+    /// A name the binding did not have belongs to the scope the binding
+    /// itself opened, which Ruby reports ahead of the scopes it inherited.
     pub fn set(&self, name: &str, cell: Rc<RefCell<Object>>) {
         if self
             .variables
@@ -69,7 +71,7 @@ impl Binding {
             .insert(name.to_string(), cell)
             .is_none()
         {
-            self.order.borrow_mut().push(name.to_string());
+            self.order.borrow_mut().insert(0, name.to_string());
         }
     }
 

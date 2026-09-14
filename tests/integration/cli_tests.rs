@@ -706,6 +706,56 @@ fn cli_encodings_default_to_utf8_no_parens() {
     );
 }
 
+/// Run one of the `cli_flags` examples with the flags given, answering what it
+/// wrote to standard output.
+fn run_cli_flags_example(flags: &[&str], script: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let path = format!("{}/tests/_examples/cli_flags/{}", manifest_dir, script);
+    let mut arguments: Vec<&str> = flags.to_vec();
+    arguments.push(&path);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(arguments)
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn cli_enable_frozen_string_literal_shares_one_frozen_string() {
+    for script in ["frozen_literal_flags.rb", "frozen_literal_flags_parens.rb"] {
+        assert_eq!(
+            run_cli_flags_example(&["--enable-frozen-string-literal"], script),
+            "frozen true\nshared true\n"
+        );
+    }
+}
+
+#[test]
+fn cli_disable_frozen_string_literal_writes_a_string_each_time() {
+    for script in ["frozen_literal_flags.rb", "frozen_literal_flags_parens.rb"] {
+        assert_eq!(
+            run_cli_flags_example(&["--disable-frozen-string-literal"], script),
+            "frozen false\nshared false\n"
+        );
+    }
+}
+
+#[test]
+fn cli_without_a_frozen_string_literal_flag_writes_a_string_each_time() {
+    for script in ["frozen_literal_flags.rb", "frozen_literal_flags_parens.rb"] {
+        assert_eq!(
+            run_cli_flags_example(&[], script),
+            "frozen false\nshared false\n"
+        );
+    }
+}
+
 #[test]
 fn cli_k_flag_names_the_source_encoding() {
     assert_eq!(

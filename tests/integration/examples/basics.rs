@@ -392,7 +392,7 @@ fn test_basics_heredoc_bare_execution() {
         "\"first line\\nsecond line\\n\"\n",
         "\"SHOUT\\n\"\n",
         "\"hello world\\n\"\n",
-        "\"no #{interpolation}\\n\"\n",
+        "\"no \\#{interpolation}\\n\"\n",
         "[\"shovel still works\"]\n",
         "8\n",
     );
@@ -406,7 +406,7 @@ fn test_basics_heredoc_bare_parens_execution() {
         "\"first line\\nsecond line\\n\"\n",
         "\"SHOUT\\n\"\n",
         "\"hello world\\n\"\n",
-        "\"no #{interpolation}\\n\"\n",
+        "\"no \\#{interpolation}\\n\"\n",
         "[\"shovel still works\"]\n",
         "8\n",
     );

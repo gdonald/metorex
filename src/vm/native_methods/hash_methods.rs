@@ -1579,10 +1579,19 @@ impl VirtualMachine {
                 }
                 crate::object::begin_rendering(address);
                 let mut parts = Vec::new();
+                // A hash with nothing in it spells the same in every
+                // encoding, and one with something in it is written in the
+                // encoding the first key was rendered in.
+                let mut writing = "US-ASCII".to_string();
                 for (key, value) in self.hash_pairs(dict_rc) {
                     let rendered = self.render_pair(&key, &value, position);
                     match rendered {
-                        Ok(rendered) => parts.push(rendered),
+                        Ok((rendered, held)) => {
+                            if parts.is_empty() {
+                                writing = held;
+                            }
+                            parts.push(rendered);
+                        }
                         Err(error) => {
                             crate::object::end_rendering();
                             return Err(error);
@@ -1590,7 +1599,11 @@ impl VirtualMachine {
                     }
                 }
                 crate::object::end_rendering();
-                Ok(Some(Object::string(format!("{{{}}}", parts.join(", ")))))
+                let made = crate::object::StringValue::with_encoding(
+                    format!("{{{}}}", parts.join(", ")),
+                    writing,
+                );
+                Ok(Some(Object::String(Rc::new(made))))
             }
             // `[]=` writes one entry, the way `hash[key] = value` does.
             "[]=" => {
@@ -2207,22 +2220,39 @@ impl VirtualMachine {
         key: &Object,
         value: &Object,
         position: Position,
-    ) -> Result<String, MetorexError> {
-        let rendered_value = self.get_inspect_representation(value, position)?;
-        if let Object::Symbol(name) = key
-            && name
-                .as_str()
-                .chars()
-                .next()
-                .is_some_and(|first| first.is_alphabetic() || first == '_')
-            && name.as_str().chars().all(|letter| {
-                letter.is_alphanumeric() || letter == '_' || letter == '?' || letter == '!'
-            })
-        {
-            return Ok(format!("{}: {}", name, rendered_value));
+    ) -> Result<(String, String), MetorexError> {
+        let (rendered_value, _) = self.rendered_with_encoding(value, position)?;
+        if let Object::Symbol(name) = key {
+            let spelled = Object::String(Rc::clone(name));
+            let (quoted, writing) = self.rendered_with_encoding(&spelled, position)?;
+            // A symbol that is a plain name prints without quotes, as long as
+            // the encoding the answer is written in has room for every
+            // character of it.
+            let plain =
+                is_plain_symbol_name(&name.as_str()) && quoted == format!("\"{}\"", name.as_str());
+            let shown = if plain {
+                name.as_str().to_string()
+            } else {
+                quoted
+            };
+            return Ok((format!("{}: {}", shown, rendered_value), writing));
         }
-        let rendered_key = self.get_inspect_representation(key, position)?;
-        Ok(format!("{} => {}", rendered_key, rendered_value))
+        let (rendered_key, writing) = self.rendered_with_encoding(key, position)?;
+        Ok((format!("{} => {}", rendered_key, rendered_value), writing))
+    }
+
+    /// What `inspect` answered for an object, and the encoding it wrote the
+    /// answer in.
+    fn rendered_with_encoding(
+        &mut self,
+        obj: &Object,
+        position: Position,
+    ) -> Result<(String, String), MetorexError> {
+        let rendered = self.inspected_object(obj, position)?;
+        Ok(match &rendered {
+            Object::String(text) => (text.to_string(), text.encoding_name()),
+            other => (format!("{}", other), "US-ASCII".to_string()),
+        })
     }
 }
 
@@ -2434,4 +2464,16 @@ fn retagged(value: Object, named: &Option<String>) -> Object {
         text.to_text(),
         named.clone(),
     )))
+}
+
+/// Whether a symbol is named plainly enough to print as a hash key without
+/// quotes: a letter or underscore, then letters, digits and underscores, and
+/// at most one `?` or `!` to close it.
+fn is_plain_symbol_name(name: &str) -> bool {
+    let body = name.strip_suffix(['?', '!']).unwrap_or(name);
+    let mut letters = body.chars();
+    letters
+        .next()
+        .is_some_and(|first| first.is_alphabetic() || first == '_')
+        && letters.all(|letter| letter.is_alphanumeric() || letter == '_')
 }

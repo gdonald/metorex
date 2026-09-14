@@ -332,21 +332,12 @@ impl VirtualMachine {
             return Ok(Object::Regex(Rc::new(source), Rc::new(flags)));
         }
 
-        // Kernel conversion functions: Integer(), String(), Array()
-        if arguments.len() == 1 {
-            match class.name() {
-                "String" => {
-                    return Ok(Object::string(format!("{}", arguments[0])));
-                }
-                "Array" => {
-                    if let Some(converted) =
-                        self.call_kernel_conversion("Array", &arguments, position)?
-                    {
-                        return Ok(converted);
-                    }
-                }
-                _ => {}
-            }
+        // The Kernel conversion function Array()
+        if arguments.len() == 1
+            && class.name() == "Array"
+            && let Some(converted) = self.call_kernel_conversion("Array", &arguments, position)?
+        {
+            return Ok(converted);
         }
 
         // Rational(numerator, denominator) and Complex(real, imaginary) kernel functions
@@ -366,19 +357,34 @@ impl VirtualMachine {
 
         // A subclass of String holds its characters in an instance variable,
         // since a plain String is a primitive rather than an instance.
-        if descends_from(&class, "String") && class.find_method("initialize").is_none() {
-            self.pending_block.take();
-            let text = match arguments.first() {
-                Some(Object::String(text)) => text.as_str().to_string(),
-                Some(other) => format!("{}", other),
-                None => String::new(),
-            };
+        if descends_from(&class, "String") {
+            let spelled = self.string_from_new_arguments(&arguments, position)?;
+            if class.name() == "String" {
+                self.pending_block.take();
+                return Ok(spelled);
+            }
+            // A subclass that writes its own `initialize` decides what the
+            // characters are, so it starts with none; one that does not takes
+            // the characters it was built with.
+            let defines_initialize = class.find_method("initialize").is_some();
             let mut instance = crate::object::Instance::new(Rc::clone(&class));
             instance.set_var(
                 crate::vm::native_methods::STRING_SUBCLASS_VAR.to_string(),
-                Object::string(text),
+                if defines_initialize {
+                    Object::string("")
+                } else {
+                    spelled
+                },
             );
-            return Ok(Object::Instance(Rc::new(RefCell::new(instance))));
+            let made = Object::Instance(Rc::new(RefCell::new(instance)));
+            if !defines_initialize {
+                self.pending_block.take();
+                return Ok(made);
+            }
+            if let Some((owner, method)) = self.lookup_method(&made, "initialize") {
+                self.invoke_method(owner, method, made.clone(), arguments.clone(), position)?;
+            }
+            return Ok(made);
         }
 
         // `Range.new(first, last, exclusive)` builds the same value a literal
@@ -788,4 +794,55 @@ pub(crate) fn descends_from(class: &Rc<Class>, name: &str) -> bool {
         cursor = current.superclass();
     }
     false
+}
+
+impl VirtualMachine {
+    /// The string `String.new` was asked for: the characters of its argument,
+    /// in the encoding the `encoding:` keyword names or the one the argument
+    /// already carried. With no argument at all the string is empty and reads
+    /// as bytes, which is what Ruby answers.
+    fn string_from_new_arguments(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let mut named = None;
+        let mut positional = arguments;
+        if let Some(Object::Dict(options)) = arguments.last() {
+            let held = options.borrow();
+            if held.contains_key(":encoding") || held.contains_key(":capacity") {
+                if let Some(wanted) = held.get(":encoding") {
+                    named = Some(self.encoding_name_argument(wanted, position)?);
+                }
+                positional = &arguments[..arguments.len() - 1];
+            }
+        }
+        let (text, held) = match positional.first() {
+            None => (String::new(), "ASCII-8BIT".to_string()),
+            Some(Object::String(given)) => (given.to_text(), given.encoding_name()),
+            Some(other) if self.responds_to(other, "to_str") => {
+                match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                    Object::String(given) => (given.to_text(), given.encoding_name()),
+                    _ => {
+                        return Err(self.string_conversion_error(other, position));
+                    }
+                }
+            }
+            Some(other) => match crate::vm::native_methods::string_subclass_value(other) {
+                Some(Object::String(given)) => (given.to_text(), given.encoding_name()),
+                _ => return Err(self.string_conversion_error(other, position)),
+            },
+        };
+        let made = crate::object::StringValue::with_encoding(text, named.unwrap_or(held));
+        Ok(Object::String(Rc::new(made)))
+    }
+
+    /// The TypeError Ruby raises for an object that does not read as a String.
+    fn string_conversion_error(&mut self, given: &Object, position: Position) -> MetorexError {
+        let message = format!(
+            "no implicit conversion of {} into String",
+            self.builtins().class_of(given).ruby_name()
+        );
+        crate::vm::errors::simple_exception("TypeError", &message, position)
+    }
 }

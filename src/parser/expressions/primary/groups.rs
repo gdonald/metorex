@@ -359,13 +359,22 @@ impl Parser {
                     // Support both `:` and `=>` for hash syntax
                     if self.check(&[TokenKind::FatArrow]) {
                         self.advance(); // consume =>
+                        key
                     } else {
                         self.expect(
                             TokenKind::Colon,
                             "Expected ':' or '=>' after dictionary key",
                         )?;
+                        // A quoted label names a Symbol, which is how a key
+                        // whose characters no plain label could spell is
+                        // written.
+                        match key {
+                            Expression::StringLiteral { value, position } => {
+                                Expression::Symbol { value, position }
+                            }
+                            other => other,
+                        }
                     }
-                    key
                 };
 
                 self.skip_whitespace();

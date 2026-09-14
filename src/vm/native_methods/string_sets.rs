@@ -473,6 +473,13 @@ impl VirtualMachine {
                 // `casecmp?` folds the whole of Unicode, where `casecmp`
                 // orders by the ASCII letters alone.
                 if method_name == "casecmp?" {
+                    // Only an encoding that spells the whole of Unicode maps
+                    // a letter outside ASCII onto another case of itself.
+                    let maps_unicode = unicode_encoding(&string_value.encoding_name())
+                        && unicode_encoding(&other.encoding_name());
+                    if !maps_unicode {
+                        return Ok(Some(Object::Bool(left == right)));
+                    }
                     // Folding maps a letter onto the letters it compares
                     // equal to, which is where a sharp s becomes two of them.
                     let folded = |held: &str| held.to_lowercase().replace('\u{df}', "ss");
@@ -590,7 +597,10 @@ impl VirtualMachine {
                 }
                 let wants_frozen = method_name != "+@";
                 if !wants_frozen {
-                    if !string_value.is_frozen() {
+                    // A string handed back with notice that it will be frozen
+                    // answers a copy that carries no such notice, which is
+                    // what asking for a mutable one means.
+                    if !string_value.is_frozen() && !string_value.is_chilled() {
                         return Ok(Some(receiver.clone()));
                     }
                     let copy = crate::object::StringValue::with_encoding(
@@ -628,13 +638,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                // Metorex holds a string as characters rather than as bytes,
-                // so a cluster is one character together with the combining
-                // marks that follow it.
-                let clusters: Vec<Object> = grapheme_clusters(&text)
-                    .into_iter()
-                    .map(Object::string)
-                    .collect();
+                let clusters = encoded_grapheme_clusters(string_value);
                 if method_name == "grapheme_clusters" && self.pending_block.is_none() {
                     return Ok(Some(Object::array(clusters)));
                 }
@@ -835,20 +839,67 @@ impl VirtualMachine {
     }
 }
 
+/// The character that joins what stands on either side of it into one
+/// cluster, which is how a flag and a rainbow spell one emoji.
+const ZERO_WIDTH_JOINER: char = '\u{200d}';
+
 /// The clusters a string breaks into: one leading character, then every
-/// combining mark that attaches to it.
+/// combining mark that attaches to it, and whatever a zero width joiner
+/// pulls along after it.
 fn grapheme_clusters(text: &str) -> Vec<String> {
     let mut clusters: Vec<String> = Vec::new();
+    let mut joining = false;
     for character in text.chars() {
-        if is_combining_mark(character)
-            && let Some(last) = clusters.last_mut()
-        {
+        let attaches = joining || is_combining_mark(character) || character == ZERO_WIDTH_JOINER;
+        joining = character == ZERO_WIDTH_JOINER;
+        if attaches && let Some(last) = clusters.last_mut() {
             last.push(character);
             continue;
         }
         clusters.push(character.to_string());
     }
     clusters
+}
+
+/// The clusters a string breaks into, each tagged with the string's own
+/// encoding. An encoding that spells a character in more than one byte is
+/// read out of those bytes and written back into them.
+pub(crate) fn encoded_grapheme_clusters(string_value: &crate::object::StringValue) -> Vec<Object> {
+    use super::string_methods::{
+        binary_bytes, bytes_as_text, wide_bytes, wide_encoding, wide_text,
+    };
+    let named = string_value.encoding_name();
+    if let Some(shape) = wide_encoding(&named)
+        && !super::string_methods::dummy_encoding(&named)
+    {
+        return grapheme_clusters(&wide_text(&binary_bytes(string_value), shape))
+            .iter()
+            .map(|cluster| {
+                let made = crate::object::StringValue::from_bytes(bytes_as_text(&wide_bytes(
+                    cluster, shape,
+                )));
+                made.set_encoding(named.clone());
+                Object::String(std::rc::Rc::new(made))
+            })
+            .collect();
+    }
+    // An encoding that has one character to the byte has one cluster to the
+    // byte with it, since nothing there attaches to anything.
+    if matches!(named.as_str(), "ASCII-8BIT" | "BINARY")
+        || super::string_methods::dummy_encoding(&named)
+        || matches!(named.as_str(), "Shift_JIS" | "Windows-31J" | "MacJapanese")
+    {
+        return super::string_methods::encoded_characters(string_value);
+    }
+    grapheme_clusters(&string_value.as_str())
+        .into_iter()
+        .map(|cluster| {
+            Object::String(std::rc::Rc::new(crate::object::StringValue::with_encoding(
+                cluster,
+                named.clone(),
+            )))
+        })
+        .collect()
 }
 
 /// Whether a character attaches to the one before it rather than standing on
@@ -1042,4 +1093,10 @@ fn compatible_encoding(
         return Some(left_encoding.to_string());
     }
     None
+}
+
+/// Whether an encoding spells the whole of Unicode, which is what decides
+/// whether a letter outside ASCII maps onto another case of itself.
+fn unicode_encoding(named: &str) -> bool {
+    named.starts_with("UTF-") || named == "US-ASCII" || named == "CESU-8"
 }

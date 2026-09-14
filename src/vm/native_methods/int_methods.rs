@@ -482,6 +482,8 @@ impl VirtualMachine {
                     Object::String(text) => text.to_text(),
                     other => self.get_string_representation(other, position)?,
                 };
+                let named =
+                    crate::vm::native_methods::string_methods::canonical_encoding_name(&named);
                 let Some(letter) = u32::try_from(*code).ok().and_then(char::from_u32) else {
                     return Err(out_of_range());
                 };

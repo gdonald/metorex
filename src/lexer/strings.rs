@@ -84,6 +84,10 @@ impl<'a> Lexer<'a> {
                             return Ok(TokenKind::ByteString(current_text));
                         }
                         return Ok(TokenKind::FrozenString(current_text));
+                    } else if self.mutable_literals && !command && !holds_bytes {
+                        // The source asked outright for literals that change,
+                        // so one carries no notice that it will be frozen.
+                        return Ok(TokenKind::MutableString(current_text));
                     } else if holds_bytes {
                         // A source written in bytes spells its literals in
                         // bytes; anywhere else the characters stand for the

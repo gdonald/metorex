@@ -104,6 +104,10 @@ pub struct VirtualMachine {
     /// The file whose code is running right now, which differs from
     /// `current_file` inside a method defined in another file.
     pub(crate) current_source_file: Option<String>,
+    /// The encoding the source running now is written in, which is what
+    /// `__ENCODING__` answers. A file names it in a magic comment, and an
+    /// eval takes it from the string it was handed.
+    pub(crate) current_source_encoding: Option<String>,
     /// The spelling each loaded file was named by, against the path its
     /// symlinks resolve to. `__FILE__` and a backtrace name the spelling,
     /// while everything that loads or dedups works from the resolved path.
@@ -314,6 +318,7 @@ impl VirtualMachine {
             open_streams: Default::default(),
             next_popen_id: 0,
             current_source_file: None,
+            current_source_encoding: None,
             reported_files: std::collections::HashMap::new(),
             timeout_limits: Vec::new(),
             bound_stub_depth: 0,

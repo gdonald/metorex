@@ -8083,12 +8083,6 @@ module Kernel
   end
   module_function :test
 
-  # The encoding the file running now was written in.
-  def __ENCODING__
-    Encoding.__source__
-  end
-  private :__ENCODING__
-
   # Which of the streams handed in are ready, which is IO.select under a name
   # every object answers to.
   def select(readers = nil, writers = nil, errored = nil, timeout = nil)
@@ -9065,7 +9059,7 @@ class Encoding
   # The encoding the source of a program is read as. `-K` names it, and
   # without that flag it is UTF-8.
   def self.__source__
-    @__source__ || Encoding::UTF_8
+    @__source__ || __running_source__
   end
 
   def self.__source__= named
@@ -9283,7 +9277,7 @@ class Encoding
         held = held.byteslice(0, held.bytesize - @pending.bytesize)
       end
       converted = ""
-      held.each_char do |character|
+      held.dup.force_encoding(@source.name).each_char do |character|
         refuse_undefined character unless spellable? character
         converted = converted + character
       end
@@ -9475,9 +9469,13 @@ class Encoding
     def refuse_undefined character
       spelled = "U+" + character.ord.to_s(16).upcase.rjust(4, "0")
       from, to = stage_for :undefined
-      @errinfo = [:undefined_conversion, from.name, to.name, character, ""]
+      # A conversion that passes through another encoding refuses the
+      # character at that step, so the character is reported as that step
+      # reads it rather than as the text was read.
+      refused = character.dup.force_encoding from.name
+      @errinfo = [:undefined_conversion, from.name, to.name, refused, ""]
       trouble = Encoding::UndefinedConversionError.new(
-        "#{spelled} #{undefined_path}", from, to, character
+        "#{spelled} #{undefined_path}", from, to, refused
       )
       @last_error = trouble
       raise trouble

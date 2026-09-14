@@ -34,6 +34,12 @@ fn without_dot_components(path: &std::path::Path) -> std::path::PathBuf {
 
 impl VirtualMachine {
     /// Set the current file being executed.
+    /// Say what encoding the source running now is written in, which is what
+    /// `__ENCODING__` answers.
+    pub fn set_source_encoding(&mut self, named: Option<String>) {
+        self.current_source_encoding = named;
+    }
+
     pub fn set_current_file(&mut self, path: PathBuf) {
         self.current_file = Some(path);
     }
@@ -726,6 +732,12 @@ impl VirtualMachine {
                 SourceLocation::new(0, 0, 0),
             )
         })?;
+        // The file names the encoding it is written in, which is what
+        // `__ENCODING__` answers while it runs.
+        let previous_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            crate::lexer::named_source_encoding(&source),
+        );
 
         // Parse file with error context
         let statements = parse_file(&source, &canonical_path.to_string_lossy()).map_err(|e| {
@@ -799,6 +811,7 @@ impl VirtualMachine {
         self.current_source_file = previous_source_file;
         self.loading_paths.pop();
         self.current_file = previous_file;
+        self.current_source_encoding = previous_source_encoding;
         let value = result.map_err(|e| {
             let rendered = e.to_string();
             keep_exception(e, |_| {
@@ -832,7 +845,7 @@ impl VirtualMachine {
             return Ok(false);
         }
         self.mark_file_loaded(marker);
-        let tokens = crate::lexer::Lexer::new(source).tokenize();
+        let tokens = crate::lexer::Lexer::for_embedded_library(source).tokenize();
         let statements = crate::parser::Parser::new(tokens)
             .parse()
             .map_err(|errors| {

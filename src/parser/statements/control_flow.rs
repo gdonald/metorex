@@ -1021,7 +1021,10 @@ impl Parser {
                         let k = name.clone();
                         self.advance();
                         k
-                    } else if let TokenKind::String(s) = &self.peek().kind {
+                    } else if let TokenKind::String(s)
+                    | TokenKind::FrozenString(s)
+                    | TokenKind::MutableString(s) = &self.peek().kind
+                    {
                         let k = s.clone();
                         self.advance();
                         k
@@ -1075,7 +1078,9 @@ impl Parser {
                 let start = MatchPattern::FloatLiteral(value);
                 self.parse_range_pattern_suffix(start)
             }
-            TokenKind::String(s) => {
+            // A source that asked for frozen literals, or outright for ones
+            // that change, spells a literal in a pattern the same way.
+            TokenKind::String(s) | TokenKind::FrozenString(s) | TokenKind::MutableString(s) => {
                 let value = s.clone();
                 self.advance();
                 let start = MatchPattern::StringLiteral(value);

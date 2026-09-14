@@ -172,6 +172,27 @@ impl VirtualMachine {
                 .map(Some);
         }
         // `String.try_convert` belongs to the class rather than to a string.
+        // `Encoding.__source__` names the encoding the source running now is
+        // written in, which is what `__ENCODING__` answers.
+        if class_rc.name() == "Encoding"
+            && method_name == "__running_source__"
+            && arguments.is_empty()
+        {
+            let named = self
+                .current_source_encoding
+                .clone()
+                .map(|held| {
+                    crate::vm::native_methods::string_methods::canonical_encoding_name(&held)
+                })
+                .unwrap_or_else(|| crate::object::string_value::DEFAULT_ENCODING.to_string());
+            let found = self.send_to_object(
+                Object::Class(Rc::clone(class_rc)),
+                "find",
+                vec![Object::string(named)],
+                position,
+            )?;
+            return Ok(Some(found));
+        }
         if class_rc.name() == "String" && method_name == "try_convert" {
             if arguments.len() != 1 {
                 return Err(method_argument_error(

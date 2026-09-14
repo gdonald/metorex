@@ -73,6 +73,9 @@ pub enum TokenKind {
     MagicFile,
     MagicLine,
     MagicDir,
+    /// `__ENCODING__`, carrying the encoding the source it is written in
+    /// says it is written in.
+    SourceEncoding(String),
 
     // Literals
     Int(i64),
@@ -170,6 +173,9 @@ pub enum TokenKind {
     /// A literal in a source that asked for frozen literals, which stands for
     /// the one frozen string every place writing it shares.
     FrozenString(String),
+    /// A literal in a source that asked outright for literals that change,
+    /// which carries no notice that a later release will freeze it.
+    MutableString(String),
     KeywordAnd,       // and
     KeywordOr,        // or
     LogicalOrAssign,  // ||=
@@ -260,6 +266,7 @@ impl fmt::Display for TokenKind {
             TokenKind::MagicFile => write!(f, "__FILE__"),
             TokenKind::MagicLine => write!(f, "__LINE__"),
             TokenKind::MagicDir => write!(f, "__dir__"),
+            TokenKind::SourceEncoding(_) => write!(f, "__ENCODING__"),
 
             // Literals
             TokenKind::Int(n) => write!(f, "{}", n),
@@ -359,6 +366,7 @@ impl fmt::Display for TokenKind {
             TokenKind::NotKeyword => write!(f, "not"),
             TokenKind::LogicalAnd => write!(f, "&&"),
             TokenKind::ByteString(text) => write!(f, "{}", text),
+            TokenKind::MutableString(text) => write!(f, "{}", text),
             TokenKind::ByteCommandString(text) => write!(f, "`{}`", text),
             TokenKind::BinaryString(text) => write!(f, "{}", text),
             TokenKind::FrozenString(text) => write!(f, "{}", text),

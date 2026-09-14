@@ -880,6 +880,7 @@ impl VirtualMachine {
                 )))
             }
             "singleton_class" => {
+                self.warn_chilled_string(receiver, position);
                 if let Some(sole) = match receiver {
                     Object::Nil => Some("NilClass"),
                     Object::Bool(true) => Some("TrueClass"),
@@ -1366,6 +1367,15 @@ impl VirtualMachine {
                 // ancestors: Module, Object, BasicObject). Walk the global
                 // Class's chain so anonymous Class.new instances answer
                 // correctly without needing their own class pointer.
+                // Metorex holds an encoding as a class of its own under
+                // Encoding, so one is an instance of Encoding rather than of
+                // Class, which is what `class` already reports.
+                if self.names_an_encoding(receiver) {
+                    return Ok(Some(Object::Bool(matches!(
+                        target_class.name(),
+                        "Encoding" | "Object" | "BasicObject"
+                    ))));
+                }
                 if matches!(receiver, Object::Class(_) | Object::Module(_)) {
                     let target_name = target_class.name();
                     let meta_name = match receiver {
@@ -1601,6 +1611,7 @@ impl VirtualMachine {
                 // raises NameError rather than FrozenError.
                 let var_name =
                     self.coerce_instance_variable_name(&arguments[0], receiver, position)?;
+                self.warn_chilled_string(receiver, position);
                 let value = arguments[1].clone();
                 match receiver {
                     Object::Instance(instance_rc) => {
@@ -3250,5 +3261,22 @@ impl VirtualMachine {
             named.mark_bytes();
         }
         Ok(Object::Symbol(std::rc::Rc::new(named)))
+    }
+}
+
+impl VirtualMachine {
+    /// Give the notice a string carries that it will be frozen in a later
+    /// release, for the operations that count as changing it. The notice is
+    /// given once, the way Ruby gives it.
+    pub(crate) fn warn_chilled_string(&mut self, receiver: &Object, position: Position) {
+        let Object::String(text) = receiver else {
+            return;
+        };
+        let Some(notice) = text.take_chill() else {
+            return;
+        };
+        if self.warning_category_enabled("deprecated") {
+            self.emit_warning_to_stderr(&notice, position);
+        }
     }
 }

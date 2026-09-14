@@ -55,8 +55,26 @@ impl Parser {
                 trailing_block: None,
                 position,
             }),
-            TokenKind::String(value) => Ok(literals::string_literal(value, position)),
+            // Two string literals written next to each other are one string,
+            // which is how a long one is split across lines.
+            TokenKind::String(value) => {
+                let mut spelled = value;
+                while let TokenKind::String(next) = &self.peek().kind {
+                    spelled.push_str(next);
+                    self.advance();
+                }
+                Ok(literals::string_literal(spelled, position))
+            }
             TokenKind::ByteString(value) => Ok(literals::byte_string_literal(value, position)),
+            // A literal in a source that asked outright for literals that
+            // change carries no notice that it will be frozen.
+            TokenKind::MutableString(value) => Ok(Expression::MethodCall {
+                receiver: Box::new(Expression::StringLiteral { value, position }),
+                method: "__mutable_literal__".to_string(),
+                arguments: Vec::new(),
+                trailing_block: None,
+                position,
+            }),
             TokenKind::BinaryString(value) => Ok(literals::binary_string_literal(value, position)),
             // A literal in a source that asked for frozen literals stands for
             // the one frozen string every place writing it shares.
@@ -152,6 +170,30 @@ impl Parser {
             TokenKind::ClassVar(name) => Ok(literals::class_variable(name, position)),
             TokenKind::GlobalVar(name) => Ok(literals::global_variable(name, position)),
             TokenKind::MagicFile => Ok(literals::magic_file(position)),
+            // `__ENCODING__` names the encoding of the source it is written
+            // in, which is settled where it is written rather than where the
+            // code around it is run.
+            TokenKind::SourceEncoding(named) if !self.check(&[TokenKind::Equal]) => {
+                Ok(Expression::MethodCall {
+                    receiver: Box::new(Expression::Identifier {
+                        name: "Encoding".to_string(),
+                        position,
+                    }),
+                    method: "find".to_string(),
+                    arguments: vec![Expression::StringLiteral {
+                        value: named,
+                        position,
+                    }],
+                    trailing_block: None,
+                    position,
+                })
+            }
+            // Ruby refuses an assignment to `__ENCODING__` while it reads the
+            // source, rather than while it runs it.
+            TokenKind::SourceEncoding(_) => Err(MetorexError::syntax_error(
+                "Can't set variable __ENCODING__".to_string(),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            )),
             TokenKind::MagicLine => Ok(literals::magic_line(position)),
             TokenKind::MagicDir => Ok(Expression::MagicDir { position }),
 

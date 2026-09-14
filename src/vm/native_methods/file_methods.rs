@@ -1613,20 +1613,9 @@ impl VirtualMachine {
             Some(Object::Dict(options)) => options.borrow().get(":encoding").cloned(),
             _ => None,
         };
-        // Without a keyword the entries take the internal encoding, which is
-        // what the program asked every string read from outside to be in.
-        let named = match named {
-            Some(named) => named,
-            None => match self.globals().get("Encoding") {
-                Some(encoding) => {
-                    match self.send_to_object(encoding, "default_internal", vec![], position) {
-                        Ok(Object::Nil) | Err(_) => return None,
-                        Ok(found) => found,
-                    }
-                }
-                None => return None,
-            },
-        };
+        // Without a keyword the caller works out the encoding from what the
+        // program asked its surroundings to be read in.
+        let named = named?;
         self.encoding_name_argument(&named, position).ok()
     }
 
@@ -1645,12 +1634,32 @@ impl VirtualMachine {
                 position,
             )
         })?;
-        let tagged = |name: String| match &encoding {
-            Some(encoding) => Object::String(Rc::new(crate::object::StringValue::with_encoding(
-                name,
-                encoding.clone(),
-            ))),
-            None => Object::string(name),
+        // A name comes off the file system in the encoding the program reads
+        // its surroundings in, unless it was told to read the directory in
+        // one of its own.
+        let named_encoding = |name: &str| match self.globals().get(name) {
+            Some(Object::Class(held)) => Some(held.name().to_string()),
+            _ => None,
+        };
+        let external = named_encoding("__Encoding_default_external")
+            .unwrap_or_else(|| crate::object::string_value::DEFAULT_ENCODING.to_string());
+        let internal = named_encoding("__Encoding_default_internal");
+        let tagged = |name: String| {
+            let held = match &encoding {
+                Some(encoding) => encoding.clone(),
+                // A name carries over into the encoding a program asked its
+                // text to be read in, as long as its bytes spell something in
+                // the encoding the file system names it in. One whose bytes
+                // do not keeps that encoding, since there is no conversion to
+                // make.
+                None => match &internal {
+                    Some(internal) if reads_as(&name, &external) => internal.clone(),
+                    _ => external.clone(),
+                },
+            };
+            Object::String(Rc::new(crate::object::StringValue::with_encoding(
+                name, held,
+            )))
         };
         let mut names: Vec<Object> = Vec::new();
         if with_dots {
@@ -1738,4 +1747,11 @@ fn directory_real_path(expanded: &std::path::Path) -> std::io::Result<std::path:
         (Some(holding), Some(named)) => Ok(holding.canonicalize()?.join(named)),
         _ => followed.canonicalize(),
     }
+}
+
+/// Whether a name's bytes spell characters in the encoding the file system
+/// names it in, which is what decides whether it carries over into the
+/// encoding a program asked its text to be read in.
+fn reads_as(name: &str, encoding: &str) -> bool {
+    crate::vm::native_methods::string_methods::encoding_reads_bytes(name.as_bytes(), encoding)
 }

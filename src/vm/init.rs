@@ -440,6 +440,23 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     globals.set("ThreadError", Object::Class(thread_error));
     globals.set("ClosedQueueError", Object::Class(closed_queue_error));
     globals.set("Errno", Object::Module(errno_module));
+    // The errors Encoding raises are constants on it, and each one is an
+    // EncodingError, which is what lets a rescue name them all at once.
+    if let Some(Object::Class(encoding)) = globals.get("Encoding") {
+        for name in [
+            "CompatibilityError",
+            "ConverterNotFoundError",
+            "UndefinedConversionError",
+            "InvalidByteSequenceError",
+        ] {
+            let error = Rc::new(Class::new(
+                format!("Encoding::{}", name),
+                Some(Rc::clone(&encoding_error)),
+            ));
+            encoding.set_class_var(name, Object::Class(Rc::clone(&error)));
+            globals.set(format!("Encoding::{}", name), Object::Class(error));
+        }
+    }
     globals.set("EncodingError", Object::Class(encoding_error));
     globals.set("FrozenError", Object::Class(frozen_error));
     globals.set("LocalJumpError", Object::Class(local_jump_error));
@@ -519,23 +536,6 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
         "__Encoding_list",
         Object::Array(Rc::new(RefCell::new(listed))),
     );
-    // The errors Encoding raises are constants on it, and descend from
-    // StandardError the way every other one does.
-    if let Some(Object::Class(standard_error)) = globals.get("StandardError") {
-        for name in [
-            "CompatibilityError",
-            "ConverterNotFoundError",
-            "UndefinedConversionError",
-            "InvalidByteSequenceError",
-        ] {
-            let error = Rc::new(Class::new(
-                format!("Encoding::{}", name),
-                Some(Rc::clone(&standard_error)),
-            ));
-            encoding.set_class_var(name, Object::Class(Rc::clone(&error)));
-            globals.set(format!("Encoding::{}", name), Object::Class(error));
-        }
-    }
     globals.set("Encoding", Object::Class(encoding));
 
     // The open flags `File.open` and `Kernel#open` accept in `flags:`.

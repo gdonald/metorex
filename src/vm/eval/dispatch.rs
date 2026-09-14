@@ -22,7 +22,19 @@ impl VirtualMachine {
             // ── Literals ────────────────────────────────────────────────────
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
-            Expression::StringLiteral { value, .. } => Ok(Object::string(value.clone())),
+            Expression::StringLiteral { value, .. } => {
+                let made = crate::object::StringValue::new(value.clone());
+                // Ruby 3.4 hands a literal back with notice that a later
+                // release will freeze it, so the first change made to it says
+                // so. A source that asked for frozen literals produces a
+                // frozen one instead and never reaches here.
+                made.chill(
+                    "warning: literal string will be frozen in the future (run with \
+--debug-frozen-string-literal for more information)"
+                        .to_string(),
+                );
+                Ok(Object::String(std::rc::Rc::new(made)))
+            }
             Expression::Symbol { value, .. } => Ok(Object::symbol(value.clone())),
             Expression::RegexLiteral { pattern, flags, .. } => Ok(Object::Regex(
                 Rc::new(pattern.clone()),

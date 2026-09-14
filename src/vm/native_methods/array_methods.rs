@@ -32,35 +32,37 @@ fn compare_for_sort(a: &Object, b: &Object) -> std::cmp::Ordering {
 
 impl VirtualMachine {
     /// Execute native methods for the Array class.
-    /// The text an array joins to. An element that names an array of its own
-    /// is joined with the same separator however deeply they nest, and any
-    /// other element is asked for `to_str`, then `to_ary`, then `to_s`, which
-    /// is the order Ruby tries. An array that reaches itself is refused.
-    fn joined_text(
+    /// The pieces an array joins from, each with the encoding it is written
+    /// in. An element that names an array of its own contributes its own
+    /// pieces however deeply they nest, and any other element is asked for
+    /// `to_str`, then `to_ary`, then `to_s`, which is the order Ruby tries.
+    /// An array that reaches itself is refused.
+    fn joined_parts(
         &mut self,
         elements: &[Object],
-        separator: &str,
         in_flight: &mut Vec<usize>,
         position: Position,
-    ) -> Result<String, MetorexError> {
+    ) -> Result<Vec<(String, String)>, MetorexError> {
         let mut written = Vec::with_capacity(elements.len());
         for element in elements {
-            written.push(self.joined_element(element, separator, in_flight, position)?);
+            self.join_element_into(element, in_flight, &mut written, position)?;
         }
-        Ok(written.join(separator))
+        Ok(written)
     }
 
-    /// One element's contribution to a join.
-    fn joined_element(
+    /// One element's contribution to a join, added to what is written so far.
+    fn join_element_into(
         &mut self,
         element: &Object,
-        separator: &str,
         in_flight: &mut Vec<usize>,
+        written: &mut Vec<(String, String)>,
         position: Position,
-    ) -> Result<String, MetorexError> {
+    ) -> Result<(), MetorexError> {
         match element {
-            Object::Symbol(name) => return Ok(name.as_str().to_string()),
-            Object::String(text) => return Ok(text.as_str().to_string()),
+            Object::Symbol(name) | Object::String(name) => {
+                written.push((name.as_str().to_string(), name.encoding_name()));
+                return Ok(());
+            }
             _ => {}
         }
         let nested = match element {
@@ -81,20 +83,29 @@ impl VirtualMachine {
             }
             in_flight.push(address);
             let inner = held.borrow().clone();
-            let joined = self.joined_text(&inner, separator, in_flight, position);
+            let joined = self.joined_parts(&inner, in_flight, position);
             in_flight.pop();
-            return joined;
+            written.extend(joined?);
+            return Ok(());
         }
         for name in ["to_str", "to_ary", "to_s"] {
             if !self.responds_to(element, name) {
                 continue;
             }
             let answered = self.send_to_object(element.clone(), name, vec![], position)?;
+            // Only an array answered by `to_ary` joins as one. Anything else
+            // it answers leaves the element for `to_s` to spell.
             if name == "to_ary" {
-                return self.joined_element(&answered, separator, in_flight, position);
+                if matches!(&answered, Object::Array(_))
+                    || crate::vm::native_methods::array_subclass_value(&answered).is_some()
+                {
+                    return self.join_element_into(&answered, in_flight, written, position);
+                }
+                continue;
             }
             if let Object::String(text) = answered {
-                return Ok(text.as_str().to_string());
+                written.push((text.as_str().to_string(), text.encoding_name()));
+                return Ok(());
             }
         }
         Err(crate::vm::errors::simple_exception(
@@ -105,6 +116,43 @@ impl VirtualMachine {
             ),
             position,
         ))
+    }
+
+    /// The encoding a join writes its answer in: the one the first piece is
+    /// written in, widened by the first piece that is not all ASCII. Two
+    /// pieces that are each written in an encoding of their own and neither
+    /// of which is ASCII cannot be joined at all.
+    fn joined_encoding(
+        &mut self,
+        parts: &[(String, String)],
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        let mut writing = "US-ASCII".to_string();
+        let mut all_ascii = true;
+        for (at, (text, held)) in parts.iter().enumerate() {
+            if at == 0 {
+                writing = held.clone();
+                all_ascii = text.is_ascii();
+                continue;
+            }
+            if text.is_ascii() {
+                continue;
+            }
+            if all_ascii {
+                writing = held.clone();
+                all_ascii = false;
+                continue;
+            }
+            if held != &writing {
+                let message = format!("incompatible character encodings: {} and {}", writing, held);
+                return Err(crate::vm::errors::simple_exception(
+                    "Encoding::CompatibilityError",
+                    &message,
+                    position,
+                ));
+            }
+        }
+        Ok(writing)
     }
 
     pub(crate) fn call_array_method(
@@ -198,10 +246,24 @@ impl VirtualMachine {
                 // Each element renders through its own `inspect`, so an
                 // object that defines one is shown the way it asks to be.
                 let mut parts = Vec::with_capacity(elements.len());
+                // An array with nothing in it spells the same in every
+                // encoding, and one with something in it is written in the
+                // encoding the first element was rendered in.
+                let mut writing = "US-ASCII".to_string();
                 for element in &elements {
-                    let rendered = self.get_inspect_representation(element, position);
+                    let rendered = self.inspected_object(element, position);
                     match rendered {
-                        Ok(rendered) => parts.push(rendered),
+                        Ok(rendered) => {
+                            if parts.is_empty()
+                                && let Object::String(text) = &rendered
+                            {
+                                writing = text.encoding_name();
+                            }
+                            parts.push(match &rendered {
+                                Object::String(text) => text.to_string(),
+                                other => format!("{}", other),
+                            });
+                        }
                         Err(error) => {
                             crate::object::end_rendering();
                             return Err(error);
@@ -209,7 +271,11 @@ impl VirtualMachine {
                     }
                 }
                 crate::object::end_rendering();
-                Ok(Some(Object::string(format!("[{}]", parts.join(", ")))))
+                let made = crate::object::StringValue::with_encoding(
+                    format!("[{}]", parts.join(", ")),
+                    writing,
+                );
+                Ok(Some(Object::String(Rc::new(made))))
             }
             "clear" => {
                 if !arguments.is_empty() {
@@ -275,7 +341,7 @@ impl VirtualMachine {
                 }
                 match block {
                     Some(block) => self
-                        .execute_block_body(&block, vec![arguments[0].clone()])
+                        .execute_block_callable(&block, vec![arguments[0].clone()], position)
                         .map(Some),
                     None => Ok(Some(Object::Nil)),
                 }
@@ -552,7 +618,7 @@ impl VirtualMachine {
                 let mut index = 0;
                 while let Some(element) = element_at(array_rc, index) {
                     index += 1;
-                    let value = self.execute_block_body(&block, vec![element])?;
+                    let value = self.execute_block_callable(&block, vec![element], position)?;
                     results.push(value);
                 }
                 Ok(Some(Object::Array(Rc::new(RefCell::new(results)))))
@@ -587,7 +653,8 @@ impl VirtualMachine {
                 let mut index = 0;
                 while let Some(element) = element_at(array_rc, index) {
                     index += 1;
-                    let value = self.execute_block_body(&block, vec![element.clone()])?;
+                    let value =
+                        self.execute_block_callable(&block, vec![element.clone()], position)?;
                     let is_truthy = !matches!(value, Object::Bool(false) | Object::Nil);
                     if is_truthy != reject {
                         results.push(element);
@@ -632,7 +699,9 @@ impl VirtualMachine {
                         continue;
                     }
                     results.push(match &block {
-                        Some(block) => self.execute_block_body(block, vec![element])?,
+                        Some(block) => {
+                            self.execute_block_callable(block, vec![element], position)?
+                        }
                         None => element,
                     });
                 }
@@ -677,7 +746,8 @@ impl VirtualMachine {
                 };
                 let elements = array_rc.borrow().clone();
                 for element in elements {
-                    let value = self.execute_block_body(&block, vec![element.clone()])?;
+                    let value =
+                        self.execute_block_callable(&block, vec![element.clone()], position)?;
                     if !matches!(value, Object::Bool(false) | Object::Nil) {
                         return Ok(Some(element));
                     }
@@ -720,7 +790,7 @@ impl VirtualMachine {
                 let mut falsy = Vec::new();
                 for element in array.iter() {
                     let args = vec![element.clone()];
-                    let value = self.execute_block_body(&block, args)?;
+                    let value = self.execute_block_callable(&block, args, position)?;
                     if !matches!(value, Object::Bool(false) | Object::Nil) {
                         truthy.push(element.clone());
                     } else {
@@ -782,7 +852,7 @@ impl VirtualMachine {
                             self.send_to_object(carried, operator, vec![element], position)?
                         }
                         (None, Some(block)) => {
-                            self.execute_block_body(block, vec![carried, element])?
+                            self.execute_block_callable(block, vec![carried, element], position)?
                         }
                         (None, None) => unreachable!("a block or an operator was required"),
                     });
@@ -947,7 +1017,8 @@ impl VirtualMachine {
                 };
                 let mut keyed: Vec<(Object, Object)> = Vec::new();
                 for element in array_rc.borrow().iter() {
-                    let key = self.execute_block_body(&block, vec![element.clone()])?;
+                    let key =
+                        self.execute_block_callable(&block, vec![element.clone()], position)?;
                     keyed.push((key, element.clone()));
                 }
                 keyed.sort_by(|(a, _), (b, _)| compare_for_sort(a, b));
@@ -1032,8 +1103,24 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let sep = if arguments.is_empty() {
-                    String::new()
+                // With no separator, or with nil for one, `$,` says what
+                // goes between. Reading it warns, since a later release will
+                // drop it.
+                let default_separator = |vm: &mut Self| -> String {
+                    match vm.globals().get(",") {
+                        Some(Object::String(held)) => {
+                            let text = held.as_str().to_string();
+                            vm.emit_warning_to_stderr(
+                                "warning: $, is set to non-nil value",
+                                position,
+                            );
+                            text
+                        }
+                        _ => String::new(),
+                    }
+                };
+                let sep = if arguments.is_empty() || matches!(arguments[0], Object::Nil) {
+                    default_separator(self)
                 } else {
                     // An empty array never asks the separator for anything,
                     // which is what Ruby does.
@@ -1066,20 +1153,20 @@ impl VirtualMachine {
                 // separator, however deeply they nest.
                 let elements = array_rc.borrow().clone();
                 let mut in_flight = vec![Rc::as_ptr(array_rc) as usize];
-                let parts = self.joined_text(&elements, &sep, &mut in_flight, position)?;
+                let parts = self.joined_parts(&elements, &mut in_flight, position)?;
+                let writing = self.joined_encoding(&parts, position)?;
+                let text = parts
+                    .iter()
+                    .map(|(written, _)| written.as_str())
+                    .collect::<Vec<&str>>()
+                    .join(&sep);
+                let made = crate::object::StringValue::with_encoding(text, writing.clone());
                 // A run of bytes joined with others is still a run of bytes,
                 // so the result says so rather than reading them as
                 // characters.
-                let holds_bytes = elements.iter().any(|element| {
-                    matches!(element, Object::String(text)
-                        if text.holds_bytes()
-                            || matches!(text.encoding_name().as_str(), "ASCII-8BIT" | "BINARY"))
-                });
-                if !holds_bytes {
-                    return Ok(Some(Object::string(parts)));
+                if matches!(writing.as_str(), "ASCII-8BIT" | "BINARY") {
+                    made.mark_bytes();
                 }
-                let made = crate::object::StringValue::with_encoding(parts, "ASCII-8BIT");
-                made.mark_bytes();
                 Ok(Some(Object::String(Rc::new(made))))
             }
             // `flatten` walks all the way down by default, or as many levels
@@ -1250,7 +1337,7 @@ impl VirtualMachine {
                     let Some(element) = array_rc.borrow().get(index).cloned() else {
                         continue;
                     };
-                    let answer = self.execute_block_body(&block, vec![element])?;
+                    let answer = self.execute_block_callable(&block, vec![element], position)?;
                     if answer.is_truthy() {
                         return Ok(Some(Object::Int(index as i64)));
                     }
@@ -1308,7 +1395,7 @@ impl VirtualMachine {
                 let mut outcome = Ok(());
                 while index < array_rc.borrow().len() {
                     let element = array_rc.borrow()[index].clone();
-                    match self.execute_block_body(&block, vec![element.clone()]) {
+                    match self.execute_block_callable(&block, vec![element.clone()], position) {
                         Ok(answer) => {
                             let remove = if method_name == "delete_if" {
                                 answer.is_truthy()
@@ -1348,7 +1435,7 @@ impl VirtualMachine {
                 // while it is walked is walked to its new end.
                 let mut index = 0;
                 while index < array_rc.borrow().len() {
-                    self.execute_block_body(&block, vec![Object::Int(index as i64)])?;
+                    self.execute_block_callable(&block, vec![Object::Int(index as i64)], position)?;
                     index += 1;
                 }
                 Ok(Some(receiver.clone()))
@@ -1371,7 +1458,7 @@ impl VirtualMachine {
                         Some(element) => element.clone(),
                         None => continue,
                     };
-                    self.execute_block_body(&block, vec![element])?;
+                    self.execute_block_callable(&block, vec![element], position)?;
                 }
                 Ok(Some(receiver.clone()))
             }
@@ -1511,7 +1598,7 @@ impl VirtualMachine {
                 let mut index = 0;
                 while index < array_rc.borrow().len() {
                     let element = array_rc.borrow()[index].clone();
-                    let answer = self.execute_block_body(&block, vec![element])?;
+                    let answer = self.execute_block_callable(&block, vec![element], position)?;
                     if answer.is_truthy() {
                         return Ok(Some(Object::Int(index as i64)));
                     }
@@ -2037,7 +2124,7 @@ impl VirtualMachine {
                         )?,
                         (None, Some(Object::Block(b))) => {
                             let args = vec![element.clone()];
-                            self.execute_block_body(b, args)?
+                            self.execute_block_callable(b, args, position)?
                         }
                         _ => element.clone(),
                     };
@@ -2282,7 +2369,7 @@ impl VirtualMachine {
                 // results so far and the originals after them.
                 let mut index = 0;
                 while let Some(element) = element_at(array_rc, index) {
-                    let value = self.execute_block_body(&block, vec![element])?;
+                    let value = self.execute_block_callable(&block, vec![element], position)?;
                     array_rc.borrow_mut()[index] = value;
                     index += 1;
                 }

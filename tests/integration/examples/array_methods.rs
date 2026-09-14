@@ -133,3 +133,32 @@ fn test_array_methods_splat_coercion_no_parens_execution() {
     let output = run_example("array_methods/splat_coercion_no_parens.rb");
     assert_eq!(output, SPLAT_COERCION_OUTPUT);
 }
+
+/// The expected output of both `array_methods/joining_and_inspecting`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const JOINING_AND_INSPECTING_OUTPUT: &str = concat!(
+    "\"123\"\n",
+    "\"1_2_3\"\n",
+    "\"1_2_3\"\n",
+    "\"spelled\"\n",
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:EUC-JP>\n",
+    "true\n",
+    "\"[answered]\"\n",
+    "{a: 1, a!: 1, a?: 1}\n",
+    "{\"needs-quotes\": 1}\n",
+    "{\"\": 1}\n",
+);
+
+#[test]
+fn test_array_methods_joining_and_inspecting_execution() {
+    let output = run_example("array_methods/joining_and_inspecting.rb");
+    assert_eq!(output, JOINING_AND_INSPECTING_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_joining_and_inspecting_no_parens_execution() {
+    let output = run_example("array_methods/joining_and_inspecting_no_parens.rb");
+    assert_eq!(output, JOINING_AND_INSPECTING_OUTPUT);
+}

@@ -95,10 +95,11 @@ impl VirtualMachine {
             UnaryOp::Plus => match value {
                 // Numeric `+x` is a no-op identity.
                 Object::Int(_) | Object::BigInt(_) | Object::Float(_) => Ok(value),
-                // `+str` asks for a string that changes, so a frozen one
-                // answers a copy and any other answers itself.
+                // `+str` asks for a string that changes, so a frozen one and
+                // one carrying notice that it will be frozen both answer a
+                // copy, and any other answers itself.
                 Object::String(ref text) => {
-                    if !text.is_frozen() {
+                    if !text.is_frozen() && !text.is_chilled() {
                         return Ok(value.clone());
                     }
                     Ok(Object::String(std::rc::Rc::new(
@@ -813,6 +814,14 @@ impl VirtualMachine {
                     };
                     let mine = if *held > 0.0 { 1 } else { -1 };
                     return Ok(Object::Int(mine.cmp(&theirs) as i64));
+                }
+                // A String orders against anything that reads as one, then
+                // against anything that orders itself, and has no order at
+                // all with anything else.
+                if matches!(&left, Object::String(_))
+                    && let Some(order) = self.order_string_against(&left, &right, position)?
+                {
+                    return Ok(order);
                 }
                 self.evaluate_spaceship(left, right, position)
             }
@@ -1887,6 +1896,109 @@ impl VirtualMachine {
         self.send_to_object(parts[0].clone(), name, vec![parts[1].clone()], position)
             .map(Some)
     }
+}
+
+thread_local! {
+    // The pairs of objects an inverse comparison is already running for, so a
+    // `<=>` that turns around and asks the other object back is answered with
+    // no order at all rather than running forever.
+    static INVERSE_COMPARISONS: std::cell::RefCell<Vec<(usize, usize)>> =
+        const { std::cell::RefCell::new(Vec::new()) };
+}
+
+impl VirtualMachine {
+    /// How a String orders against another object, or None when the ordering
+    /// is left to the general rules.
+    fn order_string_against(
+        &mut self,
+        left: &Object,
+        right: &Object,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        let Object::String(text) = left else {
+            return Ok(None);
+        };
+        // An instance of a String subclass orders by the characters behind it,
+        // so a subclass compares equal to the string it was built from.
+        let other = match right {
+            Object::String(other) => Some(Rc::clone(other)),
+            held => match crate::vm::native_methods::string_subclass_value(held) {
+                Some(Object::String(other)) => Some(other),
+                _ => None,
+            },
+        };
+        if let Some(other) = other {
+            return Ok(Some(order_two_strings(text, &other)));
+        }
+        // Anything that reads as a String is compared as the String it reads
+        // as, which is what `to_str` answers.
+        if self.responds_to(right, "to_str") {
+            let read = self.send_to_object(right.clone(), "to_str", vec![], position)?;
+            if let Object::String(other) = read {
+                return Ok(Some(order_two_strings(text, &other)));
+            }
+            return Ok(Some(Object::Nil));
+        }
+        // Anything that orders itself is asked the other way round, and the
+        // answer is turned around to match.
+        if !self.responds_to(right, "<=>") {
+            return Ok(Some(Object::Nil));
+        }
+        let pair = (object_identity(left), object_identity(right));
+        if INVERSE_COMPARISONS.with(|held| held.borrow().contains(&pair)) {
+            return Ok(Some(Object::Nil));
+        }
+        INVERSE_COMPARISONS.with(|held| held.borrow_mut().push(pair));
+        let answered = self.send_to_object(right.clone(), "<=>", vec![left.clone()], position);
+        INVERSE_COMPARISONS.with(|held| {
+            held.borrow_mut().pop();
+        });
+        Ok(Some(match answered? {
+            Object::Int(order) => Object::Int(-order),
+            _ => Object::Nil,
+        }))
+    }
+}
+
+/// The address an object is known by while an inverse comparison runs. A value
+/// with no address of its own stands for itself.
+fn object_identity(held: &Object) -> usize {
+    match held {
+        Object::String(text) => Rc::as_ptr(text) as usize,
+        Object::Instance(instance) => Rc::as_ptr(instance) as usize,
+        Object::Array(elements) => Rc::as_ptr(elements) as usize,
+        Object::Dict(entries) => Rc::as_ptr(entries) as usize,
+        _ => 0,
+    }
+}
+
+/// How one string orders against another. Ruby compares the bytes, and two
+/// strings whose bytes are the same but whose encodings are not are ordered by
+/// where those encodings sit in the list Ruby keeps.
+fn order_two_strings(
+    left: &Rc<crate::object::StringValue>,
+    right: &Rc<crate::object::StringValue>,
+) -> Object {
+    let left_bytes = crate::vm::native_methods::string_methods::binary_bytes(left);
+    let right_bytes = crate::vm::native_methods::string_methods::binary_bytes(right);
+    match left_bytes.cmp(&right_bytes) {
+        std::cmp::Ordering::Less => return Object::Int(-1),
+        std::cmp::Ordering::Greater => return Object::Int(1),
+        std::cmp::Ordering::Equal => (),
+    }
+    let (held, theirs) = (left.encoding_name(), right.encoding_name());
+    // Text that is nothing but ASCII reads the same under either encoding, so
+    // the two are equal whatever they are tagged with.
+    if held == theirs || left_bytes.is_ascii() {
+        return Object::Int(0);
+    }
+    let place = |named: &str| {
+        crate::vm::init::ENCODING_NAMES
+            .iter()
+            .position(|(_, canonical, _)| *canonical == named)
+            .unwrap_or(usize::MAX)
+    };
+    Object::Int(place(&held).cmp(&place(&theirs)) as i64)
 }
 
 /// Whether the operator consults `coerce` for an operand it does not know.

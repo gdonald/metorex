@@ -195,7 +195,7 @@ impl Parser {
                     let method_name = if method_name == "freeze"
                         && arguments.is_empty()
                         && trailing_block.is_none()
-                        && matches!(expr, Expression::StringLiteral { .. })
+                        && names_a_string_literal(&expr)
                     {
                         "__frozen_literal__".to_string()
                     } else {
@@ -485,7 +485,7 @@ impl Parser {
                 let method_name = if method_name == "freeze"
                     && arguments.is_empty()
                     && trailing_block.is_none()
-                    && matches!(expr, Expression::StringLiteral { .. })
+                    && names_a_string_literal(&expr)
                 {
                     "__frozen_literal__".to_string()
                 } else {
@@ -923,6 +923,7 @@ impl Parser {
                 | TokenKind::ByteString(_)
                 | TokenKind::BinaryString(_)
                 | TokenKind::FrozenString(_)
+                | TokenKind::MutableString(_)
                 | TokenKind::InterpolatedString(_)
                 | TokenKind::Regex(_, _)
                 | TokenKind::True
@@ -936,6 +937,7 @@ impl Parser {
                 | TokenKind::Bang
                 | TokenKind::ColonColon
                 | TokenKind::MagicFile
+                | TokenKind::SourceEncoding(_)
                 | TokenKind::MagicLine
                 | TokenKind::MagicDir
                 | TokenKind::CommandString(_)
@@ -1063,6 +1065,7 @@ impl Parser {
                     | TokenKind::ByteString(_)
                     | TokenKind::BinaryString(_)
                     | TokenKind::FrozenString(_)
+                    | TokenKind::MutableString(_)
                     | TokenKind::InterpolatedString(_)
                     | TokenKind::Regex(_, _)
                     | TokenKind::True
@@ -1075,6 +1078,7 @@ impl Parser {
                     | TokenKind::NotKeyword
                     | TokenKind::ColonColon
                     | TokenKind::MagicFile
+                    | TokenKind::SourceEncoding(_)
                     | TokenKind::MagicLine
                     | TokenKind::MagicDir
                     | TokenKind::CommandString(_)
@@ -1390,5 +1394,20 @@ impl crate::parser::Parser {
         if !self.check(&[TokenKind::Dot]) {
             self.stream.restore_position(resume);
         }
+    }
+}
+
+/// Whether an expression is a string literal written in the source, whether or
+/// not the source asked outright for literals that change.
+fn names_a_string_literal(expr: &Expression) -> bool {
+    match expr {
+        Expression::StringLiteral { .. } => true,
+        Expression::MethodCall {
+            receiver, method, ..
+        } => {
+            method == "__mutable_literal__"
+                && matches!(**receiver, Expression::StringLiteral { .. })
+        }
+        _ => false,
     }
 }

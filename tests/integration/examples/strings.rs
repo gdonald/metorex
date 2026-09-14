@@ -115,6 +115,77 @@ fn test_strings_encoding_aware_length_no_parens_execution() {
     assert_eq!(output, ENCODING_AWARE_LENGTH_OUTPUT);
 }
 
+/// The expected output of both `strings/encoding_aware_characters` variants,
+/// which differ only in whether the calls are written with parentheses.
+const ENCODING_AWARE_CHARACTERS_OUTPUT: &str = concat!(
+    "[\"\u{24B62}\"]\n",
+    "[\"UTF-8\"]\n",
+    "[\"\\xF0\", \"\\xA4\", \"\\xAD\", \"\\xA2\"]\n",
+    "[[240, 164], [173], [162]]\n",
+    "4\n",
+    "[[97], [98]]\n",
+    "true\n",
+    "[\"h\", \"e\", \"l\", \"l\", \"o\"]\n",
+    "true\n",
+    "[164]\n",
+    "#<Encoding:ISO-8859-15>\n",
+    "\"\u{20AC}\"\n",
+);
+
+#[test]
+fn test_strings_encoding_aware_characters_execution() {
+    let output = run_example("strings/encoding_aware_characters.rb");
+    assert_eq!(output, ENCODING_AWARE_CHARACTERS_OUTPUT);
+}
+
+#[test]
+fn test_strings_encoding_aware_characters_no_parens_execution() {
+    let output = run_example("strings/encoding_aware_characters_no_parens.rb");
+    assert_eq!(output, ENCODING_AWARE_CHARACTERS_OUTPUT);
+}
+
+/// The expected output of both `strings/chilled_literals` variants, which
+/// differ only in whether the calls are written with parentheses.
+const CHILLED_LITERALS_OUTPUT: &str = concat!(
+    "false\n",
+    "false\n",
+    "false\n",
+    "true\n",
+    "true\n",
+    "\"still+chilled\"\n",
+    "\"abc\"\n",
+);
+
+#[test]
+fn test_strings_chilled_literals_execution() {
+    let output = run_example("strings/chilled_literals.rb");
+    assert_eq!(output, CHILLED_LITERALS_OUTPUT);
+}
+
+#[test]
+fn test_strings_chilled_literals_no_parens_execution() {
+    let output = run_example("strings/chilled_literals_no_parens.rb");
+    assert_eq!(output, CHILLED_LITERALS_OUTPUT);
+}
+
+/// The expected output of both `strings/ordering_and_case` variants, which
+/// differ only in whether the calls are written with parentheses.
+const ORDERING_AND_CASE_OUTPUT: &str = concat!(
+    "0\n", "1\n", "1\n", "nil\n", "-1\n", "1\n", "0\n", "nil\n", "true\n", "true\n", "false\n",
+);
+
+#[test]
+fn test_strings_ordering_and_case_execution() {
+    let output = run_example("strings/ordering_and_case.rb");
+    assert_eq!(output, ORDERING_AND_CASE_OUTPUT);
+}
+
+#[test]
+fn test_strings_ordering_and_case_no_parens_execution() {
+    let output = run_example("strings/ordering_and_case_no_parens.rb");
+    assert_eq!(output, ORDERING_AND_CASE_OUTPUT);
+}
+
 /// The expected output of both `strings/radix_reading` variants, which differ
 /// only in whether the calls are written with parentheses.
 const RADIX_READING_OUTPUT: &str = concat!(
