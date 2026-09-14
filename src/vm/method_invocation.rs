@@ -801,7 +801,7 @@ impl VirtualMachine {
     /// in the encoding the `encoding:` keyword names or the one the argument
     /// already carried. With no argument at all the string is empty and reads
     /// as bytes, which is what Ruby answers.
-    fn string_from_new_arguments(
+    pub(crate) fn string_from_new_arguments(
         &mut self,
         arguments: &[Object],
         position: Position,

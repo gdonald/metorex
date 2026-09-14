@@ -215,3 +215,32 @@ fn test_strings_radix_reading_no_parens_execution() {
     let output = run_example("strings/radix_reading_no_parens.rb");
     assert_eq!(output, RADIX_READING_OUTPUT);
 }
+
+/// The expected output of both `strings/copies_and_dumps` variants, which
+/// differ only in whether the calls are written with parentheses.
+const COPIES_AND_DUMPS_OUTPUT: &str = concat!(
+    "\"xtring\"\n",
+    "\"string\"\n",
+    "true\n",
+    "false\n",
+    "Counted\n",
+    "1\n",
+    "\"string\"\n",
+    "\"\\\"\\\\a\\\\b\\\\t\\\\n\\\\v\\\\f\\\\r\\\\e\\\"\"\n",
+    "\"\\\"\\\\x00\\\"\"\n",
+    "\"\\\"caf\\\\u00E9\\\"\"\n",
+    "\"\\\"\\\\u{10FFFF}\\\"\"\n",
+    "\"\\\"interp 1 and \\\\\\#@ivar\\\"\"\n",
+);
+
+#[test]
+fn test_strings_copies_and_dumps_execution() {
+    let output = run_example("strings/copies_and_dumps.rb");
+    assert_eq!(output, COPIES_AND_DUMPS_OUTPUT);
+}
+
+#[test]
+fn test_strings_copies_and_dumps_no_parens_execution() {
+    let output = run_example("strings/copies_and_dumps_no_parens.rb");
+    assert_eq!(output, COPIES_AND_DUMPS_OUTPUT);
+}

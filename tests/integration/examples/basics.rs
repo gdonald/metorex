@@ -1015,3 +1015,28 @@ fn test_basics_logical_keyword_precedence_no_parens_execution() {
     let output = run_example("basics/logical_keyword_precedence_no_parens.rb");
     assert_eq!(output, LOGICAL_KEYWORD_PRECEDENCE_OUTPUT);
 }
+
+/// The expected output of both `basics/hash_and_array_constructors` variants,
+/// which differ only in whether the calls are written with parentheses.
+const HASH_AND_ARRAY_CONSTRUCTORS_OUTPUT: &str = concat!(
+    "{a: :b, c: :d}\n",
+    "{a: nil}\n",
+    "\"wrong element type Symbol at 0 (expected array)\"\n",
+    "\"invalid number of elements (3 for 1..2)\"\n",
+    "{a: :b}\n",
+    "[4, 5, 6]\n",
+    "[1, 2]\n",
+    "TypeError\n",
+);
+
+#[test]
+fn test_basics_hash_and_array_constructors_execution() {
+    let output = run_example("basics/hash_and_array_constructors.rb");
+    assert_eq!(output, HASH_AND_ARRAY_CONSTRUCTORS_OUTPUT);
+}
+
+#[test]
+fn test_basics_hash_and_array_constructors_no_parens_execution() {
+    let output = run_example("basics/hash_and_array_constructors_no_parens.rb");
+    assert_eq!(output, HASH_AND_ARRAY_CONSTRUCTORS_OUTPUT);
+}

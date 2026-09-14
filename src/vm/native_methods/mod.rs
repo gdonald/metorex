@@ -287,6 +287,11 @@ impl VirtualMachine {
             if matches!(method_name, "to_s" | "to_str") {
                 return Ok(Some(text));
             }
+            // A copy of a subclass instance is one of the same class, which
+            // the general rules make rather than the characters behind it.
+            if matches!(method_name, "clone" | "dup") {
+                return self.call_object_method(receiver, method_name, arguments, position);
+            }
             if let Some(result) =
                 self.call_string_method(&text, method_name, arguments, position)?
             {

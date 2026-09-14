@@ -902,7 +902,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.20.127. core/array/unshift_spec - 1 file, 7 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.20.128. core/array/values_at_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
   - [x] 4.20.129. core/array/zip_spec - 1 file, 10 examples, 17 expectations, 0 failures, 0 errors
-- [ ] 4.21. core/hash - 65 pass, and the rest are enabled in the runner one file at a time
+- [ ] 4.21. core/hash - 66 pass, and the rest are enabled in the runner one file at a time
   - [x] 4.21.1. core/hash/allocate_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.21.2. core/hash/any_spec - 1 file, 4 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.21.3. core/hash/assoc_spec - 1 file, 8 examples, 10 expectations, 0 failures, 0 errors
@@ -910,7 +910,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.21.5. core/hash/clone_spec - 1 file, 1 example, 2 expectations, 0 failures, 0 errors
   - [x] 4.21.6. core/hash/compact_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.21.7. core/hash/compare_by_identity_spec - 1 file, 18 examples, 32 expectations, 0 failures, 0 errors
-  - [ ] 4.21.8. core/hash/constructor_spec
+  - [x] 4.21.8. core/hash/constructor_spec - 1 file, 20 examples, 33 expectations, 0 failures, 0 errors
   - [x] 4.21.9. core/hash/deconstruct_keys_spec - 1 file, 3 examples, 5 expectations, 0 failures, 0 errors
   - [x] 4.21.10. core/hash/default_proc_spec - 1 file, 12 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.21.11. core/hash/default_spec - 1 file, 6 examples, 19 expectations, 0 failures, 0 errors
@@ -1252,7 +1252,7 @@ Parser fixes during Phase 4 work:
 
 ### Strings and Patterns
 
-- [ ] 4.28. core/string - 103 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
+- [ ] 4.28. core/string - 107 pass, 2 files have no examples on this platform at ruby 4.0.1, and the rest are enabled in the runner one file at a time
   - [x] 4.28.1. core/string/allocate_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.28.2. core/string/append_as_bytes_spec - 1 file, 8 examples, 13 expectations, 0 failures, 0 errors
   - [x] 4.28.4. core/string/ascii_only_spec - 1 file, 13 examples, 146 expectations, 0 failures, 0 errors
@@ -1273,7 +1273,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.19. core/string/chop_spec - 1 file, 26 examples, 26 expectations, 0 failures, 0 errors
   - [x] 4.28.20. core/string/chr_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.28.21. core/string/clear_spec - 1 file, 5 examples, 9 expectations, 0 failures, 0 errors
-  - [ ] 4.28.22. core/string/clone_spec
+  - [x] 4.28.22. core/string/clone_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.28.23. core/string/codepoints_spec - 1 file, 13 examples, 24 expectations, 0 failures, 0 errors
   - [x] 4.28.24. core/string/comparison_spec - 1 file, 20 examples, 29 expectations, 0 failures, 0 errors
   - [ ] 4.28.25. core/string/concat_spec
@@ -1284,8 +1284,8 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.30. core/string/delete_spec - 1 file, 14 examples, 47 expectations, 0 failures, 0 errors
   - [x] 4.28.31. core/string/delete_suffix_spec - 1 file, 12 examples, 24 expectations, 0 failures, 0 errors
   - [x] 4.28.32. core/string/downcase_spec - 1 file, 32 examples, 44 expectations, 0 failures, 0 errors
-  - [ ] 4.28.33. core/string/dump_spec
-  - [ ] 4.28.34. core/string/dup_spec
+  - [x] 4.28.33. core/string/dump_spec - 1 file, 17 examples, 21 expectations, 0 failures, 0 errors
+  - [x] 4.28.34. core/string/dup_spec - 1 file, 8 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.28.35. core/string/each_byte_spec - 1 file, 5 examples, 11 expectations, 0 failures, 0 errors
   - [x] 4.28.36. core/string/each_char_spec - 1 file, 11 examples, 25 expectations, 0 failures, 0 errors
   - [x] 4.28.37. core/string/each_codepoint_spec - 1 file, 15 examples, 29 expectations, 0 failures, 0 errors
@@ -1299,7 +1299,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.28.45. core/string/end_with_spec - 1 file, 10 examples, 19 expectations, 0 failures, 0 errors
   - [x] 4.28.46. core/string/eql_spec - 1 file, 9 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.28.47. core/string/equal_value_spec - 1 file, 10 examples, 15 expectations, 0 failures, 0 errors
-  - [ ] 4.28.48. core/string/force_encoding_spec
+  - [x] 4.28.48. core/string/force_encoding_spec - 1 file, 11 examples, 14 expectations, 0 failures, 0 errors
   - [x] 4.28.49. core/string/freeze_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.28.50. core/string/getbyte_spec - 1 file, 11 examples, 62 expectations, 0 failures, 0 errors
   - [x] 4.28.51. core/string/grapheme_clusters_spec - 1 file, 13 examples, 27 expectations, 0 failures, 0 errors
@@ -2351,7 +2351,7 @@ different reported release would open, without committing metorex to it.
 
 ## Phase 5: Specs outside `core/`
 
-- [ ] 5.1. language - 36 pass, and the rest are enabled in the runner one file at a time
+- [ ] 5.1. language - 37 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.1.1. language/comment_spec - 1 file, 1 example, 1 expectation, 0 failures, 0 errors
   - [x] 5.1.2. language/line_spec - 1 file, 6 examples, 10 expectations, 0 failures, 0 errors
   - [x] 5.1.3. language/range_spec - 1 file, 5 examples, 7 expectations, 0 failures, 0 errors
@@ -2388,7 +2388,8 @@ different reported release would open, without committing metorex to it.
   - [x] 5.1.34. language/ensure_spec - 1 file, 31 examples, 37 expectations, 0 failures, 0 errors
   - [x] 5.1.35. language/rescue_spec - 1 file, 59 examples, 102 expectations, 0 failures, 0 errors
   - [x] 5.1.36. language/encoding_spec - 1 file, 6 examples, 9 expectations, 0 failures, 0 errors
-- [ ] 5.2. library - 1224 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
+  - [x] 5.1.37. language/symbol_spec - 1 file, 14 examples, 48 expectations, 0 failures, 0 errors
+- [ ] 5.2. library - 1225 pass, 179 files have no examples on this platform at ruby 4.0.1 (cgi 80, win32ole 74, readline 25), and the rest are enabled in the runner one file at a time
   - [x] 5.2.1. library/abbrev/abbrev_spec - 1 file, 4 examples, 6 expectations, 0 failures, 0 errors
   - [x] 5.2.2. library/base64/urlsafe_decode64_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.3. library/base64/urlsafe_encode64_spec - 1 file, 3 examples, 4 expectations, 0 failures, 0 errors
@@ -3617,7 +3618,8 @@ different reported release would open, without committing metorex to it.
   - [x] 5.2.1222. library/net-http/http/active_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.2.1223. library/net-http/http/finish_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
   - [x] 5.2.1224. library/net-http/http/inspect_spec - 1 file, 1 example, 3 expectations, 0 failures, 0 errors
-- [ ] 5.3. command_line - 26 pass, and the rest are enabled in the runner one file at a time
+  - [x] 5.2.1225. library/net-http/HTTPServerException_spec - 1 file, 2 examples, 4 expectations, 0 failures, 0 errors
+- [ ] 5.3. command_line - 27 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.3.1. command_line/dash_r_spec - 1 file, 3 examples, 8 expectations, 0 failures, 0 errors
   - [x] 5.3.2. command_line/error_message_spec - 1 file, 2 examples, 3 expectations, 0 failures, 0 errors
   - [x] 5.3.3. command_line/dash_0_spec - 1 file, 2 examples, 2 expectations, 0 failures, 0 errors
@@ -3644,6 +3646,7 @@ different reported release would open, without committing metorex to it.
   - [x] 5.3.24. command_line/dash_l_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 5.3.25. command_line/dash_upper_s_spec - 1 file, 6 examples, 8 expectations, 0 failures, 0 errors
   - [x] 5.3.26. command_line/rubylib_spec - 1 file, 6 examples, 12 expectations, 0 failures, 0 errors
+  - [x] 5.3.27. command_line/dash_upper_w_spec - 1 file, 7 examples, 7 expectations, 0 failures, 0 errors
 - [ ] 5.4. security - 7 pass, and the rest are enabled in the runner one file at a time
   - [x] 5.4.1. security/cve_2018_16396_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors
   - [x] 5.4.2. security/cve_2020_10663_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors

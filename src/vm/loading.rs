@@ -123,6 +123,12 @@ impl VirtualMachine {
             .set_variable("VERBOSE", Object::Bool(verbose));
     }
 
+    /// Say that the run reports nothing at all, which `-W0` asks for and
+    /// `$VERBOSE` reports as nil rather than as false.
+    pub fn set_verbose_nil(&mut self) {
+        self.globals_mut().set_variable("VERBOSE", Object::Nil);
+    }
+
     /// Set `Encoding.default_external` or `Encoding.default_internal` to the
     /// encoding a command line option named.
     pub fn set_default_encoding(&mut self, setter: &str, named: &str) {

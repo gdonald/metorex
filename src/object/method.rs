@@ -73,6 +73,9 @@ pub struct Method {
     /// first. `Module.nesting` inside the method reports these rather than
     /// the scopes open at the call site.
     pub captured_nesting: Vec<Rc<crate::class::Class>>,
+    /// True when `Method#to_proc` made this, which Ruby reports as a Proc
+    /// rather than as the Method it came from.
+    pub reads_as_proc: bool,
 }
 
 impl Method {
@@ -101,6 +104,7 @@ impl Method {
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
+            reads_as_proc: false,
         }
     }
 
@@ -134,6 +138,7 @@ impl Method {
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
+            reads_as_proc: false,
         }
     }
 
@@ -167,6 +172,7 @@ impl Method {
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
+            reads_as_proc: false,
         }
     }
 
@@ -201,6 +207,7 @@ impl Method {
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
+            reads_as_proc: false,
         }
     }
 
@@ -229,6 +236,7 @@ impl Method {
             captured_def_scope: Vec::new(),
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
+            reads_as_proc: false,
         }
     }
 
@@ -257,6 +265,7 @@ impl Method {
             captured_def_scope: self.captured_def_scope.clone(),
             captured_refinements: self.captured_refinements.clone(),
             captured_nesting: self.captured_nesting.clone(),
+            reads_as_proc: self.reads_as_proc,
         }
     }
 

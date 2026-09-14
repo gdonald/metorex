@@ -95,26 +95,66 @@ impl VirtualMachine {
                 }
                 let mut out = String::with_capacity(string_value.as_str().len() + 2);
                 out.push('"');
-                let held_characters = string_value.to_text();
+                let held = string_value.encoding_name();
+                // An encoding that spells a character in more than one byte is
+                // carried as the bytes themselves, so the characters are read
+                // back out of them.
+                let held_characters = match wide_encoding(&held) {
+                    Some(shape) => wide_text(&binary_bytes(string_value), shape),
+                    None => string_value.to_text(),
+                };
+                let spells_unicode = held.starts_with("UTF-") || held == "CESU-8";
                 let mut characters = held_characters.as_str().chars().peekable();
                 while let Some(character) = characters.next() {
+                    if let Some(named) = named_escape(character) {
+                        out.push('\\');
+                        out.push(named);
+                        continue;
+                    }
                     match character {
                         '"' => out.push_str("\\\""),
                         '\\' => out.push_str("\\\\"),
-                        '\n' => out.push_str("\\n"),
-                        '\r' => out.push_str("\\r"),
-                        '\t' => out.push_str("\\t"),
                         '#' if matches!(characters.peek(), Some('{' | '$' | '@')) => {
                             out.push_str("\\#")
                         }
-                        character if character.is_control() || !character.is_ascii() => {
-                            out.push_str(&format!("\\u{{{:x}}}", character as u32))
+                        character if character.is_ascii() && !character.is_control() => {
+                            out.push(character)
                         }
-                        character => out.push(character),
+                        // Text in an encoding that spells the whole of Unicode
+                        // names the character itself; text in any other names
+                        // the bytes it is spelled with.
+                        character if spells_unicode && !character.is_ascii() => {
+                            out.push_str(&escaped_point(character))
+                        }
+                        character => {
+                            let mut spelling = [0u8; 4];
+                            let bytes: Vec<u8> = if (character as u32) < 0x100 {
+                                vec![character as u32 as u8]
+                            } else {
+                                character.encode_utf8(&mut spelling).as_bytes().to_vec()
+                            };
+                            for byte in bytes {
+                                out.push_str(&format!("\\x{byte:02X}"));
+                            }
+                        }
                     }
                 }
                 out.push('"');
-                Ok(Some(Object::string(out)))
+                // Text in an encoding that spells ASCII its own way says which
+                // encoding to read the dump back in.
+                if !encoding_is_ascii_compatible(&held) {
+                    out.push_str(&format!(".force_encoding(\"{held}\")"));
+                }
+                // A dump is nothing but ASCII, so it is written in the
+                // encoding it was dumped from when that spells ASCII the same
+                // way, and in US-ASCII when it does not.
+                let writing = if encoding_is_ascii_compatible(&held) {
+                    held
+                } else {
+                    "US-ASCII".to_string()
+                };
+                let made = crate::object::StringValue::with_encoding(out, writing);
+                Ok(Some(Object::String(Rc::new(made))))
             }
             // `b` answers a copy of the text tagged as a run of bytes. It is
             // a new string, so tagging it leaves the receiver alone.
@@ -1246,6 +1286,9 @@ impl VirtualMachine {
                         arguments.len(),
                         position,
                     ));
+                }
+                if string_value.is_frozen() {
+                    return Err(self.frozen_modification_error(receiver, position));
                 }
                 let named = self.encoding_name_argument(&arguments[0], position)?;
                 // Re-tagging says how to read the bytes the string already
@@ -2402,7 +2445,25 @@ impl VirtualMachine {
                 )?;
                 match found {
                     Object::Class(encoding) => Ok(encoding.name().to_string()),
+                    // A special name such as "internal" that nothing is set
+                    // to names no encoding, and Ruby reads the bytes as
+                    // bytes rather than refusing them.
+                    Object::Nil => Ok("ASCII-8BIT".to_string()),
                     _ => Ok(named.as_str().to_string()),
+                }
+            }
+            // Anything that reads as a String names an encoding by the
+            // characters it reads as.
+            other if self.responds_to(other, "to_str") => {
+                let read = self.send_to_object(other.clone(), "to_str", vec![], position)?;
+                match read {
+                    Object::String(_) => self.encoding_name_argument(&read, position),
+                    _ => Err(method_argument_type_error(
+                        "force_encoding",
+                        "String",
+                        other,
+                        position,
+                    )),
                 }
             }
             other => Err(method_argument_type_error(
@@ -2725,9 +2786,7 @@ pub(crate) fn holds_valid_text(string_value: &crate::object::StringValue) -> boo
         "UTF-8" if string_value.holds_bytes() => {
             String::from_utf8(super::pack_format::string_to_bytes(&string_value.as_str())).is_ok()
         }
-        "EUC-JP" if string_value.holds_bytes() => {
-            euc_jp_reads(&super::pack_format::string_to_bytes(&string_value.as_str()))
-        }
+        "EUC-JP" => euc_jp_reads(&binary_bytes(string_value)),
         // A fixed-width encoding reads whole units, so a run of bytes that
         // does not divide into them spells no characters at all.
         "UTF-16" | "UTF-16BE" | "UTF-16LE" => binary_bytes(string_value).len().is_multiple_of(2),

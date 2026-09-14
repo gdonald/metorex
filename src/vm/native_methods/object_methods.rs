@@ -2508,7 +2508,30 @@ impl VirtualMachine {
                     let mut new_inst =
                         crate::object::Instance::new(std::rc::Rc::clone(&inst.class));
                     for (k, v) in &inst.instance_vars {
-                        new_inst.set_var(k.clone(), v.clone());
+                        // The characters or elements behind a subclass of a
+                        // primitive belong to the instance, so the copy gets
+                        // its own rather than sharing them.
+                        let held = match (k.as_str(), v) {
+                            (
+                                crate::vm::native_methods::STRING_SUBCLASS_VAR,
+                                Object::String(text),
+                            ) => {
+                                let made = crate::object::StringValue::with_encoding(
+                                    text.to_text(),
+                                    text.encoding_name(),
+                                );
+                                if text.holds_bytes() {
+                                    made.mark_bytes();
+                                }
+                                Object::String(std::rc::Rc::new(made))
+                            }
+                            (
+                                crate::vm::native_methods::ARRAY_SUBCLASS_VAR,
+                                Object::Array(elements),
+                            ) => Object::array(elements.borrow().clone()),
+                            _ => v.clone(),
+                        };
+                        new_inst.set_var(k.clone(), held);
                     }
                     Object::Instance(std::rc::Rc::new(std::cell::RefCell::new(new_inst)))
                 };
@@ -2551,6 +2574,16 @@ impl VirtualMachine {
                     )?;
                 }
                 Ok(Some(copy))
+            }
+            // A copy of a string holds its own characters, so changing one
+            // of them leaves the other alone.
+            Object::String(text) => {
+                let made =
+                    crate::object::StringValue::with_encoding(text.to_text(), text.encoding_name());
+                if text.holds_bytes() {
+                    made.mark_bytes();
+                }
+                Ok(Some(Object::String(std::rc::Rc::new(made))))
             }
             Object::Array(arr_rc) => {
                 let arr = arr_rc.borrow().clone();
@@ -2675,6 +2708,17 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<(), MetorexError> {
+        // A string handed back with notice that it will be frozen carries that
+        // notice into a clone, the way Ruby's does.
+        if let (Object::String(original), Object::String(copied)) = (receiver, copy)
+            && original.is_chilled()
+        {
+            let notice = original.take_chill();
+            if let Some(notice) = notice {
+                original.chill(notice.clone());
+                copied.chill(notice);
+            }
+        }
         // A singleton class travels with a clone, so a method defined on the
         // original answers on the copy too.
         if let (Object::Instance(original), Object::Instance(copied)) = (receiver, copy) {
@@ -2726,6 +2770,7 @@ impl VirtualMachine {
             match copy {
                 Object::Class(class) | Object::Module(class) => class.freeze(),
                 Object::Instance(instance) => instance.borrow_mut().frozen = true,
+                Object::String(text) => text.freeze(),
                 Object::Array(_)
                 | Object::Dict(_)
                 | Object::Set(_)

@@ -3238,6 +3238,14 @@ run_spec "$SPEC_DIR/library/net-http/http/finish_spec.rb"
 run_spec "$SPEC_DIR/library/net-http/http/inspect_spec.rb"
 run_spec "$SPEC_DIR/core/string/new_spec.rb"
 run_spec "$SPEC_DIR/language/encoding_spec.rb"
+run_spec "$SPEC_DIR/language/symbol_spec.rb"
+run_spec "$SPEC_DIR/core/string/clone_spec.rb"
+run_spec "$SPEC_DIR/core/string/dup_spec.rb"
+run_spec "$SPEC_DIR/core/string/dump_spec.rb"
+run_spec "$SPEC_DIR/command_line/dash_upper_w_spec.rb"
+run_spec "$SPEC_DIR/library/net-http/HTTPServerException_spec.rb"
+run_spec "$SPEC_DIR/core/string/force_encoding_spec.rb"
+run_spec "$SPEC_DIR/core/hash/constructor_spec.rb"
 
 # ──────────────────────────────────────────────────────────────────────────
 # Parallel execution. mspec invocations are independent processes, so we

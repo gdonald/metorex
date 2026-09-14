@@ -73,6 +73,7 @@ module Net
   end
 
   HTTPServerException = HTTPClientException
+  deprecate_constant :HTTPServerException
 
   class HTTPFatalError < ProtoFatalError
     include HTTPExceptions

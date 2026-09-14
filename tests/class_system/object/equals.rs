@@ -203,6 +203,7 @@ fn test_equals_method() {
         captured_def_scope: Vec::new(),
         captured_refinements: Vec::new(),
         captured_nesting: Vec::new(),
+        reads_as_proc: false,
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -228,6 +229,7 @@ fn test_equals_method() {
         captured_def_scope: Vec::new(),
         captured_refinements: Vec::new(),
         captured_nesting: Vec::new(),
+        reads_as_proc: false,
     });
 
     let obj1 = Object::Method(method1);

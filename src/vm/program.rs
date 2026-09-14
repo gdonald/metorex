@@ -58,7 +58,13 @@ fn method_to_proc_block(target: &Object, position: Position) -> BlockStatement {
             .iter()
             .map(|(index, _)| *index)
             .collect();
+        // The splat's own name sits among the positional ones, and it is
+        // forwarded as a splat rather than as one more positional.
+        let splat_at = method.variadic_param.as_ref().map(|(index, _)| *index);
         for index in 0..method.parameters.len() {
+            if splat_at == Some(index) {
+                continue;
+            }
             let name = format!("__method_proc_p{index}");
             if optional.contains(&index) {
                 parameter_defaults.push((parameters.len(), Expression::NilLiteral { position }));
@@ -332,6 +338,18 @@ impl VirtualMachine {
                             match made {
                                 Object::Block(_) => {
                                     self.pending_block = Some(made);
+                                    self.pending_block_from_ampersand = true;
+                                }
+                                // A `to_proc` that answers a Method stands
+                                // for a block the same way `&method` does.
+                                target @ Object::Method(_) => {
+                                    let mut block = method_to_proc_block(&target, other_position);
+                                    block.captured_vars.insert(
+                                        "__method_proc_target".to_string(),
+                                        std::rc::Rc::new(std::cell::RefCell::new(target)),
+                                    );
+                                    self.pending_block =
+                                        Some(Object::Block(std::rc::Rc::new(block)));
                                     self.pending_block_from_ampersand = true;
                                 }
                                 _ => args.push(other),

@@ -338,7 +338,7 @@ fn test_stdlib_string_dump_execution() {
         "\"line\\nbreak\"\n",
         "\"back\\\\slash\"\n",
         "\"interp \\#{x} and \\#@ivar\"\n",
-        "\"caf\\u{e9}\"\n",
+        "\"caf\\u00E9\"\n",
     );
     let output = run_example("stdlib/string/dump.rb");
     assert_eq!(output, expected);
@@ -353,7 +353,7 @@ fn test_stdlib_string_dump_parens_execution() {
         "\"line\\nbreak\"\n",
         "\"back\\\\slash\"\n",
         "\"interp \\#{x} and \\#@ivar\"\n",
-        "\"caf\\u{e9}\"\n",
+        "\"caf\\u00E9\"\n",
     );
     let output = run_example("stdlib/string/dump_parens.rb");
     assert_eq!(output, expected);

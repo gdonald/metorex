@@ -184,9 +184,10 @@ struct Cli {
     #[arg(short = 'w', hide = true, action = clap::ArgAction::SetTrue)]
     warnings: bool,
 
-    /// Ignored: Ruby -W (warning level)
+    /// Ruby -W: a level from 0 to 2, or a warning category to turn on or
+    /// off, such as `-W:deprecated` and `-W:no-experimental`.
     #[arg(short = 'W', hide = true)]
-    _warning_level: Option<String>,
+    warning_level: Option<String>,
 
     /// Ruby --external-encoding (the encoding text read and written is in)
     #[arg(long = "external-encoding", hide = true)]
@@ -505,9 +506,25 @@ fn apply_encoding_flags(vm: &mut VirtualMachine, cli: &Cli) {
 fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     // Ruby's `-w` turns on the deprecation warnings a plain run keeps quiet,
     // and `-d` and `-v` turn them on the same way.
-    let verbose = cli.warnings || cli.ruby_debug || cli.ruby_version;
+    // `-W` with a number says how loud a run is: 0 quiet, 1 the default, and
+    // 2 as loud as `-w`. With a name it turns one category on or off.
+    let mut named_categories: Vec<(String, bool)> = Vec::new();
+    let mut warning_level = None;
+    if let Some(written) = &cli.warning_level {
+        match written.strip_prefix(':') {
+            Some(category) => match category.strip_prefix("no-") {
+                Some(category) => named_categories.push((category.to_string(), false)),
+                None => named_categories.push((category.to_string(), true)),
+            },
+            None => warning_level = written.parse::<u8>().ok(),
+        }
+    }
+    let verbose = cli.warnings || cli.ruby_debug || cli.ruby_version || warning_level == Some(2);
     if verbose {
         vm.enable_warning_category("deprecated");
+    }
+    for (category, enabled) in named_categories {
+        vm.set_warning_category(&category, enabled);
     }
     // Ruby reports which of the line-reading flags were written, under the
     // name of the flag itself.
@@ -529,9 +546,13 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     }
     vm.set_flag_global("w", cli.warnings);
     vm.set_flag_global("d", cli.ruby_debug);
-    // `-w`, `-v` and `-d` are the switches `$VERBOSE` reports.
+    // `-w`, `-v` and `-d` are the switches `$VERBOSE` reports, and `-W0`
+    // turns it off altogether.
     if verbose {
         vm.set_verbose(true);
+    }
+    if warning_level == Some(0) {
+        vm.set_verbose_nil();
     }
     if cli.ruby_debug {
         vm.set_debug(true);

@@ -205,7 +205,20 @@ impl Parser {
             TokenKind::NotMatch => Ok(symbol("!~", symbol_position)),
 
             // :"string" syntax — symbol from string literal
-            TokenKind::String(s) => Ok(symbol(s, symbol_position)),
+            TokenKind::String(s) | TokenKind::FrozenString(s) | TokenKind::MutableString(s) => {
+                Ok(symbol(s, symbol_position))
+            }
+
+            // A symbol written in escapes names the characters those bytes
+            // spell. Bytes that spell nothing are refused while the source is
+            // read, the way Ruby refuses them.
+            TokenKind::ByteString(s) | TokenKind::BinaryString(s) => {
+                let bytes: Vec<u8> = s.chars().map(|held| held as u32 as u8).collect();
+                match String::from_utf8(bytes) {
+                    Ok(spelled) => Ok(symbol(spelled, symbol_position)),
+                    Err(_) => Err(self.error_at_previous("invalid symbol")),
+                }
+            }
 
             // `:"#{...}"` names a symbol built at run time, so the assembled
             // characters go through `to_sym`.

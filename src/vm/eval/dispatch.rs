@@ -35,7 +35,27 @@ impl VirtualMachine {
                 );
                 Ok(Object::String(std::rc::Rc::new(made)))
             }
-            Expression::Symbol { value, .. } => Ok(Object::symbol(value.clone())),
+            Expression::Symbol { value, .. } => {
+                // A symbol is named in the encoding the source naming it is
+                // written in, which is what `Symbol#encoding` reports for one
+                // whose name is not all ASCII.
+                let named = self
+                    .current_source_encoding
+                    .clone()
+                    .map(|held| {
+                        crate::vm::native_methods::string_methods::canonical_encoding_name(&held)
+                    })
+                    .unwrap_or_else(|| crate::object::string_value::DEFAULT_ENCODING.to_string());
+                // A source written in bytes names its symbols in bytes, so
+                // each character of the name stands for one of them.
+                let spelled = if matches!(named.as_str(), "ASCII-8BIT" | "BINARY") {
+                    crate::vm::native_methods::string_methods::bytes_as_text(value.as_bytes())
+                } else {
+                    value.clone()
+                };
+                let made = crate::object::StringValue::with_encoding(spelled, named);
+                Ok(Object::Symbol(std::rc::Rc::new(made)))
+            }
             Expression::RegexLiteral { pattern, flags, .. } => Ok(Object::Regex(
                 Rc::new(pattern.clone()),
                 Rc::new(flags.clone()),

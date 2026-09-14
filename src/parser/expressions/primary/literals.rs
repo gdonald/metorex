@@ -214,7 +214,7 @@ fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
     if !filled || !(word.contains("#{") || word.contains('\\')) {
         return plain;
     }
-    let source = format!("\"{}\"", word.replace('"', "\\\""));
+    let source = format!("\"{}\"", quoted_percent_word(word));
     let tokens = crate::lexer::Lexer::new(&source).tokenize();
     let read = tokens.first().map(|token| token.kind.clone());
     // A word with escapes but no interpolation reads back as a plain string.
@@ -288,4 +288,34 @@ fn split_percent_words(value: &str, filled: bool) -> Vec<String> {
         words.push(current);
     }
     words
+}
+
+/// A percent-list word written as the body of a double-quoted string. A quote
+/// standing in the text is escaped, where one inside an interpolation belongs
+/// to the code there and is left alone.
+fn quoted_percent_word(word: &str) -> String {
+    let mut out = String::with_capacity(word.len());
+    let mut depth = 0usize;
+    let mut letters = word.chars().peekable();
+    while let Some(character) = letters.next() {
+        match character {
+            '#' if depth == 0 && letters.peek() == Some(&'{') => {
+                out.push('#');
+                out.push('{');
+                letters.next();
+                depth = 1;
+            }
+            '{' if depth > 0 => {
+                depth += 1;
+                out.push('{');
+            }
+            '}' if depth > 0 => {
+                depth -= 1;
+                out.push('}');
+            }
+            '"' if depth == 0 => out.push_str("\\\""),
+            character => out.push(character),
+        }
+    }
+    out
 }

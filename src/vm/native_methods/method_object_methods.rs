@@ -286,9 +286,25 @@ impl VirtualMachine {
                     )?;
                     return Ok(Some(curried));
                 }
+                // The scope a callable made by `Method#to_proc` carries is the
+                // one the method runs in, so `self` there is the object the
+                // method was taken from.
+                "binding" if method_obj.reads_as_proc => {
+                    let held = crate::object::Binding::with_receiver(
+                        std::collections::HashMap::new(),
+                        method_obj
+                            .bound_self
+                            .as_deref()
+                            .or(method_obj.receiver.as_deref())
+                            .cloned()
+                            .unwrap_or(Object::Nil),
+                    );
+                    return Ok(Some(Object::Binding(Rc::new(held))));
+                }
                 "to_proc" => {
                     let mut as_proc = (**method_obj).clone();
                     as_proc.bound_self = method_obj.receiver.clone();
+                    as_proc.reads_as_proc = true;
                     return Ok(Some(Object::Method(Rc::new(as_proc))));
                 }
                 "owner" => {

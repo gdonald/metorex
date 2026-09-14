@@ -239,7 +239,30 @@ pub(crate) fn inspect_symbol(name: &str) -> String {
     if reads_back_plainly(name) {
         return format!(":{name}");
     }
-    format!(":{name:?}")
+    let mut out = String::with_capacity(name.len() + 3);
+    out.push_str(":\"");
+    for character in name.chars() {
+        match character {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\u{7}' => out.push_str("\\a"),
+            '\u{8}' => out.push_str("\\b"),
+            '\t' => out.push_str("\\t"),
+            '\n' => out.push_str("\\n"),
+            '\u{b}' => out.push_str("\\v"),
+            '\u{c}' => out.push_str("\\f"),
+            '\r' => out.push_str("\\r"),
+            '\u{1b}' => out.push_str("\\e"),
+            // Every other character that does not print is named by the byte
+            // it stands for, the way Ruby names one.
+            character if character.is_control() => {
+                out.push_str(&format!("\\x{:02X}", character as u32))
+            }
+            character => out.push(character),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// Whether a symbol's name could be written after a colon and read back as

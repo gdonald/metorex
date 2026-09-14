@@ -73,10 +73,16 @@ impl VirtualMachine {
     /// Turn a warning category on, which `-w` does for the deprecation
     /// warnings a plain run keeps quiet.
     pub fn enable_warning_category(&mut self, category: &str) {
+        self.set_warning_category(category, true);
+    }
+
+    /// Say whether a warning category is on, which `-W:name` and
+    /// `-W:no-name` decide for a run.
+    pub fn set_warning_category(&mut self, category: &str, enabled: bool) {
         if let Some(Object::Module(warning) | Object::Class(warning)) =
             self.globals().get("Warning")
         {
-            warning.set_class_var(category_key(category), Object::Bool(true));
+            warning.set_class_var(category_key(category), Object::Bool(enabled));
         }
     }
 

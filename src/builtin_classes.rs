@@ -140,6 +140,9 @@ impl BuiltinClasses {
             Object::Set(_) => Rc::clone(&self.set_class),
             Object::Instance(inst) => Rc::clone(&inst.borrow().class),
             Object::Class(_) | Object::Module(_) => Rc::clone(&self.object_class),
+            // `Method#to_proc` answers a callable attached to the object the
+            // method was taken from, which Ruby reports as a Proc.
+            Object::Method(method) if method.reads_as_proc => Rc::clone(&self.proc_class),
             Object::Method(_) => Rc::clone(&self.method_class),
             Object::Block(_) => Rc::clone(&self.proc_class),
             Object::Binding(_) => Rc::clone(&self.binding_class),

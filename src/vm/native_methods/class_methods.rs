@@ -40,9 +40,63 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
+        if arguments.len() > 2 {
+            return Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::Range(0, 2),
+                arguments.len(),
+                position,
+            ));
+        }
+        // A lone array names the elements rather than a size, and anything
+        // that reads as one through `to_ary` names them the same way. A
+        // default alongside it has nothing to fill.
+        let read_as_array = match arguments.first() {
+            Some(held @ Object::Array(_)) => Some(held.clone()),
+            Some(held) if crate::vm::native_methods::array_subclass_value(held).is_some() => {
+                crate::vm::native_methods::array_subclass_value(held)
+            }
+            Some(held)
+                if !matches!(held, Object::Int(_) | Object::Nil)
+                    && self.responds_to(held, "to_ary") =>
+            {
+                Some(self.send_to_object(held.clone(), "to_ary", vec![], position)?)
+            }
+            _ => None,
+        };
+        if let Some(Object::Array(elements)) = read_as_array {
+            if arguments.len() > 1 {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "no implicit conversion of Array into Integer",
+                    position,
+                ));
+            }
+            self.pending_block.take();
+            return Ok(elements.borrow().clone());
+        }
         let size = match arguments.first() {
             None => 0_i64,
             Some(Object::Int(n)) => *n,
+            Some(Object::Nil) => {
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    "no implicit conversion from nil to integer",
+                    position,
+                ));
+            }
+            Some(other) if self.responds_to(other, "to_int") => {
+                match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                    Object::Int(held) => held,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            "Array.new",
+                            "Integer",
+                            other,
+                            position,
+                        ));
+                    }
+                }
+            }
             Some(other) => {
                 return Err(method_argument_type_error(
                     "Array.new",
@@ -1645,16 +1699,63 @@ impl VirtualMachine {
                     return Ok(Some(hash_of_class(class_rc, built)));
                 }
                 [Object::Array(rows)] => {
-                    for row in rows.borrow().iter() {
+                    let held = rows.borrow().clone();
+                    for (at, row) in held.iter().enumerate() {
+                        // Every element names a pair, so anything that is not
+                        // one, and any pair with the wrong number of parts,
+                        // is refused where it stands.
                         let Object::Array(pair) = row else {
-                            continue;
+                            let message = format!(
+                                "wrong element type {} at {} (expected array)",
+                                match row {
+                                    Object::Nil => "nil".to_string(),
+                                    other => self.builtins().class_of(other).ruby_name(),
+                                },
+                                at
+                            );
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                &message,
+                                position,
+                            ));
                         };
                         let pair = pair.borrow();
+                        if pair.is_empty() || pair.len() > 2 {
+                            let message =
+                                format!("invalid number of elements ({} for 1..2)", pair.len());
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                &message,
+                                position,
+                            ));
+                        }
                         entries.push((
                             pair.first().cloned().unwrap_or(Object::Nil),
                             pair.get(1).cloned().unwrap_or(Object::Nil),
                         ));
                     }
+                }
+                // An instance of a Hash subclass is read by the entries it
+                // holds, whatever `to_hash` it was given.
+                [single] if crate::vm::native_methods::hash_subclass_value(single).is_some() => {
+                    let held = crate::vm::native_methods::hash_subclass_value(single)
+                        .expect("a hash subclass carries its entries");
+                    return self.call_class_methods(class_rc, method_name, &[held], position);
+                }
+                // A single argument that reads as a hash, or as an array of
+                // pairs, is read as one before anything else is tried.
+                [single]
+                    if !matches!(single, Object::Dict(_) | Object::Array(_))
+                        && (self.responds_to(single, "to_hash")
+                            || self.responds_to(single, "to_ary")) =>
+                {
+                    let named = if self.responds_to(single, "to_hash") {
+                        "to_hash"
+                    } else {
+                        "to_ary"
+                    };
+                    let read = self.send_to_object(single.clone(), named, vec![], position)?;
+                    return self.call_class_methods(class_rc, method_name, &[read], position);
                 }
                 values if values.len().is_multiple_of(2) => {
                     for pair in values.chunks(2) {

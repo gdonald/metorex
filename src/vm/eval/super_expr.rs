@@ -302,7 +302,7 @@ impl VirtualMachine {
                 if method_name == "initialize" {
                     drop(instance_borrowed);
                     let evaluated_args = self.evaluate_arguments(arguments)?;
-                    return Self::object_initialize(&evaluated_args, position);
+                    return self.super_initialize(&evaluated_args, position);
                 }
                 // A prepended module whose class does not define the method
                 // has nothing left above it, which Ruby reports as a
@@ -399,7 +399,7 @@ impl VirtualMachine {
                 // reaches Object's, which takes no arguments and does
                 // nothing at all.
                 if method_name == "initialize" {
-                    return Self::object_initialize(&evaluated_args, position);
+                    return self.super_initialize(&evaluated_args, position);
                 }
                 // A collection the program subclassed answers the methods of
                 // the collection it is backed by, and those live in the
@@ -547,7 +547,7 @@ impl VirtualMachine {
         }
 
         if method_name == "initialize" {
-            return Self::object_initialize(&evaluated_args, position);
+            return self.super_initialize(&evaluated_args, position);
         }
 
         let message = format!(
@@ -565,6 +565,31 @@ impl VirtualMachine {
             location: position_to_location(position),
             message,
         })
+    }
+
+    /// What `super` from a constructor with nothing above it reaches. A
+    /// String subclass takes the characters it was given, and everything else
+    /// reaches Object's own, which takes no arguments at all.
+    fn super_initialize(
+        &mut self,
+        arguments: &[Object],
+        position: crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        let receiver = self.environment().get("self").unwrap_or(Object::Nil);
+        if let Object::Instance(instance) = &receiver
+            && instance
+                .borrow()
+                .instance_vars
+                .contains_key(crate::vm::native_methods::STRING_SUBCLASS_VAR)
+        {
+            let spelled = self.string_from_new_arguments(arguments, position)?;
+            instance.borrow_mut().set_var(
+                crate::vm::native_methods::STRING_SUBCLASS_VAR.to_string(),
+                spelled,
+            );
+            return Ok(Object::Nil);
+        }
+        Self::object_initialize(arguments, position)
     }
 
     /// Object#initialize, which every `super` from a constructor with nothing

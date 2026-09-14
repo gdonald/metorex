@@ -50,28 +50,28 @@ impl VirtualMachine {
                 }
                 self.apply_visibility_modifier(name, arguments, position)
             }
-            "private_constant" | "public_constant" => {
+            "private_constant" | "public_constant" | "deprecate_constant" => {
                 // Apply visibility marks to constants on the current `self`
                 // module/class. Inside a `module M; ...; end` body, `self`
                 // is the module being defined, so qualified accesses like
                 // `M::PrivConst` from outside raise NameError /private
-                // constant/. `public_constant` is the inverse.
+                // constant/. `public_constant` is the inverse, and
+                // `deprecate_constant` says a read of the name warns.
                 self.pending_block.take();
                 let target = match self.environment().get("self") {
                     Some(Object::Class(c)) | Some(Object::Module(c)) => c,
                     _ => return Ok(Object::Nil),
                 };
-                let make_private = name == "private_constant";
                 for arg in &arguments {
                     let const_name = match arg {
                         Object::Symbol(s) => s.as_str().to_string(),
                         Object::String(s) => s.as_str().to_string(),
                         _ => continue,
                     };
-                    if make_private {
-                        target.mark_private_constant(const_name);
-                    } else {
-                        target.unmark_private_constant(&const_name);
+                    match name {
+                        "private_constant" => target.mark_private_constant(const_name),
+                        "deprecate_constant" => target.mark_deprecated_constant(const_name),
+                        _ => target.unmark_private_constant(&const_name),
                     }
                 }
                 Ok(Object::Nil)
@@ -124,8 +124,7 @@ impl VirtualMachine {
                 }
                 Ok(Object::Nil)
             }
-            "deprecate_constant" | "noop_with_block" => {
-                // Visibility modifiers and Object#freeze — no-op stubs. Accept any args.
+            "noop_with_block" => {
                 self.pending_block.take();
                 Ok(Object::Nil)
             }
