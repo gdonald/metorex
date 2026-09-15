@@ -79,3 +79,27 @@ fn test_regexp_end_of_subject_no_parens_execution() {
     let output = run_example("regexp/end_of_subject_no_parens.rb");
     assert_eq!(output, END_OF_SUBJECT_OUTPUT);
 }
+
+/// The expected output of both `regexp/built_patterns` variants, which differ
+/// only in whether the calls are written with parentheses.
+const BUILT_PATTERNS_OUTPUT: &str = concat!(
+    "1\n",
+    "7\n",
+    "#<Encoding:US-ASCII>\n",
+    "#<Encoding:UTF-8>\n",
+    "unknown regexp option: e\n",
+    "premature end of char-class: /^[$/\n",
+    "no implicit conversion of Symbol into String\n"
+);
+
+#[test]
+fn test_regexp_built_patterns_execution() {
+    let output = run_example("regexp/built_patterns.rb");
+    assert_eq!(output, BUILT_PATTERNS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_built_patterns_parens_execution() {
+    let output = run_example("regexp/built_patterns_parens.rb");
+    assert_eq!(output, BUILT_PATTERNS_OUTPUT);
+}

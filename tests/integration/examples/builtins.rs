@@ -1507,3 +1507,30 @@ fn test_builtins_frozen_answers_no_parens_execution() {
     let output = run_example("builtins/frozen_answers_no_parens.rb");
     assert_eq!(output, FROZEN_ANSWERS_OUTPUT);
 }
+
+/// The expected output of both `builtins/numbers_written_out` variants, which differ only in whether the
+/// calls are written with parentheses.
+const NUMBERS_WRITTEN_OUT_OUTPUT: &str = concat!(
+    "1.5\n",
+    "1.0e+15\n",
+    "0.0001\n",
+    "1.0e-05\n",
+    "2.554021731435405e+163\n",
+    "1.0e+16\n",
+    "US-ASCII\n",
+    "1024\n",
+    "3697379018277258\n",
+    "-4\n",
+);
+
+#[test]
+fn test_builtins_numbers_written_out_execution() {
+    let output = run_example("builtins/numbers_written_out.rb");
+    assert_eq!(output, NUMBERS_WRITTEN_OUT_OUTPUT);
+}
+
+#[test]
+fn test_builtins_numbers_written_out_no_parens_execution() {
+    let output = run_example("builtins/numbers_written_out_no_parens.rb");
+    assert_eq!(output, NUMBERS_WRITTEN_OUT_OUTPUT);
+}

@@ -137,6 +137,37 @@ impl VirtualMachine {
                 }
             }
             // The names a host answers to, resolved by the system.
+            // The name an address is known by, or nothing when it has none.
+            "name_of" => {
+                let Ok(address) = text.parse::<std::net::IpAddr>() else {
+                    return Ok(Object::Nil);
+                };
+                let mut buffer = vec![0u8; libc::NI_MAXHOST as usize];
+                let answered = match address {
+                    std::net::IpAddr::V4(held) => {
+                        let mut sockaddr: libc::sockaddr_in = unsafe { std::mem::zeroed() };
+                        sockaddr.sin_family = libc::AF_INET as libc::sa_family_t;
+                        sockaddr.sin_addr.s_addr = u32::from_ne_bytes(held.octets());
+                        unsafe {
+                            libc::getnameinfo(
+                                &sockaddr as *const libc::sockaddr_in as *const libc::sockaddr,
+                                std::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                                buffer.as_mut_ptr() as *mut libc::c_char,
+                                buffer.len() as libc::socklen_t,
+                                std::ptr::null_mut(),
+                                0,
+                                0,
+                            )
+                        }
+                    }
+                    std::net::IpAddr::V6(_) => -1,
+                };
+                if answered != 0 {
+                    return Ok(Object::Nil);
+                }
+                let named = unsafe { std::ffi::CStr::from_ptr(buffer.as_ptr() as *const _) };
+                Ok(Object::string(named.to_string_lossy().to_string()))
+            }
             "resolve" => match std::net::ToSocketAddrs::to_socket_addrs(&(text.as_str(), 0u16)) {
                 Ok(found) => Ok(Object::array(
                     found
@@ -222,6 +253,7 @@ pub(crate) struct OpenSockets {
     pub(crate) unix_listeners: std::collections::HashMap<u64, std::os::unix::net::UnixListener>,
     pub(crate) unix_streams: std::collections::HashMap<u64, std::os::unix::net::UnixStream>,
     pub(crate) datagrams: std::collections::HashMap<u64, std::net::UdpSocket>,
+    pub(crate) unix_datagrams: std::collections::HashMap<u64, std::os::unix::net::UnixDatagram>,
     pub(crate) next: u64,
 }
 
@@ -229,6 +261,10 @@ pub(crate) struct OpenSockets {
 /// thread, so a socket that would block forever has nobody left to write to
 /// it, and waiting is what a deadlock looks like from the inside.
 const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// How long one read on a socket waits before handing control back. A read
+/// waits for as long as `WAIT_LIMIT` altogether, in steps this short, so
+/// whatever else the program has to run gets a turn in between.
+const POLL_LIMIT: std::time::Duration = std::time::Duration::from_millis(5);
 
 /// Wait for the next connection to a listener, giving up once the limit is
 /// past. `std` names no timeout for accepting, so the listener is asked over
@@ -263,37 +299,6 @@ impl Accepts for std::os::unix::net::UnixListener {
 
     fn set_waiting(&self, blocking: bool) -> std::io::Result<()> {
         self.set_nonblocking(!blocking)
-    }
-}
-
-fn wait_for_connection<L: Accepts>(
-    listener: &L,
-    position: Position,
-) -> Result<L::Stream, MetorexError> {
-    let _ = listener.set_waiting(false);
-    let deadline = std::time::Instant::now() + WAIT_LIMIT;
-    loop {
-        match listener.try_once() {
-            Ok(held) => {
-                let _ = listener.set_waiting(true);
-                return Ok(held);
-            }
-            Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
-                if std::time::Instant::now() >= deadline {
-                    let _ = listener.set_waiting(true);
-                    return Err(timed_out(position));
-                }
-                std::thread::sleep(std::time::Duration::from_millis(5));
-            }
-            Err(problem) => {
-                let _ = listener.set_waiting(true);
-                return Err(crate::vm::errors::simple_exception(
-                    "Errno::ECONNREFUSED",
-                    &format!("accept: {problem}"),
-                    position,
-                ));
-            }
-        }
     }
 }
 
@@ -341,8 +346,15 @@ impl VirtualMachine {
         match &*action.as_str() {
             // Take a name and a port and start listening there.
             "listen" => {
-                let held = std::net::TcpListener::bind((text.as_str(), port as u16))
-                    .map_err(|problem| refuse(format!("bind({text}:{port}): {problem}")))?;
+                let held = std::net::TcpListener::bind((text.as_str(), port as u16)).map_err(
+                    |problem| {
+                        crate::vm::errors::simple_exception(
+                            bind_errno_class(&problem),
+                            &format!("bind({text}:{port}): {problem}"),
+                            position,
+                        )
+                    },
+                )?;
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.listeners.insert(named, held);
@@ -352,7 +364,7 @@ impl VirtualMachine {
             "connect" => {
                 let held = std::net::TcpStream::connect((text.as_str(), port as u16))
                     .map_err(|problem| refuse(format!("connect({text}:{port}): {problem}")))?;
-                let _ = held.set_read_timeout(Some(WAIT_LIMIT));
+                let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.streams.insert(named, held);
@@ -396,13 +408,38 @@ impl VirtualMachine {
             ),
             // Take the next connection something has made to a listener.
             "accept" => {
-                let listener = self
-                    .open_sockets
-                    .listeners
-                    .get(&handle)
-                    .ok_or_else(|| refuse("accept on a closed listener".to_string()))?;
-                let (stream, _) = wait_for_connection(listener, position)?;
-                let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
+                // Waiting hands other threads a turn, and they may reach the
+                // same listener, so it is looked up again each time round
+                // rather than borrowed across the wait.
+                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let stream = loop {
+                    let listener = self
+                        .open_sockets
+                        .listeners
+                        .get(&handle)
+                        .ok_or_else(|| refuse("accept on a closed listener".to_string()))?;
+                    let _ = listener.set_waiting(false);
+                    let taken = listener.try_once();
+                    let _ = listener.set_waiting(true);
+                    match taken {
+                        Ok((held, _)) => break held,
+                        Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                            if std::time::Instant::now() >= deadline {
+                                return Err(timed_out(position));
+                            }
+                            self.wait_for_other_threads(position);
+                            self.raise_if_thread_killed(position)?;
+                        }
+                        Err(problem) => {
+                            return Err(crate::vm::errors::simple_exception(
+                                "Errno::ECONNREFUSED",
+                                &format!("accept: {problem}"),
+                                position,
+                            ));
+                        }
+                    }
+                };
+                let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.streams.insert(named, stream);
@@ -415,29 +452,69 @@ impl VirtualMachine {
                     .get_mut(&handle)
                     .ok_or_else(|| refuse("write to a closed connection".to_string()))?;
                 let bytes = super::pack_format::string_to_bytes(&text);
-                stream
-                    .write_all(&bytes)
-                    .map_err(|problem| refuse(format!("write: {problem}")))?;
+                // `port` carries the flags a send was given. Out-of-band data
+                // travels ahead of what is already queued, which the ordinary
+                // write has no way to ask for.
+                if port != 0 {
+                    use std::os::unix::io::AsRawFd as _;
+                    let sent = unsafe {
+                        libc::send(
+                            stream.as_raw_fd(),
+                            bytes.as_ptr() as *const libc::c_void,
+                            bytes.len(),
+                            port as libc::c_int,
+                        )
+                    };
+                    if sent < 0 {
+                        let problem = std::io::Error::last_os_error();
+                        return Err(crate::vm::errors::simple_exception(
+                            errno_class(&problem),
+                            &format!("send: {problem}"),
+                            position,
+                        ));
+                    }
+                    return Ok(Object::Int(sent as i64));
+                }
+                stream.write_all(&bytes).map_err(|problem| {
+                    crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("write: {problem}"),
+                        position,
+                    )
+                })?;
                 Ok(Object::Int(bytes.len() as i64))
             }
             // Read what the other end sent, up to the count asked for.
             "read" => {
-                let stream = self
-                    .open_sockets
-                    .streams
-                    .get_mut(&handle)
-                    .ok_or_else(|| refuse("read from a closed connection".to_string()))?;
                 let wanted = if port > 0 { port as usize } else { 65536 };
                 let mut buffer = vec![0u8; wanted];
-                let read = stream.read(&mut buffer).map_err(|problem| {
-                    if problem.kind() == std::io::ErrorKind::WouldBlock
-                        || problem.kind() == std::io::ErrorKind::TimedOut
-                    {
-                        timed_out(position)
-                    } else {
-                        refuse(format!("read: {problem}"))
+                // Nothing has arrived yet is not the end of the matter, so
+                // whatever else the program has to run gets a turn and the
+                // read is tried again.
+                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let read = loop {
+                    let stream = self
+                        .open_sockets
+                        .streams
+                        .get_mut(&handle)
+                        .ok_or_else(|| refuse("read from a closed connection".to_string()))?;
+                    match stream.read(&mut buffer) {
+                        Ok(held) => break held,
+                        Err(problem)
+                            if matches!(
+                                problem.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                            ) =>
+                        {
+                            if std::time::Instant::now() >= deadline {
+                                return Err(timed_out(position));
+                            }
+                            self.wait_for_other_threads(position);
+                            self.raise_if_thread_killed(position)?;
+                        }
+                        Err(problem) => return Err(refuse(format!("read: {problem}"))),
                     }
-                })?;
+                };
                 buffer.truncate(read);
                 Ok(super::pack_format::bytes_to_string(&buffer))
             }
@@ -451,7 +528,36 @@ impl VirtualMachine {
             }
             // The number the operating system holds a socket under, which is
             // what `fileno` reports.
+            // Close one direction of a connection, so the other end reads
+            // the end of the stream without the socket itself closing.
+            "shutdown" => {
+                use std::os::unix::io::AsRawFd as _;
+                let found = self
+                    .open_sockets
+                    .streams
+                    .get(&handle)
+                    .map(|held| held.as_raw_fd())
+                    .or_else(|| {
+                        self.open_sockets
+                            .unix_streams
+                            .get(&handle)
+                            .map(|held| held.as_raw_fd())
+                    });
+                let Some(number) = found else {
+                    return Err(refuse("shutdown of a closed connection".to_string()));
+                };
+                // SAFETY: `number` is a descriptor this program holds open.
+                let answered = unsafe { libc::shutdown(number, port as libc::c_int) };
+                if answered < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(refuse(format!("shutdown: {problem}")));
+                }
+                Ok(Object::Int(0))
+            }
             "fileno" => {
+                if let Some(found) = self.socket_descriptor(handle) {
+                    return Ok(Object::Int(i64::from(found)));
+                }
                 use std::os::unix::io::AsRawFd as _;
                 let found = self
                     .open_sockets
@@ -522,12 +628,280 @@ impl VirtualMachine {
                             .iter()
                             .map(|(held, socket)| (*held, socket.as_raw_fd())),
                     )
+                    .chain(
+                        self.open_sockets
+                            .unix_datagrams
+                            .iter()
+                            .map(|(held, socket)| (*held, socket.as_raw_fd())),
+                    )
                     .find(|(_, number)| *number == wanted)
                     .map(|(held, _)| held);
                 Ok(match found {
                     Some(held) => Object::Int(held as i64),
                     None => Object::Nil,
                 })
+            }
+            // The port a named service is reached on, and the name a port is
+            // known by, as the operating system's own table has them.
+            "service_port" => {
+                let (service, protocol) = match text.split_once('/') {
+                    Some((named, kind)) => (named.to_string(), kind.to_string()),
+                    None => (text.to_string(), "tcp".to_string()),
+                };
+                let name = std::ffi::CString::new(service).unwrap_or_default();
+                let kind = std::ffi::CString::new(protocol).unwrap_or_default();
+                let found = unsafe { libc::getservbyname(name.as_ptr(), kind.as_ptr()) };
+                if found.is_null() {
+                    return Ok(Object::Nil);
+                }
+                let port = unsafe { (*found).s_port };
+                Ok(Object::Int(i64::from(u16::from_be(port as u16))))
+            }
+            "service_name" => {
+                let kind = std::ffi::CString::new(text.to_string()).unwrap_or_default();
+                let found =
+                    unsafe { libc::getservbyport((port as u16).to_be() as i32, kind.as_ptr()) };
+                if found.is_null() {
+                    return Ok(Object::Nil);
+                }
+                let named = unsafe { std::ffi::CStr::from_ptr((*found).s_name) };
+                Ok(Object::string(named.to_string_lossy().to_string()))
+            }
+            // What a socket setting holds right now, as the bytes the
+            // operating system keeps it in. `text` names the level and the
+            // option, and `port` how many bytes to read back.
+            "socket_option" => {
+                let mut parts = text.split('/');
+                let level: libc::c_int = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+                let name: libc::c_int = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Err(refuse("option of a closed socket".to_string()));
+                };
+                let wanted = if port > 0 { port as usize } else { 4 };
+                let mut buffer = vec![0u8; wanted];
+                let mut size = wanted as libc::socklen_t;
+                let answered = unsafe {
+                    libc::getsockopt(
+                        descriptor,
+                        level,
+                        name,
+                        buffer.as_mut_ptr() as *mut libc::c_void,
+                        &mut size,
+                    )
+                };
+                if answered < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("getsockopt: {problem}"),
+                        position,
+                    ));
+                }
+                buffer.truncate(size as usize);
+                Ok(super::pack_format::bytes_to_string(&buffer))
+            }
+            // Change a socket setting, with `text` naming the level, the
+            // option, and the bytes to write, separated by slashes.
+            "set_socket_option" => {
+                let mut parts = text.splitn(3, '/');
+                let level: libc::c_int = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+                let name: libc::c_int = parts.next().and_then(|p| p.parse().ok()).unwrap_or(0);
+                let bytes = super::pack_format::string_to_bytes(parts.next().unwrap_or(""));
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Err(refuse("option of a closed socket".to_string()));
+                };
+                let answered = unsafe {
+                    libc::setsockopt(
+                        descriptor,
+                        level,
+                        name,
+                        bytes.as_ptr() as *const libc::c_void,
+                        bytes.len() as libc::socklen_t,
+                    )
+                };
+                if answered < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("setsockopt: {problem}"),
+                        position,
+                    ));
+                }
+                Ok(Object::Int(0))
+            }
+            // Every network interface this machine has, one line per entry,
+            // written as name/flags/index/address/netmask/broadcast.
+            "interfaces" => {
+                let mut held: *mut libc::ifaddrs = std::ptr::null_mut();
+                if unsafe { libc::getifaddrs(&mut held) } != 0 {
+                    return Ok(Object::array(Vec::new()));
+                }
+                let mut found = Vec::new();
+                let mut walking = held;
+                while !walking.is_null() {
+                    let entry = unsafe { &*walking };
+                    walking = entry.ifa_next;
+                    if entry.ifa_name.is_null() {
+                        continue;
+                    }
+                    let name = unsafe { std::ffi::CStr::from_ptr(entry.ifa_name) }
+                        .to_string_lossy()
+                        .to_string();
+                    let index = unsafe {
+                        let spelled = std::ffi::CString::new(name.clone()).unwrap_or_default();
+                        libc::if_nametoindex(spelled.as_ptr())
+                    };
+                    found.push(Object::array(vec![
+                        Object::string(name),
+                        Object::Int(i64::from(entry.ifa_flags)),
+                        Object::Int(i64::from(index)),
+                        address_of_sockaddr(entry.ifa_addr),
+                        address_of_sockaddr(entry.ifa_netmask),
+                        address_of_sockaddr(entry.ifa_dstaddr),
+                    ]));
+                }
+                unsafe { libc::freeifaddrs(held) };
+                Ok(Object::array(found))
+            }
+            // Hand a descriptor to the other end of a socket named by a
+            // path, and take one that was handed over. `port` carries the
+            // descriptor going out.
+            "send_fd" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Err(refuse("send on a closed socket".to_string()));
+                };
+                let sent = send_descriptor(descriptor, port as i32);
+                if sent < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("sendmsg: {problem}"),
+                        position,
+                    ));
+                }
+                Ok(Object::Int(sent as i64))
+            }
+            "receive_fd" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Err(refuse("receive on a closed socket".to_string()));
+                };
+                let taken = receive_descriptor(descriptor);
+                if taken < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("recvmsg: {problem}"),
+                        position,
+                    ));
+                }
+                Ok(Object::Int(taken as i64))
+            }
+            // A socket named by a path that carries each message on its
+            // own. An empty path opens one with no name of its own.
+            "unix_dgram_open" => {
+                let held = if text.is_empty() {
+                    std::os::unix::net::UnixDatagram::unbound()
+                } else {
+                    std::os::unix::net::UnixDatagram::bind(&text)
+                }
+                .map_err(|problem| {
+                    crate::vm::errors::simple_exception(
+                        bind_errno_class(&problem),
+                        &format!("bind({text}): {problem}"),
+                        position,
+                    )
+                })?;
+                let _ = held.set_read_timeout(Some(POLL_LIMIT));
+                let named = self.open_sockets.next;
+                self.open_sockets.next += 1;
+                self.open_sockets.unix_datagrams.insert(named, held);
+                Ok(Object::Int(named as i64))
+            }
+            "unix_dgram_send" => {
+                let socket = self
+                    .open_sockets
+                    .unix_datagrams
+                    .get(&handle)
+                    .ok_or_else(|| refuse("send on a closed socket".to_string()))?;
+                let mut parts = text.splitn(2, '\u{0}');
+                let path = parts.next().unwrap_or("");
+                let bytes = super::pack_format::string_to_bytes(parts.next().unwrap_or(""));
+                let sent = if path.is_empty() {
+                    socket.send(&bytes)
+                } else {
+                    socket.send_to(&bytes, path)
+                };
+                let sent = sent.map_err(|problem| {
+                    crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("send: {problem}"),
+                        position,
+                    )
+                })?;
+                Ok(Object::Int(sent as i64))
+            }
+            "unix_dgram_receive" => {
+                let wanted = if port > 0 { port as usize } else { 65536 };
+                let mut buffer = vec![0u8; wanted];
+                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let read = loop {
+                    let socket = self
+                        .open_sockets
+                        .unix_datagrams
+                        .get(&handle)
+                        .ok_or_else(|| refuse("receive on a closed socket".to_string()))?;
+                    match socket.recv_from(&mut buffer) {
+                        Ok(held) => break held,
+                        Err(problem)
+                            if matches!(
+                                problem.kind(),
+                                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                            ) =>
+                        {
+                            if std::time::Instant::now() >= deadline {
+                                return Err(timed_out(position));
+                            }
+                            self.wait_for_other_threads(position);
+                            self.raise_if_thread_killed(position)?;
+                        }
+                        Err(problem) => {
+                            return Err(crate::vm::errors::simple_exception(
+                                errno_class(&problem),
+                                &format!("recv: {problem}"),
+                                position,
+                            ));
+                        }
+                    }
+                };
+                let (read, from) = read;
+                buffer.truncate(read);
+                Ok(Object::array(vec![
+                    super::pack_format::bytes_to_string(&buffer),
+                    match from.as_pathname() {
+                        Some(path) => Object::string(path.display().to_string()),
+                        None => Object::string(String::new()),
+                    },
+                ]))
+            }
+            // Which kind of socket a handle names, so one taken up from a
+            // file descriptor reports the family and the kind it really is.
+            "kind_of_handle" => {
+                let named = if self.open_sockets.listeners.contains_key(&handle)
+                    || self.open_sockets.streams.contains_key(&handle)
+                {
+                    "inet_stream"
+                } else if self.open_sockets.unix_listeners.contains_key(&handle)
+                    || self.open_sockets.unix_streams.contains_key(&handle)
+                {
+                    "unix_stream"
+                } else if self.open_sockets.datagrams.contains_key(&handle) {
+                    "inet_datagram"
+                } else if self.open_sockets.unix_datagrams.contains_key(&handle) {
+                    "unix_datagram"
+                } else {
+                    "unknown"
+                };
+                Ok(Object::string(named))
             }
             // ── sockets named by a path in the file system ────────────────
             "unix_listen" => {
@@ -563,7 +937,7 @@ impl VirtualMachine {
                         position,
                     )
                 })?;
-                let _ = held.set_read_timeout(Some(WAIT_LIMIT));
+                let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.unix_streams.insert(named, held);
@@ -582,7 +956,7 @@ impl VirtualMachine {
                 let _ = listener.set_nonblocking(false);
                 match taken {
                     Ok((stream, _)) => {
-                        let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
+                        let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                         let named = self.open_sockets.next;
                         self.open_sockets.next += 1;
                         self.open_sockets.unix_streams.insert(named, stream);
@@ -605,7 +979,7 @@ impl VirtualMachine {
                 let _ = listener.set_nonblocking(false);
                 match taken {
                     Ok((stream, _)) => {
-                        let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
+                        let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                         let named = self.open_sockets.next;
                         self.open_sockets.next += 1;
                         self.open_sockets.streams.insert(named, stream);
@@ -618,13 +992,35 @@ impl VirtualMachine {
                 }
             }
             "unix_accept" => {
-                let listener = self
-                    .open_sockets
-                    .unix_listeners
-                    .get(&handle)
-                    .ok_or_else(|| refuse("accept on a closed listener".to_string()))?;
-                let (stream, _) = wait_for_connection(listener, position)?;
-                let _ = stream.set_read_timeout(Some(WAIT_LIMIT));
+                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let stream = loop {
+                    let listener = self
+                        .open_sockets
+                        .unix_listeners
+                        .get(&handle)
+                        .ok_or_else(|| refuse("accept on a closed listener".to_string()))?;
+                    let _ = listener.set_waiting(false);
+                    let taken = listener.try_once();
+                    let _ = listener.set_waiting(true);
+                    match taken {
+                        Ok((held, _)) => break held,
+                        Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                            if std::time::Instant::now() >= deadline {
+                                return Err(timed_out(position));
+                            }
+                            self.wait_for_other_threads(position);
+                            self.raise_if_thread_killed(position)?;
+                        }
+                        Err(problem) => {
+                            return Err(crate::vm::errors::simple_exception(
+                                "Errno::ECONNREFUSED",
+                                &format!("accept: {problem}"),
+                                position,
+                            ));
+                        }
+                    }
+                };
+                let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.unix_streams.insert(named, stream);
@@ -643,6 +1039,36 @@ impl VirtualMachine {
                 Ok(Object::Int(bytes.len() as i64))
             }
             "unix_read" => {
+                // `text` names the flags. Taking a look without taking the
+                // message needs the system call rather than a plain read.
+                let flags: i64 = text.parse().unwrap_or(0);
+                if flags != 0
+                    && let Some(descriptor) = self.socket_descriptor(handle)
+                {
+                    let wanted = if port > 0 { port as usize } else { 65536 };
+                    let mut buffer = vec![0u8; wanted];
+                    let read = unsafe {
+                        libc::recv(
+                            descriptor,
+                            buffer.as_mut_ptr() as *mut libc::c_void,
+                            wanted,
+                            flags as libc::c_int,
+                        )
+                    };
+                    if read < 0 {
+                        let problem = std::io::Error::last_os_error();
+                        if problem.kind() == std::io::ErrorKind::WouldBlock {
+                            return Err(timed_out(position));
+                        }
+                        return Err(crate::vm::errors::simple_exception(
+                            errno_class(&problem),
+                            &format!("recv: {problem}"),
+                            position,
+                        ));
+                    }
+                    buffer.truncate(read as usize);
+                    return Ok(super::pack_format::bytes_to_string(&buffer));
+                }
                 let stream = self
                     .open_sockets
                     .unix_streams
@@ -677,6 +1103,12 @@ impl VirtualMachine {
                                 .and_then(|held| held.local_addr().ok())
                         })
                 } else {
+                    // The name the other end answers to is read straight from
+                    // the operating system, since the standard library
+                    // reports an unnamed address for a client's own side.
+                    if let Some(named) = self.socket_descriptor(handle).and_then(peer_path_of) {
+                        return Ok(Object::string(named));
+                    }
                     self.open_sockets
                         .unix_streams
                         .get(&handle)
@@ -693,9 +1125,15 @@ impl VirtualMachine {
             }
             // ── sockets that send each message on its own ─────────────────
             "udp_open" => {
-                let held = std::net::UdpSocket::bind((text.as_str(), port as u16))
-                    .map_err(|problem| refuse(format!("bind({text}:{port}): {problem}")))?;
-                let _ = held.set_read_timeout(Some(WAIT_LIMIT));
+                let held =
+                    std::net::UdpSocket::bind((text.as_str(), port as u16)).map_err(|problem| {
+                        crate::vm::errors::simple_exception(
+                            bind_errno_class(&problem),
+                            &format!("bind({text}:{port}): {problem}"),
+                            position,
+                        )
+                    })?;
+                let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
                 self.open_sockets.datagrams.insert(named, held);
@@ -735,22 +1173,51 @@ impl VirtualMachine {
                 Ok(Object::Int(sent as i64))
             }
             "udp_receive" => {
-                let socket = self
-                    .open_sockets
-                    .datagrams
-                    .get(&handle)
-                    .ok_or_else(|| refuse("receive on a closed socket".to_string()))?;
+                // A receive waits for a message the way a read waits for
+                // what is written, so everything else the program has to run
+                // gets a turn until one arrives. `text` names the flags,
+                // where only "take a look without taking it" changes what is
+                // done.
+                let flags: i64 = text.parse().unwrap_or(0);
+                let peeking = flags & libc::MSG_PEEK as i64 != 0;
+                // A receive told not to wait reports that nothing is there
+                // rather than handing the turn over.
+                let waiting = flags & libc::MSG_DONTWAIT as i64 == 0;
                 let wanted = if port > 0 { port as usize } else { 65536 };
                 let mut buffer = vec![0u8; wanted];
-                let (read, from) = socket.recv_from(&mut buffer).map_err(|problem| {
-                    if problem.kind() == std::io::ErrorKind::WouldBlock
-                        || problem.kind() == std::io::ErrorKind::TimedOut
-                    {
-                        timed_out(position)
+                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let (read, from) = loop {
+                    let socket = self
+                        .open_sockets
+                        .datagrams
+                        .get(&handle)
+                        .ok_or_else(|| refuse("receive on a closed socket".to_string()))?;
+                    let taken = if peeking {
+                        socket.peek_from(&mut buffer)
                     } else {
-                        refuse(format!("recv: {problem}"))
+                        socket.recv_from(&mut buffer)
+                    };
+                    match taken {
+                        Ok(held) => break held,
+                        Err(problem)
+                            if problem.kind() == std::io::ErrorKind::WouldBlock
+                                || problem.kind() == std::io::ErrorKind::TimedOut =>
+                        {
+                            if !waiting || std::time::Instant::now() >= deadline {
+                                return Err(timed_out(position));
+                            }
+                            self.wait_for_other_threads(position);
+                            self.raise_if_thread_killed(position)?;
+                        }
+                        Err(problem) => {
+                            return Err(crate::vm::errors::simple_exception(
+                                errno_class(&problem),
+                                &format!("recv: {problem}"),
+                                position,
+                            ));
+                        }
                     }
-                })?;
+                };
                 buffer.truncate(read);
                 Ok(Object::array(vec![
                     super::pack_format::bytes_to_string(&buffer),
@@ -772,10 +1239,183 @@ impl VirtualMachine {
                     None => Object::Nil,
                 },
             ),
+            // Where a socket carrying each message on its own has been
+            // pointed, which is nothing until it has been connected.
+            "udp_peer" => Ok(
+                match self
+                    .open_sockets
+                    .datagrams
+                    .get(&handle)
+                    .and_then(|held| held.peer_addr().ok())
+                {
+                    Some(held) => Object::array(vec![
+                        Object::string(held.ip().to_string()),
+                        Object::Int(i64::from(held.port())),
+                    ]),
+                    None => Object::Nil,
+                },
+            ),
             other => Err(MetorexError::runtime_error(
                 format!("unknown socket action {other}"),
                 crate::vm::utils::position_to_location(position),
             )),
         }
+    }
+}
+
+impl crate::vm::VirtualMachine {
+    /// The descriptor behind a handle, whichever of the kinds of socket it
+    /// names.
+    fn socket_descriptor(&self, handle: u64) -> Option<i32> {
+        use std::os::unix::io::AsRawFd as _;
+        if let Some(held) = self.open_sockets.listeners.get(&handle) {
+            return Some(held.as_raw_fd());
+        }
+        if let Some(held) = self.open_sockets.streams.get(&handle) {
+            return Some(held.as_raw_fd());
+        }
+        if let Some(held) = self.open_sockets.unix_listeners.get(&handle) {
+            return Some(held.as_raw_fd());
+        }
+        if let Some(held) = self.open_sockets.unix_streams.get(&handle) {
+            return Some(held.as_raw_fd());
+        }
+        if let Some(held) = self.open_sockets.datagrams.get(&handle) {
+            return Some(held.as_raw_fd());
+        }
+        self.open_sockets
+            .unix_datagrams
+            .get(&handle)
+            .map(|held| held.as_raw_fd())
+    }
+}
+
+/// The name of the Errno class that stands for what the operating system
+/// reported, so a program rescues the error it would rescue in Ruby.
+fn errno_class(problem: &std::io::Error) -> &'static str {
+    match problem.raw_os_error() {
+        Some(libc::ENOTCONN) => "Errno::ENOTCONN",
+        Some(libc::ECONNRESET) => "Errno::ECONNRESET",
+        Some(libc::EPIPE) => "Errno::EPIPE",
+        Some(libc::EINVAL) => "Errno::EINVAL",
+        Some(libc::EDESTADDRREQ) => "Errno::EDESTADDRREQ",
+        Some(libc::EMSGSIZE) => "Errno::EMSGSIZE",
+        Some(libc::EACCES) => "Errno::EACCES",
+        Some(libc::EADDRINUSE) => "Errno::EADDRINUSE",
+        Some(libc::EOPNOTSUPP) => "Errno::EOPNOTSUPP",
+        _ => "Errno::ECONNREFUSED",
+    }
+}
+
+/// The name of the Errno class a failed bind stands for. A bind reports
+/// addresses the machine does not answer on and ones already taken apart
+/// from anything else that went wrong.
+fn bind_errno_class(problem: &std::io::Error) -> &'static str {
+    match problem.raw_os_error() {
+        Some(libc::EADDRNOTAVAIL) => "Errno::EADDRNOTAVAIL",
+        Some(libc::EADDRINUSE) => "Errno::EADDRINUSE",
+        other => errno_class(&std::io::Error::from_raw_os_error(other.unwrap_or(0))),
+    }
+}
+
+/// The path the other end of a socket answers to, read from the operating
+/// system. Nothing when the other end has no name of its own.
+fn peer_path_of(descriptor: i32) -> Option<String> {
+    let mut held: libc::sockaddr_un = unsafe { std::mem::zeroed() };
+    let mut size = std::mem::size_of::<libc::sockaddr_un>() as libc::socklen_t;
+    let answered = unsafe {
+        libc::getpeername(
+            descriptor,
+            &mut held as *mut libc::sockaddr_un as *mut libc::sockaddr,
+            &mut size,
+        )
+    };
+    if answered < 0 || held.sun_family != libc::AF_UNIX as libc::sa_family_t {
+        return None;
+    }
+    let spelled: Vec<u8> = held
+        .sun_path
+        .iter()
+        .take_while(|byte| **byte != 0)
+        .map(|byte| *byte as u8)
+        .collect();
+    if spelled.is_empty() {
+        return None;
+    }
+    String::from_utf8(spelled).ok()
+}
+
+/// The address a sockaddr holds, written the way a program reads it, or
+/// nothing when the pointer names no address of a family we can write.
+fn address_of_sockaddr(held: *const libc::sockaddr) -> Object {
+    if held.is_null() {
+        return Object::Nil;
+    }
+    let family = unsafe { (*held).sa_family } as libc::c_int;
+    if family == libc::AF_INET {
+        let held = held as *const libc::sockaddr_in;
+        let bytes = unsafe { (*held).sin_addr.s_addr }.to_ne_bytes();
+        return Object::string(std::net::Ipv4Addr::from(bytes).to_string());
+    }
+    if family == libc::AF_INET6 {
+        let held = held as *const libc::sockaddr_in6;
+        let bytes = unsafe { (*held).sin6_addr.s6_addr };
+        return Object::string(std::net::Ipv6Addr::from(bytes).to_string());
+    }
+    Object::Nil
+}
+
+/// Send one descriptor over a socket named by a path, alongside a single
+/// byte, which is what the message needs to carry the control data.
+fn send_descriptor(socket: i32, descriptor: i32) -> isize {
+    let mut byte = [0u8; 1];
+    let mut piece = libc::iovec {
+        iov_base: byte.as_mut_ptr() as *mut libc::c_void,
+        iov_len: 1,
+    };
+    let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as u32) } as usize;
+    let mut control = vec![0u8; space];
+    let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
+    message.msg_iov = &mut piece;
+    message.msg_iovlen = 1;
+    message.msg_control = control.as_mut_ptr() as *mut libc::c_void;
+    message.msg_controllen = space as _;
+    unsafe {
+        let header = libc::CMSG_FIRSTHDR(&message);
+        (*header).cmsg_level = libc::SOL_SOCKET;
+        (*header).cmsg_type = libc::SCM_RIGHTS;
+        (*header).cmsg_len = libc::CMSG_LEN(std::mem::size_of::<libc::c_int>() as u32) as _;
+        std::ptr::write(libc::CMSG_DATA(header) as *mut libc::c_int, descriptor);
+        libc::sendmsg(socket, &message, 0)
+    }
+}
+
+/// Take one descriptor handed over a socket named by a path, or -1 when none
+/// arrived.
+fn receive_descriptor(socket: i32) -> i32 {
+    let mut byte = [0u8; 1];
+    let mut piece = libc::iovec {
+        iov_base: byte.as_mut_ptr() as *mut libc::c_void,
+        iov_len: 1,
+    };
+    let space = unsafe { libc::CMSG_SPACE(std::mem::size_of::<libc::c_int>() as u32) } as usize;
+    let mut control = vec![0u8; space];
+    let mut message: libc::msghdr = unsafe { std::mem::zeroed() };
+    message.msg_iov = &mut piece;
+    message.msg_iovlen = 1;
+    message.msg_control = control.as_mut_ptr() as *mut libc::c_void;
+    message.msg_controllen = space as _;
+    unsafe {
+        if libc::recvmsg(socket, &mut message, 0) < 0 {
+            return -1;
+        }
+        let header = libc::CMSG_FIRSTHDR(&message);
+        if header.is_null()
+            || (*header).cmsg_level != libc::SOL_SOCKET
+            || (*header).cmsg_type != libc::SCM_RIGHTS
+        {
+            return -1;
+        }
+        std::ptr::read(libc::CMSG_DATA(header) as *const libc::c_int)
     }
 }

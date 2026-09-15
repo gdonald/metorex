@@ -435,7 +435,7 @@ pub fn init_object_methods(object_class: &Class) {
     // Object#respond_to? - check if object responds to a method
     let respond_to_method = Rc::new(Method::new(
         "respond_to?".to_string(),
-        vec!["method_name".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     object_class.define_method("respond_to?", respond_to_method);
@@ -443,7 +443,7 @@ pub fn init_object_methods(object_class: &Class) {
     // Object#instance_of? - check exact class match
     let instance_of_method = Rc::new(Method::new(
         "instance_of?".to_string(),
-        vec!["class".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     object_class.define_method("instance_of?", instance_of_method);
@@ -455,7 +455,7 @@ pub fn init_object_methods(object_class: &Class) {
     // Object#send - dynamic method dispatch
     let send_method = Rc::new(Method::new(
         "send".to_string(),
-        vec!["method_name".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     object_class.define_method("send", send_method);
@@ -463,6 +463,22 @@ pub fn init_object_methods(object_class: &Class) {
 
 /// Initialize built-in methods for the String class
 pub fn init_string_methods(string_class: &Class) {
+    // The methods that change the string they are called on answer natively.
+    // A stub carrying the name is what `respond_to?` and `method` read, and
+    // each takes whatever it is given under no name of its own.
+    for name in crate::vm::native_methods::string_mutation::MUTATING_STRING_METHODS {
+        if name.starts_with("__") {
+            continue;
+        }
+        let mut stub = Method::new(
+            (*name).to_string(),
+            vec![crate::object::UNNAMED_PARAMETER.to_string()],
+            vec![],
+        );
+        stub.variadic_param = Some((0, crate::object::UNNAMED_PARAMETER.to_string()));
+        string_class.define_method(*name, Rc::new(stub));
+    }
+
     // String#length
     let length_method = Rc::new(Method::new("length".to_string(), vec![], vec![]));
     string_class.define_method("length", length_method);
@@ -483,7 +499,7 @@ pub fn init_string_methods(string_class: &Class) {
     // String#+
     let concat_method = Rc::new(Method::new(
         "+".to_string(),
-        vec!["other".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     string_class.define_method("+", concat_method);
@@ -527,10 +543,10 @@ pub fn init_range_methods(range_class: &Class) {
         ("min", &[]),
         ("max", &[]),
         ("sum", &[]),
-        ("step", &["by"][..]),
-        ("include?", &["value"][..]),
-        ("member?", &["value"][..]),
-        ("cover?", &["value"][..]),
+        ("step", &[crate::object::UNNAMED_PARAMETER][..]),
+        ("include?", &[crate::object::UNNAMED_PARAMETER][..]),
+        ("member?", &[crate::object::UNNAMED_PARAMETER][..]),
+        ("cover?", &[crate::object::UNNAMED_PARAMETER][..]),
         ("begin", &[]),
         ("end", &[]),
         ("exclude_end?", &[]),
@@ -548,10 +564,10 @@ pub fn init_integer_methods(integer_class: &Class) {
     for (name, parameters) in [
         ("abs", &[][..]),
         ("denominator", &[]),
-        ("divmod", &["other"][..]),
-        ("downto", &["limit"]),
+        ("divmod", &[crate::object::UNNAMED_PARAMETER][..]),
+        ("downto", &[crate::object::UNNAMED_PARAMETER]),
         ("numerator", &[]),
-        ("quo", &["other"]),
+        ("quo", &[crate::object::UNNAMED_PARAMETER]),
         ("rationalize", &[]),
         ("size", &[]),
         ("times", &[]),
@@ -559,7 +575,7 @@ pub fn init_integer_methods(integer_class: &Class) {
         ("to_i", &[]),
         ("to_r", &[]),
         ("to_s", &[]),
-        ("upto", &["limit"]),
+        ("upto", &[crate::object::UNNAMED_PARAMETER]),
     ] {
         let method = Rc::new(Method::new(
             name.to_string(),
@@ -572,7 +588,11 @@ pub fn init_integer_methods(integer_class: &Class) {
     // keeps `respond_to?` and `alias_method` honest about them, and a call
     // through one reaches the native implementation.
     for name in ["+", "-", "*", "/", "%", "**", "<=>"] {
-        let mut stub = Method::new(name.to_string(), vec!["other".to_string()], vec![]);
+        let mut stub = Method::new(
+            name.to_string(),
+            vec![crate::object::UNNAMED_PARAMETER.to_string()],
+            vec![],
+        );
         stub.native_alias = Some(name.to_string());
         integer_class.define_method(name, Rc::new(stub));
     }
@@ -586,19 +606,25 @@ pub fn init_array_methods(array_class: &Class) {
     // Array#push
     let push_method = Rc::new(Method::new(
         "push".to_string(),
-        vec!["item".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     array_class.define_method("push", push_method);
 
     // Array#pop
-    let pop_method = Rc::new(Method::new("pop".to_string(), vec![], vec![]));
-    array_class.define_method("pop", pop_method);
+    // `pop` takes an optional count, which Ruby reports as a rest parameter.
+    let mut pop_stub = Method::new(
+        "pop".to_string(),
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
+        vec![],
+    );
+    pop_stub.variadic_param = Some((0, crate::object::UNNAMED_PARAMETER.to_string()));
+    array_class.define_method("pop", Rc::new(pop_stub));
 
     // Array#append (alias for push)
     let append_method = Rc::new(Method::new(
         "append".to_string(),
-        vec!["item".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     array_class.define_method("append", append_method);
@@ -606,7 +632,7 @@ pub fn init_array_methods(array_class: &Class) {
     // Array#[]
     let index_method = Rc::new(Method::new(
         "[]".to_string(),
-        vec!["index".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     array_class.define_method("[]", index_method);
@@ -624,7 +650,7 @@ pub fn init_float_methods(float_class: &Class) {
     // Float#round
     let round_method = Rc::new(Method::new(
         "round".to_string(),
-        vec!["precision".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     float_class.define_method("round", round_method);
@@ -657,7 +683,7 @@ pub fn init_hash_methods(hash_class: &Class) {
     // Hash#has_key?
     let has_key_method = Rc::new(Method::new(
         "has_key?".to_string(),
-        vec!["key".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     hash_class.define_method("has_key?", has_key_method);
@@ -681,7 +707,7 @@ pub fn init_hash_methods(hash_class: &Class) {
     // Hash#[]
     let index_method = Rc::new(Method::new(
         "[]".to_string(),
-        vec!["key".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     hash_class.define_method("[]", index_method);
@@ -692,7 +718,7 @@ pub fn init_exception_methods(exception_class: &Class) {
     // Exception#initialize(message = "")
     let initialize_method = Rc::new(Method::new(
         "initialize".to_string(),
-        vec!["message".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![],
     ));
     exception_class.define_method("initialize", initialize_method);

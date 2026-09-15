@@ -298,14 +298,12 @@ impl VirtualMachine {
                 }
                 // Ruby converts the format with `#to_str`, so a non-String
                 // that answers it works and anything else raises TypeError.
-                let fmt = Object::string(self.coerce_name_argument(&arguments[0], position)?);
-                let rest: Vec<Object> = arguments.into_iter().skip(1).collect();
-                let rest_obj = if rest.len() == 1 {
-                    rest.into_iter().next().unwrap()
-                } else {
-                    Object::Array(std::rc::Rc::new(std::cell::RefCell::new(rest)))
+                let fmt = match &arguments[0] {
+                    held @ Object::String(_) => held.clone(),
+                    other => Object::string(self.coerce_name_argument(other, position)?),
                 };
-                self.evaluate_string_format(fmt, rest_obj, position)
+                let rest: Vec<Object> = arguments.into_iter().skip(1).collect();
+                self.format_with_values(&fmt, rest, position)
             }
             // `__method__` names the method as it was defined, `__callee__`
             // as it was called. They differ inside an aliased method. Both
@@ -599,6 +597,15 @@ impl VirtualMachine {
                     if wanted.is_none_or(|seconds| seconds > left.as_secs_f64()) {
                         self.call_native_function("raise", vec![class, message], position)?;
                     }
+                }
+                // Sleeping hands the turn over, so whatever else the program
+                // has to run gets one while this waits. With no length at all
+                // the wait lasts until something wakes the thread.
+                if wanted.is_none() {
+                    self.sleep_until_woken(position)?;
+                } else {
+                    self.wait_for_other_threads(position);
+                    self.raise_if_thread_killed(position)?;
                 }
                 Ok(Object::Int(wanted.unwrap_or(0.0) as i64))
             }
@@ -969,6 +976,15 @@ impl VirtualMachine {
                     _ => self.is_file_loaded(&canonical_path),
                 };
 
+                self.load_call_site = self
+                    .current_source_file
+                    .clone()
+                    .or_else(|| {
+                        self.current_file
+                            .as_ref()
+                            .map(|file| file.display().to_string())
+                    })
+                    .map(|file| (file, position));
                 self.execute_file(&resolved).map_err(|e| {
                     crate::vm::errors::keep_exception(e, |message| {
                         MetorexError::runtime_error(
@@ -1073,6 +1089,15 @@ impl VirtualMachine {
                 let was_already_loaded = self.is_file_loaded(&canonical_path);
 
                 // Execute the file (it will handle its own deduplication)
+                self.load_call_site = self
+                    .current_source_file
+                    .clone()
+                    .or_else(|| {
+                        self.current_file
+                            .as_ref()
+                            .map(|file| file.display().to_string())
+                    })
+                    .map(|file| (file, position));
                 self.execute_file(&resolved_path).map_err(|e| {
                     crate::vm::errors::keep_exception(e, |message| {
                         MetorexError::runtime_error(
@@ -2161,7 +2186,7 @@ impl VirtualMachine {
 
     /// The VM call stack as Location objects, outermost call last, the way
     /// `caller_locations(0)` reports them.
-    fn caller_location_objects(&mut self, position: Position) -> Vec<Object> {
+    pub(crate) fn caller_location_objects(&mut self, position: Position) -> Vec<Object> {
         use crate::object::Instance;
         use std::cell::RefCell;
         use std::rc::Rc;
@@ -2264,12 +2289,28 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Vec<Object>>, MetorexError> {
         let all = self.caller_location_objects(position);
+        let Some((skip, length)) = self.caller_slice_bounds(arguments, all.len(), 1) else {
+            return Ok(None);
+        };
+        let mut kept: Vec<Object> = all.into_iter().skip(skip).collect();
+        if let Some(length) = length {
+            kept.truncate(length);
+        }
+        Ok(Some(kept))
+    }
+
+    /// Where a slice of a backtrace starts and how long it is, from the
+    /// arguments naming it. None when it starts past the end, which Ruby
+    /// answers as nil rather than an empty list.
+    pub(crate) fn caller_slice_bounds(
+        &mut self,
+        arguments: &[Object],
+        total: usize,
+        default_skip: usize,
+    ) -> Option<(usize, Option<usize>)> {
         let (skip, length) = match arguments.first() {
             Some(Object::Range { .. }) if arguments.len() == 1 => {
-                match self.range_bounds_for(&arguments[0], all.len()) {
-                    Some(bounds) => bounds,
-                    None => return Ok(None),
-                }
+                self.range_bounds_for(&arguments[0], total)?
             }
             Some(Object::Int(number)) => (
                 (*number).max(0) as usize,
@@ -2278,16 +2319,12 @@ impl VirtualMachine {
                     _ => None,
                 },
             ),
-            _ => (1, None),
+            _ => (default_skip, None),
         };
-        if skip > all.len() {
-            return Ok(None);
+        if skip > total {
+            return None;
         }
-        let mut kept: Vec<Object> = all.into_iter().skip(skip).collect();
-        if let Some(length) = length {
-            kept.truncate(length);
-        }
-        Ok(Some(kept))
+        Some((skip, length))
     }
 
     /// The (skip, length) a Range argument names over `total` frames, or None

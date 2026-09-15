@@ -17,12 +17,16 @@ const DEFAULT_VALUE_KEY: &str = "__MX_DEFAULT__";
 const KEY_OBJECTS_KEY: &str = "__MX_KEY_OBJECTS__";
 /// Sentinel marking a hash that `compare_by_identity` was called on.
 const BY_IDENTITY_KEY: &str = "__MX_BY_IDENTITY__";
+/// Sentinel marking a hash gathered from the keyword arguments of a call to a
+/// method named by `ruby2_keywords`, which can be passed on as keywords again.
+pub(crate) const RUBY2_KEYWORDS_KEY: &str = "__MX_RUBY2_KEYWORDS__";
 
 /// Check if a key is an internal sentinel key
 fn is_internal_key(key: &str) -> bool {
     key == DEFAULT_PROC_KEY
         || key == DEFAULT_VALUE_KEY
         || key == BY_IDENTITY_KEY
+        || key == RUBY2_KEYWORDS_KEY
         || key == "__MX_KWARGS__"
         || key == KEY_OBJECTS_KEY
 }

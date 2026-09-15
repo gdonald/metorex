@@ -157,3 +157,78 @@ fn test_filesystem_argf_streams_parens_execution() {
     let output = run_example("filesystem/argf_streams_parens.rb");
     assert_eq!(output, ARGF_STREAMS_OUTPUT);
 }
+
+/// The expected output of both `filesystem/paths_and_locks` variants, which differ only in whether the
+/// calls are written with parentheses.
+const PATHS_AND_LOCKS_OUTPUT: &str = concat!(
+    "/home/jason\n",
+    "/home\n",
+    "/foo\n",
+    ".\n",
+    "/foo/..\n",
+    "0\n",
+    "0\n",
+);
+
+#[test]
+fn test_filesystem_paths_and_locks_execution() {
+    let output = run_example("filesystem/paths_and_locks.rb");
+    assert_eq!(output, PATHS_AND_LOCKS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_paths_and_locks_no_parens_execution() {
+    let output = run_example("filesystem/paths_and_locks_no_parens.rb");
+    assert_eq!(output, PATHS_AND_LOCKS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/working_directory` variants, which
+/// differ only in whether the calls are written with parentheses.
+const WORKING_DIRECTORY_OUTPUT: &str = "true\ntrue\n0\n\"inner\"\n\"inner\"\nErrno::ENOENT\n";
+
+#[test]
+fn test_filesystem_working_directory_execution() {
+    let output = run_example("filesystem/working_directory.rb");
+    assert_eq!(output, WORKING_DIRECTORY_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_working_directory_parens_execution() {
+    let output = run_example("filesystem/working_directory_parens.rb");
+    assert_eq!(output, WORKING_DIRECTORY_OUTPUT);
+}
+
+/// The expected output of both `filesystem/permission_bits` variants, which
+/// differ only in whether the calls are written with parentheses.
+const PERMISSION_BITS_OUTPUT: &str = "1\n\"444\"\n0\n\"600\"\nErrno::ENOENT\nRangeError\n";
+
+#[test]
+fn test_filesystem_permission_bits_execution() {
+    let output = run_example("filesystem/permission_bits.rb");
+    assert_eq!(output, PERMISSION_BITS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_permission_bits_parens_execution() {
+    let output = run_example("filesystem/permission_bits_parens.rb");
+    assert_eq!(output, PERMISSION_BITS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/glob_matching` variants, which
+/// differ only in whether the calls are written with parentheses.
+const GLOB_MATCHING_OUTPUT: &str = concat!(
+    "true\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\ntrue\ntrue\nfalse\ntrue\n",
+    "true\nfalse\n"
+);
+
+#[test]
+fn test_filesystem_glob_matching_execution() {
+    let output = run_example("filesystem/glob_matching.rb");
+    assert_eq!(output, GLOB_MATCHING_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_glob_matching_parens_execution() {
+    let output = run_example("filesystem/glob_matching_parens.rb");
+    assert_eq!(output, GLOB_MATCHING_OUTPUT);
+}

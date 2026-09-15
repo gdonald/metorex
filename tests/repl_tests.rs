@@ -394,6 +394,7 @@ fn format_object_block() {
         home_frame: None,
         opened_at: None,
         from_symbol: None,
+        ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     }));
     assert_eq!(ReplCore::format_object(&block), "<Block>");
 }

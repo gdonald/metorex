@@ -167,6 +167,7 @@ impl VirtualMachine {
         };
         // Every method that changes the array in place refuses a frozen one.
         const MUTATORS: &[&str] = &[
+            "initialize",
             "<<",
             "append",
             "push",
@@ -287,6 +288,16 @@ impl VirtualMachine {
                     ));
                 }
                 array_rc.borrow_mut().clear();
+                Ok(Some(receiver.clone()))
+            }
+            // `ary.send :initialize, ...` builds the elements the way
+            // `Array.new` does and puts them in place of what is there.
+            "initialize" => {
+                let elements = self.build_array_elements(arguments, position)?;
+                let mut held = array_rc.borrow_mut();
+                held.clear();
+                held.extend(elements);
+                drop(held);
                 Ok(Some(receiver.clone()))
             }
             "replace" => {
@@ -423,9 +434,13 @@ impl VirtualMachine {
                         array[start as usize..end as usize].to_vec(),
                     )));
                 }
+                // An arithmetic sequence names a strided run of the array.
+                if let Some(held) = self.sequence_slice(array_rc, &arguments[0], total, position)? {
+                    return Ok(Some(held));
+                }
                 // A Range slices, and each bound goes through `to_int` too.
-                if let Object::Range { .. } = &arguments[0] {
-                    let (start, span) = self.range_bounds(&arguments[0], total, position)?;
+                if let Some(span) = crate::vm::native_methods::as_range(&arguments[0]) {
+                    let (start, span) = self.range_bounds(&span, total, position)?;
                     if start < 0 || start > total {
                         return Ok(Some(Object::Nil));
                     }
@@ -1355,6 +1370,20 @@ impl VirtualMachine {
                 Ok(Some(receiver.clone()))
             }
             // `delete_at` removes the element at one index and answers it.
+            // `slice!` cuts the part a subscript names out of the array and
+            // answers it, leaving the rest in place.
+            "slice!" => {
+                let size = array_rc.borrow().len();
+                let Some((from, width, one)) = self.slice_span(arguments, size, position)? else {
+                    return Ok(Some(Object::Nil));
+                };
+                let taken: Vec<Object> = array_rc.borrow_mut().drain(from..from + width).collect();
+                Ok(Some(if one {
+                    taken.into_iter().next().unwrap_or(Object::Nil)
+                } else {
+                    Object::array(taken)
+                }))
+            }
             "delete_at" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -2897,6 +2926,17 @@ impl VirtualMachine {
     ) -> Result<i64, MetorexError> {
         let index = match value {
             Object::Int(index) => *index,
+            // A Float past the width of a machine word names no index at all.
+            Object::Float(index)
+                if !(-9.223_372_036_854_776e18..9.223_372_036_854_776e18).contains(index) =>
+            {
+                let message = format!("float {} out of range of integer", index);
+                return Err(crate::vm::errors::simple_exception(
+                    "RangeError",
+                    &message,
+                    position,
+                ));
+            }
             Object::Float(index) => *index as i64,
             other => {
                 let wide = self.coerce_integer_argument(other, position)?;
@@ -3245,4 +3285,204 @@ fn leading_pack_offset(format: &str) -> Option<usize> {
     let digits = format.strip_prefix('@')?;
     let counted: String = digits.chars().take_while(char::is_ascii_digit).collect();
     counted.parse().ok()
+}
+
+impl VirtualMachine {
+    /// The run of elements a `slice!` subscript names: where it starts, how
+    /// wide it is, and whether it named one element rather than a run. None
+    /// when the subscript reaches past the array, which answers nil.
+    fn slice_span(
+        &mut self,
+        arguments: &[Object],
+        size: usize,
+        position: Position,
+    ) -> Result<Option<(usize, usize, bool)>, MetorexError> {
+        let total = size as i64;
+        match arguments.len() {
+            1 => {
+                let Some(Object::Range {
+                    start,
+                    end,
+                    exclusive,
+                }) = crate::vm::native_methods::as_range(&arguments[0])
+                else {
+                    let index = self.coerce_integer_argument(&arguments[0], position)?;
+                    let at = i64::try_from(&index).unwrap_or(i64::MAX);
+                    let at = if at < 0 { at + total } else { at };
+                    if at < 0 || at >= total {
+                        return Ok(None);
+                    }
+                    return Ok(Some((at as usize, 1, true)));
+                };
+                let opening = match start.as_ref() {
+                    Object::Nil => 0,
+                    held => {
+                        let asked = self.coerce_integer_argument(held, position)?;
+                        let asked = i64::try_from(&asked).unwrap_or(i64::MAX);
+                        if asked < 0 { asked + total } else { asked }
+                    }
+                };
+                if opening < 0 || opening > total {
+                    return Ok(None);
+                }
+                let closing = match end.as_ref() {
+                    Object::Nil => total - 1,
+                    held => {
+                        let asked = self.coerce_integer_argument(held, position)?;
+                        let asked = i64::try_from(&asked).unwrap_or(i64::MAX);
+                        let placed = if asked < 0 { asked + total } else { asked };
+                        if exclusive { placed - 1 } else { placed }
+                    }
+                };
+                let width = (closing - opening + 1).clamp(0, total - opening);
+                Ok(Some((opening as usize, width as usize, false)))
+            }
+            2 => {
+                let asked = self.coerce_integer_argument(&arguments[0], position)?;
+                let wanted = self.coerce_integer_argument(&arguments[1], position)?;
+                let at = i64::try_from(&asked).unwrap_or(i64::MAX);
+                let wanted = i64::try_from(&wanted).unwrap_or(i64::MAX);
+                if wanted < 0 {
+                    return Ok(None);
+                }
+                let at = if at < 0 { at + total } else { at };
+                if at < 0 || at > total {
+                    return Ok(None);
+                }
+                Ok(Some((at as usize, wanted.min(total - at) as usize, false)))
+            }
+            given => Err(crate::vm::errors::argument_count_error(
+                crate::vm::errors::Arity::Range(1, 2),
+                given,
+                position,
+            )),
+        }
+    }
+}
+
+impl VirtualMachine {
+    /// The run of elements an arithmetic sequence names, or None when the
+    /// subscript is not one.
+    fn sequence_slice(
+        &mut self,
+        array_rc: &Rc<RefCell<Vec<Object>>>,
+        value: &Object,
+        total: i64,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        if !self.is_arithmetic_sequence(value) {
+            return Ok(None);
+        }
+        let step = match self.send_to_object(value.clone(), "step", vec![], position)? {
+            Object::Int(held) => held,
+            other => self.machine_index(&other, 0, position)?,
+        };
+        if step == 0 {
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                "step can't be 0",
+                position,
+            ));
+        }
+        let opening = self.send_to_object(value.clone(), "begin", vec![], position)?;
+        let closing = self.send_to_object(value.clone(), "end", vec![], position)?;
+        let excluded = matches!(
+            self.send_to_object(value.clone(), "exclude_end?", vec![], position)?,
+            Object::Bool(true)
+        );
+        // A sequence stepping by one reads exactly the way the range it was
+        // built from reads, down to answering nil for a start past the end.
+        if step == 1 {
+            let span = Object::Range {
+                start: Box::new(opening),
+                end: Box::new(closing),
+                exclusive: excluded,
+            };
+            let (start, width) = self.range_bounds(&span, total, position)?;
+            if start < 0 || start > total {
+                return Ok(Some(Object::Nil));
+            }
+            let held = array_rc.borrow();
+            let end = start.saturating_add(width).min(total);
+            return Ok(Some(Object::array(
+                held[start as usize..end.max(start) as usize].to_vec(),
+            )));
+        }
+        let resolved = |vm: &mut Self, held: &Object| -> Result<Option<i64>, MetorexError> {
+            match held {
+                Object::Nil => Ok(None),
+                other => {
+                    let counted = vm.machine_index(other, 0, position)?;
+                    Ok(Some(if counted < 0 {
+                        counted + total
+                    } else {
+                        counted
+                    }))
+                }
+            }
+        };
+        let (low, high) = if step > 0 {
+            let low = resolved(self, &opening)?.unwrap_or(0);
+            let high = match resolved(self, &closing)? {
+                Some(held) => held - i64::from(excluded),
+                None => total - 1,
+            };
+            (low, high)
+        } else {
+            // A sequence running downward reads the same span the other way
+            // about, so the bounds trade places.
+            let closing_held = resolved(self, &closing)?.map(|held| held + i64::from(excluded));
+            let low = closing_held.unwrap_or(0);
+            let high = match resolved(self, &opening)? {
+                Some(held) if closing_held.is_none() => held.min(total - 1),
+                Some(held) => held,
+                None => total - 1,
+            };
+            (low, high)
+        };
+        if low < 0 || low > total || high - low >= total {
+            let shown = self.send_to_object(value.clone(), "inspect", vec![], position)?;
+            let message = format!("{} out of range", shown);
+            return Err(crate::vm::errors::simple_exception(
+                "RangeError",
+                &message,
+                position,
+            ));
+        }
+        let top = high.min(total - 1);
+        let mut taken = Vec::new();
+        if top >= low {
+            let held = array_rc.borrow();
+            if step > 0 {
+                let mut at = low;
+                while at <= top {
+                    taken.push(held[at as usize].clone());
+                    at += step;
+                }
+            } else {
+                let mut at = top;
+                while at >= low {
+                    taken.push(held[at as usize].clone());
+                    at += step;
+                }
+            }
+        }
+        Ok(Some(Object::array(taken)))
+    }
+
+    /// Whether a value is an arithmetic sequence, which names a run of the
+    /// array with a gap between the elements it takes.
+    fn is_arithmetic_sequence(&self, value: &Object) -> bool {
+        let Object::Instance(instance) = value else {
+            return false;
+        };
+        let mut cursor = Some(Rc::clone(&instance.borrow().class));
+        while let Some(class) = cursor {
+            if class.name() == "Enumerator::ArithmeticSequence" {
+                return true;
+            }
+            cursor = class.superclass();
+        }
+        false
+    }
 }

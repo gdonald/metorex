@@ -92,6 +92,9 @@ pub struct VirtualMachine {
     /// The frozen strings `dedup` and `-@` share, keyed by the text and the
     /// encoding it is written in. Two equal strings deduplicate to one object.
     pub(crate) deduped_strings: HashMap<(String, String), Rc<crate::object::StringValue>>,
+    /// How many times the program has built an instance of each class, which
+    /// is what the object space reports in place of walking a heap.
+    pub(crate) allocation_counts: HashMap<usize, i64>,
     /// Children spawned by `IO.popen` that have not been waited for, keyed by
     /// the id their handle carries.
     pub(crate) popen_children: HashMap<u64, std::process::Child>,
@@ -108,6 +111,10 @@ pub struct VirtualMachine {
     /// `__ENCODING__` answers. A file names it in a magic comment, and an
     /// eval takes it from the string it was handed.
     pub(crate) current_source_encoding: Option<String>,
+    /// The encoding each loaded file names in its magic comment, against the
+    /// spelling the file was named by. A method's body is written in the file
+    /// it was defined in, whatever file is calling it.
+    pub(crate) file_encodings: HashMap<String, String>,
     /// The spelling each loaded file was named by, against the path its
     /// symlinks resolve to. `__FILE__` and a backtrace name the spelling,
     /// while everything that loads or dedups works from the resolved path.
@@ -153,6 +160,24 @@ pub struct VirtualMachine {
     /// synchronous Thread model. Threads remove themselves on first
     /// `.value`/`.join` (whichever runs first).
     pub(crate) pending_threads: Vec<Object>,
+    /// Whether the waiting threads are already being given a turn, so a
+    /// thread that waits inside its own turn does not start the round again.
+    pub(crate) stepping_threads: bool,
+    /// The fibers a thread's own body runs on. A thread's body is its root
+    /// fiber rather than one the program made, so the names it keeps under
+    /// `Thread#[]` are the thread's own.
+    pub(crate) thread_body_fibers: Vec<usize>,
+    /// Every mutex a lock has been taken on, so the locks a thread still
+    /// holds can be let go when the thread ends.
+    /// Whether the fiber that just handed control back did so because it is
+    /// waiting on something rather than because it yielded a value. Waiting
+    /// inside a fiber holds up the whole thread, so whoever resumed it waits
+    /// too and resumes it again afterwards.
+    pub(crate) blocking_in_fiber: bool,
+    /// What a thread that asked for its exceptions to take the program down
+    /// died of, waiting to be raised where the program next waits.
+    pub(crate) thread_abort: Option<Object>,
+    pub(crate) taken_mutexes: Vec<Rc<std::cell::RefCell<crate::object::Instance>>>,
     /// Stack of canonical paths whose body is *currently executing* via
     /// `execute_file`. The path joins this stack on entry (after the
     /// `$"` mark goes in) and leaves on exit. Distinct from `$"` because
@@ -173,6 +198,9 @@ pub struct VirtualMachine {
     /// Whether `pending_block` arrived as `&expr` rather than as a literal
     /// block. `Kernel#lambda` rejects a non-lambda proc passed that way.
     pub(crate) pending_block_from_ampersand: bool,
+    /// The object a `&` handed over as the block, where it was already a
+    /// callable. `Proc.new(&callable)` answers that same callable.
+    pub(crate) pending_block_source: Option<Object>,
     /// State for `Kernel#rand`, advanced on each draw and reset by `srand`.
     pub(crate) random_state: u64,
     /// The seed `srand` last installed, which it answers on the next call.
@@ -189,6 +217,18 @@ pub struct VirtualMachine {
     /// Patterns built by `Regexp.new`, which a program may still change. A
     /// pattern written as a literal is frozen where it stands.
     pub(crate) built_patterns: std::collections::HashSet<usize>,
+    /// The sets `compare_by_identity` was called on, against the address each
+    /// one lives at. A Set has nowhere of its own to record the flag, and the
+    /// value keeps the set alive so a later one cannot take its address and
+    /// read back as comparing by identity.
+    pub(crate) identity_sets: HashMap<usize, Object>,
+    /// Where the `require` or `load` now running was written, which is what a
+    /// warning raised at the top of the loaded file names as its caller.
+    pub(crate) load_call_site: Option<(String, crate::lexer::Position)>,
+    /// The encoding of the source string each `Regexp.new` pattern was built
+    /// from, recorded against the pattern's address since a Regexp carries
+    /// its source as plain text.
+    pub(crate) pattern_encodings: HashMap<usize, String>,
     /// The instance variables set on an Array, Hash, or Set. A collection has
     /// nowhere of its own to keep them, so the VM records them against the
     /// address it lives at.
@@ -313,12 +353,14 @@ impl VirtualMachine {
             class_var_home: Vec::new(),
             class_var_cref_stack: Vec::new(),
             deduped_strings: HashMap::new(),
+            allocation_counts: HashMap::new(),
             popen_children: HashMap::new(),
             open_sockets: Default::default(),
             open_streams: Default::default(),
             next_popen_id: 0,
             current_source_file: None,
             current_source_encoding: None,
+            file_encodings: HashMap::new(),
             reported_files: std::collections::HashMap::new(),
             timeout_limits: Vec::new(),
             bound_stub_depth: 0,
@@ -330,15 +372,24 @@ impl VirtualMachine {
             autoload_const_access_depth: 0,
             thread_current_stack: Vec::new(),
             pending_threads: Vec::new(),
+            stepping_threads: false,
+            thread_body_fibers: Vec::new(),
+            blocking_in_fiber: false,
+            thread_abort: None,
+            taken_mutexes: Vec::new(),
             loading_paths: Vec::new(),
             autoload_loading: Vec::new(),
             pending_block: None,
             pending_block_from_ampersand: false,
+            pending_block_source: None,
             random_state: seed_from_clock(),
             random_seed: Object::Int(seed_from_clock() as i64),
             rendering_frozen_error: false,
             frozen_collections: HashMap::new(),
             built_patterns: std::collections::HashSet::new(),
+            identity_sets: HashMap::new(),
+            load_call_site: None,
+            pattern_encodings: HashMap::new(),
             collection_variables: HashMap::new(),
             signal_handlers: HashMap::new(),
             traced_globals: HashMap::new(),
@@ -410,6 +461,13 @@ impl VirtualMachine {
     }
 
     pub(crate) fn set_current_exception(&mut self, exception: Object) {
+        // The word that a thread or fiber is being stopped is not the
+        // program's to see, so it never becomes `$!`.
+        if let Object::Exception(details) = &exception
+            && details.borrow().exception_type == crate::vm::fibers::FIBER_KILLED
+        {
+            return;
+        }
         // An exception reaching a rescue clause takes the one that was active
         // as its `#cause`, which is how an error raised inside a rescue body
         // records what it followed. Set once, and never to itself.

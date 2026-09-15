@@ -369,9 +369,9 @@ impl Parser {
                         // whose characters no plain label could spell is
                         // written.
                         match key {
-                            Expression::StringLiteral { value, position } => {
-                                Expression::Symbol { value, position }
-                            }
+                            Expression::StringLiteral {
+                                value, position, ..
+                            } => Expression::Symbol { value, position },
                             other => other,
                         }
                     }

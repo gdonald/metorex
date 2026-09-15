@@ -128,3 +128,20 @@ fn test_syntax_numbered_and_shorthand_no_parens_execution() {
     let output = run_example("syntax/numbered_and_shorthand_no_parens.rb");
     assert_eq!(output, NUMBERED_AND_SHORTHAND_OUTPUT);
 }
+
+/// The expected output of both `syntax/do_block_binding` variants, which
+/// differ only in whether the calls are written with parentheses.
+const DO_BLOCK_BINDING_OUTPUT: &str =
+    concat!("\"outer got the block\"\n", "\"outer got the block\"\n",);
+
+#[test]
+fn test_syntax_do_block_binding_execution() {
+    let output = run_example("syntax/do_block_binding.rb");
+    assert_eq!(output, DO_BLOCK_BINDING_OUTPUT);
+}
+
+#[test]
+fn test_syntax_do_block_binding_no_parens_execution() {
+    let output = run_example("syntax/do_block_binding_no_parens.rb");
+    assert_eq!(output, DO_BLOCK_BINDING_OUTPUT);
+}

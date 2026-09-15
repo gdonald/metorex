@@ -123,6 +123,7 @@ fn class_of_block() {
         home_frame: None,
         opened_at: None,
         from_symbol: None,
+        ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     }));
     let class = builtins.class_of(&block);
     assert_eq!(class.name(), "Proc");

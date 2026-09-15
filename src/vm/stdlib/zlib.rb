@@ -177,40 +177,65 @@ module Zlib
 
   # Reads a compressed stream back into what it stands for.
   class Inflate < ZStream
+    # The size of the pieces a block-taking read is handed, which is what
+    # Ruby's inflater hands out.
+    CHUNK_BYTES = 16384
+
     def self.inflate(text)
       Zlib.inflate text
     end
 
     def initialize(window_bits = MAX_WBITS)
       @window_bits = window_bits
+      @done = false
+      @pending = "".b
       super()
     end
 
-    def inflate(text)
-      return "" if text.nil?
-      @input = @input + Zlib.coerce_text(text)
-      answer = read_all
-      @output = answer
-      @finished = true
-      answer
+    # What the stream has read so far. A block is handed the text a piece
+    # at a time, in the 16 KiB chunks Ruby's inflater hands out.
+    def inflate(text, &block)
+      self << text
+      return take_read(&block) if block
+      take_read
     end
 
+    # A nil argument says the compressed stream is over. Everything written
+    # after that is passed through rather than read as part of it.
     def <<(text)
-      return self if text.nil?
-      @input = @input + Zlib.coerce_text(text)
-      @output = read_all
-      @finished = true
+      if text.nil?
+        @done = true
+        return self
+      end
+      if @done
+        @pending = @pending + Zlib.coerce_text(text)
+      else
+        @input = @input + Zlib.coerce_text(text)
+        read_what_is_there
+      end
       self
     end
 
-    def finish
-      answer = @finished ? @output : read_all
-      @output = answer
-      @finished = true
+    # What has been read and not handed back yet, which for a reader is the
+    # text the stream stood for rather than a buffer of its own.
+    def flush_next_out
+      answer = take_read
+      @finished = true if @done
       answer
     end
 
+    def finish(&block)
+      raise BufError, "buffer error" if !@done && !@input.empty?
+      @finished = true
+      return take_read(&block) if block
+      take_read
+    end
+
+    # The dictionary the stream was written against, which it has to be
+    # given before it can be read.
     def set_dictionary(text)
+      @dictionary = Zlib.coerce_text text
+      read_what_is_there
       text
     end
 
@@ -218,10 +243,35 @@ module Zlib
 
     # A raw stream names no header, which is what a negative window size asks
     # for. Anything else carries the zlib header and checksum.
-    def read_all
-      return "" if @input.empty?
-      action = @window_bits.to_i < 0 ? "raw_inflate" : "inflate"
-      Zlib.__stream__ action, @input, 0
+    # Read as much of a whole stream as the input holds. Anything after the
+    # stream it names is passed through rather than read.
+    def read_what_is_there
+      return if @done || @input.empty?
+      action = @window_bits.to_i < 0 ? "raw_inflate_part" : "inflate_part"
+      read = Zlib.__stream__ action, @input, 0, @dictionary.to_s
+      raise NeedDict, "need dictionary" if read == :need_dictionary
+      return if read.nil?
+      @pending = @pending + read[0] + read[1]
+      @input = ""
+      @done = true
+    end
+
+    # Hand back what has been read and has not been handed back yet, all of
+    # it at once or a chunk at a time to a block.
+    def take_read
+      unless block_given?
+        answer = @pending
+        @pending = "".b
+        @output = @output + answer
+        return answer.force_encoding(Encoding::BINARY)
+      end
+      while !@pending.empty?
+        chunk = @pending.byteslice(0, CHUNK_BYTES)
+        @pending = @pending.byteslice(CHUNK_BYTES, @pending.bytesize).to_s
+        @output = @output + chunk
+        yield chunk.force_encoding(Encoding::BINARY)
+      end
+      nil
     end
   end
 
@@ -383,18 +433,26 @@ module Zlib
       new(io).read
     end
 
-    def initialize(io, **_options)
+    def initialize(io, **options)
       super()
       @io = io
+      # What the stream holds is read as bytes and tagged with the encoding
+      # the reader was told to read it in.
+      @external_encoding = options[:external_encoding]
       # A stream is asked for everything it holds, named rather than left
       # out, since a reader may take the count as a required argument.
       held = io.read nil
       @body = Zlib.__stream__ "gunzip", held.to_s, 0
+      @body = @body.dup.force_encoding @external_encoding unless @external_encoding.nil?
       @at = 0
       @line = 0
       @behind = 0
       read_header held.to_s
     end
+
+    # What encoding the characters read are tagged with, which is the one the
+    # reader was told to read in.
+    attr_reader :external_encoding
 
     def read(length = nil)
       return "" if length == 0
@@ -433,7 +491,7 @@ module Zlib
     def ungetc(held)
       text = held.is_a?(Integer) ? held.chr : held.to_s
       @body = @body[0, @at].to_s + text + @body[@at..-1].to_s
-      @behind = @behind + text.length
+      @behind = @behind + text.bytesize
       nil
     end
 

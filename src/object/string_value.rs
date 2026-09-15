@@ -32,6 +32,10 @@ pub struct StringValue {
     /// have it changed underneath. An IO::Buffer over a string sets this for
     /// as long as it is in use.
     borrowed: std::cell::Cell<bool>,
+    /// Whether the string is one of the interned copies `String#-@` hands
+    /// back. Ruby refuses a singleton class on one of those, since the same
+    /// string stands for every use of that text.
+    deduplicated: std::cell::Cell<bool>,
     /// The warning a change to this string prints, for one Ruby hands back
     /// with notice that it will be frozen in a later release. Cleared once
     /// the warning has been given, so it is printed only the first time.
@@ -48,6 +52,7 @@ impl StringValue {
             frozen: std::cell::Cell::new(false),
             holds_bytes: std::cell::Cell::new(false),
             borrowed: std::cell::Cell::new(false),
+            deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
         }
     }
@@ -62,6 +67,7 @@ impl StringValue {
             frozen: std::cell::Cell::new(false),
             holds_bytes: std::cell::Cell::new(false),
             borrowed: std::cell::Cell::new(false),
+            deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
         }
     }
@@ -151,6 +157,17 @@ impl StringValue {
         self.chilled.borrow_mut().take()
     }
 
+    /// Whether the string is one of the interned copies `String#-@` answers.
+    pub fn is_deduplicated(&self) -> bool {
+        self.deduplicated.get()
+    }
+
+    /// Say the string is one of the interned copies.
+    pub fn mark_deduplicated(&self) {
+        self.deduplicated.set(true);
+        self.frozen.set(true);
+    }
+
     /// Whether the string refuses to change.
     pub fn is_frozen(&self) -> bool {
         self.frozen.get()
@@ -183,6 +200,7 @@ impl Clone for StringValue {
             frozen: std::cell::Cell::new(false),
             holds_bytes: std::cell::Cell::new(self.holds_bytes.get()),
             borrowed: std::cell::Cell::new(false),
+            deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
         }
     }

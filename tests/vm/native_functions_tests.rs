@@ -2392,9 +2392,9 @@ File.delete(held)
 }
 
 #[test]
-fn setting_permissions_counts_only_the_names_a_file_answers_to() {
-    let result = run(r#"File.chmod(0600, "/tmp/metorex_no_such_chmod_target.txt")"#);
-    assert_eq!(result.map(|value| value.to_string()), Some("0".to_string()));
+fn setting_permissions_on_a_name_that_is_not_there_raises() {
+    let err = run_err(r#"File.chmod(0600, "/tmp/metorex_no_such_chmod_target.txt")"#);
+    assert!(err.contains("No such file or directory"));
 }
 
 #[test]
@@ -3812,7 +3812,7 @@ ensure
 end
 "#,
     );
-    assert!(error.contains("closed connection"), "{error}");
+    assert!(error.contains("closed stream"), "{error}");
 }
 
 #[test]

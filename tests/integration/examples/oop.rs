@@ -1520,3 +1520,25 @@ fn test_oop_definition_values_no_parens_execution() {
     let output = run_example("oop/definition_values_no_parens.rb");
     assert_eq!(output, DEFINITION_VALUES_OUTPUT);
 }
+
+/// The expected output of both `oop/module_reopening` variants, which differ
+/// only in whether the calls are written with parentheses.
+const MODULE_REOPENING_OUTPUT: &str = concat!(
+    "Holder::Named is not a module\n",
+    "Holder::Inner is not a module\n",
+    "false\n",
+    "\"NamedRoot\"\n",
+    "\"NamedRoot::Second\"\n"
+);
+
+#[test]
+fn test_oop_module_reopening_execution() {
+    let output = run_example("oop/module_reopening.rb");
+    assert_eq!(output, MODULE_REOPENING_OUTPUT);
+}
+
+#[test]
+fn test_oop_module_reopening_parens_execution() {
+    let output = run_example("oop/module_reopening_parens.rb");
+    assert_eq!(output, MODULE_REOPENING_OUTPUT);
+}

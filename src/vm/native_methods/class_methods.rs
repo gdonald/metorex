@@ -47,6 +47,20 @@ impl VirtualMachine {
                 position,
             ));
         }
+        // `Array.new { ... }` names no size, so the block has nothing to
+        // fill and Ruby says it went unused.
+        if arguments.is_empty() && matches!(self.pending_block, Some(Object::Block(_))) {
+            self.pending_block = None;
+            let file = self
+                .current_source_file
+                .clone()
+                .unwrap_or_else(|| "-".to_string());
+            let message = format!(
+                "{}:{}: warning: given block not used\n",
+                file, position.line
+            );
+            self.warn_through_warning_module(message, position)?;
+        }
         // A lone array names the elements rather than a size, and anything
         // that reads as one through `to_ary` names them the same way. A
         // default alongside it has nothing to fill.
@@ -860,6 +874,23 @@ impl VirtualMachine {
             }
         }
 
+        // `Encoding.compatible?` answers the encoding two objects could be
+        // read in together, or nil when there is none.
+        if class_rc.name() == "Encoding" && method_name == "compatible?" {
+            if arguments.len() != 2 {
+                return Err(method_argument_error(
+                    method_name,
+                    2,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let answer = self.compatible_encoding(&arguments[0], &arguments[1]);
+            return Ok(Some(match answer {
+                Some(named) => self.encoding_object(&named),
+                None => Object::Nil,
+            }));
+        }
         // Every encoding metorex names, each one listed once however many
         // constants reach it.
         if class_rc.name() == "Encoding" && method_name == "list" {
@@ -1164,16 +1195,50 @@ impl VirtualMachine {
         }
         // `Regexp.new` / `Regexp.compile` build a pattern from a source
         // string, with the second argument turning case folding on.
-        if class_rc.name() == "Regexp" && matches!(method_name, "new" | "compile") {
+        if class_named_in_chain(class_rc, "Regexp") && matches!(method_name, "new" | "compile") {
+            let source_encoding = match arguments.first() {
+                Some(Object::String(text)) => Some(text.encoding_name()),
+                _ => None,
+            };
             let source = match arguments.first() {
                 Some(Object::Regex(pattern, flags)) => {
+                    // A pattern built from another one keeps that one's flags,
+                    // and says so about any written alongside it.
+                    if arguments.len() > 1 && !matches!(arguments[1], Object::Nil) {
+                        self.emit_warning_to_stderr("warning: flags ignored", position);
+                    }
                     return Ok(Some(Object::Regex(Rc::clone(pattern), Rc::clone(flags))));
                 }
-                Some(argument) => self.coerce_name_argument(argument, position)?,
+                // Only a String, or something answering `to_str`, spells a
+                // pattern: a Symbol names no source.
+                Some(Object::String(text)) => text.as_str().to_string(),
+                Some(argument) => {
+                    let named = self.builtins().class_of(argument).name().to_string();
+                    if !self.answers_to(argument, "to_str", position)? {
+                        let message = format!("no implicit conversion of {} into String", named);
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    match self.send_to_object(argument.clone(), "to_str", vec![], position)? {
+                        Object::String(text) => text.as_str().to_string(),
+                        _ => {
+                            let message = format!("can\'t convert {} into String", named);
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                &message,
+                                position,
+                            ));
+                        }
+                    }
+                }
                 None => {
                     return Err(method_argument_error("new", 1, 0, position));
                 }
             };
+            refuse_bad_pattern(&source, position)?;
             let mut flags = String::new();
             match arguments.get(1) {
                 Some(Object::Int(options)) => {
@@ -1197,14 +1262,80 @@ impl VirtualMachine {
                         flags.push('n');
                     }
                 }
+                // A String names the flags by the letters a literal is
+                // written with, and only those three letters name one.
+                Some(Object::String(written)) => {
+                    let spelling = written.as_str().to_string();
+                    if spelling
+                        .chars()
+                        .any(|held| !matches!(held, 'i' | 'm' | 'x'))
+                    {
+                        let message = format!("unknown regexp option: {}", spelling);
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    for held in ['i', 'm', 'x'] {
+                        if spelling.contains(held) {
+                            flags.push(held);
+                        }
+                    }
+                }
                 Some(Object::Bool(true)) => flags.push('i'),
-                _ => {}
+                Some(Object::Bool(false)) | Some(Object::Nil) | None => {}
+                Some(other) => {
+                    // Anything else is read as a plain truth, which Ruby says
+                    // so about rather than asking it for a number.
+                    let shown = self.send_to_object(other.clone(), "inspect", vec![], position)?;
+                    let message =
+                        format!("warning: expected true or false as ignorecase: {}", shown);
+                    self.emit_warning_to_stderr(&message, position);
+                    flags.push('i');
+                }
             }
             let built = Rc::new(source);
             // A pattern built here is not frozen, which is what tells it
             // apart from one written as a literal.
             self.built_patterns.insert(Rc::as_ptr(&built) as usize);
-            return Ok(Some(Object::Regex(built, Rc::new(flags))));
+            if let Some(named) = source_encoding {
+                self.pattern_encodings
+                    .insert(Rc::as_ptr(&built) as usize, named);
+            }
+            let made = Object::Regex(built, Rc::new(flags));
+            if class_rc.name() == "Regexp" {
+                return Ok(Some(made));
+            }
+            // A subclass answers Regexp's methods through the pattern it
+            // keeps, which is what lets it be a Regexp and its own class at
+            // once.
+            let mut instance = crate::object::Instance::new(Rc::clone(class_rc));
+            instance.set_var(
+                crate::vm::native_methods::REGEXP_SUBCLASS_VAR.to_string(),
+                made,
+            );
+            let built = Object::Instance(Rc::new(std::cell::RefCell::new(instance)));
+            // A subclass writing its own `initialize` sees the arguments the
+            // pattern was built from.
+            if let Some((owner, method)) = self.lookup_method(&built, "initialize")
+                && !method.is_undefined
+                && !method.body.is_empty()
+            {
+                if let Object::Instance(held) = &built {
+                    held.borrow_mut()
+                        .set_var("__building_regexp__".to_string(), Object::Bool(true));
+                }
+                let outcome =
+                    self.invoke_method(owner, method, built.clone(), arguments.to_vec(), position);
+                if let Object::Instance(held) = &built {
+                    held.borrow_mut()
+                        .instance_vars
+                        .shift_remove("__building_regexp__");
+                }
+                outcome?;
+            }
+            return Ok(Some(built));
         }
         // `Regexp.union` matches any of what it was given.
         if class_rc.name() == "Regexp" && method_name == "union" {
@@ -1256,18 +1387,61 @@ impl VirtualMachine {
         // Minimal File class methods used by mspec's `fixture` helper.
         if class_rc.name() == "File" {
             match method_name {
+                // Every part of a path but the last, as many times over as
+                // the level says.
                 "dirname" => {
-                    if let Some(Object::String(s)) = arguments.first() {
-                        let held = s.to_text();
-                        let p = std::path::Path::new(held.as_str());
-                        let dir = p
-                            .parent()
-                            .and_then(|d| d.to_str())
-                            .unwrap_or(".")
-                            .to_string();
-                        let result = if dir.is_empty() { ".".to_string() } else { dir };
-                        return Ok(Some(Object::string(result)));
+                    if arguments.is_empty() || arguments.len() > 2 {
+                        return Err(crate::vm::errors::argument_count_error(
+                            crate::vm::errors::Arity::Range(1, 2),
+                            arguments.len(),
+                            position,
+                        ));
                     }
+                    let named = self.path_name_argument("dirname", &arguments[0], position)?;
+                    let encoding = match &arguments[0] {
+                        Object::String(held) => held.encoding_name(),
+                        _ => "UTF-8".to_string(),
+                    };
+                    if let Object::String(held) = &arguments[0]
+                        && !crate::vm::native_methods::string_methods::encoding_is_ascii_compatible(
+                            &held.encoding_name(),
+                        )
+                    {
+                        let message = format!(
+                            "path name must be ASCII-compatible ({}): {:?}",
+                            held.encoding_name(),
+                            held.as_str()
+                        );
+                        return Err(crate::vm::errors::simple_exception(
+                            "Encoding::CompatibilityError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    let mut level = match arguments.get(1) {
+                        None => 1_i64,
+                        Some(held) => self.integer_argument("dirname", held, position)?,
+                    };
+                    if level < 0 {
+                        let message = format!("negative level: {}", level);
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            &message,
+                            position,
+                        ));
+                    }
+                    let mut held = named;
+                    while level > 0 {
+                        let stepped = parent_of_path(&held);
+                        if stepped == held {
+                            break;
+                        }
+                        held = stepped;
+                        level -= 1;
+                    }
+                    return Ok(Some(Object::String(Rc::new(
+                        crate::object::StringValue::with_encoding(held, encoding),
+                    ))));
                 }
                 // The last part of a path, with a suffix taken off when one
                 // is named. `".*"` means whatever extension the name carries.
@@ -1476,15 +1650,63 @@ impl VirtualMachine {
         // Newly-constructed threads land on `pending_threads` so an empty
         // `Queue#pop` (which would block in real Ruby) can drain them and
         // make forward progress.
-        if method_name == "new" && class_rc.name() == "Thread" {
+        if matches!(method_name, "new" | "start" | "fork")
+            && class_named_in_chain(class_rc, "Thread")
+        {
             use crate::object::Instance;
             let block = self.pending_block.take().unwrap_or(Object::Nil);
             let instance = Instance::new(Rc::clone(class_rc));
             let inst_rc = Rc::new(std::cell::RefCell::new(instance));
-            inst_rc
-                .borrow_mut()
-                .set_var("__thread_block".to_string(), block);
-            let obj = Object::Instance(inst_rc);
+            let obj = Object::Instance(Rc::clone(&inst_rc));
+            // A subclass may write its own `initialize`, and what it hands to
+            // `super` is what the thread runs. `start` and `fork` never go
+            // through it, which is what tells them apart from `new`.
+            let own_initialize = match self.lookup_method(&obj, "initialize") {
+                Some((defined_in, method)) if method_name == "new" => match defined_in.name() {
+                    "Thread" | "Object" | "BasicObject" => None,
+                    _ => Some((defined_in, method)),
+                },
+                _ => None,
+            };
+            match own_initialize {
+                Some((defined_in, method)) => {
+                    self.pending_block = match block {
+                        Object::Nil => None,
+                        held => Some(held),
+                    };
+                    self.invoke_method(
+                        defined_in,
+                        method,
+                        obj.clone(),
+                        arguments.to_vec(),
+                        position,
+                    )?;
+                }
+                None => {
+                    // A thread has to be given something to run. `new`
+                    // reports that as a ThreadError, where `start` and `fork`
+                    // report it the way any method missing its block does.
+                    if matches!(block, Object::Nil) {
+                        return Err(crate::vm::errors::simple_exception(
+                            if method_name == "new" {
+                                "ThreadError"
+                            } else {
+                                "ArgumentError"
+                            },
+                            "must be called with a block",
+                            position,
+                        ));
+                    }
+                    self.give_thread_a_body(&inst_rc, block, arguments);
+                }
+            }
+            if inst_rc.borrow().get_var("__thread_block").is_none() {
+                return Err(crate::vm::errors::simple_exception(
+                    "ThreadError",
+                    "uninitialized thread - check `Thread#initialize'",
+                    position,
+                ));
+            }
             self.pending_threads.push(obj.clone());
             return Ok(Some(obj));
         }
@@ -1616,7 +1838,51 @@ impl VirtualMachine {
         // stubs sufficient for fixture and spec helpers.
         if class_rc.name() == "Thread" {
             match method_name {
-                "pass" => return Ok(Some(Object::Nil)),
+                // `Thread.pass` hands the turn over, which is what lets a
+                // thread waiting on another make its own progress.
+                "pass" => {
+                    self.pass_to_other_threads(position)?;
+                    return Ok(Some(Object::Nil));
+                }
+                // `Thread.kill` stops the thread it is handed, the way that
+                // thread's own `kill` does.
+                "kill" | "exit" => {
+                    let target = match arguments.first() {
+                        Some(named) => named.clone(),
+                        None => self.running_thread(),
+                    };
+                    return self.call_thread_method(&target, "kill", &[], position);
+                }
+                // The threads that have not finished, which is what
+                // `Thread.list` reports.
+                "list" => {
+                    // Asking which threads there are gives each of them a
+                    // turn, so a loop watching the list is what lets them run.
+                    if !self.running_a_thread_body() && !self.stepping_threads {
+                        self.step_pending_threads(position);
+                    }
+                    let mut living = vec![self.running_thread()];
+                    let main = self.globals().get("__Thread_main").unwrap_or(Object::Nil);
+                    if !matches!(main, Object::Nil)
+                        && !living.iter().any(|held| same_object(held, &main))
+                    {
+                        living.push(main);
+                    }
+                    for thread in self.pending_threads.clone() {
+                        let over = matches!(&thread, Object::Instance(held)
+                            if held.borrow().get_var("__thread_value").is_some());
+                        if !over && !living.iter().any(|held| same_object(held, &thread)) {
+                            living.push(thread);
+                        }
+                    }
+                    return Ok(Some(Object::array(living)));
+                }
+                // `Thread.stop` puts the thread running now to sleep until
+                // something wakes it.
+                "stop" => {
+                    self.sleep_until_woken(position)?;
+                    return Ok(Some(Object::Nil));
+                }
                 // Thread.current returns the innermost Thread instance whose
                 // block is being executed, or Nil at the top level. Used by
                 // spec fixtures that thread-local-store via
@@ -1678,6 +1944,46 @@ impl VirtualMachine {
         }
         // `Hash[...]` builds a Hash from a single Hash, from an array of
         // pairs, or from an even number of key and value arguments.
+        // `Hash.ruby2_keywords_hash` marks a copy of a hash as one that was
+        // gathered from keyword arguments, and the predicate reports it.
+        if matches!(method_name, "ruby2_keywords_hash" | "ruby2_keywords_hash?")
+            && crate::vm::method_invocation::descends_from(class_rc, "Hash")
+        {
+            if arguments.len() != 1 {
+                return Err(method_argument_error(
+                    method_name,
+                    1,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let Some(Object::Dict(pairs)) = crate::vm::native_methods::as_dict(&arguments[0])
+            else {
+                let message = format!(
+                    "wrong argument type {} (expected Hash)",
+                    self.builtins().class_of(&arguments[0]).name()
+                );
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &message,
+                    position,
+                ));
+            };
+            if method_name == "ruby2_keywords_hash?" {
+                return Ok(Some(Object::Bool(pairs.borrow().contains_key(
+                    crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY,
+                ))));
+            }
+            let copy = self.call_object_method(&arguments[0], "dup", &[], position)?;
+            let made = copy.unwrap_or_else(|| arguments[0].clone());
+            if let Some(Object::Dict(copied)) = crate::vm::native_methods::as_dict(&made) {
+                copied.borrow_mut().insert(
+                    crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY.to_string(),
+                    Object::Bool(true),
+                );
+            }
+            return Ok(Some(made));
+        }
         if method_name == "[]" && crate::vm::method_invocation::descends_from(class_rc, "Hash") {
             let mut entries: Vec<(Object, Object)> = Vec::new();
             match arguments {
@@ -1925,7 +2231,9 @@ impl VirtualMachine {
                         ));
                     }
                     let mut unbound = (*method).clone();
-                    if unbound.owner_class.is_none() {
+                    // A `def self.name` method records the class it was
+                    // written in, while the singleton class is what owns it.
+                    if unbound.owner_class.is_none() || owner.is_singleton_class() {
                         unbound.owner = Some(owner.name().to_string());
                         unbound.owner_class = Some(owner);
                     }
@@ -2287,7 +2595,7 @@ impl VirtualMachine {
                                 position,
                             },
                             value: crate::ast::Expression::Identifier {
-                                name: "value".to_string(),
+                                name: crate::object::UNNAMED_PARAMETER.to_string(),
                                 position,
                             },
                             position,
@@ -2295,7 +2603,7 @@ impl VirtualMachine {
                         let setter_name = format!("{}=", attr_name);
                         let setter = crate::object::Method::new(
                             setter_name.clone(),
-                            vec!["value".to_string()],
+                            vec![crate::object::UNNAMED_PARAMETER.to_string()],
                             setter_body,
                         );
                         class_rc.define_method(&setter_name, Rc::new(setter));
@@ -2779,6 +3087,10 @@ impl VirtualMachine {
                 }
                 let loc_array = |loc: Option<(String, i64)>| {
                     let items = match loc {
+                        // A constant the interpreter defines stands in no
+                        // file of the program's, which Ruby reports as no
+                        // location at all.
+                        Some((file, _)) if file.is_empty() => Vec::new(),
                         Some((file, line)) => {
                             vec![Object::string(file), Object::Int(line)]
                         }
@@ -3492,6 +3804,16 @@ impl VirtualMachine {
             // signature and gets a warning; a name with no method raises.
             "ruby2_keywords" => {
                 for argument in arguments {
+                    if !matches!(argument, Object::Symbol(_) | Object::String(_)) {
+                        let shown =
+                            self.send_to_object(argument.clone(), "inspect", vec![], position)?;
+                        let message = format!("{} is not a symbol nor a string", shown);
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &message,
+                            position,
+                        ));
+                    }
                     let name = self.coerce_name_argument(argument, position)?;
                     let Some(method) = class_rc.find_method(&name) else {
                         let message = format!(
@@ -3519,7 +3841,11 @@ impl VirtualMachine {
                             ),
                             position,
                         );
+                        continue;
                     }
+                    // The flag is shared with every copy of the method, so an
+                    // alias made before or after this call carries it too.
+                    method.ruby2_keywords.set(true);
                 }
                 return Ok(Some(Object::Nil));
             }
@@ -3571,7 +3897,7 @@ impl VirtualMachine {
     ) -> Result<String, MetorexError> {
         match arg {
             Object::Symbol(s) => Ok(s.as_str().to_string()),
-            Object::String(s) => Ok(s.as_str().to_string()),
+            Object::String(s) => Ok(crate::vm::native_methods::name_text(s)),
             other => {
                 let other_obj = other.clone();
                 let source_class = self.builtins().class_of(other).name().to_string();
@@ -4297,15 +4623,19 @@ pub(crate) fn native_module_method_stub(name: &str) -> Option<Method> {
     let (_, parameters, variadic) = NATIVE_MODULE_METHODS
         .iter()
         .find(|(entry, _, _)| *entry == name)?;
+    let unnamed: Vec<String> = parameters
+        .iter()
+        .map(|_| crate::object::UNNAMED_PARAMETER.to_string())
+        .collect();
     let mut stub = Method::with_owner(
         name.to_string(),
-        parameters.iter().map(|p| (*p).to_string()).collect(),
+        unnamed.clone(),
         vec![],
         "Module".to_string(),
     );
     if *variadic {
-        let last = parameters.len().saturating_sub(1);
-        stub.variadic_param = Some((last, parameters[last].to_string()));
+        let last = unnamed.len().saturating_sub(1);
+        stub.variadic_param = Some((last, unnamed[last].clone()));
     }
     Some(stub)
 }
@@ -4685,6 +5015,11 @@ impl VirtualMachine {
 
 /// Whether a class is the named one or descends from it, which is what makes
 /// a subclass answer the same native methods.
+/// Whether two objects are the same instance.
+fn same_object(one: &Object, other: &Object) -> bool {
+    matches!((one, other), (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b))
+}
+
 fn class_named_in_chain(class_rc: &Rc<Class>, wanted: &str) -> bool {
     let mut cursor = Some(Rc::clone(class_rc));
     while let Some(held) = cursor {
@@ -4804,4 +5139,355 @@ fn overtaking_ancestor(class_rc: &Rc<Class>, name: &str) -> Option<Rc<Class>> {
         cursor = current.superclass();
     }
     None
+}
+
+/// Every part of a path but the last. Trailing separators do not count as a
+/// part, a path with no separator at all stands in the working directory, and
+/// a run of separators at the front reads as the one root.
+fn parent_of_path(path: &str) -> String {
+    let trimmed = path.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return if path.is_empty() {
+            ".".to_string()
+        } else {
+            "/".to_string()
+        };
+    }
+    let Some(cut) = trimmed.rfind('/') else {
+        return ".".to_string();
+    };
+    let front = trimmed[..cut].trim_end_matches('/');
+    if front.is_empty() {
+        return "/".to_string();
+    }
+    if let Some(rest) = front.strip_prefix("//") {
+        return format!("/{}", rest.trim_start_matches('/'));
+    }
+    front.to_string()
+}
+
+impl VirtualMachine {
+    /// The encoding `Encoding.compatible?` answers for two objects, following
+    /// Ruby's negotiation: an encoding both can be read in, or None.
+    pub(crate) fn compatible_encoding(
+        &mut self,
+        first: &Object,
+        second: &Object,
+    ) -> Option<String> {
+        let first_encoding = self.encoding_name_of(first)?;
+        let second_encoding = self.encoding_name_of(second)?;
+        if first_encoding == second_encoding {
+            return Some(first_encoding);
+        }
+        let first_text = as_encoded_text(first);
+        let second_text = as_encoded_text(second);
+        let first_is_string = matches!(first, Object::String(_));
+        let second_is_string = matches!(second, Object::String(_));
+        if let Some(text) = &second_text
+            && second_is_string
+            && text.as_str().is_empty()
+        {
+            return Some(first_encoding);
+        }
+        if first_is_string
+            && second_is_string
+            && first_text
+                .as_ref()
+                .is_some_and(|text| text.as_str().is_empty())
+        {
+            if encoding_reads_alongside_ascii(&first_encoding) && holds_only_ascii(second) {
+                return Some(first_encoding);
+            }
+            return Some(second_encoding);
+        }
+        if !encoding_reads_alongside_ascii(&first_encoding)
+            || !encoding_reads_alongside_ascii(&second_encoding)
+        {
+            return None;
+        }
+        // An object whose encoding follows what it holds, rather than a
+        // string, settles the answer as soon as it is plain ASCII.
+        if !second_is_string && second_encoding == "US-ASCII" {
+            return Some(first_encoding);
+        }
+        if !first_is_string && first_encoding == "US-ASCII" {
+            return Some(second_encoding);
+        }
+        let (left, right, left_encoding, right_encoding, right_is_string) = if first_is_string {
+            (
+                first,
+                second,
+                first_encoding,
+                second_encoding,
+                second_is_string,
+            )
+        } else {
+            (second, first, second_encoding, first_encoding, false)
+        };
+        if !matches!(left, Object::String(_)) {
+            return None;
+        }
+        let left_ascii = holds_only_ascii(left);
+        if right_is_string {
+            let right_ascii = holds_only_ascii(right);
+            if left_ascii != right_ascii {
+                if left_ascii {
+                    return Some(right_encoding);
+                }
+                return Some(left_encoding);
+            }
+            if right_ascii {
+                return Some(left_encoding);
+            }
+        }
+        if left_ascii {
+            return Some(right_encoding);
+        }
+        None
+    }
+
+    /// The encoding an object reports, or None for one that carries none.
+    fn encoding_name_of(&mut self, value: &Object) -> Option<String> {
+        match value {
+            Object::String(text) => Some(text.encoding_name()),
+            // A symbol named in ASCII is written in ASCII, whatever the
+            // source naming it was written in.
+            Object::Symbol(text) => Some(if text.as_str().is_ascii() {
+                "US-ASCII".to_string()
+            } else {
+                text.encoding_name()
+            }),
+            Object::Regex(pattern, flags) => Some(self.pattern_encoding_name(pattern, flags)),
+            Object::Class(class_rc)
+                if class_rc
+                    .superclass()
+                    .is_some_and(|parent| parent.name() == "Encoding") =>
+            {
+                Some(class_rc.name().to_string())
+            }
+            _ => None,
+        }
+    }
+
+    /// The encoding a pattern is read in: the modifier it was written with,
+    /// else the encoding of the string it was built from, else the encoding a
+    /// literal is read in.
+    pub(crate) fn pattern_encoding_name(&self, pattern: &Rc<String>, flags: &str) -> String {
+        if flags.contains('u') {
+            return "UTF-8".to_string();
+        }
+        if flags.contains('s') {
+            return "Windows-31J".to_string();
+        }
+        if flags.contains('e') {
+            return "EUC-JP".to_string();
+        }
+        let beyond_ascii = pattern_reaches_beyond_ascii(pattern);
+        if flags.contains('n') {
+            return if beyond_ascii {
+                "ASCII-8BIT"
+            } else {
+                "US-ASCII"
+            }
+            .to_string();
+        }
+        if !beyond_ascii {
+            return "US-ASCII".to_string();
+        }
+        self.pattern_encodings
+            .get(&(Rc::as_ptr(pattern) as usize))
+            .cloned()
+            .unwrap_or_else(|| "UTF-8".to_string())
+    }
+}
+
+/// The text behind a String or a Symbol, which is what an encoding
+/// negotiation reads.
+fn as_encoded_text(value: &Object) -> Option<Rc<crate::object::StringValue>> {
+    match value {
+        Object::String(text) | Object::Symbol(text) => Some(Rc::clone(text)),
+        _ => None,
+    }
+}
+
+/// Whether an encoding lays ASCII out one byte to a character, which is what
+/// lets text in it be read alongside text in another such encoding.
+pub(crate) fn encoding_reads_alongside_ascii(named: &str) -> bool {
+    let dummy = crate::vm::init::ENCODING_NAMES
+        .iter()
+        .any(|(_, display, dummy)| *dummy && *display == named);
+    !dummy && !named.starts_with("UTF-16") && !named.starts_with("UTF-32")
+}
+
+/// Whether everything an object holds is plain ASCII, which is what makes it
+/// readable in any encoding that lays ASCII out the same way.
+fn holds_only_ascii(value: &Object) -> bool {
+    let Some(text) = as_encoded_text(value) else {
+        return false;
+    };
+    if !encoding_reads_alongside_ascii(&text.encoding_name()) {
+        return false;
+    }
+    crate::vm::native_methods::string_methods::binary_bytes(&text)
+        .iter()
+        .all(|byte| byte.is_ascii())
+}
+
+/// Whether a pattern's source names anything outside ASCII, counting the
+/// escapes that stand for a byte or a codepoint as well as the characters
+/// written directly.
+fn pattern_reaches_beyond_ascii(source: &str) -> bool {
+    let letters: Vec<char> = source.chars().collect();
+    let mut at = 0;
+    while at < letters.len() {
+        let letter = letters[at];
+        if !letter.is_ascii() {
+            return true;
+        }
+        if letter == '\\' && at + 1 < letters.len() {
+            match letters[at + 1] {
+                // A `\u` escape names a codepoint, which reaches past ASCII
+                // only when the codepoint itself does.
+                'u' => {
+                    let (points, next) = unicode_escape_points(&letters, at + 2);
+                    if points.iter().any(|held| *held >= 0x80) {
+                        return true;
+                    }
+                    at = next;
+                    continue;
+                }
+                'x' => {
+                    let digits: String = letters[at + 2..]
+                        .iter()
+                        .take(2)
+                        .take_while(|held| held.is_ascii_hexdigit())
+                        .collect();
+                    if let Ok(value) = u32::from_str_radix(&digits, 16)
+                        && value >= 0x80
+                    {
+                        return true;
+                    }
+                    at += 2 + digits.len();
+                    continue;
+                }
+                _ => {}
+            }
+            at += 2;
+            continue;
+        }
+        at += 1;
+    }
+    false
+}
+
+/// The RegexpError a pattern Ruby refuses raises, checked before the engine
+/// underneath is asked to compile it.
+fn refuse_bad_pattern(source: &str, position: Position) -> Result<(), MetorexError> {
+    let letters: Vec<char> = source.chars().collect();
+    let refuse = |named: &str| {
+        let message = format!("{}: /{}/", named, source);
+        Err(crate::vm::errors::simple_exception(
+            "RegexpError",
+            &message,
+            position,
+        ))
+    };
+    let mut at = 0;
+    let mut class_opened = false;
+    while at < letters.len() {
+        match letters[at] {
+            '\\' => {
+                let Some(escaped) = letters.get(at + 1) else {
+                    return refuse("too short escape sequence");
+                };
+                match escaped {
+                    'x' => {
+                        let digits = letters[at + 2..]
+                            .iter()
+                            .take(2)
+                            .take_while(|held| held.is_ascii_hexdigit())
+                            .count();
+                        if digits == 0 {
+                            return refuse("invalid hex escape");
+                        }
+                        at += 2 + digits;
+                        continue;
+                    }
+                    'u' if letters.get(at + 2) == Some(&'{') => {
+                        let Some(closing) = letters[at + 3..].iter().position(|held| *held == '}')
+                        else {
+                            return refuse("invalid Unicode list");
+                        };
+                        let inside = &letters[at + 3..at + 3 + closing];
+                        if inside.is_empty()
+                            || inside
+                                .iter()
+                                .any(|held| !held.is_ascii_hexdigit() && !held.is_whitespace())
+                        {
+                            return refuse("invalid Unicode list");
+                        }
+                        if inside
+                            .iter()
+                            .filter(|held| held.is_ascii_hexdigit())
+                            .count()
+                            > 6
+                        {
+                            return refuse("invalid Unicode range");
+                        }
+                        at += 4 + closing;
+                        continue;
+                    }
+                    'u' => {
+                        let digits = letters[at + 2..]
+                            .iter()
+                            .take(4)
+                            .take_while(|held| held.is_ascii_hexdigit())
+                            .count();
+                        if digits < 4 {
+                            return refuse("invalid Unicode escape");
+                        }
+                        at += 2 + digits;
+                        continue;
+                    }
+                    _ => {
+                        at += 2;
+                        continue;
+                    }
+                }
+            }
+            '[' if !class_opened => class_opened = true,
+            ']' if class_opened => class_opened = false,
+            _ => {}
+        }
+        at += 1;
+    }
+    if class_opened {
+        return refuse("premature end of char-class");
+    }
+    Ok(())
+}
+
+/// The codepoints a `\u` escape names, and where the pattern carries on.
+fn unicode_escape_points(letters: &[char], at: usize) -> (Vec<u32>, usize) {
+    if letters.get(at) == Some(&'{') {
+        let Some(closing) = letters[at + 1..].iter().position(|held| *held == '}') else {
+            return (Vec::new(), at + 1);
+        };
+        let inside: String = letters[at + 1..at + 1 + closing].iter().collect();
+        let points = inside
+            .split_whitespace()
+            .filter_map(|held| u32::from_str_radix(held, 16).ok())
+            .collect();
+        return (points, at + closing + 2);
+    }
+    let digits: String = letters[at..]
+        .iter()
+        .take(4)
+        .take_while(|held| held.is_ascii_hexdigit())
+        .collect();
+    let counted = digits.len();
+    (
+        u32::from_str_radix(&digits, 16).ok().into_iter().collect(),
+        at + counted,
+    )
 }

@@ -213,8 +213,21 @@ fn dynamic_codes(reader: &mut BitReader<'_>) -> Option<(Huffman, Huffman)> {
 
 /// What a DEFLATE stream stands for, or None when it is not one.
 pub(crate) fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
+    inflate_counted(bytes).map(|(held, _)| held)
+}
+
+/// What a DEFLATE stream stands for, alongside the number of bytes of it the
+/// decoder read. Anything after that many bytes is not part of the stream.
+pub(crate) fn inflate_counted(bytes: &[u8]) -> Option<(Vec<u8>, usize)> {
+    inflate_counted_with(bytes, &[])
+}
+
+/// The same read, with a preset dictionary standing in front of the output so
+/// a back-reference can reach into it.
+pub(crate) fn inflate_counted_with(bytes: &[u8], dictionary: &[u8]) -> Option<(Vec<u8>, usize)> {
     let mut reader = BitReader::new(bytes);
-    let mut out: Vec<u8> = Vec::new();
+    let mut out: Vec<u8> = dictionary.to_vec();
+    let carried = out.len();
     loop {
         let last = reader.read_bit()?;
         let kind = reader.read_bits(2)?;
@@ -268,7 +281,35 @@ pub(crate) fn inflate(bytes: &[u8]) -> Option<Vec<u8>> {
             break;
         }
     }
-    Some(out)
+    reader.align();
+    out.drain(..carried);
+    Some((out, reader.at))
+}
+
+/// Whether a zlib header says the stream was written against a dictionary the
+/// reader has to be given before it can read the stream.
+pub(crate) fn wants_dictionary(bytes: &[u8]) -> bool {
+    bytes.len() >= 2 && bytes[1] & 0x20 != 0
+}
+
+/// What a zlib stream stands for, alongside the number of bytes it took up,
+/// its header and checksum counted in, read against a preset dictionary the
+/// header named.
+pub(crate) fn zlib_unwrap_counted_with(
+    bytes: &[u8],
+    dictionary: &[u8],
+) -> Option<(Vec<u8>, usize)> {
+    if bytes.len() < 2 {
+        return None;
+    }
+    // A header naming a dictionary is followed by the dictionary's checksum,
+    // which the stream itself begins after.
+    let front = if wants_dictionary(bytes) { 6 } else { 2 };
+    let (held, used) = inflate_counted_with(bytes.get(front..)?, dictionary)?;
+    if bytes.len() < front + used + 4 {
+        return None;
+    }
+    Some((held, front + used + 4))
 }
 
 /// Write `bytes` as DEFLATE stored blocks, which name no code and so read
@@ -277,10 +318,11 @@ pub(crate) fn deflate_stored(bytes: &[u8]) -> Vec<u8> {
     const BLOCK: usize = 65535;
     let mut out = Vec::new();
     let mut pieces = bytes.chunks(BLOCK).peekable();
+    // Nothing to write is one last block holding only the mark that the
+    // block is over, which is the two bytes zlib itself writes.
     if bytes.is_empty() {
-        out.push(1);
-        out.extend_from_slice(&0u16.to_le_bytes());
-        out.extend_from_slice(&u16::MAX.to_le_bytes());
+        out.push(0x03);
+        out.push(0x00);
         return out;
     }
     while let Some(piece) = pieces.next() {
@@ -404,6 +446,32 @@ impl VirtualMachine {
                 Some(held) => Ok(super::pack_format::bytes_to_string(&held)),
                 None => Err(refuse("the text")),
             },
+            // What the stream stands for, and the bytes after it that are
+            // not part of it, which `Zlib::Inflate` passes through.
+            "inflate_part" | "raw_inflate_part" => {
+                let dictionary = match arguments.get(3) {
+                    Some(Object::String(held)) => {
+                        super::pack_format::string_to_bytes(&held.as_str().to_string())
+                    }
+                    _ => Vec::new(),
+                };
+                let raw = &*action.as_str() == "raw_inflate_part";
+                if !raw && dictionary.is_empty() && wants_dictionary(&bytes) {
+                    return Ok(Object::symbol("need_dictionary".to_string()));
+                }
+                let read = if raw {
+                    inflate_counted_with(&bytes, &dictionary)
+                } else {
+                    zlib_unwrap_counted_with(&bytes, &dictionary)
+                };
+                match read {
+                    Some((held, used)) => Ok(Object::array(vec![
+                        super::pack_format::bytes_to_string(&held),
+                        super::pack_format::bytes_to_string(&bytes[used.min(bytes.len())..]),
+                    ])),
+                    None => Ok(Object::Nil),
+                }
+            }
             "raw_inflate" => match inflate(&bytes) {
                 Some(held) => Ok(super::pack_format::bytes_to_string(&held)),
                 None => Err(refuse("the text")),

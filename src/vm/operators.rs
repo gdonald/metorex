@@ -22,22 +22,6 @@ thread_local! {
         const { std::cell::RefCell::new(Vec::new()) };
 }
 
-/// A number in exponent notation: one digit, a point, `precision` digits, and
-/// the signed power of ten written with at least two figures.
-fn exponent_notation(value: f64, precision: usize) -> String {
-    let written = format!("{:.precision$e}", value);
-    match written.split_once('e') {
-        Some((mantissa, power)) => {
-            let (sign, digits) = match power.strip_prefix('-') {
-                Some(rest) => ("-", rest),
-                None => ("+", power),
-            };
-            format!("{mantissa}e{sign}{:0>2}", digits)
-        }
-        None => written,
-    }
-}
-
 impl VirtualMachine {
     /// The method a program of its own put on Integer or Float for an
     /// operator, or None where the numbers answer for themselves.
@@ -121,13 +105,14 @@ impl VirtualMachine {
                 // frozen copy.
                 Object::String(ref text) => {
                     if text.is_frozen() {
+                        text.mark_deduplicated();
                         return Ok(value.clone());
                     }
                     let copy = crate::object::StringValue::with_encoding(
                         text.to_text(),
                         text.encoding_name(),
                     );
-                    copy.freeze();
+                    copy.mark_deduplicated();
                     Ok(Object::String(std::rc::Rc::new(copy)))
                 }
                 _ => Err(unary_type_error(op, &value, position)),
@@ -329,6 +314,18 @@ impl VirtualMachine {
             Add => self.evaluate_addition(left, right, position),
             Modulo if matches!(left, Object::String(_)) => {
                 self.evaluate_string_format(left, right, position)
+            }
+            // An instance of a String subclass writes a format the same way,
+            // answering a plain String the way Ruby's does.
+            Modulo
+                if matches!(
+                    crate::vm::native_methods::string_subclass_value(&left),
+                    Some(Object::String(_))
+                ) =>
+            {
+                let held = crate::vm::native_methods::string_subclass_value(&left)
+                    .expect("a string behind the subclass");
+                self.evaluate_string_format(held, right, position)
             }
             // `(1..10) % 2` is Range#%, which answers the same sequence
             // `step` does.
@@ -823,7 +820,29 @@ impl VirtualMachine {
                 {
                     return Ok(order);
                 }
-                self.evaluate_spaceship(left, right, position)
+                let ordered = self.evaluate_spaceship(left.clone(), right.clone(), position)?;
+                if !matches!(ordered, Object::Nil) {
+                    return Ok(ordered);
+                }
+                // Object#<=> answers 0 for two values `==` calls the same and
+                // nil for everything else, which is what two of a kind with no
+                // order of their own fall back on. A value that orders itself
+                // has already answered, and asking it again would run an `==`
+                // written for an operand of another kind.
+                if is_number(&left)
+                    || matches!(
+                        left,
+                        Object::String(_) | Object::Symbol(_) | Object::Array(_)
+                    )
+                {
+                    return Ok(Object::Nil);
+                }
+                let equal = self.evaluate_binary_operation(&Equal, left, right, position)?;
+                Ok(if equal.is_truthy() {
+                    Object::Int(0)
+                } else {
+                    Object::Nil
+                })
             }
             BitwiseAnd => match (left, right) {
                 // Array intersection, keeping the left operand's order and
@@ -1339,357 +1358,6 @@ impl VirtualMachine {
             return Ok(Object::Bool(false));
         }
         Ok(Object::Nil)
-    }
-
-    /// Evaluate Ruby-style String `%` formatting (`"hello %s" % "world"`).
-    ///
-    /// When the right operand is an Array, each element is consumed in order by
-    /// successive format specifiers. Otherwise the single value is used for the
-    /// first (and only expected) specifier.
-    /// The value a `%{name}` or `%<name>` reference names, which must be a
-    /// key of the Hash the format was given.
-    fn format_keyword_value(
-        &self,
-        right: &Object,
-        name: &str,
-        position: Position,
-    ) -> Result<Object, MetorexError> {
-        if let Object::Dict(entries) = right
-            && let Some(value) = entries.borrow().get(&format!(":{}", name))
-        {
-            return Ok(value.clone());
-        }
-        let message = format!("key<{}> not found", name);
-        Err(MetorexError::UncaughtException {
-            exception: Object::exception("KeyError", message.clone()),
-            location: position_to_location(position),
-            message,
-        })
-    }
-
-    pub(crate) fn evaluate_string_format(
-        &self,
-        left: Object,
-        right: Object,
-        position: Position,
-    ) -> Result<Object, MetorexError> {
-        let Object::String(format) = &left else {
-            let message = format!("no implicit conversion of {} into String", left.type_name());
-            return Err(MetorexError::UncaughtException {
-                exception: Object::exception("TypeError", message.clone()),
-                location: position_to_location(position),
-                message,
-            });
-        };
-        let fmt_str = format.as_str().to_string();
-
-        let args: Vec<Object> = match &right {
-            Object::Array(arr) => arr.borrow().clone(),
-            // A keyword Hash names its values rather than filling positions.
-            Object::Dict(_) => Vec::new(),
-            other => vec![(*other).clone()],
-        };
-
-        let mut result = String::new();
-        let mut arg_idx = 0;
-        let mut named: Option<Object> = None;
-        let chars: Vec<char> = fmt_str.chars().collect();
-        let mut i = 0;
-
-        while i < chars.len() {
-            if chars[i] == '%' {
-                i += 1;
-                if i >= chars.len() {
-                    result.push('%');
-                    break;
-                }
-
-                // Literal %%
-                if chars[i] == '%' {
-                    result.push('%');
-                    i += 1;
-                    continue;
-                }
-
-                // `%{name}` and `%<name>s` read a keyword from the Hash on
-                // the right rather than taking the next positional argument.
-                if chars[i] == '{' || chars[i] == '<' {
-                    let closing = if chars[i] == '{' { '}' } else { '>' };
-                    let mut name = String::new();
-                    i += 1;
-                    while i < chars.len() && chars[i] != closing {
-                        name.push(chars[i]);
-                        i += 1;
-                    }
-                    if i < chars.len() {
-                        i += 1;
-                    }
-                    let value = self.format_keyword_value(&right, &name, position)?;
-                    if closing == '}' {
-                        result.push_str(&format!("{}", value));
-                        continue;
-                    }
-                    // `%<name>` carries on into the specifier that follows,
-                    // formatting the value it named.
-                    named = Some(value);
-                }
-
-                // Parse optional flags: -, +, 0, space
-                let mut left_align = false;
-                let mut plus_sign = false;
-                let mut zero_pad = false;
-                let mut space_sign = false;
-                loop {
-                    if i >= chars.len() {
-                        break;
-                    }
-                    match chars[i] {
-                        '-' => {
-                            left_align = true;
-                            i += 1;
-                        }
-                        '+' => {
-                            plus_sign = true;
-                            i += 1;
-                        }
-                        '0' => {
-                            zero_pad = true;
-                            i += 1;
-                        }
-                        ' ' => {
-                            space_sign = true;
-                            i += 1;
-                        }
-                        _ => break,
-                    }
-                }
-
-                // Parse optional width
-                let mut width: Option<usize> = None;
-                if i < chars.len() && chars[i].is_ascii_digit() {
-                    let start = i;
-                    while i < chars.len() && chars[i].is_ascii_digit() {
-                        i += 1;
-                    }
-                    width = Some(
-                        chars[start..i]
-                            .iter()
-                            .collect::<String>()
-                            .parse()
-                            .unwrap_or(0),
-                    );
-                }
-
-                // Parse optional precision (.N)
-                let mut precision: Option<usize> = None;
-                if i < chars.len() && chars[i] == '.' {
-                    i += 1;
-                    let start = i;
-                    while i < chars.len() && chars[i].is_ascii_digit() {
-                        i += 1;
-                    }
-                    precision = Some(
-                        chars[start..i]
-                            .iter()
-                            .collect::<String>()
-                            .parse()
-                            .unwrap_or(0),
-                    );
-                }
-
-                if i >= chars.len() {
-                    return Err(MetorexError::runtime_error(
-                        "incomplete format specifier in String#%".to_string(),
-                        crate::vm::utils::position_to_location(position),
-                    ));
-                }
-
-                let specifier = chars[i];
-                i += 1;
-
-                // A `%<name>` prefix already chose the value; otherwise the
-                // next positional argument fills the specifier.
-                let taken = named.take();
-                if taken.is_none() && arg_idx >= args.len() {
-                    return Err(MetorexError::runtime_error(
-                        "too few arguments for format string".to_string(),
-                        crate::vm::utils::position_to_location(position),
-                    ));
-                }
-                let arg = match &taken {
-                    Some(value) => value,
-                    None => {
-                        let value = &args[arg_idx];
-                        arg_idx += 1;
-                        value
-                    }
-                };
-
-                let formatted = match specifier {
-                    's' => {
-                        // `%s` renders with `to_s`, so a Symbol loses its
-                        // leading colon the way `puts` drops it and nil
-                        // renders as nothing at all.
-                        let s = match &arg {
-                            Object::Symbol(name) => name.as_str().to_string(),
-                            Object::Nil => String::new(),
-                            other => format!("{}", other),
-                        };
-                        if let Some(prec) = precision {
-                            s[..s.len().min(prec)].to_string()
-                        } else {
-                            s
-                        }
-                    }
-                    'd' | 'i' => match arg {
-                        Object::Int(n) => {
-                            if plus_sign && *n >= 0 {
-                                format!("+{}", n)
-                            } else if space_sign && *n >= 0 {
-                                format!(" {}", n)
-                            } else {
-                                format!("{}", n)
-                            }
-                        }
-                        Object::Float(f) => {
-                            let n = *f as i64;
-                            if plus_sign && n >= 0 {
-                                format!("+{}", n)
-                            } else if space_sign && n >= 0 {
-                                format!(" {}", n)
-                            } else {
-                                format!("{}", n)
-                            }
-                        }
-                        _ => format!("{}", arg),
-                    },
-                    'f' => {
-                        let val = match arg {
-                            Object::Float(f) => *f,
-                            Object::Int(n) => *n as f64,
-                            _ => {
-                                return Err(MetorexError::runtime_error(
-                                    format!(
-                                        "%%f requires numeric argument, got {}",
-                                        arg.type_name()
-                                    ),
-                                    crate::vm::utils::position_to_location(position),
-                                ));
-                            }
-                        };
-                        let prec = precision.unwrap_or(6);
-                        if plus_sign && val >= 0.0 {
-                            format!("+{:.prec$}", val)
-                        } else if space_sign && val >= 0.0 {
-                            format!(" {:.prec$}", val)
-                        } else {
-                            format!("{:.prec$}", val)
-                        }
-                    }
-                    // `%e` and `%E` write a number in exponent notation, with
-                    // one digit before the point and a signed two-digit power.
-                    'e' | 'E' => {
-                        let val = match arg {
-                            Object::Float(held) => *held,
-                            Object::Int(held) => *held as f64,
-                            Object::BigInt(held) => held.to_string().parse().unwrap_or(0.0),
-                            _ => {
-                                return Err(MetorexError::runtime_error(
-                                    format!(
-                                        "%%{} requires numeric argument, got {}",
-                                        specifier,
-                                        arg.type_name()
-                                    ),
-                                    crate::vm::utils::position_to_location(position),
-                                ));
-                            }
-                        };
-                        let written = exponent_notation(val, precision.unwrap_or(6));
-                        let written = if specifier == 'E' {
-                            written.to_uppercase()
-                        } else {
-                            written
-                        };
-                        if plus_sign && val >= 0.0 {
-                            format!("+{}", written)
-                        } else if space_sign && val >= 0.0 {
-                            format!(" {}", written)
-                        } else {
-                            written
-                        }
-                    }
-                    'x' => match arg {
-                        Object::Int(n) => format!("{:x}", n),
-                        _ => format!("{}", arg),
-                    },
-                    'X' => match arg {
-                        Object::Int(n) => format!("{:X}", n),
-                        _ => format!("{}", arg),
-                    },
-                    'o' => match arg {
-                        Object::Int(n) => format!("{:o}", n),
-                        _ => format!("{}", arg),
-                    },
-                    'b' => match arg {
-                        Object::Int(n) => format!("{:b}", n),
-                        _ => format!("{}", arg),
-                    },
-                    'p' => match arg {
-                        Object::String(s) => format!("\"{}\"", s),
-                        Object::Nil => "nil".to_string(),
-                        other => format!("{}", other),
-                    },
-                    'c' => match arg {
-                        Object::Int(n) => {
-                            if let Some(ch) = char::from_u32(*n as u32) {
-                                ch.to_string()
-                            } else {
-                                format!("{}", n)
-                            }
-                        }
-                        Object::String(s) => s
-                            .as_str()
-                            .chars()
-                            .next()
-                            .map_or(String::new(), |c| c.to_string()),
-                        _ => format!("{}", arg),
-                    },
-                    other => {
-                        return Err(MetorexError::runtime_error(
-                            format!("unknown format specifier '%{}'", other),
-                            crate::vm::utils::position_to_location(position),
-                        ));
-                    }
-                };
-
-                // Apply width and alignment
-                if let Some(w) = width {
-                    if left_align {
-                        result.push_str(&format!("{:<w$}", formatted));
-                    } else if zero_pad
-                        && matches!(specifier, 'd' | 'i' | 'f' | 'x' | 'X' | 'o' | 'b')
-                    {
-                        result.push_str(&format!("{:0>w$}", formatted));
-                    } else {
-                        result.push_str(&format!("{:>w$}", formatted));
-                    }
-                } else {
-                    result.push_str(&formatted);
-                }
-            } else {
-                result.push(chars[i]);
-                i += 1;
-            }
-        }
-
-        // With `$VERBOSE` on, Ruby points out arguments the format never
-        // reached. A keyword Hash names its values, so leaving one of those
-        // unused is not a mistake and is not counted here.
-        if arg_idx < args.len() && matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true)))
-        {
-            eprintln!("warning: too many arguments for format string");
-        }
-        Ok(Object::string(result))
     }
 
     /// The elements of an operand that stands for an array: an Array itself,

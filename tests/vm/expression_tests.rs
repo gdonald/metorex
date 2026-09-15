@@ -60,9 +60,9 @@ h[[1, 2]]
 // ── Index on non-container type (read) ───────────────────────────────────────
 
 #[test]
-fn index_read_on_integer_error() {
-    let err = run_err("42[0]");
-    assert!(err.contains("index") || err.contains("type") || err.contains("Cannot"));
+fn index_read_on_integer_reads_a_bit() {
+    let result = run("42[1]");
+    assert_eq!(result.map(|value| value.to_string()), Some("1".to_string()));
 }
 
 #[test]

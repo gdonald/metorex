@@ -24,11 +24,11 @@ mod etc_methods;
 mod exception_methods;
 mod file_methods;
 mod float_methods;
-mod hash_methods;
+pub(crate) mod hash_methods;
 mod int_methods;
 mod io_methods;
 pub(crate) mod kernel_conversion;
-mod method_object_methods;
+pub(crate) mod method_object_methods;
 mod module_methods;
 pub(crate) mod object_methods;
 mod range_methods;
@@ -41,9 +41,10 @@ pub(crate) mod regexp_methods;
 pub(crate) use regexp_methods::{
     LAST_MATCH, capture_reference, comparable_flags, compile, subject_text,
 };
+pub(crate) mod euc_jp_table;
 mod set_methods;
 pub(crate) mod string_methods;
-mod string_mutation;
+pub(crate) mod string_mutation;
 mod string_sets;
 pub(crate) mod struct_methods;
 mod time_methods;
@@ -57,6 +58,8 @@ pub(crate) const ARRAY_SUBCLASS_VAR: &str = "__array__";
 /// Instance variable an instance of a Set subclass stores its elements in,
 /// since a plain Set is a primitive rather than an instance.
 pub(crate) const SET_SUBCLASS_VAR: &str = "__set__";
+/// The instance variable an instance of a Proc subclass holds its block in.
+pub(crate) const PROC_SUBCLASS_VAR: &str = "__proc__";
 /// Instance variable an instance of a Hash subclass stores its entries in,
 /// since a plain Hash is a primitive rather than an instance.
 pub(crate) const HASH_SUBCLASS_VAR: &str = "__hash__";
@@ -90,6 +93,21 @@ pub(crate) fn as_range(value: &Object) -> Option<Object> {
     }
 }
 
+/// The name a Regexp subclass instance keeps its pattern under.
+pub(crate) const REGEXP_SUBCLASS_VAR: &str = "__regexp__";
+
+/// The pattern behind an instance of a Regexp subclass.
+pub(crate) fn regexp_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(REGEXP_SUBCLASS_VAR)
+        .cloned()
+}
+
 /// The characters behind an instance of a String subclass.
 pub(crate) fn string_subclass_value(receiver: &Object) -> Option<Object> {
     let Object::Instance(instance) = receiver else {
@@ -117,6 +135,19 @@ pub(crate) fn array_subclass_value(receiver: &Object) -> Option<Object> {
 /// The backing set an instance of a Set subclass holds, or None when
 /// `receiver` is not one. The Rc is shared, so a change through it is visible
 /// to the instance.
+/// The block an instance of a Proc subclass stands for, or None when
+/// `receiver` is not one.
+pub(crate) fn proc_subclass_value(receiver: &Object) -> Option<Object> {
+    let Object::Instance(instance) = receiver else {
+        return None;
+    };
+    instance
+        .borrow()
+        .instance_vars
+        .get(PROC_SUBCLASS_VAR)
+        .cloned()
+}
+
 pub(crate) fn set_subclass_value(receiver: &Object) -> Option<Object> {
     let Object::Instance(instance) = receiver else {
         return None;
@@ -140,6 +171,18 @@ pub(crate) fn hash_subclass_value(receiver: &Object) -> Option<Object> {
         .get(HASH_SUBCLASS_VAR)
         .cloned()
 }
+/// The dictionary behind a value: a Hash itself, or the one an instance of a
+/// Hash subclass keeps.
+pub(crate) fn as_dict(value: &Object) -> Option<Object> {
+    if matches!(value, Object::Dict(_)) {
+        return Some(value.clone());
+    }
+    match hash_subclass_value(value) {
+        Some(held @ Object::Dict(_)) => Some(held),
+        _ => None,
+    }
+}
+
 mod pack_format;
 mod streams;
 mod visibility;
@@ -188,12 +231,26 @@ impl VirtualMachine {
             return Ok(Some(result));
         }
 
+        // An instance of a Proc subclass answers a callable's methods,
+        // applied to the block it stands for.
+        if !matches!(
+            method_name,
+            "class" | "instance_variables" | "is_a?" | "kind_of?"
+        ) && let Some(backing @ Object::Block(_)) = proc_subclass_value(receiver)
+            && let Some(result) =
+                self.call_native_method(class, &backing, method_name, arguments, position)?
+        {
+            return Ok(Some(result));
+        }
+
         // Block/Lambda methods
         if let Object::Block(block) = receiver {
             match method_name {
-                "call" | "[]" | "===" => {
+                "call" | "[]" | "===" | "yield" => {
                     return Ok(Some(block.call(self, arguments.to_vec(), position)?));
                 }
+                // A callable is already the block it stands for.
+                "to_proc" => return Ok(Some(receiver.clone())),
                 "binding" => {
                     // A curried callable is built by the library rather than
                     // written in the program, so there is no scope behind it.
@@ -291,6 +348,18 @@ impl VirtualMachine {
             // the general rules make rather than the characters behind it.
             if matches!(method_name, "clone" | "dup") {
                 return self.call_object_method(receiver, method_name, arguments, position);
+            }
+            // A method that changes the string reaches the characters the
+            // instance is backed by, and answers the instance itself.
+            if let Some(result) =
+                self.call_string_mutation(&text, method_name, arguments, position)?
+            {
+                if let (Object::String(answered), Object::String(backing)) = (&result, &text)
+                    && Rc::ptr_eq(answered, backing)
+                {
+                    return Ok(Some(receiver.clone()));
+                }
+                return Ok(Some(result));
             }
             if let Some(result) =
                 self.call_string_method(&text, method_name, arguments, position)?
@@ -447,6 +516,33 @@ impl VirtualMachine {
                 .contains(&(Rc::as_ptr(pattern) as *const _ as usize));
             return Ok(Some(Object::Bool(!built)));
         }
+        // The encoding a pattern is read in is settled from the pattern's own
+        // address, which is where the encoding of the string it was built
+        // from was recorded.
+        // The source a pattern was written from is tagged with the encoding
+        // the pattern is read in.
+        if method_name == "source"
+            && let Object::Regex(pattern, flags) = receiver
+            && arguments.is_empty()
+        {
+            let named = self.pattern_encoding_name(pattern, flags);
+            let made = crate::object::StringValue::with_encoding(pattern.to_string(), named);
+            return Ok(Some(Object::String(Rc::new(made))));
+        }
+        if method_name == "encoding"
+            && let Object::Regex(pattern, flags) = receiver
+        {
+            if !arguments.is_empty() {
+                return Err(crate::vm::errors::method_argument_error(
+                    method_name,
+                    0,
+                    arguments.len(),
+                    position,
+                ));
+            }
+            let named = self.pattern_encoding_name(pattern, flags);
+            return Ok(Some(self.encoding_object(&named)));
+        }
         // A Regexp is a primitive rather than an instance, so its methods are
         // dispatched before the class-name table below.
         if let Object::Regex(pattern, flags) = receiver
@@ -454,6 +550,19 @@ impl VirtualMachine {
                 self.call_regexp_method(pattern, flags, method_name, arguments, position)?
         {
             return Ok(Some(result));
+        }
+
+        // An instance of a Regexp subclass answers Regexp's methods, backed
+        // by the pattern it was built with.
+        if let Some(Object::Regex(pattern, flags)) = regexp_subclass_value(receiver) {
+            if matches!(method_name, "clone" | "dup") {
+                return self.call_object_method(receiver, method_name, arguments, position);
+            }
+            if let Some(result) =
+                self.call_regexp_method(&pattern, &flags, method_name, arguments, position)?
+            {
+                return Ok(Some(result));
+            }
         }
 
         // Instances of a generated struct class get Struct's instance methods.
@@ -479,6 +588,17 @@ impl VirtualMachine {
             && instance.borrow().get_var("__fiber__").is_some()
             && let Some(result) =
                 self.call_fiber_method(receiver, method_name, arguments, position)?
+        {
+            return Ok(Some(result));
+        }
+
+        // A thread carries the block it runs, so an instance of a subclass
+        // answers the same methods as one of Thread itself.
+        if let Object::Instance(instance) = receiver
+            && instance.borrow().get_var("__thread_block").is_some()
+            && class.name() != "Thread"
+            && let Some(result) =
+                self.call_thread_method(receiver, method_name, arguments, position)?
         {
             return Ok(Some(result));
         }
@@ -648,7 +768,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         match arg {
-            Object::String(s) => Ok(s.as_str().to_string()),
+            Object::String(s) => Ok(name_text(s)),
             Object::Symbol(s) => Ok(s.as_str().to_string()),
             _ => {
                 if let Some((cls, m)) = self.lookup_method(arg, "to_str")
@@ -861,46 +981,40 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // `join` takes a limit on how long to wait, and answers nil
+                // when the thread is still going once it has passed.
+                let limit = match arguments.first() {
+                    None | Some(Object::Nil) => None,
+                    Some(given) => Some(std::time::Duration::from_secs_f64(
+                        self.float_value_of(given, position)?.max(0.0),
+                    )),
+                };
                 let cached = inst.borrow().get_var("__thread_value").cloned();
                 if let Some(val) = cached {
                     inst.borrow_mut()
                         .set_var("__thread_reaped".to_string(), Object::Bool(true));
+                    // A thread that died of an exception hands it to whoever
+                    // waits on it, however long after the fact.
+                    let died_of = inst.borrow().get_var("__thread_error").cloned();
+                    if let Some(held @ Object::Exception(_)) = died_of {
+                        self.call_native_function("raise", vec![held], position)?;
+                    }
                     return Ok(Some(if method_name == "join" {
                         receiver.clone()
                     } else {
                         val
                     }));
                 }
-                // Drop this thread from the pending list — about to run.
-                self.pending_threads.retain(|t| {
-                    if let (Object::Instance(a), Object::Instance(b)) = (t, receiver) {
-                        !Rc::ptr_eq(a, b)
-                    } else {
-                        true
-                    }
-                });
-                let block_obj = inst
-                    .borrow()
-                    .get_var("__thread_block")
-                    .cloned()
-                    .unwrap_or(Object::Nil);
-                // Push this thread onto the "current thread" stack so
-                // `Thread.current` returns the right instance for the
-                // duration of the block (and `Thread.current[:k] = v`
-                // writes thread-locals to this thread, not the caller).
-                self.thread_current_stack.push(receiver.clone());
-                // A thread starts with no child of its own behind it, which
-                // is what `Process.last_status` reports there.
+                // Waiting on a thread runs it, a step at a time, so a
+                // thread of its own waiting on something else still gets a
+                // turn. A thread starts with no child of its own behind it,
+                // which is what `Process.last_status` reports there.
                 let held_status = self.take_last_status();
-                let value_result: Result<Object, MetorexError> = if let Object::Block(b) = block_obj
-                {
-                    self.execute_block_body(&b, vec![])
-                } else {
-                    Ok(Object::Nil)
-                };
+                let waited = self.run_thread_within(receiver, limit, position);
                 self.restore_last_status(held_status);
-                self.thread_current_stack.pop();
-                let value = value_result?;
+                let Some(value) = waited? else {
+                    return Ok(Some(Object::Nil));
+                };
                 inst.borrow_mut()
                     .set_var("__thread_value".to_string(), value.clone());
                 inst.borrow_mut()
@@ -923,7 +1037,7 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = self.thread_local_name(&arguments[0], position)?;
-                let store = self.thread_local_store(method_name);
+                let store = self.thread_local_store(method_name, receiver);
                 let locals = inst.borrow().get_var(&store).cloned();
                 if let Some(Object::Dict(held)) = locals {
                     return Ok(Some(
@@ -942,7 +1056,7 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = self.thread_local_name(&arguments[0], position)?;
-                let store = self.thread_local_store(method_name);
+                let store = self.thread_local_store(method_name, receiver);
                 let locals = inst.borrow().get_var(&store).cloned();
                 let held = matches!(locals, Some(Object::Dict(ref names)) if names.borrow().contains_key(&key_str));
                 Ok(Some(Object::Bool(held)))
@@ -956,7 +1070,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let store = self.thread_local_store(method_name);
+                let store = self.thread_local_store(method_name, receiver);
                 let locals = inst.borrow().get_var(&store).cloned();
                 let Some(Object::Dict(held)) = locals else {
                     return Ok(Some(Object::array(Vec::new())));
@@ -985,7 +1099,7 @@ impl VirtualMachine {
                     ));
                 }
                 let key_str = self.thread_local_name(&arguments[0], position)?;
-                let store = self.thread_local_store(method_name);
+                let store = self.thread_local_store(method_name, receiver);
                 let existing = inst.borrow().get_var(&store).cloned();
                 let dict = match existing {
                     Some(Object::Dict(held)) => held,
@@ -1011,20 +1125,218 @@ impl VirtualMachine {
                 inst.borrow().get_var("__thread_value").is_none(),
             ))),
             "kill" | "exit" | "terminate" => {
-                self.pending_threads.retain(|thread| {
-                    if let (Object::Instance(pending), Object::Instance(target)) =
-                        (thread, receiver)
-                    {
-                        !Rc::ptr_eq(pending, target)
-                    } else {
-                        true
-                    }
-                });
+                // A thread stopped part-way answers nil for its status and
+                // for its value.
                 inst.borrow_mut()
-                    .set_var("__thread_value".to_string(), Object::Nil);
+                    .set_var("__thread_killed".to_string(), Object::Bool(true));
+                // A thread waiting on something is woken so it unwinds where
+                // it waits, running the `ensure` blocks it is inside.
                 inst.borrow_mut()
-                    .set_var("__thread_reaped".to_string(), Object::Bool(true));
+                    .set_var("__thread_waiting".to_string(), Object::Bool(false));
+                // A thread stopping itself unwinds from here rather than
+                // carrying on, so the rest of its block does not run.
+                self.raise_if_thread_killed(position)?;
+                // A thread part-way through still has `ensure` blocks to run,
+                // so it keeps its turn and is left with no value until it
+                // unwinds. One that never started has nothing to unwind.
+                let started = matches!(
+                    inst.borrow().get_var("__thread_fiber"),
+                    Some(Object::Int(_))
+                );
+                if !started {
+                    self.pending_threads.retain(|thread| {
+                        if let (Object::Instance(pending), Object::Instance(target)) =
+                            (thread, receiver)
+                        {
+                            !Rc::ptr_eq(pending, target)
+                        } else {
+                            true
+                        }
+                    });
+                    inst.borrow_mut()
+                        .set_var("__thread_value".to_string(), Object::Nil);
+                    inst.borrow_mut()
+                        .set_var("__thread_reaped".to_string(), Object::Bool(true));
+                }
                 Ok(Some(receiver.clone()))
+            }
+            // Ruby names a thread by its address, where its body was
+            // written, and what it is doing, in bytes rather than characters.
+            "inspect" | "to_s" => {
+                let address = Rc::as_ptr(&inst) as usize;
+                let doing = match self.call_thread_method(receiver, "status", &[], position)? {
+                    Some(Object::String(word)) => word.as_str().to_string(),
+                    _ => "dead".to_string(),
+                };
+                let written_at = match (
+                    inst.borrow().get_var("__thread_source"),
+                    inst.borrow().get_var("__thread_line"),
+                ) {
+                    (Some(Object::String(file)), Some(Object::Int(line))) => {
+                        Some(format!("{}:{}", file.as_str(), line))
+                    }
+                    _ => None,
+                };
+                Ok(Some(Object::binary_string(match written_at {
+                    Some(place) => format!("#<Thread:0x{address:016x} {place} {doing}>"),
+                    None => format!("#<Thread:0x{address:016x} {doing}>"),
+                })))
+            }
+            // `Thread#initialize` is what a subclass reaches through
+            // `super`, and the block it is given is what the thread runs.
+            "initialize" => {
+                let Some(block) = self.pending_block.take() else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "must be called with a block",
+                        position,
+                    ));
+                };
+                if inst.borrow().get_var("__thread_block").is_some() {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "already initialized thread",
+                        position,
+                    ));
+                }
+                self.give_thread_a_body(&inst, block, arguments);
+                Ok(Some(Object::Nil))
+            }
+            // A thread's name, which is nothing until one is given.
+            "name" => Ok(Some(
+                inst.borrow()
+                    .get_var("__thread_name")
+                    .cloned()
+                    .unwrap_or(Object::Nil),
+            )),
+            "name=" => {
+                let given = arguments.first().cloned().unwrap_or(Object::Nil);
+                let named = match given {
+                    Object::Nil => Object::Nil,
+                    Object::String(_) => given,
+                    other if self.responds_to(&other, "to_str") => {
+                        self.send_to_object(other, "to_str", vec![], position)?
+                    }
+                    other => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &format!(
+                                "no implicit conversion of {} into String",
+                                self.builtins().class_of(&other).name()
+                            ),
+                            position,
+                        ));
+                    }
+                };
+                if let Object::String(text) = &named
+                    && text.as_str().contains('\0')
+                {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "string contains null byte",
+                        position,
+                    ));
+                }
+                inst.borrow_mut()
+                    .set_var("__thread_name".to_string(), named.clone());
+                Ok(Some(named))
+            }
+            // How eagerly a thread is given turns. Metorex gives every thread
+            // the same turn, so the number is remembered and nothing more.
+            "priority" => Ok(Some(
+                inst.borrow()
+                    .get_var("__thread_priority")
+                    .cloned()
+                    .unwrap_or(Object::Int(0)),
+            )),
+            "priority=" => {
+                let given = arguments.first().cloned().unwrap_or(Object::Int(0));
+                let Object::Int(wanted) = given else {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        "priority must be an Integer",
+                        position,
+                    ));
+                };
+                inst.borrow_mut().set_var(
+                    "__thread_priority".to_string(),
+                    Object::Int(wanted.clamp(PRIORITY_FLOOR, PRIORITY_CEILING)),
+                );
+                Ok(Some(given))
+            }
+            // Where the thread stands, as a backtrace reads. A thread that
+            // has finished has none, which Ruby reports as nil.
+            // The same places `backtrace` names, as Location objects. Only
+            // the thread running now can be asked, since the places another
+            // thread stands are not objects until it is running.
+            "backtrace_locations" => {
+                if inst.borrow().get_var("__thread_value").is_some() {
+                    return Ok(Some(Object::Nil));
+                }
+                let mut places = self.caller_location_objects(position);
+                // The innermost place is the call to `backtrace_locations`
+                // itself, which sits where the caller's own innermost place
+                // does and is named for the method rather than the caller.
+                if let Some(Object::Instance(innermost)) = places.first() {
+                    let mut here = crate::object::Instance::new(self.backtrace_location_class());
+                    for named in ["lineno", "path", "absolute_path"] {
+                        let held = innermost.borrow().get_var(named).cloned();
+                        if let Some(value) = held {
+                            here.set_var(named.to_string(), value);
+                        }
+                    }
+                    here.set_var(
+                        "label".to_string(),
+                        Object::string("Thread#backtrace_locations"),
+                    );
+                    places.insert(0, Object::Instance(Rc::new(std::cell::RefCell::new(here))));
+                }
+                let Some((skip, length)) = self.caller_slice_bounds(arguments, places.len(), 0)
+                else {
+                    return Ok(Some(Object::Nil));
+                };
+                let mut kept: Vec<Object> = places.into_iter().skip(skip).collect();
+                if let Some(length) = length {
+                    kept.truncate(length);
+                }
+                Ok(Some(Object::array(kept)))
+            }
+            "backtrace" => {
+                if inst.borrow().get_var("__thread_value").is_some() {
+                    return Ok(Some(Object::Nil));
+                }
+                let current = self.running_thread();
+                let running = matches!(
+                    (&current, receiver),
+                    (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b)
+                );
+                let lines = if running {
+                    self.own_backtrace_lines(position)
+                } else {
+                    self.thread_backtrace_lines(receiver).unwrap_or_default()
+                };
+                let Some((skip, length)) = self.caller_slice_bounds(arguments, lines.len(), 0)
+                else {
+                    return Ok(Some(Object::Nil));
+                };
+                let mut kept: Vec<String> = lines.into_iter().skip(skip).collect();
+                if let Some(length) = length {
+                    kept.truncate(length);
+                }
+                Ok(Some(Object::array(
+                    kept.into_iter().map(Object::string).collect(),
+                )))
+            }
+            // A thread is handed an exception to raise where it left off, so
+            // one waiting inside `sleep` wakes and raises it there.
+            "raise" => {
+                inst.borrow_mut().set_var(
+                    "__thread_raise".to_string(),
+                    Object::array(arguments.to_vec()),
+                );
+                inst.borrow_mut()
+                    .set_var("__thread_waiting".to_string(), Object::Bool(false));
+                Ok(Some(Object::Nil))
             }
             // Waking a thread that has already finished is an error; one
             // that has not run yet wakes to no effect, since it runs when it
@@ -1040,6 +1352,10 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // Waking a thread takes it out of the wait it was in, so it
+                // is ready to run rather than asleep.
+                inst.borrow_mut()
+                    .set_var("__thread_waiting".to_string(), Object::Bool(false));
                 Ok(Some(receiver.clone()))
             }
             // The number the operating system knows the thread by. Only the
@@ -1060,10 +1376,48 @@ impl VirtualMachine {
                 // SAFETY: `getpid` reads a number and touches nothing else.
                 Ok(Some(Object::Int(unsafe { libc::getpid() } as i64)))
             }
-            // A thread runs when it is joined, so one that has not been is
-            // not running: `stop?` is true until it does.
-            "stop?" => Ok(Some(Object::Bool(true))),
-            "status" => Ok(Some(Object::Bool(false))),
+            // A thread that has not had a turn, or that is waiting for
+            // something, is stopped; one running now is not.
+            // A thread is stopped when it is asleep or when it is over.
+            "stop?" => {
+                let doing = self.call_thread_method(receiver, "status", &[], position)?;
+                Ok(Some(Object::Bool(match doing {
+                    Some(Object::String(word)) => &*word.as_str() == "sleep",
+                    _ => true,
+                })))
+            }
+            // Ruby reports "run" for the thread running now, "sleep" for one
+            // waiting on something, false for one whose block ran out, and
+            // nil for one stopped or killed part-way.
+            // Ruby reports a thread that ended by itself or was killed as
+            // false, one that ended on an exception as nil, and a live one by
+            // what it is doing. A thread part-way through being stopped is
+            // aborting unless it is waiting, which reads as asleep.
+            "status" => {
+                if inst.borrow().get_var("__thread_error").is_some() {
+                    return Ok(Some(Object::Nil));
+                }
+                if inst.borrow().get_var("__thread_value").is_some() {
+                    return Ok(Some(Object::Bool(false)));
+                }
+                let waiting = matches!(
+                    inst.borrow().get_var("__thread_waiting"),
+                    Some(Object::Bool(true))
+                );
+                if waiting {
+                    return Ok(Some(Object::string("sleep")));
+                }
+                if matches!(
+                    inst.borrow().get_var("__thread_killed"),
+                    Some(Object::Bool(true))
+                ) || matches!(
+                    inst.borrow().get_var("__thread_dying"),
+                    Some(Object::Bool(true))
+                ) {
+                    return Ok(Some(Object::string("aborting")));
+                }
+                Ok(Some(Object::string("run")))
+            }
             _ => Ok(None),
         }
     }
@@ -1102,46 +1456,178 @@ impl VirtualMachine {
                         _position,
                     ));
                 }
-                if let Some(item) = arguments.first() {
+                // A queue made with a limit takes nothing more while it is
+                // full, so whoever is putting things on it waits for a reader.
+                let limit = match inst.borrow().get_var("__queue_max") {
+                    Some(Object::Int(most)) => Some(*most as usize),
+                    _ => None,
+                };
+                let (positional, keywords) = queue_keyword_arguments(arguments);
+                let asked_now = positional
+                    .get(1)
+                    .is_some_and(|given| !matches!(given, Object::Nil | Object::Bool(false)));
+                let wait_for = match keywords.get("timeout") {
+                    None | Some(Object::Nil) => None,
+                    Some(_) if asked_now => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            "can't set a timeout if non_block is enabled",
+                            _position,
+                        ));
+                    }
+                    Some(Object::Int(seconds)) => Some(*seconds as f64),
+                    Some(Object::Float(seconds)) => Some(*seconds),
+                    Some(other) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &format!(
+                                "no implicit conversion of {} into Float",
+                                unconvertible_wording(
+                                    other,
+                                    self.builtins().class_of(other).name()
+                                )
+                            ),
+                            _position,
+                        ));
+                    }
+                };
+                if let Some(most) = limit {
+                    if asked_now && items_arr.borrow().len() >= most {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ThreadError",
+                            "queue full",
+                            _position,
+                        ));
+                    }
+                    let started = std::time::Instant::now();
+                    let waiting_limit = match wait_for {
+                        Some(seconds) => std::time::Duration::from_secs_f64(seconds.max(0.0)),
+                        None => std::time::Duration::from_secs(2),
+                    };
+                    let mut counted = false;
+                    while items_arr.borrow().len() >= most && started.elapsed() < waiting_limit {
+                        // Closing the queue while something waits to put on
+                        // it ends the wait, which is how a producer learns it
+                        // is done.
+                        if matches!(
+                            inst.borrow().get_var("__queue_closed"),
+                            Some(Object::Bool(true))
+                        ) {
+                            if counted {
+                                let waiting = (queue_waiting_count(&inst) - 1).max(0);
+                                inst.borrow_mut()
+                                    .set_var("__queue_waiting".to_string(), Object::Int(waiting));
+                            }
+                            return Err(crate::vm::errors::simple_exception(
+                                "ClosedQueueError",
+                                "queue closed",
+                                _position,
+                            ));
+                        }
+                        if !counted {
+                            counted = true;
+                            let waiting = queue_waiting_count(&inst) + 1;
+                            inst.borrow_mut()
+                                .set_var("__queue_waiting".to_string(), Object::Int(waiting));
+                        }
+                        self.wait_for_other_threads(_position);
+                    }
+                    if counted {
+                        let waiting = (queue_waiting_count(&inst) - 1).max(0);
+                        inst.borrow_mut()
+                            .set_var("__queue_waiting".to_string(), Object::Int(waiting));
+                    }
+                    // A limit on how long to wait that passes with the queue
+                    // still full answers nothing rather than putting anyway.
+                    if wait_for.is_some() && items_arr.borrow().len() >= most {
+                        return Ok(Some(Object::Nil));
+                    }
+                }
+                if let Some(item) = positional.first() {
                     items_arr.borrow_mut().push(item.clone());
                 }
                 Ok(Some(receiver.clone()))
             }
             "pop" | "deq" | "shift" => {
-                if items_arr.borrow().is_empty() {
-                    // In real Ruby, `Queue#pop` on an empty queue blocks
-                    // until another thread pushes. Our Thread.new is
-                    // lazy/synchronous, so block-waiting is meaningless;
-                    // instead we drain the pending Thread.new list and
-                    // run their blocks once. That's enough to unblock
-                    // common "thread A pushes, thread B pops" coordination
-                    // patterns in mspec fixtures (autoload's
-                    // check_before_during_thread_after, etc.).
-                    while let Some(thread_obj) = self.pending_threads.pop() {
-                        if let Object::Instance(inst) = &thread_obj {
-                            let already_run = inst.borrow().get_var("__thread_value").is_some();
-                            if !already_run {
-                                let block_obj = inst
-                                    .borrow()
-                                    .get_var("__thread_block")
-                                    .cloned()
-                                    .unwrap_or(Object::Nil);
-                                self.thread_current_stack.push(thread_obj.clone());
-                                let value_result = if let Object::Block(b) = block_obj {
-                                    self.execute_block_body(&b, vec![])
-                                } else {
-                                    Ok(Object::Nil)
-                                };
-                                self.thread_current_stack.pop();
-                                let value = value_result?;
-                                inst.borrow_mut()
-                                    .set_var("__thread_value".to_string(), value);
-                            }
-                        }
-                        if !items_arr.borrow().is_empty() {
-                            break;
-                        }
+                let (positional, keywords) = queue_keyword_arguments(arguments);
+                let asked_now = positional
+                    .first()
+                    .is_some_and(|given| !matches!(given, Object::Nil | Object::Bool(false)));
+                let limit = match keywords.get("timeout") {
+                    None | Some(Object::Nil) => None,
+                    Some(_) if asked_now => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            "can't set a timeout if non_block is enabled",
+                            _position,
+                        ));
                     }
+                    Some(Object::Int(seconds)) => Some(*seconds as f64),
+                    Some(Object::Float(seconds)) => Some(*seconds),
+                    Some(other) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "TypeError",
+                            &format!(
+                                "no implicit conversion of {} into Float",
+                                unconvertible_wording(
+                                    other,
+                                    self.builtins().class_of(other).name()
+                                )
+                            ),
+                            _position,
+                        ));
+                    }
+                };
+                // Asking for what is there right now rather than waiting is
+                // an error when the queue is empty, however it was closed.
+                if asked_now && items_arr.borrow().is_empty() {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "queue empty",
+                        _position,
+                    ));
+                }
+                // Taking from an empty queue waits for something to be put
+                // there, so every other waiting thread gets a turn until one
+                // of them puts something or none of them can run at all.
+                let started = std::time::Instant::now();
+                let deadline = started
+                    + match limit {
+                        Some(seconds) => std::time::Duration::from_secs_f64(seconds.max(0.0)),
+                        None => std::time::Duration::from_secs(2),
+                    };
+                let mut counted = false;
+                while items_arr.borrow().is_empty()
+                    && !self.pending_threads.is_empty()
+                    && std::time::Instant::now() < deadline
+                {
+                    // Whoever is waiting here is one of the number the queue
+                    // reports, for as long as the wait lasts.
+                    if !counted {
+                        counted = true;
+                        let waiting = queue_waiting_count(&inst) + 1;
+                        inst.borrow_mut()
+                            .set_var("__queue_waiting".to_string(), Object::Int(waiting));
+                    }
+                    let held = self.pending_threads.len();
+                    self.wait_for_other_threads(_position);
+                    self.raise_if_thread_killed(_position)?;
+                    // Nothing moved and nothing ran for long enough that
+                    // nothing ever will. The grace matters because whoever is
+                    // waiting on this thread may be the one about to put
+                    // something on the queue.
+                    if self.pending_threads.len() == held
+                        && items_arr.borrow().is_empty()
+                        && self.stepping_threads
+                        && started.elapsed() >= QUEUE_DEADLOCK_GRACE
+                    {
+                        break;
+                    }
+                }
+                if counted {
+                    let waiting = (queue_waiting_count(&inst) - 1).max(0);
+                    inst.borrow_mut()
+                        .set_var("__queue_waiting".to_string(), Object::Int(waiting));
                 }
                 let val = if items_arr.borrow().is_empty() {
                     Object::Nil
@@ -1151,6 +1637,8 @@ impl VirtualMachine {
                 Ok(Some(val))
             }
             "size" | "length" | "count" => Ok(Some(Object::Int(items_arr.borrow().len() as i64))),
+            // How many are waiting for something to be put on the queue.
+            "num_waiting" => Ok(Some(Object::Int(queue_waiting_count(&inst)))),
             // How many a SizedQueue holds. Nothing ever waits on one here,
             // but the count it was made with is still what it reports.
             "max" => Ok(inst.borrow().get_var("__queue_max").cloned()),
@@ -1234,7 +1722,20 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // A lock something else holds is waited for, so whatever else
+                // the program has to run gets a turn until it is let go.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                while matches!(
+                    inst.borrow().get_var("__mutex_locked"),
+                    Some(Object::Bool(true))
+                ) && std::time::Instant::now() < deadline
+                {
+                    self.wait_for_other_threads(position);
+                }
                 self.mark_mutex_held(&inst);
+                // A thread told to stop while it waited takes the lock first,
+                // so whatever unwinds next still holds it.
+                self.raise_if_thread_killed(position)?;
                 Ok(Some(receiver.clone()))
             }
             "try_lock" => {
@@ -1263,27 +1764,84 @@ impl VirtualMachine {
                     .set_var("__mutex_locked".to_string(), Object::Bool(false));
                 Ok(Some(receiver.clone()))
             }
+            // `Mutex#sleep` lets the lock go, waits to be woken, and takes
+            // the lock again, which is what a condition variable waits on.
+            "sleep" => {
+                let wanted = match _arguments.first() {
+                    None | Some(Object::Nil) => None,
+                    Some(given) => Some(self.float_value_of(given, position)?),
+                };
+                if wanted.is_some_and(|seconds| seconds < 0.0) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "time interval must not be negative",
+                        position,
+                    ));
+                }
+                if !held || !self.mutex_is_owned(&inst) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ThreadError",
+                        "Attempt to unlock a mutex which is not locked",
+                        position,
+                    ));
+                }
+                let started = std::time::Instant::now();
+                self.call_mutex_method(receiver, "unlock", &[], position)?;
+                // The lock is taken again before anything that interrupted
+                // the sleep is raised, so an `ensure` around the sleep sees
+                // the thread still holding it.
+                let stopped = match wanted {
+                    None => self.sleep_until_woken(position),
+                    Some(_) => {
+                        self.wait_for_other_threads(position);
+                        Ok(())
+                    }
+                };
+                self.call_mutex_method(receiver, "lock", &[], position)?;
+                if let Some(handed) = self.exception_handed_to_thread() {
+                    self.call_native_function("raise", handed, position)?;
+                }
+                self.raise_if_thread_killed(position)?;
+                stopped?;
+                Ok(Some(Object::Int(started.elapsed().as_secs() as i64)))
+            }
             "locked?" => Ok(Some(Object::Bool(held))),
             "owned?" => Ok(Some(Object::Bool(held && self.mutex_is_owned(&inst)))),
             _ => Ok(None),
         }
     }
 
+    /// The fiber a lock is held under. A thread's own body is its root fiber
+    /// rather than one the program made, so a lock taken there is the
+    /// thread's rather than a fiber's.
+    fn lock_holding_fiber(&self) -> i64 {
+        let held = self.fiber_current_handle();
+        if self.thread_body_fibers.contains(&held) {
+            return -1;
+        }
+        held as i64
+    }
+
     /// Record the thread and fiber running now as the ones holding the lock.
     fn mark_mutex_held(&mut self, inst: &Rc<std::cell::RefCell<crate::object::Instance>>) {
         let holder = self.running_thread();
-        let fiber = self.fiber_current_handle() as i64;
-        let mut held = inst.borrow_mut();
-        held.set_var("__mutex_locked".to_string(), Object::Bool(true));
-        held.set_var("__mutex_thread".to_string(), holder);
-        held.set_var("__mutex_fiber".to_string(), Object::Int(fiber));
+        let fiber = self.lock_holding_fiber();
+        {
+            let mut held = inst.borrow_mut();
+            held.set_var("__mutex_locked".to_string(), Object::Bool(true));
+            held.set_var("__mutex_thread".to_string(), holder);
+            held.set_var("__mutex_fiber".to_string(), Object::Int(fiber));
+        }
+        if !self.taken_mutexes.iter().any(|seen| Rc::ptr_eq(seen, inst)) {
+            self.taken_mutexes.push(Rc::clone(inst));
+        }
     }
 
     /// Whether the thread and fiber running now are the ones holding the
     /// lock. Ruby holds a lock per fiber, so a fiber the holder started does
     /// not own it.
     fn mutex_is_owned(&mut self, inst: &Rc<std::cell::RefCell<crate::object::Instance>>) -> bool {
-        let fiber = self.fiber_current_handle() as i64;
+        let fiber = self.lock_holding_fiber();
         if !matches!(inst.borrow().get_var("__mutex_fiber"), Some(Object::Int(held)) if *held == fiber)
         {
             return false;
@@ -1297,29 +1855,193 @@ impl VirtualMachine {
     }
 
     /// The Thread whose block is running, which is the main one outside any.
-    fn running_thread(&mut self) -> Object {
-        match self.thread_current_stack.last() {
-            Some(current) => current.clone(),
-            None => self.globals().get("__Thread_main").unwrap_or(Object::Nil),
+    pub(crate) fn running_thread(&mut self) -> Object {
+        if let Some(current) = self.thread_current_stack.last() {
+            return current.clone();
+        }
+        if let Some(main) = self.globals().get("__Thread_main") {
+            return main;
+        }
+        // Outside every thread block the thread running is the main one,
+        // which is made the first time anything asks after it.
+        let Some(Object::Class(thread_class)) = self.globals().get("Thread") else {
+            return Object::Nil;
+        };
+        let made = crate::object::Instance::new(Rc::clone(&thread_class));
+        let main = Object::Instance(Rc::new(std::cell::RefCell::new(made)));
+        self.globals_mut().set("__Thread_main", main.clone());
+        main
+    }
+
+    /// What `Thread#raise` handed the thread running now, taken so it is
+    /// raised once and no more.
+    fn exception_handed_to_thread(&mut self) -> Option<Vec<Object>> {
+        let Some(Object::Instance(running)) = self.thread_current_stack.last().cloned() else {
+            return None;
+        };
+        let handed = running.borrow().get_var("__thread_raise").cloned();
+        let Some(Object::Array(values)) = handed else {
+            return None;
+        };
+        running
+            .borrow_mut()
+            .set_var("__thread_raise".to_string(), Object::Nil);
+        let taken = values.borrow().clone();
+        Some(taken)
+    }
+
+    /// Give a thread the block it runs and the values that block is handed,
+    /// and note where the block was written so `inspect` can name it.
+    pub(crate) fn give_thread_a_body(
+        &mut self,
+        thread: &Rc<std::cell::RefCell<crate::object::Instance>>,
+        block: Object,
+        arguments: &[Object],
+    ) {
+        let written_at = match &block {
+            Object::Block(body) => match (&body.source_file, body.opened_at) {
+                (Some(file), Some(line)) => Some((file.clone(), line)),
+                _ => None,
+            },
+            _ => None,
+        };
+        let mut held = thread.borrow_mut();
+        held.set_var("__thread_block".to_string(), block);
+        held.set_var(
+            "__thread_args".to_string(),
+            Object::array(arguments.to_vec()),
+        );
+        if let Some((file, line)) = written_at {
+            held.set_var("__thread_source".to_string(), Object::string(file));
+            held.set_var("__thread_line".to_string(), Object::Int(line as i64));
         }
     }
 
-    /// ConditionVariable instance methods. Single-threaded stubs: `wait` is
-    /// a no-op (in real Ruby it would block until `broadcast` / `signal`,
-    /// but we have no other thread to do the waking, so blocking would
-    /// deadlock); `signal` / `broadcast` are no-ops too.
+    /// The threads lined up on a condition variable, made the first time one
+    /// waits.
+    fn condition_variable_line(
+        &mut self,
+        inst: &Rc<std::cell::RefCell<crate::object::Instance>>,
+    ) -> Rc<std::cell::RefCell<Vec<Object>>> {
+        if let Some(Object::Array(line)) = inst.borrow().get_var("__cv_waiters") {
+            return Rc::clone(line);
+        }
+        let line = Rc::new(std::cell::RefCell::new(Vec::new()));
+        inst.borrow_mut()
+            .set_var("__cv_waiters".to_string(), Object::Array(Rc::clone(&line)));
+        line
+    }
+
+    /// ConditionVariable instance methods. A waiter joins the line and then
+    /// sleeps on the object it was handed, the way Ruby leaves the sleeping
+    /// to `Mutex#sleep`. `signal` wakes the thread at the head of the line
+    /// and `broadcast` wakes every one of them.
     pub(crate) fn call_condition_variable_method(
         &mut self,
-        _receiver: &Object,
+        receiver: &Object,
         method_name: &str,
-        _arguments: &[Object],
-        _position: Position,
+        arguments: &[Object],
+        position: Position,
     ) -> Result<Option<Object>, MetorexError> {
+        let Object::Instance(inst) = receiver else {
+            return Ok(None);
+        };
+        let inst = Rc::clone(inst);
         match method_name {
-            "wait" | "signal" | "broadcast" => Ok(Some(Object::Nil)),
+            "wait" => {
+                let sleeper = arguments.first().cloned().unwrap_or(Object::Nil);
+                let limit = arguments.get(1).cloned().unwrap_or(Object::Nil);
+                let waiter = self.running_thread();
+                self.condition_variable_line(&inst)
+                    .borrow_mut()
+                    .push(waiter);
+                let slept = match self.lookup_method(&sleeper, "sleep") {
+                    Some((class, method)) => {
+                        self.invoke_method(class, method, sleeper.clone(), vec![limit], position)
+                    }
+                    None => self
+                        .call_mutex_method(&sleeper, "sleep", &[limit], position)
+                        .map(|answer| answer.unwrap_or(Object::Nil)),
+                };
+                let line = self.condition_variable_line(&inst);
+                let running = self.running_thread();
+                let mut waiting = line.borrow_mut();
+                if let Some(place) = waiting.iter().position(|held| same_thread(held, &running)) {
+                    waiting.remove(place);
+                }
+                drop(waiting);
+                slept?;
+                Ok(Some(receiver.clone()))
+            }
+            "signal" | "broadcast" => {
+                let line = self.condition_variable_line(&inst);
+                let mut waiting = line.borrow_mut();
+                let serving = if method_name == "signal" {
+                    1.min(waiting.len())
+                } else {
+                    waiting.len()
+                };
+                let woken: Vec<Object> = waiting.drain(..serving).collect();
+                drop(waiting);
+                for thread in woken {
+                    if let Object::Instance(held) = thread {
+                        held.borrow_mut()
+                            .set_var("__thread_waiting".to_string(), Object::Bool(false));
+                    }
+                }
+                Ok(Some(receiver.clone()))
+            }
             _ => Ok(None),
         }
     }
+}
+
+/// How long a wait on an empty queue keeps going after nothing has moved,
+/// before it is taken as a wait nothing will ever satisfy.
+const QUEUE_DEADLOCK_GRACE: std::time::Duration = std::time::Duration::from_millis(50);
+
+/// A queue method's positional arguments paired with the keywords it was
+/// given, which is where `timeout:` arrives.
+fn queue_keyword_arguments(
+    arguments: &[Object],
+) -> (Vec<Object>, std::collections::HashMap<String, Object>) {
+    let mut keywords = std::collections::HashMap::new();
+    if let Some(Object::Dict(dict_rc)) = arguments.last() {
+        let dict = dict_rc.borrow();
+        if dict.contains_key("__MX_KWARGS__") {
+            for (key, value) in dict.iter() {
+                if key.as_str() == "__MX_KWARGS__" {
+                    continue;
+                }
+                keywords.insert(
+                    key.strip_prefix(':').unwrap_or(key).to_string(),
+                    value.clone(),
+                );
+            }
+            return (arguments[..arguments.len() - 1].to_vec(), keywords);
+        }
+    }
+    (arguments.to_vec(), keywords)
+}
+
+/// How Ruby names a value that cannot stand in for a number: true, false and
+/// nil by their own spelling, and everything else by its class.
+fn unconvertible_wording(value: &Object, named: &str) -> String {
+    match value {
+        Object::Bool(true) => "true".to_string(),
+        Object::Bool(false) => "false".to_string(),
+        Object::Nil => "nil".to_string(),
+        _ => named.to_string(),
+    }
+}
+
+/// The range Ruby keeps a thread's priority inside.
+const PRIORITY_FLOOR: i64 = -3;
+const PRIORITY_CEILING: i64 = 3;
+
+/// Whether two objects are the same Thread.
+fn same_thread(one: &Object, other: &Object) -> bool {
+    matches!((one, other), (Object::Instance(a), Object::Instance(b)) if Rc::ptr_eq(a, b))
 }
 
 /// Whether `name` is a syntactically valid Ruby constant name: must start
@@ -1327,6 +2049,24 @@ impl VirtualMachine {
 /// Multibyte letters are allowed (Ruby permits `CS_CONSTλ`). Used by
 /// `Module#autoload`, `Module#const_set`, and `Module#const_defined?` to
 /// reject lowercase / numeric / punctuated names with a NameError.
+/// The text a name is spelled with. A name carried as the bytes of an
+/// encoding of its own is read back through that encoding, so the characters
+/// it names are the ones the program wrote.
+pub(crate) fn name_text(held: &std::rc::Rc<crate::object::StringValue>) -> String {
+    if !held.holds_bytes() {
+        return held.as_str().to_string();
+    }
+    let named = held.encoding_name();
+    let bytes = string_methods::binary_bytes(held);
+    if named == "EUC-JP" {
+        return euc_jp_table::euc_jp_text(&bytes);
+    }
+    match string_methods::latin_text(&bytes, &named) {
+        Some(text) => text,
+        None => held.as_str().to_string(),
+    }
+}
+
 pub(crate) fn is_valid_constant_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -1524,10 +2264,39 @@ impl VirtualMachine {
     /// `thread_variable_*` is shared by every fiber the thread runs, while
     /// `[]` and its family belong to the fiber that wrote them, so the fiber
     /// running now is part of that store's name.
-    fn thread_local_store(&self, method_name: &str) -> String {
+    fn thread_local_store(&self, method_name: &str, receiver: &Object) -> String {
         if method_name.starts_with("thread_variable") {
             return "__thread_variables".to_string();
         }
-        format!("__thread_locals_{}", self.fiber_current_handle())
+        // A name kept on another thread belongs to that thread's own root
+        // fiber, since the fiber running now is none of its.
+        // Outside every thread block the thread running is the main one,
+        // which the stack does not name.
+        let current = match self.thread_current_stack.last() {
+            Some(held) => Some(held.clone()),
+            None => self.globals().get("__Thread_main"),
+        };
+        let running = matches!(
+            (&current, receiver),
+            (Some(Object::Instance(a)), Object::Instance(b)) if Rc::ptr_eq(a, b)
+        );
+        let held = self.fiber_current_handle();
+        // A thread's own body is its root fiber, so the names it keeps there
+        // belong to the thread rather than to a fiber the program made.
+        if !running
+            || held == crate::vm::fibers::ROOT_FIBER
+            || self.thread_body_fibers.contains(&held)
+        {
+            return "__thread_locals_root".to_string();
+        }
+        format!("__thread_locals_{held}")
+    }
+}
+
+/// How many are waiting on a queue for something to be put there.
+fn queue_waiting_count(inst: &Rc<std::cell::RefCell<crate::object::Instance>>) -> i64 {
+    match inst.borrow().get_var("__queue_waiting") {
+        Some(Object::Int(held)) => *held,
+        _ => 0,
     }
 }

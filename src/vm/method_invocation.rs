@@ -73,6 +73,16 @@ impl VirtualMachine {
         if let Some(result) = self.call_object_method(&receiver, name, &arguments, position)? {
             return Ok(result);
         }
+        // A name the object carries no method for reaches `method_missing`,
+        // which is where a program of its own decides what to do with it.
+        if name != "method_missing"
+            && let Some((owner, handler)) = self.lookup_method(&receiver, "method_missing")
+            && !handler.is_undefined
+        {
+            let mut passed = vec![Object::symbol(name.to_string())];
+            passed.extend(arguments);
+            return self.invoke_method(owner, handler, receiver, passed, position);
+        }
         let message = format!("undefined method '{}' for {}", name, receiver.type_name());
         Err(MetorexError::UncaughtException {
             exception: Object::exception("NoMethodError", message.clone()),
@@ -259,6 +269,12 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // What the object space reports about a class is counted from what
+        // the program has built, since there is no heap to walk.
+        *self
+            .allocation_counts
+            .entry(Rc::as_ptr(&class) as usize)
+            .or_insert(0) += 1;
         // `Hash.new`, `Hash.new(default)`, and `Hash.new { |hash, key| ... }`
         // all answer a native Dict, with the default kept beside the entries.
         if class.name() == "Hash" && arguments.len() <= 2 {
@@ -485,6 +501,52 @@ impl VirtualMachine {
                         *storage.borrow_mut() = elements;
                     }
                 }
+            }
+            return Ok(object);
+        }
+
+        // A subclass of Proc holds the block it stands for in an instance
+        // variable. The block is attached before `initialize` runs, which is
+        // what lets a subclass whose `initialize` never calls `super` still
+        // answer a call.
+        if descends_from(&class, "Proc") {
+            // `Proc.new(&callable)` answers that same callable rather than
+            // wrapping it again.
+            if arguments.is_empty()
+                && let Some(source) = self.pending_block_source.take()
+                && crate::vm::native_methods::proc_subclass_value(&source).is_some()
+            {
+                self.pending_block = None;
+                return Ok(source);
+            }
+            let held = match self.pending_block.take() {
+                Some(block @ Object::Block(_)) => block,
+                other => {
+                    self.pending_block = other;
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "tried to create Proc object without a block",
+                        position,
+                    ));
+                }
+            };
+            let mut instance = crate::object::Instance::new(Rc::clone(&class));
+            instance.set_var(
+                crate::vm::native_methods::PROC_SUBCLASS_VAR.to_string(),
+                held,
+            );
+            let object = Object::Instance(Rc::new(RefCell::new(instance)));
+            if let Some(initialize) = class.find_method("initialize")
+                && !initialize.is_undefined
+                && !initialize.body.is_empty()
+            {
+                self.invoke_method(
+                    Rc::clone(&class),
+                    initialize,
+                    object.clone(),
+                    arguments,
+                    position,
+                )?;
             }
             return Ok(object);
         }

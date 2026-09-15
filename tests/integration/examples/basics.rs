@@ -1040,3 +1040,23 @@ fn test_basics_hash_and_array_constructors_no_parens_execution() {
     let output = run_example("basics/hash_and_array_constructors_no_parens.rb");
     assert_eq!(output, HASH_AND_ARRAY_CONSTRUCTORS_OUTPUT);
 }
+
+/// The expected output of both `basics/integer_bits` variants, which differ
+/// only in whether the calls are written with parentheses.
+const INTEGER_BITS_OUTPUT: &str = concat!(
+    "1\n0\n1\n0\n1\n3\n166\n8\n3\n41\n0\n",
+    "The beginless range for Integer#[] results in infinity\n",
+    "Infinity\n"
+);
+
+#[test]
+fn test_basics_integer_bits_execution() {
+    let output = run_example("basics/integer_bits.rb");
+    assert_eq!(output, INTEGER_BITS_OUTPUT);
+}
+
+#[test]
+fn test_basics_integer_bits_parens_execution() {
+    let output = run_example("basics/integer_bits_parens.rb");
+    assert_eq!(output, INTEGER_BITS_OUTPUT);
+}

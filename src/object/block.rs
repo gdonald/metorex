@@ -23,6 +23,11 @@ pub const NO_KEYWORDS_PARAM: &str = "**nil";
 /// array argument spreads across them.
 pub const DESTRUCTURED_GROUP_PREFIX: &str = "(";
 
+/// The name a parameter carries when the method it belongs to is one the
+/// interpreter answers itself. Ruby reports the kind of such a parameter and
+/// no name at all, since there is no source to have named it.
+pub const UNNAMED_PARAMETER: &str = "__mx_unnamed";
+
 /// Marks a name written after the `;` in a block's parameter list. It is a
 /// local of the block rather than a parameter, so it starts as nil and takes
 /// no argument.
@@ -75,6 +80,10 @@ pub struct BlockStatement {
     /// The name a callable built from a Symbol stands for, which is what it
     /// says of itself in place of a file and a line.
     pub from_symbol: Option<String>,
+    /// Whether `ruby2_keywords` was called on the Proc this block stands for,
+    /// so a trailing keyword hash gathered into its splat is marked. The flag
+    /// is shared with every copy, which is what makes it reach a `dup`.
+    pub ruby2_keywords: Rc<std::cell::Cell<bool>>,
 }
 
 /// Two blocks are the same when they were written the same way. The captured
@@ -109,6 +118,7 @@ impl BlockStatement {
             home_frame: None,
             opened_at: None,
             from_symbol: None,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -136,6 +146,7 @@ impl BlockStatement {
             home_frame: None,
             opened_at: None,
             from_symbol: None,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 

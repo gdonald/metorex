@@ -234,6 +234,25 @@ impl VirtualMachine {
                 }
                 Ok(Object::Int(i64::from(number)))
             }
+            // A lock on the whole file, which another process asking for one
+            // waits on or is refused.
+            "flock" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                // SAFETY: `number` is a descriptor this program holds open.
+                let held = unsafe { libc::flock(number, count as libc::c_int) };
+                if held < 0 {
+                    let failure = std::io::Error::last_os_error();
+                    // A lock asked for without waiting is refused rather than
+                    // raising, which Ruby reports as false.
+                    if failure.raw_os_error() == Some(libc::EWOULDBLOCK) {
+                        return Ok(Object::Bool(false));
+                    }
+                    return Err(stream_error(&failure, "flock", position));
+                }
+                Ok(Object::Int(0))
+            }
             // `fcntl` asks the operating system about a descriptor, or sets
             // one of the flags it keeps.
             "fcntl" => {
@@ -590,11 +609,20 @@ impl VirtualMachine {
                     return Ok(Object::Nil);
                 }
                 collected.push(byte[0]);
-                // What a UTF-8 lead byte says about how many bytes follow it.
-                let following = match byte[0] {
-                    0xC0..=0xDF => 1,
-                    0xE0..=0xEF => 2,
-                    0xF0..=0xF7 => 3,
+                // How many bytes follow the one that opens a character, which
+                // the encoding the stream reads in settles.
+                let following = match text.as_str() {
+                    "EUC-JP" => match byte[0] {
+                        0x8f => 2,
+                        0xa1..=0xfe => 1,
+                        _ => 0,
+                    },
+                    "UTF-8" | "" => match byte[0] {
+                        0xC0..=0xDF => 1,
+                        0xE0..=0xEF => 2,
+                        0xF0..=0xF7 => 3,
+                        _ => 0,
+                    },
                     _ => 0,
                 };
                 for _ in 0..following {

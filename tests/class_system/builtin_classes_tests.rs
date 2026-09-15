@@ -365,7 +365,7 @@ fn test_object_respond_to_parameters() {
 
     let respond_to = object_class.find_method("respond_to?").unwrap();
     assert_eq!(respond_to.parameters.len(), 1);
-    assert_eq!(respond_to.parameters[0], "method_name");
+    assert_eq!(respond_to.parameters[0], metorex::object::UNNAMED_PARAMETER);
 }
 
 #[test]
@@ -376,7 +376,7 @@ fn test_string_concat_parameters() {
 
     let concat = string_class.find_method("+").unwrap();
     assert_eq!(concat.parameters.len(), 1);
-    assert_eq!(concat.parameters[0], "other");
+    assert_eq!(concat.parameters[0], metorex::object::UNNAMED_PARAMETER);
 }
 
 #[test]
@@ -387,7 +387,7 @@ fn test_array_index_parameters() {
 
     let index = array_class.find_method("[]").unwrap();
     assert_eq!(index.parameters.len(), 1);
-    assert_eq!(index.parameters[0], "index");
+    assert_eq!(index.parameters[0], metorex::object::UNNAMED_PARAMETER);
 }
 
 // ── class_of for Symbol (builtin_classes.rs line 100) ─────────────────────────

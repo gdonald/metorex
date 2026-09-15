@@ -335,40 +335,59 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let (positional, keywords) = take_keyword_arguments(arguments);
-        if positional.is_empty() {
-            return Err(argument_error(
-                "wrong number of arguments (given 0, expected 1+)".to_string(),
+
+        // A leading String names a constant the class is registered under
+        // rather than contributing a member, and `nil` names none at all.
+        let mut index = 0;
+        let mut constant_name = None;
+        if let Some(first) = positional.first() {
+            match first {
+                Object::Nil => index = 1,
+                Object::String(held) => {
+                    constant_name = Some(held.as_str().to_string());
+                    index = 1;
+                }
+                Object::Symbol(_) => {}
+                other if self.answers_to(other, "to_str", position)? => {
+                    let named = self.send_to_object(other.clone(), "to_str", vec![], position)?;
+                    if let Object::String(held) = named {
+                        constant_name = Some(held.as_str().to_string());
+                        index = 1;
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(named) = &constant_name
+            && !named.chars().next().is_some_and(|held| held.is_uppercase())
+        {
+            let message = format!("identifier {} needs to be constant", named);
+            return Err(crate::vm::errors::simple_exception(
+                "NameError",
+                &message,
                 position,
             ));
         }
 
-        // A leading String naming a constant registers the class under
-        // `Struct::Name` rather than contributing a member.
-        let mut index = 0;
-        let mut constant_name = None;
-        if let Object::String(first) = &positional[0]
-            && first
-                .as_str()
-                .chars()
-                .next()
-                .is_some_and(|c| c.is_uppercase())
-        {
-            constant_name = Some(first.as_str().to_string());
-            index = 1;
-        }
-
-        let mut members = Vec::new();
+        let mut members: Vec<String> = Vec::new();
         for argument in &positional[index..] {
-            match argument {
-                Object::Symbol(name) => members.push(name.as_str().to_string()),
-                Object::String(name) => members.push(name.as_str().to_string()),
+            let named = match argument {
+                Object::Symbol(name) => name.as_str().to_string(),
+                Object::String(name) => name.as_str().to_string(),
                 other => {
                     return Err(MetorexError::type_error(
                         format!("{} is not a symbol nor a string", other),
                         position_to_location(position),
                     ));
                 }
+            };
+            if members.contains(&named) {
+                return Err(argument_error(
+                    format!("duplicate member: {}", named),
+                    position,
+                ));
             }
+            members.push(named);
         }
 
         let Some(Object::Class(struct_class)) = self.globals().get("Struct") else {
@@ -412,7 +431,7 @@ impl VirtualMachine {
                     position,
                 },
                 value: crate::ast::Expression::Identifier {
-                    name: "value".to_string(),
+                    name: crate::object::UNNAMED_PARAMETER.to_string(),
                     position,
                 },
                 position,
@@ -421,7 +440,7 @@ impl VirtualMachine {
                 &writer_name,
                 Rc::new(crate::object::Method::new(
                     writer_name.clone(),
-                    vec!["value".to_string()],
+                    vec![crate::object::UNNAMED_PARAMETER.to_string()],
                     writer_body,
                 )),
             );
@@ -429,12 +448,26 @@ impl VirtualMachine {
         }
 
         if let Some(name) = constant_name {
-            generated.assign_name_recursive(&format!("Struct::{}", name));
-            struct_class.set_class_var(&name, Object::Class(Rc::clone(&generated)));
-            self.globals_mut().set(
-                format!("Struct::{}", name),
-                Object::Class(Rc::clone(&generated)),
-            );
+            // A struct built from a subclass of Struct registers its constant
+            // on that subclass, which is where a program looks for it.
+            let owner = if Rc::ptr_eq(parent, &struct_class) {
+                Rc::clone(&struct_class)
+            } else {
+                Rc::clone(parent)
+            };
+            if owner.get_class_var(&name).is_some() {
+                let message = format!(
+                    "warning: already initialized constant {}::{}",
+                    owner.ruby_name(),
+                    name
+                );
+                self.emit_warning_to_stderr(&message, position);
+            }
+            let qualified = format!("{}::{}", owner.ruby_name(), name);
+            generated.assign_name_recursive(&qualified);
+            owner.set_class_var(&name, Object::Class(Rc::clone(&generated)));
+            self.globals_mut()
+                .set(qualified, Object::Class(Rc::clone(&generated)));
         }
 
         if let Some(Object::Block(block)) = self.pending_block.take() {
@@ -452,20 +485,72 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
-        let (positional, keywords) = take_keyword_arguments(arguments);
-        let by_keyword =
-            keyword_init(class_rc).is_truthy() || (positional.is_empty() && !keywords.is_empty());
+        let (mut positional, keywords) = take_keyword_arguments(arguments);
+        let named_only = keyword_init(class_rc).is_truthy();
+        let mut keywords = keywords;
+        // A struct built with `keyword_init: true` takes one Hash, written
+        // either as keywords or as a Hash of its own.
+        if named_only && keywords.is_empty() && positional.len() == 1 {
+            let Some(Object::Dict(held)) = crate::vm::native_methods::as_dict(&positional[0])
+            else {
+                return Err(argument_error(
+                    format!(
+                        "wrong number of arguments (given {}, expected 0)",
+                        positional.len()
+                    ),
+                    position,
+                ));
+            };
+            keywords = held
+                .borrow()
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.strip_prefix(':').unwrap_or(key).to_string(),
+                        value.clone(),
+                    )
+                })
+                .collect();
+            positional.clear();
+        }
+        if named_only && !positional.is_empty() {
+            return Err(argument_error(
+                format!(
+                    "wrong number of arguments (given {}, expected 0)",
+                    positional.len()
+                ),
+                position,
+            ));
+        }
+        // Without that option, keywords standing alone still name the
+        // members, and keywords alongside a positional argument are one more
+        // positional argument: the Hash they spell.
+        let alone = positional.is_empty() && !keywords.is_empty();
+        if !named_only && !keywords.is_empty() && !alone {
+            let mut held: indexmap::IndexMap<String, Object> = indexmap::IndexMap::new();
+            for (name, value) in &keywords {
+                held.insert(format!(":{}", name), value.clone());
+            }
+            positional.push(Object::Dict(Rc::new(RefCell::new(held))));
+            keywords = IndexMap::new();
+        }
+        let by_keyword = named_only || alone;
 
         let mut instance = Instance::new(Rc::clone(class_rc));
 
         if by_keyword {
+            let unknown: Vec<String> = keywords
+                .keys()
+                .filter(|name| !members.iter().any(|member| &member == name))
+                .cloned()
+                .collect();
+            if !unknown.is_empty() {
+                return Err(argument_error(
+                    format!("unknown keywords: {}", unknown.join(", ")),
+                    position,
+                ));
+            }
             for (name, value) in &keywords {
-                if !members.iter().any(|member| member == name) {
-                    return Err(argument_error(
-                        format!("unknown keywords: :{}", name),
-                        position,
-                    ));
-                }
                 instance
                     .instance_vars
                     .insert(member_slot(name), value.clone());

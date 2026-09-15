@@ -335,3 +335,25 @@ fn test_functions_anonymous_parameter_forwarding_no_parens_execution() {
     let output = run_example("functions/anonymous_parameter_forwarding_no_parens.rb");
     assert_eq!(output, ANONYMOUS_PARAMETER_FORWARDING_OUTPUT);
 }
+
+/// The expected output of both `functions/keywords_from_a_hash` variants, which differ only in whether the
+/// calls are written with parentheses.
+const KEYWORDS_FROM_A_HASH_OUTPUT: &str = concat!(
+    "[\"box\", \"red\", 2]\n",
+    "[\"box\", \"red\", 9]\n",
+    "[\"box\", \"red\", 2]\n",
+    "missing keyword: :pepper\n",
+    "missing keywords: :salt, :pepper\n",
+);
+
+#[test]
+fn test_functions_keywords_from_a_hash_execution() {
+    let output = run_example("functions/keywords_from_a_hash.rb");
+    assert_eq!(output, KEYWORDS_FROM_A_HASH_OUTPUT);
+}
+
+#[test]
+fn test_functions_keywords_from_a_hash_no_parens_execution() {
+    let output = run_example("functions/keywords_from_a_hash_no_parens.rb");
+    assert_eq!(output, KEYWORDS_FROM_A_HASH_OUTPUT);
+}

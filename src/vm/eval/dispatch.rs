@@ -23,7 +23,34 @@ impl VirtualMachine {
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
             Expression::StringLiteral { value, .. } => {
-                let made = crate::object::StringValue::new(value.clone());
+                // A literal is written in the encoding its source is written
+                // in, which a magic comment at the top of the file names.
+                // A literal written in bytes carries its own encoding, so one
+                // reaching here with anything outside ASCII was spelled with a
+                // `\u` escape and stands for those codepoints.
+                let made = match self.source_literal_encoding() {
+                    Some(named) if value.is_ascii() => {
+                        crate::object::StringValue::with_encoding(value.clone(), named)
+                    }
+                    // A file written in an encoding of its own spells a
+                    // character with bytes of that encoding, so the literal
+                    // carries those bytes rather than the UTF-8 the source was
+                    // read into.
+                    Some(named)
+                        if let Some(Ok(bytes)) =
+                            crate::vm::native_methods::string_methods::latin_bytes(
+                                value, &named,
+                            ) =>
+                    {
+                        let held = crate::object::StringValue::with_encoding(
+                            crate::vm::native_methods::string_methods::bytes_as_text(&bytes),
+                            named,
+                        );
+                        held.mark_bytes();
+                        held
+                    }
+                    _ => crate::object::StringValue::new(value.clone()),
+                };
                 // Ruby 3.4 hands a literal back with notice that a later
                 // release will freeze it, so the first change made to it says
                 // so. A source that asked for frozen literals produces a
@@ -124,9 +151,18 @@ impl VirtualMachine {
                 // `__dir__` is nil where there is no file behind the code, and
                 // otherwise the directory holding it, which is "." for a bare
                 // filename the way `File.dirname` reports it.
-                let Some(file) = self.get_current_file() else {
+                // The directory is the one holding the file the code was
+                // written in, which is what `__FILE__` names, rather than the
+                // file being run when a required file's block is executing.
+                let written_in = self
+                    .current_source_file
+                    .clone()
+                    .map(std::path::PathBuf::from)
+                    .or_else(|| self.get_current_file().cloned());
+                let Some(file) = written_in else {
                     return Ok(Object::Nil);
                 };
+                let file = file.as_path();
                 // A relative path expands against the working directory, so
                 // running `metorex script.rb` still names the real directory.
                 let directory = match std::fs::canonicalize(file) {
@@ -446,6 +482,15 @@ impl VirtualMachine {
                             });
                     }
                 }
+                // A number reads its own bits by subscript, where a pair of
+                // arguments arrives as the Array the subscript gathered.
+                if matches!(collection, Object::Int(_) | Object::BigInt(_)) {
+                    let spread = match &key {
+                        Object::Array(gathered) => gathered.borrow().clone(),
+                        held => vec![held.clone()],
+                    };
+                    return self.send_to_object(collection, "[]", spread, *position);
+                }
                 self.evaluate_index_operation(collection, key, *position)
             }
 
@@ -595,7 +640,22 @@ impl VirtualMachine {
                         // lookup) the ancestor chain — but not top-level
                         // constants, which a qualified reference must not
                         // reach. Registered autoloads fire on their owner.
-                        let entry = self.const_entry_on(&class_rc, name, true, false);
+                        // Top-level constants are Object's own, so a name
+                        // written as `Object::Name` reaches one of them before
+                        // any module mixed into Object.
+                        let top_level = if class_rc.name() == "Object"
+                            && name.starts_with(|held: char| held.is_ascii_uppercase())
+                        {
+                            self.globals()
+                                .get(name)
+                                .filter(|held| !matches!(held, Object::NativeFunction(_)))
+                        } else {
+                            None
+                        };
+                        let entry = match top_level {
+                            Some(held) => Some((Rc::clone(&class_rc), Some(held))),
+                            None => self.const_entry_on(&class_rc, name, true, false),
+                        };
                         let value = match entry {
                             Some((_, Some(v))) => Some(v),
                             Some((owner, None)) => self.try_autoload_constant(&owner, name)?,

@@ -316,6 +316,49 @@ fn names_string_literal_setting(source: &str) -> bool {
     false
 }
 
+/// The source up to a line reading `__END__`, and where the data after that
+/// line starts. Everything from there on is the program's data rather than
+/// its code.
+pub fn source_before_data_section(source: &str) -> (&str, Option<usize>) {
+    let mut at = 0;
+    while at <= source.len() {
+        let line_end = source[at..]
+            .find('\n')
+            .map(|held| at + held)
+            .unwrap_or(source.len());
+        if &source[at..line_end] == "__END__" {
+            let after = if line_end < source.len() {
+                line_end + 1
+            } else {
+                line_end
+            };
+            return (&source[..at], Some(after));
+        }
+        if line_end >= source.len() {
+            break;
+        }
+        at = line_end + 1;
+    }
+    (source, None)
+}
+
+/// What a comment names after `coding`, which Ruby reads only when a `:` or
+/// an `=` separates the two. A comment merely holding the word, as in
+/// "encoding-related", names no encoding at all.
+fn encoding_after_coding(comment: &str) -> Option<String> {
+    let lowered = comment.to_ascii_lowercase();
+    let mut from = 0usize;
+    while let Some(found) = lowered[from..].find("coding") {
+        let after = from + found + "coding".len();
+        let rest = lowered[after..].trim_start();
+        if let Some(named) = rest.strip_prefix(':').or_else(|| rest.strip_prefix('=')) {
+            return Some(named.trim_start().to_string());
+        }
+        from = after;
+    }
+    None
+}
+
 /// The encoding a magic comment on one of the first two lines names, or None
 /// when the source names none.
 pub fn named_source_encoding(source: &str) -> Option<String> {
@@ -324,13 +367,14 @@ pub fn named_source_encoding(source: &str) -> Option<String> {
         if !trimmed.starts_with('#') {
             continue;
         }
-        let lowered = trimmed.to_ascii_lowercase();
-        let at = lowered.find("coding")?;
-        let named = lowered[at + "coding".len()..].trim_start();
-        let named = named.strip_prefix(':').unwrap_or(named).trim_start();
+        let Some(named) = encoding_after_coding(trimmed) else {
+            continue;
+        };
         let spelled: String = named
             .chars()
-            .take_while(|held| held.is_alphanumeric() || *held == '-' || *held == '_')
+            .take_while(|held| {
+                held.is_alphanumeric() || *held == '-' || *held == '_' || *held == '.'
+            })
             .collect();
         if spelled.is_empty() {
             return None;
@@ -346,12 +390,9 @@ fn names_binary_encoding(source: &str) -> bool {
         if !trimmed.starts_with('#') {
             continue;
         }
-        let lowered = trimmed.to_ascii_lowercase();
-        let Some(at) = lowered.find("coding") else {
+        let Some(named) = encoding_after_coding(trimmed) else {
             continue;
         };
-        let named = lowered[at + "coding".len()..].trim_start();
-        let named = named.strip_prefix(':').unwrap_or(named).trim_start();
         if named.starts_with("binary") || named.starts_with("ascii-8bit") {
             return true;
         }

@@ -34,6 +34,26 @@ impl VirtualMachine {
             .collect();
         let arguments = arguments.as_slice();
         match method_name {
+            // `bsearch` halves the range at each step, either looking for
+            // the smallest element the block says yes to, or for the one the
+            // block answers zero for.
+            "bsearch" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let bounds = SearchBounds::of(start, end, *exclusive, position)?;
+                let Some(Object::Block(block)) = self.pending_block.take() else {
+                    return self
+                        .make_enumerator(receiver, method_name, arguments, position)
+                        .map(Some);
+                };
+                self.binary_search(&bounds, &block, position).map(Some)
+            }
             "each" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -649,12 +669,6 @@ impl VirtualMachine {
                 let after = self.range_ends_before(other_end, *other_exclusive, start, position)?;
                 Ok(Some(Object::Bool(!before && !after)))
             }
-            "reverse_each" => {
-                let elements = self.range_elements(start, end, *exclusive, position)?;
-                let walked = Object::array(elements);
-                self.send_to_object(walked, "reverse_each", arguments.to_vec(), position)
-                    .map(Some)
-            }
             "to_set" => {
                 if matches!(end.as_ref(), Object::Nil) {
                     return Err(crate::vm::errors::simple_exception(
@@ -1074,5 +1088,291 @@ fn counts_as_a_number(held: &Object) -> bool {
             matches!(instance.borrow().class.name(), "Complex" | "Rational")
         }
         _ => false,
+    }
+}
+
+/// What a binary search walks: whole numbers, or the bit patterns of the
+/// Floats in order, which are the same order as the Floats themselves.
+enum SearchBounds {
+    /// A whole-number range, where None at either end reaches without limit.
+    Whole {
+        low: Option<i64>,
+        high: Option<i64>,
+        exclusive: bool,
+    },
+    /// A Float range, walked over the whole numbers its bit patterns map to.
+    Fractional {
+        low: i64,
+        high: i64,
+        exclusive: bool,
+    },
+}
+
+/// Which way a step of the search goes, and whether the block said the
+/// element it was handed is one it wants.
+struct SearchAnswer {
+    smaller: bool,
+    settled: Option<Object>,
+    satisfied: bool,
+}
+
+impl SearchBounds {
+    /// The bounds a range names, or the TypeError a range of something other
+    /// than numbers raises.
+    fn of(
+        start: &Object,
+        end: &Object,
+        exclusive: bool,
+        position: Position,
+    ) -> Result<Self, MetorexError> {
+        let refuse = |held: &Object| {
+            let named = match held {
+                Object::String(_) => "String",
+                Object::Symbol(_) => "Symbol",
+                Object::Instance(instance) => {
+                    return refuse_binary_search(instance.borrow().class.name(), position);
+                }
+                other => other.type_name(),
+            };
+            refuse_binary_search(named, position)
+        };
+        let whole_of = |held: &Object| match held {
+            Object::Nil => Ok(None),
+            Object::Int(number) => Ok(Some(Some(*number))),
+            _ => Err(()),
+        };
+        let fraction_of = |held: &Object| match held {
+            Object::Nil => Ok(None),
+            Object::Int(number) => Ok(Some(*number as f64)),
+            Object::Float(number) => Ok(Some(*number)),
+            _ => Err(()),
+        };
+        if let (Ok(low), Ok(high)) = (whole_of(start), whole_of(end)) {
+            return Ok(SearchBounds::Whole {
+                low: low.flatten(),
+                high: high.flatten(),
+                exclusive,
+            });
+        }
+        let (Ok(low), Ok(high)) = (fraction_of(start), fraction_of(end)) else {
+            return Err(match fraction_of(start) {
+                Err(()) => refuse(start),
+                Ok(_) => refuse(end),
+            });
+        };
+        Ok(SearchBounds::Fractional {
+            low: fraction_as_whole(low.unwrap_or(f64::NEG_INFINITY)),
+            high: fraction_as_whole(high.unwrap_or(f64::INFINITY)),
+            exclusive,
+        })
+    }
+}
+
+/// The TypeError a range of something a binary search cannot halve raises.
+fn refuse_binary_search(named: &str, position: Position) -> MetorexError {
+    let message = format!("can't do binary search for {}", named);
+    crate::vm::errors::simple_exception("TypeError", &message, position)
+}
+
+/// A Float as the whole number its bits stand for, in the same order the
+/// Floats themselves are in, so a search can halve the gap between two.
+fn fraction_as_whole(value: f64) -> i64 {
+    let bits = value.to_bits() as i64;
+    if bits < 0 { i64::MIN - bits } else { bits }
+}
+
+/// The Float a whole number from `fraction_as_whole` stands for.
+fn whole_as_fraction(value: i64) -> f64 {
+    let bits = if value < 0 { i64::MIN - value } else { value };
+    f64::from_bits(bits as u64)
+}
+
+impl VirtualMachine {
+    /// Halve the range until the block settles on an element, answering nil
+    /// when it never does.
+    fn binary_search(
+        &mut self,
+        bounds: &SearchBounds,
+        block: &Rc<crate::object::BlockStatement>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        match bounds {
+            SearchBounds::Whole {
+                low,
+                high,
+                exclusive,
+            } => {
+                let (low, high) =
+                    self.whole_search_limits(*low, *high, *exclusive, block, position)?;
+                let Some((low, high)) = low.zip(high) else {
+                    return Ok(Object::Nil);
+                };
+                self.halve(low, high, block, position, &Object::Int)
+            }
+            SearchBounds::Fractional {
+                low,
+                high,
+                exclusive,
+            } => {
+                let high = if *exclusive {
+                    *high
+                } else {
+                    high.saturating_add(1)
+                };
+                self.halve(*low, high, block, position, &|held| {
+                    Object::Float(whole_as_fraction(held))
+                })
+            }
+        }
+    }
+
+    /// The limits a whole-number search runs between. An end left open is
+    /// found by stepping out from the other one until the block turns.
+    fn whole_search_limits(
+        &mut self,
+        low: Option<i64>,
+        high: Option<i64>,
+        exclusive: bool,
+        block: &Rc<crate::object::BlockStatement>,
+        position: Position,
+    ) -> Result<(Option<i64>, Option<i64>), MetorexError> {
+        match (low, high) {
+            (Some(low), Some(high)) => {
+                let high = if exclusive {
+                    high
+                } else {
+                    high.saturating_add(1)
+                };
+                Ok((Some(low), Some(high)))
+            }
+            (Some(low), None) => {
+                let mut step = 1i64;
+                let mut reach = low.saturating_add(step);
+                for _ in 0..64 {
+                    let answer = self.ask_block(block, Object::Int(reach), position)?;
+                    if answer.settled.is_some() || answer.smaller {
+                        // The element reached is one the search keeps, so the
+                        // limit sits one past it.
+                        return Ok((Some(low), Some(reach.saturating_add(1))));
+                    }
+                    step = step.saturating_mul(2);
+                    reach = low.saturating_add(step);
+                }
+                Ok((Some(low), Some(reach.saturating_add(1))))
+            }
+            (None, Some(high)) => {
+                let high = if exclusive {
+                    high
+                } else {
+                    high.saturating_add(1)
+                };
+                let mut step = 1i64;
+                let mut reach = high.saturating_sub(step);
+                for _ in 0..64 {
+                    let answer = self.ask_block(block, Object::Int(reach), position)?;
+                    if answer.settled.is_some() || !answer.smaller {
+                        return Ok((Some(reach), Some(high)));
+                    }
+                    step = step.saturating_mul(2);
+                    reach = high.saturating_sub(step);
+                }
+                Ok((Some(reach), Some(high)))
+            }
+            (None, None) => Ok((None, None)),
+        }
+    }
+
+    /// The halving itself, over whole numbers that stand for the elements.
+    fn halve(
+        &mut self,
+        mut low: i64,
+        high: i64,
+        block: &Rc<crate::object::BlockStatement>,
+        position: Position,
+        element: &dyn Fn(i64) -> Object,
+    ) -> Result<Object, MetorexError> {
+        let opening = high;
+        let mut high = high;
+        let mut satisfied = false;
+        while low < high {
+            let middle = (low as i128 + (high as i128 - low as i128) / 2) as i64;
+            let answer = self.ask_block(block, element(middle), position)?;
+            if let Some(found) = answer.settled {
+                return Ok(found);
+            }
+            satisfied |= answer.satisfied;
+            if answer.smaller {
+                high = middle;
+            } else {
+                low = middle + 1;
+            }
+        }
+        if low >= opening || !satisfied {
+            return Ok(Object::Nil);
+        }
+        Ok(element(low))
+    }
+
+    /// Hand one element to the block and read which way the search goes.
+    fn ask_block(
+        &mut self,
+        block: &Rc<crate::object::BlockStatement>,
+        element: Object,
+        position: Position,
+    ) -> Result<SearchAnswer, MetorexError> {
+        let answer = self.execute_block_callable(block, vec![element.clone()], position)?;
+        Ok(match answer {
+            Object::Bool(true) => SearchAnswer {
+                smaller: true,
+                settled: None,
+                satisfied: true,
+            },
+            Object::Bool(false) | Object::Nil => SearchAnswer {
+                smaller: false,
+                settled: None,
+                satisfied: false,
+            },
+            Object::Int(number) => {
+                if number == 0 {
+                    SearchAnswer {
+                        smaller: false,
+                        settled: Some(element),
+                        satisfied: true,
+                    }
+                } else {
+                    SearchAnswer {
+                        smaller: number < 0,
+                        settled: None,
+                        satisfied: false,
+                    }
+                }
+            }
+            Object::Float(number) => {
+                if number == 0.0 {
+                    SearchAnswer {
+                        smaller: false,
+                        settled: Some(element),
+                        satisfied: true,
+                    }
+                } else {
+                    SearchAnswer {
+                        smaller: number < 0.0,
+                        settled: None,
+                        satisfied: false,
+                    }
+                }
+            }
+            other => {
+                let message = format!(
+                    "wrong argument type {} (must be numeric, true, false or nil)",
+                    self.builtins().class_of(&other).name()
+                );
+                return Err(crate::vm::errors::simple_exception(
+                    "TypeError",
+                    &message,
+                    position,
+                ));
+            }
+        })
     }
 }

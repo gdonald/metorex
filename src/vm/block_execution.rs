@@ -431,9 +431,18 @@ impl VirtualMachine {
             .clone()
             .or_else(|| self.current_source_file.clone());
         let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        // A literal in the body is written in the encoding the block's own
+        // file names, not the one the file calling it names.
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
         let execution_result =
             self.with_call_frame(frame, move |vm| vm.execute_block_body(block, arguments));
         self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
 
         match execution_result {
             Ok(value) => Ok(value),
@@ -521,6 +530,14 @@ impl VirtualMachine {
             .clone()
             .or_else(|| self.current_source_file.clone());
         let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        // A literal in the body is written in the encoding the block's own
+        // file names, not the one the file calling it names.
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
         // A `def` in the body defines a method on the receiver alone, and a
         // class variable written there belongs to the class or module the
         // block was written in.
@@ -663,6 +680,7 @@ impl VirtualMachine {
             self.class_var_home.pop();
         }
         self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
 
         match execution_result {
             Ok(value) => Ok(value),
@@ -722,6 +740,7 @@ impl VirtualMachine {
             }
 
             // Define parameters as regular variables (handles *args/&block prefixes)
+            let arguments = marked_keyword_tail(block, arguments);
             bind_block_params(
                 self,
                 &block.binding_parameters(),
@@ -880,6 +899,14 @@ impl VirtualMachine {
             .clone()
             .or_else(|| self.current_source_file.clone());
         let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        // A literal in the body is written in the encoding the block's own
+        // file names, not the one the file calling it names.
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
 
         let result = (|| -> Result<ControlFlow, MetorexError> {
             // Define captured variables using shared references
@@ -932,6 +959,7 @@ impl VirtualMachine {
         })();
 
         self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
         self.environment_mut().pop_scope();
         result
     }
@@ -1094,4 +1122,36 @@ fn strict_arity_check(
     Err(crate::vm::errors::argument_count_error(
         accepted, found, position,
     ))
+}
+
+/// A proc named by `ruby2_keywords` keeps the keyword hash its splat gathers
+/// marked, so the splat can pass it on as keywords again.
+fn marked_keyword_tail(block: &BlockStatement, mut arguments: Vec<Object>) -> Vec<Object> {
+    if !block.ruby2_keywords.get() {
+        return arguments;
+    }
+    let Some(Object::Dict(entries)) = arguments.last() else {
+        return arguments;
+    };
+    if !entries
+        .borrow()
+        .contains_key(crate::vm::param_binding::KWARGS_MARKER)
+    {
+        return arguments;
+    }
+    let mut marked: indexmap::IndexMap<String, Object> = entries
+        .borrow()
+        .iter()
+        .filter(|(key, _)| key.as_str() != crate::vm::param_binding::KWARGS_MARKER)
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    marked.insert(
+        crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY.to_string(),
+        Object::Bool(true),
+    );
+    arguments.pop();
+    arguments.push(Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(
+        marked,
+    ))));
+    arguments
 }

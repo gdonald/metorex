@@ -204,6 +204,7 @@ fn test_equals_method() {
         captured_refinements: Vec::new(),
         captured_nesting: Vec::new(),
         reads_as_proc: false,
+        ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let method2 = Rc::clone(&method1);
     let method3 = Rc::new(Method {
@@ -230,6 +231,7 @@ fn test_equals_method() {
         captured_refinements: Vec::new(),
         captured_nesting: Vec::new(),
         reads_as_proc: false,
+        ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
 
     let obj1 = Object::Method(method1);
@@ -257,6 +259,7 @@ fn test_equals_block() {
         home_frame: None,
         opened_at: None,
         from_symbol: None,
+        ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let block2 = Rc::clone(&block1);
     // A block written differently is a different block. Two written the same
@@ -274,6 +277,7 @@ fn test_equals_block() {
         home_frame: None,
         opened_at: None,
         from_symbol: None,
+        ruby2_keywords: std::rc::Rc::new(std::cell::Cell::new(false)),
     });
     let block4 = Rc::new((*block1).clone());
 

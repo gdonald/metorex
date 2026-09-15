@@ -44,18 +44,17 @@ p.call
     );
 }
 
-// ── native_methods/mod.rs line 211: Thread instance without __thread_block ─
-// `Thread.new` with no block makes a Thread with nothing to run, so
-// __thread_block is never set and `.value` falls through to the
-// `Object::Nil` fallback at line 211.
+// ── native_methods/class_methods.rs: Thread.new with nothing to run ───────
+// A thread has to be given a block, which Ruby reports as a ThreadError.
 
 #[test]
-fn thread_without_block_value_returns_nil() {
-    let result = run(r#"
-t = Thread.new
-t.value
-"#);
-    assert_eq!(result, Some(Object::Nil));
+fn thread_without_block_is_refused() {
+    let error = run_err("Thread.new");
+    assert!(
+        error.contains("must be called with a block"),
+        "unexpected error: {}",
+        error
+    );
 }
 
 #[test]
@@ -71,10 +70,10 @@ fn thread_allocate_is_refused() {
 }
 
 #[test]
-fn thread_without_block_join_returns_self() {
-    // join on a blockless Thread returns the receiver (the Thread instance).
+fn thread_join_returns_self() {
+    // join on a thread that has run answers the thread itself.
     let result = run(r#"
-t = Thread.new
+t = Thread.new { 1 }
 t.join.class.name
 "#);
     assert_eq!(result, Some(Object::string("Thread")));

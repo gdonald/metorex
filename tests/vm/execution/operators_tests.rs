@@ -90,17 +90,17 @@ fn format_d_with_float_uses_display() {
 }
 
 #[test]
-fn format_d_with_string_uses_display() {
-    let result = run(r#""%d" % "hello""#);
-    assert_eq!(result, Some(Object::string("hello".to_string())));
+fn format_d_refuses_a_string_that_names_no_number() {
+    let message = run_err(r#""%d" % "hello""#);
+    assert!(message.contains("invalid value for Integer()"));
 }
 
 // ── operators.rs: %c format ───────────────────────────────────────────────────
 
 #[test]
-fn format_c_with_invalid_unicode_uses_display() {
-    let result = run(r#""%c" % 1114112"#);
-    assert_eq!(result, Some(Object::string("1114112".to_string())));
+fn format_c_refuses_a_code_past_the_last_character() {
+    let message = run_err(r#""%c" % 1114112"#);
+    assert!(message.contains("out of char range"));
 }
 
 #[test]

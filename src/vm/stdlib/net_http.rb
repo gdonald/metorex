@@ -126,7 +126,17 @@ module Net
       @io.eof?
     end
 
+    # The running account of the session a program asked for, written the way
+    # Ruby writes it: what goes out marked `<-`, what comes back `->`.
+    def record(direction, text)
+      return if @debug_output.nil? || text.nil?
+      @debug_output << "#{direction} #{text.inspect}\n"
+      nil
+    end
+    private :record
+
     def write text
+      record "<-", text
       @io.write text
     end
 
@@ -141,6 +151,7 @@ module Net
         raise EOFError, 'end of file reached' unless ignore_eof
         return ''
       end
+      record "->", line
       line
     end
 
@@ -154,6 +165,7 @@ module Net
         raise EOFError, 'end of file reached' unless ignore_eof
         return ''
       end
+      record "->", text
       text
     end
 
@@ -1283,19 +1295,26 @@ module Net
       instance.start(&block)
     end
 
-    def self.get_response uri, headers = nil, &block
+    # Either a URI and headers, or a host, a path and a port, which is the
+    # older form Ruby still takes.
+    def self.get_response uri, path_or_headers = nil, port = nil, &block
+      if !path_or_headers.nil? && !path_or_headers.is_a?(Hash)
+        return start(uri, port || HTTP.default_port) do |http|
+          http.request Get.new(path_or_headers), &block
+        end
+      end
       target = uri.is_a?(String) ? URI.parse(uri) : uri
       start target.host, target.port do |http|
-        http.request Get.new(target.request_uri, headers), &block
+        http.request Get.new(target.request_uri, path_or_headers), &block
       end
     end
 
-    def self.get uri, headers = nil
-      get_response(uri, headers).body
+    def self.get uri, path_or_headers = nil, port = nil
+      get_response(uri, path_or_headers, port).body
     end
 
-    def self.get_print uri, headers = nil
-      get_response uri, headers do |response|
+    def self.get_print uri, path_or_headers = nil, port = nil
+      get_response uri, path_or_headers, port do |response|
         print response.body
       end
       nil
@@ -1370,8 +1389,21 @@ module Net
     end
 
     def set_debug_output output
+      if started?
+        warn 'Net::HTTP#set_debug_output called after HTTP started', uplevel: 1
+      end
       @debug_output = output
     end
+
+    # Write one line of the running account of the session, for a program
+    # that asked for one.
+    def record(text)
+      return if @debug_output.nil?
+      @debug_output << text
+      @debug_output << "\n"
+      nil
+    end
+    private :record
 
     def inspect
       "#<#{self.class} #{@address}:#{@port} open=#{@started}>"
@@ -1414,11 +1446,13 @@ module Net
 
     def do_start
       require 'socket'
+      record "opening connection to #{conn_address}:#{conn_port}..."
       @socket = BufferedIO.new TCPSocket.new(conn_address, conn_port),
                                read_timeout: @read_timeout,
                                write_timeout: @write_timeout,
                                continue_timeout: @continue_timeout,
                                debug_output: @debug_output
+      record "opened"
       @started = true
     end
     private :do_start
@@ -1443,9 +1477,31 @@ module Net
 
     def request request, body = nil, &block
       start unless @started
+      # A server that closed the connection after the last answer leaves
+      # nothing to write to, so the next request opens a new one.
+      if @socket.nil? || @socket.closed?
+        @socket = nil
+        do_start
+      end
       request.set_body_internal body if body
-      request.exec @socket, HTTPVersion, edit_path(request.path)
-      response = HTTPResponse.read_new @socket
+      # A server that closed the connection after the last answer is still
+      # there to talk to, so the request goes out again over a new one.
+      begin
+        request.exec @socket, HTTPVersion, edit_path(request.path)
+        response = HTTPResponse.read_new @socket
+      rescue Errno::EPIPE, Errno::ECONNRESET, EOFError
+        raise if @retried_request
+        @socket.close if @socket && !@socket.closed?
+        @socket = nil
+        do_start
+        @retried_request = true
+        begin
+          request.exec @socket, HTTPVersion, edit_path(request.path)
+          response = HTTPResponse.read_new @socket
+        ensure
+          @retried_request = false
+        end
+      end
       response.uri = request.uri
       response.reading_body @socket, request.response_body_permitted? do
         yield response if block
@@ -1464,10 +1520,18 @@ module Net
     end
     private :addr_port
 
+    # A block handed to one of the methods that sends a body reads the
+    # answer's own body a piece at a time, rather than being given the
+    # response itself.
     def send_entity path, data, initheader, dest, type, &block
-      request = type.new path, initheader
-      request.set_body_internal data
-      request(request, nil, &block)
+      made = type.new path, initheader
+      made.set_body_internal data
+      answered = nil
+      request(made, nil) do |reply|
+        reply.read_body dest, &block
+        answered = reply
+      end
+      answered
     end
     private :send_entity
 

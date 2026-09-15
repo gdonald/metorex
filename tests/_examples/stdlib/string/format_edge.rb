@@ -1,19 +1,19 @@
-# %x with non-int (fallback to to_s)
-puts("%x" % "hello")
+# A String handed to a number directive is read the way `Integer()` reads one,
+# so the base a prefix names is the one it counts in.
+puts("%x" % "196")
+puts("%X" % "0xc4")
+puts("%o" % "0127")
+puts("%b" % "0b1010")
 
-# %X with non-int
-puts("%X" % "hello")
+# A String naming no number at all is refused.
+begin
+  "%x" % "hello"
+rescue ArgumentError => trouble
+  puts(trouble.message)
+end
 
-# %o with non-int
-puts("%o" % "hello")
-
-# %b with non-int
-puts("%b" % "hello")
-
-# %c with int
+# %c names a character by its code, or takes the first of a string.
 puts("%c" % 65)
-
-# %c with string
 puts("%c" % "Z")
 
 # Width with right-align (non-zero-pad)
@@ -28,5 +28,5 @@ puts("%f" % 5)
 # Float with precision and int
 puts("%.2f" % 5)
 
-# Trailing % at end (no specifier)
-puts("test%")
+# Trailing % is written by doubling it
+puts("test%%" % [])

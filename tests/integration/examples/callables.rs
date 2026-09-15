@@ -16,6 +16,63 @@ fn test_callables_blocks_and_methods_no_parens_execution() {
     assert_eq!(output, BLOCKS_AND_METHODS_OUTPUT);
 }
 
+/// The expected output of both `callables/method_composition` variants, which
+/// differ only in whether the calls are written with parentheses.
+const METHOD_COMPOSITION_OUTPUT: &str =
+    "36\n18\ntrue\nfalse\ntrue\n7\n9\ncallable object is expected\n";
+
+#[test]
+fn test_callables_method_composition_execution() {
+    let output = run_example("callables/method_composition.rb");
+    assert_eq!(output, METHOD_COMPOSITION_OUTPUT);
+}
+
+#[test]
+fn test_callables_method_composition_parens_execution() {
+    let output = run_example("callables/method_composition_parens.rb");
+    assert_eq!(output, METHOD_COMPOSITION_OUTPUT);
+}
+
+/// The expected output of both `callables/keyword_forwarding` variants, which
+/// differ only in whether the calls are written with parentheses.
+const KEYWORD_FORWARDING_OUTPUT: &str = concat!(
+    "[1, {name: \"ada\"}]\n",
+    "true\n",
+    "false\n",
+    "{name: \"ada\"}\n",
+    "false\n",
+    "Hash\n",
+    "true\n"
+);
+
+#[test]
+fn test_callables_keyword_forwarding_execution() {
+    let output = run_example("callables/keyword_forwarding.rb");
+    assert_eq!(output, KEYWORD_FORWARDING_OUTPUT);
+}
+
+#[test]
+fn test_callables_keyword_forwarding_parens_execution() {
+    let output = run_example("callables/keyword_forwarding_parens.rb");
+    assert_eq!(output, KEYWORD_FORWARDING_OUTPUT);
+}
+
+/// The expected output of both `callables/yield_alias` variants, which differ
+/// only in whether the calls are written with parentheses.
+const YIELD_ALIAS_OUTPUT: &str = "8\n8\n8\n5\n8\n";
+
+#[test]
+fn test_callables_yield_alias_execution() {
+    let output = run_example("callables/yield_alias.rb");
+    assert_eq!(output, YIELD_ALIAS_OUTPUT);
+}
+
+#[test]
+fn test_callables_yield_alias_parens_execution() {
+    let output = run_example("callables/yield_alias_parens.rb");
+    assert_eq!(output, YIELD_ALIAS_OUTPUT);
+}
+
 /// The expected output of both `callables/lambda_parameters` variants, which
 /// differ only in whether the calls are written with parentheses.
 const LAMBDA_PARAMETERS_OUTPUT: &str = "\"hello world\"\n\"hello there\"\n[1, 2, 3, nil, nil]\n[[1, 2], :none]\n[[1], :marked]\n3\n\"wrong number of arguments (given 1, expected 2)\"\n7\n[[\"a\", 1], [\"b\", 2]]\n\"l\"\n\"llo\"\ntrue\nfalse\n\"undefined method 'new' for Symbol:Class\"\ntrue\nInteger\n";
@@ -196,4 +253,20 @@ fn test_callables_lambda_argument_shapes_execution() {
 fn test_callables_lambda_argument_shapes_no_parens_execution() {
     let output = run_example("callables/lambda_argument_shapes_no_parens.rb");
     assert_eq!(output, LAMBDA_ARGUMENT_SHAPES_OUTPUT);
+}
+
+/// The expected output of both `callables/parameter_shapes` variants, which
+/// differ only in whether the calls are written with parentheses.
+const PARAMETER_SHAPES_OUTPUT: &str = "[[:rest, :*]]\n[[:keyrest, :**]]\n[[:block, :&]]\n[[:rest, :*], [:keyrest, :**], [:block, :&]]\n[[:nokey]]\n[[:req]]\n[[:rest]]\n[[:rest]]\n[[:req]]\ntrue\n\"hello\"\ntrue\ntrue\n";
+
+#[test]
+fn test_callables_parameter_shapes_execution() {
+    let output = run_example("callables/parameter_shapes.rb");
+    assert_eq!(output, PARAMETER_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_callables_parameter_shapes_parens_execution() {
+    let output = run_example("callables/parameter_shapes_parens.rb");
+    assert_eq!(output, PARAMETER_SHAPES_OUTPUT);
 }

@@ -72,4 +72,25 @@ impl ObjectHash {
             value: obj.clone(),
         })
     }
+
+    /// A hashable wrapper that tells elements apart by which object they are
+    /// rather than by what they hold, which is what a set comparing by
+    /// identity puts its elements under.
+    pub fn by_identity(obj: &Object) -> Option<Self> {
+        let hash_value = match obj {
+            Object::String(text) => format!("@{:p}", std::rc::Rc::as_ptr(text)),
+            Object::Array(elements) => format!("@{:p}", std::rc::Rc::as_ptr(elements)),
+            Object::Dict(pairs) => format!("@{:p}", std::rc::Rc::as_ptr(pairs)),
+            Object::Set(elements) => format!("@{:p}", std::rc::Rc::as_ptr(elements)),
+            Object::Block(block) => format!("@{:p}", std::rc::Rc::as_ptr(block)),
+            Object::Method(method) => format!("@{:p}", std::rc::Rc::as_ptr(method)),
+            // Everything else stands for one value however many names reach
+            // it, so identity and equality are the same question for it.
+            other => return Self::from_object(other),
+        };
+        Some(Self {
+            hash_value,
+            value: obj.clone(),
+        })
+    }
 }

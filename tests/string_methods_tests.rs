@@ -591,8 +591,14 @@ fn string_gsub_basic() {
 
 #[test]
 fn string_gsub_error_wrong_count() {
-    let err = run_err(r#""hello".gsub("o")"#);
+    let err = run_err(r#""hello".gsub"#);
     assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_gsub_with_a_pattern_alone_answers_an_enumerator() {
+    let result = run(r#""abca".gsub("a").to_a.length"#);
+    assert_eq!(result, Some(Object::Int(2)));
 }
 
 #[test]

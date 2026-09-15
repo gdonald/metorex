@@ -31,10 +31,13 @@ module OpenSSL
     attr_reader :name
 
     def initialize(name, data = nil)
-      unless name.is_a?(::String) || name.is_a?(::Symbol) || name.respond_to?(:to_str)
+      # Another digest names the same algorithm, and nothing of the state it
+      # has built up comes along with it.
+      name = name.name if name.is_a? OpenSSL::Digest
+      unless name.is_a?(::String) || name.respond_to?(:to_str)
         raise TypeError, "no implicit conversion of #{name.class} into String"
       end
-      held = name.is_a?(::String) ? name : name.to_s
+      held = name.is_a?(::String) ? name : name.to_str
       @name = OpenSSL::Digest.canonical_name held
       unless SHAPES.key? @name
         raise OpenSSL::Digest::DigestError, "Unsupported digest algorithm (#{held}).: unsupported"
@@ -124,13 +127,16 @@ module OpenSSL
   module KDF
     class KDFError < OpenSSL::OpenSSLError; end
 
-    def self.pbkdf2_hmac(pass, salt: nil, iterations: nil, length: nil, hash: nil)
+    def self.pbkdf2_hmac(pass, salt:, iterations:, length:, hash:)
+      unless hash.is_a?(::String) || hash.is_a?(OpenSSL::Digest) || hash.respond_to?(:to_str)
+        raise TypeError, "wrong argument type #{hash.class} (expected OpenSSL/Digest)"
+      end
       held = OpenSSL::KDF.coerced pass, "pass"
       seasoning = OpenSSL::KDF.coerced salt, "salt"
       rounds = OpenSSL::KDF.counted iterations, "iterations"
       wanted = OpenSSL::KDF.counted length, "length"
       named = hash.respond_to?(:name) ? hash.name : hash.to_s
-      raise KDFError, "invalid iteration count" if rounds < 1
+      raise KDFError, "PKCS5_PBKDF2_HMAC: invalid iteration count" if rounds < 1
       raise KDFError, "invalid length" if wanted < 0
       return "" if wanted == 0
       # The rounds number in the tens of thousands and each is a pair of

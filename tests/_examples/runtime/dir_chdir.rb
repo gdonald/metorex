@@ -13,7 +13,7 @@ puts Dir.pwd == start
 
 begin
   Dir.chdir "/no/such/directory/here"
-rescue RuntimeError => error
+rescue SystemCallError => error
   puts error.message.start_with? "No such file or directory"
 end
 

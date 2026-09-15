@@ -95,3 +95,25 @@ fn test_enumerable_products_and_ends_no_parens_execution() {
     let output = run_example("enumerable/products_and_ends_no_parens.rb");
     assert_eq!(output, PRODUCTS_AND_ENDS_OUTPUT);
 }
+
+/// The expected output of both `enumerable/walking_over_again` variants, which differ only in whether the
+/// calls are written with parentheses.
+const WALKING_OVER_AGAIN_OUTPUT: &str = concat!(
+    "[1, 2, 3, 1, 2, 3]\n",
+    "[10, 20]\n",
+    "8\n",
+    "Infinity\n",
+    "nil\n",
+);
+
+#[test]
+fn test_enumerable_walking_over_again_execution() {
+    let output = run_example("enumerable/walking_over_again.rb");
+    assert_eq!(output, WALKING_OVER_AGAIN_OUTPUT);
+}
+
+#[test]
+fn test_enumerable_walking_over_again_no_parens_execution() {
+    let output = run_example("enumerable/walking_over_again_no_parens.rb");
+    assert_eq!(output, WALKING_OVER_AGAIN_OUTPUT);
+}

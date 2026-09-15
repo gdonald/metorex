@@ -187,14 +187,40 @@ fn test_stdlib_string_slice_edge_parens_execution() {
 
 #[test]
 fn test_stdlib_string_format_edge_execution() {
-    let expected = "hello\nhello\nhello\nhello\nA\nZ\n      hi!\n7\n5.000000\n5.00\ntest%\n";
+    let expected = concat!(
+        "c4\n",
+        "C4\n",
+        "127\n",
+        "1010\n",
+        "invalid value for Integer(): \"hello\"\n",
+        "A\n",
+        "Z\n",
+        "      hi!\n",
+        "7\n",
+        "5.000000\n",
+        "5.00\n",
+        "test%\n",
+    );
     let output = run_example("stdlib/string/format_edge.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_stdlib_string_format_edge_parens_execution() {
-    let expected = "hello\nhello\nhello\nhello\nA\nZ\n      hi!\n7\n5.000000\n5.00\ntest%\n";
+    let expected = concat!(
+        "c4\n",
+        "C4\n",
+        "127\n",
+        "1010\n",
+        "invalid value for Integer(): \"hello\"\n",
+        "A\n",
+        "Z\n",
+        "      hi!\n",
+        "7\n",
+        "5.000000\n",
+        "5.00\n",
+        "test%\n",
+    );
     let output = run_example("stdlib/string/format_edge_parens.rb");
     assert_eq!(output, expected);
 }
@@ -620,7 +646,7 @@ fn test_stdlib_string_format_keywords_execution() {
         "00042\n",
         "3.14\n",
         "through the module\n",
-        "key<missing> not found\n",
+        "key{missing} not found\n",
         "true\n",
         "true\n",
     );
@@ -637,7 +663,7 @@ fn test_stdlib_string_format_keywords_parens_execution() {
         "00042\n",
         "3.14\n",
         "through the module\n",
-        "key<missing> not found\n",
+        "key{missing} not found\n",
         "true\n",
         "true\n",
     );
@@ -797,4 +823,68 @@ fn test_stdlib_dir_reading_a_directory_execution() {
 fn test_stdlib_dir_reading_a_directory_no_parens_execution() {
     let output = run_example("stdlib/dir/reading_a_directory_no_parens.rb");
     assert_eq!(output, READING_A_DIRECTORY_OUTPUT);
+}
+
+/// The expected output of both `stdlib/marshal_round_trip` variants, which
+/// differ only in whether the calls are written with parentheses.
+const MARSHAL_ROUND_TRIP_OUTPUT: &str = concat!(
+    "[4, 8, 102, 8, 48, 46, 53]\n",
+    "[4, 8, 105, 47]\n",
+    "[1, \"two\", :three, {four: 4}]\n",
+    "nil\n",
+    "true\n",
+    "Waypoint\n",
+    "\"summit\"\n",
+    "12\n",
+    "#<Encoding:UTF-8>\n"
+);
+
+#[test]
+fn test_stdlib_marshal_round_trip_execution() {
+    let output = run_example("stdlib/marshal_round_trip.rb");
+    assert_eq!(output, MARSHAL_ROUND_TRIP_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_marshal_round_trip_parens_execution() {
+    let output = run_example("stdlib/marshal_round_trip_parens.rb");
+    assert_eq!(output, MARSHAL_ROUND_TRIP_OUTPUT);
+}
+
+/// The expected output of both `stdlib/erb_trim_modes` variants, which differ
+/// only in whether the calls are written with parentheses.
+const ERB_TRIM_MODES_OUTPUT: &str = concat!(
+    "\"<ul>\\n\\n<li>1</li>\\n\\n<li>2</li>\\n\\n</ul>\\n\"\n",
+    "\"<ul>\\n<li>1</li>\\n<li>2</li>\\n</ul>\\n\"\n",
+    "\"<ul>\\n<li>1</li>\\n<li>2</li>\\n</ul>\\n\"\n",
+    "\"<ul>\\n<li>1</li>\\n<li>2</li>\\n</ul>\\n\"\n",
+    "\"<ul>\\n<li>1</li>\\n<li>2</li>\\n</ul>\\n%done\\n\"\n"
+);
+
+#[test]
+fn test_stdlib_erb_trim_modes_execution() {
+    let output = run_example("stdlib/erb_trim_modes.rb");
+    assert_eq!(output, ERB_TRIM_MODES_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_erb_trim_modes_parens_execution() {
+    let output = run_example("stdlib/erb_trim_modes_parens.rb");
+    assert_eq!(output, ERB_TRIM_MODES_OUTPUT);
+}
+
+/// The expected output of both `stdlib/string_streams` variants, which differ
+/// only in whether the calls are written with parentheses.
+const STRING_STREAMS_OUTPUT: &str = "false\ntrue\ntrue\nfalse\n\"\"\nErrno::EACCES\n\"second\"\n";
+
+#[test]
+fn test_stdlib_string_streams_execution() {
+    let output = run_example("stdlib/string_streams.rb");
+    assert_eq!(output, STRING_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_string_streams_parens_execution() {
+    let output = run_example("stdlib/string_streams_parens.rb");
+    assert_eq!(output, STRING_STREAMS_OUTPUT);
 }

@@ -447,7 +447,7 @@ impl VirtualMachine {
                         Some(enclosing) => name_constant_value(&enclosing, name, &value),
                         None => {
                             if let Object::Class(v) | Object::Module(v) = &value {
-                                v.set_assigned_name_if_anonymous(name);
+                                v.assign_name_recursive(name);
                             }
                         }
                     }
@@ -503,8 +503,10 @@ impl VirtualMachine {
             // `::Name = value` binds at the top level whatever class or
             // module body the assignment sits in.
             Expression::TopLevelConstant { name, position } => {
+                // Naming the module names the anonymous ones it holds, which
+                // is how `A::B` reports its path once `A` has a name.
                 if let Object::Class(bound) | Object::Module(bound) = &value {
-                    bound.set_assigned_name_if_anonymous(name);
+                    bound.assign_name_recursive(name);
                 }
                 let assign_file = self
                     .reported_current_file()

@@ -199,19 +199,20 @@ t.alive?
 }
 
 #[test]
-fn thread_stop_predicate_is_true_until_it_runs() {
-    // A thread runs when it is joined, so one that has not been is stopped.
+fn thread_stop_predicate_is_false_while_it_has_work_left() {
+    // A thread that has not run yet is ready to run rather than stopped.
     let result = run(r#"
 t = Thread.new { 1 }
 t.stop?
 "#);
-    assert_eq!(result, Some(Object::Bool(true)));
+    assert_eq!(result, Some(Object::Bool(false)));
 }
 
 #[test]
-fn thread_status_returns_false() {
+fn thread_status_is_false_once_it_has_run() {
     let result = run(r#"
 t = Thread.new { 1 }
+t.join
 t.status
 "#);
     assert_eq!(result, Some(Object::Bool(false)));

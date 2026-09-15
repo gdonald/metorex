@@ -1045,20 +1045,69 @@ module Enumerable
     counted == 1
   end
 
+  # Walk the elements over and over, a given number of rounds or without
+  # end. The first round hands out the elements as they are read, so an
+  # endpoint that stops early is asked for no more than it needs.
   def cycle(*count)
-    return to_enum(:cycle, *count) unless block_given?
-    values = to_a
+    if count.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{count.size}, expected 0..1)"
+    end
+    rounds = __cycle_rounds__ count.first
+    unless block_given?
+      # The enumerator is handed the count already read as an Integer, so a
+      # count that reports how often it was asked is asked only once.
+      forwarded = count.empty? ? [] : [rounds]
+      return to_enum(:cycle, *forwarded) { __cycle_size__ rounds }
+    end
+    return nil if !rounds.nil? && rounds <= 0
+    values = []
+    each do |*yielded|
+      held = yielded.size == 1 ? yielded[0] : yielded
+      values.push held
+      yield held
+    end
     return nil if values.empty?
-    if count.empty?
+    if rounds.nil?
       while true
         values.each { |element| yield element }
       end
+    else
+      (rounds - 1).times { values.each { |element| yield element } }
     end
-    rounds = count[0]
-    return nil if rounds.nil? == false && rounds <= 0
-    rounds.times { values.each { |element| yield element } }
     nil
   end
+
+  # The number of rounds a count names. Anything that reads as an Integer
+  # names one, and anything else is refused.
+  def __cycle_rounds__(count)
+    return nil if count.nil?
+    return count if count.is_a?(Integer)
+    unless count.respond_to?(:to_int)
+      raise TypeError, "no implicit conversion of #{count.class} into Integer"
+    end
+    held = count.to_int
+    unless held.is_a?(Integer)
+      raise TypeError,
+            "can't convert #{count.class} to Integer (#{count.class}#to_int gives #{held.class})"
+    end
+    held
+  end
+  private :__cycle_rounds__
+
+  # The count a cycling walk hands out, where the source can say how many it
+  # holds. A walk with no end counts to infinity.
+  def __cycle_size__(rounds)
+    held = begin
+      size
+    rescue StandardError
+      nil
+    end
+    return nil unless held.is_a?(Integer)
+    return Float::INFINITY if rounds.nil?
+    return 0 if rounds <= 0
+    held * rounds
+  end
+  private :__cycle_size__
 
   def compact
     reject { |element| element.nil? }
@@ -1492,6 +1541,11 @@ class IO
 
   EWOULDBLOCKWaitReadable = EAGAINWaitReadable
   EWOULDBLOCKWaitWritable = EAGAINWaitWritable
+
+  # What a read or a write raises when the stream's own limit on how long it
+  # may take runs out.
+  class TimeoutError < IOError
+  end
 end
 
 class StopIteration
@@ -1540,28 +1594,100 @@ class StringIO
 
   VERSION = "3.1.2"
 
-  def initialize(string = "", mode = nil)
-    @string = string
+  def initialize(*given, **options)
+    if given.length > 2
+      raise ArgumentError,
+            "wrong number of arguments (given #{given.length}, expected 0..2)"
+    end
+    held = if given.empty?
+             "".dup.force_encoding(Encoding.default_external)
+           else
+             StringIO.__backend_string__(given[0])
+           end
+    asked = StringIO.__named_mode__(given[1], options)
+    @binary = options[:binmode] == true
+    read_mode(asked)
+    if held.frozen?
+      # A frozen buffer can only be read: a mode asking to write it is
+      # refused, and one asking to empty it says so as a frozen string would.
+      raise Errno::EACCES, "Permission denied" if @writable && !asked.nil?
+      if @truncates
+        raise FrozenError, "can\'t modify frozen String: #{held.inspect}"
+      end
+      @writable = false
+    end
+    @string = held
     @position = 0
     @lineno = 0
     @closed_read = false
     @closed_write = false
     @ungotten = ""
-    read_mode(mode)
-    # Truncating empties the buffer without changing what it is written in.
-    @string = "".dup.force_encoding(@string.encoding) if @truncates
+    # Truncating empties the buffer itself without changing what it is
+    # written in, so the string the caller handed over is emptied too.
+    @string.replace("".dup.force_encoding(@string.encoding)) if @truncates
     self
   end
+  private :initialize
 
-  # What a mode string says about which sides of the stream are open. A
-  # missing mode leaves both open.
+  # `StringIO.open` leaves the stream with nothing behind it once the block
+  # is over, which is what `string` then answers.
+  def __release_string__
+    @string = nil
+    nil
+  end
+  private :__release_string__
+
+  # The buffer a stream is opened over, which anything answering `to_str`
+  # names.
+  def self.__backend_string__(held)
+    return held if held.is_a? String
+    unless held.respond_to? :to_str
+      raise TypeError, "no implicit conversion of #{held.class} into String"
+    end
+    held.to_str
+  end
+
+  # The mode a stream was asked for, written either as the second argument or
+  # as the `mode:` option. Naming it both ways at once is refused.
+  def self.__named_mode__(mode, options)
+    named = options[:mode]
+    if !mode.nil? && !named.nil?
+      raise ArgumentError, "mode specified twice"
+    end
+    held = mode.nil? ? named : mode
+    written = held.is_a?(String) ? held.split(":").first.to_s : ""
+    named_binary = options.key?(:binmode) || options.key?(:textmode)
+    if named_binary && (written.include?("b") || written.include?("t"))
+      raise ArgumentError, "binmode specified twice"
+    end
+    if options[:binmode] == true && options[:textmode] == true
+      raise ArgumentError, "both textmode and binmode specified"
+    end
+    unless options[:encoding].nil? && options[:external_encoding].nil? &&
+           options[:internal_encoding].nil?
+      if held.is_a?(String) && held.include?(":")
+        raise ArgumentError, "encoding specified twice"
+      end
+    end
+    held
+  end
+
+  # What a mode says about which sides of the stream are open. A missing mode
+  # leaves both open.
   def read_mode(mode)
     @readable = true
     @writable = true
     @appends = false
     @truncates = false
     return if mode.nil?
-    spelling = mode.to_s.gsub("b", "").gsub("t", "")
+    return read_numbered_mode(mode) if mode.is_a? Integer
+    unless mode.is_a? String
+      unless mode.respond_to? :to_str
+        raise ArgumentError, "invalid access mode #{mode}"
+      end
+      mode = mode.to_str
+    end
+    spelling = mode.split(":").first.to_s.gsub("b", "").gsub("t", "")
     case spelling
     when "r"
       @writable = false
@@ -1583,22 +1709,35 @@ class StringIO
   end
   private :read_mode
 
-  def self.new(string = "", mode = nil)
+  # The same, for a mode written as the flags `File` names.
+  def read_numbered_mode(number)
+    access = number & 3
+    @readable = access != File::WRONLY
+    @writable = access != File::RDONLY
+    @appends = (number & File::APPEND) != 0
+    @truncates = (number & File::TRUNC) != 0
+  end
+  private :read_numbered_mode
+
+  def self.new(*given, **options)
     if block_given?
       warn "warning: StringIO::new() does not take block; use StringIO::open() instead"
     end
     made = allocate
-    made.send(:initialize, string, mode)
+    made.send(:initialize, *given, **options)
     made
   end
 
-  def self.open(string = "", mode = nil)
-    held = new(string, mode)
+  def self.open(*given, **options)
+    held = new(*given, **options)
     return held unless block_given?
     begin
       yield held
     ensure
       held.close
+      # The block leaves the stream with nothing behind it, which is what
+      # tells a stream that was opened for a block from one that was not.
+      held.send(:__release_string__)
     end
   end
 
@@ -1719,22 +1858,56 @@ class StringIO
     0
   end
 
-  def reopen(other = nil, mode = nil)
-    if other.is_a?(StringIO)
-      @string = other.string
-      @position = 0
-      @lineno = 0
-      read_mode(nil)
-      return self
+  def reopen(*given)
+    other = given[0]
+    mode = given[1]
+    # One argument names another stream rather than a buffer, which is what
+    # `to_strio` answers for an object standing in for one.
+    if given.length < 2
+      return __reopen_buffer__(other, nil) if other.is_a? String
+      return __reopen_stream__(other) if given.length == 1
+      return __reopen_buffer__("".dup, nil)
     end
-    @string = other.nil? ? "" : other
+    __reopen_buffer__(StringIO.__backend_string__(other), mode)
+  end
+
+  # Reopening over another stream, which takes its buffer whole.
+  def __reopen_stream__(other)
+    unless other.is_a? StringIO
+      unless other.respond_to? :to_strio
+        raise TypeError, "no implicit conversion of #{other.class} into StringIO"
+      end
+      other = other.to_strio
+      unless other.is_a? StringIO
+        raise TypeError, "can\'t convert to StringIO"
+      end
+    end
+    __reopen_buffer__(other.string, nil)
+  end
+  private :__reopen_stream__
+
+  # Reopening over a buffer, in the mode named alongside it.
+  def __reopen_buffer__(held, mode)
+    read_mode(mode)
+    if held.frozen?
+      raise Errno::EACCES, "Permission denied" if @writable && !mode.nil?
+      if @truncates
+        raise FrozenError, "can\'t modify frozen String: #{held.inspect}"
+      end
+      @writable = false
+    end
+    @string = held
     @position = 0
     @lineno = 0
-    read_mode(mode)
-    # Truncating empties the buffer without changing what it is written in.
-    @string = "".dup.force_encoding(@string.encoding) if @truncates
+    @closed_read = false
+    @closed_write = false
+    @ungotten = ""
+    # Truncating empties the buffer itself without changing what it is
+    # written in, so the string the caller handed over is emptied too.
+    @string.replace("".dup.force_encoding(@string.encoding)) if @truncates
     self
   end
+  private :__reopen_buffer__
 
   # ── Which sides are open ─────────────────────────────────────────────────
 
@@ -2771,12 +2944,14 @@ class Enumerator::Lazy < Enumerator
     Enumerator.over(self, :each, [], @lazy_size)
   end
 
-  def to_enum(method_name = :each, *args)
-    Enumerator.over(self, method_name, args, nil)
+  # A block names the count the walk will hand out, which the enumerator
+  # asks for only when something wants to know.
+  def to_enum(method_name = :each, *args, &size)
+    Enumerator.over(self, method_name, args, size)
   end
 
-  def enum_for(method_name = :each, *args)
-    to_enum(method_name, *args)
+  def enum_for(method_name = :each, *args, &size)
+    to_enum(method_name, *args, &size)
   end
 
   # Hand each element the step it stands for, and stop the walk as soon as
@@ -3502,6 +3677,50 @@ class Range
     stepped(by, "%", &block)
   end
 
+  # Walks the range from its end down to its beginning. A range counting
+  # integers can start past any beginning, while one walking with `succ`
+  # needs both ends.
+  def reverse_each(&block)
+    last = self.end
+    first = self.begin
+    raise TypeError, "can't iterate from NilClass" if last.nil?
+    counts = (first.is_a?(Integer) && last.is_a?(Numeric)) ||
+      (first.nil? && last.is_a?(Integer))
+    walks = !first.nil? && reverse_walkable(last) && reverse_walkable(first)
+    unless counts || walks
+      named = reverse_walkable(last) ? first.class : last.class
+      raise TypeError, "can't iterate from #{named}"
+    end
+    return Enumerator.over(self, :reverse_each, [], reverse_walk_size) if block.nil?
+    if counts
+      value = last.is_a?(Integer) ? last : last.floor
+      value -= 1 if exclude_end? && value == last
+      while first.nil? || value >= first
+        block.call(value)
+        value -= 1
+      end
+      return self
+    end
+    to_a.reverse_each { |value| block.call(value) }
+    self
+  end
+
+  # Whether a value walks with `succ` the way a String or a Symbol does. A
+  # number counts instead, and a range of them is walked by counting.
+  def reverse_walkable(value)
+    return false if value.is_a?(Numeric)
+    value.is_a?(String) || value.is_a?(Symbol) || value.respond_to?(:succ)
+  end
+  private :reverse_walkable
+
+  # How many elements a reverse walk reports before it starts. A walk with no
+  # beginning never ends, and one over anything but numbers reports nothing.
+  def reverse_walk_size
+    return Float::INFINITY if self.begin.nil?
+    size
+  end
+  private :reverse_walk_size
+
   def stepped(by, written_as, &block)
     raise ArgumentError, "step can\'t be 0" if by == 0
     sequence = Enumerator::ArithmeticSequence.send(
@@ -3529,7 +3748,7 @@ class Array
   # The number an index or a length arrives as, which Ruby reads through
   # `to_int` and refuses when the object names none.
   def fill_count(given)
-    return given if given.is_a?(Integer)
+    return fill_machine_word(given) if given.is_a?(Integer)
     unless given.respond_to?(:to_int)
       raise TypeError, "no implicit conversion of #{given.class} into Integer"
     end
@@ -3537,9 +3756,24 @@ class Array
     unless read.is_a?(Integer)
       raise TypeError, "can\'t convert #{given.class} to Integer (#{given.class}#to_int gives #{read.class})"
     end
-    read
+    fill_machine_word(read)
   end
   private :fill_count
+
+  # A count Ruby reads into a machine word, which a number too large for one
+  # is refused as.
+  def fill_machine_word(read)
+    if read > 9223372036854775807 || read < -9223372036854775808
+      raise RangeError, "bignum too big to convert into 'long'"
+    end
+    read
+  end
+  private :fill_machine_word
+
+  # The most elements an array can hold, which is what a machine word counts
+  # divided by the room one element takes.
+  ARRAY_LIMIT = 1152921504606846975
+  private_constant :ARRAY_LIMIT
 
   # `fill` writes over a stretch of the array: everything, from an index on,
   # a run of a given length, or the span a Range names. A block is handed each
@@ -3581,6 +3815,7 @@ class Array
       end
     end
     return self if count <= 0
+    raise ArgumentError, "argument too big" if from > ARRAY_LIMIT - count
     index = from
     stop = from + count
     while index < stop
@@ -4290,22 +4525,83 @@ class Time
   # The seconds a calendar argument list stands for, where the last argument
   # is a count of microseconds.
   def self.calendar_seconds(args, utc)
-    year = args[0].to_i
+    # Ten arguments name the parts in the order the C library writes them,
+    # seconds first and the year sixth. The rest are the day of the week, the
+    # day of the year, the daylight-saving flag, and the zone, none of which
+    # take part in the count.
+    daylight = nil
+    if args.size == 10
+      daylight = args[8] if args[8] == true || args[8] == false
+      args = [args[5], args[4], args[3], args[2], args[1], args[0]]
+    elsif args.empty? || args.size > 7
+      raise ArgumentError,
+            "wrong number of arguments (given #{args.size}, expected 1..7)"
+    end
+    raise TypeError, "no implicit conversion from nil to integer" if args[0].nil?
+    year = time_part(args[0], "year")
     month = month_number(args[1])
-    day = args[2].nil? ? 1 : args[2].to_i
-    hour = args[3].nil? ? 0 : args[3].to_i
-    minute = args[4].nil? ? 0 : args[4].to_i
-    second = args[5].nil? ? 0 : args[5]
-    micro = args.size > 6 && args[6].is_a?(Numeric) ? args[6] : 0
-    whole = Time.__assemble__(year, month, day, hour, minute, second.to_i, utc)
-    whole.to_r + (second.to_r - second.to_i) + micro.to_r / MICROSECONDS_IN_SECOND
+    day = args[2].nil? ? 1 : time_part(args[2], "day")
+    hour = args[3].nil? ? 0 : time_part(args[3], "hour")
+    minute = args[4].nil? ? 0 : time_part(args[4], "min")
+    second = args[5].nil? ? 0 : time_second(args[5])
+    named_micro = args.size > 6 && args[6].is_a?(Numeric)
+    micro = named_micro ? args[6] : 0
+    raise ArgumentError, "mon out of range" unless (1..12).cover?(month)
+    raise ArgumentError, "mday out of range" unless (1..31).cover?(day)
+    raise ArgumentError, "hour out of range" unless (0..24).cover?(hour)
+    raise ArgumentError, "min out of range" unless (0..59).cover?(minute)
+    raise ArgumentError, "argument out of range" if second < 0 || micro < 0
+    raise ArgumentError, "sec out of range" if second >= 61
+    raise ArgumentError, "subsecx out of range" if micro >= MICROSECONDS_IN_SECOND
+    whole = Time.__assemble__(year, month, day, hour, minute, second.to_i, utc, daylight)
+    # A count of microseconds given outright stands for the whole fraction,
+    # so a fraction carried by the seconds is left out.
+    fraction = named_micro ? 0 : second.to_r - second.to_i
+    whole.to_r + fraction + micro.to_r / MICROSECONDS_IN_SECOND
+  end
+
+  # One whole part of a calendar time. A numeral spelled out reads as base
+  # ten, and anything else has to read as an Integer.
+  def self.time_part(held, name)
+    return held if held.is_a?(Integer)
+    return held.to_i if held.is_a?(Numeric)
+    if held.is_a?(String)
+      unless held =~ /\A\s*[+-]?\d+\s*\z/
+        raise ArgumentError, "argument out of range"
+      end
+      return held.to_i(10)
+    end
+    unless held.respond_to?(:to_int)
+      raise TypeError, "no implicit conversion of #{held.class} into Integer"
+    end
+    read = held.to_int
+    unless read.is_a?(Integer)
+      raise TypeError, "can't convert #{held.class} into Integer"
+    end
+    read
+  end
+
+  # The seconds part, which may carry a fraction.
+  def self.time_second(held)
+    return held if held.is_a?(Numeric)
+    return time_part(held, "sec") unless held.is_a?(String)
+    return held.to_i(10) if held =~ /\A\s*[+-]?\d+\s*\z/
+    raise ArgumentError, "argument out of range"
   end
 
   def self.month_number(named)
     return 1 if named.nil?
-    return named.to_i if named.is_a?(Integer)
-    text = named.to_s
-    return text.to_i if text.to_i > 0
+    return named.to_i if named.is_a?(Numeric)
+    text = if named.is_a?(String)
+             named
+           elsif named.respond_to?(:to_str)
+             named.to_str
+           elsif named.respond_to?(:to_int)
+             return time_part(named, "mon")
+           else
+             named.to_s
+           end
+    return text.to_i(10) if text =~ /\A\s*[+-]?\d+\s*\z/
     found = MONTH_NAMES.index(text.downcase[0, 3])
     raise ArgumentError, "mon out of range" if found.nil?
     found + 1
@@ -4485,6 +4781,42 @@ class Time
   def utc?
     @utc
   end
+  # The time the eight bytes Marshal writes stand for. The newer form packs
+  # the date and clock into two words, and the older one holds a UNIX
+  # timestamp and the microseconds beside it.
+  def self._load(written)
+    high, low = written.dup.force_encoding(Encoding::BINARY).unpack "VV"
+    if (high >> 31) & 1 == 0
+      return Time.at(high, low)
+    end
+    in_utc = (high >> 30) & 1 == 1
+    built = Time.utc((((high >> 14) & 0xffff) + 1900),
+                     ((high >> 10) & 0xf) + 1,
+                     (high >> 5) & 0x1f,
+                     high & 0x1f,
+                     (low >> 26) & 0x3f,
+                     (low >> 20) & 0x3f,
+                     low & 0xfffff)
+    in_utc ? built : built.localtime
+  end
+  private_class_method :_load
+
+  # The eight bytes Marshal writes a Time as: the date and hour packed into
+  # one word and the rest of the clock into another, always read in UTC, with
+  # a flag saying whether the time itself stands in UTC.
+  def _dump(_limit = 0)
+    held = getutc
+    high = 1 << 31 |
+           (gmt? ? 1 : 0) << 30 |
+           (held.year - 1900) << 14 |
+           (held.mon - 1) << 10 |
+           held.mday << 5 |
+           held.hour
+    low = held.min << 26 | held.sec << 20 | held.usec
+    [high, low].pack "VV"
+  end
+  private :_dump
+
 
   def gmt?
     @utc
@@ -4735,6 +5067,20 @@ class Proc
 
   # The count of arguments a curried callable waits for, which is how many it
   # requires. A strict callable refuses a count it could never be called with.
+  # The composition of two callables, made for a `Method` whose `>>` and `<<`
+  # hand the work here. `forward` runs `first` before `second`, and `strict`
+  # says whether the composition answers to `lambda?`.
+  def self.__composed__(first, second, forward, strict)
+    raise TypeError, "callable object is expected" unless second.respond_to?(:call)
+    if forward
+      return lambda { |*given, &block| second.call(first.call(*given, &block)) } if strict
+      proc { |*given, &block| second.call(first.call(*given, &block)) }
+    else
+      return lambda { |*given, &block| first.call(second.call(*given, &block)) } if strict
+      proc { |*given, &block| first.call(second.call(*given, &block)) }
+    end
+  end
+
   def self.__curry_for__(callable, count, strict)
     required = 0
     optional = 0
@@ -5736,6 +6082,9 @@ class IO
       end
       waiting + more
     end
+    # A read of the whole stream carries the text over the way the stream was
+    # told to. A read of so many bytes hands those bytes back as they are.
+    held = __tag_read__(held) if length.nil?
     return __fill_buffer__(buffer.nil? ? nil : __as_buffer__(buffer), held) unless buffer.nil?
     return nil if length && held.empty?
     held
@@ -6141,6 +6490,9 @@ class IO
     # A stream told to read every line ending the same way carries text
     # rather than bytes, which is what refuses a byte-wise read afterwards.
     @__newline_conversion = options[:universal_newline] ? true : false
+    # What to do with a byte the encoding cannot read is remembered, so every
+    # read that carries text over is told the same thing.
+    @__encoding_options = options.reject { |name, _| name == :universal_newline }
     # Naming neither encoding puts the stream back to following the
     # program's own, as they stand now.
     if external.nil? && internal.nil?
@@ -6164,9 +6516,14 @@ class IO
     return text if text.nil? || text.empty?
     inner = internal_encoding
     outer = external_encoding
-    return text.encode(inner, outer) unless inner.nil?
-    return text if outer.nil?
-    text.dup.force_encoding outer
+    tagged = outer.nil? ? text : text.dup.force_encoding(outer)
+    return tagged if inner.nil?
+    # A stream reading bytes hands them over as they are, whatever encoding
+    # it was told to carry them into.
+    return tagged if !outer.nil? && outer == Encoding::BINARY
+    held = @__encoding_options
+    return tagged.encode(inner) if held.nil? || held.empty?
+    tagged.encode(inner, **held)
   end
   private :__tag_read__
 
@@ -6339,7 +6696,8 @@ class IO
       @peeked = rest.nil? || rest.empty? ? nil : rest
       return first
     end
-    held = IO.__stream__ "getc", __stream_handle__, "", 0
+    outer = external_encoding
+    held = IO.__stream__ "getc", __stream_handle__, outer.nil? ? "" : outer.name, 0
     return nil if held.nil? || held.empty?
     __tag_read__ held
   end
@@ -6495,6 +6853,23 @@ class IO
     @binmode == true
   end
 
+  # Lock the whole file, or let a lock go. A lock asked for with `LOCK_NB`
+  # is refused rather than waited on, which answers false.
+  def flock(kind)
+    raise IOError, "closed stream" if closed?
+    wanted = kind.to_i
+    if wanted & File::LOCK_NB != 0 || wanted & File::LOCK_UN != 0
+      return IO.__stream__("flock", __stream_handle__, "", wanted)
+    end
+    # Waiting for the lock leaves the other threads running, so the wait is
+    # made of asks that do not block.
+    loop do
+      held = IO.__stream__ "flock", __stream_handle__, "", wanted | File::LOCK_NB
+      return held unless held == false
+      sleep 0.01
+    end
+  end
+
   # Ask the operating system about this stream's descriptor, or set one of
   # the flags it keeps. `Fcntl` names the numbers.
   def fcntl(command, argument = 0)
@@ -6529,6 +6904,7 @@ class IO
     @write_closed = false
     @peeked = nil
     @lineno = 0
+    __fresh_singleton_class__
     self
   end
 
@@ -6547,6 +6923,36 @@ class IO
     spelled
   end
   private :__reopen_target__
+
+  # How long one turn of a wait lasts. A wait is taken in slices this long
+  # so the program keeps running while one of its threads waits.
+  WAIT_SLICE_MS = 20
+
+  # How long a read or a write on this stream may take before it gives up.
+  # Nothing gives up by default, which is what nil means.
+  def timeout
+    @__timeout__
+  end
+
+  def timeout=(seconds)
+    @__timeout__ = seconds
+  end
+
+  def read_timeout
+    @__read_timeout__
+  end
+
+  def read_timeout=(seconds)
+    @__read_timeout__ = seconds
+  end
+
+  def write_timeout
+    @__write_timeout__
+  end
+
+  def write_timeout=(seconds)
+    @__write_timeout__ = seconds
+  end
 
   # Wait until there is something to read, or until the wait runs out. A
   # timeout of nil waits for as long as it takes.
@@ -6567,7 +6973,18 @@ class IO
     waited = timeout.nil? ? -1 : (timeout.to_f * 1000).to_i
     # A wait longer than the counter holds is the same as waiting forever.
     waited = -1 if waited > 2147483647 || waited < -1
-    IO.__stream__("wait", __stream_handle__, mode, waited) ? self : nil
+    handle = __stream_handle__
+    return IO.__stream__("wait", handle, mode, 0) ? self : nil if waited == 0
+    # The wait is taken in slices so whatever else the program has to run
+    # gets a turn, and so a thread waiting here can be woken or stopped.
+    left = waited
+    while left != 0
+      slice = left < 0 || left > WAIT_SLICE_MS ? WAIT_SLICE_MS : left
+      return self if IO.__stream__("wait", handle, mode, slice)
+      left -= slice if left > 0
+      sleep 0.001
+    end
+    nil
   end
   private :__wait_ready__
 
@@ -6610,6 +7027,36 @@ end
 # A file opened by name answers the descriptor questions an IO answers, over
 # a descriptor opened the first time one of them is asked.
 class File
+  # A file standing over a descriptor the program already holds, which is
+  # what a stream handed over a socket arrives as.
+  def self.for_fd(number, mode = nil, **options)
+    held = IO.for_fd number, mode, **options
+    made = allocate
+    made.__send__ :__take_stream__, held.__send__(:__stream_handle__), mode
+    made
+  end
+
+  # The permission bits of the file this handle was opened on, which answers
+  # 0 the way every other system call on a handle does.
+  def chmod(mode)
+    File.chmod mode, path
+    0
+  end
+
+  # The owner and group of the file this handle was opened on.
+  def chown(owner, group = nil)
+    File.chown owner, group, path
+    0
+  end
+
+  def __take_stream__(handle, mode)
+    @handle = handle
+    @__file_mode = mode.nil? ? "r" : mode
+    @path = ""
+    self
+  end
+  private :__take_stream__
+
   # Whether a name says where it is from the root, rather than from wherever
   # the program happens to be. A `~` says nothing about the root.
   def self.absolute_path?(name)
@@ -7468,11 +7915,486 @@ class TracePoint
   end
 end
 
-# The format version `Marshal.dump` writes and `Marshal.load` reads. Metorex
-# writes no marshalled data yet, and these name the format it would be.
+# The format version `Marshal.dump` writes and `Marshal.load` reads.
 module Marshal
   MAJOR_VERSION = 4
   MINOR_VERSION = 8
+
+  # The bytes an object is written as, opening with the format version.
+  def self.dump(object, target = nil, _limit = nil)
+    target = nil if target.is_a? Integer
+    written = ([MAJOR_VERSION, MINOR_VERSION] + Writer.new.bytes_for(object)).pack "C*"
+    written = written.force_encoding Encoding::BINARY
+    return written if target.nil?
+    target.write written
+    target
+  end
+
+  # The object a run of marshalled bytes spells.
+  def self.load(source, handler = nil, freeze: false)
+    source = source.read unless source.is_a? String
+    made = Reader.new(source, handler).read_document
+    freeze ? made.freeze : made
+  end
+
+  def self.restore(source, handler = nil, freeze: false)
+    load source, handler, freeze: freeze
+  end
+
+  # The bytes a whole number is written as: one byte for a small one, and a
+  # count followed by the bytes themselves for anything wider.
+  def self.__long_bytes__(value)
+    return [0] if value == 0
+    return [value + 5] if value > 0 && value < 123
+    return [(value - 5) & 0xff] if value < 0 && value > -124
+    held = value
+    bytes = []
+    counted = 0
+    1.upto(8) do |index|
+      bytes << (held & 0xff)
+      held = held >> 8
+      counted = index
+      break if held == 0 || held == -1
+    end
+    [held == -1 ? (-counted) & 0xff : counted] + bytes
+  end
+
+  # How Marshal spells a Float: the shortest run of digits that reads back as
+  # the same number, in exponent form when the point sits far from them.
+  def self.__float_text__(value)
+    return "nan" if value.nan?
+    return value < 0 ? "-inf" : "inf" if value.infinite?
+    sign = value.to_s.start_with?("-") ? "-" : ""
+    return "#{sign}0" if value == 0.0
+    digits, point = __digits_of__(value.abs)
+    return "#{sign}#{__exponent_form__(digits, point)}" if point < -3 || point > 16
+    return "#{sign}0.#{"0" * -point}#{digits}" if point <= 0
+    return "#{sign}#{digits}#{"0" * (point - digits.length)}" if point >= digits.length
+    "#{sign}#{digits[0, point]}.#{digits[point..]}"
+  end
+
+  # The digits of a Float and where the point sits among them, read off the
+  # shortest spelling that reads back as the same number.
+  def self.__digits_of__(value)
+    spelled = value.to_s
+    if spelled.include? "e"
+      mantissa, exponent = spelled.split "e"
+      digits = mantissa.delete "."
+      return [__trimmed_digits__(digits), exponent.to_i + 1]
+    end
+    whole, fraction = spelled.split "."
+    fraction = "" if fraction.nil?
+    if whole == "0"
+      leading = fraction.length - fraction.sub(/\A0+/, "").length
+      return ["0", 1] if fraction.sub(/\A0+/, "").empty?
+      [__trimmed_digits__(fraction[leading..]), -leading]
+    else
+      [__trimmed_digits__(whole + fraction), whole.length]
+    end
+  end
+
+  # A run of digits with the trailing zeros dropped, which are not part of the
+  # shortest spelling.
+  def self.__trimmed_digits__(digits)
+    trimmed = digits.sub(/0+\z/, "")
+    trimmed.empty? ? "0" : trimmed
+  end
+
+  # One digit, the rest after a point, and the power of ten they stand at.
+  def self.__exponent_form__(digits, point)
+    body = digits.length > 1 ? "#{digits[0]}.#{digits[1..]}" : digits
+    "#{body}e#{point - 1}"
+  end
+
+  # Walks an object and writes the bytes Marshal spells it in.
+  class Writer
+    def initialize
+      @symbols = {}
+      @objects = {}
+      @out = []
+    end
+
+    def bytes_for(object)
+      write object
+      @out
+    end
+
+    private
+
+    def text(spelled)
+      spelled.bytes.each { |held| @out << held }
+    end
+
+    def long(value)
+      Marshal.__long_bytes__(value).each { |held| @out << held }
+    end
+
+    def symbol(name)
+      spelled = name.to_s
+      if @symbols.key? spelled
+        text ";"
+        long @symbols[spelled]
+        return
+      end
+      @symbols[spelled] = @symbols.size
+      text ":"
+      long spelled.bytesize
+      text spelled
+    end
+
+    def remember(object)
+      @objects[object.object_id] = @objects.size
+    end
+
+    def linked(object)
+      return false unless @objects.key? object.object_id
+      text "@"
+      long @objects[object.object_id]
+      true
+    end
+
+    def write(object)
+      case object
+      when nil then text "0"
+      when true then text "T"
+      when false then text "F"
+      when Symbol then symbol object
+      when Integer then write_integer object
+      else
+        return if linked object
+        write_held object
+      end
+    end
+
+    def write_integer(value)
+      if value >= -1073741824 && value <= 1073741823
+        text "i"
+        long value
+        return
+      end
+      remember value
+      text "l"
+      text(value < 0 ? "-" : "+")
+      held = value.abs
+      words = []
+      while held > 0
+        words << (held & 0xffff)
+        held = held >> 16
+      end
+      words = [0] if words.empty?
+      long words.length
+      words.each do |word|
+        @out << (word & 0xff)
+        @out << ((word >> 8) & 0xff)
+      end
+    end
+
+    def write_held(object)
+      case object
+      when Float
+        remember object
+        text "f"
+        spelled = Marshal.__float_text__(object)
+        long spelled.bytesize
+        text spelled
+      when String then write_string object
+      when Array
+        remember object
+        text "["
+        long object.length
+        object.each { |item| write item }
+      when Hash
+        remember object
+        text "{"
+        long object.length
+        object.each { |key, value| write key; write value }
+      when Class
+        remember object
+        text "c"
+        long object.name.bytesize
+        text object.name
+      when Module
+        remember object
+        text "m"
+        long object.name.bytesize
+        text object.name
+      else write_instance object
+      end
+    end
+
+    def write_string(object)
+      remember object
+      named = object.encoding.name
+      if named == "ASCII-8BIT"
+        text '"'
+        long object.bytesize
+        text object
+        return
+      end
+      text "I"
+      text '"'
+      long object.bytesize
+      text object
+      long 1
+      if named == "UTF-8"
+        symbol :E
+        write true
+      elsif named == "US-ASCII"
+        symbol :E
+        write false
+      else
+        symbol :encoding
+        text '"'
+        long named.bytesize
+        text named
+      end
+    end
+
+    def write_instance(object)
+      if object.respond_to? :marshal_dump, true
+        remember object
+        text "U"
+        symbol object.class.name
+        write object.marshal_dump
+        return
+      end
+      if object.respond_to? :_dump, true
+        held = object.send :_dump, -1
+        remember object
+        text "u"
+        symbol object.class.name
+        long held.bytesize
+        text held
+        return
+      end
+      remember object
+      text "o"
+      symbol object.class.name
+      names = object.instance_variables
+      long names.length
+      names.each do |name|
+        symbol name
+        write object.instance_variable_get(name)
+      end
+    end
+  end
+
+  # Reads the bytes Marshal spells an object in, putting it back together.
+  class Reader
+    def initialize(source, handler = nil)
+      @bytes = source.bytes
+      @at = 0
+      @symbols = []
+      @objects = []
+      @handler = handler
+    end
+
+    def read_document
+      major = next_byte
+      minor = next_byte
+      if major != Marshal::MAJOR_VERSION || minor > Marshal::MINOR_VERSION
+        raise TypeError, "incompatible marshal file format (can't be read)"
+      end
+      made = read
+      @handler.call made unless @handler.nil?
+      made
+    end
+
+    private
+
+    def next_byte
+      held = @bytes[@at]
+      raise ArgumentError, "marshal data too short" if held.nil?
+      @at += 1
+      held
+    end
+
+    def signed_byte
+      held = next_byte
+      held > 127 ? held - 256 : held
+    end
+
+    def read_long
+      opening = signed_byte
+      return 0 if opening == 0
+      if opening > 0
+        return opening - 5 if opening > 4
+        value = 0
+        opening.times { |index| value |= next_byte << (8 * index) }
+        return value
+      end
+      return opening + 5 if opening < -4
+      value = -1
+      (-opening).times do |index|
+        value &= ~(0xff << (8 * index))
+        value |= next_byte << (8 * index)
+      end
+      value
+    end
+
+    def read_bytes(count)
+      held = @bytes[@at, count]
+      @at += count
+      held.pack("C*").force_encoding Encoding::BINARY
+    end
+
+    def remember(object)
+      @objects << object
+      object
+    end
+
+    def read
+      case next_byte.chr
+      when "0" then nil
+      when "T" then true
+      when "F" then false
+      when "i" then read_long
+      when "f" then remember read_float
+      when ":" then read_symbol
+      when ";" then @symbols[read_long]
+      when "@" then @objects[read_long]
+      when '"' then remember read_bytes(read_long)
+      when "I" then read_with_variables
+      when "[" then read_array
+      when "{" then read_hash
+      when "l" then remember read_bignum
+      when "o" then read_instance
+      when "U" then read_user_marshal
+      when "u" then read_user_defined
+      when "c" then remember named_class(read_bytes(read_long))
+      when "m" then remember named_class(read_bytes(read_long))
+      else raise TypeError, "dump format error"
+      end
+    end
+
+    def named_class(name)
+      Object.const_get name.force_encoding(Encoding::UTF_8)
+    end
+
+    def read_symbol
+      name = read_bytes(read_long).force_encoding(Encoding::UTF_8).to_sym
+      @symbols << name
+      name
+    end
+
+    def read_float
+      spelled = read_bytes read_long
+      case spelled
+      when "nan" then 0.0 / 0.0
+      when "inf" then 1.0 / 0.0
+      when "-inf" then -1.0 / 0.0
+      else spelled.to_f
+      end
+    end
+
+    def read_bignum
+      sign = next_byte.chr
+      words = read_long
+      value = 0
+      words.times do |index|
+        low = next_byte
+        high = next_byte
+        value |= (low | (high << 8)) << (16 * index)
+      end
+      sign == "-" ? -value : value
+    end
+
+    def read_array
+      made = []
+      @objects << made
+      read_long.times { made << read }
+      made
+    end
+
+    def read_hash
+      made = {}
+      @objects << made
+      read_long.times do
+        key = read
+        made[key] = read
+      end
+      made
+    end
+
+    def read_with_variables
+      made = read
+      read_long.times do
+        name = read
+        value = read
+        apply_variable made, name, value
+      end
+      made
+    end
+
+    def apply_variable(made, name, value)
+      if name == :E && made.is_a?(String)
+        made.force_encoding(value ? Encoding::UTF_8 : Encoding::US_ASCII)
+      elsif name == :encoding && made.is_a?(String)
+        made.force_encoding value
+      else
+        made.instance_variable_set name, value
+      end
+    end
+
+    def read_instance
+      made = named_class(read.to_s).allocate
+      @objects << made
+      read_long.times do
+        name = read
+        made.instance_variable_set name, read
+      end
+      made
+    end
+
+    def read_user_marshal
+      made = named_class(read.to_s).allocate
+      @objects << made
+      made.send :marshal_load, read
+      made
+    end
+
+    def read_user_defined
+      klass = named_class read.to_s
+      data = read_bytes read_long
+      remember klass.send(:_load, data)
+    end
+  end
+end
+
+class Integer
+  # `pow` raises the number the way `**` does. Given a modulus as well, it
+  # multiplies under that modulus, so a large power stays small.
+  def pow(exponent, modulus = nil)
+    return self**exponent if modulus.nil?
+    unless exponent.is_a?(Integer) && modulus.is_a?(Integer)
+      raise TypeError,
+            "Integer#pow() 2nd argument not allowed unless all arguments are integers"
+    end
+    if exponent < 0
+      raise RangeError,
+            "Integer#pow() 1st argument cannot be negative when 2nd argument specified"
+    end
+    raise ZeroDivisionError, "divided by 0" if modulus == 0
+    answer = 1
+    base = self % modulus
+    power = exponent
+    while power > 0
+      answer = (answer * base) % modulus if power.odd?
+      base = (base * base) % modulus
+      power = power >> 1
+    end
+    answer
+  end
+end
+
+class String
+  # A string given another takes that one's characters and its encoding. A
+  # string given nothing stays as it is, frozen or not.
+  def initialize(other = nil)
+    return self if other.nil?
+    __native_replace__ other
+  end
+  private :initialize
 end
 
 class Struct
@@ -7896,6 +8818,24 @@ class Dir
     @names = options.key?(:encoding) ? Dir.entries(@path, encoding: options[:encoding]) : Dir.entries(@path)
     @position = 0
     @closed = false
+  end
+
+  # The directory this handle names, made the one the program works from.
+  # With a block the program works from there only while the block runs. The
+  # directory the program came from is reached again through this handle, so
+  # a directory removed while the block ran is not an error here.
+  def chdir(&block)
+    return Dir.chdir(@path) if block.nil?
+    was = Dir.pwd
+    Dir.chdir(@path)
+    begin
+      block.call
+    ensure
+      begin
+        Dir.chdir(was)
+      rescue Errno::ENOENT
+      end
+    end
   end
 
   def self.open(path, **options, &block)
@@ -8640,6 +9580,82 @@ class Set
 end
 
 class Thread
+  # Run the block with the interrupts named in `mapping` handled the way it
+  # says: :immediate raises one where the thread stands, :on_blocking waits
+  # for the next place the thread waits on something, and :never holds it
+  # until the block is over.
+  def self.handle_interrupt(mapping)
+    unless mapping.is_a?(Hash)
+      raise ArgumentError, "unknown mask signature"
+    end
+    raise LocalJumpError, "no block given" unless block_given?
+    thread = Thread.current
+    held = thread.instance_variable_get(:@__interrupt_masks) || []
+    thread.instance_variable_set(:@__interrupt_masks, held + [mapping])
+    begin
+      Thread.__run_pending_interrupt__ false
+      yield
+    ensure
+      thread.instance_variable_set(:@__interrupt_masks, held)
+      Thread.__run_pending_interrupt__ false
+    end
+  end
+
+  # Whether an exception handed to a thread is waiting to be raised.
+  def self.pending_interrupt?(_error = nil)
+    Thread.current.pending_interrupt?
+  end
+
+  def pending_interrupt?(_error = nil)
+    held = instance_variable_get(:@__thread_raise)
+    !held.nil? && !held.empty?
+  end
+
+  # Raise what the thread was handed, when the masks it set allow it now.
+  # `blocking` says whether the thread is waiting on something here.
+  def self.__run_pending_interrupt__(blocking)
+    thread = Thread.current
+    pending = thread.instance_variable_get(:@__thread_raise)
+    return nil if pending.nil? || pending.empty?
+    how = __interrupt_handling__ thread, pending
+    return nil if how == :never
+    return nil if how == :on_blocking && !blocking
+    thread.instance_variable_set(:@__thread_raise, nil)
+    raise(*pending)
+  end
+
+  # How the innermost mask naming the pending exception's class says to
+  # handle it. Nothing naming it means it is raised right away.
+  def self.__interrupt_handling__(thread, pending)
+    masks = thread.instance_variable_get(:@__interrupt_masks)
+    return :immediate if masks.nil? || masks.empty?
+    first = pending.first
+    kind = if first.is_a?(Class)
+             first
+           elsif first.is_a?(Exception)
+             first.class
+           else
+             RuntimeError
+           end
+    masks.reverse_each do |mask|
+      mask.each_pair do |named, how|
+        return how if kind <= named
+      end
+    end
+    :immediate
+  end
+
+  # Hand each place the running code was called from to the block, innermost
+  # first, the way `caller_locations` reads them.
+  def self.each_caller_location(*args, **keywords)
+    unless args.empty? && keywords.empty?
+      raise ArgumentError, "wrong number of arguments (given #{args.size}, expected 0)"
+    end
+    raise LocalJumpError, "no block given" unless block_given?
+    caller_locations(2).each { |place| yield place }
+    nil
+  end
+
   # Whether an exception a thread dies of is reported, and whether it takes
   # the program down with it. Both are settings a program may read back, and
   # a thread of its own overrides what the class says.
@@ -8740,6 +9756,10 @@ class Regexp
   # pattern refuses, which is what Ruby does for a literal and for one built
   # by `new` alike.
   def initialize(source = nil, options = nil, timeout: nil)
+    # A subclass writing its own `initialize` calls this one through `super`
+    # while the pattern behind it is being built, which is the one time it
+    # has nothing to refuse.
+    return nil if instance_variable_defined?(:@__building_regexp__)
     raise FrozenError, "can't modify frozen Regexp: #{inspect}" if frozen?
     raise TypeError, "already initialized regexp"
   end
@@ -8955,6 +9975,60 @@ module GC
     was
   end
 
+  # The readings Ruby's collector reports. Metorex frees an object when the
+  # last reference to it goes, so what these count is the work the program
+  # has asked for rather than a collector's own bookkeeping.
+  def self.stat(target = nil)
+    readings = __stat_readings__
+    return readings if target.nil?
+    if target.is_a? Symbol
+      raise ArgumentError, "unknown key: #{target}" unless readings.key?(target)
+      return readings[target]
+    end
+    raise TypeError, "non-hash or symbol given" unless target.is_a? Hash
+    readings.each { |name, reading| target[name] = reading }
+    target
+  end
+
+  def self.__stat_readings__
+    runs = GC.count
+    counted = ObjectSpace.count_objects
+    live = counted.nil? ? 1 : counted[:TOTAL].to_i
+    {
+      count: runs,
+      time: GC.total_time,
+      marking_time: 0,
+      sweeping_time: 0,
+      heap_allocated_pages: 1,
+      heap_sorted_length: 1,
+      heap_allocatable_pages: 0,
+      heap_available_slots: live,
+      heap_live_slots: live,
+      heap_free_slots: 0,
+      heap_final_slots: 0,
+      heap_marked_slots: live,
+      heap_eden_pages: 1,
+      heap_tomb_pages: 0,
+      total_allocated_pages: 1,
+      total_freed_pages: 0,
+      total_allocated_objects: live,
+      total_freed_objects: 0,
+      malloc_increase_bytes: 0,
+      malloc_increase_bytes_limit: 0,
+      minor_gc_count: 0,
+      major_gc_count: runs,
+      compact_count: 0,
+      read_barrier_faults: 0,
+      total_moved_objects: 0,
+      remembered_wb_unprotected_objects: 0,
+      remembered_wb_unprotected_objects_limit: 0,
+      old_objects: 0,
+      old_objects_limit: 0,
+      oldmalloc_increase_bytes: 0,
+      oldmalloc_increase_bytes_limit: 0
+    }
+  end
+
   def self.auto_compact
     @auto_compact == true
   end
@@ -9019,6 +10093,38 @@ module GC
 end
 
 module Process
+  # Watch a child in a thread of its own, so the program does not have to
+  # wait on it. The thread answers the status the child exited with.
+  def self.detach(pid)
+    watched = __pid_argument__ pid
+    watching = Thread.new do
+      begin
+        Process.waitpid watched
+        $?
+      rescue SystemCallError
+        nil
+      end
+    end
+    watching[:pid] = watched
+    watching.define_singleton_method(:pid) { watched }
+    watching
+  end
+
+  # The process id an argument names. Anything that reads as an Integer
+  # names one, and anything else is refused.
+  def self.__pid_argument__(pid)
+    return pid if pid.is_a? Integer
+    unless pid.respond_to? :to_int
+      raise TypeError, "no implicit conversion of #{pid.class} into Integer"
+    end
+    held = pid.to_int
+    unless held.is_a? Integer
+      raise TypeError,
+            "can't convert #{pid.class} into Integer (#{pid.class}#to_int gives #{held.class})"
+    end
+    held
+  end
+
   # The four processor-time readings `Process.times` reports: this process's
   # own user and system time, and the totals for the children it waited for.
   Tms = Struct.new(:utime, :stime, :cutime, :cstime)
@@ -9271,6 +10377,7 @@ class Encoding
     # Carry text from the source encoding to the destination, refusing what
     # neither one can spell.
     def convert text
+      raise ArgumentError, "converter already finished" if @finished
       held = text.to_s
       refuse_invalid held
       unless @pending.nil? || @pending.empty?
@@ -9279,7 +10386,7 @@ class Encoding
       converted = ""
       held.dup.force_encoding(@source.name).each_char do |character|
         refuse_undefined character unless spellable? character
-        converted = converted + character
+        converted = converted + carried(character)
       end
       @errinfo = [:source_buffer_empty, nil, nil, nil, nil]
       @last_error = nil
@@ -9369,6 +10476,11 @@ class Encoding
     def finish
       pending = @pending
       @pending = nil
+      @finished = true
+      if @shifted
+        @shifted = false
+        return "\e(B".dup.force_encoding(@destination.name)
+      end
       unless pending.nil? || pending.empty?
         from, to = stage_for :invalid
         @errinfo = [:incomplete_input, from.name, to.name, pending, ""]
@@ -9412,11 +10524,61 @@ class Encoding
         true
       when "ISO-8859-1"
         code < 256
+      when "EUC-JP"
+        begin
+          character.encode "EUC-JP"
+          true
+        rescue Encoding::UndefinedConversionError
+          false
+        end
+      when "ISO-2022-JP"
+        code < 128 || !jis_bytes(character).nil?
       else
         code < 128
       end
     end
     private :spellable?
+
+    # The character written the way the destination spells it, which is the
+    # character itself where the two encodings spell it the same way.
+    def carried character
+      return jis_carried(character) if @destination.name == "ISO-2022-JP"
+      return character if character.ord < 128
+      character.encode @destination.name
+    rescue StandardError
+      character
+    end
+    private :carried
+
+    # The two bytes JIS X 0208 spells a character with, or nil where it has
+    # none. They are the EUC-JP bytes with the high bit taken off.
+    def jis_bytes character
+      return nil if character.ord < 128
+      begin
+        spelled = character.encode("EUC-JP").bytes
+      rescue StandardError
+        return nil
+      end
+      return nil unless spelled.length == 2
+      spelled.map { |byte| byte - 0x80 }
+    end
+    private :jis_bytes
+
+    # ISO-2022-JP writes an escape before a run of two-byte characters and
+    # another one before going back to ASCII, so the run is carried over with
+    # whichever escape the switch calls for.
+    def jis_carried character
+      if character.ord < 128
+        return character unless @shifted
+        @shifted = false
+        return "\e(B" + character
+      end
+      written = jis_bytes(character).pack("C*")
+      return written if @shifted
+      @shifted = true
+      "\e$B" + written
+    end
+    private :jis_carried
 
     # The run of bytes the source encoding cannot read, as
     # `[offset, wrong, rest, truncated]`, or nil when every byte reads.

@@ -897,3 +897,87 @@ fn cli_i_flag_edits_the_files_in_place_and_keeps_a_backup() {
         }
     }
 }
+
+// ============================================================================
+// -s flag (switches among the program's arguments become globals)
+// ============================================================================
+
+/// The expected output of both `cli_flags/switch_globals` variants.
+const SWITCH_GLOBALS_OUTPUT: &str = "true\n\"ada\"\n\"held\"\n[\"rest\"]\n";
+
+fn switch_globals_output(script: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let path = format!("{}/tests/_examples/cli_flags/{}", manifest_dir, script);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args([
+            "-s",
+            &path,
+            "-flag",
+            "-name=ada",
+            "--long--name=held",
+            "rest",
+        ])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn cli_s_flag_binds_switches_as_globals() {
+    assert_eq!(
+        switch_globals_output("switch_globals.rb"),
+        SWITCH_GLOBALS_OUTPUT
+    );
+}
+
+#[test]
+fn cli_s_flag_binds_switches_as_globals_parens() {
+    assert_eq!(
+        switch_globals_output("switch_globals_parens.rb"),
+        SWITCH_GLOBALS_OUTPUT
+    );
+}
+
+// ============================================================================
+// __END__ and the DATA constant
+// ============================================================================
+
+/// The expected output of both `cli_flags/end_data` variants.
+const END_DATA_OUTPUT: &str = concat!(
+    "File\n",
+    "true\n",
+    "\"first line\\nsecond line\\n\"\n",
+    "\"# A line reading `__END__` closes the code, and `DATA` reads the text after it\\n\"\n"
+);
+
+fn end_data_output(script: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let path = format!("{}/tests/_examples/cli_flags/{}", manifest_dir, script);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args([&path])
+        .output()
+        .expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn cli_end_marker_opens_the_data_constant() {
+    assert_eq!(end_data_output("end_data.rb"), END_DATA_OUTPUT);
+}
+
+#[test]
+fn cli_end_marker_opens_the_data_constant_parens() {
+    assert_eq!(end_data_output("end_data_parens.rb"), END_DATA_OUTPUT);
+}

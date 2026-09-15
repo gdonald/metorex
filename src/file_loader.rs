@@ -209,12 +209,25 @@ pub fn find_file_path(path: &Path) -> Result<PathBuf, MetorexError> {
 /// * `Err(MetorexError)` - If the file cannot be found or read
 pub fn load_file_source(path: &Path) -> Result<String, MetorexError> {
     let actual_path = find_file_path(path)?;
-    fs::read_to_string(&actual_path).map_err(|e| {
+    let bytes = fs::read(&actual_path).map_err(|e| {
         MetorexError::runtime_error(
             format!("Failed to read file '{}': {}", actual_path.display(), e),
             SourceLocation::new(0, 0, 0),
         )
-    })
+    })?;
+    let held = source_text(&bytes).ok_or_else(|| {
+        MetorexError::runtime_error(
+            format!(
+                "Failed to read file '{}': stream did not contain valid UTF-8",
+                actual_path.display()
+            ),
+            SourceLocation::new(0, 0, 0),
+        )
+    })?;
+    // A line reading `__END__` closes the code: what follows is the file's
+    // data rather than more of its program.
+    let (code, _) = crate::lexer::source_before_data_section(&held);
+    Ok(code.to_string())
 }
 
 /// Resolves a relative path based on the location of a base file.
@@ -302,4 +315,19 @@ pub fn parse_file(source: &str, filename: &str) -> Result<Vec<Statement>, Metore
             )
         }
     })
+}
+
+/// The text a file holds. A file whose bytes do not spell UTF-8 is read in
+/// the encoding its magic comment names, so a literal written with a byte of
+/// its own reaches the program as the character that byte stands for.
+fn source_text(bytes: &[u8]) -> Option<String> {
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return Some(text.to_string());
+    }
+    // The comment naming the encoding is written in ASCII, so it reads the
+    // same however the rest of the file is written.
+    let opening = String::from_utf8_lossy(&bytes[..bytes.len().min(256)]).to_string();
+    let named = crate::lexer::named_source_encoding(&opening)?;
+    let named = crate::vm::native_methods::string_methods::canonical_encoding_name(&named);
+    crate::vm::native_methods::string_methods::latin_text(bytes, &named)
 }

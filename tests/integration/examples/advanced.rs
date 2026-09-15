@@ -71,3 +71,94 @@ fn test_stabby_expr_body() {
     let output = run_example("advanced/stabby_expr_body.rb");
     assert_eq!(output, "5\n");
 }
+
+/// The expected output of both `advanced/threads_that_wait` variants, which
+/// differ only in whether the calls are written with parentheses.
+const THREADS_THAT_WAIT_OUTPUT: &str = concat!(
+    "\"heard \\\"ping\\\\r\\\\n\\\"\"\n",
+    "\"head\\r\\n\"\n",
+    "\"tail\"\n",
+);
+
+#[test]
+fn test_advanced_threads_that_wait_execution() {
+    let output = run_example("advanced/threads_that_wait.rb");
+    assert_eq!(output, THREADS_THAT_WAIT_OUTPUT);
+}
+
+#[test]
+fn test_advanced_threads_that_wait_no_parens_execution() {
+    let output = run_example("advanced/threads_that_wait_no_parens.rb");
+    assert_eq!(output, THREADS_THAT_WAIT_OUTPUT);
+}
+
+/// The expected output of both `advanced/threads_that_wake` variants, which
+/// differ only in whether the calls are written with parentheses.
+const THREADS_THAT_WAKE_OUTPUT: &str = concat!(
+    "\"sleep\"\n",
+    ":ready\n",
+    "false\n",
+    "false\n",
+    "[:woken]\n",
+    "[true]\n",
+    "false\n",
+);
+
+#[test]
+fn test_advanced_threads_that_wake_execution() {
+    let output = run_example("advanced/threads_that_wake.rb");
+    assert_eq!(output, THREADS_THAT_WAKE_OUTPUT);
+}
+
+#[test]
+fn test_advanced_threads_that_wake_no_parens_execution() {
+    let output = run_example("advanced/threads_that_wake_no_parens.rb");
+    assert_eq!(output, THREADS_THAT_WAKE_OUTPUT);
+}
+
+/// The expected output of both `advanced/queues_that_wait` variants, which
+/// differ only in whether the calls are written with parentheses.
+const QUEUES_THAT_WAIT_OUTPUT: &str = concat!(
+    "nil\n",
+    ":first\n",
+    "\"queue empty\"\n",
+    "1\n",
+    ":one\n",
+    ":two\n",
+);
+
+#[test]
+fn test_advanced_queues_that_wait_execution() {
+    let output = run_example("advanced/queues_that_wait.rb");
+    assert_eq!(output, QUEUES_THAT_WAIT_OUTPUT);
+}
+
+#[test]
+fn test_advanced_queues_that_wait_no_parens_execution() {
+    let output = run_example("advanced/queues_that_wait_no_parens.rb");
+    assert_eq!(output, QUEUES_THAT_WAIT_OUTPUT);
+}
+
+/// The expected output of both `advanced/fibers_that_schedule` variants, which
+/// differ only in whether the calls are written with parentheses.
+const FIBERS_THAT_SCHEDULE_OUTPUT: &str = concat!(
+    "nil\n",
+    "\"Scheduler must implement #io_wait\"\n",
+    "true\n",
+    "true\n",
+    "nil\n",
+    "nil\n",
+    "[true, \"later\"]\n",
+);
+
+#[test]
+fn test_advanced_fibers_that_schedule_execution() {
+    let output = run_example("advanced/fibers_that_schedule.rb");
+    assert_eq!(output, FIBERS_THAT_SCHEDULE_OUTPUT);
+}
+
+#[test]
+fn test_advanced_fibers_that_schedule_no_parens_execution() {
+    let output = run_example("advanced/fibers_that_schedule_no_parens.rb");
+    assert_eq!(output, FIBERS_THAT_SCHEDULE_OUTPUT);
+}

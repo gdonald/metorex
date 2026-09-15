@@ -381,7 +381,7 @@ impl VirtualMachine {
                 }
                 Ok(Some(receiver.clone()))
             }
-            "to_s" => {
+            "to_s" | "inspect" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -391,8 +391,14 @@ impl VirtualMachine {
                     ));
                 }
                 // Ruby spells the non-finite floats out, and always shows a
-                // fractional part, which is what the display form does.
-                Ok(Some(Object::string(Object::Float(*f).to_string())))
+                // fractional part, which is what the display form does. The
+                // digits are ASCII, and Ruby says so.
+                Ok(Some(Object::String(std::rc::Rc::new(
+                    crate::object::StringValue::with_encoding(
+                        Object::Float(*f).to_string(),
+                        "US-ASCII",
+                    ),
+                ))))
             }
             _ => Ok(None),
         }

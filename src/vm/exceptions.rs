@@ -591,15 +591,27 @@ impl VirtualMachine {
                 return Ok(true);
             }
             // Otherwise place the exception by its class chain.
-            let target_class = match self.environment().get(type_name) {
+            // A name in a rescue clause is read where it was written, so one
+            // naming a class of the enclosing module is found by its simple
+            // name the way any other constant reference is.
+            let target_class = match self.resolve_constant_in_scope(type_name) {
                 Some(Object::Class(class)) => Some(class),
-                _ => match self.resolve_qualified_constant(type_name) {
+                _ => match self.environment().get(type_name) {
                     Some(Object::Class(class)) => Some(class),
-                    _ => None,
+                    _ => match self.resolve_qualified_constant(type_name) {
+                        Some(Object::Class(class)) => Some(class),
+                        _ => None,
+                    },
                 },
             };
             let raised_class = exception_class
                 .clone()
+                .or_else(
+                    || match self.resolve_constant_in_scope(&exception_type_name) {
+                        Some(Object::Class(class)) => Some(class),
+                        _ => None,
+                    },
+                )
                 .or_else(|| match self.environment().get(&exception_type_name) {
                     Some(Object::Class(class)) => Some(class),
                     _ => None,

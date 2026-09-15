@@ -30,9 +30,9 @@ impl Parser {
         let elements: Vec<Expression> = split_percent_words(&value, filled)
             .into_iter()
             .map(|word| match percent_word(&word, filled, position) {
-                Expression::StringLiteral { value, position } => {
-                    Expression::Symbol { value, position }
-                }
+                Expression::StringLiteral {
+                    value, position, ..
+                } => Expression::Symbol { value, position },
                 built => Expression::MethodCall {
                     receiver: Box::new(built),
                     method: "to_sym".to_string(),

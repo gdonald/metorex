@@ -26,10 +26,10 @@ fn method_parameters_name_each_kind() {
 }
 
 #[test]
-fn method_parameters_leave_an_unnamed_splat_unnamed() {
+fn method_parameters_name_an_unnamed_splat_by_its_mark() {
     assert_eq!(
         run("def m(*); end\nmethod(:m).parameters.inspect"),
-        Some(Object::string("[[:rest]]"))
+        Some(Object::string("[[:rest, :*]]"))
     );
 }
 

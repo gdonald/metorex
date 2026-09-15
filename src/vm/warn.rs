@@ -24,6 +24,23 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        self.kernel_warn_for(None, arguments, position)
+    }
+
+    /// The same, told which object the call was made on. Kernel#warn on the
+    /// Warning module writes the message out rather than handing it back to
+    /// `Warning.warn`, which is what lets a `Warning.warn` of a program's own
+    /// call `super` without reaching itself.
+    pub(crate) fn kernel_warn_for(
+        &mut self,
+        receiver: Option<&Object>,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let on_warning_itself = match (receiver, self.globals().get("Warning")) {
+            (Some(Object::Module(given)), Some(Object::Module(named))) => Rc::ptr_eq(given, &named),
+            _ => false,
+        };
         let (messages, keywords) = split_warn_keywords(arguments);
 
         let category = match keyword_value(&keywords, "category") {
@@ -63,6 +80,10 @@ impl VirtualMachine {
         }
         let text = format!("{}{}", prefix, text);
 
+        if on_warning_itself {
+            self.write_to_stderr(&text, position)?;
+            return Ok(Object::Nil);
+        }
         self.dispatch_to_warning_module(text, category, position)?;
         Ok(Object::Nil)
     }

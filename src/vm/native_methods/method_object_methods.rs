@@ -115,14 +115,25 @@ impl VirtualMachine {
                         Some(owner) => Rc::clone(owner),
                         None => self.builtins().class_of(&bound),
                     };
-                    let result = self.invoke_method(
+                    // `$~` belongs to the method that set it, so a method
+                    // called this way neither reads the caller's match nor
+                    // leaves one of its own behind.
+                    let held_match = self
+                        .globals()
+                        .get(super::regexp_methods::LAST_MATCH)
+                        .unwrap_or(Object::Nil);
+                    self.globals_mut()
+                        .set(super::regexp_methods::LAST_MATCH, Object::Nil);
+                    let outcome = self.invoke_method(
                         owner,
                         Rc::clone(method_obj),
                         bound,
                         arguments.to_vec(),
                         position,
-                    )?;
-                    return Ok(Some(result));
+                    );
+                    self.globals_mut()
+                        .set(super::regexp_methods::LAST_MATCH, held_match);
+                    return Ok(Some(outcome?));
                 }
                 // A method names itself with a Symbol, and `original_name`
                 // gives the name it was cut from when it was aliased.
@@ -273,6 +284,51 @@ impl VirtualMachine {
                 "lambda?" => return Ok(Some(Object::Bool(true))),
                 // Currying a Method gathers arguments the way currying a
                 // lambda does, so Proc answers for both.
+                // A Method composes with any callable, the way a Proc does:
+                // `>>` runs the receiver first, `<<` runs the argument first.
+                ">>" | "<<" => {
+                    if arguments.len() != 1 {
+                        return Err(crate::vm::errors::method_argument_error(
+                            method_name,
+                            1,
+                            arguments.len(),
+                            position,
+                        ));
+                    }
+                    let Some(proc_class) = self.globals().get("Proc") else {
+                        return Ok(None);
+                    };
+                    let forward = method_name == ">>";
+                    // `>>` is called with the receiver's arguments, and a
+                    // Method is strict about them; `<<` takes the strictness
+                    // of the callable that is handed the arguments instead.
+                    let strict = if forward {
+                        true
+                    } else {
+                        self.answers_to(&arguments[0], "lambda?", position)?
+                            && matches!(
+                                self.send_to_object(
+                                    arguments[0].clone(),
+                                    "lambda?",
+                                    vec![],
+                                    position
+                                )?,
+                                Object::Bool(true)
+                            )
+                    };
+                    let composed = self.send_to_object(
+                        proc_class,
+                        "__composed__",
+                        vec![
+                            receiver.clone(),
+                            arguments[0].clone(),
+                            Object::Bool(forward),
+                            Object::Bool(strict),
+                        ],
+                        position,
+                    )?;
+                    return Ok(Some(composed));
+                }
                 "curry" => {
                     let wanted = arguments.first().cloned().unwrap_or(Object::Nil);
                     let Some(proc_class) = self.globals().get("Proc") else {
@@ -308,6 +364,34 @@ impl VirtualMachine {
                     return Ok(Some(Object::Method(Rc::new(as_proc))));
                 }
                 "owner" => {
+                    // Naming an ancestor's method in `public` or `private`
+                    // puts a copy of it on the class that named it, and that
+                    // class is what owns the one handed out from there.
+                    let named_from = method_obj.origin_class.clone().or_else(|| {
+                        method_obj
+                            .receiver
+                            .as_ref()
+                            .map(|held| self.builtins().class_of(held))
+                    });
+                    if let Some(named) = &named_from
+                        && (named.has_public_override(&method_obj.name)
+                            || named.is_method_private(&method_obj.name)
+                            || named.is_method_protected(&method_obj.name))
+                        && let Some(owner) = &method_obj.owner_class
+                        && !Rc::ptr_eq(owner, named)
+                        // Only the method that class opened up is owned
+                        // there; one further along the chain is not.
+                        && named
+                            .find_method_with_owner(&method_obj.name)
+                            .is_some_and(|(found, _)| Rc::ptr_eq(&found, owner))
+                    {
+                        let named = Rc::clone(named);
+                        return Ok(Some(if named.is_module() {
+                            Object::Module(named)
+                        } else {
+                            Object::Class(named)
+                        }));
+                    }
                     if let Some(owner) = &method_obj.owner_class {
                         let owner = Rc::clone(owner);
                         return Ok(Some(if owner.is_module() {
@@ -393,6 +477,36 @@ impl VirtualMachine {
                 "lambda?" => {
                     return Ok(Some(Object::Bool(block_obj.is_lambda)));
                 }
+                // `ruby2_keywords` only applies to a callable whose last
+                // parameter is a bare `*args` splat. Anything else keeps its
+                // shape and gets a warning.
+                "ruby2_keywords" => {
+                    let declared = block_obj.binding_parameters();
+                    let positional: Vec<&String> = declared
+                        .iter()
+                        .filter(|name| {
+                            !name.starts_with('&')
+                                && !name.starts_with(crate::object::KEYWORD_PARAM_PREFIX)
+                                && !name.starts_with("**")
+                        })
+                        .collect();
+                    let takes_bare_splat = positional
+                        .last()
+                        .is_some_and(|name| name.starts_with('*') && name.len() > 1);
+                    let takes_keywords = declared.iter().any(|name| {
+                        name.starts_with(crate::object::KEYWORD_PARAM_PREFIX)
+                            || (name.starts_with("**") && name.len() > 2)
+                    });
+                    if !takes_bare_splat || takes_keywords {
+                        self.emit_warning_to_stderr(
+                            "Skipping set of ruby2_keywords flag for proc (proc accepts keywords or proc does not accept argument splat)",
+                            position,
+                        );
+                        return Ok(Some(receiver.clone()));
+                    }
+                    block_obj.ruby2_keywords.set(true);
+                    return Ok(Some(receiver.clone()));
+                }
                 // Where the callable was written: the file and the line the
                 // block was opened on.
                 "source_location" => {
@@ -413,10 +527,50 @@ impl VirtualMachine {
     }
 }
 
+/// The names a Method object answers natively, which is what `respond_to?`
+/// reports for one since they live in the dispatch table rather than in any
+/// class's method map.
+pub(crate) const NATIVE_METHOD_OBJECT_METHODS: &[&str] = &[
+    "arity",
+    "bind",
+    "bind_call",
+    "call",
+    "[]",
+    "===",
+    "curry",
+    "inspect",
+    "lambda?",
+    "name",
+    "original_name",
+    "owner",
+    "parameters",
+    "receiver",
+    "source_location",
+    "super_method",
+    "to_proc",
+    "to_s",
+    "unbind",
+    ">>",
+    "<<",
+];
+
 /// The name a parameter reports, where the placeholder metorex gives an
 /// unnamed splat is not one Ruby names at all.
 fn declared_parameter_name(name: &str) -> Option<Object> {
-    if name == ANONYMOUS_SPLAT || name == ANONYMOUS_KWREST || name == ANONYMOUS_BLOCK {
+    // A parameter written with no name of its own reports the mark it was
+    // written with, which is what Ruby names it by.
+    let marked = match name {
+        _ if name == ANONYMOUS_SPLAT => Some("*"),
+        _ if name == ANONYMOUS_KWREST => Some("**"),
+        _ if name == ANONYMOUS_BLOCK => Some("&"),
+        _ => None,
+    };
+    if let Some(mark) = marked {
+        return Some(Object::symbol(mark.to_string()));
+    }
+    // A method the interpreter answers itself has no source to have named
+    // its parameters, so it reports their kinds alone.
+    if name == crate::object::UNNAMED_PARAMETER {
         return None;
     }
     // A `def f((a, b))` group is one parameter under no name of its own.
@@ -460,7 +614,13 @@ pub(crate) fn method_parameter_list(method_obj: &crate::object::Method) -> Objec
         listed.push(parameter_pair(kind, name));
     }
     if let Some(name) = &method_obj.keyword_rest_parameter {
-        listed.push(parameter_pair("keyrest", name));
+        // `**nil` is a declaration that no keyword is taken rather than a
+        // parameter of its own, and Ruby reports it as one kind with no name.
+        if name == crate::object::NO_KEYWORDS_PARAM {
+            listed.push(Object::array(vec![Object::symbol("nokey".to_string())]));
+        } else {
+            listed.push(parameter_pair("keyrest", name));
+        }
     }
     if let Some(name) = &method_obj.block_parameter {
         listed.push(parameter_pair("block", name));

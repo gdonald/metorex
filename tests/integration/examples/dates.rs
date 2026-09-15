@@ -74,3 +74,43 @@ fn test_dates_zone_names_utc_parens_execution() {
     let output = run_example("dates/zone_names/utc_parens.rb");
     assert_eq!(output, ZONE_NAMES_OUTPUT);
 }
+
+/// The expected output of both `dates/times_from_parts` variants, which differ only in whether the
+/// calls are written with parentheses.
+const TIMES_FROM_PARTS_OUTPUT: &str = concat!(
+    "2000-01-01 20:15:01 UTC\n",
+    "2000-08-08 08:08:08 UTC\n",
+    "2000-12-01 00:00:00 UTC\n",
+    "2000-01-01 20:15:01 UTC\n",
+    "1\n",
+    "2\n",
+    "mon out of range\n",
+);
+
+#[test]
+fn test_dates_times_from_parts_execution() {
+    let output = run_example("dates/times_from_parts.rb");
+    assert_eq!(output, TIMES_FROM_PARTS_OUTPUT);
+}
+
+#[test]
+fn test_dates_times_from_parts_no_parens_execution() {
+    let output = run_example("dates/times_from_parts_no_parens.rb");
+    assert_eq!(output, TIMES_FROM_PARTS_OUTPUT);
+}
+
+/// The expected output of both `dates/marshal_bytes` variants, which differ
+/// only in whether the calls are written with parentheses.
+const MARSHAL_BYTES_OUTPUT: &str = "[75, 0, 25, 192, 0, 0, 64, 133]\n1\n1\n2000\n33\n20\n0\n";
+
+#[test]
+fn test_dates_marshal_bytes_execution() {
+    let output = run_example("dates/marshal_bytes.rb");
+    assert_eq!(output, MARSHAL_BYTES_OUTPUT);
+}
+
+#[test]
+fn test_dates_marshal_bytes_parens_execution() {
+    let output = run_example("dates/marshal_bytes_parens.rb");
+    assert_eq!(output, MARSHAL_BYTES_OUTPUT);
+}

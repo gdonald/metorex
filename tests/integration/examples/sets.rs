@@ -47,3 +47,19 @@ fn test_sets_grouping_and_flattening_no_parens_execution() {
     let output = run_example("sets/grouping_and_flattening_no_parens.rb");
     assert_eq!(output, GROUPING_AND_FLATTENING_OUTPUT);
 }
+
+/// The expected output of both `sets/identity_members` variants, which differ
+/// only in whether the calls are written with parentheses.
+const IDENTITY_MEMBERS_OUTPUT: &str = "1\n2\ntrue\nfalse\ntrue\nfalse\ntrue\nfalse\nFrozenError\n";
+
+#[test]
+fn test_sets_identity_members_execution() {
+    let output = run_example("sets/identity_members.rb");
+    assert_eq!(output, IDENTITY_MEMBERS_OUTPUT);
+}
+
+#[test]
+fn test_sets_identity_members_parens_execution() {
+    let output = run_example("sets/identity_members_parens.rb");
+    assert_eq!(output, IDENTITY_MEMBERS_OUTPUT);
+}

@@ -156,6 +156,13 @@ impl VirtualMachine {
             .set_variable(format!("-{flag}"), Object::Bool(written));
     }
 
+    /// A global `-s` bound from a switch written among the program's own
+    /// arguments.
+    pub fn set_switch_global(&mut self, name: &str, value: Object) {
+        self.globals_mut().set_variable(name.to_string(), value);
+        self.seeded_global_names.insert(name.to_string());
+    }
+
     /// The extension `-i` names a backup by, which ARGF reads to decide
     /// whether to edit the files it opens in place.
     pub fn set_in_place_extension(&mut self, extension: &str) {
@@ -740,10 +747,13 @@ impl VirtualMachine {
         })?;
         // The file names the encoding it is written in, which is what
         // `__ENCODING__` answers while it runs.
-        let previous_source_encoding = std::mem::replace(
-            &mut self.current_source_encoding,
-            crate::lexer::named_source_encoding(&source),
-        );
+        let named_encoding = crate::lexer::named_source_encoding(&source);
+        if let Some(named) = &named_encoding {
+            self.file_encodings
+                .insert(named_path.display().to_string(), named.clone());
+        }
+        let previous_source_encoding =
+            std::mem::replace(&mut self.current_source_encoding, named_encoding);
 
         // Parse file with error context
         let statements = parse_file(&source, &canonical_path.to_string_lossy()).map_err(|e| {
@@ -786,10 +796,16 @@ impl VirtualMachine {
         });
         // The same goes for `__callee__` and `__method__`: a loaded file runs
         // at top level, so neither reports the method that ran the load.
-        self.call_stack_push(crate::vm::CallFrame::boundary(format!(
-            "<file:{}>",
-            named_path.display()
-        )));
+        let load_site = self.load_call_site.take();
+        self.call_stack_push(
+            crate::vm::CallFrame::boundary(format!("<file:{}>", named_path.display()))
+                .with_location(
+                    load_site
+                        .as_ref()
+                        .map(|(_, at)| format!("{}:{}", at.line, at.column)),
+                )
+                .with_source_file(load_site.map(|(file, _)| file)),
+        );
         // A file loaded from another one keeps its own top-level locals, so a
         // name it binds there is gone once the file has run and never shows
         // up among the locals of the file that loaded it. The script the
@@ -875,5 +891,19 @@ impl VirtualMachine {
         self.def_scope_stack = caller_def_scope;
         result?;
         Ok(true)
+    }
+}
+
+impl VirtualMachine {
+    /// The encoding a string literal in the source running now is written in,
+    /// or None when that is the default the plain constructor already gives.
+    pub(crate) fn source_literal_encoding(&self) -> Option<String> {
+        let named = crate::vm::native_methods::string_methods::canonical_encoding_name(
+            self.current_source_encoding.as_deref()?,
+        );
+        if named == crate::object::string_value::DEFAULT_ENCODING {
+            return None;
+        }
+        Some(named)
     }
 }

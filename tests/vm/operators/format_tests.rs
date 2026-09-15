@@ -238,10 +238,9 @@ fn string_format_incomplete_specifier_errors() {
 }
 
 #[test]
-fn string_format_trailing_percent_kept() {
-    if let Some(Object::String(s)) = run(r#""abc%" % []"#) {
-        assert!(s.as_str().contains("abc"));
-    }
+fn string_format_trailing_percent_refused() {
+    let result = std::panic::catch_unwind(|| run(r#""abc%" % []"#));
+    assert!(result.is_err());
 }
 
 #[test]

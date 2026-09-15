@@ -137,7 +137,7 @@ impl VirtualMachine {
                     | "throw"
                     | "binding"
             )
-            && let Some(Object::NativeFunction(native_name)) = self.environment().get(name)
+            && let Some(Object::NativeFunction(native_name)) = self.named_native_function(name)
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
             // `proc { }` and friends take a literal block, so attach it
@@ -245,7 +245,7 @@ impl VirtualMachine {
         // be reached here with the arguments the call carries, since
         // evaluating the name on its own would run it with none.
         if let Expression::Identifier { name, .. } = callee
-            && let Some(Object::NativeFunction(native)) = self.environment().get(name)
+            && let Some(Object::NativeFunction(native)) = self.named_native_function(name)
             && crate::vm::eval::identifier::runs_when_named_bare(&native)
         {
             let evaluated_args = self.evaluate_arguments(arguments)?;
@@ -331,6 +331,22 @@ impl VirtualMachine {
                 }
                 callable.and_then(|f| self.invoke_callable(f, evaluated_args, position))
             }
+        }
+    }
+}
+
+impl VirtualMachine {
+    /// The Kernel function a bare name stands for. A fiber runs in a scope of
+    /// its own rather than in the one the program started from, so the name is
+    /// looked for among the globals when the scope does not hold it.
+    fn named_native_function(&self, name: &str) -> Option<Object> {
+        match self.environment().get(name) {
+            held @ Some(Object::NativeFunction(_)) => held,
+            Some(_) => None,
+            None => match self.globals().get(name) {
+                held @ Some(Object::NativeFunction(_)) => held,
+                _ => None,
+            },
         }
     }
 }

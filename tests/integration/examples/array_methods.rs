@@ -162,3 +162,28 @@ fn test_array_methods_joining_and_inspecting_no_parens_execution() {
     let output = run_example("array_methods/joining_and_inspecting_no_parens.rb");
     assert_eq!(output, JOINING_AND_INSPECTING_OUTPUT);
 }
+
+/// The expected output of both `array_methods/strided_slices` variants, which
+/// differ only in whether the calls are written with parentheses.
+const STRIDED_SLICES_OUTPUT: &str = concat!(
+    "[0, 2, 4]\n",
+    "[1, 3, 5]\n",
+    "[0, 3]\n",
+    "[0, 2, 4]\n",
+    "[5, 3, 1]\n",
+    "[5, 3, 1]\n",
+    "[]\n",
+    "((0..6).step(2)) out of range\n"
+);
+
+#[test]
+fn test_array_methods_strided_slices_execution() {
+    let output = run_example("array_methods/strided_slices.rb");
+    assert_eq!(output, STRIDED_SLICES_OUTPUT);
+}
+
+#[test]
+fn test_array_methods_strided_slices_parens_execution() {
+    let output = run_example("array_methods/strided_slices_parens.rb");
+    assert_eq!(output, STRIDED_SLICES_OUTPUT);
+}

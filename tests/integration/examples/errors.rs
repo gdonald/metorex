@@ -1108,3 +1108,26 @@ fn test_errors_rescue_handler_shapes_no_parens_execution() {
     let output = run_example("errors/rescue_handler_shapes_no_parens.rb");
     assert_eq!(output, RESCUE_HANDLER_SHAPES_OUTPUT);
 }
+
+/// The expected output of both `errors/rescue_names_in_scope` variants, which
+/// differ only in whether the calls are written with parentheses.
+const RESCUE_NAMES_IN_SCOPE_OUTPUT: &str = concat!(
+    "\"nothing named tea\"\n",
+    "true\n",
+    "Loose\n",
+    "\"ab\"\n",
+    "1\n",
+    "true\n",
+);
+
+#[test]
+fn test_errors_rescue_names_in_scope_execution() {
+    let output = run_example("errors/rescue_names_in_scope.rb");
+    assert_eq!(output, RESCUE_NAMES_IN_SCOPE_OUTPUT);
+}
+
+#[test]
+fn test_errors_rescue_names_in_scope_no_parens_execution() {
+    let output = run_example("errors/rescue_names_in_scope_no_parens.rb");
+    assert_eq!(output, RESCUE_NAMES_IN_SCOPE_OUTPUT);
+}

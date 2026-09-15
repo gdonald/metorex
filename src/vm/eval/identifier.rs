@@ -101,6 +101,18 @@ impl VirtualMachine {
             // 0-arg form raises ArgumentError), `abort` and `exit` (whose
             // 0-arg forms raise SystemExit), and the visibility modifiers,
             // whose 0-arg form is a toggle on the enclosing class or module.
+            // `to_s` answers "main" only at the top level. Inside a class
+            // or module body, and on any other receiver, it is a call on
+            // whatever `self` is there.
+            if let Object::NativeFunction(fn_name) = &val
+                && fn_name == "top_level_to_s"
+                && let Some(current_self) = self.environment().get("self")
+                && !matches!(current_self, Object::Nil)
+                && (!self.def_scope_stack.is_empty()
+                    || !matches!(&current_self, Object::Class(held) if held.name() == "Object"))
+            {
+                return self.send_to_object(current_self, "to_s", vec![], position);
+            }
             if let Object::NativeFunction(fn_name) = &val
                 && (runs_when_named_bare(fn_name)
                     || (matches!(

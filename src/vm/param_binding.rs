@@ -153,8 +153,19 @@ pub(crate) fn bind_params(
 /// Ruby's behavior of folding trailing `key: value` syntax into a Hash that
 /// fills the last positional parameter.
 pub(crate) fn split_keyword_args(
+    arguments: Vec<Object>,
+    has_keyword_params: bool,
+) -> (Vec<Object>, IndexMap<String, Object>) {
+    split_keyword_args_for(arguments, has_keyword_params, false)
+}
+
+/// The same split, told whether the callee was named by `ruby2_keywords`. A
+/// method that was keeps the keyword hash marked, so the splat it lands in
+/// can pass it on as keywords again.
+pub(crate) fn split_keyword_args_for(
     mut arguments: Vec<Object>,
     has_keyword_params: bool,
+    keeps_keywords: bool,
 ) -> (Vec<Object>, IndexMap<String, Object>) {
     // Only split if the trailing dict carries the parser-emitted kwargs marker.
     if let Some(Object::Dict(dict_rc)) = arguments.last() {
@@ -162,11 +173,23 @@ pub(crate) fn split_keyword_args(
         if dict.contains_key("__MX_KWARGS__") {
             if !has_keyword_params {
                 // Promote the kwargs dict to a regular Hash positional arg.
-                let cleaned: IndexMap<String, Object> = dict
+                let mut cleaned: IndexMap<String, Object> = dict
                     .iter()
-                    .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")
+                    .filter(|(k, _)| {
+                        !matches!(
+                            k.as_str(),
+                            "__MX_KWARGS__"
+                                | crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY
+                        )
+                    })
                     .map(|(k, v)| (k.clone(), v.clone()))
                     .collect();
+                if keeps_keywords {
+                    cleaned.insert(
+                        crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY.to_string(),
+                        Object::Bool(true),
+                    );
+                }
                 drop(dict);
                 arguments.pop();
                 arguments.push(Object::Dict(Rc::new(RefCell::new(cleaned))));
@@ -174,7 +197,13 @@ pub(crate) fn split_keyword_args(
             }
             let kwargs: IndexMap<String, Object> = dict
                 .iter()
-                .filter(|(k, _)| k.as_str() != "__MX_KWARGS__")
+                .filter(|(k, _)| {
+                    !matches!(
+                        k.as_str(),
+                        "__MX_KWARGS__"
+                            | crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY
+                    )
+                })
                 .map(|(k, v)| {
                     let name = if let Some(stripped) = k.strip_prefix(':') {
                         stripped.to_string()

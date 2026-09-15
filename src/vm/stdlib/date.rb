@@ -1193,8 +1193,12 @@ class Date
     return "%" + flags + width + directive if body.nil?
     body = body.upcase if flags.include?("^")
     if flags.include?("-")
-      body = body.sub(/\A[0 ]+(?=.)/, "")
-      return body
+      # The `-` flag drops the padding a directive is written with, leaving
+      # one character behind when the whole of it is padding.
+      leading = body[/\A[0 ]+/]
+      return body if leading.nil?
+      kept = leading.length == body.length ? body.length - 1 : leading.length
+      return body[kept..-1]
     end
     filler = self.padding_character(directive, flags)
     wanted = width.empty? ? self.directive_width(directive) : width.to_i

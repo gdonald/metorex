@@ -76,6 +76,11 @@ pub struct Method {
     /// True when `Method#to_proc` made this, which Ruby reports as a Proc
     /// rather than as the Method it came from.
     pub reads_as_proc: bool,
+    /// Whether `ruby2_keywords` named this method, so a trailing keyword hash
+    /// gathered into its splat is marked and can be passed on as keywords.
+    /// The flag is shared with every copy, which is what makes it reach an
+    /// alias made either before or after the name was given.
+    pub ruby2_keywords: Rc<std::cell::Cell<bool>>,
 }
 
 impl Method {
@@ -105,6 +110,7 @@ impl Method {
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
             reads_as_proc: false,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -139,6 +145,7 @@ impl Method {
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
             reads_as_proc: false,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -173,6 +180,7 @@ impl Method {
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
             reads_as_proc: false,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -208,6 +216,7 @@ impl Method {
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
             reads_as_proc: false,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -237,6 +246,7 @@ impl Method {
             captured_refinements: Vec::new(),
             captured_nesting: Vec::new(),
             reads_as_proc: false,
+            ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
 
@@ -266,6 +276,7 @@ impl Method {
             captured_refinements: self.captured_refinements.clone(),
             captured_nesting: self.captured_nesting.clone(),
             reads_as_proc: self.reads_as_proc,
+            ruby2_keywords: Rc::clone(&self.ruby2_keywords),
         }
     }
 

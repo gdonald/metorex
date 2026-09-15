@@ -118,7 +118,7 @@ impl Parser {
 
     /// Parse comparison operators (<, >, <=, >=)
     pub(crate) fn parse_comparison(&mut self) -> Result<Expression, MetorexError> {
-        let mut expr = self.parse_range()?;
+        let mut expr = self.parse_bitwise_or()?;
 
         while self.check(&[
             TokenKind::Less,
@@ -126,52 +126,98 @@ impl Parser {
             TokenKind::LessEqual,
             TokenKind::GreaterEqual,
             TokenKind::Spaceship,
-            TokenKind::Shovel,
-            TokenKind::RightShift,
-            TokenKind::Caret,
-            TokenKind::Pipe,
-            TokenKind::Ampersand,
         ]) {
             let op_token = self.advance();
-            if matches!(op_token.kind, TokenKind::Shovel | TokenKind::RightShift) {
-                // `<<` and `>>` are method calls, so `array << value` and
-                // `number >> bits` both go through dispatch.
-                let method = if op_token.kind == TokenKind::Shovel {
-                    "<<"
-                } else {
-                    ">>"
-                };
-                self.skip_whitespace();
-                let right = self.parse_range()?;
-                expr = Expression::MethodCall {
-                    receiver: Box::new(expr),
-                    method: method.to_string(),
-                    arguments: vec![right],
-                    trailing_block: None,
-                    position: op_token.position,
-                };
-                continue;
-            }
             let op = match op_token.kind {
                 TokenKind::Less => BinaryOp::Less,
                 TokenKind::Greater => BinaryOp::Greater,
                 TokenKind::LessEqual => BinaryOp::LessEqual,
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
                 TokenKind::Spaceship => BinaryOp::Spaceship,
-                TokenKind::Caret => BinaryOp::Xor,
-                TokenKind::Pipe => BinaryOp::BitwiseOr,
-                TokenKind::Ampersand => BinaryOp::BitwiseAnd,
                 _ => unreachable!(),
             };
-            // A comparison or bitwise operator at the end of a line carries
-            // the expression onto the next one.
+            // A comparison operator at the end of a line carries the
+            // expression onto the next one.
             self.skip_whitespace();
-            let right = self.parse_range()?;
+            let right = self.parse_bitwise_or()?;
             let right = self.fold_assignment(right)?;
             expr = Expression::BinaryOp {
                 op,
                 left: Box::new(expr),
                 right: Box::new(right),
+                position: op_token.position,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Parse `|` and `^`, which bind looser than `&` and tighter than a
+    /// comparison.
+    pub(crate) fn parse_bitwise_or(&mut self) -> Result<Expression, MetorexError> {
+        let mut expr = self.parse_bitwise_and()?;
+
+        while self.check(&[TokenKind::Caret, TokenKind::Pipe]) {
+            let op_token = self.advance();
+            let op = match op_token.kind {
+                TokenKind::Caret => BinaryOp::Xor,
+                _ => BinaryOp::BitwiseOr,
+            };
+            self.skip_whitespace();
+            let right = self.parse_bitwise_and()?;
+            let right = self.fold_assignment(right)?;
+            expr = Expression::BinaryOp {
+                op,
+                left: Box::new(expr),
+                right: Box::new(right),
+                position: op_token.position,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Parse `&`, which binds looser than a shift and tighter than `|`.
+    pub(crate) fn parse_bitwise_and(&mut self) -> Result<Expression, MetorexError> {
+        let mut expr = self.parse_shift()?;
+
+        while self.check(&[TokenKind::Ampersand]) {
+            let op_token = self.advance();
+            self.skip_whitespace();
+            let right = self.parse_shift()?;
+            let right = self.fold_assignment(right)?;
+            expr = Expression::BinaryOp {
+                op: BinaryOp::BitwiseAnd,
+                left: Box::new(expr),
+                right: Box::new(right),
+                position: op_token.position,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    /// Parse `<<` and `>>`, which bind tighter than every other operator that
+    /// works on the bits of a number.
+    pub(crate) fn parse_shift(&mut self) -> Result<Expression, MetorexError> {
+        let mut expr = self.parse_range()?;
+
+        while self.check(&[TokenKind::Shovel, TokenKind::RightShift]) {
+            let op_token = self.advance();
+            // `<<` and `>>` are method calls, so `array << value` and
+            // `number >> bits` both go through dispatch.
+            let method = if op_token.kind == TokenKind::Shovel {
+                "<<"
+            } else {
+                ">>"
+            };
+            self.skip_whitespace();
+            let right = self.parse_range()?;
+            expr = Expression::MethodCall {
+                receiver: Box::new(expr),
+                method: method.to_string(),
+                arguments: vec![right],
+                trailing_block: None,
                 position: op_token.position,
             };
         }

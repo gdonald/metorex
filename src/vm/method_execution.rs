@@ -29,6 +29,13 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Object, MetorexError> {
         let method_name = method.name.clone();
+        // A Proc cut from a bound Method carries the object it was bound to,
+        // so the native tables answer for that one rather than for whatever
+        // the new name was called on.
+        let receiver = match &method.bound_self {
+            Some(bound) => (**bound).clone(),
+            None => receiver,
+        };
 
         // A name that `undef_method` retired raises the same NoMethodError as
         // a name nothing ever defined. The stored name carries the
@@ -371,6 +378,14 @@ impl VirtualMachine {
                 .as_ref()
                 .and_then(|location| location.filename.clone()),
         );
+        // A literal in the body is written in the encoding that file names,
+        // not the one the caller's file names.
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
 
         // A `return` written in a block created inside this body unwinds to
         // this invocation and no other, so the body runs under an id the
@@ -397,9 +412,10 @@ impl VirtualMachine {
                 }
             }
 
-            let (positional, kwargs) = split_keyword_args(
+            let (positional, kwargs) = crate::vm::param_binding::split_keyword_args_for(
                 arguments,
                 !method.keyword_parameters.is_empty() || method.keyword_rest_parameter.is_some(),
+                method.ruby2_keywords.get(),
             );
             bind_params(
                 self,
@@ -451,6 +467,7 @@ impl VirtualMachine {
             self.def_scope_stack = previous;
         }
         self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
         self.class_var_home = saved_class_var_home;
         self.current_method_frame = saved_frame;
         self.live_frames.pop();
@@ -716,6 +733,30 @@ impl VirtualMachine {
         keyword_rest_parameter: Option<&str>,
         kwargs: IndexMap<String, Object>,
     ) -> Result<(), MetorexError> {
+        // Ruby names every keyword the call left out, all of them in one
+        // message rather than one message for the first.
+        let missing: Vec<&String> = keyword_parameters
+            .iter()
+            .filter(|(name, default_expr)| default_expr.is_none() && !kwargs.contains_key(name))
+            .map(|(name, _)| name)
+            .collect();
+        if !missing.is_empty() {
+            let named = missing
+                .iter()
+                .map(|name| format!(":{}", name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let message = if missing.len() == 1 {
+                format!("missing keyword: {}", named)
+            } else {
+                format!("missing keywords: {}", named)
+            };
+            return Err(crate::vm::errors::simple_exception(
+                "ArgumentError",
+                &message,
+                crate::lexer::Position::new(0, 0, 0),
+            ));
+        }
         for (name, default_expr) in keyword_parameters {
             let value = if let Some(v) = kwargs.get(name) {
                 v.clone()
@@ -730,6 +771,9 @@ impl VirtualMachine {
             self.environment_mut().define(name.clone(), value);
         }
 
+        // `**nil` names no parameter at all, so nothing is bound under it.
+        let keyword_rest_parameter =
+            keyword_rest_parameter.filter(|held| *held != crate::object::NO_KEYWORDS_PARAM);
         if let Some(rest_name) = keyword_rest_parameter {
             let declared: std::collections::HashSet<&str> = keyword_parameters
                 .iter()

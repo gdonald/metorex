@@ -218,6 +218,58 @@ struct Cli {
     /// Ruby -d (turn on `$DEBUG`, and the warnings with it)
     #[arg(short = 'd', hide = true, action = clap::ArgAction::SetTrue)]
     ruby_debug: bool,
+
+    /// Ruby -s (a switch written among the program's own arguments becomes a
+    /// global of the same name)
+    #[arg(short = 's', hide = true, action = clap::ArgAction::SetTrue)]
+    switch_globals: bool,
+}
+
+/// Open the main script's data section as the `DATA` constant, standing where
+/// the text after `__END__` begins.
+fn define_data_constant(vm: &mut metorex::vm::VirtualMachine, path: &Path, offset: usize) {
+    let setup = format!(
+        "DATA = File.open({:?}, \"rb\")\nDATA.seek({})\n",
+        path.display().to_string(),
+        offset
+    );
+    let tokens = Lexer::new(&setup).tokenize();
+    let Ok(program) = Parser::new(tokens).parse() else {
+        return;
+    };
+    let _ = vm.execute_program(&program);
+}
+
+/// Take the leading switches off the program's arguments and bind each one as
+/// a global, which is what `-s` asks for. A switch with no value binds true,
+/// and the dashes in its name become underscores.
+fn take_switch_globals(
+    vm: &mut metorex::vm::VirtualMachine,
+    arguments: Vec<String>,
+) -> Vec<String> {
+    let mut rest = Vec::new();
+    let mut reading = true;
+    for argument in arguments {
+        if !reading {
+            rest.push(argument);
+            continue;
+        }
+        if argument == "--" {
+            reading = false;
+            continue;
+        }
+        let Some(body) = argument.strip_prefix('-').filter(|held| !held.is_empty()) else {
+            reading = false;
+            rest.push(argument);
+            continue;
+        };
+        let (name, value) = match body.split_once('=') {
+            Some((named, held)) => (named, metorex::object::Object::string(held.to_string())),
+            None => (body, metorex::object::Object::Bool(true)),
+        };
+        vm.set_switch_global(&name.replace('-', "_"), value);
+    }
+    rest
 }
 
 /// How the line-reading options were set, which decides what the loop around
@@ -677,7 +729,12 @@ fn real_main() {
         );
         // Names written after the code are the program's arguments, which is
         // where ARGF looks for the files to read.
-        vm.set_argv(cli.file.clone());
+        let named = if cli.switch_globals {
+            take_switch_globals(&mut vm, cli.file.clone())
+        } else {
+            cli.file.clone()
+        };
+        vm.set_argv(named);
         if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
             finish_with_error(&mut vm, &err);
         }
@@ -765,6 +822,11 @@ fn real_main() {
         }
     };
 
+    // A line reading `__END__` closes the code, and the main script's data
+    // after it is what the `DATA` constant reads.
+    let (code, data_offset) = metorex::lexer::source_before_data_section(&source);
+    let source = code.to_string();
+
     if cli.check_syntax {
         check_syntax(&source, filename);
     }
@@ -818,8 +880,16 @@ fn real_main() {
     // `__FILE__` reports the path the script was named by on the command
     // line, while everything that resolves a path uses the canonical one.
     vm.set_script_path(absolute_path.clone(), std::path::PathBuf::from(filename));
-    vm.mark_file_loaded(absolute_path);
+    vm.mark_file_loaded(absolute_path.clone());
+    let script_args = if cli.switch_globals {
+        take_switch_globals(&mut vm, script_args)
+    } else {
+        script_args
+    };
     vm.set_argv(script_args);
+    if let Some(offset) = data_offset {
+        define_data_constant(&mut vm, &absolute_path, offset);
+    }
 
     if let Err(err) = run_program(&mut vm, &program, &line_loop_from(&cli)) {
         // `abort` and `exit` raise SystemExit: it ends the program with the

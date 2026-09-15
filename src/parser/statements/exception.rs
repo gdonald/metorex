@@ -337,6 +337,27 @@ impl Parser {
             // on at the comma.
             self.advance();
             let arguments = self.parse_arguments()?;
+            // `raise(*args)` names what to raise in a list built at run time,
+            // so the list is handed to Kernel's own `raise` rather than read
+            // here as a single exception.
+            if arguments
+                .iter()
+                .any(|given| matches!(given, Expression::Splat { .. }))
+            {
+                let call = Expression::Call {
+                    callee: Box::new(Expression::Identifier {
+                        name: "raise".to_string(),
+                        position: start_pos,
+                    }),
+                    arguments,
+                    trailing_block: None,
+                    position: start_pos,
+                };
+                return Ok(Statement::Expression {
+                    expression: call,
+                    position: start_pos,
+                });
+            }
             let mut arguments = arguments.into_iter();
             match (arguments.next(), arguments.next()) {
                 (None, _) => None,

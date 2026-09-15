@@ -32,7 +32,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let hash = ObjectHash::from_object(&arguments[0]).ok_or_else(|| {
+                let hash = self.set_element(set_rc, &arguments[0]).ok_or_else(|| {
                     MetorexError::runtime_error(
                         format!(
                             "Cannot add {} to set (not hashable)",
@@ -54,7 +54,7 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let hash = ObjectHash::from_object(&arguments[0]).ok_or_else(|| {
+                let hash = self.set_element(set_rc, &arguments[0]).ok_or_else(|| {
                     MetorexError::runtime_error(
                         format!(
                             "Cannot remove {} from set (not hashable)",
@@ -283,7 +283,9 @@ impl VirtualMachine {
                 self.refuse_mutation_during_iteration(set_rc, method_name, position)?;
                 for argument in arguments {
                     for element in self.enumerable_elements(argument, method_name, position)? {
-                        let held = element_of(&element, position)?;
+                        let held = self
+                            .set_element(set_rc, &element)
+                            .ok_or_else(|| unhashable(&element, position))?;
                         set_rc.borrow_mut().insert(held);
                     }
                 }
@@ -300,7 +302,9 @@ impl VirtualMachine {
                     ));
                 }
                 for element in self.enumerable_elements(&arguments[0], method_name, position)? {
-                    let held = element_of(&element, position)?;
+                    let held = self
+                        .set_element(set_rc, &element)
+                        .ok_or_else(|| unhashable(&element, position))?;
                     set_rc.borrow_mut().shift_remove(&held);
                 }
                 Ok(Some(receiver.clone()))
@@ -401,6 +405,47 @@ impl VirtualMachine {
                     shares
                 })))
             }
+            // `compare_by_identity` puts the elements under which object
+            // each one is rather than under what it holds.
+            "compare_by_identity" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                if self.object_is_frozen(receiver) {
+                    return Err(self.frozen_modification_error(receiver, position));
+                }
+                self.identity_sets
+                    .insert(Rc::as_ptr(set_rc) as usize, receiver.clone());
+                let held: Vec<Object> = set_rc
+                    .borrow()
+                    .iter()
+                    .map(|element| element.value.clone())
+                    .collect();
+                let mut placed = indexmap::IndexSet::new();
+                for element in held {
+                    if let Some(made) = ObjectHash::by_identity(&element) {
+                        placed.insert(made);
+                    }
+                }
+                *set_rc.borrow_mut() = placed;
+                Ok(Some(receiver.clone()))
+            }
+            "compare_by_identity?" => {
+                if !arguments.is_empty() {
+                    return Err(method_argument_error(
+                        method_name,
+                        0,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                Ok(Some(Object::Bool(self.set_by_identity(set_rc))))
+            }
             "==" | "eql?" => {
                 let Some(other) = arguments.first() else {
                     return Ok(Some(Object::Bool(false)));
@@ -408,9 +453,18 @@ impl VirtualMachine {
                 let Some(theirs) = self.set_like_elements(other, position)? else {
                     return Ok(Some(Object::Bool(false)));
                 };
+                // Two sets that place their elements differently are not the
+                // same set, however alike the elements look.
+                let alike = match other {
+                    Object::Set(theirs) => {
+                        self.set_by_identity(set_rc) == self.set_by_identity(theirs)
+                    }
+                    _ => !self.set_by_identity(set_rc),
+                };
                 let mine = set_rc.borrow();
-                let same =
-                    mine.len() == theirs.len() && mine.iter().all(|held| theirs.contains(held));
+                let same = alike
+                    && mine.len() == theirs.len()
+                    && mine.iter().all(|held| theirs.contains(held));
                 Ok(Some(Object::Bool(same)))
             }
             // `dup` and `clone` go through the copy every object shares, so
@@ -550,10 +604,15 @@ impl VirtualMachine {
         wanted: &Object,
         position: Position,
     ) -> Result<bool, MetorexError> {
-        if let Some(rendered) = ObjectHash::from_object(wanted)
+        if let Some(rendered) = self.set_element(set_rc, wanted)
             && set_rc.borrow().contains(&rendered)
         {
             return Ok(true);
+        }
+        // A set comparing by identity never asks an element what it hashes
+        // to, so a member is found by address alone.
+        if self.set_by_identity(set_rc) {
+            return Ok(false);
         }
         if !matches!(wanted, Object::Instance(_)) {
             return Ok(false);
@@ -635,12 +694,15 @@ impl VirtualMachine {
 /// The set element an object stands for, or an error when it has no stable
 /// rendering to be told apart by.
 fn element_of(object: &Object, position: Position) -> Result<ObjectHash, MetorexError> {
-    ObjectHash::from_object(object).ok_or_else(|| {
-        MetorexError::runtime_error(
-            format!("Cannot add {} to set (not hashable)", object.type_name()),
-            position_to_location(position),
-        )
-    })
+    ObjectHash::from_object(object).ok_or_else(|| unhashable(object, position))
+}
+
+/// The error an object with nothing to be told apart by raises.
+fn unhashable(object: &Object, position: Position) -> MetorexError {
+    MetorexError::runtime_error(
+        format!("Cannot add {} to set (not hashable)", object.type_name()),
+        position_to_location(position),
+    )
 }
 
 impl VirtualMachine {
@@ -671,5 +733,29 @@ impl VirtualMachine {
             collected.insert(element_of(element, position)?);
         }
         Ok(Some(collected))
+    }
+}
+
+impl VirtualMachine {
+    /// Whether a set places its elements by which object each one is.
+    pub(crate) fn set_by_identity(
+        &self,
+        set_rc: &Rc<RefCell<indexmap::IndexSet<ObjectHash>>>,
+    ) -> bool {
+        self.identity_sets
+            .contains_key(&(Rc::as_ptr(set_rc) as usize))
+    }
+
+    /// The element an object stands for in a set, placed the way that set
+    /// places its elements.
+    fn set_element(
+        &self,
+        set_rc: &Rc<RefCell<indexmap::IndexSet<ObjectHash>>>,
+        object: &Object,
+    ) -> Option<ObjectHash> {
+        if self.set_by_identity(set_rc) {
+            return ObjectHash::by_identity(object);
+        }
+        ObjectHash::from_object(object)
     }
 }

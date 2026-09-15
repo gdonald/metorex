@@ -69,3 +69,61 @@ fn test_scanning_buffered_stream_reading_parens_execution() {
     let output = run_example("scanning/buffered_stream/reading_parens.rb");
     assert_eq!(output, BUFFERED_STREAM_OUTPUT);
 }
+
+/// The expected output of both `scanning/repeated_matches` variants, which
+/// differ only in whether the calls are written with parentheses.
+const REPEATED_MATCHES_OUTPUT: &str = concat!(
+    "[\"cruel\", \"world\"]\n",
+    "[[\"cr\", \"ue\"], [\"l \", \"wo\"]]\n",
+    "[\"\", \"\", \"\", \"\", \"\", \"\"]\n",
+    "[\"one\"]\n",
+    "[\"one \", \"two \", \"one \", \"two\"]\n",
+    "[\"o\", \"o\"]\n",
+    "[[\"a\", \"b\"]]\n",
+    "3\n",
+    "nil\n"
+);
+
+#[test]
+fn test_scanning_repeated_matches_execution() {
+    let output = run_example("scanning/repeated_matches.rb");
+    assert_eq!(output, REPEATED_MATCHES_OUTPUT);
+}
+
+#[test]
+fn test_scanning_repeated_matches_parens_execution() {
+    let output = run_example("scanning/repeated_matches_parens.rb");
+    assert_eq!(output, REPEATED_MATCHES_OUTPUT);
+}
+
+/// The expected output of both `scanning/substitutions` variants, which
+/// differ only in whether the calls are written with parentheses.
+const SUBSTITUTIONS_OUTPUT: &str = concat!(
+    "\"heLlo\"\n",
+    "\"heLLo\"\n",
+    "\"heLLo\"\n",
+    "\"he<l><l>o\"\n",
+    "\"hlelo\"\n",
+    "\"h311o\"\n",
+    "\" Text\\n\"\n",
+    "\" Text\\n Foo\"\n",
+    "[\"a\", \"a\"]\n",
+    "nil\n",
+    "#<Encoding:BINARY (ASCII-8BIT)>\n",
+    "\"heyyo\"\n",
+    "nil\n",
+    "\"l\"\n",
+    "\"hello\"\n"
+);
+
+#[test]
+fn test_scanning_substitutions_execution() {
+    let output = run_example("scanning/substitutions.rb");
+    assert_eq!(output, SUBSTITUTIONS_OUTPUT);
+}
+
+#[test]
+fn test_scanning_substitutions_parens_execution() {
+    let output = run_example("scanning/substitutions_parens.rb");
+    assert_eq!(output, SUBSTITUTIONS_OUTPUT);
+}

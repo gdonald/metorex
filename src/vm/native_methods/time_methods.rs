@@ -110,15 +110,8 @@ fn broken_down(seconds: i64, utc: bool) -> (libc::tm, String) {
 }
 
 /// The whole seconds a set of calendar fields stands for.
-fn assembled(
-    year: i64,
-    month: i64,
-    day: i64,
-    hour: i64,
-    minute: i64,
-    second: i64,
-    utc: bool,
-) -> i64 {
+fn assembled(fields: [i64; 6], utc: bool, daylight: i64) -> i64 {
+    let [year, month, day, hour, minute, second] = fields;
     let mut parts = empty_tm();
     parts.tm_year = (year - 1900) as libc::c_int;
     parts.tm_mon = (month - 1) as libc::c_int;
@@ -126,7 +119,7 @@ fn assembled(
     parts.tm_hour = hour as libc::c_int;
     parts.tm_min = minute as libc::c_int;
     parts.tm_sec = second as libc::c_int;
-    parts.tm_isdst = -1;
+    parts.tm_isdst = daylight as libc::c_int;
     if utc {
         return days_from_civil(year, month, day) * 86400 + hour * 3600 + minute * 60 + second;
     }
@@ -205,7 +198,7 @@ impl VirtualMachine {
             }
             // The whole seconds a set of calendar fields stands for.
             "__assemble__" => {
-                if arguments.len() != 7 {
+                if !(7..=8).contains(&arguments.len()) {
                     return Err(method_argument_error(
                         method_name,
                         7,
@@ -221,9 +214,15 @@ impl VirtualMachine {
                     *slot = *value;
                 }
                 let utc = matches!(arguments[6], Object::Bool(true));
-                Ok(Some(Object::Int(assembled(
-                    fields[0], fields[1], fields[2], fields[3], fields[4], fields[5], utc,
-                ))))
+                // The daylight-saving flag tells the two readings of an hour
+                // that the clock goes through twice apart. Nothing said about
+                // it leaves the choice to the zone.
+                let daylight = match arguments.get(7) {
+                    Some(Object::Bool(true)) => 1,
+                    Some(Object::Bool(false)) => 0,
+                    _ => -1,
+                };
+                Ok(Some(Object::Int(assembled(fields, utc, daylight))))
             }
             // The rendering a strftime template asks for, without any of the
             // fields Ruby adds on top of the C library's.

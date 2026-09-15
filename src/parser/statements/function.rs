@@ -453,7 +453,12 @@ impl Parser {
                     params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
                 } else if self.match_token(&[TokenKind::Nil]) {
                     // `**nil` says the method takes no keyword arguments at
-                    // all, which is a declaration rather than a parameter.
+                    // all. It is recorded so the method can report it, and
+                    // nothing is ever bound under the name.
+                    params.push(Parameter::keyword(
+                        crate::object::NO_KEYWORDS_PARAM.to_string(),
+                        param_pos,
+                    ));
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,
@@ -571,7 +576,12 @@ impl Parser {
                     params.push(Parameter::keyword(ANONYMOUS_KWREST.to_string(), param_pos));
                 } else if self.match_token(&[TokenKind::Nil]) {
                     // `**nil` says the method takes no keyword arguments at
-                    // all, which is a declaration rather than a parameter.
+                    // all. It is recorded so the method can report it, and
+                    // nothing is ever bound under the name.
+                    params.push(Parameter::keyword(
+                        crate::object::NO_KEYWORDS_PARAM.to_string(),
+                        param_pos,
+                    ));
                 } else {
                     let name = match self.advance().kind {
                         TokenKind::Ident(name) => name,

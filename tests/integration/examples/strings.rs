@@ -36,6 +36,50 @@ fn test_strings_in_place_changes_parens_execution() {
     assert_eq!(output, STRING_IN_PLACE_OUTPUT);
 }
 
+/// The expected output of both `strings/byte_searches` variants.
+const BYTE_SEARCHES_OUTPUT: &str = concat!(
+    "0\n6\n3\n3\n6\n6\nnil\n2\n2\n5\n",
+    "offset 1 does not land on character boundary\n",
+    "no implicit conversion of Integer into String\n"
+);
+
+#[test]
+fn test_strings_byte_searches_execution() {
+    let output = run_example("strings/byte_searches.rb");
+    assert_eq!(output, BYTE_SEARCHES_OUTPUT);
+}
+
+#[test]
+fn test_strings_byte_searches_parens_execution() {
+    let output = run_example("strings/byte_searches_parens.rb");
+    assert_eq!(output, BYTE_SEARCHES_OUTPUT);
+}
+
+/// The expected output of both `strings/byte_splices` variants.
+const BYTE_SPLICES_OUTPUT: &str = concat!(
+    "\"jello\"\n",
+    "\"jello\"\n",
+    "\"hHElo\"\n",
+    "\"say hello\"\n",
+    "\"xxx\u{3093}\u{306b}\u{3061}\u{306f}\"\n",
+    "offset 1 does not land on character boundary\n",
+    "index 6 out of string\n",
+    "-6...-6 out of range\n",
+    "can't modify frozen String: \"frozen\"\n"
+);
+
+#[test]
+fn test_strings_byte_splices_execution() {
+    let output = run_example("strings/byte_splices.rb");
+    assert_eq!(output, BYTE_SPLICES_OUTPUT);
+}
+
+#[test]
+fn test_strings_byte_splices_parens_execution() {
+    let output = run_example("strings/byte_splices_parens.rb");
+    assert_eq!(output, BYTE_SPLICES_OUTPUT);
+}
+
 /// The expected output of both `strings/byte_sets` variants.
 const BYTE_SETS_OUTPUT: &str = "[0, 32, 45, 32, 255]\n#<Encoding:BINARY (ASCII-8BIT)>\ntrue\nfalse\ninvalid byte sequence in UTF-8\ninvalid range \"h-e\" in string transliteration\n\"heo\"\n";
 
@@ -243,4 +287,59 @@ fn test_strings_copies_and_dumps_execution() {
 fn test_strings_copies_and_dumps_no_parens_execution() {
     let output = run_example("strings/copies_and_dumps_no_parens.rb");
     assert_eq!(output, COPIES_AND_DUMPS_OUTPUT);
+}
+
+/// The expected output of both `strings/bytes_and_encodings` variants, which differ only in whether the
+/// calls are written with parentheses.
+const BYTES_AND_ENCODINGS_OUTPUT: &str = concat!(
+    "[120, 156]\n",
+    "ASCII-8BIT\n",
+    "ASCII-8BIT\n",
+    "another string\n",
+    "254\n",
+    "MiqkFWCm1fNJI\n",
+);
+
+#[test]
+fn test_strings_bytes_and_encodings_execution() {
+    let output = run_example("strings/bytes_and_encodings.rb");
+    assert_eq!(output, BYTES_AND_ENCODINGS_OUTPUT);
+}
+
+#[test]
+fn test_strings_bytes_and_encodings_parens_execution() {
+    let output = run_example("strings/bytes_and_encodings_parens.rb");
+    assert_eq!(output, BYTES_AND_ENCODINGS_OUTPUT);
+}
+
+/// The expected output of both `strings/line_walks` variants, which differ
+/// only in whether the calls are written with parentheses.
+const LINE_WALKS_OUTPUT: &str = "[\"one\\n\", \"two\\n\", \"three\"]\n[\"one\\ntwo\\nthree\"]\n[\"hello\\nworld\\n\\n\", \"and\\nuniverse\\n\\n\"]\n[\"hello \", \"world\"]\n[\"hello \", \"world\"]\n[\"hello\", \"world\"]\n[\"hel\", \"l\", \"o\\nworl\", \"d\"]\n[\"one\\n\", \"two\"]\n[\"ax\", \"bx\", \"c\"]\n";
+
+#[test]
+fn test_strings_line_walks_execution() {
+    let output = run_example("strings/line_walks.rb");
+    assert_eq!(output, LINE_WALKS_OUTPUT);
+}
+
+#[test]
+fn test_strings_line_walks_parens_execution() {
+    let output = run_example("strings/line_walks_parens.rb");
+    assert_eq!(output, LINE_WALKS_OUTPUT);
+}
+
+/// The expected output of both `strings/written_formats` variants, which
+/// differ only in whether the calls are written with parentheses.
+const WRITTEN_FORMATS_OUTPUT: &str = "\"1010 127 c4 C4\"\n\"112 112 112\"\n\"1.095200e+02 1.095200E+02 10.952000\"\n\"1.23456e-05 1.23457E+06\"\n\"0x1.88p+7 0X1.88P+7\"\n\"a [1] abc\"\n\"..10110 ..7651 ..f3c ..F3C\"\n\"..11110110 ..11011\"\n\"+5  5 5     | 000005\"\n\"0b1010 0127 0xc4 0XC4\"\n\"hel   3.14     42\"\n\"hello world\"\n\"      42\"\n\"00042 and rest\"\n\"Inf -Inf NaN\"\n";
+
+#[test]
+fn test_strings_written_formats_execution() {
+    let output = run_example("strings/written_formats.rb");
+    assert_eq!(output, WRITTEN_FORMATS_OUTPUT);
+}
+
+#[test]
+fn test_strings_written_formats_parens_execution() {
+    let output = run_example("strings/written_formats_parens.rb");
+    assert_eq!(output, WRITTEN_FORMATS_OUTPUT);
 }

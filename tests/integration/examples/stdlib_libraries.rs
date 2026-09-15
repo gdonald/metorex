@@ -631,3 +631,66 @@ fn test_stdlib_libraries_time_limits_no_parens_execution() {
     let output = run_example("stdlib_libraries/time_limits_no_parens.rb");
     assert_eq!(output, TIME_LIMITS_OUTPUT);
 }
+
+/// The expected output of both `stdlib_libraries/ftp_transfer` variants, which
+/// differ only in whether the calls are written with parentheses.
+const FTP_TRANSFER_OUTPUT: &str = concat!(
+    "[\"one.rb\", \"two.rb\"]\n",
+    "[\"first line\", \"second line\"]\n",
+    "1998-07-05 13:23:16 UTC\n",
+    "nil\n",
+);
+
+#[test]
+fn test_stdlib_libraries_ftp_transfer_execution() {
+    let output = run_example("stdlib_libraries/ftp_transfer.rb");
+    assert_eq!(output, FTP_TRANSFER_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_ftp_transfer_no_parens_execution() {
+    let output = run_example("stdlib_libraries/ftp_transfer_no_parens.rb");
+    assert_eq!(output, FTP_TRANSFER_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/waiting_on_a_stream` variants,
+/// which differ only in whether the calls are written with parentheses.
+const WAITING_ON_A_STREAM_OUTPUT: &str = concat!(
+    "[\"prompt>\"]\n",
+    "[\" helloready>\", \"rea\", \">\"]\n",
+    "nil\n",
+    "#<Encoding:UTF-8>\n",
+    "#<Encoding:UTF-16LE>\n",
+);
+
+#[test]
+fn test_stdlib_libraries_waiting_on_a_stream_execution() {
+    let output = run_example("stdlib_libraries/waiting_on_a_stream.rb");
+    assert_eq!(output, WAITING_ON_A_STREAM_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_waiting_on_a_stream_no_parens_execution() {
+    let output = run_example("stdlib_libraries/waiting_on_a_stream_no_parens.rb");
+    assert_eq!(output, WAITING_ON_A_STREAM_OUTPUT);
+}
+
+/// The expected output of both `stdlib_libraries/reading_compressed_streams` variants, which differ only in whether the
+/// calls are written with parentheses.
+const READING_COMPRESSED_STREAMS_OUTPUT: &str = concat!(
+    "foo\n",
+    "foo-and more\n",
+    "[16384, 16384, 16384, 16384, 16384, 16384, 1696]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_reading_compressed_streams_execution() {
+    let output = run_example("stdlib_libraries/reading_compressed_streams.rb");
+    assert_eq!(output, READING_COMPRESSED_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_reading_compressed_streams_parens_execution() {
+    let output = run_example("stdlib_libraries/reading_compressed_streams_parens.rb");
+    assert_eq!(output, READING_COMPRESSED_STREAMS_OUTPUT);
+}

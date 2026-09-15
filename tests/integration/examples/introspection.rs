@@ -626,3 +626,38 @@ fn test_introspection_local_variables_order_no_parens_execution() {
     let output = run_example("introspection/local_variables_order_no_parens.rb");
     assert_eq!(output, LOCAL_VARIABLES_ORDER_OUTPUT);
 }
+
+/// The expected output of both `introspection/what_the_space_holds` variants, which differ only in whether the
+/// calls are written with parentheses.
+const WHAT_THE_SPACE_HOLDS_OUTPUT: &str = concat!(
+    "true\n", "true\n", "true\n", "true\n", "true\n", "true\n", "nil\n",
+);
+
+#[test]
+fn test_introspection_what_the_space_holds_execution() {
+    let output = run_example("introspection/what_the_space_holds.rb");
+    assert_eq!(output, WHAT_THE_SPACE_HOLDS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_what_the_space_holds_no_parens_execution() {
+    let output = run_example("introspection/what_the_space_holds_no_parens.rb");
+    assert_eq!(output, WHAT_THE_SPACE_HOLDS_OUTPUT);
+}
+
+/// The expected output of both `introspection/body_frames` variants, which
+/// differ only in whether the calls are written with parentheses.
+const BODY_FRAMES_OUTPUT: &str =
+    "\"<module:Inner>\"\n\"<class:Held>\"\n\"singleton class\"\n\"named_frame\"\n";
+
+#[test]
+fn test_introspection_body_frames_execution() {
+    let output = run_example("introspection/body_frames.rb");
+    assert_eq!(output, BODY_FRAMES_OUTPUT);
+}
+
+#[test]
+fn test_introspection_body_frames_parens_execution() {
+    let output = run_example("introspection/body_frames_parens.rb");
+    assert_eq!(output, BODY_FRAMES_OUTPUT);
+}

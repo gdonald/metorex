@@ -655,6 +655,22 @@ impl Class {
         self.methods.borrow().get(name).map(Rc::clone)
     }
 
+    /// A method written `def self.name` lives in the class's own table under
+    /// a prefix rather than in the singleton class. Reading it back here lets
+    /// the singleton class answer for it the way Ruby's does.
+    pub fn find_attached_class_method(&self, name: &str) -> Option<Rc<Method>> {
+        if !self.is_singleton_class() || name.starts_with("__class__") {
+            return None;
+        }
+        match self.get_class_var("__attached__") {
+            Some(crate::object::Object::Class(attached))
+            | Some(crate::object::Object::Module(attached)) => {
+                attached.find_own_method(&format!("__class__{}", name))
+            }
+            _ => None,
+        }
+    }
+
     /// Look up a method by walking the inheritance chain (own → mixins → superclass).
     pub fn find_method(&self, name: &str) -> Option<Rc<Method>> {
         for prepended in self.prepends.borrow().iter() {
@@ -664,6 +680,9 @@ impl Class {
         }
         if let Some(method) = self.methods.borrow().get(name) {
             return Some(Rc::clone(method));
+        }
+        if let Some(method) = self.find_attached_class_method(name) {
+            return Some(method);
         }
 
         for mixin in self.mixins.borrow().iter() {
@@ -700,6 +719,9 @@ impl Class {
         }
         if let Some(method) = self.methods.borrow().get(name) {
             return Some((Rc::clone(self), Rc::clone(method)));
+        }
+        if let Some(method) = self.find_attached_class_method(name) {
+            return Some((Rc::clone(self), method));
         }
 
         for mixin in self.mixins.borrow().iter() {
@@ -842,6 +864,21 @@ impl Class {
     /// Return a list of method names defined directly on this class.
     pub fn method_names(&self) -> Vec<String> {
         let mut names = self.methods.borrow().keys().cloned().collect::<Vec<_>>();
+        // A singleton class answers for the `def self.name` methods its
+        // attached class holds under a prefix.
+        if self.is_singleton_class()
+            && let Some(
+                crate::object::Object::Class(attached) | crate::object::Object::Module(attached),
+            ) = self.get_class_var("__attached__")
+        {
+            for held in attached.methods.borrow().keys() {
+                if let Some(plain) = held.strip_prefix("__class__")
+                    && !names.iter().any(|name| name == plain)
+                {
+                    names.push(plain.to_string());
+                }
+            }
+        }
         names.sort();
         names
     }

@@ -19,9 +19,9 @@ use super::core::VirtualMachine;
 use super::utils::{format_exception, is_truthy, position_to_location};
 
 impl VirtualMachine {
-    /// The String an interpolated literal makes. A piece that holds bytes
-    /// rather than characters carries its encoding out to the whole, which is
-    /// what keeps a byte spliced into an ASCII literal a byte.
+    /// The String an interpolated literal makes. A piece holding anything
+    /// outside ASCII carries its encoding out to the whole, which is what
+    /// keeps a byte spliced into an ASCII literal a byte.
     pub(crate) fn evaluate_interpolated_object(
         &mut self,
         parts: &[InterpolationPart],
@@ -31,21 +31,24 @@ impl VirtualMachine {
             InterpolationPart::Text(written) => written.is_ascii(),
             InterpolationPart::Expression(_) => true,
         });
-        let Some(encoding) = carried.filter(|_| ascii_literal) else {
+        let Some((encoding, holds_bytes)) = carried.filter(|_| ascii_literal) else {
             return Ok(Object::string(text));
         };
         let spelled = crate::object::StringValue::with_encoding(text, encoding);
-        spelled.mark_bytes();
+        if holds_bytes {
+            spelled.mark_bytes();
+        }
         Ok(Object::String(std::rc::Rc::new(spelled)))
     }
 
     /// The text the parts spell, along with the encoding of the first piece
-    /// that held bytes rather than characters.
+    /// that held anything outside ASCII, and whether that piece stood for
+    /// bytes rather than characters.
     fn interpolate(
         &mut self,
         parts: &[InterpolationPart],
-    ) -> Result<(String, Option<String>), MetorexError> {
-        let mut carried: Option<String> = None;
+    ) -> Result<(String, Option<(String, bool)>), MetorexError> {
+        let mut carried: Option<(String, bool)> = None;
         let mut buffer = String::new();
 
         for part in parts {
@@ -91,10 +94,10 @@ impl VirtualMachine {
                         _ => buffer.push_str(&value.to_string()),
                     }
                     if let Object::String(spelled) = &value
-                        && spelled.holds_bytes()
                         && carried.is_none()
+                        && !spelled.as_str().is_ascii()
                     {
-                        carried = Some(spelled.encoding_name());
+                        carried = Some((spelled.encoding_name(), spelled.holds_bytes()));
                     }
                 }
             }
@@ -160,6 +163,9 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         let mut map = IndexMap::with_capacity(entries.len());
         let mut key_objs: IndexMap<String, Object> = IndexMap::new();
+        // A key that came in through `**held` was not written twice, so
+        // writing it again is not the duplicate Ruby reports.
+        let mut spread_names: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for (key_expr, value_expr) in entries {
             // `{**held}` copies every pair `held` carries into the hash.
@@ -168,6 +174,7 @@ impl VirtualMachine {
                 if let Object::Dict(pairs) = spread {
                     for (name, held) in pairs.borrow().iter() {
                         map.insert(name.clone(), held.clone());
+                        spread_names.insert(name.clone());
                     }
                 }
                 continue;
@@ -190,7 +197,10 @@ impl VirtualMachine {
             }
 
             let value = self.evaluate_expression(value_expr)?;
-            if map.contains_key(&key_string) && is_literal_key(key_expr) {
+            if map.contains_key(&key_string)
+                && !spread_names.contains(&key_string)
+                && is_literal_key(key_expr)
+            {
                 self.warn_duplicated_key(&key_value, key_expr, value_expr)?;
             }
             map.insert(key_string, value);
@@ -336,10 +346,20 @@ impl VirtualMachine {
                     drop(elements);
                     Ok(Object::Array(Rc::new(RefCell::new(slice))))
                 }
-                _ => Err(MetorexError::type_error(
-                    format!("Array index must be an Integer, found {}", key.type_name()),
-                    position_to_location(position),
-                )),
+                // Anything else an array reads as a subscript — an object
+                // answering `to_int`, an arithmetic sequence, a Range
+                // subclass — is settled by the method itself.
+                other => {
+                    let named = other.type_name().to_string();
+                    let held = Object::Array(Rc::clone(&elements_rc));
+                    match self.call_array_method(&held, "[]", &[other], position)? {
+                        Some(found) => Ok(found),
+                        None => Err(MetorexError::type_error(
+                            format!("Array index must be an Integer, found {}", named),
+                            position_to_location(position),
+                        )),
+                    }
+                }
             },
             Object::Dict(dict_rc) => {
                 let (fresh, held) = self.hash_locate_key(&dict_rc, &key, position)?;

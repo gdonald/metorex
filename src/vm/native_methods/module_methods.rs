@@ -649,6 +649,20 @@ impl VirtualMachine {
             }
         }
 
+        // What the object space can say about how much a program holds,
+        // counted from what it has built rather than from a heap walk.
+        if module_rc.name() == "ObjectSpace" && method_name == "__allocated__" {
+            let counted = match arguments.first() {
+                Some(Object::Class(held)) | Some(Object::Module(held)) => self
+                    .allocation_counts
+                    .get(&(Rc::as_ptr(held) as usize))
+                    .copied()
+                    .unwrap_or(0),
+                _ => self.allocation_counts.values().sum(),
+            };
+            return Ok(Some(Object::Int(counted)));
+        }
+
         // GC and ObjectSpace answer nil for the names metorex keeps no
         // account of. A name either module carries itself wins, which is how
         // the objspace library adds to them.

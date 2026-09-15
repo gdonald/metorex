@@ -233,7 +233,11 @@ impl VirtualMachine {
         argument_exprs: &[Expression],
     ) -> Result<Vec<Object>, MetorexError> {
         let mut args = Vec::with_capacity(argument_exprs.len());
+        // Whether the last argument was spread out of a splat, which is what
+        // lets a hash marked by `ruby2_keywords` be passed on as keywords.
+        let mut tail_from_splat = false;
         for arg in argument_exprs {
+            tail_from_splat = matches!(arg, Expression::Splat { .. });
             match arg {
                 Expression::Splat {
                     expression,
@@ -339,6 +343,7 @@ impl VirtualMachine {
                                 Object::Block(_) => {
                                     self.pending_block = Some(made);
                                     self.pending_block_from_ampersand = true;
+                                    self.pending_block_source = Some(other.clone());
                                 }
                                 // A `to_proc` that answers a Method stands
                                 // for a block the same way `&method` does.
@@ -368,6 +373,28 @@ impl VirtualMachine {
                     args.push(self.evaluate_expression(arg)?);
                 }
             }
+        }
+        // A hash marked by `ruby2_keywords` and spread out of a splat goes on
+        // as the keyword arguments it was gathered from.
+        if tail_from_splat
+            && let Some(Object::Dict(entries)) = args.last()
+            && entries
+                .borrow()
+                .contains_key(crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY)
+        {
+            let mut keywords: indexmap::IndexMap<String, Object> = entries
+                .borrow()
+                .iter()
+                .filter(|(key, _)| {
+                    key.as_str() != crate::vm::native_methods::hash_methods::RUBY2_KEYWORDS_KEY
+                })
+                .map(|(key, value)| (key.clone(), value.clone()))
+                .collect();
+            keywords.insert("__MX_KWARGS__".to_string(), Object::Bool(true));
+            args.pop();
+            args.push(Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(
+                keywords,
+            ))));
         }
         Ok(args)
     }

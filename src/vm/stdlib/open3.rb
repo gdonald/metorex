@@ -62,7 +62,7 @@ module Open3
     held = Open3.scratch_name
     output = IO.popen "{ #{written} ; } 2>#{held}"
     File.write held, "" unless File.exist? held
-    errors = File.open held, "r"
+    errors = Open3.error_reader held, output
     waiter = Open3.waiter
     return [output, output, errors, waiter] unless block_given?
     begin
@@ -72,6 +72,52 @@ module Open3
       errors.close unless errors.closed?
       File.delete held if File.exist? held
     end
+  end
+
+  # The error stream of a command whose errors were written to a scratch
+  # file. Nothing is in the file until the command has run, so the first read
+  # waits for it to finish.
+  # Nothing is in the scratch file the errors go to until the command has
+  # run, so the first read of one waits for it to finish.
+  module SettleFirst
+    def read(*args)
+      __settle_first__
+      super
+    end
+
+    def gets(*args)
+      __settle_first__
+      super
+    end
+
+    def readlines(*args)
+      __settle_first__
+      super
+    end
+
+    def each_line(*args, &block)
+      __settle_first__
+      super
+    end
+
+    def eof?
+      __settle_first__
+      super
+    end
+
+    def __settle_first__
+      return if @__settled
+      @__settled = true
+      @__command.__settle__
+    end
+  end
+
+  # A reader over the scratch file a command's errors were written to.
+  def self.error_reader(path, output)
+    made = File.open path, "r"
+    made.instance_variable_set :@__command, output
+    made.singleton_class.prepend SettleFirst
+    made
   end
 
   # Run each command in turn, each one reading what the one before it wrote.

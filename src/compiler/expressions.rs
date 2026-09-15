@@ -23,7 +23,9 @@ impl Compiler {
                 self.emit_constant(Object::Float(*value), line)
             }
 
-            Expression::StringLiteral { value, position } => {
+            Expression::StringLiteral {
+                value, position, ..
+            } => {
                 let line = Self::pos_line(position);
                 self.emit_constant(Object::string(value.clone()), line)
             }

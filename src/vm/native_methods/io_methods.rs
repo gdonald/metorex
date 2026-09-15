@@ -192,6 +192,13 @@ impl VirtualMachine {
             return Ok(None);
         }
         match method_name {
+            // Wait for the command to finish without taking what it wrote,
+            // which is what a reader of its error stream needs before there
+            // is anything in that stream to read.
+            "__settle__" => {
+                self.finish_popen(instance)?;
+                Ok(Some(Object::Nil))
+            }
             // Everything the child wrote that has not been read yet, which is
             // an empty string rather than nil once the handle is drained.
             "read" => {

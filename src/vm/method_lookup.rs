@@ -414,7 +414,10 @@ impl VirtualMachine {
             return match self.lookup_method(receiver, name) {
                 Some((_, method)) => !method.is_undefined,
                 None => {
-                    crate::vm::native_methods::is_native_kernel_method(name)
+                    (matches!(receiver, Object::Method(_))
+                        && crate::vm::native_methods::method_object_methods::NATIVE_METHOD_OBJECT_METHODS
+                            .contains(&name))
+                        || crate::vm::native_methods::is_native_kernel_method(name)
                         || (self.builtins().class_of(receiver).name() == "File"
                             && crate::vm::native_methods::class_methods::is_native_io_method(name))
                 }

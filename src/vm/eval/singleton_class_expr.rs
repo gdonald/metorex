@@ -46,8 +46,7 @@ fn singleton_class_display_name(receiver: &Object) -> String {
         Object::Class(c) => format!("#<Class:{}>", c.inspect_name()),
         Object::Module(m) => format!("#<Class:{}>", m.inspect_name()),
         // The attached object's own display, so the two agree.
-        Object::Instance(_) => format!("#<Class:{}>", receiver),
-        _ => "#<Class:Object>".to_string(),
+        _ => format!("#<Class:{}>", receiver),
     }
 }
 

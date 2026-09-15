@@ -47,7 +47,8 @@ impl Parser {
                     let arguments = self.parse_arguments()?;
                     // `held.(args) { }` hands the block to `call` the way any
                     // other method call written out would.
-                    let trailing_block = if self.starts_do_block() {
+                    let trailing_block = if self.starts_do_block() && self.paren_less_arg_depth == 0
+                    {
                         Some(Box::new(self.parse_block()?))
                     } else if self.starts_brace_block() {
                         Some(Box::new(self.parse_brace_block()?))
@@ -167,7 +168,7 @@ impl Parser {
                 };
 
                 // Check for trailing block (both do...end and {...} syntax)
-                let trailing_block = if self.starts_do_block() {
+                let trailing_block = if self.starts_do_block() && self.paren_less_arg_depth == 0 {
                     Some(Box::new(self.parse_block()?))
                 } else if self.starts_brace_block() {
                     Some(Box::new(self.parse_brace_block()?))
@@ -334,7 +335,8 @@ impl Parser {
                     } else {
                         Vec::new()
                     };
-                    let trailing_block = if self.starts_do_block() {
+                    let trailing_block = if self.starts_do_block() && self.paren_less_arg_depth == 0
+                    {
                         Some(Box::new(self.parse_block()?))
                     } else if self.starts_brace_block() {
                         Some(Box::new(self.parse_brace_block()?))
@@ -472,7 +474,7 @@ impl Parser {
                 } else {
                     Vec::new()
                 };
-                let trailing_block = if self.starts_do_block() {
+                let trailing_block = if self.starts_do_block() && self.paren_less_arg_depth == 0 {
                     Some(Box::new(self.parse_block()?))
                 } else if self.starts_brace_block() {
                     Some(Box::new(self.parse_brace_block()?))
@@ -512,7 +514,7 @@ impl Parser {
         let arguments = self.parse_arguments()?;
 
         // Check for trailing block (both do...end and {...} syntax)
-        let trailing_block = if self.starts_do_block() {
+        let trailing_block = if self.starts_do_block() && self.paren_less_arg_depth == 0 {
             Some(Box::new(self.parse_block()?))
         } else if self.starts_brace_block() {
             Some(Box::new(self.parse_brace_block()?))
@@ -557,6 +559,9 @@ impl Parser {
 
         // Collect any keyword args (ident: value) to build a hash at the end
         let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
+        // Where each `**held` sat among the keyword arguments, so the two can
+        // be put back in the order they were written.
+        let mut splat_slots: Vec<(usize, usize)> = Vec::new();
         // `foo(key => value)` with a key that is not a literal symbol, which
         // is the implicit-hash form `Struct.new(name, keyword_init: true)`
         // takes in `struct_class.new(key => 1)`.
@@ -665,6 +670,7 @@ impl Parser {
                 } else {
                     self.parse_expression()?
                 };
+                splat_slots.push((arguments.len(), keyword_pairs.len() + rocket_pairs.len()));
                 arguments.push(Expression::KeywordSplat {
                     expression: Box::new(expr),
                     position,
@@ -736,6 +742,7 @@ impl Parser {
                 })
                 .collect();
             entries.extend(rocket_pairs);
+            fold_keyword_splats(&mut arguments, &mut entries, &splat_slots, position);
             // Marker entry the runtime recognizes (see split_keyword_args).
             entries.push((
                 Expression::StringLiteral {
@@ -1192,6 +1199,9 @@ impl Parser {
     fn parse_arguments_without_parens_inner(&mut self) -> Result<Vec<Expression>, MetorexError> {
         let mut arguments = Vec::new();
         let mut keyword_pairs: Vec<(String, Expression)> = Vec::new();
+        // Where each `**held` sat among the keyword arguments, so the two can
+        // be put back in the order they were written.
+        let mut splat_slots: Vec<(usize, usize)> = Vec::new();
         let mut rocket_pairs: Vec<(Expression, Expression)> = Vec::new();
         let position = self.peek().position;
 
@@ -1295,6 +1305,7 @@ impl Parser {
                     } else {
                         self.parse_expression()?
                     };
+                splat_slots.push((arguments.len(), keyword_pairs.len() + rocket_pairs.len()));
                 arguments.push(Expression::KeywordSplat {
                     expression: Box::new(expr),
                     position,
@@ -1335,6 +1346,7 @@ impl Parser {
                 })
                 .collect();
             entries.extend(rocket_pairs);
+            fold_keyword_splats(&mut arguments, &mut entries, &splat_slots, position);
             entries.push((
                 Expression::StringLiteral {
                     value: "__MX_KWARGS__".to_string(),
@@ -1360,7 +1372,7 @@ impl Parser {
         let arguments = self.parse_arguments_without_parens()?;
 
         // Check for trailing block (both do...end and {...} syntax)
-        let trailing_block = if self.starts_do_block() {
+        let trailing_block = if self.starts_do_block() && self.paren_less_arg_depth == 0 {
             Some(Box::new(self.parse_block()?))
         } else if self.starts_brace_block() {
             Some(Box::new(self.parse_brace_block()?))
@@ -1409,5 +1421,27 @@ fn names_a_string_literal(expr: &Expression) -> bool {
                 && matches!(**receiver, Expression::StringLiteral { .. })
         }
         _ => false,
+    }
+}
+
+/// Put the `**held` arguments back among the keyword arguments they were
+/// written alongside, so one call carries a single set of keywords rather
+/// than a hash argument and a set of keywords.
+fn fold_keyword_splats(
+    arguments: &mut Vec<Expression>,
+    entries: &mut Vec<(Expression, Expression)>,
+    slots: &[(usize, usize)],
+    position: crate::lexer::Position,
+) {
+    let mut folded: Vec<(usize, Expression)> = Vec::new();
+    for (at, among) in slots.iter().rev() {
+        if *at < arguments.len() && matches!(arguments[*at], Expression::KeywordSplat { .. }) {
+            folded.push((*among, arguments.remove(*at)));
+        }
+    }
+    folded.reverse();
+    for (moved, (among, held)) in folded.into_iter().enumerate() {
+        let at = (among + moved).min(entries.len());
+        entries.insert(at, (held, Expression::NilLiteral { position }));
     }
 }

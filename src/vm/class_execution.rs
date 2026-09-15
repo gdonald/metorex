@@ -1004,7 +1004,7 @@ impl VirtualMachine {
                                 position,
                             },
                             value: Expression::Identifier {
-                                name: "value".to_string(),
+                                name: crate::object::UNNAMED_PARAMETER.to_string(),
                                 position,
                             },
                             position,
@@ -1012,7 +1012,7 @@ impl VirtualMachine {
                         let setter_name = format!("{}=", attr_name);
                         let method = Rc::new(Method::new(
                             setter_name.clone(),
-                            vec!["value".to_string()],
+                            vec![crate::object::UNNAMED_PARAMETER.to_string()],
                             setter_body,
                         ));
                         class.define_method(&setter_name, method);
@@ -1043,7 +1043,7 @@ impl VirtualMachine {
                                 position,
                             },
                             value: Expression::Identifier {
-                                name: "value".to_string(),
+                                name: crate::object::UNNAMED_PARAMETER.to_string(),
                                 position,
                             },
                             position,
@@ -1051,7 +1051,7 @@ impl VirtualMachine {
                         let setter_name = format!("{}=", attr_name);
                         let setter_method = Rc::new(Method::new(
                             setter_name.clone(),
-                            vec!["value".to_string()],
+                            vec![crate::object::UNNAMED_PARAMETER.to_string()],
                             setter_body,
                         ));
                         class.define_method(&setter_name, setter_method);
@@ -1227,7 +1227,7 @@ impl VirtualMachine {
                                         position: crate::lexer::Position::default(),
                                     },
                                     value: Expression::Identifier {
-                                        name: "value".to_string(),
+                                        name: crate::object::UNNAMED_PARAMETER.to_string(),
                                         position: crate::lexer::Position::default(),
                                     },
                                     position: crate::lexer::Position::default(),
@@ -1236,7 +1236,7 @@ impl VirtualMachine {
                                     format!("{}=", attr_name),
                                     Rc::new(Method::new(
                                         format!("{}=", attr_name),
-                                        vec!["value".to_string()],
+                                        vec![crate::object::UNNAMED_PARAMETER.to_string()],
                                         setter_body,
                                     )),
                                 );
@@ -1649,12 +1649,28 @@ impl VirtualMachine {
             };
             match resolved {
                 Some(Object::Module(existing)) => (existing, false, false),
-                Some(Object::Class(existing)) => (existing, true, false),
+                Some(held @ (Object::Class(_) | Object::Instance(_)))
+                | Some(held @ (Object::String(_) | Object::Int(_) | Object::Float(_))) => {
+                    return Err(not_a_module(&full_name, &held, position));
+                }
+                Some(held @ (Object::Bool(_) | Object::Symbol(_) | Object::Array(_))) => {
+                    return Err(not_a_module(&full_name, &held, position));
+                }
+                Some(Object::Nil) => {
+                    return Err(not_a_module(&full_name, &Object::Nil, position));
+                }
                 _ => (new_module(), false, true),
             }
-        } else if let Some(Object::Module(existing)) = self.globals().get(name) {
+        } else if let Some(Object::Module(existing)) = self.globals().get(name)
+            // A module reached only because something including it was mixed
+            // into this scope is not a constant of this scope, so the keyword
+            // opens a module of its own rather than reopening that one.
+            && existing.ruby_name() == full_name
+        {
             (existing, false, false)
-        } else if let Some(Object::Module(existing)) = self.environment().get(name) {
+        } else if let Some(Object::Module(existing)) = self.environment().get(name)
+            && existing.ruby_name() == full_name
+        {
             (existing, false, false)
         } else if let Some(Object::Class(existing)) = self.globals().get(name) {
             (existing, true, false)
@@ -1773,7 +1789,11 @@ impl VirtualMachine {
         // A class variable written in this body belongs to this module, not
         // to whatever block the body happens to be running inside.
         let held_home = std::mem::take(&mut self.class_var_home);
+        // Ruby names a module body by the module alone, without the namespace
+        // it was written in, which is what a backtrace entry for it says.
+        self.call_stack_push(crate::vm::CallFrame::boundary(class_body_label(module)));
         let answer = self.module_body_statements(module, body);
+        self.call_stack_pop();
         self.class_var_home = held_home;
         answer
     }
@@ -2118,6 +2138,16 @@ impl VirtualMachine {
             // before ModuleSpecs has been bound in globals).
             if enclosing.name() == name {
                 return Some(Object::Module(Rc::clone(enclosing)));
+            }
+        }
+        // Inside a method body the lexical chain is the nesting captured
+        // where the method was written, innermost first, which is what lets a
+        // name written there reach a sibling of the class holding it.
+        if let Some(nesting) = self.method_nesting_stack.last() {
+            for enclosing in nesting {
+                if let Some(value) = enclosing.get_class_var(name) {
+                    return Some(value);
+                }
             }
         }
         self.environment()
@@ -2793,4 +2823,12 @@ fn class_body_label(class: &Rc<Class>) -> String {
     } else {
         format!("<class:{unqualified}>")
     }
+}
+
+/// The TypeError `module X` raises when X already names something that is not
+/// a module.
+fn not_a_module(named: &str, held: &Object, position: Position) -> MetorexError {
+    let message = format!("{} is not a module", named);
+    let _ = held;
+    crate::vm::errors::simple_exception("TypeError", &message, position)
 }

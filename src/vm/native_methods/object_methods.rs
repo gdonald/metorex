@@ -529,7 +529,10 @@ impl VirtualMachine {
             }
             // Kernel#lambda reached by dispatch (`send(:lambda) { }`) rather
             // than by a bare call. The block is already in `pending_block`.
-            "lambda" | "proc" | "raise" | "warn" => self
+            "warn" => self
+                .kernel_warn_for(Some(receiver), arguments.to_vec(), position)
+                .map(Some),
+            "lambda" | "proc" | "raise" => self
                 .call_native_function(method_name, arguments.to_vec(), position)
                 .map(Some),
             "itself" => {
@@ -879,6 +882,14 @@ impl VirtualMachine {
                     include_ancestors,
                 )))
             }
+            // `IO#reopen` points a stream at another place, and Ruby gives
+            // the object a singleton class of its own again when it does.
+            "__fresh_singleton_class__" => {
+                if let Object::Instance(inst_rc) = receiver {
+                    *inst_rc.borrow().singleton_class.borrow_mut() = None;
+                }
+                Ok(Some(receiver.clone()))
+            }
             "singleton_class" => {
                 self.warn_chilled_string(receiver, position);
                 if let Some(sole) = match receiver {
@@ -890,13 +901,14 @@ impl VirtualMachine {
                 {
                     return Ok(Some(class));
                 }
-                // Ruby also refuses a frozen deduplicated String, but metorex
-                // has no per-string frozen flag to tell one from a mutable
-                // string, which does have a singleton class.
-                if matches!(
-                    receiver,
-                    Object::Int(_) | Object::Float(_) | Object::Symbol(_)
-                ) {
+                // One of the interned strings `String#-@` hands back stands
+                // for every use of that text, so it has no singleton class.
+                if matches!(receiver, Object::String(held) if held.is_deduplicated())
+                    || matches!(
+                        receiver,
+                        Object::Int(_) | Object::Float(_) | Object::Symbol(_)
+                    )
+                {
                     let msg = "can't define singleton".to_string();
                     return Err(MetorexError::UncaughtException {
                         exception: Object::exception("TypeError", msg.clone()),
@@ -2529,6 +2541,16 @@ impl VirtualMachine {
                                 crate::vm::native_methods::ARRAY_SUBCLASS_VAR,
                                 Object::Array(elements),
                             ) => Object::array(elements.borrow().clone()),
+                            (crate::vm::native_methods::HASH_SUBCLASS_VAR, Object::Dict(pairs)) => {
+                                Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(
+                                    pairs.borrow().clone(),
+                                )))
+                            }
+                            (crate::vm::native_methods::SET_SUBCLASS_VAR, Object::Set(held)) => {
+                                Object::Set(std::rc::Rc::new(std::cell::RefCell::new(
+                                    held.borrow().clone(),
+                                )))
+                            }
                             _ => v.clone(),
                         };
                         new_inst.set_var(k.clone(), held);
@@ -2587,21 +2609,29 @@ impl VirtualMachine {
             }
             Object::Array(arr_rc) => {
                 let arr = arr_rc.borrow().clone();
-                Ok(Some(Object::Array(std::rc::Rc::new(
-                    std::cell::RefCell::new(arr),
-                ))))
+                let copy = Object::Array(std::rc::Rc::new(std::cell::RefCell::new(arr)));
+                self.carry_collection_variables(receiver, &copy);
+                Ok(Some(copy))
             }
             Object::Dict(dict_rc) => {
                 let dict = dict_rc.borrow().clone();
-                Ok(Some(Object::Dict(std::rc::Rc::new(
-                    std::cell::RefCell::new(dict),
-                ))))
+                let copy = Object::Dict(std::rc::Rc::new(std::cell::RefCell::new(dict)));
+                self.carry_collection_variables(receiver, &copy);
+                Ok(Some(copy))
             }
             Object::Set(set_rc) => {
                 let elements = set_rc.borrow().clone();
-                Ok(Some(Object::Set(std::rc::Rc::new(
-                    std::cell::RefCell::new(elements),
-                ))))
+                let copy = Object::Set(std::rc::Rc::new(std::cell::RefCell::new(elements)));
+                self.carry_collection_variables(receiver, &copy);
+                // A set that places its elements by identity hands that on to
+                // the copy, which holds the same elements.
+                if self.set_by_identity(set_rc)
+                    && let Object::Set(made) = &copy
+                {
+                    self.identity_sets
+                        .insert(std::rc::Rc::as_ptr(made) as usize, copy.clone());
+                }
+                Ok(Some(copy))
             }
             Object::Class(class_rc) => {
                 if class_rc.name() == "BasicObject" {
@@ -3090,7 +3120,7 @@ fn method_missing_dispatcher(
             },
             Expression::Splat {
                 expression: Box::new(Expression::Identifier {
-                    name: "__method_missing_args".to_string(),
+                    name: crate::object::UNNAMED_PARAMETER.to_string(),
                     position,
                 }),
                 position,
@@ -3102,13 +3132,13 @@ fn method_missing_dispatcher(
 
     let mut method = crate::object::Method::new(
         name.to_string(),
-        vec!["__method_missing_args".to_string()],
+        vec![crate::object::UNNAMED_PARAMETER.to_string()],
         vec![Statement::Expression {
             expression: call,
             position,
         }],
     );
-    method.variadic_param = Some((0, "__method_missing_args".to_string()));
+    method.variadic_param = Some((0, crate::object::UNNAMED_PARAMETER.to_string()));
     method.receiver = Some(Box::new(receiver.clone()));
     method
 }

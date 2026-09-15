@@ -85,6 +85,149 @@ pub(crate) fn original_group_name(name: &str) -> &str {
     }
 }
 
+/// A `{` that opens no repetition stands for itself in Ruby, and a count
+/// written with no lower bound counts from zero. The engine underneath
+/// refuses both, so they are rewritten into what it does read.
+fn plain_braces(pattern: &str) -> String {
+    let letters: Vec<char> = pattern.chars().collect();
+    let mut written = String::with_capacity(pattern.len());
+    let mut at = 0;
+    let mut in_class = false;
+    while at < letters.len() {
+        let letter = letters[at];
+        if letter == '\\' {
+            written.push(letter);
+            at += 1;
+            if at < letters.len() {
+                let escaped = letters[at];
+                written.push(escaped);
+                at += 1;
+                // `\x{...}`, `\u{...}` and `\p{...}` name a codepoint or a
+                // property, so the braces there are the engine's own.
+                if matches!(escaped, 'x' | 'u' | 'p' | 'P') && letters.get(at) == Some(&'{') {
+                    while at < letters.len() {
+                        written.push(letters[at]);
+                        let closing = letters[at] == '}';
+                        at += 1;
+                        if closing {
+                            break;
+                        }
+                    }
+                }
+            }
+            continue;
+        }
+        if in_class {
+            if letter == ']' {
+                in_class = false;
+            }
+            written.push(letter);
+            at += 1;
+            continue;
+        }
+        if letter == '[' {
+            in_class = true;
+            written.push(letter);
+            at += 1;
+            continue;
+        }
+        if letter == '{' {
+            match repetition_count(&letters, at) {
+                Some((counted, next)) => {
+                    written.push_str(&counted);
+                    at = next;
+                }
+                None => {
+                    written.push_str("\\{");
+                    at += 1;
+                }
+            }
+            continue;
+        }
+        written.push(letter);
+        at += 1;
+    }
+    written
+}
+
+/// The repetition a `{` opens, written the way the engine underneath reads
+/// it, along with where the pattern carries on. None when the brace opens no
+/// repetition at all.
+fn repetition_count(letters: &[char], at: usize) -> Option<(String, usize)> {
+    let mut cursor = at + 1;
+    let mut low = String::new();
+    while letters
+        .get(cursor)
+        .is_some_and(|held| held.is_ascii_digit())
+    {
+        low.push(letters[cursor]);
+        cursor += 1;
+    }
+    let mut high: Option<String> = None;
+    if letters.get(cursor) == Some(&',') {
+        cursor += 1;
+        let mut counted = String::new();
+        while letters
+            .get(cursor)
+            .is_some_and(|held| held.is_ascii_digit())
+        {
+            counted.push(letters[cursor]);
+            cursor += 1;
+        }
+        high = Some(counted);
+    }
+    if letters.get(cursor) != Some(&'}') {
+        return None;
+    }
+    if low.is_empty() && high.as_ref().is_none_or(|counted| counted.is_empty()) {
+        return None;
+    }
+    let low = if low.is_empty() { "0".to_string() } else { low };
+    let written = match high {
+        Some(counted) => format!("{{{},{}}}", low, counted),
+        None => format!("{{{}}}", low),
+    };
+    Some((written, cursor + 1))
+}
+
+/// Ruby does not read the position past a closing newline as the start of a
+/// line, while the regex crate does. A zero-width match there that goes away
+/// once that newline is written as an ordinary letter was standing on `^`
+/// alone, so Ruby would not have matched at all.
+pub(crate) fn line_start_past_the_end(
+    compiled: &regex::Regex,
+    subject: &str,
+    start: usize,
+    end: usize,
+) -> bool {
+    if start != end || end != subject.len() || !subject.ends_with('\n') {
+        return false;
+    }
+    let mut probe = subject[..subject.len() - 1].to_string();
+    probe.push('x');
+    !compiled.is_match_at(&probe, start)
+}
+
+/// The two halves of a pattern around a `\G`, which stands for where the
+/// previous match ended. None when the pattern carries none.
+pub(crate) fn previous_match_split(pattern: &str) -> Option<(String, String)> {
+    let letters: Vec<char> = pattern.chars().collect();
+    let mut at = 0;
+    while at + 1 < letters.len() {
+        if letters[at] == '\\' {
+            if letters[at + 1] == 'G' {
+                let before: String = letters[..at].iter().collect();
+                let after: String = letters[at + 2..].iter().collect();
+                return Some((before, after));
+            }
+            at += 2;
+            continue;
+        }
+        at += 1;
+    }
+    None
+}
+
 /// Compile a pattern, applying the flags the literal carried.
 pub(crate) fn compile(pattern: &str, flags: &str) -> Option<regex::Regex> {
     // Ruby's `^` and `$` stand for the start and end of a line, always, so
@@ -100,6 +243,7 @@ pub(crate) fn compile(pattern: &str, flags: &str) -> Option<regex::Regex> {
         prefix.push('x');
     }
     let (pattern, _) = uniquify_group_names(pattern);
+    let pattern = plain_braces(&pattern);
     let source = if prefix.is_empty() {
         pattern
     } else {

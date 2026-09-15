@@ -46,6 +46,11 @@ class ERB
     @filename = nil
     @lineno = 0
     @encoding = "UTF-8"
+    unless safe_level.nil? && legacy_trim_mode.nil? && legacy_eoutvar.nil?
+      warn "warning: Passing safe_level with the 2nd argument of ERB.new is " \
+           "deprecated. Do not use it, and specify other arguments as keyword " \
+           "arguments."
+    end
     mode = trim_mode.nil? ? legacy_trim_mode : trim_mode
     known = ["0", "1", "2", "%", "<>", ">", "-", "%<>", "%>", "%-"]
     unless mode.nil? || known.include?(mode.to_s)
@@ -59,7 +64,13 @@ class ERB
   # The text the template stands for, read against the given binding. The
   # file the template came from is named so an error in it points there.
   def result(held = nil)
-    eval @src, held.nil? ? TOPLEVEL_BINDING : held, named_source, 0
+    eval @src, held.nil? ? ERB.fresh_binding : held, named_source, 0
+  end
+
+  # A scope of its own for each rendering, so a local a template names is
+  # gone by the time the next one runs.
+  def self.fresh_binding
+    TOPLEVEL_BINDING.dup
   end
 
   # What a backtrace calls the compiled source.
@@ -121,34 +132,98 @@ class ERB
   # Compile a template into Ruby source. The answer is built with `+` rather
   # than in place, so the source runs wherever a String does.
   def self.compile(template, trim_mode, name)
+    trims = trim_mode.to_s
+    template = ERB.expand_percent_lines(template) if trims.start_with? "%"
     pieces = ["#{name} = +'';"]
     at = 0
-    trims = trim_mode.to_s
     while at < template.length
       opening = template.index "<%", at
       if opening.nil?
         pieces.push ERB.literal_piece(template[at..-1], name)
         break
       end
-      pieces.push ERB.literal_piece(template[at, opening - at], name)
-      closing = template.index "%>", opening
+      literal = template[at, opening - at]
+      closing = ERB.closing_index template, opening
       if closing.nil?
-        pieces.push ERB.literal_piece(template[opening..-1], name)
+        pieces.push ERB.literal_piece(template[at..-1], name)
         break
       end
       body = template[opening + 2, closing - opening - 2]
+      literal = ERB.without_line_indent(literal) if ERB.trims_indent?(body, trims)
+      pieces.push ERB.literal_piece(literal, name)
       at = closing + 2
-      at = at + 1 if ERB.trims_newline?(body, trims) && template[at] == "\n"
-      pieces.push ERB.tag_piece(body, name)
+      if ERB.trims_newline?(body, trims, template, opening) && template[at] == "\n"
+        at = at + 1
+      end
+      pieces.push ERB.tag_piece(ERB.tag_body(body, trims), name)
     end
     pieces.push "\n#{name}"
     pieces.join
+  end
+
+  # Where the tag opened at `opening` closes, skipping a `%>` written inside a
+  # string in the tag's own code.
+  def self.closing_index(template, opening)
+    template.index "%>", opening
+  end
+
+  # A line opening with `%` is code, and one opening with `%%` is a line that
+  # starts with a single `%`.
+  def self.expand_percent_lines(template)
+    ending = template.end_with? "\n"
+    lines = template.split "\n", -1
+    lines.pop if ending
+    built = +""
+    lines.each_with_index do |line, index|
+      last = index == lines.length - 1
+      if line.start_with? "%%"
+        built << line[1..-1]
+        built << "\n" unless last && !ending
+      elsif line.start_with? "%"
+        # A line of code is the whole line, so the ending belongs to the tag
+        # rather than to the answer.
+        built << "<%#{line[1..-1]}%>"
+      else
+        built << line
+        built << "\n" unless last && !ending
+      end
+    end
+    built
+  end
+
+  # The code a tag holds, with the `-` markers the explicit trim mode reads
+  # taken off.
+  def self.tag_body(body, trims)
+    held = body
+    held = held[1..-1] if ERB.opens_with_trim?(held, trims)
+    held = held[0..-2] if trims.include?("-") && held.end_with?("-")
+    held
+  end
+
+  # Whether a tag opens with the `-` that trims the spaces before it. A `-`
+  # followed by `=` is code rather than a marker, which is why `<%-=` is not
+  # a tag Ruby reads.
+  def self.opens_with_trim?(body, trims)
+    trims.include?("-") && body.start_with?("-") && body[1] != "="
+  end
+
+  # Whether the spaces between the start of the line and the tag are dropped.
+  def self.trims_indent?(body, trims)
+    ERB.opens_with_trim? body, trims
   end
 
   # A run of plain text, written as a piece to add.
   def self.literal_piece(text, name)
     return "" if text.nil? || text.empty?
     "#{name} = #{name} + #{text.dump};"
+  end
+
+  # The same text with the spaces at the start of its last line taken off.
+  def self.without_line_indent(text)
+    at = text.rindex "\n"
+    head = at.nil? ? "" : text[0..at]
+    tail = at.nil? ? text : text[(at + 1)..-1]
+    tail.strip.empty? ? head : text
   end
 
   # One `<% %>` tag: `=` prints what it names, `#` is a comment, and anything
@@ -166,9 +241,16 @@ class ERB
   # Whether the newline after a tag is dropped, which only a trim mode asks
   # for. Left alone, a tag on a line of its own leaves that line's ending
   # behind in the answer.
-  def self.trims_newline?(body, trims)
-    return true if body.end_with? "-"
-    return false if body.start_with? "="
-    ["1", ">", "<>", "%>", "%<>", "-", "%-"].include? trims
+  def self.trims_newline?(body, trims, template, opening)
+    return true if trims.include?("-") && body.end_with?("-")
+    return false if trims.include? "-"
+    return ERB.opens_a_line?(template, opening) if trims.include? "<>"
+    ["1", "2", ">", "%>"].include? trims
+  end
+
+  # Whether the tag sits at the start of its line, which is what the `<>`
+  # trim mode asks about before dropping the newline after it.
+  def self.opens_a_line?(template, opening)
+    opening == 0 || template[opening - 1] == "\n"
   end
 end

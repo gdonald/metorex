@@ -1119,3 +1119,26 @@ fn test_metaprogramming_alias_over_native_no_parens_execution() {
     let output = run_example("metaprogramming/alias_over_native_no_parens.rb");
     assert_eq!(output, ALIAS_OVER_NATIVE_OUTPUT);
 }
+
+/// The expected output of both `metaprogramming/inside_a_singleton_class` variants, which differ only in whether the
+/// calls are written with parentheses.
+const INSIDE_A_SINGLETON_CLASS_OUTPUT: &str = concat!(
+    "Foo\n",
+    "Class\n",
+    "true\n",
+    "counted\n",
+    "#<Class:Parent>\n",
+    "[:greeting]\n",
+);
+
+#[test]
+fn test_metaprogramming_inside_a_singleton_class_execution() {
+    let output = run_example("metaprogramming/inside_a_singleton_class.rb");
+    assert_eq!(output, INSIDE_A_SINGLETON_CLASS_OUTPUT);
+}
+
+#[test]
+fn test_metaprogramming_inside_a_singleton_class_no_parens_execution() {
+    let output = run_example("metaprogramming/inside_a_singleton_class_no_parens.rb");
+    assert_eq!(output, INSIDE_A_SINGLETON_CLASS_OUTPUT);
+}

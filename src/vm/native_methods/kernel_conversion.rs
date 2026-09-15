@@ -391,7 +391,7 @@ impl VirtualMachine {
     }
 
     /// `Integer(value, base = nil, exception: true)`.
-    fn kernel_integer(
+    pub(crate) fn kernel_integer(
         &mut self,
         arguments: &[Object],
         position: Position,
@@ -596,7 +596,7 @@ impl VirtualMachine {
     /// `Float(arg)` — a Float is answered unchanged, an Integer converts
     /// exactly, a String is read strictly, and anything else must answer
     /// `to_f` with a Float. `exception: false` answers nil instead of raising.
-    fn kernel_float(
+    pub(crate) fn kernel_float(
         &mut self,
         arguments: &[Object],
         position: Position,
@@ -909,10 +909,18 @@ fn parse_decimal_float(text: &str) -> Option<f64> {
     if mantissa.is_empty() || !mantissa.chars().all(|c| c.is_ascii_digit() || c == '.') {
         return None;
     }
-    if mantissa.matches('.').count() > 1 || mantissa.starts_with('.') {
+    if mantissa.matches('.').count() > 1 {
         return None;
     }
-    let mantissa: f64 = mantissa.parse().ok()?;
+    if !mantissa.chars().any(|held| held.is_ascii_digit()) {
+        return None;
+    }
+    // Ruby reads a number written with no digits before the point, so the
+    // zero it leaves out is written back in.
+    let mantissa: f64 = match mantissa.strip_prefix('.') {
+        Some(fraction) => format!("0.{}", fraction).parse().ok()?,
+        None => mantissa.parse().ok()?,
+    };
     let Some(exponent) = exponent else {
         return Some(mantissa);
     };

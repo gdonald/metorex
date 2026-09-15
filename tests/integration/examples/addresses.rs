@@ -33,3 +33,52 @@ fn test_addresses_internet_addresses_no_parens_execution() {
     let output = run_example("addresses/internet_addresses_no_parens.rb");
     assert_eq!(output, INTERNET_ADDRESSES_OUTPUT);
 }
+
+/// The expected output of both `addresses/sockets_of_every_kind` variants,
+/// which differ only in whether the calls are written with parentheses.
+const SOCKETS_OF_EVERY_KIND_OUTPUT: &str = concat!(
+    "\"over a path\\n\"\n",
+    "true\n",
+    "\"one message\"\n",
+    "Addrinfo\n",
+    "\"127.0.0.1\"\n",
+    "\"bytes\"\n",
+    "#<Encoding:UTF-8>\n",
+    "Addrinfo\n",
+    "21\n",
+    "\"255.255.255.255\"\n",
+    "[\"127.0.0.1\", \"21\"]\n",
+);
+
+#[test]
+fn test_addresses_sockets_of_every_kind_execution() {
+    let output = run_example("addresses/sockets_of_every_kind.rb");
+    assert_eq!(output, SOCKETS_OF_EVERY_KIND_OUTPUT);
+}
+
+#[test]
+fn test_addresses_sockets_of_every_kind_no_parens_execution() {
+    let output = run_example("addresses/sockets_of_every_kind_no_parens.rb");
+    assert_eq!(output, SOCKETS_OF_EVERY_KIND_OUTPUT);
+}
+
+/// The expected output of both `addresses/streams_over_a_path` variants,
+/// which differ only in whether the calls are written with parentheses.
+const STREAMS_OVER_A_PATH_OUTPUT: &str = concat!(
+    "\"read through the handed stream\"\n",
+    "\"a datagram\"\n",
+    "\"AF_UNIX\"\n",
+    "true\n",
+);
+
+#[test]
+fn test_addresses_streams_over_a_path_execution() {
+    let output = run_example("addresses/streams_over_a_path.rb");
+    assert_eq!(output, STREAMS_OVER_A_PATH_OUTPUT);
+}
+
+#[test]
+fn test_addresses_streams_over_a_path_no_parens_execution() {
+    let output = run_example("addresses/streams_over_a_path_no_parens.rb");
+    assert_eq!(output, STREAMS_OVER_A_PATH_OUTPUT);
+}

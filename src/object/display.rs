@@ -48,12 +48,7 @@ impl fmt::Display for Object {
             Object::Float(fl) if fl.is_infinite() => {
                 write!(f, "{}Infinity", if *fl < 0.0 { "-" } else { "" })
             }
-            // Ruby always shows a Float with a fractional part, so 1.0 reads
-            // as "1.0" rather than "1".
-            Object::Float(fl) if fl.fract() == 0.0 && fl.abs() < 1e16 => {
-                write!(f, "{:.1}", fl)
-            }
-            Object::Float(fl) => write!(f, "{}", fl),
+            Object::Float(fl) => write!(f, "{}", float_text(*fl)),
             Object::String(s) => write!(f, "{}", s),
             Object::Symbol(s) => write!(f, ":{}", s),
             Object::Array(arr) => {
@@ -330,4 +325,35 @@ fn reads_back_plainly(name: &str) -> bool {
     // Only the last character may be one of the three a method name may end
     // with.
     last.is_alphanumeric() || *last == '_' || *last == '?' || *last == '!' || *last == '='
+}
+
+/// The text Ruby writes a finite Float as. Every one shows a fractional part,
+/// and one whose decimal point sits past the fifteenth significant place or
+/// before the fourth place to its left is written in exponent form.
+pub fn float_text(value: f64) -> String {
+    let scientific = format!("{:e}", value);
+    let Some((mantissa, exponent)) = scientific.split_once('e') else {
+        return scientific;
+    };
+    let Ok(place) = exponent.parse::<i32>() else {
+        return scientific;
+    };
+    if (-4..15).contains(&place) {
+        let written = format!("{}", value);
+        if written.contains('.') {
+            return written;
+        }
+        return format!("{}.0", written);
+    }
+    let mantissa = if mantissa.contains('.') {
+        mantissa.to_string()
+    } else {
+        format!("{}.0", mantissa)
+    };
+    format!(
+        "{}e{}{:02}",
+        mantissa,
+        if place < 0 { "-" } else { "+" },
+        place.abs()
+    )
 }

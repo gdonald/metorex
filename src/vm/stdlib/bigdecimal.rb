@@ -373,11 +373,16 @@ class BigDecimal < Numeric
   def divmod(other)
     held = companion other
     return coerced_binary(other, :divmod) if held.nil?
-    raise ZeroDivisionError, "divided by 0" if held.zero? && !nan? && finite?
-    if nan? || held.nan? || !finite? || !held.finite?
-      nan = BigDecimal.build 0, "", 0, :nan
-      return [nan, nan]
+    raise ZeroDivisionError, "divided by 0" if held.zero? && !nan?
+    nan = BigDecimal.build 0, "", 0, :nan
+    return [nan, nan] if nan? || held.nan?
+    # A dividend without end divides into a count without end, and what is
+    # left over cannot be said.
+    if !finite?
+      sign = (infinite? > 0) == (held > 0) ? 1 : -1
+      return [BigDecimal.build(sign, "", 0, :infinite), nan]
     end
+    return [BigDecimal.build(0, "", 0, :zero), self] unless held.finite?
     quotient = whole_quotient held, false
     [quotient, self - quotient * held]
   end
