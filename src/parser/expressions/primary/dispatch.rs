@@ -36,21 +36,25 @@ impl Parser {
                     position,
                 }),
                 arguments: vec![
-                    literals::int_literal(numerator, position),
-                    literals::int_literal(denominator, position),
+                    literals::whole_number(&numerator, position),
+                    literals::whole_number(&denominator, position),
                 ],
                 trailing_block: None,
                 position,
             }),
             // `1.3i` is spelled out as the `Complex(0, 1.3)` it stands for.
-            TokenKind::Imaginary(value) => Ok(Expression::Call {
+            TokenKind::Imaginary(value, is_float) => Ok(Expression::Call {
                 callee: Box::new(Expression::Identifier {
                     name: "Complex".to_string(),
                     position,
                 }),
                 arguments: vec![
                     literals::int_literal(0, position),
-                    literals::float_literal(value, position),
+                    if is_float {
+                        literals::float_literal(value.parse().unwrap_or(0.0), position)
+                    } else {
+                        literals::whole_number(&value, position)
+                    },
                 ],
                 trailing_block: None,
                 position,

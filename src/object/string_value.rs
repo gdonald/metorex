@@ -40,6 +40,10 @@ pub struct StringValue {
     /// with notice that it will be frozen in a later release. Cleared once
     /// the warning has been given, so it is printed only the first time.
     chilled: RefCell<Option<String>>,
+    /// The pointer a `pack` with 'P' or 'p' left on the string it built, which
+    /// names the string those directives wrote the address of. Zero where the
+    /// string carries none, which is every string but a packed one.
+    pointer: std::cell::Cell<u64>,
 }
 
 impl StringValue {
@@ -54,6 +58,7 @@ impl StringValue {
             borrowed: std::cell::Cell::new(false),
             deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
+            pointer: std::cell::Cell::new(0),
         }
     }
 
@@ -69,6 +74,7 @@ impl StringValue {
             borrowed: std::cell::Cell::new(false),
             deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
+            pointer: std::cell::Cell::new(0),
         }
     }
 
@@ -88,6 +94,12 @@ impl StringValue {
     /// from one that does has to carry.
     pub fn mark_bytes(&self) {
         self.holds_bytes.set(true);
+    }
+
+    /// Say that the characters stand for text again, which is what reading a
+    /// run of bytes back through an encoding that spells them leaves.
+    pub fn clear_bytes(&self) {
+        self.holds_bytes.set(false);
     }
 
     /// The name of the encoding this string says it is in.
@@ -146,13 +158,23 @@ impl StringValue {
         *self.chilled.borrow_mut() = Some(warning);
     }
 
-    /// The notice a change to this string prints, taken so it prints once.
+    /// The pointer `pack` left on this string, or zero where it left none.
+    pub fn pointer(&self) -> u64 {
+        self.pointer.get()
+    }
+
+    /// Mark this string as naming the run of text a pointer stands for.
+    pub fn set_pointer(&self, named: u64) {
+        self.pointer.set(named);
+    }
+
     /// Whether the string carries notice that it will be frozen in a later
     /// release.
     pub fn is_chilled(&self) -> bool {
         self.chilled.borrow().is_some()
     }
 
+    /// The notice a change to this string prints, taken so it prints once.
     pub fn take_chill(&self) -> Option<String> {
         self.chilled.borrow_mut().take()
     }
@@ -202,6 +224,7 @@ impl Clone for StringValue {
             borrowed: std::cell::Cell::new(false),
             deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
+            pointer: std::cell::Cell::new(self.pointer.get()),
         }
     }
 }

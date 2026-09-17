@@ -16,66 +16,6 @@ pub(crate) const LAST_MATCH: &str = "~";
 /// engine wants every name to be its own.
 const RENAMED_SUFFIX: &str = "__mx_dup";
 
-/// Rewrite a pattern so no two groups share a name, answering the new source
-/// and, in group order, the name each group was written with. Ruby allows a
-/// name to repeat and reports the farthest match under it.
-pub(crate) fn uniquify_group_names(pattern: &str) -> (String, Vec<String>) {
-    let mut rewritten = String::with_capacity(pattern.len());
-    let mut names = Vec::new();
-    let mut seen: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
-    let mut chars = pattern.char_indices().peekable();
-    while let Some((index, character)) = chars.next() {
-        // An escaped character never opens a group. Ruby's `\h` and `\H`
-        // name the hex digits, which are written out as the set they stand
-        // for since the engine underneath knows no such name.
-        if character == '\\' {
-            match chars.next() {
-                Some((_, 'h')) => rewritten.push_str("[0-9a-fA-F]"),
-                Some((_, 'H')) => rewritten.push_str("[^0-9a-fA-F]"),
-                // Ruby's `\Z` stands at the end of the subject, or just
-                // before a newline that ends it. The engine underneath knows
-                // `\z` alone, so the optional newline is spelled out.
-                Some((_, 'Z')) => rewritten.push_str(r"\n?\z"),
-                Some((_, escaped)) => {
-                    rewritten.push(character);
-                    rewritten.push(escaped);
-                }
-                None => rewritten.push(character),
-            }
-            continue;
-        }
-        let opens_named_group = character == '('
-            && pattern[index..].starts_with("(?<")
-            && !pattern[index..].starts_with("(?<=")
-            && !pattern[index..].starts_with("(?<!");
-        if !opens_named_group {
-            rewritten.push(character);
-            continue;
-        }
-        let Some(close) = pattern[index + 3..].find('>') else {
-            rewritten.push(character);
-            continue;
-        };
-        let name = &pattern[index + 3..index + 3 + close];
-        let count = seen.entry(name.to_string()).or_insert(0);
-        *count += 1;
-        let unique = if *count == 1 {
-            name.to_string()
-        } else {
-            format!("{}{}{}", name, RENAMED_SUFFIX, count)
-        };
-        rewritten.push_str(&format!("(?<{}>", unique));
-        names.push(name.to_string());
-        // `close` counts bytes, and the walk steps by characters, so a
-        // multi-byte name has to be measured in characters here.
-        let consumed = pattern[index + 1..index + 3 + close + 1].chars().count();
-        for _ in 0..consumed {
-            chars.next();
-        }
-    }
-    (rewritten, names)
-}
-
 /// The name a group was written with, which a repeated one carries under a
 /// suffix so the pattern could compile.
 pub(crate) fn original_group_name(name: &str) -> &str {
@@ -85,117 +25,12 @@ pub(crate) fn original_group_name(name: &str) -> &str {
     }
 }
 
-/// A `{` that opens no repetition stands for itself in Ruby, and a count
-/// written with no lower bound counts from zero. The engine underneath
-/// refuses both, so they are rewritten into what it does read.
-fn plain_braces(pattern: &str) -> String {
-    let letters: Vec<char> = pattern.chars().collect();
-    let mut written = String::with_capacity(pattern.len());
-    let mut at = 0;
-    let mut in_class = false;
-    while at < letters.len() {
-        let letter = letters[at];
-        if letter == '\\' {
-            written.push(letter);
-            at += 1;
-            if at < letters.len() {
-                let escaped = letters[at];
-                written.push(escaped);
-                at += 1;
-                // `\x{...}`, `\u{...}` and `\p{...}` name a codepoint or a
-                // property, so the braces there are the engine's own.
-                if matches!(escaped, 'x' | 'u' | 'p' | 'P') && letters.get(at) == Some(&'{') {
-                    while at < letters.len() {
-                        written.push(letters[at]);
-                        let closing = letters[at] == '}';
-                        at += 1;
-                        if closing {
-                            break;
-                        }
-                    }
-                }
-            }
-            continue;
-        }
-        if in_class {
-            if letter == ']' {
-                in_class = false;
-            }
-            written.push(letter);
-            at += 1;
-            continue;
-        }
-        if letter == '[' {
-            in_class = true;
-            written.push(letter);
-            at += 1;
-            continue;
-        }
-        if letter == '{' {
-            match repetition_count(&letters, at) {
-                Some((counted, next)) => {
-                    written.push_str(&counted);
-                    at = next;
-                }
-                None => {
-                    written.push_str("\\{");
-                    at += 1;
-                }
-            }
-            continue;
-        }
-        written.push(letter);
-        at += 1;
-    }
-    written
-}
-
-/// The repetition a `{` opens, written the way the engine underneath reads
-/// it, along with where the pattern carries on. None when the brace opens no
-/// repetition at all.
-fn repetition_count(letters: &[char], at: usize) -> Option<(String, usize)> {
-    let mut cursor = at + 1;
-    let mut low = String::new();
-    while letters
-        .get(cursor)
-        .is_some_and(|held| held.is_ascii_digit())
-    {
-        low.push(letters[cursor]);
-        cursor += 1;
-    }
-    let mut high: Option<String> = None;
-    if letters.get(cursor) == Some(&',') {
-        cursor += 1;
-        let mut counted = String::new();
-        while letters
-            .get(cursor)
-            .is_some_and(|held| held.is_ascii_digit())
-        {
-            counted.push(letters[cursor]);
-            cursor += 1;
-        }
-        high = Some(counted);
-    }
-    if letters.get(cursor) != Some(&'}') {
-        return None;
-    }
-    if low.is_empty() && high.as_ref().is_none_or(|counted| counted.is_empty()) {
-        return None;
-    }
-    let low = if low.is_empty() { "0".to_string() } else { low };
-    let written = match high {
-        Some(counted) => format!("{{{},{}}}", low, counted),
-        None => format!("{{{}}}", low),
-    };
-    Some((written, cursor + 1))
-}
-
 /// Ruby does not read the position past a closing newline as the start of a
 /// line, while the regex crate does. A zero-width match there that goes away
 /// once that newline is written as an ordinary letter was standing on `^`
 /// alone, so Ruby would not have matched at all.
 pub(crate) fn line_start_past_the_end(
-    compiled: &regex::Regex,
+    compiled: &crate::regexp::Pattern,
     subject: &str,
     start: usize,
     end: usize,
@@ -228,28 +63,26 @@ pub(crate) fn previous_match_split(pattern: &str) -> Option<(String, String)> {
     None
 }
 
-/// Compile a pattern, applying the flags the literal carried.
-pub(crate) fn compile(pattern: &str, flags: &str) -> Option<regex::Regex> {
-    // Ruby's `^` and `$` stand for the start and end of a line, always, so
-    // the engine underneath is told to read them that way.
-    let mut prefix = String::from("m");
-    if flags.contains('i') {
-        prefix.push('i');
-    }
-    if flags.contains('m') {
-        prefix.push('s');
-    }
-    if flags.contains('x') {
-        prefix.push('x');
-    }
-    let (pattern, _) = uniquify_group_names(pattern);
-    let pattern = plain_braces(&pattern);
-    let source = if prefix.is_empty() {
-        pattern
-    } else {
-        format!("(?{}){}", prefix, pattern)
+/// Read a pattern, answering what it could not be read as.
+pub(crate) fn read_pattern(pattern: &str, flags: &str) -> Result<crate::regexp::Pattern, String> {
+    let written = crate::regexp::Flags {
+        folded: flags.contains('i'),
+        dot_reads_newline: flags.contains('m'),
+        extended: flags.contains('x'),
+        ..crate::regexp::Flags::default()
     };
-    regex::Regex::new(&source).ok()
+    crate::regexp::Pattern::compile(pattern, written).map_err(|trouble| trouble.0)
+}
+
+/// Compile a pattern, applying the flags the literal carried.
+pub(crate) fn compile(pattern: &str, flags: &str) -> Option<crate::regexp::Pattern> {
+    let written = crate::regexp::Flags {
+        folded: flags.contains('i'),
+        dot_reads_newline: flags.contains('m'),
+        extended: flags.contains('x'),
+        ..crate::regexp::Flags::default()
+    };
+    crate::regexp::Pattern::compile(pattern, written).ok()
 }
 
 /// The characters a `=~` operand searches, which a Symbol supplies from its

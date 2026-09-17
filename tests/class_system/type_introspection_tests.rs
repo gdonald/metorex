@@ -149,9 +149,9 @@ fn superclass_of_basicobject_is_nil() {
 
 #[test]
 fn ancestors_of_integer() {
-    // Integer, Comparable, Numeric, Object.
+    // Integer, Numeric, Comparable, Object, Kernel, BasicObject.
     let result = run("Integer.ancestors.length");
-    assert_eq!(result, Some(Object::Int(4)));
+    assert_eq!(result, Some(Object::Int(6)));
 }
 
 #[test]

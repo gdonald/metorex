@@ -565,19 +565,33 @@ impl VirtualMachine {
         if let Some(home) = lexical {
             self.class_var_home.push(home);
         }
-        // A `def` written at the top of the body belongs to the receiver
-        // alone. Anything the body calls out to keeps its own definee, so
-        // this reaches only the statements written here.
+        // A `def` or an `alias` written at the top of the body belongs to the
+        // receiver alone. Anything the body calls out to keeps its own
+        // definee, so this reaches only the statements written here.
         let definee = block
             .body()
             .iter()
             .any(|statement| {
                 matches!(
                     statement,
-                    Statement::MethodDef { .. } | Statement::FunctionDef { .. }
+                    Statement::MethodDef { .. }
+                        | Statement::FunctionDef { .. }
+                        | Statement::Alias { .. }
                 )
             })
             .then(|| self.singleton_class_of(&receiver));
+        // A value the program cannot hold one copy of has no singleton class
+        // to write the method on.
+        if definee.is_some()
+            && crate::vm::native_methods::object_methods::refuses_a_singleton(&receiver)
+        {
+            let message = "can't define singleton".to_string();
+            return Err(MetorexError::UncaughtException {
+                exception: Object::exception("TypeError", message.clone()),
+                location: position_to_location(position),
+                message,
+            });
+        }
         let execution_result = self.with_call_frame(frame, move |vm| {
             vm.environment_mut().push_isolated_scope();
             let result = (|| -> Result<Object, MetorexError> {
@@ -616,7 +630,9 @@ impl VirtualMachine {
                         if let Some(definee) = &definee
                             && matches!(
                                 statement,
-                                Statement::MethodDef { .. } | Statement::FunctionDef { .. }
+                                Statement::MethodDef { .. }
+                                    | Statement::FunctionDef { .. }
+                                    | Statement::Alias { .. }
                             )
                         {
                             let definee = std::rc::Rc::clone(definee);

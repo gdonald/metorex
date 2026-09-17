@@ -22,7 +22,14 @@ impl VirtualMachine {
         match given {
             Object::Int(number) => Ok(*number),
             Object::Float(number) => Ok(*number as i64),
-            other if self.responds_to(other, "to_int") => {
+            // A number past what a machine word holds names no place in a
+            // string, which Ruby reports as a range rather than a type.
+            Object::BigInt(_) => Err(crate::vm::errors::simple_exception(
+                "RangeError",
+                "bignum too big to convert into 'long'",
+                position,
+            )),
+            other if self.answers_to(other, "to_int", position)? => {
                 match self.send_to_object(other.clone(), "to_int", vec![], position)? {
                     Object::Int(number) => Ok(number),
                     Object::Float(number) => Ok(number as i64),
@@ -96,6 +103,31 @@ impl VirtualMachine {
                 let mut out = String::with_capacity(string_value.as_str().len() + 2);
                 out.push('"');
                 let held = string_value.encoding_name();
+                // An encoding that spells no ASCII is dumped as the bytes it
+                // holds, since a character of its own has no spelling the
+                // dump could be read back through.
+                if !encoding_is_ascii_compatible(&held) {
+                    for byte in binary_bytes(string_value) {
+                        match byte {
+                            b'"' => out.push_str("\\\""),
+                            b'\\' => out.push_str("\\\\"),
+                            held if held.is_ascii_graphic() || held == b' ' => {
+                                out.push(char::from(held))
+                            }
+                            held => match named_escape(char::from(held)) {
+                                Some(named) => {
+                                    out.push('\\');
+                                    out.push(named);
+                                }
+                                None => out.push_str(&format!("\\x{held:02X}")),
+                            },
+                        }
+                    }
+                    out.push('"');
+                    out.push_str(&format!(".force_encoding(\"{held}\")"));
+                    let made = crate::object::StringValue::with_encoding(out, "US-ASCII");
+                    return Ok(Some(Object::String(Rc::new(made))));
+                }
                 // An encoding that spells a character in more than one byte is
                 // carried as the bytes themselves, so the characters are read
                 // back out of them.
@@ -460,21 +492,67 @@ impl VirtualMachine {
                 };
                 // An encoding that spells a character in more than one byte
                 // is carried as the bytes themselves, since they spell
-                // nothing the text model can hold.
-                let held = string_value.encoding_name();
+                // nothing the text model can hold. A second name says what
+                // the bytes are to be read as rather than what the string
+                // says it is written in.
+                let held = match arguments.get(1) {
+                    Some(source) => self
+                        .encoding_name_argument(source, position)
+                        .unwrap_or_else(|_| string_value.encoding_name()),
+                    None => string_value.encoding_name(),
+                };
+                let reads_bytes = string_value.holds_bytes() || arguments.len() > 1;
                 let reading = match wide_encoding(&held) {
                     Some(shape) => wide_text(&binary_bytes(string_value), shape),
-                    None if held == "EUC-JP" && string_value.holds_bytes() => match &replacement {
+                    None if held == "ISO-2022-JP" && reads_bytes => {
+                        super::euc_jp_table::iso_2022_jp_text(&binary_bytes(string_value))
+                    }
+                    None if spells_shift_jis(&held) && reads_bytes => {
+                        super::shift_jis_table::shift_jis_text(&binary_bytes(string_value))
+                    }
+                    None if held == "EUC-JP" && reads_bytes => match &replacement {
                         Some(stands_in) => {
                             euc_jp_text_replacing(&binary_bytes(string_value), stands_in)
                         }
                         None => super::euc_jp_table::euc_jp_text(&binary_bytes(string_value)),
                     },
                     None => match latin_text(&binary_bytes(string_value), &held) {
-                        Some(spelled) if string_value.holds_bytes() => spelled,
+                        Some(spelled) if reads_bytes => spelled,
                         _ => string_value.to_text(),
                     },
                 };
+                // ISO-2022-JP writes its Japanese runs between escapes, so
+                // the bytes are built rather than mapped one for one.
+                if wanted == "ISO-2022-JP" {
+                    let bytes =
+                        super::euc_jp_table::iso_2022_jp_bytes(&reading).map_err(|character| {
+                            let message =
+                                format!("U+{:04X} from UTF-8 to {}", character as u32, wanted);
+                            crate::vm::errors::simple_exception(
+                                "Encoding::UndefinedConversionError",
+                                &message,
+                                position,
+                            )
+                        })?;
+                    let made = crate::object::StringValue::from_bytes(bytes_as_text(&bytes));
+                    made.set_encoding(wanted);
+                    return Ok(Some(Object::String(Rc::new(made))));
+                }
+                if spells_shift_jis(&wanted) {
+                    let bytes =
+                        super::shift_jis_table::shift_jis_bytes(&reading).map_err(|character| {
+                            let message =
+                                format!("U+{:04X} from UTF-8 to {}", character as u32, wanted);
+                            crate::vm::errors::simple_exception(
+                                "Encoding::UndefinedConversionError",
+                                &message,
+                                position,
+                            )
+                        })?;
+                    let made = crate::object::StringValue::from_bytes(bytes_as_text(&bytes));
+                    made.set_encoding(wanted);
+                    return Ok(Some(Object::String(Rc::new(made))));
+                }
                 if wanted == "EUC-JP" {
                     let bytes =
                         super::euc_jp_table::euc_jp_bytes(&reading).map_err(|character| {
@@ -848,6 +926,7 @@ impl VirtualMachine {
                         start,
                         end,
                         exclusive,
+                        ..
                     } = span
                     else {
                         return Ok(Some(Object::Nil));
@@ -880,6 +959,11 @@ impl VirtualMachine {
                     let wanted = if arguments.len() == 2 {
                         self.coerce_slice_number(&arguments[1], method_name, position)?
                     } else {
+                        // A single index names one byte, which has to be
+                        // there for the answer to be a string at all.
+                        if opening < 0 || opening >= total {
+                            return Ok(Some(Object::Nil));
+                        }
                         1
                     };
                     (opening, wanted)
@@ -1246,18 +1330,16 @@ impl VirtualMachine {
                         ));
                     }
                 };
-                let held = if from == 0 {
-                    string_value.as_str().to_string()
-                } else {
-                    // The offset counts bytes, so the run left is taken from
-                    // the bytes rather than from the characters.
-                    let bytes = binary_bytes(string_value);
-                    match super::pack_format::bytes_to_string(&bytes[from..]) {
+                // Every directive reads bytes, so the string is handed over
+                // as the bytes it holds rather than as the characters they
+                // spell. An offset counts bytes too.
+                let bytes = binary_bytes(string_value);
+                let held =
+                    match super::pack_format::bytes_to_string(&bytes[from.min(bytes.len())..]) {
                         Object::String(rest) => rest.as_str().to_string(),
                         _ => String::new(),
-                    }
-                };
-                let read = self.string_unpack(&held, &format, position)?;
+                    };
+                let read = self.string_unpack(&held, &format, string_value.pointer(), position)?;
                 if method_name == "unpack1" {
                     return Ok(Some(read.into_iter().next().unwrap_or(Object::Nil)));
                 }
@@ -1290,6 +1372,60 @@ impl VirtualMachine {
                     crate::object::StringValue::from_bytes(held),
                 ))))
             }
+            // `unicode_normalize` answers the text put into one of the four
+            // forms Unicode names, and `unicode_normalized?` whether it is
+            // already in one.
+            "unicode_normalize" | "unicode_normalized?" => {
+                if arguments.len() > 1 {
+                    return Err(method_argument_error(
+                        method_name,
+                        1,
+                        arguments.len(),
+                        position,
+                    ));
+                }
+                let named = string_value.encoding_name();
+                if !matches!(named.as_str(), "UTF-8" | "US-ASCII" | "UTF8-MAC") {
+                    return Err(crate::vm::errors::simple_exception(
+                        "Encoding::CompatibilityError",
+                        &format!("Unicode Normalization not appropriate for {named}"),
+                        position,
+                    ));
+                }
+                let form = match arguments.first() {
+                    None => "nfc".to_string(),
+                    Some(Object::Symbol(held) | Object::String(held)) => held.as_str().to_string(),
+                    Some(other) => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Symbol",
+                            other,
+                            position,
+                        ));
+                    }
+                };
+                if !matches!(form.as_str(), "nfc" | "nfd" | "nfkc" | "nfkd") {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("invalid normalization form {form}"),
+                        position,
+                    ));
+                }
+                use super::normalization_table::{composed, decomposed, text_of};
+                let wholly = form.starts_with("nfk");
+                let points = decomposed(&string_value.as_str(), wholly);
+                let points = if form.ends_with('c') {
+                    composed(&points)
+                } else {
+                    points
+                };
+                let written = text_of(&points);
+                if method_name == "unicode_normalized?" {
+                    return Ok(Some(Object::Bool(written == *string_value.as_str())));
+                }
+                let made = crate::object::StringValue::with_encoding(written, named);
+                Ok(Some(Object::String(Rc::new(made))))
+            }
             "force_encoding" => {
                 if arguments.len() != 1 {
                     return Err(method_argument_error(
@@ -1310,6 +1446,26 @@ impl VirtualMachine {
                     named.as_str(),
                     "UTF-16" | "UTF-16BE" | "UTF-16LE" | "UTF-32" | "UTF-32BE" | "UTF-32LE"
                 );
+                // Read as bytes, each byte is a character of its own, so the
+                // text is spread out to say so.
+                let by_the_byte = matches!(named.as_str(), "ASCII-8BIT" | "BINARY");
+                if by_the_byte && !string_value.holds_bytes() {
+                    let bytes = binary_bytes(string_value);
+                    string_value
+                        .replace_text(super::pack_format::bytes_to_string(&bytes).to_string());
+                    string_value.mark_bytes();
+                }
+                // Read back through an encoding that spells what the bytes
+                // hold, the string is text again.
+                if !by_the_byte
+                    && !fixed_width
+                    && string_value.holds_bytes()
+                    && matches!(named.as_str(), "UTF-8" | "US-ASCII")
+                    && let Ok(text) = String::from_utf8(binary_bytes(string_value))
+                {
+                    string_value.replace_text(text);
+                    string_value.clear_bytes();
+                }
                 string_value.set_encoding(named);
                 if fixed_width {
                     string_value.mark_bytes();
@@ -1486,34 +1642,34 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let s: &str = &string_value.as_ref().as_str();
-                let result: String = match arguments.first() {
-                    None => {
-                        if let Some(stripped) = s.strip_suffix("\r\n") {
-                            stripped.to_string()
-                        } else if let Some(stripped) = s.strip_suffix('\n') {
-                            stripped.to_string()
-                        } else if let Some(stripped) = s.strip_suffix('\r') {
-                            stripped.to_string()
-                        } else {
-                            s.to_string()
-                        }
-                    }
-                    Some(Object::Nil) => s.to_string(),
-                    Some(Object::String(sep)) => s
-                        .strip_suffix(&*sep.as_ref().as_str())
-                        .map(|x| x.to_string())
-                        .unwrap_or_else(|| s.to_string()),
+                let bytes = binary_bytes(string_value);
+                // With no separator named, the one `$/` holds decides, and
+                // without a value of its own that is the line ending.
+                let named = match arguments.first() {
+                    None => match self.globals().get("/") {
+                        Some(Object::String(held)) => Some(held.to_text()),
+                        _ => Some("\n".to_string()),
+                    },
+                    Some(Object::Nil) => None,
+                    Some(Object::String(held)) => Some(held.to_text()),
                     Some(other) => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            other,
-                            position,
-                        ));
+                        let spelled = self.string_argument(method_name, other, position)?;
+                        Some(spelled)
                     }
                 };
-                Ok(Some(Object::string(result)))
+                let kept = chomped_bytes(&bytes, named.as_deref(), &string_value.encoding_name());
+                // Text keeps reading as text; a run of bytes keeps standing
+                // for the bytes it holds.
+                let held = match (string_value.holds_bytes(), String::from_utf8(kept.clone())) {
+                    (false, Ok(text)) => text,
+                    _ => super::pack_format::bytes_to_string(&kept).to_string(),
+                };
+                let made =
+                    crate::object::StringValue::with_encoding(held, string_value.encoding_name());
+                if string_value.holds_bytes() {
+                    made.mark_bytes();
+                }
+                Ok(Some(Object::String(Rc::new(made))))
             }
             // `lines` splits on the line separator, keeping it on each piece.
             "split" => {
@@ -1525,112 +1681,112 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                // Ruby's limit: a positive one caps the number of fields and
-                // leaves the rest in the last, zero (or none) drops trailing
-                // empty fields, and a negative one keeps them.
+                // A run of bytes its encoding cannot read has no characters
+                // to cut between.
+                if !holds_valid_text(string_value) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("invalid byte sequence in {}", string_value.encoding_name()),
+                        position,
+                    ));
+                }
                 let limit = match arguments.get(1) {
                     None => 0i64,
-                    Some(Object::Int(count)) => *count,
                     Some(other) => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Integer",
-                            other,
-                            position,
-                        ));
+                        let counted = self.coerce_integer_argument(other, position)?;
+                        i32::try_from(&counted).map(i64::from).map_err(|_| {
+                            crate::vm::errors::simple_exception(
+                                "RangeError",
+                                &format!("integer {counted} too big to convert to `int'"),
+                                position,
+                            )
+                        })?
                     }
                 };
-                let mut parts: Vec<String> = if arguments.is_empty() {
-                    string_value
-                        .as_str()
-                        .split_whitespace()
-                        .map(|piece| piece.to_string())
-                        .collect()
-                } else {
-                    match &arguments[0] {
-                        // An empty separator cuts between every character,
-                        // which leaves no empty piece at either end.
-                        Object::String(separator) if separator.as_str().is_empty() => {
-                            let letters: Vec<String> = string_value
-                                .as_str()
-                                .chars()
-                                .map(|held| held.to_string())
-                                .collect();
-                            if limit > 0 && letters.len() > limit as usize {
-                                let mut kept: Vec<String> = letters[..limit as usize - 1].to_vec();
-                                kept.push(letters[limit as usize - 1..].concat());
-                                kept
-                            } else {
-                                letters
-                            }
+                // Without a pattern of its own, the one `$;` holds decides,
+                // and Ruby says so when it holds one.
+                let given = match arguments.first() {
+                    None | Some(Object::Nil) => match self.globals().get(";") {
+                        Some(Object::Nil) | None => None,
+                        Some(held) => {
+                            let message = "warning: $; is set to non-nil value\n".to_string();
+                            self.warn_through_warning_module(message, position)?;
+                            Some(held)
                         }
-                        Object::String(separator) if limit > 0 => string_value
-                            .as_str()
-                            .splitn(limit as usize, &*separator.as_str())
-                            .map(|piece| piece.to_string())
-                            .collect(),
-                        Object::String(separator) => string_value
-                            .as_str()
-                            .split(&*separator.as_str())
-                            .map(|piece| piece.to_string())
-                            .collect(),
-                        Object::Regex(pattern, flags) => {
-                            // Build the same regex used by Regex literal eval.
-                            let pat = pattern.as_str();
-                            let flag_str = flags.as_str();
-                            let translated = super::regexp_methods::uniquify_group_names(pat).0;
-                            let mut builder = regex::RegexBuilder::new(&translated);
-                            builder.multi_line(true);
-                            if flag_str.contains('i') {
-                                builder.case_insensitive(true);
-                            }
-                            if flag_str.contains('m') {
-                                builder.dot_matches_new_line(true);
-                            }
-                            if flag_str.contains('x') {
-                                builder.ignore_whitespace(true);
-                            }
-                            match builder.build() {
-                                Ok(re) if limit > 0 => re
-                                    .splitn(&string_value.as_str(), limit as usize)
-                                    .map(|piece| piece.to_string())
-                                    .collect(),
-                                Ok(re) => re
-                                    .split(&string_value.as_str())
-                                    .map(|piece| piece.to_string())
-                                    .collect(),
-                                Err(e) => {
-                                    return Err(MetorexError::runtime_error(
-                                        format!("invalid regex for split: {}", e),
-                                        position_to_location(position),
+                    },
+                    Some(held) => Some(held.clone()),
+                };
+                let separator = match &given {
+                    None => Separator::Whitespace,
+                    Some(Object::Regex(pattern, flags)) => {
+                        match super::regexp_methods::compile(pattern, flags) {
+                            Some(built) => Separator::Pattern(built),
+                            // A pattern that is nothing but a look-ahead cuts
+                            // in front of every place the run it names starts.
+                            None => match looks_ahead(pattern, flags) {
+                                Some(built) => Separator::Before(built),
+                                None => {
+                                    return Err(crate::vm::errors::simple_exception(
+                                        "RegexpError",
+                                        &format!("invalid pattern: /{pattern}/"),
+                                        position,
                                     ));
                                 }
-                            }
+                            },
                         }
-                        _ => {
-                            return Err(method_argument_type_error(
-                                method_name,
-                                "String or Regexp",
-                                &arguments[0],
+                    }
+                    Some(Object::String(held)) => {
+                        if !holds_valid_text(held) {
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                &format!("invalid byte sequence in {}", held.encoding_name()),
                                 position,
                             ));
                         }
+                        separator_of(&held.as_str())
+                    }
+                    Some(other) => {
+                        let spelled = self.string_argument(method_name, other, position)?;
+                        separator_of(&spelled)
                     }
                 };
-                if limit == 0 {
-                    while parts.last().is_some_and(|piece| piece.is_empty()) {
-                        parts.pop();
+                let text = string_value.to_text();
+                let pieces = split_pieces(&text, &separator, limit);
+                let named = string_value.encoding_name();
+                let made: Vec<Object> = pieces
+                    .into_iter()
+                    .map(|piece| {
+                        let held = crate::object::StringValue::with_encoding(piece, named.clone());
+                        Object::String(Rc::new(held))
+                    })
+                    .collect();
+                // With a block each piece is handed over and the string
+                // itself is the answer.
+                if let Some(Object::Block(block)) = self.pending_block.take() {
+                    for piece in made {
+                        self.execute_block_callable(&block, vec![piece], position)?;
                     }
+                    return Ok(Some(receiver.clone()));
                 }
-                let parts: Vec<Object> = parts.into_iter().map(Object::string).collect();
-                Ok(Some(Object::Array(Rc::new(RefCell::new(parts)))))
+                Ok(Some(Object::Array(Rc::new(RefCell::new(made)))))
             }
             "slice" | "[]" => {
                 // One argument is the same lookup a subscript makes, so an
                 // Integer, Range, String, or Regexp all read the same way.
                 if arguments.len() == 1 {
+                    // An object that is neither of the shapes a subscript
+                    // reads names a place through `to_int`.
+                    let chosen = match &arguments[0] {
+                        held @ Object::Instance(_)
+                            if crate::vm::native_methods::string_subclass_value(held).is_none()
+                                && self.answers_to(held, "to_int", position)? =>
+                        {
+                            Object::Int(self.coerce_slice_number(held, method_name, position)?)
+                        }
+                        held => held.clone(),
+                    };
                     return self
-                        .evaluate_index_operation(receiver.clone(), arguments[0].clone(), position)
+                        .evaluate_index_operation(receiver.clone(), chosen, position)
                         .map(Some);
                 }
                 if arguments.len() != 2 {
@@ -1968,6 +2124,9 @@ impl VirtualMachine {
                     if string_value.holds_bytes() {
                         made.mark_bytes();
                     }
+                    // A copy of a packed string names the same run of text,
+                    // which is what lets `unpack` read a pointer out of it.
+                    made.set_pointer(string_value.pointer());
                 }
                 Ok(Some(copy))
             }
@@ -1987,7 +2146,7 @@ impl VirtualMachine {
                     Some(held) => held,
                     None => {
                         let needle = self.string_needle(method_name, &arguments[0], position)?;
-                        (regex::escape(&needle.as_str()), String::new())
+                        (crate::regexp::escape(&needle.as_str()), String::new())
                     }
                 };
                 // `\G` asks each match to begin where the one before it ended,
@@ -2005,7 +2164,7 @@ impl VirtualMachine {
                     ));
                 };
                 let subject = string_value.as_str().to_string();
-                let groups = compiled.captures_len() - 1;
+                let groups = compiled.group_count() - 1;
                 let mut found: Vec<Object> = Vec::new();
                 // Where each match began, so the walk can report it as the
                 // last match while the block runs.
@@ -2659,19 +2818,129 @@ fn swapped_case(text: &str, options: &CaseOptions) -> String {
 /// Whether a string spells characters in the encoding it says it is written
 /// in. Only a run of bytes tagged as text can fail to.
 pub(crate) fn holds_valid_text(string_value: &crate::object::StringValue) -> bool {
-    match string_value.encoding_name().as_str() {
+    // An encoding Ruby names without converting anything through it reads its
+    // text a byte at a time, so every run of bytes spells characters in it.
+    // One that still pairs its bytes is read for that shape all the same.
+    let named = string_value.encoding_name();
+    if dummy_encoding(&named) && !pairs_its_bytes(&named) {
+        return true;
+    }
+    match named.as_str() {
         "ASCII-8BIT" | "BINARY" => true,
         "US-ASCII" => string_value.as_str().is_ascii(),
         "UTF-8" if string_value.holds_bytes() => {
             String::from_utf8(super::pack_format::string_to_bytes(&string_value.as_str())).is_ok()
         }
+        "UTF8-MAC" if string_value.holds_bytes() => {
+            String::from_utf8(super::pack_format::string_to_bytes(&string_value.as_str())).is_ok()
+        }
         "EUC-JP" => euc_jp_reads(&binary_bytes(string_value)),
+        // Shift_JIS spells half-width katakana with one byte of its own, so
+        // the shape of a run says more than a plain lead-and-trail pairing.
+        named if spells_shift_jis(named) => shift_jis_reads(&binary_bytes(string_value)),
         // A fixed-width encoding reads whole units, so a run of bytes that
-        // does not divide into them spells no characters at all.
-        "UTF-16" | "UTF-16BE" | "UTF-16LE" => binary_bytes(string_value).len().is_multiple_of(2),
-        "UTF-32" | "UTF-32BE" | "UTF-32LE" => binary_bytes(string_value).len().is_multiple_of(4),
+        // does not divide into them spells no characters at all, and a half
+        // of a surrogate pair standing alone spells none either.
+        "UTF-16" | "UTF-16BE" | "UTF-16LE" => utf16_reads(
+            &binary_bytes(string_value),
+            !string_value.encoding_name().ends_with("LE"),
+        ),
+        "UTF-32" | "UTF-32BE" | "UTF-32LE" => utf32_reads(
+            &binary_bytes(string_value),
+            !string_value.encoding_name().ends_with("LE"),
+        ),
+        named if pairs_its_bytes(named) => paired_bytes_read(&binary_bytes(string_value)),
         _ => true,
     }
+}
+
+/// Whether an encoding spells some characters with a lead byte and a trailing
+/// one. Metorex reads the shape of such a run rather than the character it
+/// stands for, which is what tells a broken run from a whole one.
+fn pairs_its_bytes(named: &str) -> bool {
+    matches!(
+        named,
+        "Big5"
+            | "CP949"
+            | "EUC-KR"
+            | "EUC-TW"
+            | "GB18030"
+            | "GBK"
+            | "GB2312"
+            | "GB12345"
+            | "Shift_JIS"
+            | "Windows-31J"
+            | "MacJapanese"
+            | "Emacs-Mule"
+            | "stateless-ISO-2022-JP"
+            | "eucJP-ms"
+            | "CP51932"
+    )
+}
+
+/// Whether every lead byte in a run is followed by the byte it pairs with.
+/// A byte under 0x80 stands for itself.
+fn paired_bytes_read(bytes: &[u8]) -> bool {
+    let mut at = 0;
+    while at < bytes.len() {
+        if bytes[at] < 0x80 {
+            at += 1;
+            continue;
+        }
+        if at + 1 >= bytes.len() {
+            return false;
+        }
+        at += 2;
+    }
+    true
+}
+
+/// Whether a run of bytes spells characters in UTF-16: whole units, with each
+/// high half of a surrogate pair followed by a low one.
+fn utf16_reads(bytes: &[u8], big_endian: bool) -> bool {
+    if !bytes.len().is_multiple_of(2) {
+        return false;
+    }
+    let unit_at = |at: usize| -> u16 {
+        let (first, second) = (bytes[at] as u16, bytes[at + 1] as u16);
+        if big_endian {
+            (first << 8) | second
+        } else {
+            (second << 8) | first
+        }
+    };
+    let mut at = 0;
+    while at < bytes.len() {
+        let unit = unit_at(at);
+        if (0xdc00..0xe000).contains(&unit) {
+            return false;
+        }
+        if (0xd800..0xdc00).contains(&unit) {
+            if at + 3 >= bytes.len() || !(0xdc00..0xe000).contains(&unit_at(at + 2)) {
+                return false;
+            }
+            at += 4;
+            continue;
+        }
+        at += 2;
+    }
+    true
+}
+
+/// Whether a run of bytes spells characters in UTF-32: whole units, each one
+/// a code point Unicode names.
+fn utf32_reads(bytes: &[u8], big_endian: bool) -> bool {
+    if !bytes.len().is_multiple_of(4) {
+        return false;
+    }
+    bytes.chunks(4).all(|unit| {
+        let point = if big_endian {
+            u32::from_be_bytes([unit[0], unit[1], unit[2], unit[3]])
+        } else {
+            u32::from_le_bytes([unit[0], unit[1], unit[2], unit[3]])
+        };
+        char::from_u32(point).is_some()
+    })
 }
 
 /// Whether a run of bytes spells characters in EUC-JP. A byte under 0x80
@@ -2824,6 +3093,11 @@ pub(crate) fn character_count(string_value: &crate::object::StringValue) -> i64 
         }
         "UTF-32" | "UTF-32BE" | "UTF-32LE" if string_value.holds_bytes() => {
             binary_bytes(string_value).len().div_ceil(4) as i64
+        }
+        // Shift_JIS pairs some of its bytes, so a run of them spells fewer
+        // characters than it has bytes.
+        held if spells_shift_jis(held) && string_value.holds_bytes() => {
+            shift_jis_characters(&binary_bytes(string_value)).len() as i64
         }
         _ => string_value.as_str().chars().count() as i64,
     }
@@ -2994,6 +3268,38 @@ fn euc_jp_text_replacing(bytes: &[u8], stands_in: &str) -> String {
 /// Whether Ruby names this encoding without converting anything through it.
 /// A string tagged with one has a character to the byte, since nothing reads
 /// its bytes as text.
+/// A symbol written the way `inspect` writes one, reading its name through
+/// the encoding it carries. A name that does not read as plain text is
+/// quoted, with the bytes it holds written out.
+pub(crate) fn symbol_inspect_text(value: &crate::object::StringValue) -> String {
+    let named = value.encoding_name();
+    let bytes = binary_bytes(value);
+    // An encoding metorex names without reading text through it spells its
+    // name byte by byte.
+    if dummy_encoding(&named) {
+        let written: String = bytes.iter().map(|byte| format!("\\x{byte:02X}")).collect();
+        return format!(":\"{written}\"");
+    }
+    // An encoding that does not spell ASCII the way ASCII does is read
+    // through, and the characters it names are quoted.
+    if let Some(shape) = wide_encoding(&named) {
+        return format!(":{:?}", wide_text(&bytes, shape));
+    }
+    if matches!(named.as_str(), "ASCII-8BIT" | "BINARY") && !bytes.is_ascii() {
+        let mut written = String::from(":\"");
+        for byte in &bytes {
+            if byte.is_ascii_graphic() || *byte == b' ' {
+                written.push(char::from(*byte));
+            } else {
+                written.push_str(&format!("\\x{byte:02X}"));
+            }
+        }
+        written.push('"');
+        return written;
+    }
+    crate::object::inspect_symbol(&value.as_str())
+}
+
 pub(crate) fn dummy_encoding(named: &str) -> bool {
     crate::vm::init::ENCODING_NAMES
         .iter()
@@ -3060,6 +3366,35 @@ pub(crate) fn encoded_characters(string_value: &crate::object::StringValue) -> V
 fn latin_exceptions(named: &str) -> Option<&'static [(u8, char)]> {
     match named {
         "ISO-8859-1" => Some(&[]),
+        "Windows-1252" => Some(&[
+            (0x80, '\u{20ac}'),
+            (0x82, '\u{201a}'),
+            (0x83, '\u{0192}'),
+            (0x84, '\u{201e}'),
+            (0x85, '\u{2026}'),
+            (0x86, '\u{2020}'),
+            (0x87, '\u{2021}'),
+            (0x88, '\u{02c6}'),
+            (0x89, '\u{2030}'),
+            (0x8a, '\u{0160}'),
+            (0x8b, '\u{2039}'),
+            (0x8c, '\u{0152}'),
+            (0x8e, '\u{017d}'),
+            (0x91, '\u{2018}'),
+            (0x92, '\u{2019}'),
+            (0x93, '\u{201c}'),
+            (0x94, '\u{201d}'),
+            (0x95, '\u{2022}'),
+            (0x96, '\u{2013}'),
+            (0x97, '\u{2014}'),
+            (0x98, '\u{02dc}'),
+            (0x99, '\u{2122}'),
+            (0x9a, '\u{0161}'),
+            (0x9b, '\u{203a}'),
+            (0x9c, '\u{0153}'),
+            (0x9e, '\u{017e}'),
+            (0x9f, '\u{0178}'),
+        ]),
         "ISO-8859-15" => Some(&[
             (0xa4, '\u{20ac}'),
             (0xa6, '\u{0160}'),
@@ -3069,6 +3404,128 @@ fn latin_exceptions(named: &str) -> Option<&'static [(u8, char)]> {
             (0xbc, '\u{0152}'),
             (0xbd, '\u{0153}'),
             (0xbe, '\u{0178}'),
+        ]),
+        "IBM720" => Some(&[
+            (0x82, '\u{00e9}'),
+            (0x83, '\u{00e2}'),
+            (0x85, '\u{00e0}'),
+            (0x87, '\u{00e7}'),
+            (0x88, '\u{00ea}'),
+            (0x89, '\u{00eb}'),
+            (0x8a, '\u{00e8}'),
+            (0x8b, '\u{00ef}'),
+            (0x8c, '\u{00ee}'),
+            (0x91, '\u{0651}'),
+            (0x92, '\u{0652}'),
+            (0x93, '\u{00f4}'),
+            (0x94, '\u{00a4}'),
+            (0x95, '\u{0640}'),
+            (0x96, '\u{00fb}'),
+            (0x97, '\u{00f9}'),
+            (0x98, '\u{0621}'),
+            (0x99, '\u{0622}'),
+            (0x9a, '\u{0623}'),
+            (0x9b, '\u{0624}'),
+            (0x9c, '\u{00a3}'),
+            (0x9d, '\u{0625}'),
+            (0x9e, '\u{0626}'),
+            (0x9f, '\u{0627}'),
+            (0xa0, '\u{0628}'),
+            (0xa1, '\u{0629}'),
+            (0xa2, '\u{062a}'),
+            (0xa3, '\u{062b}'),
+            (0xa4, '\u{062c}'),
+            (0xa5, '\u{062d}'),
+            (0xa6, '\u{062e}'),
+            (0xa7, '\u{062f}'),
+            (0xa8, '\u{0630}'),
+            (0xa9, '\u{0631}'),
+            (0xaa, '\u{0632}'),
+            (0xab, '\u{0633}'),
+            (0xac, '\u{0634}'),
+            (0xad, '\u{0635}'),
+            (0xae, '\u{00ab}'),
+            (0xaf, '\u{00bb}'),
+            (0xb0, '\u{2591}'),
+            (0xb1, '\u{2592}'),
+            (0xb2, '\u{2593}'),
+            (0xb3, '\u{2502}'),
+            (0xb4, '\u{2524}'),
+            (0xb5, '\u{2561}'),
+            (0xb6, '\u{2562}'),
+            (0xb7, '\u{2556}'),
+            (0xb8, '\u{2555}'),
+            (0xb9, '\u{2563}'),
+            (0xba, '\u{2551}'),
+            (0xbb, '\u{2557}'),
+            (0xbc, '\u{255d}'),
+            (0xbd, '\u{255c}'),
+            (0xbe, '\u{255b}'),
+            (0xbf, '\u{2510}'),
+            (0xc0, '\u{2514}'),
+            (0xc1, '\u{2534}'),
+            (0xc2, '\u{252c}'),
+            (0xc3, '\u{251c}'),
+            (0xc4, '\u{2500}'),
+            (0xc5, '\u{253c}'),
+            (0xc6, '\u{255e}'),
+            (0xc7, '\u{255f}'),
+            (0xc8, '\u{255a}'),
+            (0xc9, '\u{2554}'),
+            (0xca, '\u{2569}'),
+            (0xcb, '\u{2566}'),
+            (0xcc, '\u{2560}'),
+            (0xcd, '\u{2550}'),
+            (0xce, '\u{256c}'),
+            (0xcf, '\u{2567}'),
+            (0xd0, '\u{2568}'),
+            (0xd1, '\u{2564}'),
+            (0xd2, '\u{2565}'),
+            (0xd3, '\u{2559}'),
+            (0xd4, '\u{2558}'),
+            (0xd5, '\u{2552}'),
+            (0xd6, '\u{2553}'),
+            (0xd7, '\u{256b}'),
+            (0xd8, '\u{256a}'),
+            (0xd9, '\u{2518}'),
+            (0xda, '\u{250c}'),
+            (0xdb, '\u{2588}'),
+            (0xdc, '\u{2584}'),
+            (0xdd, '\u{258c}'),
+            (0xde, '\u{2590}'),
+            (0xdf, '\u{2580}'),
+            (0xe0, '\u{0636}'),
+            (0xe1, '\u{0637}'),
+            (0xe2, '\u{0638}'),
+            (0xe3, '\u{0639}'),
+            (0xe4, '\u{063a}'),
+            (0xe5, '\u{0641}'),
+            (0xe6, '\u{00b5}'),
+            (0xe7, '\u{0642}'),
+            (0xe8, '\u{0643}'),
+            (0xe9, '\u{0644}'),
+            (0xea, '\u{0645}'),
+            (0xeb, '\u{0646}'),
+            (0xec, '\u{0647}'),
+            (0xed, '\u{0648}'),
+            (0xee, '\u{0649}'),
+            (0xef, '\u{064a}'),
+            (0xf0, '\u{2261}'),
+            (0xf1, '\u{064b}'),
+            (0xf2, '\u{064c}'),
+            (0xf3, '\u{064d}'),
+            (0xf4, '\u{064e}'),
+            (0xf5, '\u{064f}'),
+            (0xf6, '\u{0650}'),
+            (0xf7, '\u{2248}'),
+            (0xf8, '\u{00b0}'),
+            (0xf9, '\u{2219}'),
+            (0xfa, '\u{00b7}'),
+            (0xfb, '\u{221a}'),
+            (0xfc, '\u{207f}'),
+            (0xfd, '\u{00b2}'),
+            (0xfe, '\u{25a0}'),
+            (0xff, '\u{00a0}'),
         ]),
         "IBM437" => Some(&[
             (0x80, '\u{00c7}'),
@@ -3324,7 +3781,7 @@ fn latin_exceptions(named: &str) -> Option<&'static [(u8, char)]> {
             (0xfc, '\u{044c}'),
             (0xfd, '\u{044d}'),
             (0xfe, '\u{044e}'),
-            (0xff, '\u{20ac}'),
+            (0xff, '\u{00a4}'),
         ]),
         "ISO-8859-9" => Some(&[
             (0xd0, '\u{011e}'),
@@ -3441,6 +3898,11 @@ pub(crate) fn canonical_encoding_name(named: &str) -> String {
         .find(|(spelled, canonical, _)| same(spelled) || same(canonical))
         .map(|(_, canonical, _)| canonical.to_string())
         .unwrap_or_else(|| named.to_string())
+}
+
+/// Whether an encoding name is one of the Shift_JIS family.
+pub(crate) fn spells_shift_jis(named: &str) -> bool {
+    matches!(named, "Shift_JIS" | "Windows-31J" | "MacJapanese")
 }
 
 /// Whether a run of bytes spells characters in Shift_JIS. A byte under 0x80
@@ -3871,7 +4333,7 @@ impl VirtualMachine {
             Some(held) => held,
             None => {
                 let needle = self.string_needle(method_name, &arguments[0], position)?;
-                (regex::escape(&needle.as_str()), String::new())
+                (crate::regexp::escape(&needle.as_str()), String::new())
             }
         };
         // `\G` asks the match to begin where the one before it ended.
@@ -4115,7 +4577,7 @@ impl VirtualMachine {
         replacement: Option<&Object>,
         block: Option<&Rc<crate::object::BlockStatement>>,
         subject: &str,
-        captured: &regex::Captures<'_>,
+        captured: &crate::regexp::Captures<'_, '_>,
         position: Position,
     ) -> Result<(String, String), MetorexError> {
         let whole = captured.get(0).expect("a match was found");
@@ -4294,7 +4756,11 @@ fn chomped_line(piece: String, separator: Option<&str>) -> String {
 /// A replacement string with its backslash sequences filled in from the
 /// match: the numbered groups, the whole match, what sits either side of it,
 /// and the last group that took part.
-fn fill_replacement(written: &str, subject: &str, captured: &regex::Captures<'_>) -> String {
+fn fill_replacement(
+    written: &str,
+    subject: &str,
+    captured: &crate::regexp::Captures<'_, '_>,
+) -> String {
     let letters: Vec<char> = written.chars().collect();
     let whole = captured.get(0).expect("a match was found");
     let mut built = String::new();
@@ -4347,4 +4813,295 @@ fn fill_replacement(written: &str, subject: &str, captured: &regex::Captures<'_>
         }
     }
     built
+}
+
+/// The bytes a `chomp` keeps. Without a separator the string is left as it
+/// is, an empty one takes off every line ending at the end, and the line
+/// ending itself takes off one of any of the three shapes it has.
+fn chomped_bytes(bytes: &[u8], named: Option<&str>, encoding: &str) -> Vec<u8> {
+    let Some(named) = named else {
+        return bytes.to_vec();
+    };
+    let spelled = |text: &str| bytes_in_encoding(text, encoding);
+    if named.is_empty() {
+        let (carriage, line) = (spelled("\r\n"), spelled("\n"));
+        let mut kept = bytes;
+        loop {
+            if let Some(shorter) = kept.strip_suffix(carriage.as_slice()) {
+                kept = shorter;
+                continue;
+            }
+            if let Some(shorter) = kept.strip_suffix(line.as_slice()) {
+                kept = shorter;
+                continue;
+            }
+            return kept.to_vec();
+        }
+    }
+    if named == "\n" {
+        for ending in ["\r\n", "\n", "\r"] {
+            if let Some(kept) = bytes.strip_suffix(spelled(ending).as_slice()) {
+                return kept.to_vec();
+            }
+        }
+        return bytes.to_vec();
+    }
+    match bytes.strip_suffix(spelled(named).as_slice()) {
+        Some(kept) => kept.to_vec(),
+        None => bytes.to_vec(),
+    }
+}
+
+/// The bytes an encoding spells a run of text with, or None where metorex
+/// carries no table for it.
+pub(crate) fn spelled_bytes(text: &str, named: &str) -> Option<Vec<u8>> {
+    if let Some(shape) = wide_encoding(named) {
+        return Some(wide_bytes(text, shape));
+    }
+    if named == "EUC-JP" {
+        return super::euc_jp_table::euc_jp_bytes(text).ok();
+    }
+    if named == "ISO-2022-JP" {
+        return super::euc_jp_table::iso_2022_jp_bytes(text).ok();
+    }
+    if spells_shift_jis(named) {
+        return super::shift_jis_table::shift_jis_bytes(text).ok();
+    }
+    match latin_bytes(text, named) {
+        Some(Ok(spelled)) => Some(spelled),
+        _ => None,
+    }
+}
+
+/// The bytes an encoding spells a run of text with, falling back on the ones
+/// the text is held as where the encoding has no table of its own.
+pub(crate) fn bytes_in_encoding(text: &str, named: &str) -> Vec<u8> {
+    spelled_bytes(text, named).unwrap_or_else(|| text.as_bytes().to_vec())
+}
+
+/// What a `split` cuts on.
+enum Separator {
+    /// Runs of whitespace, with none kept at either end.
+    Whitespace,
+    /// Between every character.
+    Characters,
+    /// A run of text, matched as it stands.
+    Literal(String),
+    /// A pattern, whose groups are kept alongside the pieces.
+    Pattern(crate::regexp::Pattern),
+    /// The place a run starts, cut in front of rather than taken out.
+    Before(crate::regexp::Pattern),
+}
+
+/// The run a pattern that is nothing but a look-ahead names.
+fn looks_ahead(pattern: &str, flags: &str) -> Option<crate::regexp::Pattern> {
+    let inside = pattern.strip_prefix("(?=")?.strip_suffix(')')?;
+    if inside.contains(')') && !inside.contains('(') {
+        return None;
+    }
+    super::regexp_methods::compile(inside, flags)
+}
+
+/// The separator a written one stands for. A single space asks for the
+/// whitespace reading, and an empty one cuts between characters.
+fn separator_of(written: &str) -> Separator {
+    if written == " " {
+        return Separator::Whitespace;
+    }
+    if written.is_empty() {
+        return Separator::Characters;
+    }
+    Separator::Literal(written.to_string())
+}
+
+/// The pieces a split answers. A count of one keeps the whole text, a
+/// positive count leaves the rest in the last piece, zero drops the empty
+/// pieces at the end, and a negative one keeps them.
+fn split_pieces(text: &str, separator: &Separator, limit: i64) -> Vec<String> {
+    if text.is_empty() {
+        return Vec::new();
+    }
+    if limit == 1 {
+        return vec![text.to_string()];
+    }
+    let mut pieces = match separator {
+        Separator::Whitespace => split_on_whitespace(text, limit),
+        Separator::Characters => split_between_characters(text, limit),
+        Separator::Literal(held) => split_on_literal(text, held, limit),
+        Separator::Pattern(held) => split_on_pattern(text, held, limit),
+        Separator::Before(held) => split_before(text, held, limit),
+    };
+    if limit == 0 {
+        while pieces.last().is_some_and(|piece| piece.is_empty()) {
+            pieces.pop();
+        }
+    }
+    pieces
+}
+
+/// Words, with the whitespace between them dropped along with any at either
+/// end. A count leaves the rest of the text, spaces and all, in the last
+/// piece.
+fn split_on_whitespace(text: &str, limit: i64) -> Vec<String> {
+    let mut pieces = Vec::new();
+    let bytes = text.as_bytes();
+    let mut skipping = true;
+    let mut from = 0usize;
+    let mut ends = 0usize;
+    let mut fields = 1i64;
+    let mut at = 0usize;
+    while at < bytes.len() {
+        let width = next_character(text, at).min(text.len()) - at;
+        let space = spells_space(bytes[at]);
+        if skipping {
+            if space {
+                from = at + width;
+            } else {
+                ends = at + width;
+                skipping = false;
+                if limit > 0 && limit <= fields {
+                    break;
+                }
+            }
+        } else if space {
+            pieces.push(text[from..ends].to_string());
+            skipping = true;
+            from = at + width;
+            fields += 1;
+        } else {
+            ends = at + width;
+        }
+        at += width;
+    }
+    if !text.is_empty() && (limit != 0 || text.len() > from) {
+        pieces.push(text[from..].to_string());
+    }
+    pieces
+}
+
+/// Whether a byte is one of the six characters Ruby counts as whitespace.
+fn spells_space(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\n' | 0x0b | 0x0c | b'\r')
+}
+
+/// One piece for each character.
+fn split_between_characters(text: &str, limit: i64) -> Vec<String> {
+    let mut pieces: Vec<String> = Vec::new();
+    for (at, held) in text.char_indices() {
+        if limit > 0 && pieces.len() as i64 == limit - 1 {
+            pieces.push(text[at..].to_string());
+            return pieces;
+        }
+        pieces.push(held.to_string());
+    }
+    if limit != 0 {
+        pieces.push(String::new());
+    }
+    pieces
+}
+
+/// Pieces cut on a run of text matched as it stands.
+fn split_on_literal(text: &str, held: &str, limit: i64) -> Vec<String> {
+    let mut pieces = Vec::new();
+    let mut from = 0usize;
+    let mut at = 0usize;
+    while let Some(found) = text[at..].find(held) {
+        let cut = at + found;
+        pieces.push(text[from..cut].to_string());
+        from = cut + held.len();
+        at = from;
+        if limit > 0 && pieces.len() as i64 >= limit - 1 {
+            break;
+        }
+    }
+    pieces.push(text[from..].to_string());
+    pieces
+}
+
+/// Pieces cut on a pattern, with the text each of its groups matched kept
+/// alongside them. A pattern that matches nothing at all cuts between
+/// characters, which is what Ruby does for an empty match.
+fn split_on_pattern(text: &str, held: &crate::regexp::Pattern, limit: i64) -> Vec<String> {
+    let mut pieces: Vec<String> = Vec::new();
+    let mut fields = 1i64;
+    let mut from = 0usize;
+    let mut at = 0usize;
+    let mut after_empty = false;
+    while at <= text.len() {
+        let Some(found) = held.captures_at(text, at) else {
+            break;
+        };
+        let whole = found.get(0).expect("a match holds its whole run");
+        let (starts, ends) = (whole.start(), whole.end());
+        if at == starts && starts == ends {
+            if !after_empty {
+                // An empty match at the reading point steps on by one
+                // character before it counts as a cut.
+                at = next_character(text, at);
+                after_empty = true;
+                continue;
+            }
+            let ends_at = next_character(text, from);
+            pieces.push(text[from..ends_at].to_string());
+            from = at;
+        } else {
+            pieces.push(text[from..starts].to_string());
+            from = ends;
+            at = ends;
+        }
+        after_empty = false;
+        for group in 1..found.len() {
+            if let Some(taken) = found.get(group) {
+                pieces.push(taken.as_str().to_string());
+            }
+        }
+        fields += 1;
+        if limit > 0 && limit <= fields {
+            break;
+        }
+    }
+    if text.len() > from || limit != 0 {
+        pieces.push(text[from..].to_string());
+    }
+    pieces
+}
+
+/// Pieces cut in front of every place a run starts, which is what a pattern
+/// written as a look-ahead asks for.
+fn split_before(text: &str, held: &crate::regexp::Pattern, limit: i64) -> Vec<String> {
+    let mut pieces = Vec::new();
+    let mut from = 0usize;
+    let mut at = 0usize;
+    let mut fields = 1i64;
+    while at <= text.len() {
+        let Some(found) = held.find_at(text, at) else {
+            break;
+        };
+        let starts = found.start();
+        if starts > from {
+            pieces.push(text[from..starts].to_string());
+            from = starts;
+            fields += 1;
+            if limit > 0 && limit <= fields {
+                break;
+            }
+        }
+        at = next_character(text, starts);
+    }
+    if text.len() > from || limit != 0 {
+        pieces.push(text[from..].to_string());
+    }
+    pieces
+}
+
+/// Where the character at `at` ends.
+fn next_character(text: &str, at: usize) -> usize {
+    if at >= text.len() {
+        return text.len() + 1;
+    }
+    text[at..]
+        .chars()
+        .next()
+        .map(|held| at + held.len_utf8())
+        .unwrap_or(text.len())
 }

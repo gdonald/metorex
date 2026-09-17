@@ -209,6 +209,18 @@ fn test_basics_imaginary_literals_execution() {
 }
 
 #[test]
+fn test_basics_radix_suffixes() {
+    let expected = concat!(
+        "(255/1)\n(34/1)\n(15/1)\n(-255/1)\n",
+        "(0+255i)\n(0+34i)\n(0+14i)\n",
+        "(3/10)\n(174532925199432957/10000000000000000000)\n",
+        "(1111111111111111111111111111111111111111111111/1)\n"
+    );
+    assert_eq!(run_example("basics/radix_suffixes.rb"), expected);
+    assert_eq!(run_example("basics/radix_suffixes_parens.rb"), expected);
+}
+
+#[test]
 fn test_basics_not_match_operator() {
     let expected = concat!(
         "false\ntrue\nfalse\nfalse\ntrue\n:custom\n",
@@ -680,7 +692,7 @@ fn test_basics_integer_division_parens_execution() {
 fn test_basics_integer_comparison_and_scope_execution() {
     let expected = concat!(
         "true\n",
-        "[Integer, Comparable, Numeric, Object]\n",
+        "[Integer, Numeric, Comparable, Object, Kernel, BasicObject]\n",
         "true\n",
         "true\n",
         "false\n",
@@ -700,7 +712,7 @@ fn test_basics_integer_comparison_and_scope_execution() {
 fn test_basics_integer_comparison_and_scope_parens_execution() {
     let expected = concat!(
         "true\n",
-        "[Integer, Comparable, Numeric, Object]\n",
+        "[Integer, Numeric, Comparable, Object, Kernel, BasicObject]\n",
         "true\n",
         "true\n",
         "false\n",
@@ -1059,4 +1071,36 @@ fn test_basics_integer_bits_execution() {
 fn test_basics_integer_bits_parens_execution() {
     let output = run_example("basics/integer_bits_parens.rb");
     assert_eq!(output, INTEGER_BITS_OUTPUT);
+}
+
+/// The expected output of both `basics/whole_number_limits` variants, which
+/// differ only in whether the calls are written with parentheses.
+const WHOLE_NUMBER_LIMITS_OUTPUT: &str = "48\n0\n0\n0\n71\n\"exponent is too large\"\n1\n1\n\"divided by 0\"\nInfinity\n(4/1)\n1.4142135623730951\n10\n24\n\"Integer#pow() 2nd argument not allowed unless all arguments are integers\"\n";
+
+#[test]
+fn test_basics_whole_number_limits_execution() {
+    let output = run_example("basics/whole_number_limits.rb");
+    assert_eq!(output, WHOLE_NUMBER_LIMITS_OUTPUT);
+}
+
+#[test]
+fn test_basics_whole_number_limits_parens_execution() {
+    let output = run_example("basics/whole_number_limits_parens.rb");
+    assert_eq!(output, WHOLE_NUMBER_LIMITS_OUTPUT);
+}
+
+/// The expected output of both `basics/exact_powers` variants, which differ only in
+/// whether the calls are written with parentheses.
+const EXACT_POWERS_OUTPUT: &str = "(81/256)\n(256/81)\n(1/1)\n(9/16)\n(4/3)\n0.681420222312\n[-0.733761610865, 1.270912390663]\n27.0\n(1/1)\n(1/1)\n\"divided by 0\"\n\"exponent is too large\"\n";
+
+#[test]
+fn test_basics_exact_powers_execution() {
+    let output = run_example("basics/exact_powers.rb");
+    assert_eq!(output, EXACT_POWERS_OUTPUT);
+}
+
+#[test]
+fn test_basics_exact_powers_parens_execution() {
+    let output = run_example("basics/exact_powers_parens.rb");
+    assert_eq!(output, EXACT_POWERS_OUTPUT);
 }

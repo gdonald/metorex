@@ -280,6 +280,7 @@ impl ReplCore {
                 start,
                 end,
                 exclusive,
+                ..
             } => {
                 if *exclusive {
                     format!(

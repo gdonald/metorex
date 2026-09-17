@@ -232,3 +232,35 @@ fn test_filesystem_glob_matching_parens_execution() {
     let output = run_example("filesystem/glob_matching_parens.rb");
     assert_eq!(output, GLOB_MATCHING_OUTPUT);
 }
+
+/// The expected output of both `filesystem/reopened_streams` variants, which
+/// differ only in whether the calls are written with parentheses.
+const REOPENED_STREAMS_OUTPUT: &str = "\"first line\\n\"\ntrue\ntrue\n\"second line\\n\"\ntrue\n\"written through\"\nFile\nIO\n\"back again\\n\"\ntrue\nfalse\ntrue\n";
+
+#[test]
+fn test_filesystem_reopened_streams_execution() {
+    let output = run_example("filesystem/reopened_streams.rb");
+    assert_eq!(output, REOPENED_STREAMS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_reopened_streams_parens_execution() {
+    let output = run_example("filesystem/reopened_streams_parens.rb");
+    assert_eq!(output, REOPENED_STREAMS_OUTPUT);
+}
+
+/// The expected output of both `filesystem/name_matching` variants, which differ only in
+/// whether the calls are written with parentheses.
+const NAME_MATCHING_OUTPUT: &str = "[\"a/b\", \"a/one.rb\", \"a/two.txt\"]\n[\"a/one.rb\"]\n[\"a/one.rb\", \"a/two.txt\"]\n[\"a/one.rb\"]\n[\"a/one.rb\"]\n[\"a/b/c/four.rb\", \"a/b/three.rb\", \"a/one.rb\"]\n[\"a/.\", \"a/.hidden\"]\n[\".\", \"a\"]\n[\"/\", \"b/\", \"b/c/\"]\n[\"c\", \"three.rb\"]\n[\"a/one.rb\"]\n[]\n[]\nnil\n[\"a/one.rb\"]\n";
+
+#[test]
+fn test_filesystem_name_matching_execution() {
+    let output = run_example("filesystem/name_matching.rb");
+    assert_eq!(output, NAME_MATCHING_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_name_matching_parens_execution() {
+    let output = run_example("filesystem/name_matching_parens.rb");
+    assert_eq!(output, NAME_MATCHING_OUTPUT);
+}

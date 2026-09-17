@@ -4,7 +4,7 @@ use super::run_example;
 
 #[test]
 fn test_builtins_type_introspection() {
-    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n4\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
+    let expected = "true\nfalse\ntrue\ntrue\ntrue\ntrue\ntrue\nNumeric\nBasicObject\n6\ntrue\ntrue\nAnimal\n2\nRex\n3\n4\n";
     let output = run_example("builtins/type_introspection.rb");
     assert_eq!(output, expected);
 }
@@ -1013,7 +1013,7 @@ fn test_builtins_pack_directives_execution() {
         "8\n",
         "[1.5]\n",
         "[1.5]\n",
-        "2\n",
+        "1\n",
         "[233]\n",
         "[130, 44]\n",
         "[300]\n",
@@ -1028,7 +1028,7 @@ fn test_builtins_pack_directives_execution() {
         "[97, 98]\n",
         "[ArgumentError, \"unknown pack directive 'K' in 'K'\"]\n",
         "[ArgumentError, \"unknown unpack directive 'K' in 'K'\"]\n",
-        "[ArgumentError, \"unknown unpack directive '!' in 'a!'\"]\n",
+        "[ArgumentError, \"'!' allowed only after types sSiIlLqQjJ\"]\n",
         "[ArgumentError, \"too few arguments\"]\n",
         "[TypeError, \"no implicit conversion of String into Integer\"]\n",
         "[ArgumentError, \"x outside of string\"]\n",
@@ -1039,7 +1039,7 @@ fn test_builtins_pack_directives_execution() {
         "\"ab\\ncd=\\n\"\n",
         "\"#04)#\\n\"\n",
         "[\"ABC\"]\n",
-        "2\n",
+        "1\n",
         "[1, 2]\n",
         "[\"ABC\"]\n",
         "[\"ABC\"]\n",
@@ -1049,11 +1049,11 @@ fn test_builtins_pack_directives_execution() {
         "[\"ab=ZZ\"]\n",
         "[\"Cac\"]\n",
         "[\"\"]\n",
-        "2\n",
+        "1\n",
         "[960]\n",
         "[97, 98, 99]\n",
-        "\"unknown unpack directive '_' in 'a_'\"\n",
-        "\"unpack length too big\"\n",
+        "\"'_' allowed only after types sSiIlLqQjJ\"\n",
+        "\"pack length too big\"\n",
         "[97, 98, 99]\n",
         "\"A\"\n",
     );
@@ -1101,7 +1101,7 @@ fn test_builtins_pack_directives_parens_execution() {
         "8\n",
         "[1.5]\n",
         "[1.5]\n",
-        "2\n",
+        "1\n",
         "[233]\n",
         "[130, 44]\n",
         "[300]\n",
@@ -1116,7 +1116,7 @@ fn test_builtins_pack_directives_parens_execution() {
         "[97, 98]\n",
         "[ArgumentError, \"unknown pack directive 'K' in 'K'\"]\n",
         "[ArgumentError, \"unknown unpack directive 'K' in 'K'\"]\n",
-        "[ArgumentError, \"unknown unpack directive '!' in 'a!'\"]\n",
+        "[ArgumentError, \"'!' allowed only after types sSiIlLqQjJ\"]\n",
         "[ArgumentError, \"too few arguments\"]\n",
         "[TypeError, \"no implicit conversion of String into Integer\"]\n",
         "[ArgumentError, \"x outside of string\"]\n",
@@ -1127,7 +1127,7 @@ fn test_builtins_pack_directives_parens_execution() {
         "\"ab\\ncd=\\n\"\n",
         "\"#04)#\\n\"\n",
         "[\"ABC\"]\n",
-        "2\n",
+        "1\n",
         "[1, 2]\n",
         "[\"ABC\"]\n",
         "[\"ABC\"]\n",
@@ -1137,11 +1137,11 @@ fn test_builtins_pack_directives_parens_execution() {
         "[\"ab=ZZ\"]\n",
         "[\"Cac\"]\n",
         "[\"\"]\n",
-        "2\n",
+        "1\n",
         "[960]\n",
         "[97, 98, 99]\n",
-        "\"unknown unpack directive '_' in 'a_'\"\n",
-        "\"unpack length too big\"\n",
+        "\"'_' allowed only after types sSiIlLqQjJ\"\n",
+        "\"pack length too big\"\n",
         "[97, 98, 99]\n",
         "\"A\"\n",
     );
@@ -1533,4 +1533,36 @@ fn test_builtins_numbers_written_out_execution() {
 fn test_builtins_numbers_written_out_no_parens_execution() {
     let output = run_example("builtins/numbers_written_out_no_parens.rb");
     assert_eq!(output, NUMBERS_WRITTEN_OUT_OUTPUT);
+}
+
+/// The expected output of both `builtins/packed_text` variants, which differ
+/// only in whether the calls are written with parentheses.
+const PACKED_TEXT_OUTPUT: &str = "\"Aあ\"\n#<Encoding:UTF-8>\n[244, 144, 128, 128]\n[253, 191, 191, 191, 191, 191]\nRangeError\n\"&86)C9&5F\\n&9VAI:FML\\n!;0``\\n\"\n#<Encoding:US-ASCII>\n#<Encoding:US-ASCII>\n#<Encoding:BINARY (ASCII-8BIT)>\n[12354]\nArgumentError\n\"'!' allowed only after types sSiIlLqQjJ\"\n";
+
+#[test]
+fn test_builtins_packed_text_execution() {
+    let output = run_example("builtins/packed_text.rb");
+    assert_eq!(output, PACKED_TEXT_OUTPUT);
+}
+
+#[test]
+fn test_builtins_packed_text_parens_execution() {
+    let output = run_example("builtins/packed_text_parens.rb");
+    assert_eq!(output, PACKED_TEXT_OUTPUT);
+}
+
+/// The expected output of both `builtins/pointer_packing` variants, which differ only in
+/// whether the calls are written with parentheses.
+const POINTER_PACKING_OUTPUT: &str = "true\n[\"hello\"]\n[\"h\"]\n[\"hello\"]\n[\"hello\"]\n[\"hello\"]\n[0]\n\"no associated pointer\"\n\"a b=\\n\"\n\"\\t=\\n\\n\"\n\"abcd=\\nefgh=\\ni=\\n\"\n\"YWJj\\n\"\n\"YWJj\\nZGVm\\nZw==\\n\"\n\"\"\n";
+
+#[test]
+fn test_builtins_pointer_packing_execution() {
+    let output = run_example("builtins/pointer_packing.rb");
+    assert_eq!(output, POINTER_PACKING_OUTPUT);
+}
+
+#[test]
+fn test_builtins_pointer_packing_parens_execution() {
+    let output = run_example("builtins/pointer_packing_parens.rb");
+    assert_eq!(output, POINTER_PACKING_OUTPUT);
 }

@@ -211,7 +211,10 @@ impl VirtualMachine {
             return names;
         };
         for name in singleton_class.method_names() {
-            if !name.starts_with("__")
+            // `def self.name` is recorded under the `__class__` convention,
+            // and the plain name is reported for it elsewhere. Every other
+            // name is one the program wrote, `__value` included.
+            if !name.starts_with("__class__")
                 && !singleton_class.is_method_private(&name)
                 && !names.contains(&name)
             {
@@ -592,7 +595,7 @@ impl VirtualMachine {
             // `abort`, `exit`, and `exit!` are private instance methods on
             // Kernel, so every object reaches them. A class can make one
             // public, which is how a spec calls it with a receiver.
-            "abort" | "exit" | "exit!" | "fork" => self
+            "abort" | "exit" | "exit!" | "fork" | "system" | "spawn" | "exec" | "`" => self
                 .call_native_function(method_name, arguments.to_vec(), position)
                 .map(Some),
             // `send(:block_given?)` reports on the frame that sent it, the
@@ -759,6 +762,7 @@ impl VirtualMachine {
                             start,
                             end,
                             exclusive,
+                            ..
                         } => {
                             // Exclusive range is an error — except when end is nil
                             // (endless exclusive range like `x...` is allowed).
@@ -883,10 +887,17 @@ impl VirtualMachine {
                 )))
             }
             // `IO#reopen` points a stream at another place, and Ruby gives
-            // the object a singleton class of its own again when it does.
+            // the object a singleton class of its own again when it does. It
+            // also takes the class of the stream it was pointed at.
             "__fresh_singleton_class__" => {
                 if let Object::Instance(inst_rc) = receiver {
-                    *inst_rc.borrow().singleton_class.borrow_mut() = None;
+                    if let Some(Object::Instance(other_rc)) = arguments.first() {
+                        let adopted = other_rc.borrow().class.clone();
+                        inst_rc.borrow_mut().class = adopted;
+                    }
+                    let held = inst_rc.borrow();
+                    *held.singleton_class.borrow_mut() = None;
+                    held.singleton_methods.borrow_mut().clear();
                 }
                 Ok(Some(receiver.clone()))
             }
@@ -903,12 +914,7 @@ impl VirtualMachine {
                 }
                 // One of the interned strings `String#-@` hands back stands
                 // for every use of that text, so it has no singleton class.
-                if matches!(receiver, Object::String(held) if held.is_deduplicated())
-                    || matches!(
-                        receiver,
-                        Object::Int(_) | Object::Float(_) | Object::Symbol(_)
-                    )
-                {
+                if refuses_a_singleton(receiver) {
                     let msg = "can't define singleton".to_string();
                     return Err(MetorexError::UncaughtException {
                         exception: Object::exception("TypeError", msg.clone()),
@@ -1017,11 +1023,19 @@ impl VirtualMachine {
                     return Ok(Some(self.memoized_text(slot, text)));
                 }
                 if let Object::Symbol(s) = receiver {
-                    return Ok(Some(Object::string(if method_name == "to_s" {
-                        s.as_str().to_string()
-                    } else {
-                        crate::object::inspect_symbol(&s.as_str())
-                    })));
+                    if method_name != "to_s" {
+                        return Ok(Some(Object::string(
+                            super::string_methods::symbol_inspect_text(s),
+                        )));
+                    }
+                    // The name keeps the encoding it was interned in, bytes
+                    // and all, which is what `Symbol#encoding` reports.
+                    let made =
+                        crate::object::StringValue::with_encoding(s.to_text(), s.encoding_name());
+                    if s.holds_bytes() {
+                        made.mark_bytes();
+                    }
+                    return Ok(Some(Object::String(std::rc::Rc::new(made))));
                 }
                 if method_name == "inspect"
                     && let Object::Instance(_) = receiver
@@ -1187,7 +1201,16 @@ impl VirtualMachine {
                         bound.owner_class = Some(std::rc::Rc::clone(&resolved_class));
                     }
                     if bound.owner_class.is_none() {
-                        bound.owner_class = Some(resolved_class);
+                        // The lookup answers the class it resolved through,
+                        // which for a singleton class is where the walk began
+                        // rather than where the method is written. The one
+                        // that holds it is the one that owns it.
+                        let holder = resolved_class
+                            .find_method_with_owner(&name_str)
+                            .map(|(held, _)| held)
+                            .unwrap_or(resolved_class);
+                        bound.owner = Some(holder.ruby_name());
+                        bound.owner_class = Some(holder);
                     }
                     return Ok(Some(Object::Method(std::rc::Rc::new(bound))));
                 }
@@ -1785,8 +1808,26 @@ impl VirtualMachine {
                 if !include_super {
                     return Ok(Some(self.singleton_method_names(receiver)));
                 }
+                // The methods an object carries of its own come first, which
+                // is where a module's `module_function` names live.
+                let mut names: Vec<String> = match self.singleton_method_names(receiver) {
+                    Object::Array(held) => held
+                        .borrow()
+                        .iter()
+                        .map(|name| name.to_string().trim_start_matches(':').to_string())
+                        .collect(),
+                    _ => Vec::new(),
+                };
+                // A name the object carries of its own answers whatever an
+                // instance method of the same name says about itself, which
+                // is what `module_function` leaves behind.
+                let carried = names.clone();
                 let class = self.builtins().class_of(receiver);
-                let mut names = class.method_names();
+                for name in class.method_names() {
+                    if !names.contains(&name) {
+                        names.push(name);
+                    }
+                }
                 if include_super {
                     // Walk the superclass chain to collect inherited methods
                     let mut current = class.superclass();
@@ -1890,7 +1931,9 @@ impl VirtualMachine {
                 // A private method is not among the ones an object answers
                 // to from outside, so `methods` leaves it out.
                 let holder = self.builtins().class_of(receiver);
-                names.retain(|name| !self.method_is_private_anywhere(&holder, name));
+                names.retain(|name| {
+                    carried.contains(name) || !self.method_is_private_anywhere(&holder, name)
+                });
                 names.sort();
                 names.dedup();
                 let method_symbols: Vec<Object> = names.into_iter().map(Object::symbol).collect();
@@ -1937,6 +1980,11 @@ impl VirtualMachine {
                     (Object::Module(a), Object::Module(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Set(a), Object::Set(b)) => std::rc::Rc::ptr_eq(a, b),
                     (Object::Exception(a), Object::Exception(b)) => std::rc::Rc::ptr_eq(a, b),
+                    // Two ranges over the same values are still two ranges,
+                    // which the mark each carries tells apart.
+                    (Object::Range { mark: a, .. }, Object::Range { mark: b, .. }) => {
+                        std::rc::Rc::ptr_eq(a, b)
+                    }
                     // An integer past the i64 range is its own object, so two
                     // of the same value are not identical.
                     (Object::BigInt(a), Object::BigInt(b)) => std::rc::Rc::ptr_eq(a, b),
@@ -1973,6 +2021,14 @@ impl VirtualMachine {
                     ));
                 }
                 let copy = self.copy_for(receiver, position)?;
+                // `dup` answers a range that is not frozen, while `clone`
+                // keeps the frozen state the original carried.
+                if let Some(Object::Range { mark, .. }) = &copy
+                    && (method_name == "dup" || matches!(freeze, Some(false)))
+                {
+                    self.thawed_ranges
+                        .insert(std::rc::Rc::as_ptr(mark) as usize, std::rc::Rc::clone(mark));
+                }
                 if let Some(copy) = &copy {
                     if method_name == "clone" {
                         self.finish_clone(receiver, copy, freeze, arguments, position)?;
@@ -2331,9 +2387,16 @@ impl VirtualMachine {
             let mut current = Some(std::rc::Rc::clone(class_rc));
             while let Some(class) = current {
                 // `def self.name` is stored under the `__class__` convention.
+                // `private_class_method` marks the name on the singleton
+                // class, which is where the visibility of a class method
+                // lives, so that is checked alongside the class's own mark.
+                let singleton = class.singleton_class_slot().clone();
                 for name in class.method_names() {
                     if let Some(bare) = name.strip_prefix("__class__")
                         && !class.is_method_private(&name)
+                        && !singleton
+                            .as_ref()
+                            .is_some_and(|held| held.is_method_private(bare))
                         && !names.contains(&bare.to_string())
                     {
                         names.push(bare.to_string());
@@ -2344,7 +2407,7 @@ impl VirtualMachine {
                     // and a subclass inherits its superclass's.
                     if let Some(singleton) = class.singleton_class_slot().clone() {
                         for name in singleton.method_names() {
-                            if !name.starts_with("__")
+                            if !name.starts_with("__class__")
                                 && !singleton.is_method_private(&name)
                                 && !names.contains(&name)
                             {
@@ -2653,6 +2716,19 @@ impl VirtualMachine {
             // A callable and a Binding copy as a new reference to the same
             // code and scope, so the copy is a separate object with the
             // instance variables the original carried.
+            // A copy of a range is a range of its own, which `equal?` tells
+            // apart from the one it was cut from.
+            Object::Range {
+                start,
+                end,
+                exclusive,
+                ..
+            } => Ok(Some(Object::Range {
+                start: start.clone(),
+                end: end.clone(),
+                exclusive: *exclusive,
+                mark: std::rc::Rc::new(()),
+            })),
             Object::Method(method) => {
                 let copy = Object::Method(std::rc::Rc::new((**method).clone()));
                 self.carry_collection_variables(receiver, &copy);
@@ -3354,4 +3430,16 @@ impl VirtualMachine {
             self.emit_warning_to_stderr(&notice, position);
         }
     }
+}
+
+/// Whether the object stands for a value rather than holding one of its own,
+/// which is what keeps it from carrying a singleton class. Every use of the
+/// same number, symbol, or interned string names the same object, so a method
+/// written on one would be written on all of them.
+pub(crate) fn refuses_a_singleton(receiver: &Object) -> bool {
+    matches!(receiver, Object::String(held) if held.is_deduplicated())
+        || matches!(
+            receiver,
+            Object::Int(_) | Object::BigInt(_) | Object::Float(_) | Object::Symbol(_)
+        )
 }

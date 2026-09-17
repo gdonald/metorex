@@ -1393,7 +1393,7 @@ fn an_unknown_unpack_directive_is_named_in_the_refusal() {
 fn a_width_modifier_is_refused_where_the_directive_has_no_platform_width() {
     let error = run_err(r#""abcdefgh".unpack("a!")"#);
     assert!(
-        error.contains("unknown unpack directive '!'"),
+        error.contains("'!' allowed only after types sSiIlLqQjJ"),
         "unexpected error: {}",
         error
     );
@@ -1630,7 +1630,7 @@ fn a_wide_character_packs_as_the_bytes_its_encoding_needs() {
     let result = run(r#"[[960].pack("U").length, [960].pack("U").unpack("U")]"#);
     assert_eq!(
         result.map(|value| value.to_string()),
-        Some("[2, [960]]".to_string())
+        Some("[1, [960]]".to_string())
     );
 }
 

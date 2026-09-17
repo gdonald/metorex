@@ -74,6 +74,9 @@ impl Parser {
         // A modifier binds to the expression it follows, so nothing may come
         // between them. A `rescue` on its own line opens a clause, and so
         // does one after a semicolon, even though that shares the line.
+        if self.ternary_branch_depth > 0 {
+            return Ok(expr);
+        }
         if !self.check(&[TokenKind::Rescue])
             || self.peek().position.line != self.previous().position.line
             || matches!(
@@ -322,7 +325,7 @@ impl Parser {
     }
 
     pub(crate) fn parse_assignment(&mut self) -> Result<Expression, MetorexError> {
-        let expr = self.parse_logical_or()?;
+        let expr = self.parse_range()?;
 
         // Note: assignment (`=`) is handled at the statement level.
         // parse_assignment only deals with ternary operators.
@@ -332,14 +335,28 @@ impl Parser {
             let position = self.advance().position; // consume ?
             self.skip_whitespace();
             self.ternary_depth += 1;
+            self.ternary_branch_depth += 1;
             // A branch may be an assignment, which answers what it assigned:
             // `flag ? hash[key] = 1 : hash[key] = 2`.
-            let then_expr = self.parse_expression_with_assignment()?;
+            let then_expr = self.parse_expression_with_assignment();
             self.ternary_depth -= 1;
+            let then_expr = match then_expr {
+                Ok(held) => held,
+                Err(error) => {
+                    self.ternary_branch_depth -= 1;
+                    return Err(error);
+                }
+            };
             self.skip_whitespace();
-            self.expect(TokenKind::Colon, "Expected ':' in ternary expression")?;
+            let expected = self.expect(TokenKind::Colon, "Expected ':' in ternary expression");
+            if let Err(error) = expected {
+                self.ternary_branch_depth -= 1;
+                return Err(error);
+            }
             self.skip_whitespace();
-            let else_expr = self.parse_expression_with_assignment()?;
+            let else_expr = self.parse_expression_with_assignment();
+            self.ternary_branch_depth -= 1;
+            let else_expr = else_expr?;
             return Ok(Expression::If {
                 condition: Box::new(expr),
                 then_branch: vec![Statement::Expression {
@@ -437,7 +454,7 @@ impl Parser {
                                 // follows the colon directly.
                                 self.skip_whitespace();
                                 if !self.check(&[TokenKind::Comma, TokenKind::Pipe]) {
-                                    let default = self.parse_range()?;
+                                    let default = self.parse_bitwise_and()?;
                                     defaults.push((params.len() - 1, default));
                                 }
                             } else {
@@ -453,7 +470,7 @@ impl Parser {
                 self.skip_whitespace();
                 if self.match_token(&[TokenKind::Equal]) {
                     self.skip_whitespace();
-                    let default = self.parse_range()?;
+                    let default = self.parse_bitwise_and()?;
                     defaults.push((params.len() - 1, default));
                     self.skip_whitespace();
                 }

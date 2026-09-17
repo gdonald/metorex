@@ -10,6 +10,15 @@ use crate::vm::errors::*;
 use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
+/// The most bits either half of a Rational may take once raised, which is the
+/// room Ruby gives one before refusing the power outright.
+const WIDEST_RATIONAL_BITS: u128 = 16 * 1024 * 1024 * 1024;
+
+/// Ruby's ArgumentError for a power whose answer would be too wide to build.
+fn exponent_too_large(position: Position) -> MetorexError {
+    simple_exception("ArgumentError", "exponent is too large", position)
+}
+
 /// Euclid's algorithm, used to put a Rational in lowest terms.
 pub(crate) fn greatest_common_divisor(
     a: num_bigint::BigInt,
@@ -481,6 +490,12 @@ impl VirtualMachine {
                     equal
                 })))
             }
+            "**" => {
+                let Some(other) = arguments.first() else {
+                    return Err(method_argument_error(method_name, 1, 0, position));
+                };
+                self.rational_power((numerator, denominator), other, position)
+            }
             "+" | "-" | "*" | "/" | "quo" | "<" | "<=" | ">" | ">=" | "<=>" => {
                 let Some(other) = arguments.first() else {
                     return Err(method_argument_error(method_name, 1, 0, position));
@@ -494,6 +509,96 @@ impl VirtualMachine {
             }
             _ => Ok(None),
         }
+    }
+
+    /// A Rational raised to a power. A whole exponent keeps the answer exact,
+    /// a fractional one reads both sides as Floats, and a negative base with a
+    /// fractional exponent answers a complex number.
+    fn rational_power(
+        &mut self,
+        (numerator, denominator): (num_bigint::BigInt, num_bigint::BigInt),
+        other: &Object,
+        position: Position,
+    ) -> Result<Option<Object>, MetorexError> {
+        use num_bigint::BigInt;
+        let zero = BigInt::from(0);
+        let one = BigInt::from(1);
+        let base = big_to_float(&numerator) / big_to_float(&denominator);
+        if let Object::Float(exponent) = other {
+            return self.raised_as_float(base, *exponent, position).map(Some);
+        }
+        let Some((exponent, exponent_denominator)) = rational_parts(other)
+            .or_else(|| other.as_big_integer().map(|held| (held, BigInt::from(1))))
+        else {
+            return Ok(None);
+        };
+        if exponent == zero {
+            return self.make_rational(1, 1, position).map(Some);
+        }
+        if numerator == zero {
+            if exponent < zero {
+                return Err(simple_exception(
+                    "ZeroDivisionError",
+                    "divided by 0",
+                    position,
+                ));
+            }
+            return self.make_rational(0, 1, position).map(Some);
+        }
+        if exponent_denominator != one {
+            let reading = big_to_float(&exponent) / big_to_float(&exponent_denominator);
+            return self.raised_as_float(base, reading, position).map(Some);
+        }
+        // One and minus one carry no width of their own, so however wide the
+        // exponent is the answer is one of the two.
+        if denominator == one && (numerator == one || numerator == -&one) {
+            let odd = &exponent % BigInt::from(2) != zero;
+            let answered = if numerator == one || !odd { 1 } else { -1 };
+            return self.make_rational(answered, 1, position).map(Some);
+        }
+        let negative = exponent < zero;
+        let magnitude = if negative {
+            -&exponent
+        } else {
+            exponent.clone()
+        };
+        let Ok(count) = u32::try_from(&magnitude) else {
+            return Err(exponent_too_large(position));
+        };
+        let widest = numerator.bits().max(denominator.bits()) as u128;
+        if widest.saturating_mul(count as u128) > WIDEST_RATIONAL_BITS {
+            return Err(exponent_too_large(position));
+        }
+        let raised_numerator = numerator.pow(count);
+        let raised_denominator = denominator.pow(count);
+        if negative {
+            return self
+                .make_rational(raised_denominator, raised_numerator, position)
+                .map(Some);
+        }
+        self.make_rational(raised_numerator, raised_denominator, position)
+            .map(Some)
+    }
+
+    /// A number raised to a power that no exact fraction stands for. A
+    /// negative base turns the answer around the circle, which is a complex
+    /// number rather than a real one.
+    fn raised_as_float(
+        &mut self,
+        base: f64,
+        exponent: f64,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if base >= 0.0 {
+            return Ok(Object::Float(base.powf(exponent)));
+        }
+        let size = (-base).powf(exponent);
+        let angle = std::f64::consts::PI * exponent;
+        self.make_complex(
+            Object::Float(size * angle.cos()),
+            Object::Float(size * angle.sin()),
+            position,
+        )
     }
 
     /// Arithmetic and ordering against an Integer, Float, or Rational. A Float

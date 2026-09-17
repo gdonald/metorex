@@ -114,3 +114,19 @@ fn test_dates_marshal_bytes_parens_execution() {
     let output = run_example("dates/marshal_bytes_parens.rb");
     assert_eq!(output, MARSHAL_BYTES_OUTPUT);
 }
+
+/// The expected output of both `dates/zone_readings` variants, which differ only in
+/// whether the calls are written with parentheses.
+const ZONE_READINGS_OUTPUT: &str = "\"2001-02-03 04:05:06\"\n\" 3-FEB-2001\"\n\"Sat Feb  3 04:05:06 2001\"\n\"2/3/1\"\n\"FEB and 00FEB and   Feb\"\n\"034 04 05 05 2001\"\n\"+0000 +00:00 +00:00:00\"\n\"04am  4AM\"\n19800\n\"+0530\"\n-36000\n3600\n\"2020-12-24 15:56:17\"\n(1929/15625)\n\"2021-01-01\"\n3600\n\"FIX\"\n";
+
+#[test]
+fn test_dates_zone_readings_execution() {
+    let output = run_example("dates/zone_readings.rb");
+    assert_eq!(output, ZONE_READINGS_OUTPUT);
+}
+
+#[test]
+fn test_dates_zone_readings_parens_execution() {
+    let output = run_example("dates/zone_readings_parens.rb");
+    assert_eq!(output, ZONE_READINGS_OUTPUT);
+}

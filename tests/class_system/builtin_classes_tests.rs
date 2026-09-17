@@ -64,10 +64,12 @@ fn test_array_inherits_from_object() {
 }
 
 #[test]
-fn test_object_has_no_superclass() {
+fn test_object_descends_from_basic_object() {
     let builtins = BuiltinClasses::new();
 
-    assert!(builtins.object_class.superclass().is_none());
+    let superclass = builtins.object_class.superclass();
+    assert!(superclass.is_some());
+    assert_eq!(superclass.unwrap().name(), "BasicObject");
 }
 
 // ============================================================================

@@ -188,6 +188,7 @@ impl fmt::Display for Object {
                 start,
                 end,
                 exclusive,
+                ..
             } => {
                 if *exclusive {
                     write!(f, "{}...{}", start, end)
@@ -298,33 +299,76 @@ fn reads_back_plainly(name: &str) -> bool {
     ) {
         return true;
     }
-    // An instance, class, or global variable name is plain once its sigil is
-    // set aside.
-    let body = name
-        .strip_prefix("@@")
-        .or_else(|| name.strip_prefix('@'))
-        .or_else(|| name.strip_prefix('$'))
-        .unwrap_or(name);
+    if let Some(body) = name.strip_prefix("@@").or_else(|| name.strip_prefix('@')) {
+        return spells_a_name(body);
+    }
+    if let Some(body) = name.strip_prefix('$') {
+        return spells_a_global(body);
+    }
+    // A method name may close with one of the three characters a question,
+    // a change, or an assignment is written with.
+    let body = match name.strip_suffix(['?', '!', '=']) {
+        Some(body) => body,
+        None => name,
+    };
+    spells_a_name(body)
+}
+
+/// Whether a run of characters spells a bare name. Ruby reads every character
+/// outside ASCII as part of one, so `:\u{1F98A}` needs no quotes.
+fn spells_a_name(body: &str) -> bool {
     let mut characters = body.chars();
     let Some(first) = characters.next() else {
         return false;
     };
-    if !(first.is_alphabetic() || first == '_') {
+    if !(first == '_' || !first.is_ascii() || first.is_ascii_alphabetic()) {
         return false;
     }
-    let rest: Vec<char> = characters.collect();
-    let Some((last, middle)) = rest.split_last() else {
+    characters.all(|held| held == '_' || !held.is_ascii() || held.is_ascii_alphanumeric())
+}
+
+/// Whether a run of characters spells a global name once the dollar sign is
+/// set aside: a bare name, the digits of a capture, one of the names Ruby
+/// keeps for itself, or a dash and one character.
+fn spells_a_global(body: &str) -> bool {
+    if body.is_empty() {
+        return false;
+    }
+    if body.chars().all(|held| held.is_ascii_digit()) {
         return true;
-    };
-    if !middle
-        .iter()
-        .all(|held| held.is_alphanumeric() || *held == '_')
-    {
-        return false;
     }
-    // Only the last character may be one of the three a method name may end
-    // with.
-    last.is_alphanumeric() || *last == '_' || *last == '?' || *last == '!' || *last == '='
+    let mut characters = body.chars();
+    let first = characters.next().unwrap_or(' ');
+    if first == '-' {
+        return characters.next().is_some() && characters.next().is_none();
+    }
+    if body.chars().count() == 1
+        && matches!(
+            first,
+            '~' | '*'
+                | '$'
+                | '?'
+                | '!'
+                | '@'
+                | '/'
+                | '\\'
+                | ';'
+                | ','
+                | '.'
+                | '='
+                | ':'
+                | '<'
+                | '>'
+                | '"'
+                | '&'
+                | '`'
+                | '\''
+                | '+'
+        )
+    {
+        return true;
+    }
+    spells_a_name(body)
 }
 
 /// The text Ruby writes a finite Float as. Every one shows a fractional part,

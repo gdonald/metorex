@@ -2995,11 +2995,13 @@ class Enumerator::Lazy < Enumerator
       when :compact
         yield(*values) unless packed(values).nil?
       when :grep
+        # The block is handed the element the source yielded, which is the
+        # values gathered into one where it yielded several.
         subject = packed(values)
-        yield(@callable.nil? ? subject : @callable.call(*values)) if @count === subject
+        yield(@callable.nil? ? subject : @callable.call(subject)) if @count === subject
       when :grep_v
         subject = packed(values)
-        yield(@callable.nil? ? subject : @callable.call(*values)) unless @count === subject
+        yield(@callable.nil? ? subject : @callable.call(subject)) unless @count === subject
       when :uniq
         key = @callable.nil? ? packed(values) : @callable.call(*values)
         unless kept.include?(key)
@@ -3659,7 +3661,42 @@ class Numeric
   end
 end
 
+class Exception
+  # Whether a report written to stderr would reach a terminal, which is what
+  # decides if it is painted.
+  def self.to_tty?
+    $stderr.tty?
+  end
+end
+
 class Range
+  # A range built by hand out of `allocate`. Every range written as a literal
+  # is frozen the moment it is made, so this is the only object whose ends
+  # can still be written.
+  def initialize(first, last, excludes = false)
+    raise FrozenError, "can't modify frozen Range: #{inspect}" if frozen?
+    if !first.nil? && !last.nil? && (first <=> last).nil?
+      raise ArgumentError, "bad value for range"
+    end
+    @begin = first
+    @end = last
+    @excludes = excludes ? true : false
+    self
+  end
+  private :initialize
+
+  def begin
+    @begin
+  end
+
+  def end
+    @end
+  end
+
+  def exclude_end?
+    @excludes.nil? ? false : @excludes
+  end
+
   # Both ends at once. Without a block the ends name themselves, so a range
   # over anything with a `succ` is not walked to find them.
   def minmax(&block)
@@ -4463,15 +4500,33 @@ class Time
 
   def self.new(*args, **options)
     return now(**options) if args.empty?
+    if args.size == 1 && (args[0].is_a?(String) || args[0].respond_to?(:to_str))
+      return from_written(args[0], options)
+    end
+    if args.size > 6 && !args[6].nil? && !options[:in].nil?
+      raise ArgumentError, "timezone argument given as positional and keyword arguments"
+    end
     zone = args.size > 6 ? args[6] : options[:in]
     fields = args[0, 6]
     return from_exact(calendar_seconds(fields, false), false, nil) if zone.nil?
     # A zone may be an object that converts between local and UTC readings,
     # which is what a timezone library hands over.
+    zone = zone_named(self, zone)
     if zone.respond_to?(:local_to_utc)
       reading = calendar_seconds(fields, true)
-      counted = zone.local_to_utc(from_exact(reading, true, nil)).to_r
-      made = from_exact(counted, false, (reading - counted).to_i)
+      answered = zone.local_to_utc(from_exact(reading, true, nil))
+      # A Time stands at the instant it names. Anything else names only the
+      # whole seconds it reads as, so its own zone and offset are left out.
+      counted = if answered.is_a?(Time)
+        answered.to_r
+      elsif answered.respond_to?(:to_i)
+        answered.to_i
+      else
+        raise TypeError, "can't convert #{answered.class} into an exact number"
+      end
+      offset = (reading - counted).to_i
+      raise ArgumentError, "utc_offset out of range" if offset.abs >= 86400
+      made = from_exact(counted, false, offset)
       made.instance_variable_set(:@zone_object, zone)
       return made
     end
@@ -4480,13 +4535,28 @@ class Time
     from_exact(calendar_seconds(fields, true) - offset, false, offset)
   end
 
-  def self.at(seconds, extra = nil, **options)
-    made = if seconds.is_a? Time
-      from_exact(seconds.to_r, seconds.utc?, nil)
-    elsif extra.nil?
-      from_exact(seconds.to_r, false, nil)
+  def self.at(seconds, *rest, **options)
+    if rest.size > 2
+      raise ArgumentError, "wrong number of arguments (given #{1 + rest.size}, expected 1..3)"
+    end
+    extra = rest[0]
+    made = if rest.empty?
+      if seconds.is_a? Time
+        from_exact(seconds.to_r, seconds.utc?, nil)
+      else
+        from_exact(exact_number(seconds), false, nil)
+      end
     else
-      from_exact(seconds.to_r + extra.to_r / MICROSECONDS_IN_SECOND, false, nil)
+      # A second count alongside a Time has nothing to add to, which is what
+      # Ruby refuses.
+      if seconds.is_a? Time
+        raise TypeError, "can't convert Time into an exact number"
+      end
+      from_exact(
+        exact_number(seconds) + exact_number(extra) / fraction_of_second(rest[1], rest.size > 1),
+        false,
+        nil
+      )
     end
     zone = options[:in]
     return made if zone.nil?
@@ -4519,6 +4589,9 @@ class Time
     made.instance_variable_set(:@fraction, exact - whole)
     made.instance_variable_set(:@utc, utc)
     made.instance_variable_set(:@offset, offset)
+    # A time reading in the zone the program runs in reads it now, since that
+    # zone may change before a field is asked for.
+    made.send(:__read_calendar__) if !utc && offset.nil?
     made
   end
 
@@ -4620,16 +4693,143 @@ class Time
   end
 
   def self.offset_seconds(offset)
-    return offset if offset.is_a?(Integer)
-    return offset.to_r if offset.is_a?(Numeric)
+    return in_range(offset) if offset.is_a?(Integer)
+    return in_range(offset.to_r) if offset.is_a?(Numeric)
+    # A number or a name of its own is asked for, in that order, which is
+    # what Ruby asks an object standing in for either.
+    if !offset.is_a?(String) && offset.respond_to?(:to_int)
+      return in_range(offset.to_int)
+    end
+    unless offset.is_a?(String) || offset.respond_to?(:to_str)
+      raise TypeError, "can't convert #{offset.class} into an exact number"
+    end
+    offset = offset.to_str unless offset.is_a?(String)
     text = offset.to_s
     return 0 if text == "UTC" || text == "Z"
-    unless text =~ /\A([+-])(\d\d):?(\d\d)(?::?(\d\d))?\z/
+    letter = military_offset text
+    return letter unless letter.nil?
+    unless text =~ /\A([+-])(\d\d)(?::?(\d\d))?(?::?(\d\d))?\z/
       raise ArgumentError, "\"+HH:MM\", \"-HH:MM\", \"UTC\" or \"A\"..\"I\",\"K\"..\"Z\" expected for utc_offset: #{offset}"
     end
-    counted = $2.to_i * 3600 + $3.to_i * 60 + ($4.nil? ? 0 : $4.to_i)
+    hours = $2.to_i
+    minutes = $3.nil? ? 0 : $3.to_i
+    seconds = $4.nil? ? 0 : $4.to_i
+    raise ArgumentError, "utc_offset out of range" if hours > 23
+    if minutes > 59 || seconds > 59
+      raise ArgumentError, "\"+HH:MM\", \"-HH:MM\", \"UTC\" or \"A\"..\"I\",\"K\"..\"Z\" expected for utc_offset: #{offset}"
+    end
+    counted = hours * 3600 + minutes * 60 + seconds
     $1 == "-" ? -counted : counted
   end
+
+  # The time a written date names, in the shape Ruby reads: a year on its own,
+  # or a whole date and time with an offset after it.
+  def self.from_written(written, options)
+    written = written.to_str unless written.is_a?(String)
+    unless written.encoding.ascii_compatible?
+      raise ArgumentError, "time string should have ASCII compatible encoding"
+    end
+    shape = /\A(\d{4,})(?:-(\d\d)-(\d\d)[ T](\d\d):(\d\d):(\d\d)(?:\.(\d+))?(?:[ ]?([+-][\d:]+|Z|UTC))?)?\z/
+    held = shape.match written
+    raise ArgumentError, "can't parse: #{written.inspect}" if held.nil?
+    fields = [held[1].to_i, (held[2] || 1).to_i, (held[3] || 1).to_i,
+              (held[4] || 0).to_i, (held[5] || 0).to_i, (held[6] || 0).to_i]
+    fraction = written_fraction held[7], options
+    fields[5] = fields[5] + fraction
+    zone = held[8].nil? ? options[:in] : held[8]
+    return new(*fields) if zone.nil?
+    new(*fields, zone)
+  end
+
+  # The fraction of a second the digits after the point name, cut down to the
+  # count of places asked for.
+  def self.written_fraction(digits, options)
+    return 0 if digits.nil?
+    places = options.key?(:precision) ? options[:precision] : 9
+    unless places.nil?
+      places = places.to_int if !places.is_a?(Integer) && places.respond_to?(:to_int)
+      places = places.to_i if places.is_a?(Numeric)
+      unless places.is_a?(Integer)
+        raise TypeError, "no implicit conversion of #{places.class} into Integer"
+      end
+      digits = digits[0, places].to_s if places >= 0
+    end
+    return 0 if digits.empty?
+    Rational(digits.to_i, 10 ** digits.length)
+  end
+
+  # How many of the units a third argument names make up a second.
+  def self.fraction_of_second(named, given)
+    return MICROSECONDS_IN_SECOND unless given
+    case named
+    when :nanosecond, :nsec then NANOSECONDS_IN_SECOND
+    when :microsecond, :usec then MICROSECONDS_IN_SECOND
+    when :millisecond then 1000
+    else raise ArgumentError, "unexpected unit: #{named}"
+    end
+  end
+
+  # A count of seconds read as an exact number. A number stands for itself,
+  # and anything else has to name a whole number before its fraction is read.
+  def self.exact_number(value)
+    return value.to_r if value.is_a?(Numeric)
+    unless value.respond_to?(:to_int)
+      named = value.nil? ? "nil" : value.class.to_s
+      raise TypeError, "can't convert #{named} into an exact number"
+    end
+    return value.to_r if value.respond_to?(:to_r)
+    value.to_int.to_r
+  end
+
+  # An offset stands no further from UTC than a day, which is what Ruby
+  # refuses a wider one against.
+  def self.in_range(counted)
+    raise ArgumentError, "utc_offset out of range" if counted.abs >= 86400
+    counted
+  end
+
+  # The offset one of the military zone letters names. "A" through "M" count
+  # east of Greenwich, leaving "J" out, and "N" through "Y" count west.
+  def self.military_offset(text)
+    return nil unless text.length == 1
+    letter = text.upcase
+    return nil unless ("A".."Z").cover?(letter) && letter != "J"
+    place = letter.ord - "A".ord
+    return 3600 * (place + 1) if letter <= "I"
+    return 3600 * place if letter <= "M"
+    return 0 if letter == "Z"
+    -3600 * (letter.ord - "N".ord + 1)
+  end
+
+  # Whether a zone converts between its own readings and UTC rather than
+  # naming a fixed offset.
+  def self.zone_object?(zone)
+    !zone.nil? && zone.respond_to?(:utc_to_local)
+  end
+
+  # The zone a name stands for. A class carrying `find_timezone` is asked for
+  # a name no offset reads as, which is how a timezone library is reached.
+  def self.zone_named(holder, offset)
+    return offset if offset.nil? || zone_object?(offset)
+    # Only a name written as text reaches a timezone library. A symbol, an
+    # array, or anything else is read as a number and refused as one.
+    return offset unless offset.is_a?(String)
+    return offset unless holder.respond_to?(:find_timezone)
+    begin
+      offset_seconds offset
+      offset
+    rescue ArgumentError, TypeError
+      holder.find_timezone offset
+    end
+  end
+
+  # Read the calendar fields now and keep them, so a later change to the zone
+  # the program runs in does not reach a time already read.
+  def __read_calendar__
+    calendar
+    nil
+  end
+  private :__read_calendar__
 
   # The calendar fields this time stands for, read once and kept.
   def calendar
@@ -4708,6 +4908,7 @@ class Time
   # of the program is written in.
   def zone
     return @zone_object unless @zone_object.nil?
+    return @zone_name unless @zone_name.nil?
     return nil unless @offset.nil?
     return "UTC".force_encoding(Encoding::US_ASCII) if @utc
     named = calendar[10]
@@ -4797,6 +4998,13 @@ class Time
                      (low >> 26) & 0x3f,
                      (low >> 20) & 0x3f,
                      low & 0xfffff)
+    named = written.instance_variable_get :@zone
+    unless named.nil?
+      return built.getlocal(find_timezone(named)) if respond_to? :find_timezone
+      made = built.getlocal(written.instance_variable_get(:@offset))
+      made.instance_variable_set :@zone_object, named
+      return made
+    end
     in_utc ? built : built.localtime
   end
   private_class_method :_load
@@ -4813,7 +5021,14 @@ class Time
            held.mday << 5 |
            held.hour
     low = held.min << 26 | held.sec << 20 | held.usec
-    [high, low].pack "VV"
+    written = [high, low].pack "VV"
+    # A zone of its own travels as the name it goes by, which is what the
+    # zone is built again from when the bytes are read back.
+    unless @zone_object.nil?
+      written.instance_variable_set :@zone, @zone_object.name
+      written.instance_variable_set :@offset, utc_offset
+    end
+    written
   end
   private :_dump
 
@@ -4843,17 +5058,57 @@ class Time
   end
 
   def localtime(offset = nil)
+    offset = Time.zone_named(self.class, offset)
     return utc if Time.names_utc? offset
+    if Time.zone_object? offset
+      @utc = false
+      @offset = __zone_offset__ offset
+      @zone_object = offset
+      @calendar = nil
+      return self
+    end
+    wanted = offset.nil? ? nil : Time.offset_seconds(offset)
+    # A time already reading in the zone asked for is left alone, so a frozen
+    # one is not refused for a change it does not need.
+    return self if !@utc && @offset == wanted
     @utc = false
-    @offset = offset.nil? ? nil : Time.offset_seconds(offset)
+    @offset = wanted
     @calendar = nil
+    # The zone the program is running in is read now rather than the next
+    # time a field is asked for, since that zone may change in between.
+    __read_calendar__ if wanted.nil?
     self
   end
 
   def getlocal(offset = nil)
+    offset = Time.zone_named(self.class, offset)
     return getutc if Time.names_utc? offset
+    if Time.zone_object? offset
+      made = Time.from_exact(to_r, false, __zone_offset__(offset))
+      made.instance_variable_set(:@zone_object, offset)
+      return made
+    end
     Time.from_exact(to_r, false, offset.nil? ? nil : Time.offset_seconds(offset))
   end
+
+  # How far a zone of its own stands from UTC at this moment, read by asking
+  # the zone what local reading this one has. The answer is read for the
+  # calendar fields it names rather than the instant it says it stands at, so
+  # a zone or an offset it carries of its own is left out of the count.
+  def __zone_offset__(zone)
+    reading = zone.utc_to_local(Time.from_exact(to_r, true, nil))
+    counted = if reading.is_a?(Integer)
+      reading
+    elsif reading.respond_to?(:year) && reading.respond_to?(:mday)
+      Time.utc(reading.year, reading.mon, reading.mday, reading.hour, reading.min, reading.sec).to_i
+    else
+      reading.to_r.floor
+    end
+    found = counted - to_r.floor
+    raise ArgumentError, "utc_offset out of range" if found.abs >= 86400
+    found
+  end
+  private :__zone_offset__
 
   def +(other)
     raise TypeError, "time + time?" if other.is_a?(Time)
@@ -4869,6 +5124,11 @@ class Time
   def shifted(total)
     made = Time.from_exact(total, @utc, @offset)
     made.instance_variable_set(:@zone_object, @zone_object) unless @zone_object.nil?
+    # A time read in the zone the program was running in keeps that zone's
+    # name, which a later change to the zone does not reach.
+    if @offset.nil? && !@utc && !@calendar.nil?
+      made.instance_variable_set(:@zone_name, @calendar[10])
+    end
     made
   end
   private :shifted
@@ -4885,9 +5145,16 @@ class Time
   end
   private :exact_seconds
 
+  # Two times order by the moment each one names. Anything else is asked to
+  # order itself against this time, and the answer is turned around.
   def <=>(other)
-    return nil unless other.is_a?(Time)
-    to_r <=> other.to_r
+    return to_r <=> other.to_r if other.is_a?(Time)
+    return nil unless other.respond_to?(:<=>)
+    answered = other <=> self
+    return nil if answered.nil?
+    return -1 if answered > 0
+    return 1 if answered < 0
+    0
   end
 
   def ==(other)
@@ -4904,17 +5171,17 @@ class Time
 
   def floor(digits = 0)
     scale = 10 ** digits
-    Time.from_exact(Rational((to_r * scale).floor, scale), @utc, @offset)
+    shifted(Rational((to_r * scale).floor, scale))
   end
 
   def ceil(digits = 0)
     scale = 10 ** digits
-    Time.from_exact(Rational((to_r * scale).ceil, scale), @utc, @offset)
+    shifted(Rational((to_r * scale).ceil, scale))
   end
 
   def round(digits = 0)
     scale = 10 ** digits
-    Time.from_exact(Rational((to_r * scale).round, scale), @utc, @offset)
+    shifted(Rational((to_r * scale).round, scale))
   end
 
   def to_a
@@ -4935,27 +5202,245 @@ class Time
     picked
   end
 
+  # The text a template names, with each directive filled in. Every directive
+  # Ruby writes is read here rather than handed to the C library, so the flags
+  # and widths Ruby adds are answered the same way everywhere.
   def strftime(template)
-    reading = @offset.nil? ? @seconds : @seconds + @offset
-    Time.__format__(ruby_directives(template), reading, @offset.nil? ? @utc : true)
+    template = template.to_str unless template.is_a?(String)
+    written = +""
+    at = 0
+    while at < template.length
+      held = template[at]
+      unless held == "%"
+        written << held
+        at += 1
+        next
+      end
+      read = __read_directive__(template, at)
+      if read.nil?
+        written << held
+        at += 1
+        next
+      end
+      written << read[0]
+      at = read[1]
+    end
+    written
   end
 
-  # The directives Ruby adds on top of the C library's, filled in before the
-  # template reaches it.
-  def ruby_directives(template)
-    filled = template.gsub("%N", fraction_digits(9))
-    filled = filled.gsub("%L", fraction_digits(3))
-    filled = filled.gsub("%:z", offset_label(true))
-    filled.gsub("%z", offset_label(false))
+  # One directive, read from the template at `at`. Answers the text it stands
+  # for and where the template carries on, or nil where it names none.
+  def __read_directive__(template, at)
+    index = at + 1
+    flags = +""
+    while index < template.length && "-_0^#".include?(template[index])
+      flags << template[index]
+      index += 1
+    end
+    width = +""
+    while index < template.length && template[index] =~ /\d/
+      width << template[index]
+      index += 1
+    end
+    colons = 0
+    while index < template.length && template[index] == ":"
+      colons += 1
+      index += 1
+    end
+    return nil if index >= template.length
+    letter = template[index]
+    return nil if colons > 0 && letter != "z"
+    width = width.empty? ? 0 : width.to_i
+    piece = __directive_text__(letter, flags, width, colons)
+    return nil if piece.nil?
+    piece = piece.upcase if flags.include?("^")
+    piece = piece.swapcase if flags.include?("#")
+    # A width names the least room a directive takes, whether it wrote a
+    # number or a name.
+    if width > piece.length && !flags.include?("-") && !__counts_its_own__(letter)
+      piece = piece.rjust(width, __padding_of__(flags, " "))
+    end
+    [piece, index + 1]
   end
-  private :ruby_directives
+  private :__read_directive__
 
-  # The fraction of a second, written to the given number of digits.
+  # The character a directive pads with. The last of the two flags that name
+  # one has the say, and without either the directive's own stands.
+  def __padding_of__(flags, held)
+    flags.each_char do |flag|
+      held = " " if flag == "_"
+      held = "0" if flag == "0"
+    end
+    held
+  end
+  private :__padding_of__
+
+  # Whether a directive fills its own width, which every number does.
+  def __counts_its_own__(letter)
+    "YCymdejHkIlMSsuwUWVGgzNL".include?(letter)
+  end
+  private :__counts_its_own__
+
+  WRITTEN_DAY_NAMES = %w[Sunday Monday Tuesday Wednesday Thursday Friday Saturday]
+  WRITTEN_MONTH_NAMES = %w[January February March April May June July August
+                           September October November December]
+  private_constant :WRITTEN_DAY_NAMES
+  private_constant :WRITTEN_MONTH_NAMES
+
+  # The text one directive stands for.
+  def __directive_text__(letter, flags, width, colons)
+    case letter
+    when "%" then return "%"
+    when "n" then return "\n"
+    when "t" then return "\t"
+    when "z" then return __offset_text__(flags, width, colons)
+    when "Z"
+      unless @zone_object.nil?
+        return @zone_object.abbr(self).to_s if @zone_object.respond_to?(:abbr)
+        return @zone_object.to_s
+      end
+      return zone.to_s
+    when "a" then return WRITTEN_DAY_NAMES[wday][0, 3]
+    when "A" then return WRITTEN_DAY_NAMES[wday]
+    when "b", "h" then return WRITTEN_MONTH_NAMES[mon - 1][0, 3]
+    when "B" then return WRITTEN_MONTH_NAMES[mon - 1]
+    when "p" then return hour < 12 ? "AM" : "PM"
+    when "P" then return hour < 12 ? "am" : "pm"
+    when "c" then return strftime("%a %b %e %H:%M:%S %Y")
+    when "x", "D" then return strftime("%m/%d/%y")
+    when "X", "T" then return strftime("%H:%M:%S")
+    when "F" then return strftime("%Y-%m-%d")
+    when "R" then return strftime("%H:%M")
+    when "r" then return strftime("%I:%M:%S %p")
+    when "v" then return strftime("%e-%^b-%Y")
+    when "+" then return strftime("%a %b %e %H:%M:%S %Z %Y")
+    when "N" then return __fraction_text__(width == 0 ? 9 : width)
+    when "L" then return __fraction_text__(width == 0 ? 3 : width)
+    end
+    counted, pad, places = __directive_number__(letter)
+    return nil if counted.nil?
+    __padded_number__(counted, flags, width, pad, places)
+  end
+  private :__directive_text__
+
+  # The number a directive stands for, the character it pads with, and how
+  # many places it takes when nothing else is asked for.
+  def __directive_number__(letter)
+    case letter
+    when "Y" then [year, "0", 4]
+    when "C" then [year / 100, "0", 2]
+    when "y" then [year % 100, "0", 2]
+    when "m" then [mon, "0", 2]
+    when "d" then [mday, "0", 2]
+    when "e" then [mday, " ", 2]
+    when "j" then [yday, "0", 3]
+    when "H" then [hour, "0", 2]
+    when "k" then [hour, " ", 2]
+    when "I" then [__hour_of_twelve__, "0", 2]
+    when "l" then [__hour_of_twelve__, " ", 2]
+    when "M" then [min, "0", 2]
+    when "S" then [sec, "0", 2]
+    when "s" then [to_i, "0", 1]
+    when "u" then [wday == 0 ? 7 : wday, "0", 1]
+    when "w" then [wday, "0", 1]
+    when "U" then [(yday + 6 - wday) / 7, "0", 2]
+    when "W" then [(yday + 6 - (wday + 6) % 7) / 7, "0", 2]
+    when "V" then [__week_of_year__[1], "0", 2]
+    when "G" then [__week_of_year__[0], "0", 4]
+    when "g" then [__week_of_year__[0] % 100, "0", 2]
+    else [nil, "0", 1]
+    end
+  end
+  private :__directive_number__
+
+  def __hour_of_twelve__
+    held = hour % 12
+    held == 0 ? 12 : held
+  end
+  private :__hour_of_twelve__
+
+  # The year and week the ISO calendar counts this day in, where a week runs
+  # Monday to Sunday and belongs to the year holding its Thursday.
+  def __week_of_year__
+    weekday = wday == 0 ? 7 : wday
+    thursday = yday - weekday + 4
+    counted = year
+    if thursday < 1
+      counted -= 1
+      thursday += Time.days_in_year(counted)
+    elsif thursday > Time.days_in_year(year)
+      thursday -= Time.days_in_year(year)
+      counted += 1
+    end
+    [counted, (thursday - 1) / 7 + 1]
+  end
+  private :__week_of_year__
+
+  # A number written with the padding and width a directive asked for.
+  def __padded_number__(counted, flags, width, pad, places)
+    pad = __padding_of__(flags, pad)
+    places = width if width > places
+    negative = counted < 0
+    digits = counted.abs.to_s
+    return negative ? "-#{digits}" : digits if flags.include?("-")
+    room = places - (negative ? 1 : 0)
+    digits = digits.rjust(room, pad) if digits.length < room
+    negative ? "-#{digits}" : digits
+  end
+  private :__padded_number__
+
+  # The fraction of a second, written to the given number of digits, rounded
+  # rather than cut down.
   def fraction_digits(places)
     scaled = (@fraction * 10 ** places).round.to_i
     scaled.to_s.rjust(places, "0")
   end
   private :fraction_digits
+
+  # The fraction of a second, written to the number of places asked for.
+  def __fraction_text__(places)
+    scaled = (@fraction * 10 ** places).to_i
+    scaled.to_s.rjust(places, "0")
+  end
+  private :__fraction_text__
+
+  # The offset from UTC, written the way `%z` and its colon forms ask for. A
+  # time in UTC written with the `-` flag reads as the unknown local offset
+  # RFC 3339 spells `-0000`.
+  def __offset_text__(flags, width, colons)
+    counted = utc_offset.round
+    sign = counted < 0 ? "-" : "+"
+    sign = "-" if flags.include?("-") && @utc
+    counted = counted.abs
+    hours = counted / 3600
+    minutes = counted % 3600 / 60
+    seconds = counted % 60
+    tail = case colons
+           when 0 then "%02d" % minutes
+           when 1 then ":%02d" % minutes
+           when 2 then ":%02d:%02d" % [minutes, seconds]
+           else
+             if seconds > 0
+               ":%02d:%02d" % [minutes, seconds]
+             elsif minutes > 0
+               ":%02d" % minutes
+             else
+               ""
+             end
+           end
+    if flags.include?("_")
+      return "#{sign}#{hours}#{tail}".rjust(width, " ")
+    end
+    room = [2, width - 1 - tail.length].max
+    "#{sign}#{hours.to_s.rjust(room, "0")}#{tail}"
+  end
+  private :__offset_text__
+
+  # How many days a year holds, which is one more in a leap year.
+  def self.days_in_year(counted)
+    leap = counted % 4 == 0 && (counted % 100 != 0 || counted % 400 == 0)
+    leap ? 366 : 365
+  end
 
   # The offset from UTC as `+0900`, or as `+09:00` when asked for the spelling
   # that carries a colon.
@@ -5255,8 +5740,36 @@ class Random
     end
     held = Random.seed_number limit
     raise ArgumentError, "invalid argument - #{limit}" unless held > 0
-    (next_real * held).floor
+    return (next_real * held).floor if held > 18446744073709551616
+    limited_number held - 1
   end
+
+  # A whole number no greater than the top, drawn the way Ruby draws one: a
+  # mask wide enough for the top, filled a word at a time, and drawn again
+  # whenever the value lands past it.
+  def limited_number(top)
+    return 0 if top <= 0
+    mask = 1
+    mask = (mask << 1) | 1 while mask < top
+    loop do
+      value = 0
+      landed = true
+      place = 1
+      while place >= 0
+        if ((mask >> (place * 32)) & MASK32) != 0
+          value |= next_word << (place * 32)
+          value &= mask
+          if top < value
+            landed = false
+            break
+          end
+        end
+        place -= 1
+      end
+      return value if landed
+    end
+  end
+  private :limited_number
 
   def random_number limit = nil
     limit.nil? || limit == 0 ? next_real : rand(limit)
@@ -5524,6 +6037,7 @@ class IO
     end
     spelled = text.is_a?(String) ? text : text.to_s
     at = offset == :__none__ ? nil : offset
+    brought_into_being = !File.exist?(File.path(name))
     named = options[:mode]
     mode = if !named.nil?
       named
@@ -5545,6 +6059,10 @@ class IO
     ensure
       held.close
     end
+    # A permission named here stands for the file the write brought into
+    # being, and says nothing about one that was already there.
+    File.chmod options[:perm], File.path(name) if brought_into_being && !options[:perm].nil?
+    spelled.bytesize
   end
 
   # The bytes a String stands for written to a file, with nothing carried
@@ -5800,11 +6318,13 @@ class IO
     opened_source = nil
     opened_target = nil
     begin
-      reader = source.respond_to?(:read) ? source : (opened_source = File.open(File.path(source), "rb"))
+      reader = if source.respond_to?(:readpartial) || source.respond_to?(:read)
+        source
+      else
+        opened_source = File.open(File.path(source), "rb")
+      end
       writer = destination.respond_to?(:write) ? destination : (opened_target = File.open(File.path(destination), "wb"))
-      held = reader.read.to_s
-      held = held.byteslice(offset, held.bytesize).to_s unless offset.nil?
-      held = held.byteslice(0, length).to_s unless length.nil?
+      held = __copied_text__ reader, length, offset
       writer.write held
       held.bytesize
     ensure
@@ -5812,6 +6332,52 @@ class IO
       opened_target.close unless opened_target.nil?
     end
   end
+
+  # The text a copy reads. A stream reads through its own position, which an
+  # offset names a place apart from and leaves where it was.
+  def self.__copied_text__(reader, length, offset)
+    unless reader.is_a? IO
+      return __read_in_pieces__(reader, length)
+    end
+    raise IOError, "not opened for reading" unless reader.__send__ :__readable__
+    return __read_limited__(reader, length) if offset.nil?
+    standing = reader.pos
+    begin
+      reader.pos = offset
+      __read_limited__ reader, length
+    ensure
+      reader.pos = standing
+    end
+  end
+
+  # What a stream hands over, up to the count asked for.
+  def self.__read_limited__(reader, length)
+    held = length.nil? ? reader.read : reader.read(length)
+    held.nil? ? "" : held
+  end
+
+  # What an object that is not a stream hands over, asked for a piece at a
+  # time the way Ruby asks.
+  def self.__read_in_pieces__(reader, length)
+    collected = +""
+    buffer = +""
+    partial = reader.respond_to? :readpartial
+    begin
+      loop do
+        wanted = length.nil? ? COPY_PIECE : [COPY_PIECE, length - collected.bytesize].min
+        break if wanted <= 0
+        piece = partial ? reader.readpartial(wanted, buffer) : reader.read(wanted, buffer)
+        break if piece.nil? || piece.empty?
+        collected = collected + piece
+        break if !length.nil? && collected.bytesize >= length
+      end
+    rescue EOFError
+    end
+    collected
+  end
+
+  # How much a copy reads at a time from an object that is not a stream.
+  COPY_PIECE = 16384
 
   # The three streams the program started with, each over the descriptor the
   # operating system opened for it.
@@ -6059,10 +6625,18 @@ class IO
     raise IOError, "not opened for reading" if @read_closed
     wanted = length.nil? ? 0 : __as_integer__(length)
     raise ArgumentError, "negative length #{wanted} given" if wanted < 0
+    __take_bom__
+    target = buffer.nil? ? nil : __as_buffer__(buffer)
+    # A count of nothing reads nothing and leaves the stream where it stands.
+    if !length.nil? && wanted == 0
+      empty = "".dup.force_encoding(Encoding::BINARY)
+      return __fill_buffer__(target, empty) unless target.nil?
+      return empty
+    end
     waiting = @peeked
     @peeked = nil
     waiting = "" if waiting.nil?
-    held = if wanted == 0
+    held = if length.nil?
       waiting + IO.__stream__("read", __stream_handle__, "", 0).to_s
     elsif waiting.bytesize > wanted
       taken = waiting[0, wanted]
@@ -6084,11 +6658,46 @@ class IO
     end
     # A read of the whole stream carries the text over the way the stream was
     # told to. A read of so many bytes hands those bytes back as they are.
-    held = __tag_read__(held) if length.nil?
-    return __fill_buffer__(buffer.nil? ? nil : __as_buffer__(buffer), held) unless buffer.nil?
+    # A count of bytes hands those bytes back as they are, which Ruby tags
+    # as a run of bytes rather than as text.
+    held = length.nil? ? __tag_read__(held) : held.dup.force_encoding(Encoding::BINARY)
+    unless target.nil?
+      # A read of the whole stream carries its encoding into the buffer, and
+      # a read of so many bytes leaves the buffer tagged as it was.
+      __fill_buffer__ target, held, length.nil?
+      return nil if !length.nil? && held.empty?
+      return target
+    end
     return nil if length && held.empty?
     held
   end
+
+  # Take a byte-order mark off the front of the stream, where the mode asked
+  # for one and the stream opens with one.
+  def __take_bom__
+    return if @__bom_read
+    @__bom_read = true
+    return unless __asks_for_bom__
+    head = IO.__stream__("read", __stream_handle__, "", 4).to_s
+    found, width = IO.bom_encoding(head.bytes)
+    if found.nil?
+      @peeked = head.empty? ? nil : head
+      return
+    end
+    @__file_encoding = found.name
+    rest = head.byteslice(width, head.bytesize - width).to_s
+    @peeked = rest.empty? ? nil : rest
+  end
+  private :__take_bom__
+
+  # Whether the mode asked for the encoding a byte-order mark names.
+  def __asks_for_bom__
+    written = @__file_encoding.to_s
+    written = @__file_mode.to_s.split(":", 2)[1].to_s if written.empty?
+    first = written.split(":")[0].to_s
+    first.length > 4 && first[0, 4].casecmp("BOM|").zero?
+  end
+  private :__asks_for_bom__
 
   # As much as is there right now, up to the count asked for. Nothing left
   # at all is the end of the stream.
@@ -6163,11 +6772,11 @@ class IO
 
   # What was read, written into the buffer the program handed over. The
   # buffer keeps the encoding it was tagged with.
-  def __fill_buffer__(target, held)
+  def __fill_buffer__(target, held, carries = false)
     return held if target.nil?
     was = target.encoding
     target.replace held
-    target.force_encoding was
+    target.force_encoding(carries ? held.encoding : was)
     target
   end
   private :__fill_buffer__
@@ -6396,7 +7005,12 @@ class IO
       return [] if @__encodings_reset
       written = @__file_mode.to_s.split(":", 2)[1].to_s
     end
-    written.split(":")
+    held = written.split(":")
+    # `BOM|utf-8` names the encoding to fall back on where the stream opens
+    # with no mark of its own.
+    first = held[0].to_s
+    held[0] = first[4..-1] if first.length > 4 && first[0, 4].casecmp("BOM|").zero?
+    held
   end
   private :__named_encodings__
 
@@ -6516,7 +7130,9 @@ class IO
     return text if text.nil? || text.empty?
     inner = internal_encoding
     outer = external_encoding
-    tagged = outer.nil? ? text : text.dup.force_encoding(outer)
+    # A stream naming no encoding of its own reads its text in the one the
+    # program reads by.
+    tagged = text.dup.force_encoding(outer.nil? ? Encoding.default_external : outer)
     return tagged if inner.nil?
     # A stream reading bytes hands them over as they are, whatever encoding
     # it was told to carry them into.
@@ -6904,7 +7520,10 @@ class IO
     @write_closed = false
     @peeked = nil
     @lineno = 0
-    __fresh_singleton_class__
+    __fresh_singleton_class__ other
+    # The standard streams keep the flag they were given, so a program that
+    # points STDOUT at a file still hands that file to what it runs.
+    self.close_on_exec = true if fileno > 2
     self
   end
 
@@ -6913,7 +7532,10 @@ class IO
   def __reopen_target__(target, mode)
     if target.is_a?(String) || (!target.is_a?(IO) && target.respond_to?(:to_path))
       path = target.is_a?(String) ? target : target.to_path
-      return File.open(path, mode.nil? ? "r" : mode)
+      # Written with no mode of its own, the file is opened the way this
+      # stream already was, so one opened for writing makes the file.
+      wanted = mode.nil? ? __reopen_mode__ : mode
+      return File.open(path, wanted)
     end
     return target if target.is_a?(IO)
     spelled = target.to_io
@@ -6923,6 +7545,16 @@ class IO
     spelled
   end
   private :__reopen_target__
+
+  # The mode a reopen falls back on, which is the one this stream carries with
+  # everything but the encodings it named taken off.
+  def __reopen_mode__
+    held = @__file_mode
+    return "r" if held.nil? || !held.is_a?(String)
+    written = held.split(":", 2)[0]
+    written.empty? ? "r" : written
+  end
+  private :__reopen_mode__
 
   # How long one turn of a wait lasts. A wait is taken in slices this long
   # so the program keeps running while one of its threads waits.
@@ -7027,6 +7659,64 @@ end
 # A file opened by name answers the descriptor questions an IO answers, over
 # a descriptor opened the first time one of them is asked.
 class File
+  # Text read from a file named by path. A count and an offset name a run of
+  # bytes rather than the whole file, and the options say how the file is
+  # opened and what encoding the text is read in.
+  def self.read(name, *rest, **options)
+    if rest.size > 2
+      raise ArgumentError,
+            "wrong number of arguments (given #{1 + rest.size}, expected 1..3)"
+    end
+    length = __read_count__ rest[0], "length"
+    offset = __read_count__ rest[1], "offset"
+    mode, open_options = __read_opening__ options
+    unless mode.start_with?("r") || mode.include?("+")
+      raise IOError, "not opened for reading"
+    end
+    held = if open_options.empty?
+      File.open File.path(name), mode
+    else
+      File.open File.path(name), mode, **open_options
+    end
+    begin
+      held.seek offset unless offset.nil? || offset == 0
+      length.nil? ? held.read : held.read(length)
+    ensure
+      held.close
+    end
+  end
+
+  # A count of bytes a read was given, which stands for no bound when it is
+  # nil and is refused when it counts backwards.
+  def self.__read_count__(held, named)
+    return nil if held.nil?
+    counted = held.is_a?(Integer) ? held : held.to_int
+    raise ArgumentError, "negative #{named} #{counted} given" if counted < 0
+    counted
+  end
+  private_class_method :__read_count__
+
+  # The mode a read opens the file in and the options it opens it with.
+  # `open_args:` names them outright and every other option is set aside.
+  def self.__read_opening__(options)
+    named = options[:open_args]
+    if named.nil?
+      held = options.reject { |key, _| key == :mode || key == :open_args }
+      return [options[:mode].nil? ? "r" : options[:mode], held]
+    end
+    mode = nil
+    held = {}
+    named.each do |one|
+      if one.is_a? Hash
+        held = one
+      elsif one.is_a? String
+        mode = one
+      end
+    end
+    [mode.nil? ? "r" : mode, held]
+  end
+  private_class_method :__read_opening__
+
   # A file standing over a descriptor the program already holds, which is
   # what a stream handed over a socket arrives as.
   def self.for_fd(number, mode = nil, **options)
@@ -8161,10 +8851,19 @@ module Marshal
       if object.respond_to? :_dump, true
         held = object.send :_dump, -1
         remember object
+        names = held.instance_variables
+        text "I" unless names.empty?
         text "u"
         symbol object.class.name
         long held.bytesize
         text held
+        unless names.empty?
+          long names.length
+          names.each do |name|
+            symbol name
+            write held.instance_variable_get(name)
+          end
+        end
         return
       end
       remember object
@@ -8317,6 +9016,13 @@ module Marshal
     end
 
     def read_with_variables
+      # A record written by an object's own `_dump` carries its variables on
+      # the run of bytes rather than on the object, since the object is not
+      # built until those bytes are read back.
+      if @bytes[@at] == "u".ord
+        @at += 1
+        return read_user_defined true
+      end
       made = read
       read_long.times do
         name = read
@@ -8353,9 +9059,16 @@ module Marshal
       made
     end
 
-    def read_user_defined
+    def read_user_defined(carries_variables = false)
       klass = named_class read.to_s
       data = read_bytes read_long
+      if carries_variables
+        read_long.times do
+          name = read
+          value = read
+          apply_variable data, name, value
+        end
+      end
       remember klass.send(:_load, data)
     end
   end
@@ -8364,8 +9077,14 @@ end
 class Integer
   # `pow` raises the number the way `**` does. Given a modulus as well, it
   # multiplies under that modulus, so a large power stays small.
-  def pow(exponent, modulus = nil)
-    return self**exponent if modulus.nil?
+  def pow(exponent, *rest)
+    return self**exponent if rest.empty?
+    if rest.size > 1
+      raise ArgumentError, "wrong number of arguments (given #{rest.size + 1}, expected 1..2)"
+    end
+    # A second argument of nil is still a second argument, and only an
+    # Integer is one this counts with.
+    modulus = rest[0]
     unless exponent.is_a?(Integer) && modulus.is_a?(Integer)
       raise TypeError,
             "Integer#pow() 2nd argument not allowed unless all arguments are integers"
@@ -10446,6 +11165,7 @@ class Encoding
         truncated = trouble[3]
         status = truncated ? :incomplete_input : :invalid_byte_sequence
         @errinfo = [status, from.name, to.name, wrong, rest]
+        @held_back = rest
         @last_error = Encoding::InvalidByteSequenceError.new(
           "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
         )
@@ -10497,15 +11217,11 @@ class Encoding
     # which the caller may put in front of the next piece of text. Reading
     # them takes them, so a second call answers nothing.
     def putback count = nil
-      held = @errinfo.nil? ? "" : @errinfo[4]
-      held = "" if held.nil?
+      held = @held_back.nil? ? "" : @held_back
       wanted = count.nil? ? held.bytesize : count
       taken = held.byteslice(held.bytesize - wanted, wanted)
       taken = "" if taken.nil?
-      unless @errinfo.nil?
-        @errinfo = @errinfo.dup
-        @errinfo[4] = held.byteslice(0, held.bytesize - taken.bytesize)
-      end
+      @held_back = held.byteslice(0, held.bytesize - taken.bytesize)
       taken.dup.force_encoding @source.name
     end
 
@@ -10589,11 +11305,26 @@ class Encoding
       # would read each one as the character it spells.
       bytes = held.bytes
       start = 0
+      # The walk steps a whole character at a time, so a run cut inside one
+      # is not mistaken for bytes the encoding cannot read at all.
       while start < bytes.length
-        break unless bytes[0..start].pack("C*").force_encoding(@source.name).valid_encoding?
-        start = start + 1
+        width = whole_character_width bytes, start
+        break if width.nil?
+        start = start + width
       end
       start = bytes.length - 1 if start >= bytes.length
+      # An encoding written in units wider than a byte is cut at unit
+      # boundaries, so the run that could not be read is the whole unit and
+      # what follows it is the whole unit after that.
+      unit = unit_width
+      if unit > 1
+        stop = start + unit
+        stop = bytes.length if stop > bytes.length
+        wrong = bytes[start..(stop - 1)].pack("C*").force_encoding "ASCII-8BIT"
+        after = bytes[stop, unit]
+        rest = after.nil? || after.empty? ? "" : after.pack("C*").force_encoding("ASCII-8BIT")
+        return [start, wrong, rest, stop >= bytes.length]
+      end
       # The run that opened the character, and the one byte after it that
       # could not carry on.
       stop = start + 1
@@ -10603,6 +11334,34 @@ class Encoding
       [start, wrong, rest, stop >= bytes.length]
     end
     private :invalid_run
+
+    # How many bytes one unit of the source encoding takes. Most encodings
+    # are written a byte at a time, while the wide ones are written in pairs
+    # or in fours.
+    def unit_width
+      case @source.name
+      when "UTF-16", "UTF-16BE", "UTF-16LE"
+        2
+      when "UTF-32", "UTF-32BE", "UTF-32LE"
+        4
+      else
+        1
+      end
+    end
+    private :unit_width
+
+    # How many bytes the character opening at `start` takes, or nil when the
+    # bytes there open no whole character the source encoding reads.
+    def whole_character_width bytes, start
+      width = 1
+      while start + width <= bytes.length && width <= 6
+        piece = bytes[start, width].pack("C*").force_encoding(@source.name)
+        return width if piece.valid_encoding?
+        width = width + 1
+      end
+      nil
+    end
+    private :whole_character_width
 
     # A run of bytes the source encoding cannot read is refused before any
     # of it is carried over.
@@ -10620,6 +11379,7 @@ class Encoding
       truncated = found[3]
       from, to = stage_for :invalid
       @errinfo = [:invalid_byte_sequence, from.name, to.name, wrong, rest]
+      @held_back = rest
       trouble = Encoding::InvalidByteSequenceError.new(
         "#{wrong.inspect} on #{from.name}", from, to, wrong, rest, truncated
       )

@@ -343,3 +343,19 @@ fn test_strings_written_formats_parens_execution() {
     let output = run_example("strings/written_formats_parens.rb");
     assert_eq!(output, WRITTEN_FORMATS_OUTPUT);
 }
+
+/// The expected output of both `strings/split_shapes` variants, which differ only in
+/// whether the calls are written with parentheses.
+const SPLIT_SHAPES_OUTPUT: &str = "[\"now's\", \"the\", \"time\"]\n[\"now's\", \"the\", \"time  \"]\n[\"now's\", \"the\", \"time\", \"\"]\n[\"1\", \"2\", \"\", \"3\", \"4\"]\n[\"1\", \"2\", \"\", \"3\", \"4\", \"\", \"\"]\n[\"1\", \"2.3.4\"]\n[\"h\", \"e\", \"l\", \"l\", \"o\"]\n[\"h\", \"ello\"]\n[\"h\", \"el\", \"lo\"]\n[\"h\", \"\", \"i\", \"\", \"!\"]\n[\"h\", \"el\", \"lo\"]\n[\"a\", \"B\", \"\", \"\", \"aBa\"]\n[\"h\", \"e\", \"l\", \"l\", \"o\", \"\"]\n[\"AA\", \"BCC\", \"BAA\"]\n[\"\", \"a\", \"b\", \"c\", \"d\"]\n[\"Chunky\", \"Bacon\"]\n\"chunky-bacon\"\n";
+
+#[test]
+fn test_strings_split_shapes_execution() {
+    let output = run_example("strings/split_shapes.rb");
+    assert_eq!(output, SPLIT_SHAPES_OUTPUT);
+}
+
+#[test]
+fn test_strings_split_shapes_parens_execution() {
+    let output = run_example("strings/split_shapes_parens.rb");
+    assert_eq!(output, SPLIT_SHAPES_OUTPUT);
+}

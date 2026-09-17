@@ -13,6 +13,7 @@ pub mod file_loader;
 pub mod lexer;
 pub mod object;
 pub mod parser;
+pub mod regexp;
 pub mod repl;
 pub mod resolver;
 pub mod runtime;

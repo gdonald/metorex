@@ -22,6 +22,7 @@ impl VirtualMachine {
             start,
             end,
             exclusive,
+            ..
         } = receiver
         else {
             return Ok(None);
@@ -576,6 +577,7 @@ impl VirtualMachine {
                     start: other_start,
                     end: other_end,
                     exclusive: other_exclusive,
+                    ..
                 } = &arguments[0]
                 {
                     let starts_within = match (start.as_ref(), other_start.as_ref()) {
@@ -628,6 +630,7 @@ impl VirtualMachine {
                     start: other_start,
                     end: other_end,
                     exclusive: other_exclusive,
+                    ..
                 } = &arguments[0]
                 else {
                     let message = format!(
@@ -734,6 +737,7 @@ impl VirtualMachine {
                     start: other_start,
                     end: other_end,
                     exclusive: other_exclusive,
+                    ..
                 } = other
                 else {
                     return Ok(Some(Object::Bool(false)));

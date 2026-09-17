@@ -11,8 +11,8 @@ calculate
 
 #[test]
 fn test_introspection_function_module_execution() {
-    let expected = r#"main
-main
+    let expected = r#"Object
+Object
 "#;
     let output = run_example("introspection/function/module.rb");
     assert_eq!(output, expected);
@@ -660,4 +660,20 @@ fn test_introspection_body_frames_execution() {
 fn test_introspection_body_frames_parens_execution() {
     let output = run_example("introspection/body_frames_parens.rb");
     assert_eq!(output, BODY_FRAMES_OUTPUT);
+}
+
+/// The expected output of both `introspection/method_owners` variants, which
+/// differ only in whether the calls are written with parentheses.
+const METHOD_OWNERS_OUTPUT: &str = "Module\nString\n:include\nModule\n:open\nfalse\n[:open_entry]\nNoMethodError\ntrue\nModule\n:closed\n[:closed_entry, :open_entry]\n";
+
+#[test]
+fn test_introspection_method_owners_execution() {
+    let output = run_example("introspection/method_owners.rb");
+    assert_eq!(output, METHOD_OWNERS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_method_owners_parens_execution() {
+    let output = run_example("introspection/method_owners_parens.rb");
+    assert_eq!(output, METHOD_OWNERS_OUTPUT);
 }

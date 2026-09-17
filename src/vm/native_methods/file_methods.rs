@@ -546,78 +546,7 @@ impl VirtualMachine {
                     position,
                 ));
             }
-            // `Dir.glob` takes a pattern, the flags that widen it, and a
-            // `base:` naming the directory the pattern is read against, while
-            // `Dir[]` takes patterns alone.
-            let mut patterns: Vec<String> = Vec::new();
-            let mut flags = 0i64;
-            let mut base: Option<String> = None;
-            for (index, argument) in arguments.iter().enumerate() {
-                match argument {
-                    Object::String(held) => patterns.push(held.as_str().to_string()),
-                    Object::Array(held) => {
-                        for one in held.borrow().iter() {
-                            match one {
-                                Object::String(text) => patterns.push(text.as_str().to_string()),
-                                other => {
-                                    return Err(method_argument_type_error(
-                                        method_name,
-                                        "String",
-                                        other,
-                                        position,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                    Object::Int(held) if index > 0 && method_name == "glob" => flags = *held,
-                    Object::Dict(held) if method_name == "glob" => {
-                        for (key, value) in held.borrow().iter() {
-                            if key == ":base" || key == "base" {
-                                base = Some(value.to_string());
-                            }
-                        }
-                    }
-                    other => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "String",
-                            other,
-                            position,
-                        ));
-                    }
-                }
-            }
-            // Ruby hides a leading dot from `*` unless asked not to, which is
-            // the opposite of what the glob crate does by default.
-            let options = glob::MatchOptions {
-                case_sensitive: flags & 0x08 == 0,
-                require_literal_separator: false,
-                require_literal_leading_dot: flags & 0x04 == 0,
-            };
-            let mut results: Vec<Object> = Vec::new();
-            for pattern in patterns {
-                let (searched, prefix) = match &base {
-                    Some(held) if !held.is_empty() => (
-                        format!("{}/{}", held.trim_end_matches('/'), pattern),
-                        format!("{}/", held.trim_end_matches('/')),
-                    ),
-                    _ => (pattern, String::new()),
-                };
-                if let Ok(paths) = glob::glob_with(&searched, options) {
-                    for entry in paths.flatten() {
-                        let found = entry.to_string_lossy().to_string();
-                        let written = match found.strip_prefix(&prefix) {
-                            Some(rest) if !prefix.is_empty() => rest.to_string(),
-                            _ => found,
-                        };
-                        results.push(Object::string(written));
-                    }
-                }
-            }
-            return Ok(Some(Object::Array(Rc::new(std::cell::RefCell::new(
-                results,
-            )))));
+            return self.glob_paths(method_name, arguments, position).map(Some);
         }
 
         // ── File methods ────────────────────────────────────────────────────
@@ -905,7 +834,9 @@ impl VirtualMachine {
                 Ok(Some(super::pack_format::bytes_to_string(taken)))
             }
             // File.read(path) answers everything the file holds.
-            "read" => {
+            // The Ruby side reads a file through `File.open`, so this answers
+            // only where a run of bytes is wanted with no options at all.
+            "__read_file__" => {
                 if arguments.is_empty() {
                     return Err(method_argument_error(
                         method_name,
@@ -1051,6 +982,41 @@ impl VirtualMachine {
                 // A name is a String or anything that spells itself as one,
                 // which `to_path` and `to_str` are for.
                 let held = arguments[0].clone();
+                // A count of arguments past the name, the mode, and the
+                // permissions is one too many, options aside.
+                let counted = arguments
+                    .iter()
+                    .filter(|given| !names_keywords(given))
+                    .count();
+                if counted > 3 {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        &format!("wrong number of arguments (given {counted}, expected 1..3)"),
+                        position,
+                    ));
+                }
+                // A number in the name's place is a descriptor the program
+                // already holds rather than a path.
+                if let Object::Int(number) = &held {
+                    if *number < 0 {
+                        return Err(crate::vm::errors::simple_exception(
+                            "Errno::EBADF",
+                            "Bad file descriptor",
+                            position,
+                        ));
+                    }
+                    let rest: Vec<Object> = arguments[1..].to_vec();
+                    let mut passed = vec![held.clone()];
+                    passed.extend(rest);
+                    return self
+                        .send_to_object(
+                            Object::Class(Rc::clone(class_rc)),
+                            "for_fd",
+                            passed,
+                            position,
+                        )
+                        .map(Some);
+                }
                 let path = self.directory_path_argument("open", &held, position)?;
                 // The options may name the mode instead of a second argument
                 // naming it, which is what `mode:` is for.
@@ -1061,19 +1027,81 @@ impl VirtualMachine {
                     },
                     _ => None,
                 };
-                let mode = match arguments.get(1) {
-                    Some(Object::String(s)) => s.as_str().to_string(),
-                    Some(Object::Dict(_)) | None => named_mode.unwrap_or_else(|| "r".to_string()),
+                // The options may also name the flags a numeric mode would.
+                let named_flags = match arguments.last() {
+                    Some(Object::Dict(options)) => match options.borrow().get(":flags") {
+                        Some(Object::Int(bits)) => Some(*bits),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let (mode, numeric) = match arguments.get(1) {
+                    Some(Object::String(s)) => (s.as_str().to_string(), None),
+                    // A number names the flags the file is opened with, which
+                    // say the same as a mode written out.
+                    Some(Object::Int(bits)) => (mode_of_flags(*bits), Some(*bits)),
+                    Some(Object::Dict(_)) | None => {
+                        (named_mode.unwrap_or_else(|| "r".to_string()), None)
+                    }
                     Some(other) => {
                         return Err(method_argument_type_error(
                             "open", "String", other, position,
                         ));
                     }
                 };
+                let flags = (numeric.unwrap_or(0) | named_flags.unwrap_or(0)) as libc::c_int;
                 let writing = mode.contains('w') || mode.contains('a') || mode.contains('+');
                 let truncate = mode.contains('w');
-                if writing && truncate {
+                let there = std::path::Path::new(&path).exists();
+                // Asked for a file of its own, a name that already stands for
+                // one is refused.
+                // A mode that names writing from the start brings the file
+                // into being, where one that only adds to what is there does
+                // not.
+                let creates =
+                    mode.starts_with('w') || mode.starts_with('a') || flags & libc::O_CREAT != 0;
+                if flags & libc::O_EXCL != 0 && creates && there {
+                    return Err(crate::vm::errors::simple_exception(
+                        "Errno::EEXIST",
+                        &format!("File exists @ rb_sysopen - {path}"),
+                        position,
+                    ));
+                }
+                // A permission argument settles what a file brought into being
+                // may be read and written by, less what the umask takes off.
+                // It is applied once the stream is open, so a file made
+                // read-only is still written through the stream that made it.
+                let allowed = match arguments.get(2) {
+                    Some(Object::Int(wanted)) if !there && creates => {
+                        // SAFETY: reading the mask means setting it and
+                        // putting it straight back.
+                        let masked = unsafe {
+                            let held = libc::umask(0);
+                            libc::umask(held);
+                            held
+                        };
+                        Some((*wanted as u32) & !(masked as u32))
+                    }
+                    _ => None,
+                };
+                if creates && !there {
                     let _ = std::fs::write(&path, "");
+                }
+                if writing && truncate && there {
+                    let _ = std::fs::write(&path, "");
+                }
+                // `File.new` hands nothing to a block, and says so.
+                if method_name == "new" && matches!(self.pending_block, Some(Object::Block(_))) {
+                    self.pending_block = None;
+                    let file = self
+                        .current_source_file
+                        .clone()
+                        .unwrap_or_else(|| "-".to_string());
+                    let message = format!(
+                        "{}:{}: warning: File::new() does not take block; use File::open() instead\n",
+                        file, position.line
+                    );
+                    self.warn_through_warning_module(message, position)?;
                 }
                 let file_class = match self.globals().get("__File_handle_class") {
                     Some(Object::Class(c)) => c,
@@ -1097,7 +1125,7 @@ impl VirtualMachine {
                 // `path` hands back a String in the same encoding.
                 let named = match &held {
                     Object::String(spelled) => Object::String(Rc::clone(spelled)),
-                    _ => Object::string(path),
+                    _ => Object::string(path.clone()),
                 };
                 inst_rc
                     .borrow_mut()
@@ -1133,6 +1161,11 @@ impl VirtualMachine {
                 // opened for writing brings the file into being.
                 let block = self.pending_block.take();
                 self.send_to_object(handle.clone(), "__stream_handle__", Vec::new(), position)?;
+                if let Some(allowed) = allowed {
+                    use std::os::unix::fs::PermissionsExt as _;
+                    let _ =
+                        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(allowed));
+                }
                 if let Some(Object::Block(b)) = block {
                     let result = self.execute_block_callable(&b, vec![handle], position);
                     return result.map(Some);
@@ -1604,7 +1637,7 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<String, MetorexError> {
         match argument {
-            Object::String(path) => Ok(path.as_str().to_string()),
+            Object::String(path) => Ok(path_text(path)),
             // A name is spelled by `to_path` where an object has one, and by
             // `to_str` otherwise. Only an object that answers neither is the
             // wrong kind of argument.
@@ -1622,7 +1655,7 @@ impl VirtualMachine {
                     if let Object::String(path) =
                         self.send_to_object(other.clone(), named, vec![], position)?
                     {
-                        return Ok(path.as_str().to_string());
+                        return Ok(path_text(&path));
                     }
                 }
                 Err(method_argument_type_error(
@@ -2119,4 +2152,189 @@ fn brace_alternatives(inside: &[char], flags: i64) -> Vec<String> {
     }
     parts.push(held);
     parts
+}
+
+/// The characters a path names. A name standing for the bytes it was read
+/// from is read back through those bytes, so the name reaches the operating
+/// system the way it was written.
+fn path_text(held: &Rc<crate::object::StringValue>) -> String {
+    if !held.holds_bytes() {
+        return held.as_str().to_string();
+    }
+    let bytes = crate::vm::native_methods::string_methods::binary_bytes(held);
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => held.as_str().to_string(),
+    }
+}
+
+/// The mode a count of flag bits names. The access bits say whether the file
+/// is read, written, or both, and the rest say how it is opened.
+fn mode_of_flags(bits: i64) -> String {
+    let bits = bits as libc::c_int;
+    let appends = bits & libc::O_APPEND != 0;
+    let truncates = bits & libc::O_TRUNC != 0;
+    match bits & libc::O_ACCMODE {
+        held if held == libc::O_WRONLY => {
+            if truncates {
+                "w".to_string()
+            } else if appends {
+                "a".to_string()
+            } else {
+                "r+".to_string()
+            }
+        }
+        held if held == libc::O_RDWR => {
+            if truncates {
+                "w+".to_string()
+            } else if appends {
+                "a+".to_string()
+            } else {
+                "r+".to_string()
+            }
+        }
+        _ => "r".to_string(),
+    }
+}
+
+/// Whether an argument is the hash of keywords a call carries rather than one
+/// the program wrote out as an argument of its own.
+fn names_keywords(given: &Object) -> bool {
+    let Object::Dict(entries) = given else {
+        return false;
+    };
+    entries
+        .borrow()
+        .contains_key(crate::vm::param_binding::KWARGS_MARKER)
+}
+
+impl VirtualMachine {
+    /// `Dir.glob` and `Dir[]`: every path the patterns name, read against the
+    /// directory `base:` names or the one the program stands in.
+    fn glob_paths(
+        &mut self,
+        method_name: &str,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        let mut patterns: Vec<String> = Vec::new();
+        let mut flags = 0i64;
+        let mut base: Option<String> = None;
+        let mut sorted = true;
+        for (index, argument) in arguments.iter().enumerate() {
+            match argument {
+                Object::Array(held) => {
+                    for one in held.borrow().iter().cloned().collect::<Vec<Object>>() {
+                        patterns.push(self.glob_pattern_text(&one, position)?);
+                    }
+                }
+                Object::Int(held) if index > 0 => flags = *held,
+                Object::Dict(held) if names_keywords(argument) || method_name == "glob" => {
+                    let entries: Vec<(String, Object)> = held
+                        .borrow()
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone()))
+                        .collect();
+                    for (key, value) in entries {
+                        match key.as_str() {
+                            ":base" => {
+                                base = match &value {
+                                    Object::Nil => None,
+                                    Object::String(text) => Some(text.as_str().to_string()),
+                                    other => Some(self.glob_pattern_text(other, position)?),
+                                }
+                            }
+                            ":sort" => match value {
+                                Object::Bool(held) => sorted = held,
+                                _ => {
+                                    return Err(crate::vm::errors::simple_exception(
+                                        "ArgumentError",
+                                        "expected true or false as sort:",
+                                        position,
+                                    ));
+                                }
+                            },
+                            _ => {}
+                        }
+                    }
+                }
+                other => patterns.push(self.glob_pattern_text(other, position)?),
+            }
+        }
+        let options = crate::vm::native_methods::glob::Options {
+            dotmatch: flags & 0x04 != 0,
+            noescape: flags & 0x01 != 0,
+            casefold: flags & 0x08 != 0,
+        };
+        let root = match &base {
+            None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+            Some(held) if held.is_empty() => {
+                std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+            }
+            Some(held) => {
+                let named = std::path::PathBuf::from(held);
+                if named.is_absolute() {
+                    named
+                } else {
+                    std::env::current_dir()
+                        .unwrap_or_else(|_| std::path::PathBuf::from("."))
+                        .join(named)
+                }
+            }
+        };
+        let against_base = base.as_ref().is_some_and(|held| !held.is_empty());
+        let mut found: Vec<Object> = Vec::new();
+        for pattern in patterns {
+            if pattern.contains('\0') {
+                return Err(crate::vm::errors::simple_exception(
+                    "ArgumentError",
+                    "nul-separated glob pattern is deprecated",
+                    position,
+                ));
+            }
+            for spread in crate::vm::native_methods::glob::brace_expansions(&pattern) {
+                let mut held =
+                    crate::vm::native_methods::glob::matching_paths(&root, &spread, &options);
+                // Read against a directory named on its own, a pattern that
+                // walks down through the subdirectories names that directory
+                // itself as well.
+                if against_base && spread.starts_with("**/") && spread.ends_with('/') {
+                    held.insert(0, "/".to_string());
+                }
+                if sorted {
+                    held.sort();
+                }
+                found.extend(held.into_iter().map(Object::string));
+            }
+        }
+        // A block is handed each path and the call answers nothing.
+        if let Some(Object::Block(block)) = self.pending_block.take() {
+            for path in found {
+                self.execute_block_callable(&block, vec![path], position)?;
+            }
+            return Ok(Object::Nil);
+        }
+        Ok(Object::Array(Rc::new(std::cell::RefCell::new(found))))
+    }
+
+    /// The text a glob pattern is written as. A pattern in an encoding that
+    /// spells no ASCII cannot name a path.
+    fn glob_pattern_text(
+        &mut self,
+        held: &Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if let Object::String(text) = held {
+            let named = text.encoding_name();
+            if !crate::vm::native_methods::string_methods::encoding_is_ascii_compatible(&named) {
+                return Err(crate::vm::errors::simple_exception(
+                    "Encoding::CompatibilityError",
+                    &format!("ASCII incompatible encoding: {named}"),
+                    position,
+                ));
+            }
+            return Ok(path_text(text));
+        }
+        self.directory_path_argument("glob", held, position)
+    }
 }

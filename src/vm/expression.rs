@@ -26,11 +26,23 @@ impl VirtualMachine {
         &mut self,
         parts: &[InterpolationPart],
     ) -> Result<Object, MetorexError> {
-        let (text, carried) = self.interpolate(parts)?;
+        let (text, carried, raw) = self.interpolate(parts)?;
         let ascii_literal = parts.iter().all(|part| match part {
             InterpolationPart::Text(written) => written.is_ascii(),
             InterpolationPart::Expression(_) => true,
         });
+        // A piece standing for the bytes it was read from makes the whole
+        // string stand for bytes, and every other piece is written out in the
+        // bytes its own encoding spells it with.
+        if let Some(raw) = raw {
+            let spelled = crate::object::StringValue::from_bytes(
+                crate::vm::native_methods::pack_format::bytes_to_string(&raw).to_string(),
+            );
+            if let Some((encoding, _)) = &carried {
+                spelled.set_encoding(encoding.clone());
+            }
+            return Ok(Object::String(std::rc::Rc::new(spelled)));
+        }
         let Some((encoding, holds_bytes)) = carried.filter(|_| ascii_literal) else {
             return Ok(Object::string(text));
         };
@@ -40,18 +52,25 @@ impl VirtualMachine {
         }
         Ok(Object::String(std::rc::Rc::new(spelled)))
     }
+}
 
+/// What interpolation answers: the text the parts spell, the encoding the
+/// first piece outside ASCII carried and whether that piece stood for bytes,
+/// and the bytes themselves where any piece stood for bytes.
+type Interpolated = (String, Option<(String, bool)>, Option<Vec<u8>>);
+
+impl VirtualMachine {
     /// The text the parts spell, along with the encoding of the first piece
     /// that held anything outside ASCII, and whether that piece stood for
     /// bytes rather than characters.
-    fn interpolate(
-        &mut self,
-        parts: &[InterpolationPart],
-    ) -> Result<(String, Option<(String, bool)>), MetorexError> {
+    fn interpolate(&mut self, parts: &[InterpolationPart]) -> Result<Interpolated, MetorexError> {
         let mut carried: Option<(String, bool)> = None;
         let mut buffer = String::new();
+        let mut raw: Vec<u8> = Vec::new();
+        let mut any_bytes = false;
 
         for part in parts {
+            let wrote = buffer.len();
             match part {
                 InterpolationPart::Text(text) => buffer.push_str(text),
                 InterpolationPart::Expression(expr) => {
@@ -99,11 +118,21 @@ impl VirtualMachine {
                     {
                         carried = Some((spelled.encoding_name(), spelled.holds_bytes()));
                     }
+                    if let Object::String(spelled) = &value
+                        && spelled.holds_bytes()
+                    {
+                        any_bytes = true;
+                        raw.extend(crate::vm::native_methods::string_methods::binary_bytes(
+                            spelled,
+                        ));
+                        continue;
+                    }
                 }
             }
+            raw.extend(&buffer.as_bytes()[wrote..]);
         }
 
-        Ok((buffer, carried))
+        Ok((buffer, carried, if any_bytes { Some(raw) } else { None }))
     }
 
     /// Evaluate array literal expressions.
@@ -264,7 +293,14 @@ impl VirtualMachine {
             Object::Nil => Ok(None),
             Object::Int(number) => Ok(Some(*number)),
             Object::Float(number) => Ok(Some(*number as i64)),
-            other if self.responds_to(other, "to_int") => {
+            // A number past what a machine word holds names no place in a
+            // collection, which Ruby reports as a range rather than a type.
+            Object::BigInt(_) => Err(crate::vm::errors::simple_exception(
+                "RangeError",
+                "bignum too big to convert into 'long'",
+                position,
+            )),
+            other if self.answers_to(other, "to_int", position)? => {
                 match self.send_to_object(other.clone(), "to_int", vec![], position)? {
                     Object::Int(number) => Ok(Some(number)),
                     Object::Float(number) => Ok(Some(number as i64)),
@@ -319,6 +355,7 @@ impl VirtualMachine {
                     ref start,
                     ref end,
                     exclusive,
+                    ..
                 } => {
                     let elements = elements_rc.borrow();
                     let length = elements.len() as i64;
@@ -436,6 +473,7 @@ impl VirtualMachine {
                         start,
                         end,
                         exclusive,
+                        ..
                     } => {
                         let chars: Vec<char> = s.as_str().chars().collect();
                         let len = chars.len() as i64;
@@ -481,6 +519,34 @@ impl VirtualMachine {
                                 .send_to_object(found, "[]", vec![Object::Int(0)], position)
                                 .map(Ok)?,
                             None => Ok(Object::Nil),
+                        }
+                    }
+                    // A number too wide to count characters with names no
+                    // place in the string.
+                    Object::BigInt(_) => Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        "bignum too big to convert into `long'",
+                        position,
+                    )),
+                    // An instance of a String subclass carries its characters
+                    // in an instance variable, and names a substring the same
+                    // way a plain String does.
+                    Object::Instance(_) => {
+                        match crate::vm::native_methods::string_subclass_value(&key) {
+                            Some(Object::String(wanted)) => {
+                                if s.as_str().contains(&*wanted.as_str()) {
+                                    Ok(Object::string(wanted.as_str().to_string()))
+                                } else {
+                                    Ok(Object::Nil)
+                                }
+                            }
+                            _ => Err(MetorexError::type_error(
+                                format!(
+                                    "String index must be Integer or Range, found {}",
+                                    key.type_name()
+                                ),
+                                position_to_location(position),
+                            )),
                         }
                     }
                     _ => Err(MetorexError::type_error(

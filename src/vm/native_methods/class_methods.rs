@@ -8,6 +8,15 @@ use crate::vm::native_methods::is_valid_constant_name;
 use crate::vm::utils::{is_truthy, position_to_location};
 use std::rc::Rc;
 
+/// The most elements an array Ruby builds may hold, which is what it refuses
+/// a larger count against.
+const WIDEST_ARRAY: i64 = 1152921504606846975;
+
+/// Ruby's ArgumentError for an array asked to hold more than it can.
+fn array_size_too_big(position: Position) -> MetorexError {
+    crate::vm::errors::simple_exception("ArgumentError", "array size too big", position)
+}
+
 impl VirtualMachine {
     /// Where a bare `autoload` registers: the scope the call sits in. A class
     /// or module body is that scope, and inside a method body it is the
@@ -40,6 +49,19 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
+        let mut elements = Vec::new();
+        self.collect_array_elements(arguments, position, &mut elements)?;
+        Ok(elements)
+    }
+
+    /// The same, filling `elements` as it goes so a `break` out of the block
+    /// leaves behind what it had already built.
+    pub(crate) fn collect_array_elements(
+        &mut self,
+        arguments: &[Object],
+        position: Position,
+        elements: &mut Vec<Object>,
+    ) -> Result<(), MetorexError> {
         if arguments.len() > 2 {
             return Err(crate::vm::errors::argument_count_error(
                 crate::vm::errors::Arity::Range(0, 2),
@@ -77,7 +99,7 @@ impl VirtualMachine {
             }
             _ => None,
         };
-        if let Some(Object::Array(elements)) = read_as_array {
+        if let Some(Object::Array(held)) = read_as_array {
             if arguments.len() > 1 {
                 return Err(crate::vm::errors::simple_exception(
                     "TypeError",
@@ -86,11 +108,15 @@ impl VirtualMachine {
                 ));
             }
             self.pending_block.take();
-            return Ok(elements.borrow().clone());
+            elements.extend(held.borrow().iter().cloned());
+            return Ok(());
         }
         let size = match arguments.first() {
             None => 0_i64,
             Some(Object::Int(n)) => *n,
+            // A count past the widest array Ruby builds is refused rather
+            // than attempted.
+            Some(Object::BigInt(_)) => return Err(array_size_too_big(position)),
             Some(Object::Nil) => {
                 return Err(crate::vm::errors::simple_exception(
                     "TypeError",
@@ -128,8 +154,23 @@ impl VirtualMachine {
                 message,
             });
         }
+        if size > WIDEST_ARRAY {
+            return Err(array_size_too_big(position));
+        }
         let block = self.pending_block.take();
-        let mut elements: Vec<Object> = Vec::with_capacity(size as usize);
+        // A block fills every place, so a default named alongside it has
+        // nothing left to fill and Ruby says so.
+        if matches!(block, Some(Object::Block(_))) && arguments.len() > 1 {
+            let file = self
+                .current_source_file
+                .clone()
+                .unwrap_or_else(|| "-".to_string());
+            let message = format!(
+                "{}:{}: warning: block supersedes default value argument\n",
+                file, position.line
+            );
+            self.warn_through_warning_module(message, position)?;
+        }
         if let Some(Object::Block(body)) = block {
             // The block may take 0 args (`Array.new(10) { rand }`) or 1
             // (`Array.new(10) { |i| ... }`). Match metorex's strict arity
@@ -154,7 +195,7 @@ impl VirtualMachine {
                 elements.push(default.clone());
             }
         }
-        Ok(elements)
+        Ok(())
     }
 
     pub(crate) fn call_class_methods(
@@ -1195,7 +1236,24 @@ impl VirtualMachine {
         }
         // `Regexp.new` / `Regexp.compile` build a pattern from a source
         // string, with the second argument turning case folding on.
-        if class_named_in_chain(class_rc, "Regexp") && matches!(method_name, "new" | "compile") {
+        // `__literal__` is how a pattern written out with `#{}` in it is
+        // built once its parts are known. A literal names its encoding with
+        // `n` and `u`, which `new` refuses.
+        if class_named_in_chain(class_rc, "Regexp")
+            && matches!(method_name, "new" | "compile" | "__literal__")
+        {
+            let written_out = method_name == "__literal__";
+            // A pattern written with `o` is built once and stands for every
+            // time the line it is written on is reached again.
+            let built_once = match arguments.get(2) {
+                Some(Object::String(site)) => Some(site.as_str().to_string()),
+                _ => None,
+            };
+            if let Some(site) = &built_once
+                && let Some(held) = self.patterns_built_once.get(site)
+            {
+                return Ok(Some(held.clone()));
+            }
             let source_encoding = match arguments.first() {
                 Some(Object::String(text)) => Some(text.encoding_name()),
                 _ => None,
@@ -1263,13 +1321,15 @@ impl VirtualMachine {
                     }
                 }
                 // A String names the flags by the letters a literal is
-                // written with, and only those three letters name one.
+                // written with, which are the three that change how the
+                // pattern reads and the two that name the encoding it
+                // matches in.
                 Some(Object::String(written)) => {
                     let spelling = written.as_str().to_string();
-                    if spelling
-                        .chars()
-                        .any(|held| !matches!(held, 'i' | 'm' | 'x'))
-                    {
+                    if spelling.chars().any(|held| {
+                        !(matches!(held, 'i' | 'm' | 'x')
+                            || (written_out && matches!(held, 'n' | 'u' | 'o')))
+                    }) {
                         let message = format!("unknown regexp option: {}", spelling);
                         return Err(crate::vm::errors::simple_exception(
                             "ArgumentError",
@@ -1277,7 +1337,9 @@ impl VirtualMachine {
                             position,
                         ));
                     }
-                    for held in ['i', 'm', 'x'] {
+                    // `o` says when the pattern is built rather than what it
+                    // matches, so the built one does not carry it.
+                    for held in ['i', 'm', 'x', 'n', 'u'] {
                         if spelling.contains(held) {
                             flags.push(held);
                         }
@@ -1304,6 +1366,9 @@ impl VirtualMachine {
                     .insert(Rc::as_ptr(&built) as usize, named);
             }
             let made = Object::Regex(built, Rc::new(flags));
+            if let Some(site) = built_once {
+                self.patterns_built_once.insert(site, made.clone());
+            }
             if class_rc.name() == "Regexp" {
                 return Ok(Some(made));
             }
@@ -1347,7 +1412,7 @@ impl VirtualMachine {
             for part in &parts {
                 sources.push(match part {
                     Object::Regex(pattern, _) => pattern.as_str().to_string(),
-                    other => regex::escape(&self.coerce_name_argument(other, position)?),
+                    other => crate::regexp::escape(&self.coerce_name_argument(other, position)?),
                 });
             }
             return Ok(Some(Object::Regex(
@@ -3533,6 +3598,9 @@ impl VirtualMachine {
                         // table entries, so they count as present too.
                         && !MODULE_PRIVATE_HOOKS.contains(&name.as_str())
                         && !BASIC_OBJECT_PRIVATE_METHODS.contains(&name.as_str())
+                        // An exception answers its own methods natively, so a
+                        // class holding exceptions counts them as present.
+                        && !answers_exception_method(self, class_rc, &name)
                     {
                         let msg = format!(
                             "undefined method '{}' for {} '{}'",
@@ -4468,6 +4536,7 @@ pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "readlines",
     "respond_to_missing?",
     "srand",
+    "system",
     "putc",
     "puts",
     "throw",
@@ -4638,6 +4707,26 @@ pub(crate) fn native_module_method_stub(name: &str) -> Option<Method> {
         stub.variadic_param = Some((last, unnamed[last].clone()));
     }
     Some(stub)
+}
+
+/// Whether a name is one of the methods an exception answers natively, on a
+/// class that holds exceptions.
+fn answers_exception_method(vm: &VirtualMachine, class_rc: &Rc<Class>, name: &str) -> bool {
+    holds_exceptions(vm, class_rc)
+        && super::exception_methods::NATIVE_EXCEPTION_METHODS.contains(&name)
+}
+
+/// Whether a class stands for exceptions, either because it is one of their
+/// classes or because it is the singleton class of an exception.
+fn holds_exceptions(vm: &VirtualMachine, class_rc: &Rc<Class>) -> bool {
+    if vm.is_exception_class(class_rc) {
+        return true;
+    }
+    class_rc.is_singleton_class()
+        && matches!(
+            class_rc.get_class_var("__attached__"),
+            Some(Object::Exception(_))
+        )
 }
 
 /// How `undef_method` names its receiver. The metaclass of a class or module
@@ -5394,6 +5483,7 @@ fn refuse_bad_pattern(source: &str, position: Position) -> Result<(), MetorexErr
     };
     let mut at = 0;
     let mut class_opened = false;
+    let mut depth = 0usize;
     while at < letters.len() {
         match letters[at] {
             '\\' => {
@@ -5457,6 +5547,37 @@ fn refuse_bad_pattern(source: &str, position: Position) -> Result<(), MetorexErr
             }
             '[' if !class_opened => class_opened = true,
             ']' if class_opened => class_opened = false,
+            '(' if !class_opened => {
+                // `(?#...)` is a comment, which runs to the first `)` and
+                // carries no group of its own.
+                if letters.get(at + 1) == Some(&'?') && letters.get(at + 2) == Some(&'#') {
+                    let Some(closing) = letters[at + 3..].iter().position(|held| *held == ')')
+                    else {
+                        return refuse("end pattern with unmatched parenthesis");
+                    };
+                    at += 4 + closing;
+                    continue;
+                }
+                if let Some(opener) = group_name_opener(&letters, at) {
+                    let named: String = letters[at + 3..]
+                        .iter()
+                        .take_while(|held| **held != opener)
+                        .collect();
+                    if named.is_empty() {
+                        return refuse("group name is empty");
+                    }
+                    if named.starts_with(|held: char| held.is_ascii_digit() || held == '-') {
+                        return refuse(&format!("invalid group name <{named}>"));
+                    }
+                }
+                depth += 1;
+            }
+            ')' if !class_opened => {
+                if depth == 0 {
+                    return refuse("unmatched close parenthesis");
+                }
+                depth -= 1;
+            }
             _ => {}
         }
         at += 1;
@@ -5464,7 +5585,29 @@ fn refuse_bad_pattern(source: &str, position: Position) -> Result<(), MetorexErr
     if class_opened {
         return refuse("premature end of char-class");
     }
+    if depth > 0 {
+        return refuse("end pattern with unmatched parenthesis");
+    }
+    // Whatever the checks above let through, the engine still has to be able
+    // to read the pattern before there is anything to match with.
+    if let Err(trouble) = crate::vm::native_methods::regexp_methods::read_pattern(source, "") {
+        return refuse(&trouble);
+    }
     Ok(())
+}
+
+/// The character that closes the name of a group opening at `at`, for
+/// `(?<name>` and `(?'name'`. A lookbehind is written `(?<=` and `(?<!`, so
+/// those carry no name.
+fn group_name_opener(letters: &[char], at: usize) -> Option<char> {
+    if letters.get(at + 1) != Some(&'?') {
+        return None;
+    }
+    match letters.get(at + 2) {
+        Some('<') if !matches!(letters.get(at + 3), Some('=') | Some('!')) => Some('>'),
+        Some('\'') => Some('\''),
+        _ => None,
+    }
 }
 
 /// The codepoints a `\u` escape names, and where the pattern carries on.

@@ -82,6 +82,7 @@ fn class_of_range() {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(10)),
         exclusive: false,
+        mark: std::rc::Rc::new(()),
     });
     assert_eq!(class.name(), "Range");
 }

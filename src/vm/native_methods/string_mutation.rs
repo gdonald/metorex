@@ -77,6 +77,14 @@ impl VirtualMachine {
             }
             _ => {}
         }
+        // A string whose bytes its encoding already reads has nothing for
+        // `scrub!` to put aside, so a frozen one is left as it is.
+        if method_name == "scrub!"
+            && target.is_frozen()
+            && super::string_methods::holds_valid_text(target)
+        {
+            return Ok(Some(receiver.clone()));
+        }
         if target.is_frozen() {
             return Err(self.frozen_modification_error(receiver, position));
         }
@@ -112,12 +120,15 @@ impl VirtualMachine {
                         // alongside is refused, and text that goes with it
                         // carries its own reading into the result.
                         Object::String(other) => {
+                            // Text that stands for bytes carries that over,
+                            // so a byte the encoding cannot read stays the
+                            // byte it was rather than being written out.
+                            if other.holds_bytes() {
+                                target.mark_bytes();
+                            }
                             match appended_encoding(target, other) {
                                 Some(Some(named)) => {
                                     target.set_encoding(named);
-                                    if other.holds_bytes() {
-                                        target.mark_bytes();
-                                    }
                                 }
                                 Some(None) => {}
                                 None => {
@@ -323,7 +334,18 @@ impl VirtualMachine {
                 let plain = method_name.trim_end_matches('!');
                 let answered = self.call_string_method(receiver, plain, arguments, position)?;
                 if let Some(Object::String(made)) = answered {
+                    // A string already reading the way it was asked to is
+                    // left alone, so a frozen one that needs no change is
+                    // not refused.
+                    if made.to_text() == target.to_text()
+                        && made.encoding_name() == target.encoding_name()
+                    {
+                        return Ok(Some(receiver.clone()));
+                    }
                     target.set_encoding(made.encoding_name());
+                    if made.holds_bytes() {
+                        target.mark_bytes();
+                    }
                     target.replace_text(made.to_text());
                 }
                 Ok(Some(receiver.clone()))
@@ -549,17 +571,31 @@ impl VirtualMachine {
                 };
                 usize::try_from(at).unwrap_or(0)
             }
-            Some(Object::Range { start, .. }) => match start.as_ref() {
-                Object::Int(index) => {
-                    let at = if *index < 0 {
-                        *index + letters.len() as i64
-                    } else {
-                        *index
-                    };
-                    usize::try_from(at).unwrap_or(0)
+            Some(Object::Range { start, .. }) => {
+                // An end written as something that answers `to_int` names a
+                // place the same way a number does.
+                let index = match start.as_ref() {
+                    Object::Int(index) => Some(*index),
+                    held if self.answers_to(held, "to_int", position)? => {
+                        match self.send_to_object(held.clone(), "to_int", vec![], position)? {
+                            Object::Int(index) => Some(index),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                };
+                match index {
+                    Some(index) => {
+                        let at = if index < 0 {
+                            index + letters.len() as i64
+                        } else {
+                            index
+                        };
+                        usize::try_from(at).unwrap_or(0)
+                    }
+                    None => 0,
                 }
-                _ => 0,
-            },
+            }
             _ => held
                 .find(&removed)
                 .map(|byte_offset| held[..byte_offset].chars().count())
@@ -699,6 +735,7 @@ impl VirtualMachine {
                     start,
                     end,
                     exclusive,
+                    ..
                 }) = as_range(value)
                 else {
                     let message = format!(

@@ -75,13 +75,13 @@ pub(crate) fn parse_format(
             match modifier {
                 '!' | '_' => {
                     if !sized_integer {
-                        return Err(unknown_directive(*modifier, format, verb, position));
+                        return Err(modifier_without_width(*modifier, position));
                     }
                     native = true;
                 }
                 '<' | '>' => {
                     if !sized_integer {
-                        return Err(unknown_directive(*modifier, format, verb, position));
+                        return Err(modifier_without_width(*modifier, position));
                     }
                     order = Some(if *modifier == '<' {
                         Order::Little
@@ -106,7 +106,7 @@ pub(crate) fn parse_format(
                 // A count past what a native signed word holds is refused
                 // rather than wrapped, the way Ruby refuses one.
                 Ok(number) if number > isize::MAX as usize => {
-                    let message = format!("{verb} length too big");
+                    let message = "pack length too big".to_string();
                     return Err(crate::vm::errors::simple_exception(
                         "RangeError",
                         &message,
@@ -115,7 +115,7 @@ pub(crate) fn parse_format(
                 }
                 Ok(number) => Count::Exactly(number),
                 Err(_) => {
-                    let message = format!("{verb} length too big");
+                    let message = "pack length too big".to_string();
                     return Err(crate::vm::errors::simple_exception(
                         "RangeError",
                         &message,
@@ -135,6 +135,9 @@ pub(crate) fn parse_format(
     }
     Ok(directives)
 }
+
+/// How many bytes an address takes, which is what 'P' and 'p' write.
+const POINTER_WIDTH: usize = std::mem::size_of::<u64>();
 
 /// Every directive Ruby reads. A count or a width modifier is not one.
 fn is_known_directive(code: char) -> bool {
@@ -181,6 +184,42 @@ fn is_known_directive(code: char) -> bool {
             | 'p'
             | 'P'
     )
+}
+
+/// The bytes UTF-8 spells a value with, carried past the range Unicode names
+/// the way Ruby's `pack("U")` carries it: a lead byte saying how many follow,
+/// then six bits of the value in each one.
+fn utf8_style_bytes(value: u64) -> Vec<u8> {
+    let widths: [(u64, usize, u8); 6] = [
+        (0x80, 1, 0x00),
+        (0x800, 2, 0xc0),
+        (0x10000, 3, 0xe0),
+        (0x200000, 4, 0xf0),
+        (0x4000000, 5, 0xf8),
+        (0x80000000, 6, 0xfc),
+    ];
+    for (limit, width, lead) in widths {
+        if value >= limit {
+            continue;
+        }
+        if width == 1 {
+            return vec![value as u8];
+        }
+        let mut bytes = vec![0u8; width];
+        for place in (1..width).rev() {
+            bytes[place] = 0x80 | (value >> (6 * (width - 1 - place))) as u8 & 0x3f;
+        }
+        bytes[0] = lead | (value >> (6 * (width - 1))) as u8;
+        return bytes;
+    }
+    vec![0xfd, 0xbf, 0xbf, 0xbf, 0xbf, 0xbf]
+}
+
+/// Ruby's ArgumentError for a width modifier written after a directive that
+/// has no platform width to name.
+fn modifier_without_width(modifier: char, position: Position) -> MetorexError {
+    let message = format!("'{}' allowed only after types sSiIlLqQjJ", modifier);
+    crate::vm::errors::simple_exception("ArgumentError", &message, position)
 }
 
 fn unknown_directive(code: char, format: &str, verb: &str, position: Position) -> MetorexError {
@@ -390,11 +429,12 @@ fn too_few_items(position: Position) -> MetorexError {
 /// Write base64, in lines of sixty characters the way `pack("m")` does.
 /// Write base64. `wrapped` asks for the line breaks `m` writes every sixty
 /// characters and the newline that ends it, which `m0` leaves out.
-fn encode_base64(bytes: &[u8], wrapped: bool) -> String {
+fn encode_base64(bytes: &[u8], width: usize) -> String {
     const ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::new();
+    let groups = if width == 0 { usize::MAX } else { width / 3 };
     for (count, chunk) in bytes.chunks(3).enumerate() {
-        if wrapped && count > 0 && count % 20 == 0 {
+        if width > 0 && count > 0 && count % groups == 0 {
             out.push('\n');
         }
         let mut held = 0u32;
@@ -409,33 +449,73 @@ fn encode_base64(bytes: &[u8], wrapped: bool) -> String {
             }
         }
     }
-    if wrapped {
+    if width > 0 && !bytes.is_empty() {
         out.push('\n');
     }
     out
 }
 
+/// How many bytes one base64 line holds. A count of three or more names it,
+/// rounded down to whole groups, and zero asks for no line breaks at all.
+fn base64_line_length(count: &Count) -> usize {
+    match count {
+        Count::Exactly(0) => 0,
+        Count::Exactly(named) if *named >= 3 => (*named / 3) * 3,
+        _ => 45,
+    }
+}
+
 /// Write quoted printable, escaping what is not plain text.
-fn encode_quoted_printable(bytes: &[u8]) -> String {
+fn encode_quoted_printable(bytes: &[u8], width: usize) -> String {
     let mut out = String::new();
+    let mut standing = 0usize;
+    let mut before: Option<u8> = None;
     for byte in bytes {
-        if byte.is_ascii_graphic() && *byte != b'=' || *byte == b' ' || *byte == b'\t' {
-            out.push(*byte as char);
-        } else if *byte == b'\n' {
+        let byte = *byte;
+        if byte > 126 || (byte < 32 && byte != b'\n' && byte != b'\t') || byte == b'=' {
+            out.push_str(&format!("={byte:02X}"));
+            standing += 3;
+            before = None;
+        } else if byte == b'\n' {
+            // A line ending on a space or a tab writes that character in a
+            // soft break, since the space would otherwise be lost.
+            if matches!(before, Some(b' ') | Some(b'\t')) {
+                out.push_str("=\n");
+            }
             out.push('\n');
+            standing = 0;
+            before = Some(byte);
         } else {
-            out.push_str(&format!("={:02X}", byte));
+            out.push(char::from(byte));
+            standing += 1;
+            before = Some(byte);
+        }
+        if standing > width {
+            out.push_str("=\n");
+            standing = 0;
+            before = Some(b'\n');
         }
     }
-    out.push_str("=\n");
+    if standing > 0 {
+        out.push_str("=\n");
+    }
     out
+}
+
+/// How wide a quoted-printable line runs. A count names it, and one under two
+/// leaves the default in place.
+fn quoted_line_length(count: &Count) -> usize {
+    match count {
+        Count::Exactly(named) if *named >= 2 => *named,
+        _ => 72,
+    }
 }
 
 /// Write uuencoding: each line begins with the count of bytes it holds, and
 /// every character after that carries six bits with 32 added to it.
-fn encode_uu(bytes: &[u8]) -> String {
+fn encode_uu(bytes: &[u8], line_length: usize) -> String {
     let mut out = String::new();
-    for line in bytes.chunks(45) {
+    for line in bytes.chunks(line_length) {
         out.push(uu_char(line.len() as u8));
         for chunk in line.chunks(3) {
             let mut held = 0u32;
@@ -449,6 +529,32 @@ fn encode_uu(bytes: &[u8]) -> String {
         out.push('\n');
     }
     out
+}
+
+/// The encoding a packed string carries: Unicode where a directive wrote code
+/// points, ASCII where every directive wrote text that is ASCII by its nature,
+/// and bytes otherwise.
+fn pack_result_encoding(directives: &[Directive]) -> &'static str {
+    if directives.iter().all(|held| held.code == 'U') {
+        return "UTF-8";
+    }
+    if directives
+        .iter()
+        .all(|held| matches!(held.code, 'u' | 'm' | 'M'))
+    {
+        return "US-ASCII";
+    }
+    "ASCII-8BIT"
+}
+
+/// How many bytes one uuencoded line holds. A count names it, rounded down to
+/// whole groups of three, and a count too small for one group leaves the
+/// default in place.
+fn uu_line_length(count: &Count) -> usize {
+    match count {
+        Count::Exactly(named) if *named >= 3 => (*named / 3) * 3,
+        _ => 45,
+    }
 }
 
 /// One six-bit group as the character uuencoding writes it.
@@ -468,6 +574,7 @@ impl VirtualMachine {
         &mut self,
         text: &str,
         format: &str,
+        pointer: u64,
         position: Position,
     ) -> Result<Vec<Object>, MetorexError> {
         let bytes = string_to_bytes(text);
@@ -477,6 +584,47 @@ impl VirtualMachine {
         for directive in &directives {
             let remaining = bytes.len().saturating_sub(at);
             match directive.code {
+                // An address rather than text. The string it names is the one
+                // `pack` was given, which only a string `pack` built, or a
+                // copy of one, carries an address into.
+                'P' | 'p' => {
+                    if remaining < POINTER_WIDTH {
+                        out.push(Object::Nil);
+                        at = bytes.len();
+                        continue;
+                    }
+                    if pointer == 0 {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            "no associated pointer",
+                            position,
+                        ));
+                    }
+                    let mut named = [0u8; POINTER_WIDTH];
+                    named.copy_from_slice(&bytes[at..at + POINTER_WIDTH]);
+                    at += POINTER_WIDTH;
+                    let named = u64::from_ne_bytes(named);
+                    let Some(held) = self.packed_pointers.get(&named).cloned() else {
+                        out.push(Object::Nil);
+                        continue;
+                    };
+                    let Object::String(held) = held else {
+                        out.push(Object::Nil);
+                        continue;
+                    };
+                    let wanted = match (directive.code, &directive.count) {
+                        ('p', _) | (_, Count::Rest) => None,
+                        (_, Count::Exactly(width)) => Some(*width),
+                        (_, Count::One) => Some(1),
+                    };
+                    let source = string_to_bytes(&held.as_str());
+                    let stops = source
+                        .iter()
+                        .position(|byte| *byte == 0)
+                        .unwrap_or(source.len());
+                    let ends = wanted.map_or(stops, |width| width.min(stops));
+                    out.push(bytes_to_string(&source[..ends]));
+                }
                 // A run of bytes, read as text. 'a' keeps what is there, 'A'
                 // drops the trailing spaces and nulls, and 'Z' stops at the
                 // first null.
@@ -560,20 +708,42 @@ impl VirtualMachine {
                 }
                 // A UTF-8 character read back as its code point.
                 'U' => {
-                    let held: String = bytes[at..].iter().map(|byte| *byte as char).collect();
-                    let source = String::from_utf8_lossy(&bytes[at..]).to_string();
-                    let _ = held;
                     let wanted = match directive.count {
                         Count::Rest => usize::MAX,
                         Count::One => 1,
                         Count::Exactly(n) => n,
                     };
-                    for (read, character) in source.chars().enumerate() {
+                    // Bytes that spell no character are refused rather than
+                    // read as the one that stands in for a broken run.
+                    let source = match std::str::from_utf8(&bytes[at..]) {
+                        Ok(text) => text,
+                        Err(problem) if problem.valid_up_to() > 0 => {
+                            std::str::from_utf8(&bytes[at..at + problem.valid_up_to()])
+                                .expect("the bytes read as text up to here")
+                        }
+                        Err(_) => {
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                "malformed UTF-8 character",
+                                position,
+                            ));
+                        }
+                    };
+                    let mut read = 0;
+                    for character in source.chars() {
                         if read >= wanted {
                             break;
                         }
                         out.push(Object::Int(character as i64));
                         at += character.len_utf8();
+                        read += 1;
+                    }
+                    if read < wanted && wanted != usize::MAX && at < bytes.len() {
+                        return Err(crate::vm::errors::simple_exception(
+                            "ArgumentError",
+                            "malformed UTF-8 character",
+                            position,
+                        ));
                     }
                 }
                 // Skip forward, back, or to a fixed place.
@@ -768,6 +938,7 @@ impl VirtualMachine {
         }
         let mut out: Vec<u8> = Vec::new();
         let mut taken = 0usize;
+        let mut pointer = 0u64;
         for directive in &directives {
             let left = items.len().saturating_sub(taken);
             match directive.code {
@@ -864,15 +1035,19 @@ impl VirtualMachine {
                         Count::Exactly(n) => n,
                     };
                     for _ in 0..wanted {
-                        let point = match items.get(taken) {
-                            Some(Object::Int(number)) => *number as u32,
-                            Some(_) => 0,
-                            None => return Err(too_few_items(position)),
+                        let Some(item) = items.get(taken) else {
+                            return Err(too_few_items(position));
                         };
+                        let point = self.coerce_pack_integer(item, position)?;
                         taken += 1;
-                        let character = char::from_u32(point).unwrap_or('\u{fffd}');
-                        let mut buffer = [0u8; 4];
-                        out.extend_from_slice(character.encode_utf8(&mut buffer).as_bytes());
+                        if !(0..=0xffff_ffff).contains(&point) {
+                            return Err(crate::vm::errors::simple_exception(
+                                "RangeError",
+                                &format!("pack(U): value out of range: {}", point),
+                                position,
+                            ));
+                        }
+                        out.extend_from_slice(&utf8_style_bytes(point as u64));
                     }
                 }
                 // A BER compressed integer.
@@ -995,25 +1170,74 @@ impl VirtualMachine {
                 'u' | 'm' | 'M' => {
                     let held = match items.get(taken) {
                         Some(Object::String(text)) => text.as_str().to_string(),
+                        // Quoted-printable writes whatever an object says it
+                        // is, rather than asking it for a string of its own.
+                        Some(other) if directive.code == 'M' => {
+                            match self.send_to_object(other.clone(), "to_s", vec![], position)? {
+                                Object::String(text) => text.as_str().to_string(),
+                                spelled => spelled.to_string(),
+                            }
+                        }
                         Some(other) => self.coerce_pack_string(other, position)?,
                         None => return Err(too_few_items(position)),
                     };
                     taken += 1;
                     let source = string_to_bytes(&held);
                     let written = match directive.code {
-                        'u' => encode_uu(&source),
-                        'M' => encode_quoted_printable(&source),
+                        'u' => encode_uu(&source, uu_line_length(&directive.count)),
+                        'M' => {
+                            encode_quoted_printable(&source, quoted_line_length(&directive.count))
+                        }
                         // `m0` asks for base64 with no line breaks in it.
-                        _ => encode_base64(&source, directive.count != Count::Exactly(0)),
+                        _ => encode_base64(&source, base64_line_length(&directive.count)),
                     };
                     out.extend_from_slice(written.as_bytes());
+                }
+                // 'P' and 'p' write where a string stands rather than what it
+                // holds. Metorex hands out a number of its own for each one
+                // and keeps the string under it, so `unpack` reads it back.
+                'P' | 'p' => {
+                    let held = match items.get(taken) {
+                        Some(Object::Nil) => None,
+                        Some(other @ Object::String(_)) => Some(other.clone()),
+                        Some(other) => {
+                            Some(Object::string(self.coerce_pack_string(other, position)?))
+                        }
+                        None => return Err(too_few_items(position)),
+                    };
+                    taken += 1;
+                    let named = match held {
+                        None => 0,
+                        Some(value) => {
+                            let named = (self.packed_pointers.len() as u64 + 1) * 8;
+                            self.packed_pointers.insert(named, value);
+                            pointer = named;
+                            named
+                        }
+                    };
+                    out.extend_from_slice(&named.to_ne_bytes());
                 }
                 other => {
                     return Err(unknown_directive(other, format, "pack", position));
                 }
             }
         }
-        Ok(bytes_to_string(&out))
+        let named = pack_result_encoding(&directives);
+        // Text written as code points reads back as the characters those
+        // bytes spell, where the bytes spell any. Anything else stands for
+        // the bytes themselves.
+        if named == "UTF-8"
+            && let Ok(text) = String::from_utf8(out.clone())
+        {
+            let made = crate::object::StringValue::with_encoding(text, named);
+            made.set_pointer(pointer);
+            return Ok(Object::String(std::rc::Rc::new(made)));
+        }
+        let made =
+            crate::object::StringValue::with_encoding(bytes_to_string(&out).to_string(), named);
+        made.mark_bytes();
+        made.set_pointer(pointer);
+        Ok(Object::String(std::rc::Rc::new(made)))
     }
 
     /// One item an integer directive was given, read as a number.

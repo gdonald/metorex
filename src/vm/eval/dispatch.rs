@@ -37,8 +37,8 @@ impl VirtualMachine {
                     // carries those bytes rather than the UTF-8 the source was
                     // read into.
                     Some(named)
-                        if let Some(Ok(bytes)) =
-                            crate::vm::native_methods::string_methods::latin_bytes(
+                        if let Some(bytes) =
+                            crate::vm::native_methods::string_methods::spelled_bytes(
                                 value, &named,
                             ) =>
                     {
@@ -75,18 +75,51 @@ impl VirtualMachine {
                     .unwrap_or_else(|| crate::object::string_value::DEFAULT_ENCODING.to_string());
                 // A source written in bytes names its symbols in bytes, so
                 // each character of the name stands for one of them.
+                // A source written in an encoding of its own names its
+                // symbols in the bytes that encoding spells them with.
+                let plain = named == crate::object::string_value::DEFAULT_ENCODING;
+                if plain || value.is_ascii() {
+                    let made = crate::object::StringValue::with_encoding(value.clone(), named);
+                    return Ok(Object::Symbol(std::rc::Rc::new(made)));
+                }
+                // A source read as bytes names its symbols in the bytes the
+                // file itself holds, which is the text as it was written.
                 let spelled = if matches!(named.as_str(), "ASCII-8BIT" | "BINARY") {
-                    crate::vm::native_methods::string_methods::bytes_as_text(value.as_bytes())
+                    Some(value.as_bytes().to_vec())
                 } else {
-                    value.clone()
+                    crate::vm::native_methods::string_methods::spelled_bytes(value, &named)
                 };
-                let made = crate::object::StringValue::with_encoding(spelled, named);
+                let Some(bytes) = spelled else {
+                    let made = crate::object::StringValue::with_encoding(value.clone(), named);
+                    return Ok(Object::Symbol(std::rc::Rc::new(made)));
+                };
+                let made = crate::object::StringValue::with_encoding(
+                    crate::vm::native_methods::string_methods::bytes_as_text(&bytes),
+                    named,
+                );
+                made.mark_bytes();
                 Ok(Object::Symbol(std::rc::Rc::new(made)))
             }
-            Expression::RegexLiteral { pattern, flags, .. } => Ok(Object::Regex(
-                Rc::new(pattern.clone()),
-                Rc::new(flags.clone()),
-            )),
+            Expression::RegexLiteral {
+                pattern,
+                flags,
+                position,
+            } => {
+                // A repetition written on a repetition reads as one, which
+                // Ruby says so about where the pattern is read.
+                if pattern.contains("}+")
+                    && let Ok(read) =
+                        crate::vm::native_methods::regexp_methods::read_pattern(pattern, flags)
+                {
+                    for warning in &read.warnings {
+                        self.emit_warning_to_stderr(&format!("warning: {warning}"), *position);
+                    }
+                }
+                Ok(Object::Regex(
+                    Rc::new(pattern.clone()),
+                    Rc::new(flags.clone()),
+                ))
+            }
             Expression::BoolLiteral { value, .. } => Ok(Object::Bool(*value)),
             Expression::NilLiteral { .. } => Ok(Object::Nil),
             Expression::InterpolatedString { parts, .. } => {
@@ -616,10 +649,43 @@ impl VirtualMachine {
                 let start_value = self.evaluate_expression(start)?;
                 let end_value = self.evaluate_expression(end)?;
                 self.check_range_ends(&start_value, &end_value, expression.position())?;
+                // A range written with literal ends is one object, however
+                // many times the line it sits on is run, so the mark it
+                // carries is kept against where it was written.
+                let written_at = matches!(
+                    (start.as_ref(), end.as_ref()),
+                    (
+                        Expression::IntLiteral { .. }
+                            | Expression::FloatLiteral { .. }
+                            | Expression::StringLiteral { .. }
+                            | Expression::NilLiteral { .. },
+                        Expression::IntLiteral { .. }
+                            | Expression::FloatLiteral { .. }
+                            | Expression::StringLiteral { .. }
+                            | Expression::NilLiteral { .. }
+                    )
+                )
+                .then(|| {
+                    let at = expression.position();
+                    (
+                        self.current_source_file.clone().unwrap_or_default(),
+                        at.line,
+                        at.column,
+                    )
+                });
+                let mark = match written_at {
+                    Some(place) => self
+                        .written_ranges
+                        .entry(place)
+                        .or_insert_with(|| std::rc::Rc::new(()))
+                        .clone(),
+                    None => std::rc::Rc::new(()),
+                };
                 Ok(Object::Range {
                     start: Box::new(start_value),
                     end: Box::new(end_value),
                     exclusive: *exclusive,
+                    mark,
                 })
             }
             Expression::Case {

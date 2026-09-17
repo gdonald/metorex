@@ -414,6 +414,7 @@ impl VirtualMachine {
                 start: Box::new(arguments[0].clone()),
                 end: Box::new(arguments[1].clone()),
                 exclusive: arguments.get(2).is_some_and(|flag| flag.is_truthy()),
+                mark: std::rc::Rc::new(()),
             };
             if class.name() == "Range" {
                 return Ok(made);
@@ -640,6 +641,9 @@ impl VirtualMachine {
                 String::new()
             } else if arguments.len() == 1 {
                 match &arguments[0] {
+                    // A message of nil is no message at all, so the exception
+                    // names itself the way one built with none does.
+                    Object::Nil => String::new(),
                     Object::String(s) => s.as_str().to_string(),
                     // Ruby renders the message with `to_s`, which a message
                     // object is free to define.
@@ -684,7 +688,8 @@ impl VirtualMachine {
             if let Object::Exception(details) = &exception {
                 let mut details = details.borrow_mut();
                 details.class = Some(Rc::clone(&class));
-                details.message_given = !arguments.is_empty();
+                details.message_given =
+                    !arguments.is_empty() && !matches!(arguments.first(), Some(Object::Nil));
                 if let Some(value) = named_receiver {
                     details.receiver = Some(Box::new(value));
                 }
@@ -799,6 +804,9 @@ impl VirtualMachine {
             details.class = Some(Rc::clone(class));
             details.status = Some(status);
             details.message_given = message.is_some();
+            if matches!(arguments.first(), Some(Object::Nil)) {
+                details.message_given = false;
+            }
         }
         Ok(exception)
     }

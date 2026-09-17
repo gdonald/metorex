@@ -1603,10 +1603,15 @@ impl VirtualMachine {
                     }
                 }
                 crate::object::end_rendering();
-                let made = crate::object::StringValue::with_encoding(
-                    format!("{{{}}}", parts.join(", ")),
-                    writing,
-                );
+                let written = format!("{{{}}}", parts.join(", "));
+                // Written in an encoding that spells a character with bytes of
+                // its own, the answer stands for those bytes.
+                let by_the_byte = !written.is_ascii()
+                    && !matches!(writing.as_str(), "UTF-8" | "US-ASCII" | "UTF8-MAC");
+                let made = crate::object::StringValue::with_encoding(written, writing);
+                if by_the_byte {
+                    made.mark_bytes();
+                }
                 Ok(Some(Object::String(Rc::new(made))))
             }
             // `[]=` writes one entry, the way `hash[key] = value` does.
@@ -2232,12 +2237,23 @@ impl VirtualMachine {
             // A symbol that is a plain name prints without quotes, as long as
             // the encoding the answer is written in has room for every
             // character of it.
-            let plain =
-                is_plain_symbol_name(&name.as_str()) && quoted == format!("\"{}\"", name.as_str());
+            // The name is read through the encoding it carries, since that is
+            // what says which characters it holds.
+            let spelled_name = crate::vm::native_methods::name_text(name);
+            let plain = is_plain_symbol_name(&spelled_name)
+                && (name.holds_bytes() || quoted == format!("\"{}\"", name.as_str()));
             let shown = if plain {
                 name.as_str().to_string()
             } else {
                 quoted
+            };
+            // A name carried as the bytes an encoding spells it with is
+            // written in that encoding, whatever `inspect` tagged its text
+            // with.
+            let writing = if name.holds_bytes() {
+                name.encoding_name()
+            } else {
+                writing
             };
             return Ok((format!("{}: {}", shown, rendered_value), writing));
         }
@@ -2476,8 +2492,10 @@ fn retagged(value: Object, named: &Option<String>) -> Object {
 fn is_plain_symbol_name(name: &str) -> bool {
     let body = name.strip_suffix(['?', '!']).unwrap_or(name);
     let mut letters = body.chars();
+    // Every character outside ASCII stands in a name, which is what lets a
+    // symbol written in another script print without quotes.
     letters
         .next()
-        .is_some_and(|first| first.is_alphabetic() || first == '_')
-        && letters.all(|letter| letter.is_alphanumeric() || letter == '_')
+        .is_some_and(|first| first.is_alphabetic() || first == '_' || !first.is_ascii())
+        && letters.all(|letter| letter.is_alphanumeric() || letter == '_' || !letter.is_ascii())
 }

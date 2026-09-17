@@ -375,7 +375,30 @@ impl Parser {
             // Check for `raise ExceptionClass, message` form
             if self.match_token(&[TokenKind::Comma]) {
                 self.skip_whitespace();
-                let message = self.parse_expression()?;
+                let rest = self.parse_arguments_without_parens()?;
+                // A backtrace or a `cause:` alongside the message is more than
+                // a class and a message, so Kernel's own `raise` is handed the
+                // whole list rather than building the exception here.
+                let plain_pair =
+                    rest.len() == 1 && !matches!(rest.first(), Some(Expression::Dictionary { .. }));
+                if !plain_pair {
+                    let mut arguments = vec![expr];
+                    arguments.extend(rest);
+                    let call = Expression::Call {
+                        callee: Box::new(Expression::Identifier {
+                            name: "raise".to_string(),
+                            position: start_pos,
+                        }),
+                        arguments,
+                        trailing_block: None,
+                        position: start_pos,
+                    };
+                    return self.wrap_with_modifier(Statement::Expression {
+                        expression: call,
+                        position: start_pos,
+                    });
+                }
+                let message = rest.into_iter().next().expect("one argument");
                 // Transform to ExceptionClass.new(message)
                 Some(Expression::MethodCall {
                     receiver: Box::new(expr),

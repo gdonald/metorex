@@ -21,6 +21,8 @@ impl VirtualMachine {
         };
         match method_name {
             "round" => {
+                let (arguments, half) = super::int_methods::split_rounding_mode(arguments);
+                let half = self.rounding_mode(half, position)?;
                 if arguments.len() > 1 {
                     return Err(method_argument_error(
                         method_name,
@@ -31,34 +33,9 @@ impl VirtualMachine {
                 }
                 let precision = match arguments.first() {
                     None => 0,
-                    Some(Object::Int(digits)) => *digits,
-                    Some(other) => {
-                        return Err(method_argument_type_error(
-                            method_name,
-                            "Integer",
-                            other,
-                            position,
-                        ));
-                    }
+                    Some(held) => self.coerce_precision_argument(held, position)?,
                 };
-                let multiplier = 10_f64.powi(precision as i32);
-                let rounded = (f * multiplier).round() / multiplier;
-                // Rounding to the digits left of the point, or to none at
-                // all, answers a whole number.
-                if precision <= 0 {
-                    if !rounded.is_finite() {
-                        let message = "Infinity".to_string();
-                        return Err(MetorexError::UncaughtException {
-                            exception: Object::exception("FloatDomainError", message.clone()),
-                            location: position_to_location(position),
-                            message,
-                        });
-                    }
-                    return Ok(Some(Object::integer(num_bigint::BigInt::from(
-                        rounded as i128,
-                    ))));
-                }
-                Ok(Some(Object::Float(rounded)))
+                rounded_float(*f, precision, arguments.is_empty(), half, position).map(Some)
             }
             "nan?" => {
                 if !arguments.is_empty() {
@@ -462,4 +439,118 @@ fn float_domain_error(value: f64, position: Position) -> MetorexError {
         Object::Float(value).to_string()
     };
     crate::vm::errors::simple_exception("FloatDomainError", &message, position)
+}
+
+/// A Float rounded to a count of decimal places. Ruby rounds the number the
+/// way it is written rather than the way it is held, so `5.55.round(1)` is
+/// 5.6 even though the value held is a shade under 5.55.
+fn rounded_float(
+    value: f64,
+    precision: i64,
+    bare: bool,
+    half: crate::vm::native_methods::RoundingMode,
+    position: Position,
+) -> Result<Object, MetorexError> {
+    use num_bigint::BigInt;
+    let refuse = |class_name: &str, message: String| MetorexError::UncaughtException {
+        exception: Object::exception(class_name, message.clone()),
+        location: position_to_location(position),
+        message,
+    };
+    // A value with no whole number behind it answers itself where the count
+    // keeps the decimal places, and is refused where it would have to name a
+    // whole number.
+    if !value.is_finite() {
+        if precision > 0 {
+            return Ok(Object::Float(value));
+        }
+        if value.is_nan() {
+            // Asked for a whole number with no count named, Ruby reports the
+            // value as one no whole number stands for. Named a count, it
+            // reports the count as out of range instead.
+            if bare {
+                return Err(refuse("FloatDomainError", "NaN".to_string()));
+            }
+            return Err(refuse(
+                "RangeError",
+                "cannot convert NaN to Integer".to_string(),
+            ));
+        }
+        return Err(refuse(
+            "FloatDomainError",
+            if value < 0.0 {
+                "-Infinity".to_string()
+            } else {
+                "Infinity".to_string()
+            },
+        ));
+    }
+    let written = format!("{:e}", value);
+    let (mantissa, exponent) = written.split_once('e').unwrap_or((written.as_str(), "0"));
+    let place: i64 = exponent.parse().unwrap_or(0);
+    let negative = mantissa.starts_with('-');
+    let digits: String = mantissa
+        .chars()
+        .filter(|held| held.is_ascii_digit())
+        .collect();
+    let digits = digits.trim_end_matches('0');
+    let digits = if digits.is_empty() { "0" } else { digits };
+    let width = digits.len() as i64;
+    // Where the digits run out before the count reaches them, the number is
+    // already written to that many places.
+    let kept = place + 1 + precision - width;
+    let whole = BigInt::parse_bytes(digits.as_bytes(), 10).unwrap_or_else(|| BigInt::from(0));
+    let ten = BigInt::from(10);
+    let rounded = if kept >= 0 {
+        if precision > 0 {
+            return Ok(Object::Float(value));
+        }
+        whole * ten.pow(u32::try_from(kept).unwrap_or(0))
+    } else {
+        let dropped = u32::try_from(-kept).unwrap_or(u32::MAX);
+        // Past the digits the number has, everything is dropped and nothing
+        // is left to round up from.
+        if i64::from(dropped) > width {
+            BigInt::from(0)
+        } else {
+            let step = ten.pow(dropped);
+            let standing = &whole / &step;
+            let over = &whole % &step;
+            let midpoint = &step / 2;
+            let up = match half {
+                crate::vm::native_methods::RoundingMode::Up => over >= midpoint,
+                crate::vm::native_methods::RoundingMode::Down => over > midpoint,
+                crate::vm::native_methods::RoundingMode::Even => {
+                    over > midpoint || (over == midpoint && (&standing % 2) != BigInt::from(0))
+                }
+            };
+            if up { standing + 1 } else { standing }
+        }
+    };
+    let rounded = if negative { -rounded } else { rounded };
+    if precision <= 0 {
+        let shift = u32::try_from(-precision).unwrap_or(0);
+        return Ok(Object::integer(rounded * ten.pow(shift)));
+    }
+    let answered = written_with_places(&rounded, precision as usize);
+    Ok(Object::Float(answered.parse::<f64>().unwrap_or(value)))
+}
+
+/// A whole number written as a decimal with `places` digits after the point,
+/// which is the number divided by ten that many times.
+fn written_with_places(value: &num_bigint::BigInt, places: usize) -> String {
+    let negative = *value < num_bigint::BigInt::from(0);
+    let digits = if negative {
+        (-value).to_string()
+    } else {
+        value.to_string()
+    };
+    let digits = format!("{:0>width$}", digits, width = places + 1);
+    let split = digits.len() - places;
+    format!(
+        "{}{}.{}",
+        if negative { "-" } else { "" },
+        &digits[..split],
+        &digits[split..]
+    )
 }

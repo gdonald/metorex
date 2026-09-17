@@ -97,6 +97,18 @@ impl VirtualMachine {
         arguments: &[Object],
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // `cause:` names the exception this one is being raised on top of,
+        // and it is not one of the positional arguments.
+        let mut named_cause = None;
+        let mut arguments = arguments;
+        let without_keywords: Vec<Object>;
+        if let Some(Object::Dict(pairs)) = arguments.last()
+            && pairs.borrow().contains_key("__MX_KWARGS__")
+        {
+            named_cause = pairs.borrow().get(":cause").cloned();
+            without_keywords = arguments[..arguments.len() - 1].to_vec();
+            arguments = &without_keywords;
+        }
         let message = arguments.get(1).cloned();
         let exception = match arguments.first() {
             None => match self.environment().get("$!") {
@@ -140,7 +152,30 @@ impl VirtualMachine {
                 message: msg,
             });
         }
-        Ok(self.add_stack_trace_to_exception(exception, position))
+        let written_trace = arguments.get(2).cloned();
+        let exception = self.add_stack_trace_to_exception(exception, position);
+        // A third argument names the backtrace the exception carries, in
+        // place of the one the call stack would give it.
+        if let Some(Object::Array(entries)) = written_trace
+            && let Object::Exception(cell) = &exception
+        {
+            let listed: Vec<String> = entries
+                .borrow()
+                .iter()
+                .map(|held| match held {
+                    Object::String(text) => text.as_str().to_string(),
+                    other => other.to_string(),
+                })
+                .collect();
+            cell.borrow_mut().backtrace = Some(listed);
+        }
+        if let (Some(cause), Object::Exception(cell)) = (named_cause, &exception) {
+            cell.borrow_mut().cause = match cause {
+                Object::Nil => None,
+                held => Some(Box::new(held)),
+            };
+        }
+        Ok(exception)
     }
 
     /// Add stack trace and source location to an exception object

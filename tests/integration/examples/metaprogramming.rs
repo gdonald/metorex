@@ -1142,3 +1142,19 @@ fn test_metaprogramming_inside_a_singleton_class_no_parens_execution() {
     let output = run_example("metaprogramming/inside_a_singleton_class_no_parens.rb");
     assert_eq!(output, INSIDE_A_SINGLETON_CLASS_OUTPUT);
 }
+
+/// The expected output of both `metaprogramming/alias_definee` variants,
+/// which differ only in whether the calls are written with parentheses.
+const ALIAS_DEFINEE_OUTPUT: &str = "5\n[:second]\nfalse\ncan't define singleton\nObject\n7\n";
+
+#[test]
+fn test_metaprogramming_alias_definee_execution() {
+    let output = run_example("metaprogramming/alias_definee.rb");
+    assert_eq!(output, ALIAS_DEFINEE_OUTPUT);
+}
+
+#[test]
+fn test_metaprogramming_alias_definee_parens_execution() {
+    let output = run_example("metaprogramming/alias_definee_parens.rb");
+    assert_eq!(output, ALIAS_DEFINEE_OUTPUT);
+}

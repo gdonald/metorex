@@ -69,11 +69,14 @@ pub enum Object {
     /// Native function (built-in function implemented in Rust)
     NativeFunction(String),
 
-    /// Range object (start..end or start...end)
+    /// Range object (start..end or start...end). The mark is what tells two
+    /// ranges over the same values apart, since Ruby answers `equal?` for
+    /// them the way it does for any two objects.
     Range {
         start: Box<Object>,
         end: Box<Object>,
         exclusive: bool,
+        mark: Rc<()>,
     },
 
     /// Binding object (represents a namespace/scope with captured variables)

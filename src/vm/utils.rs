@@ -60,9 +60,16 @@ pub(super) fn is_primitive_key(value: &Object) -> bool {
     if let Object::String(text) = value {
         return !reads_as_another_kind(&text.as_str());
     }
+    // A name standing for the bytes an encoding spells it with is not
+    // reconstructible from its text either, so the object is kept beside the
+    // entry and answers with the encoding it was made under.
+    if let Object::Symbol(name) = value {
+        return !name.holds_bytes()
+            && name.encoding_name() == crate::object::string_value::DEFAULT_ENCODING;
+    }
     matches!(
         value,
-        Object::Symbol(_) | Object::Int(_) | Object::Float(_) | Object::Bool(_) | Object::Nil
+        Object::Int(_) | Object::Float(_) | Object::Bool(_) | Object::Nil
     )
 }
 

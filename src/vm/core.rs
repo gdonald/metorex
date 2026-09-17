@@ -201,8 +201,11 @@ pub struct VirtualMachine {
     /// The object a `&` handed over as the block, where it was already a
     /// callable. `Proc.new(&callable)` answers that same callable.
     pub(crate) pending_block_source: Option<Object>,
-    /// State for `Kernel#rand`, advanced on each draw and reset by `srand`.
-    pub(crate) random_state: u64,
+    /// The Mersenne Twister `Kernel#rand` draws from, which is the generator
+    /// Ruby's own numbers come from, so a seed gives the same sequence here.
+    pub(crate) random_words: Vec<u32>,
+    /// How far through the words the generator has read.
+    pub(crate) random_at: usize,
     /// The seed `srand` last installed, which it answers on the next call.
     pub(crate) random_seed: Object,
     /// True while a FrozenError message is being built. Inspecting the object
@@ -222,6 +225,18 @@ pub struct VirtualMachine {
     /// value keeps the set alive so a later one cannot take its address and
     /// read back as comparing by identity.
     pub(crate) identity_sets: HashMap<usize, Object>,
+    /// The strings `pack` wrote a pointer to, against the pointer it wrote.
+    /// `unpack` with 'P' or 'p' reads a string back out of here, which is how
+    /// a packed pointer keeps naming what it was given.
+    pub(crate) packed_pointers: HashMap<u64, Object>,
+    /// The ranges `dup` made, which are not frozen the way a range a program
+    /// wrote is. The mark a range carries names it here, and the value keeps
+    /// that mark alive so a later one cannot take its address.
+    pub(crate) thawed_ranges: HashMap<usize, Rc<()>>,
+    /// The mark each range written with literal ends carries, against where
+    /// it was written. Ruby builds such a range once, so every run of the
+    /// line answers the same object.
+    pub(crate) written_ranges: HashMap<(String, usize, usize), Rc<()>>,
     /// Where the `require` or `load` now running was written, which is what a
     /// warning raised at the top of the loaded file names as its caller.
     pub(crate) load_call_site: Option<(String, crate::lexer::Position)>,
@@ -263,6 +278,9 @@ pub struct VirtualMachine {
     /// Pushed on entering a `class`/`module` body; popped on exit. Does NOT
     /// track method call receivers — only lexical nesting.
     pub(crate) def_scope_stack: Vec<Rc<crate::class::Class>>,
+    /// The patterns written with `o`, kept under the site each was written
+    /// at so the same one is answered every time that line is reached.
+    pub(crate) patterns_built_once: std::collections::HashMap<String, Object>,
     /// The binding of the method body that just finished, which a trace
     /// reading `binding` off a `return` event is handed. Captured before the
     /// body's scope is popped, since the locals are gone after that.
@@ -382,12 +400,16 @@ impl VirtualMachine {
             pending_block: None,
             pending_block_from_ampersand: false,
             pending_block_source: None,
-            random_state: seed_from_clock(),
+            random_words: Vec::new(),
+            random_at: 0,
             random_seed: Object::Int(seed_from_clock() as i64),
             rendering_frozen_error: false,
             frozen_collections: HashMap::new(),
             built_patterns: std::collections::HashSet::new(),
             identity_sets: HashMap::new(),
+            packed_pointers: HashMap::new(),
+            thawed_ranges: HashMap::new(),
+            written_ranges: HashMap::new(),
             load_call_site: None,
             pattern_encodings: HashMap::new(),
             collection_variables: HashMap::new(),
@@ -399,6 +421,7 @@ impl VirtualMachine {
             user_def_nesting: 0,
             refinement_scopes: vec![Vec::new()],
             def_scope_stack: Vec::new(),
+            patterns_built_once: std::collections::HashMap::new(),
             traced_binding: None,
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),

@@ -122,6 +122,7 @@ fn type_name_range() {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(10)),
         exclusive: false,
+        mark: std::rc::Rc::new(()),
     };
     assert_eq!(r.type_name(), "Range");
 }
@@ -271,6 +272,7 @@ fn display_range_inclusive() {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(5)),
         exclusive: false,
+        mark: std::rc::Rc::new(()),
     };
     assert_eq!(format!("{}", r), "1..5");
 }
@@ -281,6 +283,7 @@ fn display_range_exclusive() {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(5)),
         exclusive: true,
+        mark: std::rc::Rc::new(()),
     };
     assert_eq!(format!("{}", r), "1...5");
 }

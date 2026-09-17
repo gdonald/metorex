@@ -585,6 +585,14 @@ impl VirtualMachine {
         }
     }
 
+    /// Add a directory to the end of `$LOAD_PATH`, where the directories a
+    /// library is installed into sit.
+    pub fn append_load_path(&mut self, path: String) {
+        if let Some(Object::Array(arr)) = self.globals.get(":") {
+            arr.borrow_mut().push(Object::string(path));
+        }
+    }
+
     /// Require a library by name, searching `$LOAD_PATH` just like the `require` builtin.
     pub fn require_library(&mut self, name: &str) -> Result<(), MetorexError> {
         let expanded = self.expand_home_path(name);

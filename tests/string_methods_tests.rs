@@ -458,8 +458,14 @@ fn string_strip_error_with_args() {
 
 #[test]
 fn string_split_error_too_many_args() {
-    let err = run_err(r#""hello".split(",", "extra")"#);
+    let err = run_err(r#""hello".split(",", 1, 2)"#);
     assert!(err.contains("argument"));
+}
+
+#[test]
+fn string_split_error_limit_is_not_a_number() {
+    let err = run_err(r#""hello".split(",", "extra")"#);
+    assert!(err.contains("no implicit conversion of String into Integer"));
 }
 
 #[test]

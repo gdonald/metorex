@@ -2647,9 +2647,12 @@ impl VirtualMachine {
             // flag itself rather than always answering yes.
             Object::String(text) => text.is_frozen(),
             // A range holds its ends and nothing else, and Ruby freezes every
-            // one it builds. A subclass instance is an ordinary object, so it
-            // is not reached here.
-            Object::Range { .. } => true,
+            // one it builds. A copy made by `dup` is not frozen, and it is
+            // told apart by the mark it carries. A subclass instance is an
+            // ordinary object, so it is not reached here.
+            Object::Range { mark, .. } => !self
+                .thawed_ranges
+                .contains_key(&(Rc::as_ptr(mark) as usize)),
             Object::Class(c) | Object::Module(c) => c.is_frozen(),
             Object::Array(_)
             | Object::Dict(_)

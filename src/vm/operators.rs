@@ -112,6 +112,9 @@ impl VirtualMachine {
                         text.to_text(),
                         text.encoding_name(),
                     );
+                    if text.holds_bytes() {
+                        copy.mark_bytes();
+                    }
                     copy.mark_deduplicated();
                     Ok(Object::String(std::rc::Rc::new(copy)))
                 }
@@ -201,6 +204,43 @@ impl VirtualMachine {
         }
         // A Rational on the right promotes the number on the left, so the
         // Rational's own exact arithmetic runs rather than a Float one.
+        // An integer raised to a Rational answers exactly where the exponent
+        // names a whole number, and reads the exponent as a Float where it
+        // does not.
+        if matches!(op, BinaryOp::Power)
+            && matches!(left, Object::Int(_) | Object::BigInt(_))
+            && let Some((numerator, denominator)) =
+                crate::vm::native_methods::rational_parts(&right)
+        {
+            if denominator != num_bigint::BigInt::from(1) {
+                let exponent = self.send_to_object(right.clone(), "to_f", vec![], position)?;
+                if let Object::Float(exponent) = exponent {
+                    return self.evaluate_numeric_binary(
+                        op,
+                        left,
+                        Object::Float(exponent),
+                        position,
+                    );
+                }
+            }
+            // A negative exponent answers the reciprocal, which a Rational
+            // holds exactly.
+            let negative = numerator < num_bigint::BigInt::from(0);
+            let raised = self.evaluate_numeric_binary(
+                op,
+                left,
+                Object::integer(if negative { -numerator } else { numerator }),
+                position,
+            )?;
+            let Some(whole) = raised.as_big_integer() else {
+                return Ok(raised);
+            };
+            return if negative {
+                self.make_rational(num_bigint::BigInt::from(1), whole, position)
+            } else {
+                self.make_rational(whole, num_bigint::BigInt::from(1), position)
+            };
+        }
         if let (Some(name), Object::Int(_) | Object::BigInt(_) | Object::Float(_)) =
             (crate::vm::eval::binary_op_method_name(op), &left)
             && crate::vm::native_methods::rational_parts(&right).is_some()
@@ -963,9 +1003,25 @@ impl VirtualMachine {
             (Object::Int(a), Object::Float(b)) => Ok(Object::Float((a as f64) + b)),
             (Object::Float(a), Object::Int(b)) => Ok(Object::Float(a + (b as f64))),
             (Object::String(a), Object::String(b)) => {
-                let mut combined = a.as_str().to_string();
-                combined.push_str(&b.as_ref().as_str());
-                let joined = Object::string(combined);
+                // Where either side stands for the bytes it was read from,
+                // the answer does too, and the other side is written out in
+                // the bytes its own encoding spells it with.
+                let holds_bytes = a.holds_bytes() || b.holds_bytes();
+                let joined = if holds_bytes {
+                    let mut bytes =
+                        crate::vm::native_methods::string_methods::binary_bytes(a.as_ref());
+                    bytes.extend(crate::vm::native_methods::string_methods::binary_bytes(
+                        b.as_ref(),
+                    ));
+                    let made = crate::object::StringValue::from_bytes(
+                        crate::vm::native_methods::pack_format::bytes_to_string(&bytes).to_string(),
+                    );
+                    Object::String(Rc::new(made))
+                } else {
+                    let mut combined = a.as_str().to_string();
+                    combined.push_str(&b.as_ref().as_str());
+                    Object::string(combined)
+                };
                 // The result is written in the receiver's encoding, unless
                 // the receiver is empty or nothing but ASCII and the other
                 // side is not, where that side's reading carries over.
@@ -980,7 +1036,7 @@ impl VirtualMachine {
                         a.as_ref()
                     };
                     made.set_encoding(carried.encoding_name());
-                    if carried.holds_bytes() {
+                    if holds_bytes {
                         made.mark_bytes();
                     }
                 }
@@ -1037,6 +1093,22 @@ impl VirtualMachine {
             (Object::BigInt(a), Object::Float(b)) if matches!(op, BinaryOp::Modulo) => {
                 float_modulo(big_to_float(&a), b, position)
             }
+            // A negative base raised to a power that is not a whole number
+            // has no real root, so the answer is the principal complex one.
+            (Object::BigInt(a), Object::Float(b))
+                if matches!(op, BinaryOp::Power)
+                    && a.sign() == num_bigint::Sign::Minus
+                    && b.fract() != 0.0
+                    && b.is_finite() =>
+            {
+                let magnitude = (-big_to_float(&a)).powf(b);
+                let angle = std::f64::consts::PI * b;
+                self.make_complex(
+                    Object::Float(magnitude * angle.cos()),
+                    Object::Float(magnitude * angle.sin()),
+                    position,
+                )
+            }
             (Object::BigInt(a), Object::Float(b)) => {
                 float_arithmetic(op, big_to_float(&a), b, position)
             }
@@ -1070,6 +1142,18 @@ impl VirtualMachine {
                 BinaryOp::Multiply => Ok(Object::Float((a as f64) * b)),
                 BinaryOp::Divide => Ok(Object::Float((a as f64) / b)),
                 BinaryOp::Modulo => float_modulo(a as f64, b, position),
+                // A negative base raised to a power that is not a whole
+                // number has no real root, so the answer is the principal
+                // complex one.
+                BinaryOp::Power if a < 0 && b.fract() != 0.0 && b.is_finite() => {
+                    let magnitude = (-(a as f64)).powf(b);
+                    let angle = std::f64::consts::PI * b;
+                    self.make_complex(
+                        Object::Float(magnitude * angle.cos()),
+                        Object::Float(magnitude * angle.sin()),
+                        position,
+                    )
+                }
                 BinaryOp::Power => Ok(Object::Float((a as f64).powf(b))),
                 _ => unreachable!(),
             },
@@ -1536,7 +1620,9 @@ impl VirtualMachine {
         if !coerces_its_operand(op) || !numeric_left || !takes_coercion(right) {
             return Ok(None);
         }
-        if !self.responds_to(right, "coerce") {
+        // The operand is asked whether it coerces, the way Ruby asks, so an
+        // object that answers `respond_to?` for itself is heard.
+        if !self.answers_to(right, "coerce", position)? {
             return Ok(None);
         }
         let pair = self.send_to_object(right.clone(), "coerce", vec![left.clone()], position)?;
@@ -1754,16 +1840,49 @@ fn integer_arithmetic(
             Ok(Object::integer(floored_remainder(&left, &right)))
         }
         BinaryOp::Power => {
-            // A negative exponent has no exact integer result.
+            // Zero raised to a negative power is a division by zero.
+            if left == BigInt::from(0) && right < BigInt::from(0) {
+                return Err(divide_by_zero_error(position));
+            }
+            // One and minus one stay themselves however far they are raised,
+            // so the count never has to be built.
+            if left == BigInt::from(1) {
+                return Ok(Object::Int(1));
+            }
+            if left == BigInt::from(-1) && right >= BigInt::from(0) {
+                let odd = right.bit(0);
+                return Ok(Object::Int(if odd { -1 } else { 1 }));
+            }
+            // A negative exponent has no exact integer result, and one too
+            // large to count is past the limit outright.
             let Ok(exponent) = u32::try_from(&right) else {
+                if right > BigInt::from(0) {
+                    return Err(exponent_too_large(position));
+                }
                 return Ok(Object::Float(
                     big_to_float(&left).powf(big_to_float(&right)),
                 ));
             };
+            // The answer takes one bit for each bit of the base, as many
+            // times over as the exponent counts. Past the limit metorex
+            // builds numbers up to, it is refused rather than attempted.
+            let width = (left.bits() as u128).saturating_mul(exponent as u128);
+            if width > WIDEST_INTEGER_BITS {
+                return Err(exponent_too_large(position));
+            }
             Ok(Object::integer(left.pow(exponent)))
         }
         _ => unreachable!("caller restricts op to the arithmetic set"),
     }
+}
+
+/// The most bits a number built by raising one to a power may take, which is
+/// the room Ruby gives one before refusing to build it at all.
+const WIDEST_INTEGER_BITS: u128 = 16 * 1024 * 1024 * 1024;
+
+/// Ruby's ArgumentError for a power whose answer would be too wide to build.
+fn exponent_too_large(position: Position) -> MetorexError {
+    crate::vm::errors::simple_exception("ArgumentError", "exponent is too large", position)
 }
 
 /// The same set of operations on two Floats.

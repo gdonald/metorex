@@ -356,23 +356,55 @@ impl VirtualMachine {
                     Some(Object::Symbol(order)) if *order.as_str() == *"bottom"
                 );
                 // Through `send` so a class that overrides `detailed_message`
-                // decides how its own message reads.
-                let mut detail_arguments = vec![];
+                // decides how its own message reads. Every keyword this call
+                // was given is handed on, `order:` aside, with `highlight:`
+                // settled first.
                 let mut keywords = indexmap::IndexMap::new();
                 keywords.insert("__MX_KWARGS__".to_string(), Object::Bool(true));
+                if let Some(Object::Dict(given)) = arguments.last() {
+                    for (name, value) in given.borrow().iter() {
+                        if name == "__MX_KWARGS__" || name == ":order" || name == ":highlight" {
+                            continue;
+                        }
+                        keywords.insert(name.clone(), value.clone());
+                    }
+                }
                 keywords.insert(":highlight".to_string(), Object::Bool(highlight));
-                detail_arguments.push(Object::Dict(Rc::new(RefCell::new(keywords))));
-                let detail = match self.send_to_object(
-                    receiver.clone(),
-                    "detailed_message",
-                    detail_arguments,
-                    position,
-                )? {
-                    Object::String(text) => text.as_str().to_string(),
-                    other => other.to_string(),
+                let detail_arguments = vec![Object::Dict(Rc::new(RefCell::new(keywords)))];
+                // An exception that answers no `detailed_message`, or answers
+                // nil, is named by its class the way Ruby names it.
+                let stand_in = self.exception_class_label(exception, highlight);
+                // The exception answers `detailed_message` unless a program
+                // took it away, which `undef` does by leaving a tombstone.
+                let answers = !self
+                    .lookup_method(receiver, "detailed_message")
+                    .is_some_and(|(_, held)| held.is_undefined);
+                let detail = if answers {
+                    match self.send_to_object(
+                        receiver.clone(),
+                        "detailed_message",
+                        detail_arguments,
+                        position,
+                    )? {
+                        Object::String(text) => text.as_str().to_string(),
+                        Object::Nil => stand_in,
+                        other => self.message_text_of(other, position)?,
+                    }
+                } else {
+                    stand_in
                 };
                 let trace = exception.borrow().backtrace.clone().unwrap_or_default();
-                let origin = trace.first().cloned().unwrap_or_default();
+                // An exception carrying no backtrace is reported against the
+                // line that asked for the report.
+                let origin = match trace.first() {
+                    Some(entry) => entry.clone(),
+                    None => format!(
+                        "{}:{}:in '{}'",
+                        self.current_source_file.clone().unwrap_or_default(),
+                        position.line,
+                        self.get_current_method_name().unwrap_or("<main>")
+                    ),
+                };
                 let mut rest: Vec<String> = trace.iter().skip(1).cloned().collect();
                 // `--backtrace-limit` says how many frames under the top one
                 // are written out, with a count standing for the rest.
@@ -436,13 +468,20 @@ impl VirtualMachine {
                     keyword_argument(arguments, "highlight"),
                     Some(Object::Bool(true))
                 );
-                let (message, class_name) = {
+                let (message, class_name, given) = {
                     let details = exception.borrow();
                     let class_name = match &details.class {
                         Some(class) => class.ruby_name(),
                         None => details.exception_type.clone(),
                     };
-                    (details.message.clone(), class_name)
+                    (details.message.clone(), class_name, details.message_given)
+                };
+                // The report shows the message `#message` answers, which for
+                // an exception built with none is the class's own name.
+                let message = if message.is_empty() && !given {
+                    class_name.clone()
+                } else {
+                    message
                 };
                 let rendered = if message.is_empty() {
                     // An empty message shows the class name instead, except
@@ -465,13 +504,29 @@ impl VirtualMachine {
                 } else if class_name.is_empty() {
                     // An anonymous class has no name to decorate with.
                     message
-                } else if highlight {
-                    format!(
-                        "\u{1b}[1m{} (\u{1b}[1;4m{}\u{1b}[m\u{1b}[1m)\u{1b}[m",
-                        message, class_name
-                    )
                 } else {
-                    format!("{} ({})", message, class_name)
+                    // The class is named at the end of the first line, and
+                    // the lines under it follow as they were written.
+                    let mut lines = message.split('\n');
+                    let first = lines.next().unwrap_or_default();
+                    let rest: Vec<&str> = lines.collect();
+                    let mut written = if highlight {
+                        format!(
+                            "\u{1b}[1m{} (\u{1b}[1;4m{}\u{1b}[m\u{1b}[1m)\u{1b}[m",
+                            first, class_name
+                        )
+                    } else {
+                        format!("{} ({})", first, class_name)
+                    };
+                    for line in rest {
+                        written.push('\n');
+                        if highlight {
+                            written.push_str(&format!("\u{1b}[1m{}\u{1b}[m", line));
+                        } else {
+                            written.push_str(line);
+                        }
+                    }
+                    written
                 };
                 Ok(Some(Object::string(rendered)))
             }
@@ -567,6 +622,44 @@ impl VirtualMachine {
             _ => Ok(None), // No native method found, let it fall through
         }
     }
+
+    /// The class an exception names itself by where its message is not there
+    /// to be shown, painted the way a report paints it.
+    fn exception_class_label(
+        &self,
+        exception: &Rc<RefCell<crate::object::Exception>>,
+        highlight: bool,
+    ) -> String {
+        let details = exception.borrow();
+        let named = match &details.class {
+            Some(class) => class.ruby_name(),
+            None => details.exception_type.clone(),
+        };
+        if highlight {
+            format!("\u{1b}[1;4m{}\u{1b}[m", named)
+        } else {
+            named
+        }
+    }
+
+    /// The text a `detailed_message` answered with stands for, which Ruby
+    /// reads through `to_str` where the answer is not a String already.
+    fn message_text_of(
+        &mut self,
+        held: Object,
+        position: Position,
+    ) -> Result<String, MetorexError> {
+        if self.responds_to(&held, "to_str")
+            && let Object::String(text) =
+                self.send_to_object(held.clone(), "to_str", vec![], position)?
+        {
+            return Ok(text.as_str().to_string());
+        }
+        match self.send_to_object(held, "to_s", vec![], position)? {
+            Object::String(text) => Ok(text.as_str().to_string()),
+            other => Ok(other.to_string()),
+        }
+    }
 }
 
 /// The TypeError `set_backtrace` raises for anything that is not a String.
@@ -581,6 +674,27 @@ fn backtrace_type_error(value: &Object, position: Position) -> MetorexError {
         message,
     }
 }
+
+/// The methods an Exception answers natively. A class carries no entry for
+/// any of them, so `undef_method` reads this list to know they are there.
+pub(crate) const NATIVE_EXCEPTION_METHODS: &[&str] = &[
+    "message",
+    "detailed_message",
+    "full_message",
+    "to_s",
+    "inspect",
+    "backtrace",
+    "backtrace_locations",
+    "set_backtrace",
+    "cause",
+    "exception",
+    "==",
+    "key",
+    "name",
+    "receiver",
+    "status",
+    "success?",
+];
 
 /// One keyword argument from a trailing keyword Hash, when the call had one.
 fn keyword_argument(arguments: &[Object], name: &str) -> Option<Object> {

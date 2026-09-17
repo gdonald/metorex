@@ -88,6 +88,18 @@ pub(super) fn int_literal(value: i64, position: Position) -> Expression {
     Expression::IntLiteral { value, position }
 }
 
+/// A whole number written out as base-ten digits, which a literal wider than
+/// an i64 has to be carried as.
+pub(super) fn whole_number(digits: &str, position: Position) -> Expression {
+    match digits.parse::<i64>() {
+        Ok(value) => Expression::IntLiteral { value, position },
+        Err(_) => Expression::BigIntLiteral {
+            digits: digits.to_string(),
+            position,
+        },
+    }
+}
+
 /// Map a `TokenKind::Float(...)` value to a `FloatLiteral` expression.
 pub(super) fn float_literal(value: f64, position: Position) -> Expression {
     Expression::FloatLiteral { value, position }
@@ -142,8 +154,33 @@ impl Parser {
         flags: String,
         position: Position,
     ) -> Result<Expression, MetorexError> {
+        // Only these letters name an option a pattern may be written with.
+        if let Some(unknown) = flags.chars().find(|held| !"imxonesu".contains(*held)) {
+            return Err(MetorexError::syntax_error(
+                format!("unknown regexp option - {unknown}"),
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
         if !pattern.contains("#{") {
-            return Ok(regex_literal(pattern, flags, position));
+            // A pattern written out is read where it is written, so one the
+            // engine cannot make sense of is not a program.
+            let written = crate::regexp::Flags {
+                folded: flags.contains('i'),
+                dot_reads_newline: flags.contains('m'),
+                extended: flags.contains('x'),
+                ..crate::regexp::Flags::default()
+            };
+            if let Err(trouble) = crate::regexp::Pattern::compile(&pattern, written) {
+                return Err(MetorexError::syntax_error(
+                    format!("{}: /{}/", trouble.0, pattern),
+                    crate::error::SourceLocation::new(
+                        position.line,
+                        position.column,
+                        position.offset,
+                    ),
+                ));
+            }
+            return Ok(regex_literal(pattern, flags.replace('o', ""), position));
         }
         let parts = crate::lexer::split_interpolation_parts(&pattern);
         let source = self.primary_interpolated_string(parts, position)?;
@@ -152,14 +189,26 @@ impl Parser {
                 name: "Regexp".to_string(),
                 position,
             }),
-            method: "new".to_string(),
-            arguments: vec![
-                source,
-                Expression::StringLiteral {
-                    value: flags,
-                    position,
-                },
-            ],
+            method: "__literal__".to_string(),
+            arguments: {
+                let mut given = vec![
+                    source,
+                    Expression::StringLiteral {
+                        value: flags.clone(),
+                        position,
+                    },
+                ];
+                // `o` says the pattern is built the first time it is reached
+                // and stands for every time after, so the site it was written
+                // at is what the built one is kept under.
+                if flags.contains('o') {
+                    given.push(Expression::StringLiteral {
+                        value: format!("{}:{}", position.line, position.column),
+                        position,
+                    });
+                }
+                given
+            },
             trailing_block: None,
             position,
         })
@@ -257,6 +306,15 @@ fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
 /// The words a percent list holds. Whitespace separates them unless a
 /// backslash escapes it, and the backslash before any character is dropped
 /// once the word it belongs to is settled.
+/// Whether a character escaped in a `%w` list keeps the backslash in front of
+/// it. Only the delimiters and the backslash itself stand alone.
+fn keeps_its_backslash(character: char) -> bool {
+    !matches!(
+        character,
+        '\\' | '[' | ']' | '(' | ')' | '{' | '}' | '<' | '>' | '|' | '!' | '/'
+    )
+}
+
 fn split_percent_words(value: &str, filled: bool) -> Vec<String> {
     let mut words: Vec<String> = Vec::new();
     let mut current = String::new();
@@ -264,8 +322,9 @@ fn split_percent_words(value: &str, filled: bool) -> Vec<String> {
     for character in value.chars() {
         if escaped {
             // `%W` reads `\t` as a tab, so the escape travels with the word.
-            // An escaped space is the word's own space either way.
-            if filled && !character.is_whitespace() {
+            // An escaped space is the word's own space either way, and in
+            // `%w` every other character keeps the backslash in front of it.
+            if !character.is_whitespace() && (filled || keeps_its_backslash(character)) {
                 current.push('\\');
             }
             current.push(character);

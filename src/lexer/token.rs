@@ -82,8 +82,12 @@ pub enum TokenKind {
     /// An integer literal too large for an i64, kept as its digits.
     BigInt(String),
     Float(f64),
-    Rational(i64, i64), // numerator, denominator — the `r` literal suffix
-    Imaginary(f64),     // the `i` literal suffix, as in `1.3i`
+    /// The `r` literal suffix: numerator and denominator as base-ten digits,
+    /// which a literal past an i64 needs.
+    Rational(String, String),
+    /// The `i` literal suffix, as in `1.3i`: the number as it was written,
+    /// and whether it was written as a float.
+    Imaginary(String, bool),
     String(String),
     InterpolatedString(Vec<InterpolationPart>), // String with embedded expressions
     /// A backtick command literal, `` `echo hi` ``, whose parts interpolate
@@ -325,7 +329,7 @@ impl fmt::Display for TokenKind {
             TokenKind::Rational(numerator, denominator) => {
                 write!(f, "{}/{}r", numerator, denominator)
             }
-            TokenKind::Imaginary(value) => write!(f, "{}i", value),
+            TokenKind::Imaginary(value, _) => write!(f, "{value}i"),
             TokenKind::StarStar => write!(f, "**"),
             TokenKind::Less => write!(f, "<"),
             TokenKind::Greater => write!(f, ">"),

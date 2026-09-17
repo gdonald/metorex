@@ -7,6 +7,183 @@ use crate::vm::VirtualMachine;
 use crate::vm::errors::*;
 use std::rc::Rc;
 
+/// How far a shift moves, read the way Ruby reads it: an Integer outright, or
+/// anything that answers `to_int` with one. A count too wide for a machine
+/// word has no place to name, and the sign says which way it went.
+pub(crate) struct ShiftCount {
+    pub written: Option<i64>,
+    pub negative: bool,
+}
+
+/// A string of one byte, tagged with the encoding it is read in.
+fn one_byte_string(byte: u8, named: &str) -> Object {
+    let made = crate::object::StringValue::with_encoding((byte as char).to_string(), named);
+    if !byte.is_ascii() {
+        made.mark_bytes();
+    }
+    Object::String(std::rc::Rc::new(made))
+}
+
+/// Whether an encoding spells some of its characters in more than one byte.
+fn spells_several_bytes(named: &str) -> bool {
+    let upper = named.to_ascii_uppercase();
+    upper.starts_with("UTF")
+        || upper.starts_with("EUC")
+        || upper.starts_with("ISO-2022")
+        || upper.starts_with("CESU")
+        || matches!(
+            upper.as_str(),
+            "SHIFT_JIS"
+                | "WINDOWS-31J"
+                | "MACJAPANESE"
+                | "BIG5"
+                | "GBK"
+                | "GB18030"
+                | "GB2312"
+                | "CP949"
+                | "EMACS-MULE"
+                | "STATELESS-ISO-2022-JP"
+                | "CP50221"
+        )
+}
+
+/// Whether a run of bytes spells one Shift_JIS character. A byte in the lead
+/// ranges is read together with the byte after it, and the rest stand alone.
+fn shift_jis_ok(bytes: &[u8]) -> bool {
+    match bytes {
+        [one] => matches!(one, 0x00..=0x7f | 0xa1..=0xdf),
+        [lead, trail] => {
+            matches!(lead, 0x81..=0x9f | 0xe0..=0xfc) && matches!(trail, 0x40..=0x7e | 0x80..=0xfc)
+        }
+        _ => false,
+    }
+}
+
+/// The character a code names in an encoding, or None where the encoding has
+/// no character of that number.
+fn character_in_encoding(code: i64, named: &str) -> Option<Object> {
+    let upper = named.to_ascii_uppercase();
+    if upper == "UTF-8" {
+        let letter = u32::try_from(code).ok().and_then(char::from_u32)?;
+        return Some(Object::String(std::rc::Rc::new(
+            crate::object::StringValue::with_encoding(letter.to_string(), named),
+        )));
+    }
+    // CESU-8 spells a character outside the first plane as the two halves a
+    // surrogate pair names, each written the way UTF-8 writes a character.
+    if upper == "CESU-8" {
+        let point = u32::try_from(code).ok()?;
+        char::from_u32(point)?;
+        let mut bytes = Vec::with_capacity(6);
+        if point >= 0x10000 {
+            let above = point - 0x10000;
+            for half in [0xd800 + (above >> 10), 0xdc00 + (above & 0x3ff)] {
+                bytes.push(0xe0 | (half >> 12) as u8);
+                bytes.push(0x80 | ((half >> 6) & 0x3f) as u8);
+                bytes.push(0x80 | (half & 0x3f) as u8);
+            }
+        } else {
+            let mut room = [0u8; 4];
+            let letter = char::from_u32(point)?;
+            bytes.extend_from_slice(letter.encode_utf8(&mut room).as_bytes());
+        }
+        let made = crate::object::StringValue::from_bytes(
+            crate::vm::native_methods::string_methods::bytes_as_text(&bytes),
+        );
+        made.set_encoding(named);
+        return Some(Object::String(std::rc::Rc::new(made)));
+    }
+    if upper == "US-ASCII" {
+        if !(0..=0x7f).contains(&code) {
+            return None;
+        }
+        return Some(one_byte_string(code as u8, named));
+    }
+    if upper == "ASCII-8BIT" || upper == "BINARY" {
+        if !(0..=0xff).contains(&code) {
+            return None;
+        }
+        return Some(one_byte_string(code as u8, "ASCII-8BIT"));
+    }
+    if !spells_several_bytes(named) {
+        // One byte to a character, so the number names that byte.
+        if !(0..=0xff).contains(&code) {
+            return None;
+        }
+        return Some(one_byte_string(code as u8, named));
+    }
+    // A UTF encoding names a code point, and the halves a surrogate pair is
+    // written with name no character of their own.
+    if upper.starts_with("UTF") {
+        let point = u32::try_from(code).ok()?;
+        char::from_u32(point)?;
+    }
+    // An encoding that spells a character in bytes of its own reads the
+    // number as those bytes.
+    let mut bytes: Vec<u8> = u32::try_from(code).ok()?.to_be_bytes().to_vec();
+    while bytes.len() > 1 && bytes[0] == 0 {
+        bytes.remove(0);
+    }
+    if upper == "EUC-JP" {
+        let (_, width) = crate::vm::native_methods::euc_jp_table::euc_jp_character(&bytes)?;
+        if width != bytes.len() {
+            return None;
+        }
+    }
+    if matches!(upper.as_str(), "SHIFT_JIS" | "WINDOWS-31J" | "MACJAPANESE")
+        && !shift_jis_ok(&bytes)
+    {
+        return None;
+    }
+    let made = crate::object::StringValue::from_bytes(
+        crate::vm::native_methods::string_methods::bytes_as_text(&bytes),
+    );
+    made.set_encoding(named);
+    Some(Object::String(std::rc::Rc::new(made)))
+}
+
+impl VirtualMachine {
+    fn shift_count(
+        &mut self,
+        method_name: &str,
+        argument: &Object,
+        position: crate::lexer::Position,
+    ) -> Result<ShiftCount, crate::error::MetorexError> {
+        let held = match argument {
+            Object::Int(_) | Object::BigInt(_) => argument.clone(),
+            other if self.responds_to(other, "to_int") => {
+                match self.send_to_object(other.clone(), "to_int", vec![], position)? {
+                    answered @ (Object::Int(_) | Object::BigInt(_)) => answered,
+                    _ => {
+                        return Err(method_argument_type_error(
+                            method_name,
+                            "Integer",
+                            argument,
+                            position,
+                        ));
+                    }
+                }
+            }
+            other => {
+                return Err(method_argument_type_error(
+                    method_name,
+                    "Integer",
+                    other,
+                    position,
+                ));
+            }
+        };
+        let negative = matches!(&held, Object::Int(count) if *count < 0)
+            || matches!(&held, Object::BigInt(count) if **count < num_bigint::BigInt::from(0));
+        let written = match held {
+            Object::Int(count) => Some(count),
+            Object::BigInt(count) => count.to_string().parse::<i64>().ok(),
+            _ => None,
+        };
+        Ok(ShiftCount { written, negative })
+    }
+}
+
 impl VirtualMachine {
     /// Execute native methods for the Integer class.
     pub(crate) fn call_int_method(
@@ -340,14 +517,22 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let Object::Int(count) = arguments[0] else {
-                    return Err(method_argument_type_error(
-                        method_name,
-                        "Integer",
-                        &arguments[0],
+                let count = self.shift_count(method_name, &arguments[0], position)?;
+                // A count wider than any machine word shifts everything out,
+                // or fills with the sign, depending on which way it goes.
+                let Some(place) = count.written else {
+                    // Shifting zero leaves zero however far it goes.
+                    let empties_it = *n == 0 || (method_name == "<<") == count.negative;
+                    if empties_it {
+                        return Ok(Some(Object::Int(if *n < 0 { -1 } else { 0 })));
+                    }
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        "shift width too big",
                         position,
                     ));
                 };
+                let count = place;
                 // A negative count shifts the other way, as Ruby's does.
                 let (shift_left, count) = if count < 0 {
                     (method_name == ">>", count.unsigned_abs())
@@ -396,7 +581,16 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Some(Object::Int(n.abs())))
+                // The widest negative number has no positive of its own
+                // width, so its size is carried in the wider type.
+                let held = num_bigint::BigInt::from(*n);
+                Ok(Some(Object::integer(
+                    if held < num_bigint::BigInt::from(0) {
+                        -held
+                    } else {
+                        held
+                    },
+                )))
             }
             // The unary operators under the names `send` reaches them by.
             "-@" | "+@" => {
@@ -465,49 +659,66 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                let Object::Int(code) = receiver else {
-                    return Ok(None);
+                // A number too wide for a machine word names no character in
+                // any encoding.
+                let code = match receiver {
+                    Object::Int(code) => *code,
+                    Object::BigInt(_) => {
+                        return Err(crate::vm::errors::simple_exception(
+                            "RangeError",
+                            "bignum out of char range",
+                            position,
+                        ));
+                    }
+                    _ => return Ok(None),
                 };
                 let out_of_range = || {
                     let message = format!("{} out of char range", code);
                     crate::vm::errors::simple_exception("RangeError", &message, position)
                 };
-                if arguments.is_empty() {
-                    if !(0..=255).contains(code) {
-                        return Err(out_of_range());
-                    }
-                    let byte = *code as u8;
-                    let named = if byte.is_ascii() {
-                        "US-ASCII"
-                    } else {
-                        "ASCII-8BIT"
-                    };
-                    return Ok(Some(Object::String(std::rc::Rc::new(
-                        crate::object::StringValue::with_encoding(
-                            (byte as char).to_string(),
-                            named,
-                        ),
-                    ))));
+                if code < 0 {
+                    return Err(out_of_range());
                 }
-                let named = match &arguments[0] {
-                    Object::String(text) => text.to_text(),
-                    other => self.get_string_representation(other, position)?,
+                let named = match arguments.first() {
+                    Some(held) => {
+                        let written = match held {
+                            Object::String(text) => text.to_text(),
+                            other => self.get_string_representation(other, position)?,
+                        };
+                        Some(
+                            crate::vm::native_methods::string_methods::canonical_encoding_name(
+                                &written,
+                            ),
+                        )
+                    }
+                    // Written with no encoding, a code in the ASCII range is
+                    // ASCII and one above it is a byte, whatever encoding the
+                    // program reads text in.
+                    None => {
+                        if (0..=127).contains(&code) {
+                            return Ok(Some(one_byte_string(code as u8, "US-ASCII")));
+                        }
+                        if (128..=255).contains(&code) {
+                            return Ok(Some(one_byte_string(code as u8, "ASCII-8BIT")));
+                        }
+                        match self.globals().get("__Encoding_default_internal") {
+                            Some(Object::Nil) | None => return Err(out_of_range()),
+                            Some(held) => {
+                                let written = self.get_string_representation(&held, position)?;
+                                Some(
+                                    crate::vm::native_methods::string_methods::canonical_encoding_name(
+                                        &written,
+                                    ),
+                                )
+                            }
+                        }
+                    }
                 };
-                let named =
-                    crate::vm::native_methods::string_methods::canonical_encoding_name(&named);
-                let Some(letter) = u32::try_from(*code).ok().and_then(char::from_u32) else {
+                let named = named.unwrap_or_else(|| "US-ASCII".to_string());
+                let Some(made) = character_in_encoding(code, &named) else {
                     return Err(out_of_range());
                 };
-                let made = crate::object::StringValue::with_encoding(letter.to_string(), &named);
-                // In an encoding that spells every character with one byte,
-                // the number names that byte rather than a codepoint.
-                if (0..=255).contains(code)
-                    && !named.to_ascii_uppercase().starts_with("UTF")
-                    && !named.eq_ignore_ascii_case("US-ASCII")
-                {
-                    made.mark_bytes();
-                }
-                Ok(Some(Object::String(std::rc::Rc::new(made))))
+                Ok(Some(made))
             }
             "to_s" | "inspect" if !arguments.is_empty() => {
                 if arguments.len() != 1 {
@@ -919,14 +1130,21 @@ impl VirtualMachine {
             }
             "<<" | ">>" => {
                 no_arguments(1)?;
-                let Object::Int(count) = arguments[0] else {
-                    return Err(method_argument_type_error(
-                        method_name,
-                        "Integer",
-                        &arguments[0],
+                let count = self.shift_count(method_name, &arguments[0], position)?;
+                let Some(place) = count.written else {
+                    let zero = **value == BigInt::from(0);
+                    let empties_it = zero || (method_name == "<<") == count.negative;
+                    if empties_it {
+                        let sign = if **value < BigInt::from(0) { -1 } else { 0 };
+                        return Ok(Some(Object::Int(sign)));
+                    }
+                    return Err(crate::vm::errors::simple_exception(
+                        "RangeError",
+                        "shift width too big",
                         position,
                     ));
                 };
+                let count = place;
                 let (shift_left, count) = if count < 0 {
                     (method_name == ">>", count.unsigned_abs())
                 } else {
@@ -939,6 +1157,12 @@ impl VirtualMachine {
                 };
                 Ok(Some(Object::integer(shifted)))
             }
+            // A number this wide names no character in any encoding.
+            "chr" => Err(crate::vm::errors::simple_exception(
+                "RangeError",
+                "bignum out of char range",
+                position,
+            )),
             "divmod" => {
                 no_arguments(1)?;
                 let Some(divisor) = arguments[0].as_big_integer() else {
@@ -1335,6 +1559,28 @@ impl VirtualMachine {
             // A Float divisor still answers a whole number, which is the
             // quotient rounded toward negative infinity.
             "div" => {
+                // A value of the program's own answers the division itself:
+                // the pair its `coerce` hands back is asked for `div` rather
+                // than for `/`.
+                let coerces = matches!(argument, Object::Instance(held)
+                    if !matches!(held.borrow().class.name(), "Rational" | "Complex"));
+                if coerces && self.answers_to(argument, "coerce", position)? {
+                    let pair = self.send_to_object(
+                        argument.clone(),
+                        "coerce",
+                        vec![receiver.clone()],
+                        position,
+                    )?;
+                    if let Object::Array(parts) = &pair
+                        && parts.borrow().len() == 2
+                    {
+                        let (first, second) = {
+                            let held = parts.borrow();
+                            (held[0].clone(), held[1].clone())
+                        };
+                        return self.send_to_object(first, "div", vec![second], position);
+                    }
+                }
                 // A zero divisor is refused before the division runs, so a
                 // Float zero is reported the same way an Integer one is.
                 if matches!(argument, Object::Float(divisor) if *divisor == 0.0) {
@@ -1737,6 +1983,7 @@ impl VirtualMachine {
                     start,
                     end,
                     exclusive,
+                    ..
                 }) = crate::vm::native_methods::as_range(&arguments[0])
                 else {
                     let index = self.bit_position_argument(&arguments[0], position)?;

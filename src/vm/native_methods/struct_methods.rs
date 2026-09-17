@@ -107,6 +107,7 @@ fn range_values(
         start,
         end,
         exclusive,
+        ..
     } = range
     else {
         return Ok(Vec::new());

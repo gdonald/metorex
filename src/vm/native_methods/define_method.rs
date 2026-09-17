@@ -123,17 +123,27 @@ impl VirtualMachine {
         let mut regular_params: Vec<String> = Vec::new();
         let mut variadic_param: Option<(usize, String)> = None;
         let mut block_parameter: Option<String> = None;
+        let mut keyword_rest_parameter: Option<String> = None;
+        let mut keyword_parameters: Vec<(String, Option<crate::ast::Expression>)> = Vec::new();
         for (index, param) in block.parameters.iter().enumerate() {
             if param == crate::object::TRAILING_COMMA_PARAM {
                 // A method built from `{ |a,| }` keeps the plain `|a|` arity;
                 // only procs destructure on a trailing comma.
                 continue;
             }
-            if let Some(name) = param.strip_prefix('*') {
+            if param == crate::object::NO_KEYWORDS_PARAM {
+                keyword_rest_parameter = Some(param.clone());
+            } else if let Some(name) = param.strip_prefix("**") {
+                keyword_rest_parameter = Some(name.to_string());
+            } else if let Some(name) = param.strip_prefix('*') {
                 variadic_param = Some((index, name.to_string()));
                 regular_params.push(name.to_string());
             } else if let Some(name) = param.strip_prefix('&') {
                 block_parameter = Some(name.to_string());
+            } else if let Some(name) = param.strip_prefix(crate::object::KEYWORD_PARAM_PREFIX) {
+                // A keyword the block declares carries its default alongside
+                // the name, which the block records separately.
+                keyword_parameters.push((name.to_string(), None));
             } else {
                 regular_params.push(param.clone());
             }
@@ -142,6 +152,8 @@ impl VirtualMachine {
         let mut method = Method::new(method_name.to_string(), regular_params, block.body.clone());
         method.variadic_param = variadic_param;
         method.block_parameter = block_parameter;
+        method.keyword_rest_parameter = keyword_rest_parameter;
+        method.keyword_parameters = keyword_parameters;
         // Optional block params (`|a, b = 1|`) become the method's default
         // parameters, keyed by positional index.
         for (original_index, expression) in block.parameter_defaults.iter() {

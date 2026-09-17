@@ -33,12 +33,12 @@ impl<'a> Lexer<'a> {
         if is_float {
             // `1.25r` is exactly 125/100, not the binary float nearest 1.25.
             let (whole, fraction) = number.split_once('.').unwrap_or((number, ""));
-            let digits = format!("{}{}", whole, fraction);
-            let numerator = digits.parse::<i64>().unwrap_or(0);
-            let denominator = 10i64.checked_pow(fraction.len() as u32).unwrap_or(1);
-            Some(TokenKind::Rational(numerator, denominator))
+            let digits = format!("{whole}{fraction}");
+            let mut denominator = String::from("1");
+            denominator.extend(std::iter::repeat_n('0', fraction.len()));
+            Some(TokenKind::Rational(digits, denominator))
         } else {
-            Some(TokenKind::Rational(number.parse().unwrap_or(0), 1))
+            Some(TokenKind::Rational(number.to_string(), "1".to_string()))
         }
     }
 
@@ -46,7 +46,7 @@ impl<'a> Lexer<'a> {
     /// (0+1.3i). As with the rational suffix, the `i` only counts when no
     /// identifier character follows it, so `2if x` still lexes as `2` then
     /// `if`.
-    fn read_imaginary_suffix(&mut self, number: &str) -> Option<TokenKind> {
+    fn read_imaginary_suffix(&mut self, number: &str, is_float: bool) -> Option<TokenKind> {
         if self.peek() != Some('i') {
             return None;
         }
@@ -70,7 +70,7 @@ impl<'a> Lexer<'a> {
             return None;
         }
 
-        Some(TokenKind::Imaginary(number.parse().unwrap_or(0.0)))
+        Some(TokenKind::Imaginary(number.to_string(), is_float))
     }
 
     /// Whether the `_` at the cursor sits between digits, as in `1_000`. A
@@ -147,6 +147,18 @@ impl<'a> Lexer<'a> {
         if digits.is_empty() {
             restore(self);
             return None;
+        }
+        // A radix literal carries the same `r` and `i` suffixes a decimal one
+        // does, and the value they stand for is the whole number it named.
+        let spelled = match num_bigint::BigInt::parse_bytes(digits.as_bytes(), radix) {
+            Some(value) => value.to_string(),
+            None => "0".to_string(),
+        };
+        if let Some(token) = self.read_rational_suffix(&spelled, false) {
+            return Some(token);
+        }
+        if let Some(token) = self.read_imaginary_suffix(&spelled, false) {
+            return Some(token);
         }
         Some(match i64::from_str_radix(&digits, radix) {
             Ok(value) => TokenKind::Int(value),
@@ -269,7 +281,7 @@ impl<'a> Lexer<'a> {
             return token;
         }
 
-        if let Some(token) = self.read_imaginary_suffix(&number) {
+        if let Some(token) = self.read_imaginary_suffix(&number, is_float) {
             return token;
         }
 

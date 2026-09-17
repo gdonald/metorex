@@ -5,6 +5,19 @@ use metorex::object::Object;
 use metorex::parser::Parser;
 use metorex::vm::VirtualMachine;
 
+/// What reading the source said it could not make sense of.
+fn parse_trouble(code: &str) -> String {
+    let tokens = Lexer::new(code).tokenize();
+    let trouble = Parser::new(tokens)
+        .parse()
+        .expect_err("the source is refused");
+    trouble
+        .iter()
+        .map(|held| held.to_string())
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
 fn run(code: &str) -> Option<Object> {
     let tokens = Lexer::new(code).tokenize();
     let stmts = Parser::new(tokens).parse().expect("parse failed");
@@ -474,13 +487,12 @@ fn object_match_operator_non_string_returns_nil() {
     assert_eq!(result, Some(Object::Nil));
 }
 
-// ── object_methods.rs: =~ with invalid regex returns Nil (line 437) ────────
+// ── a pattern that says nothing readable is refused where it is written ───
 
 #[test]
-fn object_match_operator_invalid_regex_returns_nil() {
-    // An invalid regex pattern should return nil rather than error
-    let result = run(r#""hello" =~ /[invalid(/"#);
-    assert_eq!(result, Some(Object::Nil));
+fn object_match_operator_refuses_a_pattern_with_an_unclosed_class() {
+    let trouble = parse_trouble(r#""hello" =~ /[invalid(/"#);
+    assert!(trouble.contains("premature end of char-class"), "{trouble}");
 }
 
 // ── object_methods.rs: !~ on non-string/regex pair returns true (lines 440, 452) ─
@@ -492,12 +504,10 @@ fn object_not_match_operator_without_a_match_method_raises() {
     assert!(error.contains("undefined method '=~' for an instance of Integer"));
 }
 
-// ── object_methods.rs: !~ with invalid regex returns true (lines 445-448) ──
-
 #[test]
-fn object_not_match_operator_invalid_regex_returns_true() {
-    let result = run(r#""hello" !~ /[invalid(/"#);
-    assert_eq!(result, Some(Object::Bool(true)));
+fn object_not_match_operator_refuses_a_pattern_with_an_unclosed_class() {
+    let trouble = parse_trouble(r#""hello" !~ /[invalid(/"#);
+    assert!(trouble.contains("premature end of char-class"), "{trouble}");
 }
 
 // ── object_methods.rs: instance_exec with block (lines 466-471) ─────────────

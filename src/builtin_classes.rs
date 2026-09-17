@@ -54,8 +54,11 @@ pub struct BuiltinClasses {
 impl BuiltinClasses {
     /// Create and initialize all built-in classes
     pub fn new() -> Self {
-        // Create the base Object class
-        let object_class = Rc::new(Class::new("Object", None));
+        // Create the base Object class, under the root every class descends
+        // from. A primitive answers its own class, so the chain has to reach
+        // BasicObject for `5.is_a?(BasicObject)` to be true.
+        let basic_object_class = Rc::new(Class::new("BasicObject", None));
+        let object_class = Rc::new(Class::new("Object", Some(Rc::clone(&basic_object_class))));
 
         // Create primitive type classes
         let string_class = Rc::new(Class::new("String", Some(Rc::clone(&object_class))));

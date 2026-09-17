@@ -1131,3 +1131,19 @@ fn test_errors_rescue_names_in_scope_no_parens_execution() {
     let output = run_example("errors/rescue_names_in_scope_no_parens.rb");
     assert_eq!(output, RESCUE_NAMES_IN_SCOPE_OUTPUT);
 }
+
+/// The expected output of both `errors/exception_reports` variants, which
+/// differ only in whether the calls are written with parentheses.
+const EXCEPTION_REPORTS_OUTPUT: &str = "\"first line (RuntimeError)\\nsecond line\"\n\"unhandled exception\"\n\"StandardError\"\n\"RuntimeError\"\n\"RuntimeError\"\ntrue\nnil\ntrue\n[\"/dir/foo.rb:10:in `raising'\"]\n\"outer\"\n\"inner\"\n";
+
+#[test]
+fn test_errors_exception_reports_execution() {
+    let output = run_example("errors/exception_reports.rb");
+    assert_eq!(output, EXCEPTION_REPORTS_OUTPUT);
+}
+
+#[test]
+fn test_errors_exception_reports_parens_execution() {
+    let output = run_example("errors/exception_reports_parens.rb");
+    assert_eq!(output, EXCEPTION_REPORTS_OUTPUT);
+}

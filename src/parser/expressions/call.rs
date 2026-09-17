@@ -867,6 +867,12 @@ impl Parser {
     }
 
     fn can_start_argument_for_call(&mut self, _callee: &Expression) -> bool {
+        // A name the program has bound is a variable, so a sign after it
+        // carries on the arithmetic rather than opening an argument.
+        let names_a_variable = matches!(
+            _callee,
+            Expression::Identifier { name, .. } if self.bound_names.contains(name)
+        );
         // Where arguments written without parentheses are not read at all,
         // as in the value of a `rescue` modifier, a name stands alone.
         if self.refuse_paren_less_args > 0 {
@@ -891,7 +897,7 @@ impl Parser {
         // what `foo` answers. Ruby tells them apart by the spacing: a sign with
         // a space before it and none after belongs to the argument.
         if self.signed_literal_argument() {
-            return true;
+            return !names_a_variable;
         }
 
         // Don't parse as function call if we see operators or punctuation that
@@ -924,7 +930,7 @@ impl Parser {
                 | TokenKind::Int(_)
                 | TokenKind::BigInt(_)
                 | TokenKind::Rational(_, _)
-                | TokenKind::Imaginary(_)
+                | TokenKind::Imaginary(_, _)
                 | TokenKind::Float(_)
                 | TokenKind::String(_)
                 | TokenKind::ByteString(_)
@@ -950,6 +956,8 @@ impl Parser {
                 | TokenKind::CommandString(_)
                 | TokenKind::CommandSymbol
                 | TokenKind::PercentSymbol(_)
+                | TokenKind::PercentW(_, _)
+                | TokenKind::PercentI(_, _)
                 | TokenKind::Ampersand
                 | TokenKind::Colon
                 | TokenKind::Include
@@ -1066,7 +1074,7 @@ impl Parser {
                     | TokenKind::Int(_)
                     | TokenKind::BigInt(_)
                     | TokenKind::Rational(_, _)
-                    | TokenKind::Imaginary(_)
+                    | TokenKind::Imaginary(_, _)
                     | TokenKind::Float(_)
                     | TokenKind::String(_)
                     | TokenKind::ByteString(_)

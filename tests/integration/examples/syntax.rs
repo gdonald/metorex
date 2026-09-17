@@ -145,3 +145,25 @@ fn test_syntax_do_block_binding_no_parens_execution() {
     let output = run_example("syntax/do_block_binding_no_parens.rb");
     assert_eq!(output, DO_BLOCK_BINDING_OUTPUT);
 }
+
+/// The expected output of both `syntax/operator_binding` variants, which
+/// differ only in whether the calls are written with parentheses.
+const OPERATOR_BINDING_OUTPUT: &str = concat!(
+    "1..10\n1...10\n",
+    "a range takes no range\n",
+    "a relation takes no relation\n",
+    "a comparison takes no comparison\n",
+    "10\n[4]\n"
+);
+
+#[test]
+fn test_syntax_operator_binding_execution() {
+    let output = run_example("syntax/operator_binding.rb");
+    assert_eq!(output, OPERATOR_BINDING_OUTPUT);
+}
+
+#[test]
+fn test_syntax_operator_binding_parens_execution() {
+    let output = run_example("syntax/operator_binding_parens.rb");
+    assert_eq!(output, OPERATOR_BINDING_OUTPUT);
+}

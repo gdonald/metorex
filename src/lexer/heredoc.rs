@@ -315,6 +315,22 @@ pub(crate) fn split_interpolation_parts(body: &str) -> Vec<InterpolationPart> {
                     chars.next();
                     current.push('#');
                 }
+                // `\c` names a control character by the one that follows it,
+                // which is that character whatever it would otherwise mean,
+                // so `\c#{name}` is the control-# escape, not a substitution.
+                Some(&'c') => {
+                    chars.next();
+                    current.push('\\');
+                    current.push('c');
+                    if let Some(named) = chars.next() {
+                        current.push(named);
+                        if named == '\\'
+                            && let Some(after) = chars.next()
+                        {
+                            current.push(after);
+                        }
+                    }
+                }
                 Some(&next) => {
                     current.push('\\');
                     current.push(next);

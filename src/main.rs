@@ -426,6 +426,27 @@ fn line_loop_from(cli: &Cli) -> LineLoop {
 /// A `-I` path as `$LOAD_PATH` holds it: written out from the working
 /// directory when it was named relative to it, with the symlinks along the
 /// way left alone.
+/// Where a library installed alongside metorex is looked for: the `lib`
+/// directory under the prefix the program was installed into, named by
+/// version and then by platform the way Ruby names its own.
+fn installed_library_paths() -> Vec<String> {
+    let Ok(binary) = std::env::current_exe() else {
+        return Vec::new();
+    };
+    let Some(prefix) = binary.parent().and_then(|held| held.parent()) else {
+        return Vec::new();
+    };
+    let versioned = prefix
+        .join("lib")
+        .join("metorex")
+        .join(metorex::reported_ruby_version());
+    let platformed = versioned.join(metorex::reported_ruby_platform());
+    vec![
+        versioned.to_string_lossy().into_owned(),
+        platformed.to_string_lossy().into_owned(),
+    ]
+}
+
 fn load_path_entry(written: &str) -> String {
     let path = Path::new(written);
     if path.is_absolute() {
@@ -632,6 +653,12 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     }
     for path in opened.iter().rev() {
         vm.prepend_load_path(load_path_entry(path));
+    }
+    // The directories a library installed alongside metorex sits in stand
+    // after everything the command line and the environment named, the way
+    // Ruby's own standard library directories do.
+    for path in installed_library_paths() {
+        vm.append_load_path(path);
     }
     for lib in &cli.require_libs {
         if let Err(err) = vm.require_library(lib) {

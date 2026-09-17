@@ -358,6 +358,7 @@ fn format_object_range_inclusive() {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(10)),
         exclusive: false,
+        mark: std::rc::Rc::new(()),
     };
     assert_eq!(ReplCore::format_object(&range), "1..10");
 }
@@ -368,6 +369,7 @@ fn format_object_range_exclusive() {
         start: Box::new(Object::Int(1)),
         end: Box::new(Object::Int(10)),
         exclusive: true,
+        mark: std::rc::Rc::new(()),
     };
     assert_eq!(ReplCore::format_object(&range), "1...10");
 }

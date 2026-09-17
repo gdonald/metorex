@@ -103,3 +103,49 @@ fn test_regexp_built_patterns_parens_execution() {
     let output = run_example("regexp/built_patterns_parens.rb");
     assert_eq!(output, BUILT_PATTERNS_OUTPUT);
 }
+
+/// The expected output of both `regexp/pattern_soundness` variants, which
+/// differ only in whether the calls are written with parentheses.
+const PATTERN_SOUNDNESS_OUTPUT: &str = concat!(
+    "end pattern with unmatched parenthesis: /(hay(st)ack/\n",
+    "unmatched close parenthesis: /hay)stack/\n",
+    "invalid group name <1a>: /(?<1a>a)/\n",
+    "invalid group name <-a>: /(?<-a>a)/\n",
+    "unknown regexp option: n\n",
+    "\"Hi\"\n"
+);
+
+#[test]
+fn test_regexp_pattern_soundness_execution() {
+    let output = run_example("regexp/pattern_soundness.rb");
+    assert_eq!(output, PATTERN_SOUNDNESS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_pattern_soundness_parens_execution() {
+    let output = run_example("regexp/pattern_soundness_parens.rb");
+    assert_eq!(output, PATTERN_SOUNDNESS_OUTPUT);
+}
+
+/// The expected output of both `regexp/backtracking_engine` variants, which
+/// differ only in whether the calls are written with parentheses.
+const BACKTRACKING_ENGINE_OUTPUT: &str = concat!(
+    "\"abab\"\n\"abab\"\n",
+    "\"bar\"\n\"bar\"\n",
+    "nil\nnil\n\"aaa\"\n",
+    "\"right\"\n\"aa\"\n",
+    "nil\n0\n",
+    "\"🤘🏽\"\n"
+);
+
+#[test]
+fn test_regexp_backtracking_engine_execution() {
+    let output = run_example("regexp/backtracking_engine.rb");
+    assert_eq!(output, BACKTRACKING_ENGINE_OUTPUT);
+}
+
+#[test]
+fn test_regexp_backtracking_engine_no_parens_execution() {
+    let output = run_example("regexp/backtracking_engine_no_parens.rb");
+    assert_eq!(output, BACKTRACKING_ENGINE_OUTPUT);
+}

@@ -42,7 +42,7 @@ impl<'a> Lexer<'a> {
                     // A number written with a suffix is a value too, so the
                     // `/` after `9999r` divides rather than opening a regex.
                     | TokenKind::Rational(_, _)
-                    | TokenKind::Imaginary(_)
+                    | TokenKind::Imaginary(_, _)
                     // After `def`, / is an operator method name, not regex
                     | TokenKind::Def
             ),

@@ -60,17 +60,22 @@ impl Parser {
         Ok(expr)
     }
 
-    /// Parse equality operators (==, !=)
+    /// The operators that answer whether two values stand in some relation.
+    /// None of them chains, so `1 == 2 == 3` is not a program.
+    const RELATIONS: &'static [TokenKind] = &[
+        TokenKind::EqualEqual,
+        TokenKind::BangEqual,
+        TokenKind::TripleEqual,
+        TokenKind::Match,
+        TokenKind::NotMatch,
+        TokenKind::Spaceship,
+    ];
+
+    /// Parse equality operators (==, !=, ===, =~, !~, <=>)
     pub(crate) fn parse_equality(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_comparison()?;
 
-        while self.check(&[
-            TokenKind::EqualEqual,
-            TokenKind::BangEqual,
-            TokenKind::TripleEqual,
-            TokenKind::Match,
-            TokenKind::NotMatch,
-        ]) {
+        if self.check(Self::RELATIONS) {
             let op_token = self.advance();
             if matches!(op_token.kind, TokenKind::Match | TokenKind::NotMatch) {
                 // =~ and !~ are dispatched as method calls
@@ -80,7 +85,7 @@ impl Parser {
                 // captures behind as local variables.
                 let named = matches!(op_token.kind, TokenKind::Match)
                     && matches!(expr, Expression::RegexLiteral { .. });
-                let method_call = Expression::MethodCall {
+                expr = Expression::MethodCall {
                     receiver: Box::new(expr),
                     method: if named {
                         "__match_named__".to_string()
@@ -93,24 +98,27 @@ impl Parser {
                     trailing_block: None,
                     position: op_token.position,
                 };
-                expr = method_call;
-                continue;
+            } else {
+                let op = match op_token.kind {
+                    TokenKind::EqualEqual => BinaryOp::Equal,
+                    TokenKind::TripleEqual => BinaryOp::CaseEqual,
+                    TokenKind::BangEqual => BinaryOp::NotEqual,
+                    TokenKind::Spaceship => BinaryOp::Spaceship,
+                    _ => unreachable!(),
+                };
+                self.skip_whitespace();
+                let right = self.parse_comparison()?;
+                let right = self.fold_assignment(right)?;
+                expr = Expression::BinaryOp {
+                    op,
+                    left: Box::new(expr),
+                    right: Box::new(right),
+                    position: op_token.position,
+                };
             }
-            let op = match op_token.kind {
-                TokenKind::EqualEqual => BinaryOp::Equal,
-                TokenKind::TripleEqual => BinaryOp::CaseEqual,
-                TokenKind::BangEqual => BinaryOp::NotEqual,
-                _ => unreachable!(),
-            };
-            self.skip_whitespace();
-            let right = self.parse_comparison()?;
-            let right = self.fold_assignment(right)?;
-            expr = Expression::BinaryOp {
-                op,
-                left: Box::new(expr),
-                right: Box::new(right),
-                position: op_token.position,
-            };
+            if self.check(Self::RELATIONS) {
+                return Err(self.error_at_current("unexpected operator"));
+            }
         }
 
         Ok(expr)
@@ -125,7 +133,6 @@ impl Parser {
             TokenKind::Greater,
             TokenKind::LessEqual,
             TokenKind::GreaterEqual,
-            TokenKind::Spaceship,
         ]) {
             let op_token = self.advance();
             let op = match op_token.kind {
@@ -133,7 +140,6 @@ impl Parser {
                 TokenKind::Greater => BinaryOp::Greater,
                 TokenKind::LessEqual => BinaryOp::LessEqual,
                 TokenKind::GreaterEqual => BinaryOp::GreaterEqual,
-                TokenKind::Spaceship => BinaryOp::Spaceship,
                 _ => unreachable!(),
             };
             // A comparison operator at the end of a line carries the
@@ -200,7 +206,7 @@ impl Parser {
     /// Parse `<<` and `>>`, which bind tighter than every other operator that
     /// works on the bits of a number.
     pub(crate) fn parse_shift(&mut self) -> Result<Expression, MetorexError> {
-        let mut expr = self.parse_range()?;
+        let mut expr = self.parse_term()?;
 
         while self.check(&[TokenKind::Shovel, TokenKind::RightShift]) {
             let op_token = self.advance();
@@ -212,7 +218,7 @@ impl Parser {
                 ">>"
             };
             self.skip_whitespace();
-            let right = self.parse_range()?;
+            let right = self.parse_term()?;
             expr = Expression::MethodCall {
                 receiver: Box::new(expr),
                 method: method.to_string(),
@@ -225,13 +231,14 @@ impl Parser {
         Ok(expr)
     }
 
-    /// Parse range operators (.., ...)
+    /// Parse range operators (.., ...), which bind looser than every
+    /// operator but the conditional and what follows it.
     pub(crate) fn parse_range(&mut self) -> Result<Expression, MetorexError> {
         // Beginless range: `..expr` or `...expr`
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             let op_token = self.advance();
             let exclusive = op_token.kind == TokenKind::DotDotDot;
-            let end = self.parse_term()?;
+            let end = self.parse_logical_or()?;
             return Ok(Expression::Range {
                 start: Box::new(Expression::NilLiteral {
                     position: op_token.position,
@@ -242,7 +249,7 @@ impl Parser {
             });
         }
 
-        let mut expr = self.parse_term()?;
+        let mut expr = self.parse_logical_or()?;
 
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             let op_token = self.advance();
@@ -261,7 +268,7 @@ impl Parser {
                     position: op_token.position,
                 }
             } else {
-                self.parse_term()?
+                self.parse_logical_or()?
             };
             expr = Expression::Range {
                 start: Box::new(expr),
@@ -269,6 +276,11 @@ impl Parser {
                 exclusive,
                 position: op_token.position,
             };
+            // One range cannot be an end of another, so `1..2..3` is not a
+            // program.
+            if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
+                return Err(self.error_at_current("unexpected range operator"));
+            }
         }
 
         Ok(expr)

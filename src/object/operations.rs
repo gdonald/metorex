@@ -142,11 +142,13 @@ impl Object {
                     start: left_start,
                     end: left_end,
                     exclusive: left_exclusive,
+                    ..
                 },
                 Object::Range {
                     start: right_start,
                     end: right_end,
                     exclusive: right_exclusive,
+                    ..
                 },
             ) => {
                 left_exclusive == right_exclusive

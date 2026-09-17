@@ -51,3 +51,36 @@ fn test_symbols_and_ranges_reverse_walks_parens_execution() {
     let output = run_example("symbols_and_ranges/reverse_walks_parens.rb");
     assert_eq!(output, REVERSE_WALKS_OUTPUT);
 }
+
+/// The expected output of both `symbols_and_ranges/range_identity` variants,
+/// which differ only in whether the calls are written with parentheses.
+const RANGE_IDENTITY_OUTPUT: &str =
+    "true\nfalse\ntrue\ntrue\nfalse\ntrue\n\"a\"\n\"z\"\ntrue\nfalse\n";
+
+#[test]
+fn test_symbols_and_ranges_range_identity_execution() {
+    let output = run_example("symbols_and_ranges/range_identity.rb");
+    assert_eq!(output, RANGE_IDENTITY_OUTPUT);
+}
+
+#[test]
+fn test_symbols_and_ranges_range_identity_parens_execution() {
+    let output = run_example("symbols_and_ranges/range_identity_parens.rb");
+    assert_eq!(output, RANGE_IDENTITY_OUTPUT);
+}
+
+/// The expected output of both `symbols_and_ranges/allocated_range` variants,
+/// which differ only in whether the calls are written with parentheses.
+const ALLOCATED_RANGE_OUTPUT: &str = "3\n7\ntrue\nbad value for range\nFrozenError\n";
+
+#[test]
+fn test_symbols_and_ranges_allocated_range_execution() {
+    let output = run_example("symbols_and_ranges/allocated_range.rb");
+    assert_eq!(output, ALLOCATED_RANGE_OUTPUT);
+}
+
+#[test]
+fn test_symbols_and_ranges_allocated_range_parens_execution() {
+    let output = run_example("symbols_and_ranges/allocated_range_parens.rb");
+    assert_eq!(output, ALLOCATED_RANGE_OUTPUT);
+}

@@ -68,7 +68,7 @@ pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 26] = [
     ),
 ];
 
-pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 73] = [
+pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 115] = [
     ("UTF_8", "UTF-8", false),
     ("CESU_8", "CESU-8", false),
     ("US_ASCII", "US-ASCII", false),
@@ -134,6 +134,48 @@ pub(crate) const ENCODING_NAMES: [(&str, &str, bool); 73] = [
     ("IBM866", "IBM866", false),
     ("MacJapanese", "MacJapanese", false),
     ("MacCyrillic", "macCyrillic", false),
+    ("TIS_620", "TIS-620", false),
+    ("CP949", "CP949", false),
+    ("IBM737", "IBM737", false),
+    ("IBM775", "IBM775", false),
+    ("CP850", "CP850", false),
+    ("IBM852", "IBM852", false),
+    ("CP852", "CP852", false),
+    ("IBM855", "IBM855", false),
+    ("CP855", "CP855", false),
+    ("IBM857", "IBM857", false),
+    ("IBM860", "IBM860", false),
+    ("IBM861", "IBM861", false),
+    ("IBM862", "IBM862", false),
+    ("IBM863", "IBM863", false),
+    ("IBM864", "IBM864", false),
+    ("IBM865", "IBM865", false),
+    ("IBM869", "IBM869", false),
+    ("Windows_1252", "Windows-1252", false),
+    ("Windows_1253", "Windows-1253", false),
+    ("Windows_1254", "Windows-1254", false),
+    ("Windows_1255", "Windows-1255", false),
+    ("Windows_1256", "Windows-1256", false),
+    ("Windows_1257", "Windows-1257", false),
+    ("Windows_1258", "Windows-1258", false),
+    ("Windows_874", "Windows-874", false),
+    ("GB1988", "GB1988", false),
+    ("GB2312", "GB2312", false),
+    ("GB12345", "GB12345", false),
+    ("MacCentEuro", "macCentEuro", false),
+    ("MacCroatian", "macCroatian", false),
+    ("MacGreek", "macGreek", false),
+    ("MacIceland", "macIceland", false),
+    ("MacRoman", "macRoman", false),
+    ("MacRomania", "macRomania", false),
+    ("MacThai", "macThai", false),
+    ("MacTurkish", "macTurkish", false),
+    ("MacUkraine", "macUkraine", false),
+    ("EucJP_ms", "eucJP-ms", false),
+    ("CP51932", "CP51932", false),
+    ("UTF8_MAC", "UTF8-MAC", false),
+    ("IBM720", "IBM720", false),
+    ("CP720", "CP720", false),
     ("MACCYRILLIC", "macCyrillic", false),
     // The dummy encodings: Ruby names them and tags strings with them, but
     // converts nothing through them.
@@ -197,6 +239,17 @@ pub(super) fn register_builtin_classes(globals: &mut GlobalRegistry, builtins: &
     for (name, class) in builtins.all_classes() {
         globals.set(name, Object::Class(class));
     }
+    // `initialize` answers natively rather than through a method entry. A
+    // stub carrying the name is what the visibility checks read, and it hands
+    // the call straight back to the native one.
+    let mut stub =
+        crate::object::Method::new("initialize".to_string(), vec!["args".to_string()], vec![]);
+    stub.variadic_param = Some((0, "args".to_string()));
+    stub.native_alias = Some("initialize".to_string());
+    builtins
+        .array_class
+        .define_method("initialize", Rc::new(stub));
+    builtins.array_class.set_method_private("initialize");
 }
 
 /// Register singleton values (nil, true, false) in the global registry.
@@ -211,7 +264,10 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
         "RUBY_VERSION",
         Object::string(crate::reported_ruby_version()),
     );
-    globals.set("RUBY_ENGINE", Object::string("metorex".to_string()));
+    // Metorex runs Ruby, so it names the engine the way the Ruby it follows
+    // does. A test suite reads this to decide which of an implementation's
+    // limits apply, and metorex carries Ruby's own.
+    globals.set("RUBY_ENGINE", Object::string("ruby".to_string()));
     globals.set(
         "RUBY_PLATFORM",
         Object::string(crate::reported_ruby_platform()),
@@ -236,6 +292,42 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
         "RUBY_ENGINE_VERSION",
         Object::string(crate::reported_ruby_version()),
     );
+    globals.set(
+        "RUBY_COPYRIGHT",
+        Object::string(format!(
+            "ruby - Copyright (C) 1993-2026 Yukihiro Matsumoto, metorex {}",
+            env!("CARGO_PKG_VERSION")
+        )),
+    );
+    globals.set(
+        "RUBY_RELEASE_DATE",
+        Object::string("2026-09-15".to_string()),
+    );
+    globals.set("RUBY_REVISION", Object::string("metorex".to_string()));
+    // Every one of these names a string that does not change, and Ruby holds
+    // them under a module of their own as well.
+    let named_constants = [
+        ("VERSION", "RUBY_VERSION"),
+        ("PATCHLEVEL", "RUBY_PATCHLEVEL"),
+        ("COPYRIGHT", "RUBY_COPYRIGHT"),
+        ("DESCRIPTION", "RUBY_DESCRIPTION"),
+        ("ENGINE", "RUBY_ENGINE"),
+        ("ENGINE_VERSION", "RUBY_ENGINE_VERSION"),
+        ("PLATFORM", "RUBY_PLATFORM"),
+        ("RELEASE_DATE", "RUBY_RELEASE_DATE"),
+        ("REVISION", "RUBY_REVISION"),
+    ];
+    let ruby_module = Rc::new(Class::new_module("Ruby"));
+    for (short, long) in named_constants {
+        let Some(held) = globals.get(long) else {
+            continue;
+        };
+        if let Object::String(text) = &held {
+            text.mark_deduplicated();
+        }
+        ruby_module.set_class_var(short, held);
+    }
+    globals.set("Ruby", Object::Module(ruby_module));
     // Standard IO stream placeholders (used as constants like STDOUT/STDERR/STDIN)
     globals.set("STDOUT", Object::string("STDOUT".to_string()));
     globals.set("STDERR", Object::string("STDERR".to_string()));
@@ -267,9 +359,9 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     // find. A stub keeps them ahead of a method of the same name that a
     // program mixed into Object, which is where Ruby's own lookup stops.
     for name in ["include", "prepend"] {
-        let mut stub =
-            crate::object::Method::new(name.to_string(), vec!["args".to_string()], vec![]);
-        stub.variadic_param = Some((0, "args".to_string()));
+        let held = crate::parser::ANONYMOUS_SPLAT.to_string();
+        let mut stub = crate::object::Method::new(name.to_string(), vec![held.clone()], vec![]);
+        stub.variadic_param = Some((0, held));
         stub.native_alias = Some(name.to_string());
         module_class.define_method(name, Rc::new(stub));
     }
@@ -497,7 +589,9 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // into the classes whose values have an order, which is what
     // `Integer.include?(Comparable)` reports.
     let comparable = Rc::new(Class::new_module("Comparable"));
-    for name in ["Numeric", "Integer", "Float", "String", "Symbol"] {
+    // Integer and Float reach Comparable through Numeric, so only the classes
+    // Ruby mixes it into directly carry it.
+    for name in ["Numeric", "String", "Symbol"] {
         if let Some(Object::Class(class)) = globals.get(name) {
             class.add_mixin(Rc::clone(&comparable));
         }
@@ -521,6 +615,9 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     // later in register_singletons, so `wire_kernel_into_object` is called
     // from VirtualMachine::new() after that step to re-establish the link.
     let kernel = Rc::new(Class::new_module("Kernel"));
+    // The Object every primitive answers is the one the builtins hold, so
+    // Kernel is mixed into it as well as into the one registered later.
+    builtins.object_class.add_mixin(Rc::clone(&kernel));
     globals.set("Kernel", Object::Module(kernel));
 
     // Encoding — metorex strings are UTF-8, so the named encodings exist as

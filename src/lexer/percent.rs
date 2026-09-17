@@ -100,7 +100,13 @@ impl<'a> Lexer<'a> {
                 self.advance();
                 continue;
             }
-            if ch == '#' {
+            // The delimiter closes the pattern before anything else is read
+            // of it, which is what lets `#` stand as one.
+            if ch == close && !escaped {
+                self.advance();
+                break;
+            }
+            if ch == '#' && !escaped {
                 self.advance();
                 pattern.push('#');
                 if self.peek() == Some('{') {
@@ -485,6 +491,20 @@ impl super::Lexer<'_> {
 fn pattern_metacharacter(letter: char) -> bool {
     matches!(
         letter,
-        '.' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{' | '}' | '|' | '^' | '$' | '\\'
+        '.' | '*'
+            | '+'
+            | '?'
+            | '('
+            | ')'
+            | '['
+            | ']'
+            | '{'
+            | '}'
+            | '|'
+            | '^'
+            | '$'
+            | '\\'
+            | '>'
+            | '<'
     )
 }

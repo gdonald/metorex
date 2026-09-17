@@ -457,5 +457,8 @@ fn float_round_with_non_integer_precision_fails() {
     }];
 
     let result = vm.execute_program(&statements);
-    assert!(matches!(result, Err(MetorexError::TypeError { .. })));
+    let Err(MetorexError::UncaughtException { message, .. }) = result else {
+        panic!("expected a TypeError to reach the top");
+    };
+    assert_eq!(message, "no implicit conversion of String into Integer");
 }

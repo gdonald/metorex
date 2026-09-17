@@ -575,12 +575,9 @@ impl VirtualMachine {
                     None => Object::Int(crate::vm::core::seed_from_clock() as i64),
                     Some(given) => self.coerce_to_seed(given, position)?,
                 };
-                let machine_word = seed_low_bits(&seed);
+                let words = seed.as_big_integer().unwrap_or_default();
                 let previous = std::mem::replace(&mut self.random_seed, seed);
-                // The generator takes the seed as-is; a seed of zero still has
-                // to produce a usable sequence, so it is mixed rather than
-                // used directly.
-                self.random_state = machine_word ^ 0x9E3779B97F4A7C15;
+                self.seed_random(&words);
                 Ok(previous)
             }
             // Metorex does not hold the program up: a sleep answers at once.
@@ -667,9 +664,21 @@ impl VirtualMachine {
                     }
                 };
 
+                // A `def` outside any class or module writes the method on
+                // Object, which is where a bare name at the top level is
+                // answered from and what it reports as its owner.
+                let written_on_object = match self.globals().get("Object") {
+                    Some(object_class) => self.top_level_method(&object_class, &method_name),
+                    None => None,
+                };
                 // Look up the method in the current environment
                 if let Some(obj) = self.environment().get(&method_name) {
-                    if let Object::Method(_) = obj {
+                    if let Object::Method(held) = &obj {
+                        if held.owner_class.is_none()
+                            && let Some(found) = written_on_object
+                        {
+                            return Ok(found);
+                        }
                         return Ok(obj);
                     }
                     // A name the environment holds as something other than a
@@ -689,7 +698,15 @@ impl VirtualMachine {
                     // Inside an instance method a bare `method(:name)` means
                     // `self.method(:name)`, and the name is not a local.
                     let name = Object::symbol(method_name.to_string());
-                    self.send_to_object(receiver, "method", vec![name], position)
+                    self.send_to_object(receiver.clone(), "method", vec![name], position)
+                        .or_else(
+                            |error| match self.top_level_method(&receiver, &method_name) {
+                                Some(held) => Ok(held),
+                                None => Err(error),
+                            },
+                        )
+                } else if let Some(found) = written_on_object {
+                    Ok(found)
                 } else {
                     Err(MetorexError::runtime_error(
                         format!("undefined method '{}'", method_name),
@@ -1356,7 +1373,11 @@ impl VirtualMachine {
                     ));
                 }
                 let (code, code_encoding) = match &arguments[0] {
-                    Object::String(s) => (s.as_str().to_string(), s.encoding_name()),
+                    // Source written in an encoding of its own is read back
+                    // through that encoding before it is lexed.
+                    Object::String(s) => {
+                        (crate::vm::native_methods::name_text(s), s.encoding_name())
+                    }
                     other => {
                         return Err(MetorexError::runtime_error(
                             format!(
@@ -1580,10 +1601,19 @@ impl VirtualMachine {
             // as methods, so `send(:raise, ...)` and a singleton that makes
             // `raise` public find them here.
             "fail" | "raise" => {
-                if arguments.len() > 2 {
-                    return Err(MetorexError::runtime_error(
-                        format!("{}() expects 0-2 arguments, got {}", name, arguments.len()),
-                        crate::vm::utils::position_to_location(position),
+                // A class, a message and a backtrace, with `cause:` allowed
+                // alongside them.
+                let counted = match arguments.last() {
+                    Some(Object::Dict(pairs)) if pairs.borrow().contains_key("__MX_KWARGS__") => {
+                        arguments.len() - 1
+                    }
+                    _ => arguments.len(),
+                };
+                if counted > 3 {
+                    return Err(crate::vm::errors::argument_count_error(
+                        crate::vm::errors::Arity::Range(0, 3),
+                        counted,
+                        position,
                     ));
                 }
                 let exception = self.build_raise_exception(&arguments, position)?;
@@ -2047,8 +2077,8 @@ impl VirtualMachine {
                     ));
                 };
                 let program = self.get_string_representation(command, position)?;
-                // A trailing Hash names where the child's streams go rather
-                // than another argument to run it with.
+                // A trailing Hash names where the child's streams go and
+                // whether a failure is raised rather than reported.
                 let mut given = &arguments[1..];
                 let mut options = None;
                 if let Some(Object::Dict(entries)) = given.last() {
@@ -2059,45 +2089,75 @@ impl VirtualMachine {
                 for arg in given {
                     rest.push(self.get_string_representation(arg, position)?);
                 }
-                let mut running = if rest.is_empty() {
-                    let mut shell = std::process::Command::new("/bin/sh");
-                    shell.arg("-c").arg(&program);
-                    shell
-                } else {
-                    let mut named = std::process::Command::new(&program);
-                    named.args(&rest);
-                    named
-                };
-                if let Some(options) = options {
+                let mut raises = false;
+                let mut redirects: Vec<(i32, String)> = Vec::new();
+                if let Some(options) = &options {
                     for (name, target) in options.iter() {
-                        let Object::String(path) = target else {
-                            continue;
-                        };
-                        let Some(opened) = std::fs::OpenOptions::new()
-                            .write(true)
-                            .create(true)
-                            .truncate(false)
-                            .open(&*path.as_str())
-                            .ok()
-                        else {
-                            continue;
-                        };
                         match name.trim_start_matches(':') {
+                            "exception" => raises = target.is_truthy(),
                             "out" => {
-                                running.stdout(opened);
+                                if let Object::String(path) = target {
+                                    redirects.push((1, path.as_str().to_string()));
+                                }
                             }
                             "err" => {
-                                running.stderr(opened);
+                                if let Object::String(path) = target {
+                                    redirects.push((2, path.as_str().to_string()));
+                                }
                             }
                             _ => {}
                         }
                     }
                 }
-                let status = running.status();
-                Ok(match status {
-                    Ok(status) => Object::Bool(status.success()),
-                    Err(_) => Object::Nil,
-                })
+                // One string holding a character the shell reads runs through
+                // the shell, and anything else runs as the program it names.
+                let mut reached = None;
+                let words: Vec<String> = if !rest.is_empty() {
+                    let mut held = vec![program.clone()];
+                    held.extend(rest);
+                    held
+                } else if needs_a_shell(&program) {
+                    // The shell is reached by its path and told its name is
+                    // `sh`, which is the name `$0` answers inside it.
+                    reached = Some("/bin/sh".to_string());
+                    vec!["sh".to_string(), "-c".to_string(), program.clone()]
+                } else {
+                    program
+                        .split_whitespace()
+                        .map(|held| held.to_string())
+                        .collect()
+                };
+                if words.is_empty() {
+                    return Ok(Object::Nil);
+                }
+                let reached = reached.unwrap_or_else(|| words[0].clone());
+                let (status, pid) = run_to_completion(&reached, &words, &redirects);
+                self.record_last_status(&status, Some(pid));
+                let code = status.code().unwrap_or(-1);
+                if raises && code != 0 {
+                    // A child that never reached the program reports it the
+                    // way the operating system does.
+                    if code == 127 {
+                        let message = format!("No such file or directory - {program}");
+                        return Err(crate::vm::errors::simple_exception(
+                            "Errno::ENOENT",
+                            &message,
+                            position,
+                        ));
+                    }
+                    let message = format!("Command failed with exit {code}: {}", words.join(" "));
+                    return Err(crate::vm::errors::simple_exception(
+                        "RuntimeError",
+                        &message,
+                        position,
+                    ));
+                }
+                // A command that never ran at all is reported as nothing
+                // rather than as a failure.
+                if code == 127 {
+                    return Ok(Object::Nil);
+                }
+                Ok(Object::Bool(status.success()))
             }
             // `fork` splits the process. The child answers nil, or runs the
             // block and exits with its status; the parent answers the child's
@@ -2334,6 +2394,7 @@ impl VirtualMachine {
             start,
             end,
             exclusive,
+            ..
         } = value
         else {
             return None;
@@ -2753,21 +2814,127 @@ impl VirtualMachine {
         Ok(())
     }
 
-    /// Advance the generator and answer the next 64 bits. A SplitMix64 step,
-    /// which needs no state beyond the seed itself.
-    fn next_random_bits(&mut self) -> u64 {
-        self.random_state = self.random_state.wrapping_add(0x9E3779B97F4A7C15);
-        let mut mixed = self.random_state;
-        mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58476D1CE4E5B9);
-        mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D049BB133111EB);
-        mixed ^ (mixed >> 31)
+    /// Seed the generator from a whole number, the way Ruby seeds one: a
+    /// single word spreads out on its own, and a wider seed is mixed in word
+    /// by word.
+    pub(crate) fn seed_random(&mut self, seed: &num_bigint::BigInt) {
+        let magnitude = if *seed < num_bigint::BigInt::from(0) {
+            -seed.clone()
+        } else {
+            seed.clone()
+        };
+        let mut words: Vec<u32> = Vec::new();
+        let mut held = magnitude;
+        let step = num_bigint::BigInt::from(1u64 << 32);
+        while held > num_bigint::BigInt::from(0) {
+            let low = &held % &step;
+            words.push(low.to_string().parse::<u64>().unwrap_or(0) as u32);
+            held /= &step;
+        }
+        if words.is_empty() {
+            words.push(0);
+        }
+        // A seed whose top word is one carries nothing that word does not
+        // already say, which is the trim Ruby makes before mixing.
+        if words.len() > 1 && words[words.len() - 1] == 1 {
+            words.pop();
+        }
+        self.random_words = vec![0u32; MT_WORDS];
+        self.random_at = MT_WORDS;
+        if words.len() <= 1 {
+            self.seed_random_word(words[0]);
+            return;
+        }
+        self.seed_random_word(19650218);
+        let mut at = 1usize;
+        let mut from = 0usize;
+        let mut count = MT_WORDS.max(words.len());
+        while count > 0 {
+            let previous = self.random_words[at - 1];
+            self.random_words[at] = (self.random_words[at]
+                ^ (previous ^ (previous >> 30)).wrapping_mul(1664525))
+            .wrapping_add(words[from])
+            .wrapping_add(from as u32);
+            at += 1;
+            from += 1;
+            if at >= MT_WORDS {
+                self.random_words[0] = self.random_words[MT_WORDS - 1];
+                at = 1;
+            }
+            if from >= words.len() {
+                from = 0;
+            }
+            count -= 1;
+        }
+        let mut count = MT_WORDS - 1;
+        while count > 0 {
+            let previous = self.random_words[at - 1];
+            self.random_words[at] = (self.random_words[at]
+                ^ (previous ^ (previous >> 30)).wrapping_mul(1566083941))
+            .wrapping_sub(at as u32);
+            at += 1;
+            if at >= MT_WORDS {
+                self.random_words[0] = self.random_words[MT_WORDS - 1];
+                at = 1;
+            }
+            count -= 1;
+        }
+        self.random_words[0] = 0x8000_0000;
+        self.random_at = MT_WORDS;
     }
 
-    /// The next draw as a Float in [0, 1).
+    /// The spread a single-word seed makes across the whole state.
+    fn seed_random_word(&mut self, seed: u32) {
+        self.random_words = vec![0u32; MT_WORDS];
+        self.random_words[0] = seed;
+        for at in 1..MT_WORDS {
+            let previous = self.random_words[at - 1];
+            self.random_words[at] = (previous ^ (previous >> 30))
+                .wrapping_mul(1812433253)
+                .wrapping_add(at as u32);
+        }
+        self.random_at = MT_WORDS;
+    }
+
+    /// The next word the generator answers.
+    fn next_random_word(&mut self) -> u32 {
+        if self.random_words.len() != MT_WORDS {
+            let seed = num_bigint::BigInt::from(crate::vm::core::seed_from_clock());
+            self.seed_random(&seed);
+        }
+        if self.random_at >= MT_WORDS {
+            for at in 0..MT_WORDS {
+                let mixed = (self.random_words[at] & 0x8000_0000)
+                    | (self.random_words[(at + 1) % MT_WORDS] & 0x7fff_ffff);
+                let mut next = self.random_words[(at + MT_STEP) % MT_WORDS] ^ (mixed >> 1);
+                if mixed & 1 == 1 {
+                    next ^= 0x9908_b0df;
+                }
+                self.random_words[at] = next;
+            }
+            self.random_at = 0;
+        }
+        let mut held = self.random_words[self.random_at];
+        self.random_at += 1;
+        held ^= held >> 11;
+        held ^= (held << 7) & 0x9d2c_5680;
+        held ^= (held << 15) & 0xefc6_0000;
+        held ^ (held >> 18)
+    }
+
+    /// Advance the generator and answer the next 64 bits.
+    fn next_random_bits(&mut self) -> u64 {
+        let high = self.next_random_word() as u64;
+        let low = self.next_random_word() as u64;
+        (high << 32) | low
+    }
+
+    /// The next draw as a Float in [0, 1), read from two words the way Ruby
+    /// reads one.
     pub(crate) fn next_random_float(&mut self) -> f64 {
-        // 53 bits is the whole mantissa, so every representable value in the
-        // interval is reachable and none round up to 1.0.
-        (self.next_random_bits() >> 11) as f64 / (1u64 << 53) as f64
+        let high = (self.next_random_word() >> 5) as f64;
+        let low = (self.next_random_word() >> 6) as f64;
+        (high * 67108864.0 + low) * (1.0 / 9007199254740992.0)
     }
 
     /// The next draw as an Integer in [0, bound) for a bound past the
@@ -2788,12 +2955,39 @@ impl VirtualMachine {
         }
     }
 
-    /// The next draw as an Integer in [0, bound).
+    /// The next draw as an Integer in [0, bound). Ruby fills a mask wide
+    /// enough for the bound a word at a time and draws again whenever the
+    /// value lands past it, which is what keeps the sequence the same.
     pub(crate) fn next_random_int(&mut self, bound: i64) -> i64 {
         if bound <= 0 {
             return 0;
         }
-        (self.next_random_bits() % bound as u64) as i64
+        let top = bound as u64 - 1;
+        if top == 0 {
+            return 0;
+        }
+        let mut mask = 1u64;
+        while mask < top {
+            mask = (mask << 1) | 1;
+        }
+        loop {
+            let mut value = 0u64;
+            let mut landed = true;
+            for place in (0..2).rev() {
+                if (mask >> (place * 32)) & 0xffff_ffff == 0 {
+                    continue;
+                }
+                value |= (self.next_random_word() as u64) << (place * 32);
+                value &= mask;
+                if top < value {
+                    landed = false;
+                    break;
+                }
+            }
+            if landed {
+                return value as i64;
+            }
+        }
     }
 
     /// `Kernel#rand(limit)` for every argument shape Ruby accepts.
@@ -2828,6 +3022,7 @@ impl VirtualMachine {
                 ref start,
                 ref end,
                 exclusive,
+                ..
             } => self.random_in_range(start, end, exclusive, position),
             other => {
                 // Anything else is asked for an Integer bound.
@@ -3110,6 +3305,11 @@ fn numeric_value(object: &Object) -> Option<f64> {
 /// The global's name without its `$`, however it was named.
 /// The low machine word of a seed, which is all the generator reads. A seed
 /// wider than 64 bits still has to drive the same state word.
+/// How many words the Mersenne Twister keeps, and how far a step reaches.
+const MT_WORDS: usize = 624;
+const MT_STEP: usize = 397;
+
+#[allow(dead_code)]
 fn seed_low_bits(seed: &Object) -> u64 {
     match seed {
         Object::BigInt(wide) => {
@@ -3539,5 +3739,90 @@ pub(crate) fn backtrace_label(name: &str) -> String {
             _ => name.to_string(),
         },
         None => name.to_string(),
+    }
+}
+
+/// Whether a command written as one string holds a character the shell reads,
+/// which is what decides between running it through `sh` and running it as
+/// the program it names.
+fn needs_a_shell(command: &str) -> bool {
+    const READ_BY_THE_SHELL: &[u8] = b"*?{}[]<>()~&|\\$;'`\"\n#";
+    command
+        .bytes()
+        .any(|byte| READ_BY_THE_SHELL.contains(&byte))
+}
+
+/// Run a program to completion, answering how it ended and the process id it
+/// ran under. A program that cannot be reached ends with status 127 and says
+/// nothing, which is what the shell reports for one.
+fn run_to_completion(
+    reached: &str,
+    words: &[String],
+    redirects: &[(i32, String)],
+) -> (std::process::ExitStatus, i64) {
+    use std::os::unix::process::ExitStatusExt as _;
+    let named = std::ffi::CString::new(reached).unwrap_or_default();
+    let spelled: Vec<std::ffi::CString> = words
+        .iter()
+        .map(|held| std::ffi::CString::new(held.as_str()).unwrap_or_default())
+        .collect();
+    let opened: Vec<(i32, std::fs::File)> = redirects
+        .iter()
+        .filter_map(|(slot, path)| {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(path)
+                .ok()
+                .map(|held| (*slot, held))
+        })
+        .collect();
+    // SAFETY: the child does nothing but point its streams where it was told
+    // and hand itself over to the program, so nothing the parent holds is
+    // read or written there.
+    let child = unsafe { libc::fork() };
+    if child == 0 {
+        use std::os::unix::io::AsRawFd as _;
+        for (slot, file) in &opened {
+            // SAFETY: both numbers name descriptors this process holds.
+            unsafe { libc::dup2(file.as_raw_fd(), *slot) };
+        }
+        let mut pointers: Vec<*const libc::c_char> =
+            spelled.iter().map(|held| held.as_ptr()).collect();
+        pointers.push(std::ptr::null());
+        // SAFETY: the argument list is null-terminated and outlives the call.
+        unsafe {
+            libc::execvp(named.as_ptr(), pointers.as_ptr());
+            libc::_exit(127);
+        }
+    }
+    if child < 0 {
+        return (std::process::ExitStatus::from_raw(127 << 8), 0);
+    }
+    let mut held: libc::c_int = 0;
+    // SAFETY: `child` is a process this one started.
+    unsafe { libc::waitpid(child, &mut held, 0) };
+    (std::process::ExitStatus::from_raw(held), child as i64)
+}
+
+impl crate::vm::core::VirtualMachine {
+    /// A name written at the top level names a method of Object, since that
+    /// is where a `def` outside any class or module is written. The top-level
+    /// `self` is the Object class itself, so an ordinary send looks for a
+    /// class method of that name and finds nothing.
+    fn top_level_method(&mut self, receiver: &Object, name: &str) -> Option<Object> {
+        let Object::Class(held) = receiver else {
+            return None;
+        };
+        if held.name() != "Object" {
+            return None;
+        }
+        let (owner, method) = held.find_method_with_owner(name)?;
+        let mut bound = (*method).clone();
+        bound.receiver = Some(Box::new(receiver.clone()));
+        bound.owner = Some(owner.ruby_name());
+        bound.owner_class = Some(owner);
+        Some(Object::Method(std::rc::Rc::new(bound)))
     }
 }

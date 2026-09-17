@@ -13089,3 +13089,76 @@ pub(crate) fn euc_jp_text(bytes: &[u8]) -> String {
     }
     written
 }
+
+/// The bytes ISO-2022-JP spells a run of text with. ASCII stands for itself,
+/// and a run of Japanese characters is opened with `ESC $ B` and closed with
+/// `ESC ( B`, each character written as the two JIS bytes for it.
+pub(crate) fn iso_2022_jp_bytes(text: &str) -> Result<Vec<u8>, char> {
+    let mut bytes = Vec::with_capacity(text.len());
+    let mut in_japanese = false;
+    for character in text.chars() {
+        if character.is_ascii() {
+            if in_japanese {
+                bytes.extend_from_slice(b"\x1b(B");
+                in_japanese = false;
+            }
+            bytes.push(character as u8);
+            continue;
+        }
+        let Some(spelled) = euc_jp_bytes_for(character) else {
+            return Err(character);
+        };
+        // Only the plane EUC-JP writes with two bytes of its own has a
+        // spelling here.
+        if spelled.len() != 2 || spelled[0] < 0xa1 || spelled[1] < 0xa1 {
+            return Err(character);
+        }
+        if !in_japanese {
+            bytes.extend_from_slice(b"\x1b$B");
+            in_japanese = true;
+        }
+        bytes.push(spelled[0] - 0x80);
+        bytes.push(spelled[1] - 0x80);
+    }
+    if in_japanese {
+        bytes.extend_from_slice(b"\x1b(B");
+    }
+    Ok(bytes)
+}
+
+/// The text a run of ISO-2022-JP bytes spells, following the escapes that say
+/// which set the bytes after them belong to.
+pub(crate) fn iso_2022_jp_text(bytes: &[u8]) -> String {
+    let mut written = String::with_capacity(bytes.len());
+    let mut in_japanese = false;
+    let mut at = 0usize;
+    while at < bytes.len() {
+        if bytes[at] == 0x1b && at + 2 < bytes.len() {
+            match &bytes[at + 1..at + 3] {
+                b"$B" | b"$@" => {
+                    in_japanese = true;
+                    at += 3;
+                    continue;
+                }
+                b"(B" | b"(J" => {
+                    in_japanese = false;
+                    at += 3;
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        if in_japanese && at + 1 < bytes.len() {
+            let pair = [bytes[at] + 0x80, bytes[at + 1] + 0x80];
+            match euc_jp_character(&pair) {
+                Some((held, _)) => written.push(held),
+                None => written.push(char::from(bytes[at])),
+            }
+            at += 2;
+            continue;
+        }
+        written.push(char::from(bytes[at]));
+        at += 1;
+    }
+    written
+}

@@ -42,7 +42,10 @@ pub(crate) use regexp_methods::{
     LAST_MATCH, capture_reference, comparable_flags, compile, subject_text,
 };
 pub(crate) mod euc_jp_table;
+pub(crate) mod glob;
+pub(crate) mod normalization_table;
 mod set_methods;
+pub(crate) mod shift_jis_table;
 pub(crate) mod string_methods;
 pub(crate) mod string_mutation;
 mod string_sets;
@@ -183,7 +186,7 @@ pub(crate) fn as_dict(value: &Object) -> Option<Object> {
     }
 }
 
-mod pack_format;
+pub(crate) mod pack_format;
 mod streams;
 mod visibility;
 
@@ -652,6 +655,11 @@ impl VirtualMachine {
                             text.to_text(),
                             named_in.clone(),
                         );
+                        // A name standing for the bytes an encoding spells it
+                        // with keeps standing for them.
+                        if text.holds_bytes() {
+                            spelled.mark_bytes();
+                        }
                         // Ruby 3.4 hands this string back with notice that a
                         // later release will freeze it, so the first change
                         // made to it says so.
@@ -2061,6 +2069,12 @@ pub(crate) fn name_text(held: &std::rc::Rc<crate::object::StringValue>) -> Strin
     if named == "EUC-JP" {
         return euc_jp_table::euc_jp_text(&bytes);
     }
+    if string_methods::spells_shift_jis(&named) {
+        return shift_jis_table::shift_jis_text(&bytes);
+    }
+    if named == "ISO-2022-JP" {
+        return euc_jp_table::iso_2022_jp_text(&bytes);
+    }
     match string_methods::latin_text(&bytes, &named) {
         Some(text) => text,
         None => held.as_str().to_string(),
@@ -2202,12 +2216,25 @@ impl VirtualMachine {
         if !matches!(held, Object::Instance(_)) {
             return Ok(false);
         }
-        let answer = self.send_to_object(
+        // Ruby asks after a private method too when it is looking for the
+        // one that converts, so the second argument is passed. A
+        // `respond_to?` written to take one argument alone is asked again
+        // without it.
+        let asked = self.send_to_object(
             held.clone(),
             "respond_to?",
-            vec![Object::symbol(name.to_string())],
+            vec![Object::symbol(name.to_string()), Object::Bool(true)],
             position,
-        )?;
+        );
+        let answer = match asked {
+            Ok(answer) => answer,
+            Err(_) => self.send_to_object(
+                held.clone(),
+                "respond_to?",
+                vec![Object::symbol(name.to_string())],
+                position,
+            )?,
+        };
         Ok(answer.is_truthy())
     }
 }

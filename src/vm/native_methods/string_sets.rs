@@ -720,13 +720,14 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                // Metorex decodes source into Rust text, so a string never
-                // holds a byte sequence its encoding cannot name and there is
-                // nothing for `scrub` to replace.
-                if let Some(block) = self.pending_block.take() {
-                    drop(block);
-                }
-                Ok(Some(Object::string(text)))
+                let Object::String(held) = receiver else {
+                    let Some(Object::String(held)) = super::string_subclass_value(receiver) else {
+                        return Ok(None);
+                    };
+                    return self.scrubbed_string(&held, arguments, position).map(Some);
+                };
+                let held = std::rc::Rc::clone(held);
+                self.scrubbed_string(&held, arguments, position).map(Some)
             }
             "undump" => {
                 if !arguments.is_empty() {
@@ -737,17 +738,47 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                match undump(&text) {
-                    Some(source) => Ok(Some(Object::string(source))),
-                    None => {
-                        let message = "invalid dumped string".to_string();
-                        Err(MetorexError::UncaughtException {
-                            exception: Object::exception("RuntimeError", message.clone()),
-                            location: crate::vm::utils::position_to_location(position),
-                            message,
-                        })
-                    }
+                let held = match receiver {
+                    Object::String(held) => Some(std::rc::Rc::clone(held)),
+                    _ => match super::string_subclass_value(receiver) {
+                        Some(Object::String(held)) => Some(held),
+                        _ => None,
+                    },
+                };
+                let carried = held
+                    .as_ref()
+                    .map(|held| held.encoding_name())
+                    .unwrap_or_else(|| "UTF-8".to_string());
+                // A dump written in an encoding that spells no ASCII cannot be
+                // read back, since the quoting itself is written in ASCII.
+                if NOT_ASCII_COMPATIBLE.contains(&carried.as_str()) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "Encoding::CompatibilityError",
+                        &format!("ASCII incompatible encoding: {carried}"),
+                        position,
+                    ));
                 }
+                let refuse = |message: &str| {
+                    crate::vm::errors::simple_exception("RuntimeError", message, position)
+                };
+                let (bytes, named) = undump(&text).map_err(refuse)?;
+                let named = match named {
+                    None => carried,
+                    Some(name) => {
+                        if !crate::vm::init::ENCODING_NAMES
+                            .iter()
+                            .any(|(_, display, _)| *display == name)
+                        {
+                            return Err(refuse("dumped string has unknown encoding name"));
+                        }
+                        name
+                    }
+                };
+                let made = crate::object::StringValue::from_bytes(
+                    super::pack_format::bytes_to_string(&bytes).to_string(),
+                );
+                made.set_encoding(named);
+                Ok(Some(Object::String(std::rc::Rc::new(made))))
             }
             _ => Ok(None),
         }
@@ -811,7 +842,7 @@ impl VirtualMachine {
         // earlier one, so every start is tried rather than only the
         // non-overlapping runs `find_iter` walks.
         let found = if method_name == "partition" {
-            compiled.find(text)
+            compiled.find_at(text, 0)
         } else {
             (0..=text.len())
                 .rev()
@@ -925,50 +956,78 @@ fn is_combining_mark(character: char) -> bool {
 
 /// Read back what `dump` wrote, answering None when the text is not something
 /// `dump` could have produced.
-fn undump(text: &str) -> Option<String> {
-    let inner = text.strip_prefix('"')?.strip_suffix('"')?;
-    let mut source = String::new();
+fn undump(text: &str) -> Result<(Vec<u8>, Option<String>), &'static str> {
+    // A dump of a string in an encoding of its own carries the name after the
+    // quoted run, as `"...".force_encoding("NAME")`.
+    let (body, named) = match text.rfind("\".force_encoding(") {
+        None => (text, None),
+        Some(at) => {
+            let (body, tail) = text.split_at(at + 1);
+            let inside = tail
+                .strip_prefix(".force_encoding(")
+                .and_then(|held| held.strip_suffix(')'))
+                .ok_or("invalid dumped string")?;
+            let name = inside
+                .strip_prefix('"')
+                .and_then(|held| held.strip_suffix('"'))
+                .ok_or("invalid dumped string")?;
+            (body, Some(name.to_string()))
+        }
+    };
+    let inner = body.strip_prefix('"').ok_or("invalid dumped string")?;
+    let inner = inner
+        .strip_suffix('"')
+        .ok_or("unterminated dumped string")?;
+    let mut bytes: Vec<u8> = Vec::new();
     let mut characters = inner.chars().peekable();
     while let Some(character) = characters.next() {
         if character != '\\' {
-            // An unescaped quote inside means the text was never one dumped
-            // string to begin with.
-            if character == '"' {
-                return None;
+            match character {
+                '"' => return Err("invalid dumped string"),
+                '\0' => return Err("string contains null byte"),
+                held if !held.is_ascii() => return Err("non-ASCII character detected"),
+                held => bytes.push(held as u8),
             }
-            source.push(character);
             continue;
         }
-        let escaped = characters.next()?;
+        let escaped = characters.next().ok_or("invalid dumped string")?;
         match escaped {
-            'n' => source.push('\n'),
-            't' => source.push('\t'),
-            'r' => source.push('\r'),
-            '0' => source.push('\0'),
-            'a' => source.push('\u{7}'),
-            'b' => source.push('\u{8}'),
-            'v' => source.push('\u{b}'),
-            'f' => source.push('\u{c}'),
-            'e' => source.push('\u{1b}'),
-            's' => source.push(' '),
-            '\\' | '"' | '#' => source.push(escaped),
+            'n' => bytes.push(b'\n'),
+            't' => bytes.push(b'\t'),
+            'r' => bytes.push(b'\r'),
+            '0' => bytes.push(0),
+            'a' => bytes.push(7),
+            'b' => bytes.push(8),
+            'v' => bytes.push(11),
+            'f' => bytes.push(12),
+            'e' => bytes.push(27),
+            's' => bytes.push(b' '),
+            '\\' | '"' | '#' => bytes.push(escaped as u8),
             'u' => {
                 let mut digits = String::new();
                 if characters.peek() == Some(&'{') {
                     characters.next();
+                    let mut closed = false;
                     for digit in characters.by_ref() {
                         if digit == '}' {
+                            closed = true;
                             break;
                         }
                         digits.push(digit);
                     }
+                    if !closed {
+                        return Err("invalid Unicode escape");
+                    }
                 } else {
                     for _ in 0..4 {
-                        digits.push(characters.next()?);
+                        digits.push(characters.next().ok_or("invalid Unicode escape")?);
                     }
                 }
-                let point = u32::from_str_radix(&digits, 16).ok()?;
-                source.push(char::from_u32(point)?);
+                let point =
+                    u32::from_str_radix(&digits, 16).map_err(|_| "invalid Unicode escape")?;
+                let spelled = char::from_u32(point).ok_or("invalid Unicode escape")?;
+                let mut room = [0u8; 4];
+                bytes.extend(spelled.encode_utf8(&mut room).as_bytes().iter().copied());
             }
             'x' => {
                 let mut digits = String::new();
@@ -981,13 +1040,15 @@ fn undump(text: &str) -> Option<String> {
                         _ => break,
                     }
                 }
-                let point = u32::from_str_radix(&digits, 16).ok()?;
-                source.push(char::from_u32(point)?);
+                if digits.len() != 2 {
+                    return Err("invalid hex escape");
+                }
+                bytes.push(u8::from_str_radix(&digits, 16).map_err(|_| "invalid hex escape")?);
             }
-            _ => return None,
+            _ => return Err("invalid dumped string"),
         }
     }
-    Some(source)
+    Ok((bytes, named))
 }
 
 /// The encodings that carry no ASCII characters at all, so a string tagged
@@ -1099,4 +1160,180 @@ fn compatible_encoding(
 /// whether a letter outside ASCII maps onto another case of itself.
 fn unicode_encoding(named: &str) -> bool {
     named.starts_with("UTF-") || named == "US-ASCII" || named == "CESU-8"
+}
+
+impl VirtualMachine {
+    /// `scrub` answers the string with every run of bytes its encoding cannot
+    /// read put aside: a replacement named alongside stands for each one, a
+    /// block is asked what to put there, and without either the encoding's
+    /// own replacement character stands in.
+    fn scrubbed_string(
+        &mut self,
+        held: &std::rc::Rc<crate::object::StringValue>,
+        arguments: &[Object],
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        use super::string_methods::binary_bytes;
+        let named = held.encoding_name();
+        let bytes = binary_bytes(held);
+        let block = match self.pending_block.take() {
+            Some(Object::Block(block)) => Some(block),
+            _ => None,
+        };
+        // A replacement of its own is read once, and refused where it is not
+        // a string or does not read in the encoding it carries.
+        let stands_in = match arguments.first() {
+            None | Some(Object::Nil) => None,
+            Some(Object::String(written)) => {
+                if !super::string_methods::holds_valid_text(written) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "ArgumentError",
+                        "replacement must be valid byte sequence",
+                        position,
+                    ));
+                }
+                Some(binary_bytes(written))
+            }
+            Some(other) => {
+                return Err(method_argument_type_error(
+                    "scrub", "String", other, position,
+                ));
+            }
+        };
+        let runs = split_readable_runs(&bytes, &named);
+        let mut built: Vec<u8> = Vec::with_capacity(bytes.len());
+        for run in runs {
+            match run {
+                Run::Read(good) => built.extend(good),
+                Run::Broken(bad) => match (&stands_in, &block) {
+                    (Some(written), _) => built.extend(written.iter().copied()),
+                    (None, Some(block)) => {
+                        let piece = crate::object::StringValue::from_bytes(
+                            super::pack_format::bytes_to_string(&bad).to_string(),
+                        );
+                        piece.set_encoding(named.clone());
+                        let answered = self.execute_block_callable(
+                            block,
+                            vec![Object::String(std::rc::Rc::new(piece))],
+                            position,
+                        )?;
+                        if let Object::String(answered) = answered {
+                            built.extend(binary_bytes(&answered));
+                        }
+                    }
+                    (None, None) => built.extend(stands_in_for(&named)),
+                },
+            }
+        }
+        Ok(text_in_encoding(&built, &named))
+    }
+}
+
+/// A run of bytes a string holds, told apart by whether its encoding reads it.
+enum Run {
+    Read(Vec<u8>),
+    Broken(Vec<u8>),
+}
+
+/// The runs of bytes an encoding reads, alongside the ones it cannot.
+fn split_readable_runs(bytes: &[u8], named: &str) -> Vec<Run> {
+    let mut runs = Vec::new();
+    match named {
+        "UTF-8" | "UTF8-MAC" => {
+            let mut at = 0usize;
+            while at < bytes.len() {
+                match std::str::from_utf8(&bytes[at..]) {
+                    Ok(_) => {
+                        runs.push(Run::Read(bytes[at..].to_vec()));
+                        at = bytes.len();
+                    }
+                    Err(problem) => {
+                        let good = problem.valid_up_to();
+                        if good > 0 {
+                            runs.push(Run::Read(bytes[at..at + good].to_vec()));
+                        }
+                        let width = problem.error_len().unwrap_or(bytes.len() - at - good);
+                        runs.push(Run::Broken(bytes[at + good..at + good + width].to_vec()));
+                        at += good + width;
+                    }
+                }
+            }
+        }
+        "US-ASCII" => {
+            for byte in bytes {
+                if byte.is_ascii() {
+                    runs.push(Run::Read(vec![*byte]));
+                } else {
+                    runs.push(Run::Broken(vec![*byte]));
+                }
+            }
+        }
+        "UTF-16" | "UTF-16LE" | "UTF-16BE" => {
+            let big = !named.ends_with("LE");
+            let mut at = 0usize;
+            while at + 1 < bytes.len() {
+                let unit = if big {
+                    ((bytes[at] as u16) << 8) | bytes[at + 1] as u16
+                } else {
+                    ((bytes[at + 1] as u16) << 8) | bytes[at] as u16
+                };
+                let paired = (0xd800..0xdc00).contains(&unit);
+                if !paired {
+                    runs.push(Run::Read(bytes[at..at + 2].to_vec()));
+                    at += 2;
+                    continue;
+                }
+                let following = if at + 3 < bytes.len() {
+                    if big {
+                        ((bytes[at + 2] as u16) << 8) | bytes[at + 3] as u16
+                    } else {
+                        ((bytes[at + 3] as u16) << 8) | bytes[at + 2] as u16
+                    }
+                } else {
+                    0
+                };
+                if (0xdc00..0xe000).contains(&following) {
+                    runs.push(Run::Read(bytes[at..at + 4].to_vec()));
+                    at += 4;
+                } else {
+                    runs.push(Run::Broken(bytes[at..at + 2].to_vec()));
+                    at += 2;
+                }
+            }
+            if at < bytes.len() {
+                runs.push(Run::Broken(bytes[at..].to_vec()));
+            }
+        }
+        // Every other encoding reads what it is handed, so nothing is put
+        // aside.
+        _ => runs.push(Run::Read(bytes.to_vec())),
+    }
+    runs
+}
+
+/// The bytes an encoding writes where it could not read what it was handed.
+fn stands_in_for(named: &str) -> Vec<u8> {
+    match named {
+        "UTF-8" | "UTF8-MAC" => vec![0xef, 0xbf, 0xbd],
+        "UTF-16" | "UTF-16BE" => vec![0xff, 0xfd],
+        "UTF-16LE" => vec![0xfd, 0xff],
+        "UTF-32" | "UTF-32BE" => vec![0x00, 0x00, 0xff, 0xfd],
+        "UTF-32LE" => vec![0xfd, 0xff, 0x00, 0x00],
+        _ => vec![b'?'],
+    }
+}
+
+/// A run of bytes handed back as a string in the encoding it was read in.
+fn text_in_encoding(bytes: &[u8], named: &str) -> Object {
+    if let Ok(text) = std::str::from_utf8(bytes)
+        && (named == "UTF-8" || named == "US-ASCII")
+    {
+        let made = crate::object::StringValue::with_encoding(text.to_string(), named);
+        return Object::String(std::rc::Rc::new(made));
+    }
+    let made = crate::object::StringValue::from_bytes(
+        super::pack_format::bytes_to_string(bytes).to_string(),
+    );
+    made.set_encoding(named);
+    Object::String(std::rc::Rc::new(made))
 }
