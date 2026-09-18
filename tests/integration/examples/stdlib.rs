@@ -888,3 +888,65 @@ fn test_stdlib_string_streams_parens_execution() {
     let output = run_example("stdlib/string_streams_parens.rb");
     assert_eq!(output, STRING_STREAMS_OUTPUT);
 }
+
+const ZLIB_DEFLATE_OUTPUT: &str = concat!(
+    "120,156,99,96,128,1,0,0,10,0,1\n",
+    "120,156,51,52,132,1,0,10,145,1,235\n",
+    "52\n",
+    "120,187,20,225,3,203,75,76,74,78,73,77,75,207,200,204,2,0,21,134,3,248\n",
+    "12 -> 13\n",
+    "true\n",
+    "2250 -> 72\n",
+    "true\n",
+    "157,5,0,36,10,0,0,0\n",
+    "true\n",
+);
+
+#[test]
+fn test_stdlib_zlib_deflate_execution() {
+    let output = run_example("stdlib/zlib_deflate.rb");
+    assert_eq!(output, ZLIB_DEFLATE_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_zlib_deflate_no_parens_execution() {
+    let output = run_example("stdlib/zlib_deflate_no_parens.rb");
+    assert_eq!(output, ZLIB_DEFLATE_OUTPUT);
+}
+
+const JSON_DOCUMENTS_OUTPUT: &str = concat!(
+    "Ada\n[1815, 1852]\nnil\n2.5\n{a: 1}\n",
+    "{\"a\":1,\"b\":[true,false,null]}\n",
+    "{\n  \"a\": 1,\n  \"b\": [\n    1,\n    2\n  ]\n}\n",
+    "{\"k\":\"v\"}\n[1,\"two\",null]\n\"a\\nbA\"\n[]\n{}\n",
+    "refused: JSON::ParserError\n1.1111111111111112\n",
+);
+
+#[test]
+fn test_stdlib_json_documents_execution() {
+    let output = run_example("stdlib/json_documents.rb");
+    assert_eq!(output, JSON_DOCUMENTS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_json_documents_no_parens_execution() {
+    let output = run_example("stdlib/json_documents_no_parens.rb");
+    assert_eq!(output, JSON_DOCUMENTS_OUTPUT);
+}
+
+const OBJSPACE_DUMP_OUTPUT: &str = concat!(
+    "STRING\nabc\n3\nUTF-8\nARRAY\nHASH\nString\ntrue\n",
+    "wrong output option: #<Object:0x>\n",
+);
+
+#[test]
+fn test_stdlib_objspace_dump_execution() {
+    let output = run_example("stdlib/objspace_dump.rb");
+    assert_eq!(output, OBJSPACE_DUMP_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_objspace_dump_no_parens_execution() {
+    let output = run_example("stdlib/objspace_dump_no_parens.rb");
+    assert_eq!(output, OBJSPACE_DUMP_OUTPUT);
+}

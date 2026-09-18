@@ -241,6 +241,7 @@ fn test_nested_method_call_shows_stack_trace() {
                     position: pos_at(3, 5),
                 }],
                 position: pos_at(2, 3),
+                end_position: pos_at(2, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -259,6 +260,7 @@ fn test_nested_method_call_shows_stack_trace() {
                     position: pos_at(6, 5),
                 }],
                 position: pos_at(5, 3),
+                end_position: pos_at(5, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -272,6 +274,7 @@ fn test_nested_method_call_shows_stack_trace() {
                     position: pos_at(9, 5),
                 }],
                 position: pos_at(8, 3),
+                end_position: pos_at(8, 3),
             },
         ],
         position: pos_at(1, 1),
@@ -430,6 +433,7 @@ fn test_method_argument_count_error_has_location() {
                     position: pos(),
                 }],
                 position: pos(),
+                end_position: pos(),
             }],
             position: pos(),
         },
@@ -515,7 +519,7 @@ fn test_self_outside_method_context_answers_main() {
     };
 
     let result = vm.execute_program(&[stmt]).expect("self answers main");
-    assert!(matches!(result, Some(metorex::object::Object::Class(_))));
+    assert!(matches!(result, Some(metorex::object::Object::Instance(_))));
 }
 
 #[test]
@@ -562,7 +566,13 @@ fn test_pattern_match_no_match_error() {
     assert!(result.is_err());
 
     let error = result.unwrap_err();
-    assert!(error.to_string().contains("NoMatchingPatternError"));
+    let metorex::error::MetorexError::UncaughtException { exception, .. } = &error else {
+        panic!("expected an uncaught exception, got {error}");
+    };
+    let metorex::object::Object::Exception(raised) = exception else {
+        panic!("expected an exception object");
+    };
+    assert_eq!(raised.borrow().exception_type, "NoMatchingPatternError");
     assert!(error.to_string().contains("45:1"));
 }
 
@@ -595,6 +605,7 @@ fn test_error_in_deeply_nested_calls() {
                 position: pos(),
             }],
             position: pos(),
+            end_position: pos(),
         });
     }
     methods.push(Statement::MethodDef {
@@ -609,6 +620,7 @@ fn test_error_in_deeply_nested_calls() {
             position: pos(),
         }],
         position: pos(),
+        end_position: pos(),
     });
 
     let statements = vec![

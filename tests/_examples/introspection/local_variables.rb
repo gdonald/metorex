@@ -24,11 +24,16 @@ def captured_binding
 end
 puts eval("local_variables", captured_binding()).inspect
 
-collected = nil
-[1].each do
-  in_block = 1
-  collected = local_variables
+# A block written in a method sees the method's own locals and nothing from
+# outside it.
+def block_locals
+  [1].each do
+    in_block = 1
+    return local_variables
+  end
 end
-puts collected.inspect
+puts block_locals().inspect
 
+# Code handed to `eval` names its own locals first and the ones it can see
+# after them.
 puts eval("evaluated_one = 1; evaluated_two = 2; local_variables").inspect

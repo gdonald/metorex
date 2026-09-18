@@ -70,6 +70,17 @@ pub enum Expression {
         flags: String,
         position: Position,
     },
+
+    /// `value => pattern` and `value in pattern`, written on their own rather
+    /// than inside a `case`. The first refuses a value the pattern does not
+    /// cover, and the second answers whether it does.
+    PatternTest {
+        value: Box<Expression>,
+        pattern: Box<MatchPattern>,
+        /// True for `=>`, which raises where the pattern does not match.
+        refuses: bool,
+        position: Position,
+    },
     InterpolatedString {
         parts: Vec<InterpolationPart>,
         position: Position,
@@ -376,6 +387,52 @@ pub enum MatchPattern {
         end: Box<MatchPattern>,
         exclusive: bool, // true for ..., false for ..
     },
+
+    /// `^name`, `^@name`, `^$name`, or `^(expr)`: the value the expression
+    /// answers is compared against, rather than a name being bound.
+    Pinned(Box<Expression>),
+
+    /// An array pattern written for `in`: the names before a `*rest`, the
+    /// rest itself where one is written, and the names after it. A constant
+    /// written in front narrows what the value may be first.
+    ArrayPattern {
+        constant: Option<Box<Expression>>,
+        prefix: Vec<MatchPattern>,
+        /// `Some(None)` for a bare `*`, `Some(Some(name))` for `*name`, and
+        /// None where the pattern names every element.
+        rest: Option<Option<String>>,
+        suffix: Vec<MatchPattern>,
+    },
+
+    /// `[*, a, b, *]`: a run to find anywhere in the value, with the parts
+    /// before and after it bound where they are named.
+    FindPattern {
+        constant: Option<Box<Expression>>,
+        before: Option<String>,
+        middle: Vec<MatchPattern>,
+        after: Option<String>,
+    },
+
+    /// A hash pattern written for `in`: each key with the pattern its value
+    /// has to match, or None where the key binds a local of its own name.
+    HashPattern {
+        constant: Option<Box<Expression>>,
+        entries: Vec<(String, Option<MatchPattern>)>,
+        rest: HashPatternRest,
+    },
+}
+
+/// What a hash pattern says about the keys it did not name.
+#[derive(Debug, Clone, PartialEq)]
+pub enum HashPatternRest {
+    /// The pattern says nothing, so other keys are allowed and dropped.
+    Silent,
+    /// `**name` binds the keys the pattern did not name.
+    Named(String),
+    /// `**` allows other keys without naming them.
+    Anonymous,
+    /// `**nil` says the value may hold no other key.
+    Refused,
 }
 
 /// A single case in a match statement
@@ -562,6 +619,13 @@ pub enum Statement {
         position: Position,
     },
 
+    /// `BEGIN { ... }`, whose body runs before the rest of the code unit it
+    /// was written in and shares that unit's own scope.
+    BeginBlock {
+        body: Vec<Statement>,
+        position: Position,
+    },
+
     // Multiple assignment (a, b, c = expr)
     MultipleAssignment {
         targets: Vec<Expression>,
@@ -586,6 +650,9 @@ pub enum Statement {
         body: Vec<Statement>,
         is_class_method: bool,
         position: Position,
+        /// Where the `end` closing the definition sits, which is what
+        /// `Coverage`'s methods mode reports as the definition's extent.
+        end_position: Position,
     },
 
     // Class definition
@@ -800,6 +867,7 @@ impl Expression {
             | Expression::FloatLiteral { position, .. }
             | Expression::StringLiteral { position, .. }
             | Expression::RegexLiteral { position, .. }
+            | Expression::PatternTest { position, .. }
             | Expression::Symbol { position, .. }
             | Expression::InterpolatedString { position, .. }
             | Expression::BoolLiteral { position, .. }
@@ -895,6 +963,7 @@ impl Statement {
             | Statement::Alias { position, .. }
             | Statement::DoWhile { position, .. }
             | Statement::DeclareLocals { position, .. }
+            | Statement::BeginBlock { position, .. }
             | Statement::MultipleAssignment { position, .. } => *position,
         }
     }

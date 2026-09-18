@@ -756,6 +756,148 @@ fn cli_without_a_frozen_string_literal_flag_writes_a_string_each_time() {
     }
 }
 
+/// Run one of the `cli_flags` examples with the flags given, answering what it
+/// wrote to standard error.
+fn cli_flags_example_stderr(flags: &[&str], script: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let path = format!("tests/_examples/cli_flags/{}", script);
+    let mut arguments: Vec<&str> = flags.to_vec();
+    arguments.push(&path);
+    let output = metorex_cmd()
+        .current_dir(manifest_dir)
+        .args(arguments)
+        .output()
+        .expect("failed to execute");
+    String::from_utf8(output.stderr).unwrap()
+}
+
+#[test]
+fn cli_debug_frozen_string_literal_names_where_a_refused_string_was_written() {
+    for script in [
+        "frozen_literal_birthplace.rb",
+        "frozen_literal_birthplace_parens.rb",
+    ] {
+        assert_eq!(
+            run_cli_flags_example(
+                &[
+                    "--enable-frozen-string-literal",
+                    "--debug-frozen-string-literal"
+                ],
+                script
+            ),
+            format!(
+                "can't modify frozen String: \"written here\", created at \
+{}/tests/_examples/cli_flags/{}:3\n",
+                env!("CARGO_MANIFEST_DIR"),
+                script
+            )
+        );
+    }
+}
+
+#[test]
+fn cli_debug_frozen_string_literal_names_where_a_chilled_string_was_written() {
+    assert_eq!(
+        cli_flags_example_stderr(
+            &["-w", "--debug-frozen-string-literal"],
+            "frozen_literal_birthplace.rb"
+        ),
+        concat!(
+            "warning: literal string will be frozen in the future\n",
+            "tests/_examples/cli_flags/frozen_literal_birthplace.rb:3: \
+info: the string was created here\n",
+        )
+    );
+}
+
+#[test]
+fn cli_debug_flag_turns_on_ruby_debug() {
+    assert_eq!(
+        run_cli_flags_example(&["--debug"], "show_debug.rb"),
+        "$DEBUG true\n$VERBOSE true\n$-d true\n"
+    );
+}
+
+/// Run one of the `cli_flags` examples with the flags and environment given,
+/// answering what it wrote to standard output.
+fn cli_flags_example_with_env(flags: &[&str], env: &[(&str, &str)], script: &str) -> String {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let path = format!("{}/tests/_examples/cli_flags/{}", manifest_dir, script);
+    let mut arguments: Vec<&str> = flags.to_vec();
+    arguments.push(&path);
+    let mut command = metorex_cmd();
+    command.current_dir(manifest_dir).args(arguments);
+    for (name, value) in env {
+        command.env(name, value);
+    }
+    let output = command.output().expect("failed to execute");
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
+#[test]
+fn cli_features_are_on_unless_a_flag_turns_them_off() {
+    for script in ["show_features.rb", "show_features_parens.rb"] {
+        assert_eq!(
+            run_cli_flags_example(&[], script),
+            "\"constant\"\n\"constant\"\nfalse\nfrozen false\n"
+        );
+        assert_eq!(
+            cli_flags_example_with_env(&["--disable=all"], &[("RUBYOPT", "-w")], script),
+            "nil\nnil\nfalse\nfrozen false\n"
+        );
+        assert_eq!(
+            run_cli_flags_example(&["--enable=frozen-string-literal"], script),
+            "\"constant\"\n\"constant\"\nfalse\nfrozen true\n"
+        );
+    }
+}
+
+#[test]
+fn cli_rubyopt_is_read_unless_it_is_turned_off() {
+    assert_eq!(
+        cli_flags_example_with_env(&[], &[("RUBYOPT", "-w")], "show_features.rb"),
+        "\"constant\"\n\"constant\"\ntrue\nfrozen false\n"
+    );
+    assert_eq!(
+        cli_flags_example_with_env(
+            &["--disable=rubyopt"],
+            &[("RUBYOPT", "-w")],
+            "show_features.rb"
+        ),
+        "\"constant\"\n\"constant\"\nfalse\nfrozen false\n"
+    );
+}
+
+#[test]
+fn cli_unknown_feature_names_are_reported() {
+    let stderr = cli_flags_example_stderr(&["--enable=no-such-feature"], "show_features.rb");
+    assert!(
+        stderr.contains("warning: unknown argument for --enable: 'no_such_feature'"),
+        "stderr: {}",
+        stderr
+    );
+}
+
+#[test]
+fn cli_top_level_return_with_an_argument_warns() {
+    for script in ["top_level_return.rb", "top_level_return_parens.rb"] {
+        assert_eq!(run_cli_flags_example(&[], script), "before\n");
+        assert_eq!(
+            cli_flags_example_stderr(&[], script),
+            format!(
+                "tests/_examples/cli_flags/{}: \
+warning: argument of top-level return is ignored\n",
+                script
+            )
+        );
+    }
+}
+
 #[test]
 fn cli_k_flag_names_the_source_encoding() {
     assert_eq!(

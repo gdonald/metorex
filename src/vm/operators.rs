@@ -709,10 +709,24 @@ impl VirtualMachine {
                         }
                         return Ok(Object::Bool(false));
                     }
-                    // For non-class/module RHS, check the receiver's class
-                    // chain. Also include the singleton class of Instances so
-                    // `Module === obj.extend(Module)` returns true.
-                    if !matches!(right, Object::Class(_) | Object::Module(_)) {
+                    // A class or a module is an object of Class or of
+                    // Module, which is what makes `Module === String` true.
+                    if matches!(right, Object::Class(_) | Object::Module(_)) {
+                        let meta_name = match &right {
+                            Object::Class(_) => "Class",
+                            _ => "Module",
+                        };
+                        if let Some(Object::Class(meta)) = self.globals().get(meta_name)
+                            && self.builtins().is_subclass_of(&meta, class_rc)
+                        {
+                            return Ok(Object::Bool(true));
+                        }
+                    }
+                    // `Left === right` asks whether the right stands as one
+                    // of the left, which is `right.is_a?(left)` whatever the
+                    // right is. A class is an object too, so `Module ===
+                    // String` is true and `String === String` is false.
+                    {
                         if crate::builtin_classes::value_class_name(&right)
                             .is_some_and(|name| name == class_rc.name())
                         {
@@ -1022,6 +1036,13 @@ impl VirtualMachine {
                     combined.push_str(&b.as_ref().as_str());
                     Object::string(combined)
                 };
+                // A run recording where each object was made records this
+                // one at the place the two were joined.
+                if let Object::String(made) = &joined
+                    && let Some(written_at) = self.literal_birthplace(position)
+                {
+                    made.set_created_at(written_at);
+                }
                 // The result is written in the receiver's encoding, unless
                 // the receiver is empty or nothing but ASCII and the other
                 // side is not, where that side's reading carries over.
@@ -1201,12 +1222,16 @@ impl VirtualMachine {
                         position,
                     ));
                 }
-                Ok(Object::String(std::rc::Rc::new(
-                    crate::object::StringValue::with_encoding(
-                        text.as_str().repeat(count),
-                        text.encoding_name(),
-                    ),
-                )))
+                let made = crate::object::StringValue::with_encoding(
+                    text.as_str().repeat(count),
+                    text.encoding_name(),
+                );
+                // A string standing for bytes repeats into one that stands
+                // for bytes, so the run it spells is the run repeated.
+                if text.holds_bytes() {
+                    made.mark_bytes();
+                }
+                Ok(Object::String(std::rc::Rc::new(made)))
             }
             // `[1, 2] * 3` repeats the array and `[1, 2] * ", "` joins it,
             // which Array answers from its own method table.

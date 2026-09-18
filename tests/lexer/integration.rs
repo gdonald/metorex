@@ -102,9 +102,15 @@ fn test_lexer_string_interpolation_complex() {
         TokenKind::InterpolatedString(parts) => {
             assert_eq!(parts.len(), 5);
             assert_eq!(parts[0], InterpolationPart::Text("Hello ".to_string()));
-            assert_eq!(parts[1], InterpolationPart::Expression("name".to_string()));
+            assert_eq!(
+                parts[1],
+                InterpolationPart::Expression("name".to_string(), 1)
+            );
             assert_eq!(parts[2], InterpolationPart::Text(", you are ".to_string()));
-            assert_eq!(parts[3], InterpolationPart::Expression("age".to_string()));
+            assert_eq!(
+                parts[3],
+                InterpolationPart::Expression("age".to_string(), 1)
+            );
             assert_eq!(parts[4], InterpolationPart::Text(" years old".to_string()));
         }
         _ => panic!("Expected InterpolatedString"),

@@ -36,10 +36,17 @@ pub(crate) fn positional_arg_count_for(arguments: &[Object], takes_keywords: boo
 
 /// Bind one positional parameter. A `def f((a, b))` group spreads the value
 /// it is given across the names in the group, the same way a block's does.
-fn define_positional_param(vm: &mut VirtualMachine, param: &str, value: Object) {
+fn define_positional_param(
+    vm: &mut VirtualMachine,
+    param: &str,
+    value: Object,
+) -> Result<(), MetorexError> {
     match param.strip_prefix(crate::object::DESTRUCTURED_GROUP_PREFIX) {
         Some(names) => crate::vm::block_execution::bind_group_names(vm, names, value),
-        None => vm.environment_mut().define(param.to_string(), value),
+        None => {
+            vm.environment_mut().define(param.to_string(), value);
+            Ok(())
+        }
     }
 }
 
@@ -71,15 +78,34 @@ pub(crate) fn bind_params(
     if let Some((vi, _)) = variadic_param {
         let vi = *vi;
         let params_after_splat = params.len() - vi - 1;
-        let min_positional = vi + params_after_splat;
-        let splat_count = positional.len().saturating_sub(min_positional);
+        let has_a_default =
+            |index: usize| default_parameters.iter().any(|(held, _)| *held == index);
+        // Every required parameter is filled before any optional one, whether
+        // it stands before the splat or after it, so `def f(a, b = 9, *r, q)`
+        // called with two values gives `q` the second and leaves `b` at its
+        // default.
+        let required_before = (0..vi).filter(|index| !has_a_default(*index)).count();
+        let mut for_optionals = positional
+            .len()
+            .saturating_sub(required_before + params_after_splat);
+        let mut cursor = 0;
 
         for (i, param) in params.iter().enumerate() {
             let value = if i < vi {
-                // Before splat: normal positional, falling back to the
-                // parameter's default when the call did not reach it.
-                match positional.get(i) {
-                    Some(value) => value.clone(),
+                // Before the splat, in the order they were written: an
+                // optional one takes a value only while any are left over.
+                let takes_one = if has_a_default(i) {
+                    let spare = for_optionals > 0;
+                    for_optionals = for_optionals.saturating_sub(1);
+                    spare
+                } else {
+                    true
+                };
+                match positional.get(cursor).filter(|_| takes_one) {
+                    Some(value) => {
+                        cursor += 1;
+                        value.clone()
+                    }
                     None => match default_parameters.iter().find(|(index, _)| *index == i) {
                         Some((_, default_expr)) => vm.evaluate_expression(default_expr)?,
                         None => Object::Nil,
@@ -87,16 +113,26 @@ pub(crate) fn bind_params(
                 }
             } else if i == vi {
                 // The splat parameter: collect middle args into an array
-                let rest: Vec<Object> =
-                    positional.get(vi..vi + splat_count).unwrap_or(&[]).to_vec();
+                let upto = positional
+                    .len()
+                    .saturating_sub(params_after_splat)
+                    .max(cursor);
+                let rest: Vec<Object> = positional.get(cursor..upto).unwrap_or(&[]).to_vec();
                 Object::Array(Rc::new(RefCell::new(rest)))
             } else {
-                // After splat: take from end of positional
-                let offset_from_end = params.len() - i;
-                let idx = positional.len().saturating_sub(offset_from_end);
-                positional.get(idx).cloned().unwrap_or(Object::Nil)
+                // After the splat, the last values, and where there are too
+                // few they start right after what came before and run out
+                // into nil.
+                let from = positional
+                    .len()
+                    .saturating_sub(params_after_splat)
+                    .max(cursor);
+                positional
+                    .get(from + i - vi - 1)
+                    .cloned()
+                    .unwrap_or(Object::Nil)
             };
-            define_positional_param(vm, param, value);
+            define_positional_param(vm, param, value)?;
         }
     } else if let (Some(first_optional), Some(last_optional)) = (
         default_parameters.iter().map(|(index, _)| *index).min(),
@@ -129,7 +165,7 @@ pub(crate) fn bind_params(
                 let index = positional.len().saturating_sub(offset_from_end);
                 positional.get(index).cloned().unwrap_or(Object::Nil)
             };
-            define_positional_param(vm, param, value);
+            define_positional_param(vm, param, value)?;
         }
     } else {
         for (i, param) in params.iter().enumerate() {
@@ -138,7 +174,7 @@ pub(crate) fn bind_params(
             } else {
                 Object::Nil
             };
-            define_positional_param(vm, param, value);
+            define_positional_param(vm, param, value)?;
         }
     }
     Ok(())

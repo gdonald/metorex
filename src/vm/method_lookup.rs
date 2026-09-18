@@ -31,6 +31,17 @@ pub(crate) fn refinement_target_name(
             let cls = &inst.borrow().class;
             Some(format!("__refine__{}@{:p}", cls.name(), Rc::as_ptr(cls)))
         }
+        // A class or module is itself an object, and `refine Foo.singleton_class`
+        // is how its own methods are refined. The singleton class is where
+        // those land, so it is what the key names.
+        Object::Class(held) | Object::Module(held) => {
+            let singleton = held.singleton_class_slot().clone()?;
+            Some(format!(
+                "__refine__{}@{:p}",
+                singleton.name(),
+                Rc::as_ptr(&singleton)
+            ))
+        }
         _ => None,
     }
 }
@@ -522,6 +533,16 @@ impl VirtualMachine {
     }
 
     pub(crate) fn method_is_restricted(&self, receiver: &Object, name: &str) -> bool {
+        // A Kernel function is a private method of every object, so a caller
+        // outside the object cannot write it with a receiver. A module that
+        // carries it as a module function is the exception, since that copy
+        // is public.
+        if crate::vm::native_methods::is_kernel_private_function(name)
+            && !matches!(receiver, Object::Class(_) | Object::Module(_))
+            && self.visibility_owner(receiver, name).is_none()
+        {
+            return true;
+        }
         let owner = self.visibility_owner(receiver, name);
         // A singleton class is where class-method visibility is recorded, so
         // its answer settles the question.

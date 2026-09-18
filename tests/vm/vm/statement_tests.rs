@@ -102,7 +102,9 @@ fn return_statement_halts_execution_and_returns_value() {
 
     let result = vm.execute_program(&statements);
     assert!(matches!(result, Ok(Some(Object::Int(99)))));
-    assert!(vm.environment().get("after").is_none());
+    // The name is reserved the way Ruby's parser reserves one it sees
+    // assigned, and the assignment never ran, so it reads as nil.
+    assert_eq!(vm.environment().get("after"), Some(Object::Nil));
 }
 
 #[test]

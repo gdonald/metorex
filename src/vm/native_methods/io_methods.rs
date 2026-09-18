@@ -10,6 +10,10 @@ use std::rc::Rc;
 
 /// Instance variable holding everything an `IO.popen` handle has left to read.
 const POPEN_OUTPUT: &str = "__popen_output";
+/// What a read took from the child but has not handed over yet. It is kept
+/// apart from the output a settled handle holds, since a handle with a read
+/// waiting is still running.
+const POPEN_PENDING: &str = "__popen_pending";
 /// Instance variable holding the id of the child behind the handle.
 const POPEN_HANDLE: &str = "__popen_handle";
 /// Instance variables marking an end of a two-ended stream as closed.
@@ -139,9 +143,66 @@ impl VirtualMachine {
         result.map(Some)
     }
 
+    /// One line of what a popen child has written, taken from what was
+    /// already read where there is any and from the child itself otherwise.
+    /// Answers nil once the child has written everything it will.
+    fn read_popen_line(&mut self, instance: &Rc<RefCell<Instance>>) -> Object {
+        // What an earlier read took but did not hand over stands first.
+        let held = match instance.borrow().get_var(POPEN_PENDING) {
+            Some(Object::String(text)) => text.as_str().to_string(),
+            _ => match instance.borrow().get_var(POPEN_OUTPUT) {
+                Some(Object::String(text)) => text.as_str().to_string(),
+                _ => String::new(),
+            },
+        };
+        if let Some(at) = held.find('\n') {
+            let (line, rest) = held.split_at(at + 1);
+            let line = line.to_string();
+            instance
+                .borrow_mut()
+                .set_var(POPEN_PENDING.to_string(), Object::string(rest.to_string()));
+            return Object::string(line);
+        }
+        let handle_id = match instance.borrow().get_var(POPEN_HANDLE) {
+            Some(Object::Int(id)) => *id as u64,
+            _ => return Object::Nil,
+        };
+        let mut collected = held;
+        if let Some(child) = self.popen_children.get_mut(&handle_id)
+            && let Some(stream) = child.stdout.as_mut()
+        {
+            use std::io::Read as _;
+            let mut byte = [0u8; 1];
+            while stream.read(&mut byte).unwrap_or(0) == 1 {
+                collected.push(byte[0] as char);
+                if byte[0] == b'\n' {
+                    break;
+                }
+            }
+        }
+        instance
+            .borrow_mut()
+            .set_var(POPEN_PENDING.to_string(), Object::string(String::new()));
+        if collected.is_empty() {
+            return Object::Nil;
+        }
+        Object::string(collected)
+    }
+
     /// Send whatever was written to a popen handle, wait for the child, and
     /// keep what it wrote. Answers the output, which a later `read` hands out.
     fn finish_popen(&mut self, instance: &Rc<RefCell<Instance>>) -> Result<String, MetorexError> {
+        self.settle_popen(instance, true)
+    }
+
+    /// The same, told whether what the child wrote is still wanted. Closing a
+    /// stream lets go of the reading end first, which is what tells a child
+    /// still writing that nobody is listening.
+    fn settle_popen(
+        &mut self,
+        instance: &Rc<RefCell<Instance>>,
+        keep_output: bool,
+    ) -> Result<String, MetorexError> {
         if let Some(Object::String(output)) = instance.borrow().get_var(POPEN_OUTPUT) {
             return Ok(output.as_str().to_string());
         }
@@ -163,14 +224,23 @@ impl VirtualMachine {
         // The child's id is read before waiting, since waiting consumes the
         // handle it is read from.
         let child_pid = child.id() as i64;
-        let finished = child.wait_with_output().map_err(|error| {
+        let complain = |error: std::io::Error| {
             MetorexError::runtime_error(
                 format!("Failed to wait for the command: {}", error),
                 crate::error::SourceLocation::new(0, 0, 0),
             )
-        })?;
-        let output = String::from_utf8_lossy(&finished.stdout).to_string();
-        self.record_last_status(&finished.status, Some(child_pid));
+        };
+        let (finished, output) = if keep_output {
+            let held = child.wait_with_output().map_err(complain)?;
+            let text = String::from_utf8_lossy(&held.stdout).to_string();
+            (held.status, text)
+        } else {
+            // Letting go of the reading end is what ends a child that is
+            // still writing, so it is dropped before the wait.
+            drop(child.stdout.take());
+            (child.wait().map_err(complain)?, String::new())
+        };
+        self.record_last_status(&finished, Some(child_pid));
         instance
             .borrow_mut()
             .set_var(POPEN_OUTPUT.to_string(), Object::string(output.clone()));
@@ -198,6 +268,22 @@ impl VirtualMachine {
             "__settle__" => {
                 self.finish_popen(instance)?;
                 Ok(Some(Object::Nil))
+            }
+            // One line of what the child has written so far. The child is
+            // left running: a reader that wants a line has no reason to wait
+            // for the whole of what is coming.
+            "gets" => {
+                if matches!(
+                    instance.borrow().get_var(READ_CLOSED),
+                    Some(Object::Bool(true))
+                ) {
+                    return Err(crate::vm::errors::simple_exception(
+                        "IOError",
+                        "not opened for reading",
+                        position,
+                    ));
+                }
+                Ok(Some(self.read_popen_line(instance)))
             }
             // Everything the child wrote that has not been read yet, which is
             // an empty string rather than nil once the handle is drained.
@@ -294,7 +380,14 @@ impl VirtualMachine {
                 ))
             }
             "close" => {
-                self.finish_popen(instance)?;
+                // A stream the program wrote to is closed with what the child
+                // wrote still wanted. One it only read from is let go of,
+                // which is what ends a child that is still writing.
+                let wrote_to_it = matches!(
+                    instance.borrow().get_var(POPEN_INPUT),
+                    Some(Object::String(text)) if !text.as_str().is_empty()
+                );
+                self.settle_popen(instance, wrote_to_it)?;
                 instance
                     .borrow_mut()
                     .set_var(POPEN_CLOSED.to_string(), Object::Bool(true));

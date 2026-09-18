@@ -103,9 +103,11 @@ impl VirtualMachine {
                     let first = &first;
                     let mut current = *first;
                     loop {
-                        match self
-                            .execute_block_with_control_flow(&block, vec![Object::Int(current)])?
-                        {
+                        match self.execute_block_with_control_flow(
+                            &block,
+                            vec![Object::Int(current)],
+                            position,
+                        )? {
                             super::super::ControlFlow::Next
                             | super::super::ControlFlow::Value(_)
                             | super::super::ControlFlow::Redo { .. }
@@ -142,7 +144,7 @@ impl VirtualMachine {
                     let mut current = first;
                     loop {
                         let value = Object::string(current.clone());
-                        match self.execute_block_with_control_flow(&block, vec![value])? {
+                        match self.execute_block_with_control_flow(&block, vec![value], position)? {
                             super::super::ControlFlow::Next
                             | super::super::ControlFlow::Value(_)
                             | super::super::ControlFlow::Redo { .. }
@@ -186,7 +188,7 @@ impl VirtualMachine {
                 // so a String range follows `succ` too.
                 let elements = self.range_elements(start, end, *exclusive, position)?;
                 for element in elements {
-                    match self.execute_block_with_control_flow(&block, vec![element])? {
+                    match self.execute_block_with_control_flow(&block, vec![element], position)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }

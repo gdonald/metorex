@@ -219,6 +219,37 @@ impl VirtualMachine {
             }
         }
 
+        if module_rc.name() == "Coverage" {
+            match method_name {
+                "__coverage_start__" => {
+                    let by_mode = matches!(arguments.first(), Some(Object::Bool(true)));
+                    let modes = match arguments.get(1) {
+                        Some(Object::Array(held)) => held
+                            .borrow()
+                            .iter()
+                            .filter_map(|mode| match mode {
+                                Object::Symbol(name) => Some(name.as_str().to_string()),
+                                _ => None,
+                            })
+                            .collect(),
+                        _ => Vec::new(),
+                    };
+                    let eval_too = matches!(arguments.get(2), Some(Object::Bool(true)));
+                    self.coverage_start(by_mode, modes, eval_too);
+                    return Ok(Some(Object::Nil));
+                }
+                "__coverage_stop__" => {
+                    self.coverage_stop();
+                    return Ok(Some(Object::Nil));
+                }
+                "__coverage_result__" => {
+                    let clear = matches!(arguments.first(), Some(Object::Bool(true)));
+                    return self.coverage_report(clear).map(Some);
+                }
+                _ => {}
+            }
+        }
+
         if module_rc.name() == "Etc"
             && let Some(answered) = self.call_etc_methods(method_name, arguments, position)?
         {
@@ -649,6 +680,49 @@ impl VirtualMachine {
             }
         }
 
+        // Every object the running program can still reach, which is what
+        // metorex has in place of a heap to walk: the names the program has
+        // bound, and everything those names lead to.
+        if module_rc.name() == "ObjectSpace" && method_name == "__live_objects__" {
+            let mut found = Vec::new();
+            let mut seen = std::collections::HashSet::new();
+            let mut roots: Vec<Object> = Vec::new();
+            if let Some(scope) = self.main_script_scope.clone() {
+                roots.extend(scope.borrow().collect_all_vars().into_values());
+            }
+            roots.extend(
+                self.environment()
+                    .global_scope()
+                    .borrow()
+                    .collect_all_vars()
+                    .into_values(),
+            );
+            for root in roots {
+                gather_reachable(root, &mut seen, &mut found);
+            }
+            return Ok(Some(Object::array(found)));
+        }
+
+        // Whether the place each object is made should be recorded, which
+        // the tracing the object space offers is switched on and off by.
+        if module_rc.name() == "ObjectSpace" && method_name == "__trace_allocations__" {
+            self.tracing_allocations = arguments.first().is_some_and(crate::vm::utils::is_truthy);
+            return Ok(Some(Object::Bool(self.tracing_allocations)));
+        }
+
+        // Where an object was made, as the file and the line it was written
+        // on, and nil for one made before the tracing was switched on.
+        if module_rc.name() == "ObjectSpace" && method_name == "__allocation_site__" {
+            let held = match arguments.first() {
+                Some(Object::String(text)) => text.created_at(),
+                _ => None,
+            };
+            return Ok(Some(match held {
+                Some(place) => Object::string(place),
+                None => Object::Nil,
+            }));
+        }
+
         // What the object space can say about how much a program holds,
         // counted from what it has built rather than from a heap walk.
         if module_rc.name() == "ObjectSpace" && method_name == "__allocated__" {
@@ -665,9 +739,11 @@ impl VirtualMachine {
 
         // GC and ObjectSpace answer nil for the names metorex keeps no
         // account of. A name either module carries itself wins, which is how
-        // the objspace library adds to them.
+        // the objspace library adds to them, and so does a name every object
+        // answers, since those say something true about the module itself.
         if (module_rc.name() == "GC" || module_rc.name() == "ObjectSpace")
             && method_name != "name"
+            && !ANSWERED_BY_EVERY_OBJECT.contains(&method_name)
             && module_rc.find_method(method_name).is_none()
             && crate::vm::method_lookup::module_level_method(module_rc, method_name).is_none()
             && self.class_method_of(module_rc, method_name).is_none()
@@ -1296,5 +1372,85 @@ impl VirtualMachine {
             )),
             None => Err(method_argument_error("setrlimit", 2, 1, position)),
         }
+    }
+}
+
+/// The names every object answers for itself, which a module keeping no
+/// account of its own names still answers truthfully.
+const ANSWERED_BY_EVERY_OBJECT: &[&str] = &[
+    "==",
+    "!=",
+    "===",
+    "class",
+    "clone",
+    "display",
+    "dup",
+    "eql?",
+    "equal?",
+    "freeze",
+    "frozen?",
+    "hash",
+    "inspect",
+    "instance_of?",
+    "instance_variable_defined?",
+    "instance_variable_get",
+    "instance_variable_set",
+    "instance_variables",
+    "is_a?",
+    "itself",
+    "kind_of?",
+    "method",
+    "methods",
+    "nil?",
+    "object_id",
+    "public_send",
+    "respond_to?",
+    "send",
+    "singleton_class",
+    "tap",
+    "then",
+    "to_s",
+    "yield_self",
+    "__id__",
+    "__send__",
+];
+
+/// Collect an object and everything it leads to, passing over one already
+/// collected so a structure that holds itself is walked once.
+fn gather_reachable(
+    object: Object,
+    seen: &mut std::collections::HashSet<usize>,
+    found: &mut Vec<Object>,
+) {
+    let identity = match &object {
+        Object::String(held) => Rc::as_ptr(held) as usize,
+        Object::Array(held) => Rc::as_ptr(held) as usize,
+        Object::Dict(held) => Rc::as_ptr(held) as usize,
+        Object::Instance(held) => Rc::as_ptr(held) as usize,
+        Object::Class(held) | Object::Module(held) => Rc::as_ptr(held) as usize,
+        _ => 0,
+    };
+    if identity == 0 || !seen.insert(identity) {
+        return;
+    }
+    found.push(object.clone());
+    match &object {
+        Object::Array(held) => {
+            for element in held.borrow().iter() {
+                gather_reachable(element.clone(), seen, found);
+            }
+        }
+        Object::Dict(held) => {
+            for (_, value) in held.borrow().iter() {
+                gather_reachable(value.clone(), seen, found);
+            }
+        }
+        Object::Instance(held) => {
+            let names: Vec<Object> = held.borrow().instance_vars.values().cloned().collect();
+            for value in names {
+                gather_reachable(value, seen, found);
+            }
+        }
+        _ => {}
     }
 }

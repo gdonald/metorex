@@ -55,6 +55,7 @@ impl Parser {
                     } else {
                         None
                     };
+                    refuse_two_blocks(&arguments, trailing_block.is_some())?;
                     expr = Expression::MethodCall {
                         receiver: Box::new(expr),
                         method: "call".to_string(),
@@ -175,6 +176,7 @@ impl Parser {
                 } else {
                     None
                 };
+                refuse_two_blocks(&arguments, trailing_block.is_some())?;
 
                 let position = expr.position();
                 expr = if safe {
@@ -343,6 +345,7 @@ impl Parser {
                     } else {
                         None
                     };
+                    refuse_two_blocks(&arguments, trailing_block.is_some())?;
                     expr = Expression::MethodCall {
                         receiver: Box::new(expr),
                         method: name,
@@ -481,6 +484,7 @@ impl Parser {
                 } else {
                     None
                 };
+                refuse_two_blocks(&arguments, trailing_block.is_some())?;
                 let position = expr.position();
                 // `"text".freeze` stands for one frozen string shared by
                 // every place the same literal is written.
@@ -521,6 +525,7 @@ impl Parser {
         } else {
             None
         };
+        refuse_two_blocks(&arguments, trailing_block.is_some())?;
 
         let position = callee.position();
 
@@ -964,6 +969,7 @@ impl Parser {
                 | TokenKind::Extend
                 | TokenKind::Defined
                 | TokenKind::Def
+                | TokenKind::Yield
         ) || (self.peek().kind == TokenKind::Arrow
             && self.arrow_starts_lambda_argument());
 
@@ -1108,6 +1114,7 @@ impl Parser {
                     | TokenKind::Defined
                     | TokenKind::Def
                     | TokenKind::Arrow
+                    | TokenKind::Yield
             );
 
         // Same disambiguation for method-call paren-less args:
@@ -1387,6 +1394,7 @@ impl Parser {
         } else {
             None
         };
+        refuse_two_blocks(&arguments, trailing_block.is_some())?;
 
         Ok(Expression::Call {
             callee: Box::new(callee),
@@ -1452,4 +1460,23 @@ fn fold_keyword_splats(
         let at = (among + moved).min(entries.len());
         entries.insert(at, (held, Expression::NilLiteral { position }));
     }
+}
+
+/// Ruby allows one block per call, so a call written with both `&arg` and a
+/// literal block is refused where it is written.
+fn refuse_two_blocks(
+    arguments: &[Expression],
+    has_a_literal_block: bool,
+) -> Result<(), MetorexError> {
+    if !has_a_literal_block
+        || !arguments
+            .iter()
+            .any(|argument| matches!(argument, Expression::BlockArg { .. }))
+    {
+        return Ok(());
+    }
+    Err(MetorexError::runtime_error(
+        "both block arg and actual block given; only one block is allowed",
+        crate::error::SourceLocation::new(0, 0, 0),
+    ))
 }

@@ -192,18 +192,29 @@ impl ReplCore {
             Ok(_) => true,
             Err(errors) => {
                 for error in &errors {
-                    let error_msg = error.to_string().to_lowercase();
-                    if error_msg.contains("unexpected end of input")
-                        || error_msg.contains("expected 'end'")
-                        || error_msg.contains("unclosed")
-                        || error_msg.contains("incomplete")
-                    {
+                    if Self::awaits_more_input(&error.to_string()) {
                         return false;
                     }
                 }
                 true
             }
         }
+    }
+
+    /// Whether a parse error says the input stops in the middle of something,
+    /// which is the REPL's cue to keep reading lines. `unexpected 'end'` names a
+    /// stray keyword in input that is already complete, so it is not one of them.
+    fn awaits_more_input(message: &str) -> bool {
+        let message = message.to_lowercase();
+        if message.contains("unexpected end of input")
+            || message.contains("unclosed")
+            || message.contains("incomplete")
+        {
+            return true;
+        }
+        message
+            .match_indices("expected 'end'")
+            .any(|(at, _)| !message[..at].ends_with("un"))
     }
 
     /// Evaluate the current buffer. Returns the result for display.

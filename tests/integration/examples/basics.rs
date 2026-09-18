@@ -1104,3 +1104,25 @@ fn test_basics_exact_powers_parens_execution() {
     let output = run_example("basics/exact_powers_parens.rb");
     assert_eq!(output, EXACT_POWERS_OUTPUT);
 }
+
+/// The expected output of both `basics/heredoc_details` variants, which
+/// differ only in whether the calls are written with parentheses.
+const HEREDOC_DETAILS_OUTPUT: &str = concat!(
+    "hello world\n",
+    "US-ASCII\n",
+    "\"a\\nbc\\n\"\n",
+    "SyntaxError\n",
+    "30\n",
+);
+
+#[test]
+fn test_basics_heredoc_details_execution() {
+    let output = run_example("basics/heredoc_details.rb");
+    assert_eq!(output, HEREDOC_DETAILS_OUTPUT);
+}
+
+#[test]
+fn test_basics_heredoc_details_parens_execution() {
+    let output = run_example("basics/heredoc_details_parens.rb");
+    assert_eq!(output, HEREDOC_DETAILS_OUTPUT);
+}

@@ -305,7 +305,9 @@ impl Parser {
             TokenKind::While | TokenKind::Until => self.parse_loop_expression(position),
             TokenKind::For => self.parse_for_expression(position),
 
-            other => Err(self.error_at_previous(&format!("Unexpected token: {:?}", other))),
+            // Ruby names the token it did not expect the way the source
+            // spells it, which is what a reader is looking for.
+            other => Err(self.error_at_previous(&format!("unexpected '{}'", other))),
         }
     }
 }

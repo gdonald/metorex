@@ -195,3 +195,29 @@ fn test_methods_endless_definitions_parens_execution() {
     let output = run_example("methods/endless_definitions_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `methods/argument_binding` variants, which
+/// differ only in whether the calls are written with parentheses.
+const ARGUMENT_BINDING_OUTPUT: &str = concat!(
+    "[1, 9, [], 2]\n",
+    "[1, 2, [], 3]\n",
+    "[1, 2, [3], 4]\n",
+    "[1, 2, [], 3, nil]\n",
+    "[1, 2, [], 3, 4]\n",
+    "[1, 2, [3], 4, 5]\n",
+    "[1, 2, 3, 4]\n",
+    "SyntaxError\n",
+    "no implicit conversion of Object into Proc\n",
+);
+
+#[test]
+fn test_methods_argument_binding_execution() {
+    let output = run_example("methods/argument_binding.rb");
+    assert_eq!(output, ARGUMENT_BINDING_OUTPUT);
+}
+
+#[test]
+fn test_methods_argument_binding_no_parens_execution() {
+    let output = run_example("methods/argument_binding_no_parens.rb");
+    assert_eq!(output, ARGUMENT_BINDING_OUTPUT);
+}

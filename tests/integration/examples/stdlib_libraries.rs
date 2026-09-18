@@ -694,3 +694,28 @@ fn test_stdlib_libraries_reading_compressed_streams_parens_execution() {
     let output = run_example("stdlib_libraries/reading_compressed_streams_parens.rb");
     assert_eq!(output, READING_COMPRESSED_STREAMS_OUTPUT);
 }
+
+/// The expected output of both `stdlib_libraries/coverage_counts` variants, which differ only in whether the
+/// calls are written with parentheses.
+const COVERAGE_COUNTS_OUTPUT: &str = concat!(
+    "true\n",
+    "false\n",
+    "true\n",
+    "[1, 1, 1, nil, nil, 1, 0, nil, nil, nil, 1]\n",
+    "false\n",
+    "[1, 1, 1, nil, nil, 1, 0, nil, nil, nil, 1]\n",
+    "{}\n",
+    "[[:unused, 6, 8, 0], [:used, 2, 4, 1]]\n",
+);
+
+#[test]
+fn test_stdlib_libraries_coverage_counts_execution() {
+    let output = run_example("stdlib_libraries/coverage_counts.rb");
+    assert_eq!(output, COVERAGE_COUNTS_OUTPUT);
+}
+
+#[test]
+fn test_stdlib_libraries_coverage_counts_parens_execution() {
+    let output = run_example("stdlib_libraries/coverage_counts_parens.rb");
+    assert_eq!(output, COVERAGE_COUNTS_OUTPUT);
+}

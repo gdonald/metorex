@@ -227,3 +227,24 @@ Basic coffee + milk + sugar: $8
     let output = run_example("programs/oop_patterns/oop_patterns_no_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `programs/begin_blocks` variants, which differ
+/// only in whether the calls are written with parentheses.
+const BEGIN_BLOCKS_OUTPUT: &str = concat!(
+    "[\"first\", \"second\", \"body\"]\n",
+    "held\n",
+    "SyntaxError\n",
+    "from eval\n",
+);
+
+#[test]
+fn test_programs_begin_blocks_execution() {
+    let output = run_example("programs/begin_blocks.rb");
+    assert_eq!(output, BEGIN_BLOCKS_OUTPUT);
+}
+
+#[test]
+fn test_programs_begin_blocks_no_parens_execution() {
+    let output = run_example("programs/begin_blocks_no_parens.rb");
+    assert_eq!(output, BEGIN_BLOCKS_OUTPUT);
+}

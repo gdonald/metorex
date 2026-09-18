@@ -4,8 +4,9 @@ puts "=== eval ==="
 puts eval "1 + 2 + 3"
 x = 10
 puts eval "x * 5"
-eval "y = x + 20"
-puts y
+# A local the eval binds belongs to the eval, so its value comes back as
+# the eval's own answer rather than as a local out here.
+puts eval("y = x + 20")
 
 puts ""
 puts "=== eval define method ==="

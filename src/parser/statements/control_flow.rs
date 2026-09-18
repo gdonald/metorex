@@ -612,7 +612,10 @@ impl Parser {
         // Parse the expression to match against. A `case name = value` binds
         // the name in the scope holding the case, so the assignment is part
         // of the subject.
-        let expression = self.parse_condition()?;
+        self.refuse_pattern_test += 1;
+        let expression = self.parse_condition();
+        self.refuse_pattern_test -= 1;
+        let expression = expression?;
         self.skip_whitespace();
 
         // Detect whether this is case/when or case/in
@@ -722,7 +725,7 @@ impl Parser {
 
     /// Parse the body of a `case/in` statement (Ruby 2.7+ pattern matching).
     /// Called after `case expr` has been consumed and `in` is the next token.
-    fn parse_case_in_body(
+    pub(in crate::parser) fn parse_case_in_body(
         &mut self,
         expression: Expression,
         start_pos: Position,
@@ -739,15 +742,44 @@ impl Parser {
 
             // Parse the pattern (supports `=> name` binding)
             let pattern = self.parse_case_in_pattern()?;
+            // A pattern holds no operators of its own, so anything left on
+            // the line after one was never part of it.
+            if !self.check(&[
+                TokenKind::Then,
+                TokenKind::If,
+                TokenKind::Unless,
+                TokenKind::Newline,
+                TokenKind::Semicolon,
+                TokenKind::Comment(String::new()),
+                TokenKind::EOF,
+            ]) && !matches!(self.peek().kind, TokenKind::Comment(_))
+            {
+                return Err(self.error_at_current(
+                    "expected a delimiter after the patterns of an `in` clause",
+                ));
+            }
             self.skip_whitespace();
 
-            // Parse optional guard clause (if ...)
+            // Parse optional guard clause, which may refuse a match as well
+            // as ask for one.
             let guard = if self.match_token(&[TokenKind::If]) {
                 self.skip_whitespace();
                 Some(self.parse_expression()?)
+            } else if self.match_token(&[TokenKind::Unless]) {
+                let at = self.previous().position;
+                self.skip_whitespace();
+                let held = self.parse_expression()?;
+                Some(Expression::UnaryOp {
+                    op: crate::ast::UnaryOp::Not,
+                    operand: Box::new(held),
+                    position: at,
+                })
             } else {
                 None
             };
+            self.skip_whitespace();
+            // `in pattern then body` writes the body on the same line.
+            self.match_token(&[TokenKind::Then]);
             self.skip_whitespace();
 
             // Parse the body
@@ -808,72 +840,7 @@ impl Parser {
     /// Parse a single pattern for `case/in`, supporting `pattern => name` binding
     /// at the top level and inside array patterns.
     fn parse_case_in_pattern(&mut self) -> Result<MatchPattern, MetorexError> {
-        self.parse_case_in_pattern_inner()
-    }
-
-    /// Recursive inner parser for `case/in` patterns with `=> name` bind support.
-    fn parse_case_in_pattern_inner(&mut self) -> Result<MatchPattern, MetorexError> {
-        let token = self.peek().clone();
-
-        let inner = match &token.kind {
-            // Array pattern — parse each element with bind support
-            TokenKind::LBracket => {
-                self.advance();
-                self.skip_whitespace();
-                let mut patterns = Vec::new();
-                while !self.check(&[TokenKind::RBracket]) && !self.is_at_end() {
-                    self.skip_whitespace();
-                    if self.match_token(&[TokenKind::DotDotDot]) {
-                        self.skip_whitespace();
-                        if let TokenKind::Ident(name) = &self.peek().kind {
-                            let rest_name = name.clone();
-                            self.advance();
-                            patterns.push(MatchPattern::Rest(rest_name));
-                        } else {
-                            return Err(MetorexError::syntax_error(
-                                "Expected identifier after ... in array pattern".to_string(),
-                                SourceLocation::new(
-                                    self.peek().position.line,
-                                    self.peek().position.column,
-                                    self.peek().position.offset,
-                                ),
-                            ));
-                        }
-                    } else {
-                        patterns.push(self.parse_case_in_pattern_inner()?);
-                    }
-                    self.skip_whitespace();
-                    if !self.check(&[TokenKind::RBracket]) {
-                        self.expect(TokenKind::Comma, "Expected ',' or ']' in array pattern")?;
-                        self.skip_whitespace();
-                    }
-                }
-                self.expect(TokenKind::RBracket, "Expected ']' after array pattern")?;
-                MatchPattern::Array(patterns)
-            }
-            // For all other patterns, delegate to the base parser
-            _ => self.parse_case_pattern()?,
-        };
-
-        self.skip_whitespace();
-
-        // Check for `=> name` binding
-        if self.match_token(&[TokenKind::FatArrow]) {
-            self.skip_whitespace();
-            let name = if let TokenKind::Ident(n) = &self.peek().kind {
-                let n = n.clone();
-                self.advance();
-                n
-            } else {
-                return Err(self.error_at_current("Expected identifier after '=>' in pattern"));
-            };
-            Ok(MatchPattern::Bind {
-                pattern: Box::new(inner),
-                name,
-            })
-        } else {
-            Ok(inner)
-        }
+        self.parse_in_pattern()
     }
 
     /// Parse a pattern for a case statement

@@ -80,6 +80,9 @@ pub struct BlockStatement {
     /// The name a callable built from a Symbol stands for, which is what it
     /// says of itself in place of a file and a line.
     pub from_symbol: Option<String>,
+    /// The scope the block was written in, which is what a backtrace names it
+    /// by however far from there it is called.
+    pub written_in: Option<String>,
     /// Whether `ruby2_keywords` was called on the Proc this block stands for,
     /// so a trailing keyword hash gathered into its splat is marked. The flag
     /// is shared with every copy, which is what makes it reach a `dup`.
@@ -118,6 +121,7 @@ impl BlockStatement {
             home_frame: None,
             opened_at: None,
             from_symbol: None,
+            written_in: None,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
@@ -146,6 +150,7 @@ impl BlockStatement {
             home_frame: None,
             opened_at: None,
             from_symbol: None,
+            written_in: None,
             ruby2_keywords: Rc::new(std::cell::Cell::new(false)),
         }
     }
@@ -171,9 +176,15 @@ impl BlockStatement {
         {
             return true;
         }
+        // Only the positional parameters count: a block taking `|*a, **kw|`
+        // has one place for its arguments, so a lone array stays whole.
         self.parameters
             .iter()
-            .filter(|name| !name.starts_with('&') && !name.starts_with(KEYWORD_PARAM_PREFIX))
+            .filter(|name| {
+                !name.starts_with('&')
+                    && !name.starts_with(KEYWORD_PARAM_PREFIX)
+                    && !name.starts_with("**")
+            })
             .count()
             > 1
     }

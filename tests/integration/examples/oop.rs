@@ -482,16 +482,14 @@ fn test_oop_include_multiple_modules_parens_execution() {
 
 #[test]
 fn test_oop_include_nested_modules_execution() {
-    let expected =
-        "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name, :pretty_inspect]\n[Seedling, Sapling, Leaf]\n";
+    let expected = "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name]\n[Seedling, Sapling, Leaf]\n";
     let output = run_example("oop/include_nested_modules.rb");
     assert_eq!(output, expected);
 }
 
 #[test]
 fn test_oop_include_nested_modules_parens_execution() {
-    let expected =
-        "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name, :pretty_inspect]\n[Seedling, Sapling, Leaf]\n";
+    let expected = "\"trunk\"\n\"trunk\"\n:leaf\n[:leaf_name]\n[Seedling, Sapling, Leaf]\n";
     let output = run_example("oop/include_nested_modules_parens.rb");
     assert_eq!(output, expected);
 }
@@ -1324,6 +1322,9 @@ fn test_oop_inspect_instance_variables_execution() {
         "#<Chosen:0x @shown=\"yes\">\n",
         "#<NoneChosen:0x>\n",
         "Expected #instance_variables_to_inspect to return an Array or nil, but it returned Hash\n",
+        "[#<Connection:0x @host=\"localhost\", @port=5432, @open=true>]\n",
+        "{at: #<Connection:0x @host=\"localhost\", @port=5432, @open=true>}\n",
+        "#<Connection:0x @host=\"localhost\", @port=5432, @open=true>\n",
     );
     let output = run_example("oop/inspect_instance_variables.rb");
     assert_eq!(output, expected);
@@ -1338,6 +1339,9 @@ fn test_oop_inspect_instance_variables_parens_execution() {
         "#<Chosen:0x @shown=\"yes\">\n",
         "#<NoneChosen:0x>\n",
         "Expected #instance_variables_to_inspect to return an Array or nil, but it returned Hash\n",
+        "[#<Connection:0x @host=\"localhost\", @port=5432, @open=true>]\n",
+        "{at: #<Connection:0x @host=\"localhost\", @port=5432, @open=true>}\n",
+        "#<Connection:0x @host=\"localhost\", @port=5432, @open=true>\n",
     );
     let output = run_example("oop/inspect_instance_variables_parens.rb");
     assert_eq!(output, expected);
@@ -1541,4 +1545,32 @@ fn test_oop_module_reopening_execution() {
 fn test_oop_module_reopening_parens_execution() {
     let output = run_example("oop/module_reopening_parens.rb");
     assert_eq!(output, MODULE_REOPENING_OUTPUT);
+}
+
+const CASE_EQUALITY_OF_CLASSES_OUTPUT: &str = concat!(
+    "Module === String -> true\n",
+    "Class === String -> true\n",
+    "String === String -> false\n",
+    "Module === M -> true\n",
+    "Class === M -> false\n",
+    "C === D -> false\n",
+    "C === C -> false\n",
+    "Object === C -> true\n",
+    "Comparable === Integer -> false\n",
+    "Module === Comparable -> true\n",
+    "true\ntrue\n",
+    "written here: [1]\n",
+    "written here: [1, 2]\n",
+);
+
+#[test]
+fn test_oop_case_equality_of_classes_execution() {
+    let output = run_example("oop/case_equality_of_classes.rb");
+    assert_eq!(output, CASE_EQUALITY_OF_CLASSES_OUTPUT);
+}
+
+#[test]
+fn test_oop_case_equality_of_classes_parens_execution() {
+    let output = run_example("oop/case_equality_of_classes_parens.rb");
+    assert_eq!(output, CASE_EQUALITY_OF_CLASSES_OUTPUT);
 }

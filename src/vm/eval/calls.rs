@@ -8,6 +8,16 @@ use crate::object::Object;
 use crate::vm::core::VirtualMachine;
 
 impl VirtualMachine {
+    /// Whether `self` answers a method of this name that the program wrote,
+    /// which stands in place of the Kernel function of the same name.
+    fn self_defines_method(&mut self, name: &str) -> bool {
+        let Ok(current_self) = self.eval_self(crate::lexer::Position::default()) else {
+            return false;
+        };
+        self.lookup_method(&current_self, name)
+            .is_some_and(|(_, method)| !method.is_undefined)
+    }
+
     /// Evaluate a `Call` expression. Bare-identifier callees prefer
     /// `self.method(args)` dispatch over auto-invoking the identifier; this
     /// avoids the bug where the identifier path would call the method with
@@ -73,6 +83,25 @@ impl VirtualMachine {
                 // arguments names that method, so it dispatches rather than
                 // calling whatever the bare name would answer.
                 Some(held) if self.name_is_a_definition(name, held) => true,
+                // A call written with parentheses names a method, so a local
+                // holding something that is not callable does not stand in
+                // the way of `foobar()` reaching `foobar`.
+                Some(held)
+                    if !matches!(
+                        held,
+                        Object::Method(_)
+                            | Object::Block(_)
+                            | Object::NativeFunction(_)
+                            | Object::CompiledFunction(_)
+                    ) =>
+                {
+                    matches!(
+                        self.environment()
+                            .get("self")
+                            .and_then(|receiver| self.lookup_method(&receiver, name)),
+                        Some((_, found)) if !found.is_undefined
+                    )
+                }
                 _ => false,
             };
             if dispatch_to_self {
@@ -100,6 +129,22 @@ impl VirtualMachine {
                 self.pending_block_from_ampersand = false;
             }
             return self.call_native_function("using", evaluated_args, position);
+        }
+
+        // A program that writes its own `p` or `puts` means that one, whichever
+        // module it opened to define it, so a bare call reaches the method
+        // rather than the Kernel function of the same name.
+        if let Expression::Identifier { name, .. } = callee
+            && self.named_native_function(name).is_some()
+            && self.self_defines_method(name)
+        {
+            return self.evaluate_method_call(
+                &Expression::SelfExpr { position },
+                name,
+                arguments,
+                trailing_block,
+                position,
+            );
         }
 
         // `__method__()`, `__callee__()`, `abort`, `exit` and `binding` are

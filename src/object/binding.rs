@@ -20,6 +20,17 @@ pub struct Binding {
     pub receiver: Option<Object>,
     /// Where the binding was captured, which `source_location` reports.
     pub source: RefCell<Option<(String, usize)>>,
+    /// The method the binding was captured in, as the name it was called by
+    /// paired with the name it was defined under. Code run through the
+    /// binding names that method rather than whatever is running the eval.
+    pub method: RefCell<Option<(String, String)>>,
+    /// The refinements in force where the binding was captured, as the module
+    /// carrying each with the classes it refines. Code run through the
+    /// binding sees them, the way Ruby's does.
+    pub refinements: RefCell<Vec<(Rc<crate::class::Class>, Vec<String>)>>,
+    /// The classes and modules open where the binding was captured, innermost
+    /// first. A class opened by code run through the binding is nested there.
+    pub nesting: RefCell<Vec<Rc<crate::class::Class>>>,
 }
 
 impl PartialEq for Binding {
@@ -40,6 +51,9 @@ impl Binding {
             variables: RefCell::new(variables),
             receiver: None,
             source: RefCell::new(None),
+            method: RefCell::new(None),
+            refinements: RefCell::new(Vec::new()),
+            nesting: RefCell::new(Vec::new()),
         }
     }
 
@@ -53,6 +67,9 @@ impl Binding {
             variables: RefCell::new(variables),
             receiver: Some(receiver),
             source: RefCell::new(None),
+            method: RefCell::new(None),
+            refinements: RefCell::new(Vec::new()),
+            nesting: RefCell::new(Vec::new()),
         }
     }
 
@@ -122,6 +139,9 @@ impl Binding {
             order: RefCell::new(self.order.borrow().clone()),
             receiver: self.receiver.clone(),
             source: RefCell::new(self.source.borrow().clone()),
+            method: RefCell::new(self.method.borrow().clone()),
+            refinements: RefCell::new(self.refinements.borrow().clone()),
+            nesting: RefCell::new(self.nesting.borrow().clone()),
         }
     }
 }

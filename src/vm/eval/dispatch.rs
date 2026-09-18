@@ -22,7 +22,7 @@ impl VirtualMachine {
             // ── Literals ────────────────────────────────────────────────────
             Expression::IntLiteral { value, .. } => Ok(Object::Int(*value)),
             Expression::FloatLiteral { value, .. } => Ok(Object::Float(*value)),
-            Expression::StringLiteral { value, .. } => {
+            Expression::StringLiteral { value, position } => {
                 // A literal is written in the encoding its source is written
                 // in, which a magic comment at the top of the file names.
                 // A literal written in bytes carries its own encoding, so one
@@ -55,11 +55,21 @@ impl VirtualMachine {
                 // release will freeze it, so the first change made to it says
                 // so. A source that asked for frozen literals produces a
                 // frozen one instead and never reaches here.
-                made.chill(
-                    "warning: literal string will be frozen in the future (run with \
+                // A run told to report where a literal was written names the
+                // place instead of pointing at the flag that would name it.
+                match self.literal_birthplace(*position) {
+                    Some(written_at) => {
+                        made.set_created_at(written_at);
+                        made.chill(
+                            "warning: literal string will be frozen in the future".to_string(),
+                        );
+                    }
+                    None => made.chill(
+                        "warning: literal string will be frozen in the future (run with \
 --debug-frozen-string-literal for more information)"
-                        .to_string(),
-                );
+                            .to_string(),
+                    ),
+                }
                 Ok(Object::String(std::rc::Rc::new(made)))
             }
             Expression::Symbol { value, .. } => {
@@ -149,6 +159,22 @@ impl VirtualMachine {
                 if name == "?" {
                     return Ok(self.process_last_status());
                 }
+                // A number past what a capture can be numbered names no
+                // group at all, which Ruby says so about and reads as nil.
+                if number_variable_is_too_big(&name) {
+                    let at = (
+                        self.current_source_file.clone().unwrap_or_default(),
+                        position.line,
+                        position.column,
+                    );
+                    if self.reported_big_number_variables.insert(at) {
+                        let message = format!(
+                            "warning: '${name}' is too big for a number variable, always nil"
+                        );
+                        self.emit_warning_to_stderr(&message, *position);
+                    }
+                    return Ok(Object::Nil);
+                }
                 // `$1` through `$9` name the captures of the last match, and
                 // `` $` `` and `$'` the text on either side of it.
                 if let Some(group) = crate::vm::native_methods::capture_reference(&name) {
@@ -179,6 +205,29 @@ impl VirtualMachine {
                     .unwrap_or_else(|| "(eval)".to_string());
                 Ok(Object::string(path))
             }
+            // `value => pattern` refuses a value the pattern does not cover,
+            // and `value in pattern` answers whether it does.
+            Expression::PatternTest {
+                value,
+                pattern,
+                refuses,
+                position,
+            } => {
+                let held = self.evaluate_expression(value)?;
+                let mut bindings = std::collections::HashMap::new();
+                self.pattern_failure = None;
+                let matched = self.match_pattern(pattern, &held, &mut bindings, *position)?;
+                if matched {
+                    self.apply_pattern_bindings(&bindings);
+                } else if *refuses {
+                    return Err(self.detailed_no_matching_pattern(&held, *position));
+                }
+                Ok(if *refuses {
+                    Object::Nil
+                } else {
+                    Object::Bool(matched)
+                })
+            }
             Expression::MagicLine { position, .. } => Ok(Object::Int(position.line as i64)),
             Expression::MagicDir { .. } => {
                 // `__dir__` is nil where there is no file behind the code, and
@@ -195,6 +244,15 @@ impl VirtualMachine {
                 let Some(file) = written_in else {
                     return Ok(Object::Nil);
                 };
+                // Code handed to `eval` with no filename of its own is named
+                // for the place the eval was written, which is not a file and
+                // so holds no directory.
+                if file
+                    .to_str()
+                    .is_some_and(|named| named.starts_with(crate::vm::EVAL_FILE_PREFIX))
+                {
+                    return Ok(Object::Nil);
+                }
                 let file = file.as_path();
                 // A relative path expands against the working directory, so
                 // running `metorex script.rb` still names the real directory.
@@ -264,7 +322,8 @@ impl VirtualMachine {
                     // `source_location` names however far down the body starts.
                     block.opened_at = Some(position.line);
                 }
-                block.home_frame = self.current_method_frame;
+                block.home_frame = self.lexical_home_frame.unwrap_or(self.current_method_frame);
+                block.written_in = Some(self.enclosing_scope_label());
                 Ok(Object::Block(Rc::new(block)))
             }
             Expression::Grouped { expression, .. } => self.evaluate_expression(expression),
@@ -820,4 +879,16 @@ pub(crate) fn binary_op_method_name(op: &BinaryOp) -> Option<&'static str> {
         BinaryOp::Xor => Some("^"),
         _ => None,
     }
+}
+
+/// Whether `$<digits>` names a capture past the highest one a pattern can
+/// number, which Ruby reads as nil and says so about.
+fn number_variable_is_too_big(name: &str) -> bool {
+    /// The highest group a pattern can number, above which Ruby reads the
+    /// variable as nil.
+    const HIGHEST_GROUP: u128 = (1 << 30) - 1;
+    if name.is_empty() || !name.bytes().all(|held| held.is_ascii_digit()) {
+        return false;
+    }
+    name.parse::<u128>().is_ok_and(|held| held > HIGHEST_GROUP)
 }

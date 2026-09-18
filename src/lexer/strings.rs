@@ -77,7 +77,7 @@ impl<'a> Lexer<'a> {
                             parts.push(InterpolationPart::Text(current_text));
                         }
                         return Ok(TokenKind::InterpolatedString(parts));
-                    } else if self.frozen_literals && quote == '"' && !command {
+                    } else if self.frozen_literals && !command {
                         // The source asked for its literals to be frozen, and
                         // one written in escapes still stands for its bytes.
                         if holds_bytes {
@@ -250,6 +250,27 @@ impl<'a> Lexer<'a> {
                                 }
                             }
                         }
+                        // `\cX`, `\C-X`, and `\M-X` name a control or meta
+                        // character by the one that follows, and `\M-\C-X`
+                        // names both at once.
+                        Some('c') | Some('C') | Some('M') => match self.read_control_escape() {
+                            Some(byte) if byte.is_ascii() => {
+                                current_text.push(byte as char);
+                            }
+                            Some(byte) => {
+                                holds_bytes = true;
+                                current_text.push(byte as char);
+                            }
+                            None => {
+                                if quote == '\'' {
+                                    current_text.push('\\');
+                                }
+                                if let Some(letter) = self.peek() {
+                                    current_text.push(letter);
+                                    self.advance();
+                                }
+                            }
+                        },
                         Some('u') => {
                             self.advance();
                             let mut points = Vec::new();
@@ -319,6 +340,7 @@ impl<'a> Lexer<'a> {
                     self.advance();
                     if self.peek() == Some('{') {
                         // Start of interpolation
+                        let hole_line = self.line;
                         self.advance();
 
                         // Save current text as a part
@@ -354,7 +376,7 @@ impl<'a> Lexer<'a> {
                                     depth -= 1;
                                     if depth == 0 {
                                         self.advance();
-                                        parts.push(InterpolationPart::Expression(expr));
+                                        parts.push(InterpolationPart::Expression(expr, hole_line));
                                         break;
                                     } else {
                                         expr.push('}');
@@ -367,6 +389,14 @@ impl<'a> Lexer<'a> {
                                 }
                             }
                         }
+                    } else if let Some(named) = self.read_short_interpolation() {
+                        // `#@name`, `#@@name`, and `#$name` interpolate that
+                        // variable without braces around it.
+                        if !current_text.is_empty() {
+                            parts.push(InterpolationPart::Text(current_text.clone()));
+                            current_text.clear();
+                        }
+                        parts.push(InterpolationPart::Expression(named, self.line));
                     } else {
                         // Not interpolation, just a # character
                         current_text.push('#');
@@ -389,4 +419,113 @@ pub(super) fn binary_run(binary_source: bool, bytes: &[u8]) -> Result<String, ()
         return Err(());
     }
     String::from_utf8(bytes.to_vec()).map_err(|_| ())
+}
+
+impl<'a> Lexer<'a> {
+    /// The variable a `#` interpolates without braces: `#@name`, `#@@name`,
+    /// and `#$name`. The cursor sits just past the `#`. Nothing is consumed
+    /// where what follows names no variable, so `"#@ "` stands as it reads.
+    pub(super) fn read_short_interpolation(&mut self) -> Option<String> {
+        let saved_chars = self.chars.clone();
+        let saved_prepend = self.prepend.clone();
+        let saved_line = self.line;
+        let saved_column = self.column;
+        let saved_offset = self.offset;
+        let mut named = String::new();
+        match self.peek() {
+            Some('@') => {
+                named.push('@');
+                self.advance();
+                if self.peek() == Some('@') {
+                    named.push('@');
+                    self.advance();
+                }
+            }
+            Some('$') => {
+                named.push('$');
+                self.advance();
+            }
+            _ => return None,
+        }
+        // A name reads the way Ruby lets one be written, so `#@ip[` ends at
+        // the bracket and `#@ ` names nothing at all.
+        let starts_a_name = |letter: char| letter.is_alphabetic() || letter == '_';
+        if !self.peek().is_some_and(starts_a_name) {
+            self.chars = saved_chars;
+            self.prepend = saved_prepend;
+            self.line = saved_line;
+            self.column = saved_column;
+            self.offset = saved_offset;
+            return None;
+        }
+        while let Some(letter) = self.peek() {
+            if letter.is_alphanumeric() || letter == '_' {
+                named.push(letter);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        Some(named)
+    }
+}
+
+impl<'a> Lexer<'a> {
+    /// The byte a control or meta escape names. The cursor sits on the letter
+    /// that opened it: `c` for `\cX`, `C` for `\C-X`, or `M` for `\M-X`.
+    /// Nothing is consumed where what follows spells no such escape.
+    pub(super) fn read_control_escape(&mut self) -> Option<u8> {
+        let saved_chars = self.chars.clone();
+        let saved_prepend = self.prepend.clone();
+        let saved_line = self.line;
+        let saved_column = self.column;
+        let saved_offset = self.offset;
+        let rewind = |held: &mut Self| {
+            held.chars = saved_chars.clone();
+            held.prepend = saved_prepend.clone();
+            held.line = saved_line;
+            held.column = saved_column;
+            held.offset = saved_offset;
+        };
+        let opener = self.peek()?;
+        self.advance();
+        // `\C-` and `\M-` are written with the hyphen, while `\c` is not.
+        if opener != 'c' {
+            if self.peek() != Some('-') {
+                rewind(self);
+                return None;
+            }
+            self.advance();
+        }
+        // The escapes stack, so `\M-\C-z` is meta over control.
+        let held = match self.peek() {
+            Some('\\') => {
+                self.advance();
+                match self.peek() {
+                    Some('c') | Some('C') | Some('M') => self.read_control_escape()?,
+                    Some(letter) if letter.is_ascii() => {
+                        self.advance();
+                        letter as u8
+                    }
+                    _ => {
+                        rewind(self);
+                        return None;
+                    }
+                }
+            }
+            Some(letter) if letter.is_ascii() => {
+                self.advance();
+                letter as u8
+            }
+            _ => {
+                rewind(self);
+                return None;
+            }
+        };
+        Some(match opener {
+            // Meta sets the high bit, and control keeps the low six.
+            'M' => held | 0x80,
+            _ => held & 0x9f,
+        })
+    }
 }

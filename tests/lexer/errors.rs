@@ -185,7 +185,10 @@ fn test_lexer_interpolation_nested_braces() {
     match token.kind {
         TokenKind::InterpolatedString(parts) => {
             assert_eq!(parts.len(), 1);
-            assert_eq!(parts[0], InterpolationPart::Expression("{x}".to_string()));
+            assert_eq!(
+                parts[0],
+                InterpolationPart::Expression("{x}".to_string(), 1)
+            );
         }
         _ => panic!("Expected InterpolatedString, got {:?}", token.kind),
     }

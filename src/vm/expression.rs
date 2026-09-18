@@ -44,7 +44,16 @@ impl VirtualMachine {
             return Ok(Object::String(std::rc::Rc::new(spelled)));
         }
         let Some((encoding, holds_bytes)) = carried.filter(|_| ascii_literal) else {
-            return Ok(Object::string(text));
+            // Nothing outside ASCII went in, so the whole is written in the
+            // encoding its source is written in, the way a plain literal is.
+            return Ok(
+                match self.source_literal_encoding().filter(|_| text.is_ascii()) {
+                    Some(named) => Object::String(std::rc::Rc::new(
+                        crate::object::StringValue::with_encoding(text, named),
+                    )),
+                    None => Object::string(text),
+                },
+            );
         };
         let spelled = crate::object::StringValue::with_encoding(text, encoding);
         if holds_bytes {
@@ -113,10 +122,31 @@ impl VirtualMachine {
                         _ => buffer.push_str(&value.to_string()),
                     }
                     if let Object::String(spelled) = &value
-                        && carried.is_none()
                         && !spelled.as_str().is_ascii()
                     {
-                        carried = Some((spelled.encoding_name(), spelled.holds_bytes()));
+                        // Two pieces that each hold something outside ASCII
+                        // have to be written in the same encoding, since the
+                        // whole can only be written in one of them.
+                        if let Some((held, _)) = &carried
+                            && *held != spelled.encoding_name()
+                        {
+                            let message = format!(
+                                "incompatible character encodings: {} and {}",
+                                held,
+                                spelled.encoding_name()
+                            );
+                            return Err(MetorexError::UncaughtException {
+                                exception: Object::exception(
+                                    "Encoding::CompatibilityError",
+                                    message.clone(),
+                                ),
+                                location: position_to_location(expr.position()),
+                                message,
+                            });
+                        }
+                        if carried.is_none() {
+                            carried = Some((spelled.encoding_name(), spelled.holds_bytes()));
+                        }
                     }
                     if let Object::String(spelled) = &value
                         && spelled.holds_bytes()
@@ -622,6 +652,123 @@ impl VirtualMachine {
     }
 
     /// Evaluate an if expression, returning the value of the matching branch.
+    /// Whether a condition holds. A range written where a condition goes is
+    /// not a range at all: it turns on when its first side holds and stays on
+    /// until its second side does, which is what Ruby calls a flip-flop.
+    pub(crate) fn evaluate_condition(
+        &mut self,
+        condition: &Expression,
+    ) -> Result<Object, MetorexError> {
+        // `a..b or c..d` is two flip-flops, so each side of a conjunction is
+        // read as a condition of its own.
+        if let Expression::BinaryOp {
+            op: op @ (crate::ast::BinaryOp::Or | crate::ast::BinaryOp::And),
+            left,
+            right,
+            ..
+        } = condition
+        {
+            let held = is_truthy(&self.evaluate_condition(left)?);
+            let wants_more = match op {
+                crate::ast::BinaryOp::Or => !held,
+                _ => held,
+            };
+            if !wants_more {
+                return Ok(Object::Bool(held));
+            }
+            let other = is_truthy(&self.evaluate_condition(right)?);
+            return Ok(Object::Bool(other));
+        }
+        // A pattern written on its own as a condition matches against the
+        // last line read, which Ruby says so about.
+        if let Expression::RegexLiteral { position, .. } = condition {
+            let site = (
+                self.current_source_file.clone().unwrap_or_default(),
+                position.line,
+                position.column,
+                position.offset,
+            );
+            // Ruby says so where the pattern is written rather than where it
+            // is read, so a quiet run reports it too. `-W0` turns it off with
+            // every other warning.
+            if self.regexp_conditions.insert(site)
+                && !matches!(self.globals().get("VERBOSE"), Some(Object::Nil))
+            {
+                self.emit_warning_to_stderr("warning: regex literal in condition", *position);
+            }
+            let pattern = self.evaluate_expression(condition)?;
+            let line = self.globals().get("_").unwrap_or(Object::Nil);
+            let matched = self.send_to_object(pattern, "=~", vec![line], *position)?;
+            return Ok(Object::Bool(!matches!(matched, Object::Nil)));
+        }
+        let Expression::Range {
+            start,
+            end,
+            exclusive,
+            position,
+        } = condition
+        else {
+            return self.evaluate_expression(condition);
+        };
+        // The state belongs to the flip-flop written at this place in this
+        // piece of code. Two `eval` calls over the same text are two pieces,
+        // so the name the code was read under is part of the key.
+        let site = (
+            self.current_source_file.clone().unwrap_or_default(),
+            position.line,
+            position.column,
+            position.offset,
+        );
+        let running = self.flip_flops.get(&site).copied().unwrap_or(false);
+        // A number written as a side of a flip-flop is compared against the
+        // line the last read left off at, which is rarely what the program
+        // meant, so Ruby says so about it.
+        if !self.flip_flops.contains_key(&site) {
+            self.flip_flops.insert(site.clone(), false);
+            let speaks_up = matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true)));
+            for side in [start.as_ref(), end.as_ref()] {
+                if speaks_up && matches!(side, Expression::IntLiteral { .. }) {
+                    self.emit_warning_to_stderr("warning: integer literal in flip-flop", *position);
+                }
+            }
+        }
+        if !running {
+            let opens = is_truthy(&self.flip_flop_side(start, *position)?);
+            if !opens {
+                return Ok(Object::Bool(false));
+            }
+            self.flip_flops.insert(site.clone(), true);
+            // `..` reads its second side the moment the first one holds, so a
+            // range whose sides hold together is on for that one turn alone.
+            // `...` waits for the next turn.
+            if !exclusive && is_truthy(&self.flip_flop_side(end, *position)?) {
+                self.flip_flops.insert(site, false);
+            }
+            return Ok(Object::Bool(true));
+        }
+        if is_truthy(&self.flip_flop_side(end, *position)?) {
+            self.flip_flops.insert(site, false);
+        }
+        Ok(Object::Bool(true))
+    }
+
+    /// Whether one side of a flip-flop holds. A number stands for the line
+    /// the last read left off at, which is what `$.` reports.
+    fn flip_flop_side(
+        &mut self,
+        side: &Expression,
+        position: crate::lexer::Position,
+    ) -> Result<Object, MetorexError> {
+        let Expression::IntLiteral { value, .. } = side else {
+            return self.evaluate_expression(side);
+        };
+        let held = self.globals().get(".").unwrap_or(Object::Int(0));
+        let _ = position;
+        Ok(Object::Bool(
+            matches!(held, Object::Int(read) if read == *value),
+        ))
+    }
+
     pub(crate) fn evaluate_if_expression(
         &mut self,
         condition: &Expression,
@@ -629,11 +776,11 @@ impl VirtualMachine {
         elsif_branches: &[ElsifBranch],
         else_branch: &Option<Vec<Statement>>,
     ) -> Result<Object, MetorexError> {
-        if is_truthy(&self.evaluate_expression(condition)?) {
+        if is_truthy(&self.evaluate_condition(condition)?) {
             return self.evaluate_branch_value(then_branch);
         }
         for elsif in elsif_branches {
-            if is_truthy(&self.evaluate_expression(&elsif.condition)?) {
+            if is_truthy(&self.evaluate_condition(&elsif.condition)?) {
                 return self.evaluate_branch_value(&elsif.body);
             }
         }
@@ -650,7 +797,7 @@ impl VirtualMachine {
         then_branch: &[Statement],
         else_branch: &Option<Vec<Statement>>,
     ) -> Result<Object, MetorexError> {
-        if !is_truthy(&self.evaluate_expression(condition)?) {
+        if !is_truthy(&self.evaluate_condition(condition)?) {
             return self.evaluate_branch_value(then_branch);
         }
         if let Some(else_stmts) = else_branch {

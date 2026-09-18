@@ -17,6 +17,10 @@ pub(crate) struct OpenStreams {
     /// Descriptors named from outside, which this program did not open and
     /// must not close when the IO object goes.
     borrowed: HashMap<u64, RawFd>,
+    /// Bytes an earlier read took from a stream and did not use. A pipe
+    /// cannot be wound back, so what was read ahead is kept here for the
+    /// next read to hand over first.
+    waiting: HashMap<u64, Vec<u8>>,
     next: u64,
 }
 
@@ -28,6 +32,55 @@ impl OpenStreams {
             .get(&handle)
             .map(|held| held.as_raw_fd())
             .or_else(|| self.borrowed.get(&handle).copied())
+    }
+
+    /// Read from a stream, handing over first whatever an earlier read took
+    /// and did not use. The answer is what `read` would have answered, with a
+    /// negative number leaving errno as `read` set it.
+    fn take(&mut self, handle: u64, number: RawFd, buffer: &mut [u8]) -> isize {
+        if let Some(held) = self.waiting.get_mut(&handle)
+            && !held.is_empty()
+        {
+            let taken = held.len().min(buffer.len());
+            buffer[..taken].copy_from_slice(&held[..taken]);
+            held.drain(..taken);
+            return taken as isize;
+        }
+        // SAFETY: `buffer` names a run of its own length this call only
+        // writes into.
+        unsafe {
+            libc::read(
+                number,
+                buffer.as_mut_ptr() as *mut libc::c_void,
+                buffer.len(),
+            )
+        }
+    }
+
+    /// Hand bytes back to a stream. A stream that can be wound back is wound
+    /// back, so where it stands is what it reports. A pipe cannot be, so what
+    /// was read ahead is kept for the next read instead.
+    fn put_back(&mut self, handle: u64, number: RawFd, bytes: &[u8]) {
+        if bytes.is_empty() {
+            return;
+        }
+        if self.waiting.get(&handle).is_none_or(|held| held.is_empty()) {
+            // SAFETY: `number` is a descriptor this program holds open.
+            let wound = unsafe { libc::lseek(number, -(bytes.len() as i64), libc::SEEK_CUR) };
+            if wound >= 0 {
+                return;
+            }
+        }
+        let held = self.waiting.entry(handle).or_default();
+        let mut carried = bytes.to_vec();
+        carried.extend_from_slice(held);
+        *held = carried;
+    }
+
+    /// Forget what was read ahead, which a stream moved by hand or closed no
+    /// longer stands behind.
+    fn forget_read_ahead(&mut self, handle: u64) {
+        self.waiting.remove(&handle);
     }
 
     fn keep(&mut self, held: OwnedFd) -> u64 {
@@ -154,6 +207,14 @@ impl VirtualMachine {
         let text = match arguments.get(2) {
             Some(Object::String(held)) => held.as_str().to_string(),
             _ => String::new(),
+        };
+        // A separator whose characters stand for bytes names those bytes
+        // rather than the ones its text is spelled with.
+        let text_bytes = match arguments.get(2) {
+            Some(Object::String(held)) if held.holds_bytes() => {
+                crate::vm::native_methods::string_methods::binary_bytes(held)
+            }
+            _ => text.as_bytes().to_vec(),
         };
         let count = match arguments.get(3) {
             Some(Object::Int(held)) => *held,
@@ -296,13 +357,14 @@ impl VirtualMachine {
             "close" => {
                 self.open_streams.held.remove(&handle);
                 self.open_streams.borrowed.remove(&handle);
+                self.open_streams.forget_read_ahead(handle);
                 Ok(Object::Nil)
             }
             "write" => {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));
                 };
-                let bytes = super::pack_format::string_to_bytes(&text);
+                let bytes = text_bytes.clone();
                 // SAFETY: `bytes` names a run this call only reads from.
                 let written = unsafe {
                     libc::write(number, bytes.as_ptr() as *const libc::c_void, bytes.len())
@@ -322,23 +384,45 @@ impl VirtualMachine {
                 };
                 let wanted = if count > 0 { count as usize } else { 65536 };
                 let mut buffer = vec![0u8; wanted];
-                // A stream that answers straight away says so rather than
-                // waiting, and what a program means by a read is to wait for
-                // what is coming, so the read is tried again for a while.
+                // A stream with nothing to hand over yet is waited on, and
+                // waiting is where every other thread gets its turn. A read
+                // that nothing can ever satisfy gives up after a while.
                 let deadline = std::time::Instant::now() + READ_LIMIT;
                 let read = loop {
-                    // SAFETY: `buffer` names a run of `wanted` bytes this
-                    // call only writes into.
-                    let held = unsafe {
-                        libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, wanted)
-                    };
+                    let held = self
+                        .open_streams
+                        .take(handle, number, &mut buffer[..wanted]);
                     if held >= 0 {
                         break held;
                     }
                     let problem = std::io::Error::last_os_error();
-                    if problem.raw_os_error() != Some(libc::EAGAIN)
-                        || std::time::Instant::now() >= deadline
+                    // A stream another thread closed while this one waited is
+                    // closed, whatever the operating system says about the
+                    // descriptor it left behind.
+                    if problem.raw_os_error() == Some(libc::EBADF)
+                        || self.open_streams.number_of(handle).is_none()
                     {
+                        return Err(crate::vm::errors::simple_exception(
+                            "IOError",
+                            "stream closed in another thread",
+                            position,
+                        ));
+                    }
+                    if problem.raw_os_error() != Some(libc::EAGAIN) {
+                        return Err(stream_error(&problem, "read", position));
+                    }
+                    if self.other_threads_are_waiting() {
+                        self.wait_for_other_threads(position);
+                        if self.open_streams.number_of(handle).is_none() {
+                            return Err(crate::vm::errors::simple_exception(
+                                "IOError",
+                                "stream closed in another thread",
+                                position,
+                            ));
+                        }
+                        continue;
+                    }
+                    if std::time::Instant::now() >= deadline {
                         return Err(stream_error(&problem, "read", position));
                     }
                     std::thread::sleep(std::time::Duration::from_millis(2));
@@ -493,8 +577,16 @@ impl VirtualMachine {
                 };
                 // The separator is text the program wrote, so it stands for
                 // the bytes that text is spelled with.
-                let separator = text.as_bytes().to_vec();
-                let skipping = matches!(arguments.get(4), Some(Object::Int(1)));
+                let separator = text_bytes.clone();
+                // The fifth argument carries how a paragraph is read: bit
+                // one steps over the newlines standing before it, and bit
+                // two steps over the ones standing after it.
+                let mode = match arguments.get(4) {
+                    Some(Object::Int(held)) => *held,
+                    _ => 0,
+                };
+                let skipping = mode & 1 != 0;
+                let paragraph = mode & 2 != 0;
                 let limit = if count > 0 {
                     Some(count as usize)
                 } else {
@@ -506,18 +598,12 @@ impl VirtualMachine {
                 // one already read, so they are stepped over here.
                 if skipping {
                     loop {
-                        // SAFETY: `buffer` names a run this call only writes
-                        // into, and one byte is what it is told to write.
-                        let read = unsafe {
-                            libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, 1)
-                        };
+                        let read = self.open_streams.take(handle, number, &mut buffer[..1]);
                         if read <= 0 {
                             break;
                         }
                         if buffer[0] != b'\n' {
-                            // SAFETY: `number` is a descriptor this program
-                            // holds open.
-                            unsafe { libc::lseek(number, -1, libc::SEEK_CUR) };
+                            self.open_streams.put_back(handle, number, &buffer[..1]);
                             break;
                         }
                     }
@@ -530,14 +616,22 @@ impl VirtualMachine {
                     if wanted == 0 {
                         break;
                     }
-                    // SAFETY: `buffer` names a run of `wanted` bytes this
-                    // call only writes into.
-                    let read = unsafe {
-                        libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, wanted)
-                    };
+                    let read = self
+                        .open_streams
+                        .take(handle, number, &mut buffer[..wanted]);
                     if read < 0 {
                         let problem = std::io::Error::last_os_error();
                         if problem.raw_os_error() == Some(libc::EAGAIN) {
+                            // Nothing to read yet. A line is worth waiting
+                            // for, and waiting is where every other thread
+                            // gets its turn.
+                            if self.other_threads_are_waiting() {
+                                self.wait_for_other_threads(position);
+                                if self.open_streams.number_of(handle).is_none() {
+                                    break;
+                                }
+                                continue;
+                            }
                             break;
                         }
                         return Err(stream_error(&problem, "read", position));
@@ -554,10 +648,26 @@ impl VirtualMachine {
                             .position(|run| run == separator.as_slice())
                         {
                             let ends = from + at + separator.len();
-                            let extra = (collected.len() - ends) as i64;
-                            // SAFETY: `number` is a descriptor this program
-                            // holds open.
-                            unsafe { libc::lseek(number, -extra, libc::SEEK_CUR) };
+                            let mut extra: Vec<u8> = collected[ends..].to_vec();
+                            // The newlines standing after a paragraph belong
+                            // to it, so the next read starts at the line
+                            // opening the paragraph that follows.
+                            if paragraph {
+                                let kept = extra.iter().take_while(|held| **held == b'\n').count();
+                                extra.drain(..kept);
+                                while extra.is_empty() {
+                                    let read =
+                                        self.open_streams.take(handle, number, &mut buffer[..1]);
+                                    if read <= 0 {
+                                        break;
+                                    }
+                                    if buffer[0] != b'\n' {
+                                        extra.push(buffer[0]);
+                                        break;
+                                    }
+                                }
+                            }
+                            self.open_streams.put_back(handle, number, &extra);
                             collected.truncate(ends);
                             break;
                         }
@@ -571,22 +681,20 @@ impl VirtualMachine {
                 // A count stops the line at a whole character rather than
                 // in the middle of one, so the bytes finishing the last
                 // character are read too.
-                while limit.is_some() {
-                    let Err(problem) = std::str::from_utf8(&collected) else {
-                        break;
-                    };
-                    if problem.error_len().is_some() || problem.valid_up_to() + 4 <= collected.len()
-                    {
-                        break;
-                    }
-                    // SAFETY: `buffer` names a run this call only writes
-                    // into, and one byte is what it is told to write.
-                    let read =
-                        unsafe { libc::read(number, buffer.as_mut_ptr() as *mut libc::c_void, 1) };
+                // A limit that cuts a character short is read past, up to the
+                // longest run Ruby reads before it gives the character up.
+                const EXTRA_LIMIT: usize = 16;
+                let mut extra_read = 0;
+                while limit.is_some()
+                    && extra_read < EXTRA_LIMIT
+                    && std::str::from_utf8(&collected).is_err()
+                {
+                    let read = self.open_streams.take(handle, number, &mut buffer[..1]);
                     if read <= 0 {
                         break;
                     }
                     collected.push(buffer[0]);
+                    extra_read += 1;
                 }
                 // Text that reads as UTF-8 is handed back as text, and
                 // anything else byte by byte.
@@ -603,8 +711,7 @@ impl VirtualMachine {
                 };
                 let mut collected: Vec<u8> = Vec::new();
                 let mut byte = [0u8; 1];
-                // SAFETY: `byte` names one byte this call only writes into.
-                let read = unsafe { libc::read(number, byte.as_mut_ptr() as *mut libc::c_void, 1) };
+                let read = self.open_streams.take(handle, number, &mut byte);
                 if read <= 0 {
                     return Ok(Object::Nil);
                 }
@@ -626,10 +733,7 @@ impl VirtualMachine {
                     _ => 0,
                 };
                 for _ in 0..following {
-                    // SAFETY: `byte` names one byte this call only writes
-                    // into.
-                    let read =
-                        unsafe { libc::read(number, byte.as_mut_ptr() as *mut libc::c_void, 1) };
+                    let read = self.open_streams.take(handle, number, &mut byte);
                     if read <= 0 {
                         break;
                     }
@@ -668,6 +772,7 @@ impl VirtualMachine {
                     _ => libc::SEEK_SET,
                 };
                 // SAFETY: `number` is a descriptor this program holds open.
+                self.open_streams.forget_read_ahead(handle);
                 let moved = unsafe { libc::lseek(number, count as libc::off_t, whence) };
                 if moved < 0 {
                     return Err(stream_error(

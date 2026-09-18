@@ -216,22 +216,25 @@ impl VirtualMachine {
                     format!("{}:{}:in '{}'", path, line, label)
                 }
             };
-            let raise_file = self
-                .current_source_file
-                .clone()
+            // The place the exception says it came from names the file the
+            // raising code was written in, which is not the file that caught
+            // it. Only a location with no file of its own falls back to where
+            // the program stands now.
+            let raise_file = exc
+                .location
+                .as_ref()
+                .map(|held| held.file.clone())
+                .filter(|named| named != "script")
+                .or_else(|| self.current_source_file.clone())
                 .or_else(|| self.current_file.as_ref().map(|f| f.display().to_string()))
                 .unwrap_or_default();
-            let raising_method = self
-                .call_stack()
-                .last()
-                .map(|frame| frame.name().to_string())
-                .unwrap_or_default();
+            let frames: Vec<_> = self.call_stack().iter().rev().collect();
+            let raising_method = crate::vm::native_functions::frame_label_at(&frames, 0);
             // The raise site comes first, then each frame's own call site. A
             // frame records where it was called from, so its location pairs
             // with the name of the frame below it: the method that made the
             // call. The outermost one is the file body itself.
             let mut sites = vec![(raise_file.clone(), position.line, raising_method)];
-            let frames: Vec<_> = self.call_stack().iter().rev().collect();
             for (index, frame) in frames.iter().enumerate() {
                 let line = frame
                     .location()
@@ -246,10 +249,7 @@ impl VirtualMachine {
                     .source_file()
                     .map(|file| file.to_string())
                     .unwrap_or_else(|| raise_file.clone());
-                let label = frames
-                    .get(index + 1)
-                    .map(|caller| caller.name().to_string())
-                    .unwrap_or_else(|| "<main>".to_string());
+                let label = crate::vm::native_functions::frame_label_at(&frames, index + 1);
                 sites.push((path, line, label));
             }
 
@@ -364,10 +364,14 @@ impl VirtualMachine {
         // If an exception occurred, try to match rescue clauses
         if let Ok(ControlFlow::Exception {
             exception,
-            position: _ex_pos,
+            position: ex_pos,
         }) = &final_result
         {
             // Store the current exception in $! for access in rescue blocks
+            self.note_exception_location(
+                exception,
+                &crate::vm::utils::position_to_location(*ex_pos),
+            );
             self.set_current_exception(exception.clone());
 
             // Try each rescue clause in order
@@ -473,6 +477,11 @@ impl VirtualMachine {
         for (idx, statement) in body.iter().enumerate() {
             let is_last = idx == body.len() - 1;
             if is_last && let Some(value) = self.terminal_statement_value(statement)? {
+                // The last statement answered here rather than through
+                // `execute_statement`, so it is counted here too.
+                if self.coverage.is_some() {
+                    self.coverage_count(statement.position().line);
+                }
                 return Ok(ControlFlow::Value(value));
             }
             match self.execute_statement(statement)? {

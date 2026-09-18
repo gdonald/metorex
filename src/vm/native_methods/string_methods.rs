@@ -364,11 +364,39 @@ impl VirtualMachine {
                 if arguments.is_empty() {
                     return Err(method_argument_error("match", 1, 0, position));
                 }
+                // Ruby's String#match hands the work to the pattern, so a
+                // Regexp carrying a `match` of its own answers instead.
+                if matches!(arguments[0], Object::Regex(_, _))
+                    && let Some(class) = self.existing_singleton_class(&arguments[0])
+                    && let Some(method) = class.find_method("match")
+                    && !method.is_undefined
+                {
+                    let mut passed = vec![receiver.clone()];
+                    passed.extend(arguments[1..].iter().cloned());
+                    return self
+                        .invoke_method(class, method, arguments[0].clone(), passed, position)
+                        .map(Some);
+                }
                 let (pattern, flags) = match &arguments[0] {
                     Object::Regex(pattern, flags) => {
                         (pattern.as_str().to_string(), flags.as_str().to_string())
                     }
                     Object::String(source) => (source.as_str().to_string(), String::new()),
+                    // A pattern written as anything else is asked for the
+                    // characters it stands for, which are read as a pattern.
+                    other if self.answers_to(other, "to_str", position)? => {
+                        match self.send_to_object(other.clone(), "to_str", vec![], position)? {
+                            Object::String(source) => (source.as_str().to_string(), String::new()),
+                            answered => {
+                                return Err(method_argument_type_error(
+                                    "match",
+                                    "Regexp or String",
+                                    &answered,
+                                    position,
+                                ));
+                            }
+                        }
+                    }
                     other => {
                         return Err(method_argument_type_error(
                             "match",
@@ -2525,6 +2553,11 @@ impl VirtualMachine {
         let made = crate::object::StringValue::with_encoding(held.to_text(), held.encoding_name());
         if held.holds_bytes() {
             made.mark_bytes();
+        }
+        // Every place writing the same literal shares one string, so the
+        // place it is reported from is the first one that wrote it.
+        if let Some(written_at) = held.created_at() {
+            made.set_created_at(written_at);
         }
         made.mark_deduplicated();
         let made = Rc::new(made);

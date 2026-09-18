@@ -185,25 +185,33 @@ impl VirtualMachine {
     /// stack leaves only the `warning: ` part.
     pub(crate) fn warning_prefix(&self, level: i64, position: Position) -> String {
         let stack = self.call_stack();
+        // Where each frame was called from, with the core library's own
+        // source passed over rather than counted as a level of the program's.
+        let counted: Vec<(Option<usize>, Option<String>)> = stack
+            .iter()
+            .map(|frame| {
+                let line = frame.location().and_then(|location| {
+                    location
+                        .rsplit(':')
+                        .nth(1)
+                        .and_then(|held| held.parse::<usize>().ok())
+                });
+                (line, frame.source_file().map(|file| file.to_string()))
+            })
+            .filter(|(_, path)| {
+                !path
+                    .as_deref()
+                    .is_some_and(|file| file.starts_with(crate::vm::INTERNAL_FILE_PREFIX))
+            })
+            .collect();
         let (line, path) = if level == 0 {
             (Some(position.line), self.current_source_file.clone())
         } else {
-            match stack
+            counted
                 .len()
                 .checked_sub(level as usize)
-                .map(|index| &stack[index])
-            {
-                Some(frame) => {
-                    let line = frame.location().and_then(|location| {
-                        location
-                            .rsplit(':')
-                            .nth(1)
-                            .and_then(|line| line.parse::<usize>().ok())
-                    });
-                    (line, frame.source_file().map(|file| file.to_string()))
-                }
-                None => (None, None),
-            }
+                .map(|index| counted[index].clone())
+                .unwrap_or_default()
         };
         let path = path.or_else(|| {
             self.current_file

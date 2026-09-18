@@ -45,6 +45,9 @@ fn walk_statement(stmt: &Statement, names: &mut Vec<String>) {
         Statement::DeclareLocals {
             names: declared, ..
         } => names.extend(declared.iter().cloned()),
+        // A `BEGIN` body shares the scope of the unit it was written in, so
+        // the locals it assigns belong to that unit.
+        Statement::BeginBlock { body, .. } => walk_body(body, names),
         Statement::DoWhile {
             condition, body, ..
         } => {
@@ -118,6 +121,9 @@ fn walk_statement(stmt: &Statement, names: &mut Vec<String>) {
         } => {
             walk_expression(expression, names);
             for case in cases {
+                // A pattern's names are locals of the scope the `case` was
+                // written in, whether or not the clause holding them matches.
+                walk_pattern(&case.pattern, names);
                 if let Some(guard) = &case.guard {
                     walk_expression(guard, names);
                 }
@@ -213,9 +219,77 @@ fn collect_target(target: &Expression, names: &mut Vec<String>) {
     }
 }
 
+/// The names a pattern binds, which belong to the scope the pattern was
+/// written in.
+fn walk_pattern(pattern: &crate::ast::MatchPattern, names: &mut Vec<String>) {
+    use crate::ast::MatchPattern;
+    match pattern {
+        MatchPattern::Identifier(name) => names.push(name.clone()),
+        MatchPattern::Rest(name) => names.push(name.clone()),
+        MatchPattern::Bind { pattern, name } => {
+            names.push(name.clone());
+            walk_pattern(pattern, names);
+        }
+        MatchPattern::Array(held) | MatchPattern::Multiple(held) => {
+            for one in held {
+                walk_pattern(one, names);
+            }
+        }
+        MatchPattern::Object(entries) => {
+            for (_, one) in entries {
+                walk_pattern(one, names);
+            }
+        }
+        MatchPattern::ArrayPattern {
+            prefix,
+            rest,
+            suffix,
+            ..
+        } => {
+            for one in prefix.iter().chain(suffix) {
+                walk_pattern(one, names);
+            }
+            if let Some(Some(name)) = rest {
+                names.push(name.clone());
+            }
+        }
+        MatchPattern::FindPattern {
+            before,
+            middle,
+            after,
+            ..
+        } => {
+            for name in [before, after].into_iter().flatten() {
+                names.push(name.clone());
+            }
+            for one in middle {
+                walk_pattern(one, names);
+            }
+        }
+        MatchPattern::HashPattern { entries, rest, .. } => {
+            for (key, one) in entries {
+                match one {
+                    Some(one) => walk_pattern(one, names),
+                    None => names.push(key.clone()),
+                }
+            }
+            if let crate::ast::HashPatternRest::Named(name) = rest {
+                names.push(name.clone());
+            }
+        }
+        _ => {}
+    }
+}
+
 fn walk_expression(expr: &Expression, names: &mut Vec<String>) {
     match expr {
         Expression::TopLevelConstant { .. } | Expression::BigIntLiteral { .. } => {}
+        // A pattern written on its own binds the names it holds in the scope
+        // the test was written in.
+        Expression::PatternTest { value, pattern, .. } => {
+            walk_expression(value, names);
+            walk_pattern(pattern, names);
+        }
         Expression::BinaryOp {
             op, left, right, ..
         } => {

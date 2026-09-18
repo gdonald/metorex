@@ -800,7 +800,7 @@ impl VirtualMachine {
                             member_value(receiver, member),
                         ]
                     };
-                    self.execute_block_with_control_flow(&block, args)?;
+                    self.execute_block_with_control_flow(&block, args, position)?;
                 }
                 Ok(Some(receiver.clone()))
             }

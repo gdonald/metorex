@@ -396,7 +396,7 @@ impl VirtualMachine {
                         let key = retagged(key, &named);
                         let value = retagged(value, &named);
                         let pair = Object::array(vec![key, value]);
-                        match self.execute_block_with_control_flow(&block, vec![pair])? {
+                        match self.execute_block_with_control_flow(&block, vec![pair], position)? {
                             // `break` ends the walk and answers what it carried,
                             // which is what the call reports.
                             super::super::ControlFlow::Break { value, .. } => {
@@ -976,7 +976,7 @@ impl VirtualMachine {
                     // Ruby yields one `[key, value]` array, which a block of
                     // two parameters spreads across them.
                     let args = vec![Object::array(vec![key, value])];
-                    match self.execute_block_with_control_flow(&block, args)? {
+                    match self.execute_block_with_control_flow(&block, args, position)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }

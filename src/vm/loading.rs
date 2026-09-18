@@ -87,6 +87,29 @@ impl VirtualMachine {
     }
 
     /// Set `$_`, the line `-n` last read.
+    /// The files named on the command line, taken off ARGV the way Ruby's
+    /// line-reading loop takes them.
+    pub fn argv_paths(&mut self) -> Vec<String> {
+        let Some(Object::Array(held)) = self.globals().get("ARGV") else {
+            return Vec::new();
+        };
+        let named: Vec<String> = held
+            .borrow()
+            .iter()
+            .filter_map(|entry| match entry {
+                Object::String(text) => Some(text.as_str().to_string()),
+                _ => None,
+            })
+            .collect();
+        held.borrow_mut().clear();
+        named
+    }
+
+    /// How many records the line-reading loop has read, which `$.` reports.
+    pub fn set_records_read(&mut self, counted: i64) {
+        self.globals_mut().set_variable(".", Object::Int(counted));
+    }
+
     pub fn set_current_line(&mut self, line: String) {
         self.globals_mut().set_variable("_", Object::string(line));
     }
@@ -147,6 +170,27 @@ impl VirtualMachine {
     pub fn set_debug(&mut self, debug: bool) {
         self.globals_mut()
             .set_variable("DEBUG", Object::Bool(debug));
+    }
+
+    /// Say that `--debug-frozen-string-literal` was written, so every string
+    /// literal remembers where it was written.
+    pub fn set_debug_frozen_string_literal(&mut self, debug: bool) {
+        self.debug_frozen_string_literal = debug;
+    }
+
+    /// Where a literal being built now is written, as `file:line`, for a run
+    /// that asked to be told. Nothing is recorded otherwise.
+    pub(crate) fn literal_birthplace(&self, position: crate::lexer::Position) -> Option<String> {
+        if !self.debug_frozen_string_literal && !self.tracing_allocations {
+            return None;
+        }
+        // The place is named the way `__FILE__` names it, so a script run by
+        // a relative path is reported by that path.
+        let file = self.current_source_file.clone().or_else(|| {
+            self.reported_current_file()
+                .map(|path| path.display().to_string())
+        })?;
+        Some(format!("{}:{}", file, position.line))
     }
 
     /// Record whether a command line flag was written, under the name Ruby
@@ -225,6 +269,59 @@ impl VirtualMachine {
         self.globals_mut().set_variable("0", named.clone());
         self.globals_mut().set_variable("PROGRAM_NAME", named);
         self.script_path = Some((canonical, as_given));
+        // The scope in force here is the one the script's own top level runs
+        // in, which is what TOPLEVEL_BINDING stands over.
+        self.main_script_scope = Some(self.environment().current_scope());
+    }
+
+    /// The real path a backtrace entry names, resolved once when the file was
+    /// loaded rather than when the entry is read, so it holds even after the
+    /// name it was reached by is gone. A name no file answers to has none,
+    /// which is what a location eval'd under a made-up filename reports.
+    pub(crate) fn absolute_path_for(&self, named: &str) -> Option<String> {
+        if let Some((canonical, as_given)) = &self.script_path
+            && as_given.as_os_str() == named
+        {
+            return Some(canonical.display().to_string());
+        }
+        for (canonical, reported) in &self.reported_files {
+            if reported.as_os_str() == named {
+                return Some(canonical.display().to_string());
+            }
+        }
+        std::fs::canonicalize(named)
+            .ok()
+            .map(|resolved| resolved.display().to_string())
+    }
+
+    /// Bring TOPLEVEL_BINDING up to date with the main script's own top-level
+    /// scope. The binding shares the scope's cells, so a value assigned after
+    /// it was read is the value it answers.
+    pub(crate) fn refresh_toplevel_binding(&mut self) {
+        let Some(scope) = self.main_script_scope.clone() else {
+            return;
+        };
+        let Some(Object::Binding(held)) = self.globals().get("TOPLEVEL_BINDING") else {
+            return;
+        };
+        let named: Vec<String> = scope.borrow().own_variable_names();
+        for name in named {
+            // The scope the script runs in also holds the builtins, which are
+            // not locals of the program, and a constant is not one either.
+            if !name.starts_with(|first: char| first == '_' || first.is_lowercase()) {
+                continue;
+            }
+            if self.seeded_global_names.contains(&name) {
+                continue;
+            }
+            let Some(cell) = scope.borrow().own_var_ref(&name) else {
+                continue;
+            };
+            if crate::scope::names_a_definition(&cell.borrow()) {
+                continue;
+            }
+            held.set(&name, cell);
+        }
     }
 
     /// The path `__FILE__` reports for the file running now: the spelling the
@@ -594,6 +691,30 @@ impl VirtualMachine {
     }
 
     /// Require a library by name, searching `$LOAD_PATH` just like the `require` builtin.
+    /// Define an empty module under `name`, which is what a feature the
+    /// command line turned on leaves behind for `defined?` to find.
+    pub fn define_feature_module(&mut self, name: &str) {
+        if self.globals().get(name).is_some() {
+            return;
+        }
+        let made = Object::Module(std::rc::Rc::new(crate::class::Class::new_module(name)));
+        self.globals_mut().set(name, made.clone());
+        // The name is a constant the program reads, which the scope every
+        // file runs in has to hold alongside the built-in ones.
+        self.environment_mut().define(name.to_string(), made);
+        self.seeded_global_names.insert(name.to_string());
+    }
+
+    /// Load a library `-r` named, which runs before the script does. Its
+    /// top-level locals are its own rather than the script's, so a name it
+    /// binds is not one the script or TOPLEVEL_BINDING goes on to see.
+    pub fn require_startup_library(&mut self, name: &str) -> Result<(), MetorexError> {
+        self.environment_mut().push_isolated_scope();
+        let answer = self.require_library(name);
+        self.environment_mut().pop_scope();
+        answer
+    }
+
     pub fn require_library(&mut self, name: &str) -> Result<(), MetorexError> {
         let expanded = self.expand_home_path(name);
         let name = expanded.as_str();
@@ -771,6 +892,10 @@ impl VirtualMachine {
                 crate::lexer::Position::new(0, 0, 0),
             )
         })?;
+
+        // A file read while measurement is on is counted from here on, which
+        // is why the file that turns measurement on is never in the report.
+        self.coverage_note_file(&named_path.display().to_string(), &source, &statements);
 
         // Update current file path for require_relative calls within this file
         self.set_current_file(canonical_path.clone());

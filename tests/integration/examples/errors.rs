@@ -1070,7 +1070,7 @@ fn test_errors_name_and_method_messages_no_parens_execution() {
 /// The expected output of both `errors/backtrace/frame_labels` variants, which show
 /// how a backtrace names the frame each entry belongs to and differ only in whether the calls are
 /// written with parentheses.
-const BACKTRACE_FRAME_LABELS_OUTPUT: &str = "[\"'Held::Raiser.from_a_class_method'\", \"'<main>'\"]\n[\"'Held::Raiser#from_an_instance_method'\", \"'<main>'\"]\n\"'Runner.protect'\"\n";
+const BACKTRACE_FRAME_LABELS_OUTPUT: &str = "[\"'Held::Raiser.from_a_class_method'\", \"'<main>'\"]\n[\"'Held::Raiser#from_an_instance_method'\", \"'<main>'\"]\n\"'BasicObject#instance_exec'\"\n";
 
 #[test]
 fn test_errors_backtrace_frame_labels_execution() {

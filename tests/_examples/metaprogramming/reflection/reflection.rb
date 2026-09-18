@@ -43,8 +43,8 @@ puts d.respond_to?("nonexistent")
 
 puts ""
 puts "=== methods ==="
-m = d.methods()
-puts m.length
+m = d.methods() - Object.new.methods
+puts m.sort.inspect
 
 puts ""
 puts "=== send ==="

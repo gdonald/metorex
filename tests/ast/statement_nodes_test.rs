@@ -57,6 +57,7 @@ fn test_method_def() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        end_position: pos(1, 1),
     };
     assert_eq!(stmt.position(), pos(1, 1));
     assert!(stmt.is_definition());

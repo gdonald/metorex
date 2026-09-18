@@ -9,6 +9,7 @@ mod class_execution;
 mod control_flow;
 mod control_structures;
 pub(crate) mod core;
+pub(crate) mod coverage;
 pub(crate) mod errors;
 mod eval;
 mod exceptions;
@@ -53,9 +54,21 @@ pub use heap::Heap;
 
 pub(crate) use control_flow::ControlFlow;
 
+/// What names a file of the core library rather than one of the program's.
+/// A backtrace entry sitting in one of these stands for the place that
+/// reached it, which is where Ruby names the program's own code.
+pub(crate) const INTERNAL_FILE_PREFIX: &str = "<internal:";
+
+/// What names code handed to `eval` with no filename of its own: the place
+/// the eval was written, which is not a file and so holds no directory.
+pub(crate) const EVAL_FILE_PREFIX: &str = "(eval at ";
+
 /// Where a KeyError keeps the lookup that missed. Not an `@` name, so a
 /// program's own instance variables cannot collide with it.
 pub(crate) const KEY_ERROR_KEY: &str = "__key__";
+/// The hash a `NoMatchingPatternKeyError` found no key in, which the error
+/// answers with `#matchee`.
+pub(crate) const MATCHEE_KEY: &str = "__matchee__";
 
 /// Where a LoadError keeps the feature that could not be loaded, and a
 /// SyntaxError the file it was raised for. Not an `@` name, so a program's own

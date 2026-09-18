@@ -214,6 +214,13 @@ impl Resolver {
 
             Statement::DeclareLocals { .. } => {}
 
+            // A `BEGIN` body shares the scope of the unit it was written in.
+            Statement::BeginBlock { body, .. } => {
+                for held in body {
+                    self.resolve_statement(held);
+                }
+            }
+
             Statement::DoWhile {
                 condition, body, ..
             } => {
@@ -794,6 +801,7 @@ impl Resolver {
             | Expression::MagicFile { .. }
             | Expression::MagicLine { .. }
             | Expression::MagicDir { .. }
+            | Expression::PatternTest { .. }
             | Expression::RegexLiteral { .. }
             | Expression::Splat { .. }
             | Expression::KeywordSplat { .. }

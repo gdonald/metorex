@@ -133,9 +133,24 @@ impl VirtualMachine {
             self.globals_mut().set(LAST_MATCH, Object::Nil);
             return Ok(None);
         }
-        let Some(found) = compiled.captures_at(text, start) else {
-            self.globals_mut().set(LAST_MATCH, Object::Nil);
-            return Ok(None);
+        // A pattern written with a time limit, or one matched while the
+        // class names a limit, is given up on once that long has passed.
+        let limit = self.pattern_time_limit(pattern, flags);
+        let taken = compiled.captures_within(text, start, limit);
+        let found = match taken {
+            Ok(Some(found)) => found,
+            Ok(None) => {
+                self.globals_mut().set(LAST_MATCH, Object::Nil);
+                return Ok(None);
+            }
+            Err(_) => {
+                self.globals_mut().set(LAST_MATCH, Object::Nil);
+                return Err(crate::vm::errors::simple_exception(
+                    "Regexp::TimeoutError",
+                    "regexp match timeout",
+                    position,
+                ));
+            }
         };
         // A pattern that names any of its groups leaves the unnamed ones
         // uncaptured, which is what Ruby does once a name appears.
@@ -201,6 +216,25 @@ impl VirtualMachine {
         Ok(Some(data))
     }
 
+    /// How long a match of this pattern may take. A pattern written with a
+    /// limit of its own answers that, and one written without answers what
+    /// the class names.
+    fn pattern_time_limit(&mut self, pattern: &str, flags: &str) -> Option<std::time::Duration> {
+        let _ = flags;
+        if let Some(held) = self.pattern_timeouts.get(pattern).copied().flatten() {
+            return Some(held);
+        }
+        match self.globals().get("__regexp_timeout__") {
+            Some(Object::Float(seconds)) if seconds > 0.0 => {
+                Some(std::time::Duration::from_secs_f64(seconds))
+            }
+            Some(Object::Int(seconds)) if seconds > 0 => {
+                Some(std::time::Duration::from_secs(seconds as u64))
+            }
+            _ => None,
+        }
+    }
+
     /// Regexp instance methods. `Object::Regex` is a primitive rather than an
     /// instance, so its methods are dispatched from here.
     pub(crate) fn call_regexp_method(
@@ -212,6 +246,14 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<Option<Object>, MetorexError> {
         match method_name {
+            // The limit a pattern was built with, which is nil for one built
+            // without one however long the class lets a match run.
+            "timeout" => Ok(Some(
+                match self.pattern_timeouts.get(pattern).copied().flatten() {
+                    Some(held) => Object::Float(held.as_secs_f64()),
+                    None => Object::Nil,
+                },
+            )),
             // A pattern spelled with nothing but ASCII reads the same in
             // every ASCII-compatible encoding, which Ruby tags US-ASCII.
             "source" => Ok(Some(Object::String(Rc::new(

@@ -49,3 +49,15 @@ begin
 rescue TypeError => error
   puts(error.message)
 end
+
+held = Connection.new
+puts [held].inspect.sub(/0x[0-9a-f]+/, "0x")
+puts({ at: held }.inspect.sub(/0x[0-9a-f]+/, "0x"))
+
+require "stringio"
+
+caught = StringIO.new
+$stdout = caught
+p held
+$stdout = STDOUT
+puts caught.string.sub(/0x[0-9a-f]+/, "0x")

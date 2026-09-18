@@ -239,6 +239,7 @@ fn compile_self_in_method_body() {
             position: pos,
         }],
         position: pos,
+        end_position: pos,
     }];
     let compiler = Compiler::new();
     let chunk = compiler.compile(&stmts).expect("compile failed");

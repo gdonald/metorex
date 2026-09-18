@@ -10,11 +10,51 @@ use crate::ast::{Expression, Statement};
 use crate::error::MetorexError;
 use crate::lexer::Position;
 use crate::object::Object;
+use crate::vm::MATCHEE_KEY;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+/// Why a pattern did not cover a value. A `case` holding a single `in`
+/// clause names this in the error it raises, the way Ruby does.
+#[derive(Debug, Clone)]
+pub(crate) enum PatternFailure {
+    /// The wording that goes after the value in the message.
+    Detail(String),
+    /// A hash pattern named a key the hash does not hold, which Ruby reports
+    /// as `NoMatchingPatternKeyError`.
+    MissingKey { matchee: Object, key: String },
+}
+
 impl VirtualMachine {
+    /// Record why the pattern being tried failed. The innermost pattern fails
+    /// first, and its reason is the one Ruby reports, so a reason already
+    /// recorded stands.
+    fn note_pattern_failure(&mut self, failure: PatternFailure) {
+        if self.pattern_failure.is_none() {
+            self.pattern_failure = Some(failure);
+        }
+    }
+
+    /// Record that `named` did not cover `value`, which is how Ruby words
+    /// every failure of `===`.
+    fn note_case_equal_failure(&mut self, named: &Object, value: &Object, position: Position) {
+        if self.pattern_failure.is_some() {
+            return;
+        }
+        let named = self.written_out(named, position);
+        let value = self.written_out(value, position);
+        self.note_pattern_failure(PatternFailure::Detail(format!(
+            "{named} === {value} does not return true"
+        )));
+    }
+
+    /// How a value reads in a message, which is what `inspect` answers.
+    fn written_out(&mut self, value: &Object, position: Position) -> String {
+        self.get_inspect_representation(value, position)
+            .unwrap_or_else(|_| format!("{value}"))
+    }
+
     /// Execute a match statement for pattern matching.
     pub(crate) fn execute_match(
         &mut self,
@@ -103,16 +143,35 @@ impl VirtualMachine {
         position: Position,
     ) -> Result<ControlFlow, MetorexError> {
         let match_value = self.evaluate_expression(expression)?;
+        // The value is asked for its elements once for the whole `case`.
+        self.deconstructed_values.push((match_value.clone(), None));
+        let held = self.run_in_clauses(cases, &match_value, position);
+        self.deconstructed_values.pop();
+        held
+    }
 
+    /// Try each `in` clause against the value in turn.
+    fn run_in_clauses(
+        &mut self,
+        cases: &[crate::ast::MatchCase],
+        match_value: &Object,
+        position: Position,
+    ) -> Result<ControlFlow, MetorexError> {
+        let match_value = match_value.clone();
         for case in cases {
             let mut bindings: HashMap<String, Object> = HashMap::new();
+            self.pattern_failure = None;
             if self.match_pattern(&case.pattern, &match_value, &mut bindings, position)? {
-                if !self.evaluate_guard_with_bindings(case.guard.as_ref(), &bindings)? {
+                // A pattern's names are locals of the scope the `case` was
+                // written in, so the guard and the body read them there and
+                // they are still readable once the `case` is over.
+                self.apply_pattern_bindings(&bindings);
+                if !self.evaluate_guard(case.guard.as_ref())? {
+                    self.note_pattern_failure(PatternFailure::Detail(
+                        "guard clause does not return true".to_string(),
+                    ));
                     continue;
                 }
-
-                self.environment_mut().push_scope();
-                self.apply_pattern_bindings(&bindings);
 
                 let result = (|| -> Result<ControlFlow, MetorexError> {
                     let mut last_value = Object::Nil;
@@ -132,18 +191,77 @@ impl VirtualMachine {
                     Ok(ControlFlow::Value(last_value))
                 })();
 
-                self.environment_mut().pop_scope();
                 return result;
             }
+            // A name the pattern reached before it failed is still a local of
+            // the scope, holding nil, the way Ruby leaves one behind.
+            self.apply_pattern_bindings(&bindings);
         }
 
-        Err(MetorexError::runtime_error(
-            format!(
-                "NoMatchingPatternError: {} (NoMatchingPatternError)",
-                match_value
+        // A `case` with one `in` clause and no `else` has nowhere to go when
+        // the clause fails, so Ruby reports what went wrong rather than the
+        // value alone.
+        if cases.len() == 1 {
+            return Err(self.detailed_no_matching_pattern(&match_value, position));
+        }
+        Err(self.no_matching_pattern(&match_value, position))
+    }
+
+    /// What a value a single pattern does not cover raises, which names both
+    /// the value and what the pattern found wrong with it.
+    pub(crate) fn detailed_no_matching_pattern(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> MetorexError {
+        let Some(failure) = self.pattern_failure.take() else {
+            return self.no_matching_pattern(value, position);
+        };
+        let written = self.written_out(value, position);
+        let (detail, missing) = match failure {
+            PatternFailure::Detail(detail) => (detail, None),
+            PatternFailure::MissingKey { matchee, key } => (
+                format!("key not found: :{key}"),
+                Some((matchee, Object::symbol(key))),
             ),
-            position_to_location(position),
-        ))
+        };
+        let class_name = match &missing {
+            Some(_) => "NoMatchingPatternKeyError",
+            None => "NoMatchingPatternError",
+        };
+        let raised = crate::vm::errors::simple_exception(
+            class_name,
+            &format!("{written}: {detail}"),
+            position,
+        );
+        let Some((matchee, key)) = missing else {
+            return raised;
+        };
+        let MetorexError::UncaughtException { exception, .. } = &raised else {
+            return raised;
+        };
+        if let Object::Exception(details) = exception {
+            let mut details = details.borrow_mut();
+            details
+                .instance_vars
+                .insert(crate::vm::KEY_ERROR_KEY.to_string(), key);
+            details
+                .instance_vars
+                .insert(MATCHEE_KEY.to_string(), matchee);
+        }
+        raised
+    }
+
+    /// What a value no pattern covers raises, which names the value itself.
+    pub(crate) fn no_matching_pattern(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> MetorexError {
+        let written = self
+            .get_inspect_representation(value, position)
+            .unwrap_or_else(|_| format!("{value}"));
+        crate::vm::errors::simple_exception("NoMatchingPatternError", &written, position)
     }
 
     /// Match a pattern against a value and collect variable bindings.
@@ -232,9 +350,12 @@ impl VirtualMachine {
             },
             MatchPattern::NilLiteral => Ok(matches!(value, Object::Nil)),
 
-            // Identifier pattern - binds the value to a variable
+            // Identifier pattern - binds the value to a variable. The name is
+            // readable by the rest of the same pattern, which is what lets
+            // `in [n, ^n]` compare one element against another.
             MatchPattern::Identifier(name) => {
                 bindings.insert(name.clone(), value.clone());
+                self.bind_pattern_name(name, value.clone());
                 Ok(true)
             }
 
@@ -272,13 +393,11 @@ impl VirtualMachine {
 
             MatchPattern::Expression(held) => {
                 let pattern_value = self.evaluate_expression(held)?;
-                let matched = self.evaluate_binary_operation(
-                    &crate::ast::BinaryOp::CaseEqual,
-                    pattern_value,
-                    value.clone(),
-                    position,
-                )?;
-                Ok(matched.is_truthy())
+                let matched = self.pattern_case_equal(&pattern_value, value, position)?;
+                if !matched {
+                    self.note_case_equal_failure(&pattern_value, value, position);
+                }
+                Ok(matched)
             }
 
             // Array pattern - destructure arrays
@@ -359,6 +478,9 @@ impl VirtualMachine {
                     // Try each pattern - if any matches, the whole Multiple pattern matches
                     // Important: we need to preserve bindings only from the matching pattern
                     let mut temp_bindings = HashMap::new();
+                    // Ruby reports the last choice a run of alternatives tried,
+                    // so each one starts with nothing recorded against it.
+                    self.pattern_failure = None;
                     if self.match_pattern(pattern, value, &mut temp_bindings, position)? {
                         // This pattern matched - merge bindings and return true
                         bindings.extend(temp_bindings);
@@ -415,7 +537,438 @@ impl VirtualMachine {
 
                 Ok(in_range)
             }
+
+            // `^name` compares against what the name holds rather than
+            // binding anything.
+            MatchPattern::Pinned(held) => {
+                let pinned = self.evaluate_expression(held)?;
+                let matched = self.evaluate_binary_operation(
+                    &crate::ast::BinaryOp::CaseEqual,
+                    pinned.clone(),
+                    value.clone(),
+                    position,
+                )?;
+                if !matched.is_truthy() {
+                    self.note_case_equal_failure(&pinned, value, position);
+                }
+                Ok(matched.is_truthy())
+            }
+
+            MatchPattern::ArrayPattern {
+                constant,
+                prefix,
+                rest,
+                suffix,
+            } => {
+                if !self.pattern_constant_matches(constant.as_deref(), value, position)? {
+                    return Ok(false);
+                }
+                let Some(held) = self.deconstructed(value, position)? else {
+                    return Ok(false);
+                };
+                self.match_array_shape(prefix, rest, suffix, &held, bindings, position)
+            }
+
+            MatchPattern::FindPattern {
+                constant,
+                before,
+                middle,
+                after,
+            } => {
+                if !self.pattern_constant_matches(constant.as_deref(), value, position)? {
+                    return Ok(false);
+                }
+                let Some(held) = self.deconstructed(value, position)? else {
+                    return Ok(false);
+                };
+                // Ruby says the run was nowhere to be found rather than
+                // naming the element a single placing stopped at, so what a
+                // placing records is dropped once the search is over.
+                let before_the_search = self.pattern_failure.clone();
+                if middle.len() > held.len() {
+                    self.note_find_pattern_failure(&held, position);
+                    return Ok(false);
+                }
+                // The run is looked for at every place it could sit, from the
+                // front, which is the first one Ruby answers with.
+                for at in 0..=(held.len() - middle.len()) {
+                    let mut tried = bindings.clone();
+                    let mut matched = true;
+                    for (offset, pattern) in middle.iter().enumerate() {
+                        if !self.match_pattern(pattern, &held[at + offset], &mut tried, position)? {
+                            matched = false;
+                            break;
+                        }
+                    }
+                    if !matched {
+                        continue;
+                    }
+                    if let Some(name) = before {
+                        tried.insert(name.clone(), Object::array(held[..at].to_vec()));
+                    }
+                    if let Some(name) = after {
+                        tried.insert(
+                            name.clone(),
+                            Object::array(held[at + middle.len()..].to_vec()),
+                        );
+                    }
+                    *bindings = tried;
+                    return Ok(true);
+                }
+                self.pattern_failure = before_the_search;
+                self.note_find_pattern_failure(&held, position);
+                Ok(false)
+            }
+
+            MatchPattern::HashPattern {
+                constant,
+                entries,
+                rest,
+            } => {
+                if !self.pattern_constant_matches(constant.as_deref(), value, position)? {
+                    return Ok(false);
+                }
+                let wanted: Vec<String> = entries.iter().map(|(key, _)| key.clone()).collect();
+                let Some(held) = self.deconstructed_keys(value, &wanted, rest, position)? else {
+                    return Ok(false);
+                };
+                self.match_hash_shape(entries, rest, &held, bindings, position)
+            }
         }
+    }
+
+    /// Whether the constant a pattern was written with covers the value, and
+    /// true where the pattern named none.
+    fn pattern_constant_matches(
+        &mut self,
+        constant: Option<&crate::ast::Expression>,
+        value: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let Some(held) = constant else {
+            return Ok(true);
+        };
+        let named = self.evaluate_expression(held)?;
+        let matched = self.pattern_case_equal(&named, value, position)?;
+        if !matched {
+            self.note_case_equal_failure(&named, value, position);
+        }
+        Ok(matched)
+    }
+
+    /// Whether what a pattern names covers the value, asked the way Ruby
+    /// asks: through `===`, and through a refinement where one is in force.
+    fn pattern_case_equal(
+        &mut self,
+        named: &Object,
+        value: &Object,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        if self.refined_pattern_method(named, "===").is_some() {
+            let held = self.send_pattern_method(named, "===", vec![value.clone()], position)?;
+            return Ok(held.is_truthy());
+        }
+        let matched = self.evaluate_binary_operation(
+            &crate::ast::BinaryOp::CaseEqual,
+            named.clone(),
+            value.clone(),
+            position,
+        )?;
+        Ok(matched.is_truthy())
+    }
+
+    /// The elements an array pattern reads out of a value: the array itself,
+    /// or what the value's own `deconstruct` answers. None where the value
+    /// has no elements to give.
+    fn deconstructed(
+        &mut self,
+        value: &Object,
+        position: Position,
+    ) -> Result<Option<Vec<Object>>, MetorexError> {
+        // One `case` asks its own subject for its elements once, and every
+        // clause in it reads what that answered.
+        let is_the_subject = self
+            .deconstructed_values
+            .last()
+            .is_some_and(|(subject, _)| names_the_same_value(subject, value));
+        if is_the_subject && let Some((_, Some(held))) = self.deconstructed_values.last() {
+            return Ok(Some(held.clone()));
+        }
+        if !self.answers_to_pattern_method(value, "deconstruct", position)? {
+            let written = self.written_out(value, position);
+            self.note_pattern_failure(PatternFailure::Detail(format!(
+                "{written} does not respond to #deconstruct"
+            )));
+            return Ok(None);
+        }
+        let held = self.send_pattern_method(value, "deconstruct", Vec::new(), position)?;
+        let elements = match crate::vm::native_methods::array_subclass_value(&held) {
+            Some(Object::Array(elements)) => elements.borrow().clone(),
+            _ => match &held {
+                Object::Array(elements) => elements.borrow().clone(),
+                other => {
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!(
+                            "deconstruct must return Array, got {}",
+                            self.builtins().class_of(other).ruby_name()
+                        ),
+                        position,
+                    ));
+                }
+            },
+        };
+        if is_the_subject && let Some((_, held)) = self.deconstructed_values.last_mut() {
+            *held = Some(elements.clone());
+        }
+        Ok(Some(elements))
+    }
+
+    /// Whether a value answers the method a pattern is about to send it. The
+    /// question is put to the value itself, which is what a program watching
+    /// `respond_to?` sees.
+    fn answers_to_pattern_method(
+        &mut self,
+        value: &Object,
+        named: &str,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        // A refinement in force here answers for the value too, and it is not
+        // one `respond_to?` knows about.
+        if self.refined_pattern_method(value, named).is_some() {
+            return Ok(true);
+        }
+        let held = self.send_to_object(
+            value.clone(),
+            "respond_to?",
+            vec![Object::symbol(named.to_string())],
+            position,
+        )?;
+        Ok(held.is_truthy())
+    }
+
+    /// The method a refinement in force here puts in place of the value's
+    /// own, which is what a pattern reaches first.
+    fn refined_pattern_method(
+        &self,
+        value: &Object,
+        named: &str,
+    ) -> Option<std::rc::Rc<crate::object::Method>> {
+        let target = crate::vm::method_lookup::refinement_target_name(value, self)?;
+        self.find_refined_method(&target, named)
+    }
+
+    /// Send a pattern's own method, reaching a refinement in force here
+    /// before the value's own.
+    fn send_pattern_method(
+        &mut self,
+        value: &Object,
+        named: &str,
+        arguments: Vec<Object>,
+        position: Position,
+    ) -> Result<Object, MetorexError> {
+        if let Some(method) = self.refined_pattern_method(value, named) {
+            let class = self.builtins().class_of(value);
+            return self.invoke_method(class, method, value.clone(), arguments, position);
+        }
+        self.send_to_object(value.clone(), named, arguments, position)
+    }
+
+    /// The keys a hash pattern reads out of a value: the hash itself, or what
+    /// the value's own `deconstruct_keys` answers. A pattern that names every
+    /// key it wants hands those names over, and one with a rest hands nil.
+    fn deconstructed_keys(
+        &mut self,
+        value: &Object,
+        wanted: &[String],
+        rest: &crate::ast::HashPatternRest,
+        position: Position,
+    ) -> Result<Option<indexmap::IndexMap<String, Object>>, MetorexError> {
+        if !self.answers_to_pattern_method(value, "deconstruct_keys", position)? {
+            let written = self.written_out(value, position);
+            self.note_pattern_failure(PatternFailure::Detail(format!(
+                "{written} does not respond to #deconstruct_keys"
+            )));
+            return Ok(None);
+        }
+        // A pattern naming a rest may read any key, so it asks for all of
+        // them; one that names its keys says which it wants.
+        let named = match rest {
+            // A pattern naming a rest of its own may read any key, so it asks
+            // for all of them. Every other pattern says which it wants.
+            crate::ast::HashPatternRest::Named(_) => Object::Nil,
+            _ => Object::array(
+                wanted
+                    .iter()
+                    .map(|key| Object::symbol(key.clone()))
+                    .collect(),
+            ),
+        };
+        let held = self.send_pattern_method(value, "deconstruct_keys", vec![named], position)?;
+        match held {
+            Object::Dict(entries) => Ok(Some(entries.borrow().clone())),
+            other => Err(crate::vm::errors::simple_exception(
+                "TypeError",
+                &format!(
+                    "deconstruct_keys must return Hash, got {}",
+                    self.builtins().class_of(&other).ruby_name()
+                ),
+                position,
+            )),
+        }
+    }
+
+    /// Record that a run of elements a find pattern looks for sits nowhere
+    /// in the value.
+    fn note_find_pattern_failure(&mut self, held: &[Object], position: Position) {
+        if self.pattern_failure.is_some() {
+            return;
+        }
+        let written = self.written_out(&Object::array(held.to_vec()), position);
+        self.note_pattern_failure(PatternFailure::Detail(format!(
+            "{written} does not match to find pattern"
+        )));
+    }
+
+    /// Record that a value holds the wrong number of elements for an array
+    /// pattern. A pattern with a rest names the fewest it can take.
+    fn note_length_mismatch(
+        &mut self,
+        held: &[Object],
+        wanted: usize,
+        takes_more: bool,
+        position: Position,
+    ) {
+        if self.pattern_failure.is_some() {
+            return;
+        }
+        let written = self.written_out(&Object::array(held.to_vec()), position);
+        let given = held.len();
+        let wanted = match takes_more {
+            true => format!("{wanted}+"),
+            false => format!("{wanted}"),
+        };
+        self.note_pattern_failure(PatternFailure::Detail(format!(
+            "{written} length mismatch (given {given}, expected {wanted})"
+        )));
+    }
+
+    /// Match the elements against the patterns before a rest, the rest
+    /// itself, and the patterns after it.
+    fn match_array_shape(
+        &mut self,
+        prefix: &[crate::ast::MatchPattern],
+        rest: &Option<Option<String>>,
+        suffix: &[crate::ast::MatchPattern],
+        held: &[Object],
+        bindings: &mut HashMap<String, Object>,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        let Some(rest) = rest else {
+            if prefix.len() != held.len() {
+                self.note_length_mismatch(held, prefix.len(), false, position);
+                return Ok(false);
+            }
+            for (pattern, element) in prefix.iter().zip(held.iter()) {
+                if !self.match_pattern(pattern, element, bindings, position)? {
+                    return Ok(false);
+                }
+            }
+            return Ok(true);
+        };
+        if held.len() < prefix.len() + suffix.len() {
+            self.note_length_mismatch(held, prefix.len() + suffix.len(), true, position);
+            return Ok(false);
+        }
+        for (at, pattern) in prefix.iter().enumerate() {
+            if !self.match_pattern(pattern, &held[at], bindings, position)? {
+                return Ok(false);
+            }
+        }
+        let after = held.len() - suffix.len();
+        for (at, pattern) in suffix.iter().enumerate() {
+            if !self.match_pattern(pattern, &held[after + at], bindings, position)? {
+                return Ok(false);
+            }
+        }
+        if let Some(name) = rest {
+            bindings.insert(
+                name.clone(),
+                Object::array(held[prefix.len()..after].to_vec()),
+            );
+        }
+        Ok(true)
+    }
+
+    /// Match the keys a hash pattern names, and bind the rest where it asked
+    /// for them.
+    fn match_hash_shape(
+        &mut self,
+        entries: &[(String, Option<crate::ast::MatchPattern>)],
+        rest: &crate::ast::HashPatternRest,
+        held: &indexmap::IndexMap<String, Object>,
+        bindings: &mut HashMap<String, Object>,
+        position: Position,
+    ) -> Result<bool, MetorexError> {
+        // A hash pattern naming nothing at all matches only a hash holding
+        // nothing, the way `**nil` does.
+        if entries.is_empty()
+            && matches!(rest, crate::ast::HashPatternRest::Silent)
+            && !held.is_empty()
+        {
+            return Ok(false);
+        }
+        for (key, pattern) in entries {
+            // A hash holds its symbol keys under the name with the colon in
+            // front, and a pattern names symbol keys alone.
+            let Some(value) = held.get(&format!(":{}", key)) else {
+                self.note_pattern_failure(PatternFailure::MissingKey {
+                    matchee: Object::Dict(Rc::new(RefCell::new(held.clone()))),
+                    key: key.clone(),
+                });
+                return Ok(false);
+            };
+            let value = value.clone();
+            match pattern {
+                Some(pattern) => {
+                    if !self.match_pattern(pattern, &value, bindings, position)? {
+                        return Ok(false);
+                    }
+                }
+                None => {
+                    bindings.insert(key.clone(), value);
+                }
+            }
+        }
+        let named: std::collections::HashSet<String> =
+            entries.iter().map(|(key, _)| format!(":{}", key)).collect();
+        match rest {
+            crate::ast::HashPatternRest::Refused => {
+                let left: indexmap::IndexMap<String, Object> = held
+                    .iter()
+                    .filter(|(key, _)| !named.contains(*key))
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+                if !left.is_empty() {
+                    let left = Object::Dict(Rc::new(RefCell::new(left)));
+                    let written = self.written_out(&left, position);
+                    self.note_pattern_failure(PatternFailure::Detail(format!(
+                        "rest of {written} is not empty"
+                    )));
+                    return Ok(false);
+                }
+            }
+            crate::ast::HashPatternRest::Named(name) => {
+                let left: indexmap::IndexMap<String, Object> = held
+                    .iter()
+                    .filter(|(key, _)| !named.contains(*key))
+                    .map(|(key, value)| (key.clone(), value.clone()))
+                    .collect();
+                bindings.insert(name.clone(), Object::Dict(Rc::new(RefCell::new(left))));
+            }
+            _ => {}
+        }
+        Ok(true)
     }
 
     /// Match an array pattern against an array value.
@@ -521,10 +1074,21 @@ impl VirtualMachine {
 
     /// Apply variable bindings from pattern matching to the current scope.
     /// Helper method to reduce code duplication between match statement and case expression.
-    fn apply_pattern_bindings(&mut self, bindings: &HashMap<String, Object>) {
+    pub(crate) fn apply_pattern_bindings(&mut self, bindings: &HashMap<String, Object>) {
         for (name, value) in bindings {
-            self.environment_mut().define(name.clone(), value.clone());
+            self.bind_pattern_name(name, value.clone());
         }
+    }
+
+    /// Bind a name a pattern gave. A name the scope already holds is written
+    /// where it stands, so a pattern inside a block writes the local the
+    /// block closed over rather than one of its own.
+    fn bind_pattern_name(&mut self, name: &str, value: Object) {
+        if self.environment().get(name).is_some() {
+            self.environment_mut().set(name, value);
+            return;
+        }
+        self.environment_mut().define(name.to_string(), value);
     }
 
     /// Evaluate a guard expression with pattern bindings in a new scope.
@@ -550,6 +1114,16 @@ impl VirtualMachine {
             // No guard means it always passes
             Ok(true)
         }
+    }
+
+    /// Whether an `in` clause's guard lets the match stand. The pattern's
+    /// names are already locals of the scope, so the guard reads them there.
+    fn evaluate_guard(&mut self, guard_expr: Option<&Expression>) -> Result<bool, MetorexError> {
+        let Some(guard) = guard_expr else {
+            return Ok(true);
+        };
+        let held = self.evaluate_expression(guard)?;
+        Ok(is_truthy(&held))
     }
 
     /// Evaluate a case expression (pattern matching in expression context).
@@ -613,5 +1187,17 @@ fn literal_pattern_spelling(pattern: &crate::ast::MatchPattern) -> Option<String
             _ => None,
         },
         _ => None,
+    }
+}
+
+/// Whether two names stand for the very same object, which is what tells the
+/// value a `case` is matching from one nested inside a pattern.
+fn names_the_same_value(left: &Object, right: &Object) -> bool {
+    match (left, right) {
+        (Object::Array(one), Object::Array(other)) => Rc::ptr_eq(one, other),
+        (Object::Dict(one), Object::Dict(other)) => Rc::ptr_eq(one, other),
+        (Object::Instance(one), Object::Instance(other)) => Rc::ptr_eq(one, other),
+        (Object::String(one), Object::String(other)) => Rc::ptr_eq(one, other),
+        _ => left == right,
     }
 }

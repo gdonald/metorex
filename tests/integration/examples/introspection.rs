@@ -224,33 +224,47 @@ fn test_introspection_itself_no_parens() {
     assert_eq!(output, expected);
 }
 
+/// The expected output of both `introspection/local_variables` variants, which differ only in whether the
+/// calls are written with parentheses.
+const LOCAL_VARIABLES_OUTPUT: &str = concat!(
+    "[:top_level_one, :top_level_two]\n",
+    "[:inside_one, :inside_two]\n",
+    "[:shadowed]\n",
+    "[:bound_one, :bound_two]\n",
+    "[:in_block]\n",
+    "[:evaluated_one, :evaluated_two, :top_level_one, :top_level_two]\n",
+);
+
 #[test]
 fn test_introspection_local_variables() {
-    let expected = concat!(
-        "[:top_level_one, :top_level_two]\n",
-        "[:inside_one, :inside_two]\n",
-        "[:shadowed]\n",
-        "[:bound_one, :bound_two]\n",
-        "[:in_block]\n",
-        "[:collected, :evaluated_one, :evaluated_two, :top_level_one, :top_level_two]\n"
-    );
     let output = run_example("introspection/local_variables.rb");
-    assert_eq!(output, expected);
+    assert_eq!(output, LOCAL_VARIABLES_OUTPUT);
 }
 
 #[test]
 fn test_introspection_local_variables_no_parens() {
-    let expected = concat!(
-        "[:top_level_one, :top_level_two]\n",
-        "[:inside_one, :inside_two]\n",
-        "[:shadowed]\n",
-        "[:bound_one, :bound_two]\n",
-        "[:in_block]\n",
-        "[:binding_locals, :collected, :evaluated_one, :evaluated_two, ",
-        ":top_level_one, :top_level_two]\n"
-    );
     let output = run_example("introspection/local_variables_no_parens.rb");
-    assert_eq!(output, expected);
+    assert_eq!(output, LOCAL_VARIABLES_OUTPUT);
+}
+
+/// The expected output of both `introspection/local_variables_shadowing_builtins`
+/// variants, which differ only in whether the calls are written with parentheses.
+const LOCAL_VARIABLES_SHADOWING_BUILTINS_OUTPUT: &str = concat!(
+    "[[:before, :p], [:before, :p], 5]\n",
+    "[:format]\n",
+    "[:only, :print]\n",
+);
+
+#[test]
+fn test_introspection_local_variables_shadowing_builtins() {
+    let output = run_example("introspection/local_variables_shadowing_builtins.rb");
+    assert_eq!(output, LOCAL_VARIABLES_SHADOWING_BUILTINS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_local_variables_shadowing_builtins_no_parens() {
+    let output = run_example("introspection/local_variables_shadowing_builtins_no_parens.rb");
+    assert_eq!(output, LOCAL_VARIABLES_SHADOWING_BUILTINS_OUTPUT);
 }
 
 #[test]
@@ -676,4 +690,111 @@ fn test_introspection_method_owners_execution() {
 fn test_introspection_method_owners_parens_execution() {
     let output = run_example("introspection/method_owners_parens.rb");
     assert_eq!(output, METHOD_OWNERS_OUTPUT);
+}
+
+/// The expected output of both `introspection/block_frame_labels` variants,
+/// which differ only in whether the calls are written with parentheses.
+const BLOCK_FRAME_LABELS_OUTPUT: &str = concat!(
+    "block in Object#outer\n",
+    "block (2 levels) in Object#outer\n",
+    "block in <main>\n",
+    "base\n"
+);
+
+#[test]
+fn test_introspection_block_frame_labels_execution() {
+    let output = run_example("introspection/block_frame_labels.rb");
+    assert_eq!(output, BLOCK_FRAME_LABELS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_block_frame_labels_parens_execution() {
+    let output = run_example("introspection/block_frame_labels_parens.rb");
+    assert_eq!(output, BLOCK_FRAME_LABELS_OUTPUT);
+}
+
+/// The expected output of both `introspection/top_level_object` variants,
+/// which differ only in whether the calls are written with parentheses.
+const TOP_LEVEL_OBJECT_OUTPUT: &str = concat!(
+    "main\nObject\n\"main\"\n",
+    ":here\n",
+    "[:inspect, :to_s, :written_on_main]\n",
+    "false\nfalse\ntrue\ntrue\n"
+);
+
+#[test]
+fn test_introspection_top_level_object_execution() {
+    let output = run_example("introspection/top_level_object.rb");
+    assert_eq!(output, TOP_LEVEL_OBJECT_OUTPUT);
+}
+
+#[test]
+fn test_introspection_top_level_object_parens_execution() {
+    let output = run_example("introspection/top_level_object_parens.rb");
+    assert_eq!(output, TOP_LEVEL_OBJECT_OUTPUT);
+}
+
+/// The expected output of both `introspection/binding_eval_scope` variants,
+/// which differ only in whether the calls are written with parentheses.
+const BINDING_EVAL_SCOPE_OUTPUT: &str = concat!(
+    "Vault::Keeper::Inner\n",
+    ":capture\n",
+    "QUIET\n",
+    "true\n",
+    "nil\n",
+    "given.rb\n",
+);
+
+#[test]
+fn test_introspection_binding_eval_scope() {
+    let output = run_example("introspection/binding_eval_scope.rb");
+    assert_eq!(output, BINDING_EVAL_SCOPE_OUTPUT);
+}
+
+#[test]
+fn test_introspection_binding_eval_scope_no_parens() {
+    let output = run_example("introspection/binding_eval_scope_no_parens.rb");
+    assert_eq!(output, BINDING_EVAL_SCOPE_OUTPUT);
+}
+
+/// The expected output of both `introspection/qualified_defs_and_labels`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const QUALIFIED_DEFS_AND_LABELS_OUTPUT: &str = concat!(
+    ":from_the_nested_body\n",
+    ":from_the_class_body\n",
+    "false\n",
+    "Object#written_at_the_top_level\n",
+    "true\n",
+    "[]\n",
+    "nil\n",
+);
+
+#[test]
+fn test_introspection_qualified_defs_and_labels() {
+    let output = run_example("introspection/qualified_defs_and_labels.rb");
+    assert_eq!(output, QUALIFIED_DEFS_AND_LABELS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_qualified_defs_and_labels_no_parens() {
+    let output = run_example("introspection/qualified_defs_and_labels_no_parens.rb");
+    assert_eq!(output, QUALIFIED_DEFS_AND_LABELS_OUTPUT);
+}
+
+/// The expected output of both `introspection/location_absolute_paths`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const LOCATION_ABSOLUTE_PATHS_OUTPUT: &str = concat!("true\n", "true\n", "nil\n", "\"foo.rb\"\n",);
+
+#[test]
+fn test_introspection_location_absolute_paths() {
+    let output = run_example("introspection/location_absolute_paths.rb");
+    assert_eq!(output, LOCATION_ABSOLUTE_PATHS_OUTPUT);
+}
+
+#[test]
+fn test_introspection_location_absolute_paths_no_parens() {
+    let output = run_example("introspection/location_absolute_paths_no_parens.rb");
+    assert_eq!(output, LOCATION_ABSOLUTE_PATHS_OUTPUT);
 }

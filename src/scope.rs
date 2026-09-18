@@ -29,6 +29,11 @@ pub struct Scope {
     /// scope it was written in. They are not locals of this scope.
     captured_names: HashSet<String>,
 
+    /// Names carried in from a Binding, in the order that Binding reported
+    /// them. Code run through a Binding names its own locals first and these
+    /// after, which is the order Ruby reports them in.
+    inherited_names: Vec<String>,
+
     /// Names bound without the program declaring them, which are not locals
     /// of this scope and so are left out of `local_variables`.
     hidden_names: HashSet<String>,
@@ -49,6 +54,7 @@ impl Scope {
             parent: None,
             is_method_boundary: false,
             captured_names: HashSet::new(),
+            inherited_names: Vec::new(),
             hidden_names: HashSet::new(),
             hoisted_names: HashSet::new(),
         }
@@ -62,6 +68,7 @@ impl Scope {
             parent: Some(parent),
             is_method_boundary: false,
             captured_names: HashSet::new(),
+            inherited_names: Vec::new(),
             hidden_names: HashSet::new(),
             hoisted_names: HashSet::new(),
         }
@@ -90,6 +97,19 @@ impl Scope {
     /// Binds a name a block captured from the scope it was written in. The
     /// binding behaves like any other, but it is not a local of this scope,
     /// so `local_variables` leaves it out.
+    /// Binds a name carried in from a Binding. It behaves like any other
+    /// local, and `local_variables` reports it after the scope's own.
+    pub fn define_inherited(&mut self, name: String, value: Rc<RefCell<Object>>) {
+        self.captured_names.remove(&name);
+        self.hidden_names.remove(&name);
+        self.hoisted_names.remove(&name);
+        if !self.inherited_names.contains(&name) {
+            self.inherited_names.push(name.clone());
+        }
+        self.remember_order(&name);
+        self.variables.insert(name, value);
+    }
+
     pub fn define_captured(&mut self, name: String, value: Rc<RefCell<Object>>) {
         self.captured_names.insert(name.clone());
         self.remember_order(&name);
@@ -126,6 +146,19 @@ impl Scope {
             && !self.is_method_boundary
         {
             parent.borrow_mut().unhoist(name);
+        }
+    }
+
+    /// Whether `name` is only reserved for a later assignment and has not
+    /// been assigned yet. Ruby's parser introduces a local at the assignment
+    /// that writes it, so a block written above that line does not see one.
+    pub fn is_only_hoisted(&self, name: &str) -> bool {
+        if self.variables.contains_key(name) {
+            return self.hoisted_names.contains(name);
+        }
+        match &self.parent {
+            Some(parent) => parent.borrow().is_only_hoisted(name),
+            None => false,
         }
     }
 
@@ -278,7 +311,20 @@ impl Scope {
     /// and at a method boundary, whose locals belong to the method rather
     /// than to the block running inside it.
     pub fn collect_local_variable_names(&self) -> Vec<String> {
-        let mut names = self.own_variable_names();
+        // A scope's own locals come before the ones carried in from a
+        // Binding, which is the order Ruby reports them in.
+        let mut names: Vec<String> = self
+            .own_variable_names()
+            .into_iter()
+            .filter(|name| !self.inherited_names.contains(name))
+            .collect();
+        names.extend(
+            self.inherited_names
+                .iter()
+                .filter(|name| self.variables.contains_key(*name))
+                .filter(|name| !self.hidden_names.contains(*name))
+                .cloned(),
+        );
         // A method's own locals end the chain: what encloses the method is
         // not in scope inside it. A block, on the other hand, closes over the
         // scope it was written in, so the walk carries on through it.
@@ -311,9 +357,17 @@ impl Scope {
         let mut names: Vec<String> = self
             .ordered_names()
             .filter(|name| !self.captured_names.contains(*name))
+            .filter(|name| !self.inherited_names.contains(*name))
             .filter(|name| holds_a_local(name))
             .cloned()
             .collect();
+        names.extend(
+            self.inherited_names
+                .iter()
+                .filter(|name| self.variables.contains_key(*name))
+                .filter(|name| holds_a_local(name))
+                .cloned(),
+        );
         if !self.is_method_boundary
             && let Some(parent) = &self.parent
         {
@@ -394,7 +448,7 @@ impl Default for Scope {
 
 /// Whether a binding holds a definition rather than a local: a method, a
 /// class, or a module reached by name is not one of a scope's locals.
-fn names_a_definition(value: &Object) -> bool {
+pub fn names_a_definition(value: &Object) -> bool {
     matches!(
         value,
         Object::Method(_)

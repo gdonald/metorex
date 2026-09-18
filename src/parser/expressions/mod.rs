@@ -64,6 +64,33 @@ impl Parser {
         self.wrap_with_rescue_modifier(expr)
     }
 
+    /// `value => pattern` and `value in pattern` written on their own, which
+    /// test the value against the pattern rather than opening a `case`. Both
+    /// stand where a statement does, so nothing inside an expression takes
+    /// the `=>` of a hash pair or the `in` of a `for` as one of these.
+    pub(crate) fn wrap_with_pattern_test(
+        &mut self,
+        expr: Expression,
+    ) -> Result<Expression, MetorexError> {
+        if self.refuse_pattern_test > 0 {
+            return Ok(expr);
+        }
+        let refuses = match self.peek().kind {
+            TokenKind::FatArrow => true,
+            TokenKind::In => false,
+            _ => return Ok(expr),
+        };
+        let position = self.advance().position;
+        self.skip_whitespace();
+        let pattern = self.parse_in_pattern()?;
+        Ok(Expression::PatternTest {
+            value: Box::new(expr),
+            pattern: Box::new(pattern),
+            refuses,
+            position,
+        })
+    }
+
     /// `expr rescue fallback` answers `fallback` when `expr` raises a
     /// StandardError. The `rescue` has to follow the expression directly, so
     /// the one that opens a clause inside `begin ... end` is left alone.
@@ -876,7 +903,9 @@ impl Parser {
         // A block body is its own run of statements, so `and` and `or` bind
         // there the way they do anywhere else.
         let held = std::mem::take(&mut self.assignment_rhs_depth);
+        self.block_body_depth += 1;
         let parsed = self.parse_brace_block_body();
+        self.block_body_depth -= 1;
         self.assignment_rhs_depth = held;
         parsed
     }

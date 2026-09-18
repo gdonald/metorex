@@ -163,6 +163,12 @@ impl VirtualMachine {
                 let key = format!("@{}", method_name);
                 Ok(details.instance_vars.get(&key).cloned())
             }
+            // NoMatchingPatternKeyError#matchee — the hash the missing key was
+            // looked for in.
+            "matchee" => {
+                let details = exception.borrow();
+                Ok(details.instance_vars.get(crate::vm::MATCHEE_KEY).cloned())
+            }
             // KeyError#key — the lookup that missed, absent on an exception
             // no failed lookup raised.
             "key" => {
@@ -690,6 +696,7 @@ pub(crate) const NATIVE_EXCEPTION_METHODS: &[&str] = &[
     "exception",
     "==",
     "key",
+    "matchee",
     "name",
     "receiver",
     "status",

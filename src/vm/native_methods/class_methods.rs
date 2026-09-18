@@ -28,12 +28,14 @@ impl VirtualMachine {
         // A block carries the scope it was written in, which its own
         // `def_scope_stack` holds, so only a method body reads the nesting
         // the method captured.
-        if !matches!(
-            self.call_stack
-                .last()
-                .map(crate::vm::call_frame::CallFrame::kind),
-            Some(crate::vm::call_frame::FrameKind::Method { .. })
-        ) {
+        let running_a_method = self.call_stack.last().is_some_and(|frame| {
+            frame.block_depth() == 0
+                && matches!(
+                    frame.kind(),
+                    crate::vm::call_frame::FrameKind::Method { .. }
+                )
+        });
+        if !running_a_method {
             return None;
         }
         self.method_nesting_stack
@@ -249,14 +251,7 @@ impl VirtualMachine {
                 Some(Object::String(held)) => held.as_str().to_string(),
                 other => other.map(|held| held.to_string()).unwrap_or_default(),
             };
-            use std::io::Write as _;
-            if named == "stderr" {
-                eprint!("{}", text);
-                let _ = std::io::stderr().flush();
-            } else {
-                print!("{}", text);
-                let _ = std::io::stdout().flush();
-            }
+            crate::vm::native_functions::write_to_standard_stream(&named, &text);
             return Ok(Some(Object::Nil));
         }
         // A class that defines `new` of its own builds its instances that
@@ -1347,6 +1342,9 @@ impl VirtualMachine {
                 }
                 Some(Object::Bool(true)) => flags.push('i'),
                 Some(Object::Bool(false)) | Some(Object::Nil) | None => {}
+                // A keyword hash in that place names `timeout:`, which is
+                // read below rather than as an ignorecase argument.
+                Some(Object::Dict(_)) => {}
                 Some(other) => {
                     // Anything else is read as a plain truth, which Ruby says
                     // so about rather than asking it for a number.
@@ -1356,6 +1354,35 @@ impl VirtualMachine {
                     self.emit_warning_to_stderr(&message, position);
                     flags.push('i');
                 }
+            }
+            // `timeout:` says how long a match of this pattern may take,
+            // which stands in place of what the class names.
+            if let Some(Object::Dict(options)) = arguments.get(1).or(arguments.get(2))
+                && let Some(named) = options.borrow().get(":timeout")
+            {
+                let held = match named {
+                    Object::Nil => None,
+                    other => {
+                        let seconds = self.float_value_of(other, position)?;
+                        if seconds <= 0.0 {
+                            let shown =
+                                self.send_to_object(other.clone(), "to_s", vec![], position)?;
+                            let message = match &shown {
+                                Object::String(held) => {
+                                    format!("invalid timeout: {}", held.as_str())
+                                }
+                                held => format!("invalid timeout: {held}"),
+                            };
+                            return Err(crate::vm::errors::simple_exception(
+                                "ArgumentError",
+                                &message,
+                                position,
+                            ));
+                        }
+                        Some(std::time::Duration::from_secs_f64(seconds))
+                    }
+                };
+                self.pattern_timeouts.insert(source.clone(), held);
             }
             let built = Rc::new(source);
             // A pattern built here is not frozen, which is what tells it
@@ -1909,6 +1936,19 @@ impl VirtualMachine {
                     self.pass_to_other_threads(position)?;
                     return Ok(Some(Object::Nil));
                 }
+                // Hand control over, answering whether there was anything to
+                // hand it to. A wait that nothing else can end stops here
+                // rather than turning forever.
+                "__hand_over__" => {
+                    if !self.other_threads_are_waiting() {
+                        return Ok(Some(Object::Bool(false)));
+                    }
+                    self.wait_for_other_threads(position);
+                    // A thread stopped or handed an exception while it waited
+                    // takes it here, which is where the wait ends.
+                    self.deliver_thread_interrupts(true, position)?;
+                    return Ok(Some(Object::Bool(true)));
+                }
                 // `Thread.kill` stops the thread it is handed, the way that
                 // thread's own `kill` does.
                 "kill" | "exit" => {
@@ -2354,6 +2394,25 @@ impl VirtualMachine {
                         "Kernel".to_string(),
                     );
                     stub.variadic_param = Some((0, "args".to_string()));
+                    return Ok(Some(Object::Method(Rc::new(stub))));
+                }
+                // BasicObject answers its own handful natively rather than
+                // holding them in a method table, so a body-less stub stands
+                // for each of them.
+                if class_rc.name() == "BasicObject"
+                    && (NATIVE_BASIC_OBJECT_METHODS.contains(&name_str.as_str())
+                        || BASIC_OBJECT_PRIVATE_METHODS.contains(&name_str.as_str()))
+                {
+                    let mut stub = Method::with_owner(
+                        name_str.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                        "BasicObject".to_string(),
+                    );
+                    stub.variadic_param = Some((0, "args".to_string()));
+                    stub.native_alias = Some(name_str.clone());
+                    stub.original_name = Some(name_str.clone());
+                    stub.owner_class = Some(Rc::clone(class_rc));
                     return Ok(Some(Object::Method(Rc::new(stub))));
                 }
                 // A builtin class answers many of its methods natively. A
@@ -3154,8 +3213,14 @@ impl VirtualMachine {
                     let items = match loc {
                         // A constant the interpreter defines stands in no
                         // file of the program's, which Ruby reports as no
-                        // location at all.
-                        Some((file, _)) if file.is_empty() => Vec::new(),
+                        // location at all. One written in the core library's
+                        // own Ruby source is the same to a reader.
+                        Some((file, _))
+                            if file.is_empty()
+                                || file.starts_with(crate::vm::INTERNAL_FILE_PREFIX) =>
+                        {
+                            Vec::new()
+                        }
                         Some((file, line)) => {
                             vec![Object::string(file), Object::Int(line)]
                         }
@@ -4534,7 +4599,10 @@ pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "rand",
     "readline",
     "readlines",
+    "require",
+    "require_relative",
     "respond_to_missing?",
+    "sleep",
     "srand",
     "system",
     "putc",
@@ -5154,6 +5222,11 @@ impl VirtualMachine {
                 stub.variadic_param = Some((0, "args".to_string()));
                 stub.native_alias = Some(old_name.clone());
                 class_rc.define_method(&new_name, Rc::new(stub));
+                // A Kernel function is a private method, and a name given to
+                // one is private the same way.
+                if crate::vm::native_methods::is_kernel_private_function(&old_name) {
+                    class_rc.set_method_private(new_name.clone());
+                }
                 found = true;
             }
             // A singleton class aliasing one of the attached object's

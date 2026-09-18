@@ -434,7 +434,7 @@ in [first, ...]
 end
 "#,
     );
-    assert!(err.contains("identifier") || err.contains("Expected") || err.contains("..."));
+    assert!(err.contains("unexpected ']'"));
 }
 
 // ── ... without name error in case/when array pattern ────────────────────────
@@ -487,6 +487,8 @@ end
 
 #[test]
 fn case_in_object_pattern_string_key_matches() {
+    // `{"key": v}` names the symbol `:key`, so a hash keyed by the string
+    // "key" does not match it.
     let result = run(r#"
 h = {"key" => 42}
 case h
@@ -496,7 +498,7 @@ else
   0
 end
 "#);
-    assert_eq!(result, Some(Object::Int(42)));
+    assert_eq!(result, Some(Object::Int(0)));
 }
 
 #[test]
@@ -518,9 +520,9 @@ end
 #[test]
 fn case_in_object_pattern_shorthand_matches() {
     let result = run(r#"
-h = {"name" => "Alice"}
+h = {name: "Alice"}
 case h
-in {name}
+in {name:}
   name
 else
   "no"

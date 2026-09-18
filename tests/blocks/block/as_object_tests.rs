@@ -580,6 +580,7 @@ fn test_block_returned_from_method() {
                     position: pos(3, 5),
                 }],
                 position: pos(2, 3),
+                end_position: pos(2, 3),
             }],
             position: pos(1, 1),
         },

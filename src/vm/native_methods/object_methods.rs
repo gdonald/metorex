@@ -510,6 +510,16 @@ impl VirtualMachine {
                 {
                     return Ok(Some(result));
                 }
+                // Every Kernel function is a private method of every object,
+                // and `send` reaches a private method the way a bare call
+                // does.
+                if method_name != "public_send"
+                    && crate::vm::native_methods::is_kernel_private_function(&method)
+                {
+                    return self
+                        .call_native_function(&method, rest_args, position)
+                        .map(Some);
+                }
                 // A class that answers what it was not asked for decides what
                 // a name with no method behind it means.
                 if let Some((owner, handler)) = self.lookup_method(receiver, "method_missing")
@@ -538,6 +548,24 @@ impl VirtualMachine {
             "lambda" | "proc" | "raise" => self
                 .call_native_function(method_name, arguments.to_vec(), position)
                 .map(Some),
+            // `using` is written on `main` alone, and Ruby permits it only at
+            // the top level, which a class or module body is not.
+            "using" if self.is_the_main_object(receiver) => {
+                let inside_body = matches!(
+                    self.environment().get("self"),
+                    Some(Object::Class(_) | Object::Module(_))
+                );
+                if inside_body {
+                    let message = "main.using is permitted only at toplevel".to_string();
+                    return Err(crate::vm::errors::simple_exception(
+                        "RuntimeError",
+                        &message,
+                        position,
+                    ));
+                }
+                self.call_native_function("using", arguments.to_vec(), position)
+                    .map(Some)
+            }
             "itself" => {
                 if !arguments.is_empty() {
                     return Err(method_argument_error(
@@ -2066,6 +2094,24 @@ impl VirtualMachine {
                             None => Ok(Some(Object::Nil)),
                         }
                     }
+                    // A string matched against anything but a pattern hands
+                    // the match to that other object, and refuses outright
+                    // when it is another string.
+                    (Some(MatchSide::Text(_)), _) if matches!(receiver, Object::String(_)) => {
+                        let other = &arguments[0];
+                        if matches!(other, Object::String(_))
+                            || crate::vm::native_methods::string_subclass_value(other).is_some()
+                        {
+                            let named = self.builtins().class_of(other).name().to_string();
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                &format!("type mismatch: {} given", named),
+                                position,
+                            ));
+                        }
+                        self.send_to_object(other.clone(), "=~", vec![receiver.clone()], position)
+                            .map(Some)
+                    }
                     _ => Ok(Some(Object::Nil)),
                 }
             }
@@ -2182,19 +2228,12 @@ impl VirtualMachine {
                 }
                 Ok(Some(held))
             }
-            "then" | "yield_self" | "tap" => {
+            // `tap` is written in Ruby, in the prelude, so it is not here.
+            "then" | "yield_self" => {
                 let block = match self.pending_block.take() {
                     Some(Object::Block(b)) => b,
-                    // `tap` yields, so without a block it raises. `then` and
-                    // `yield_self` hand back an Enumerator of size one.
-                    _ if method_name == "tap" => {
-                        let message = "no block given (yield)".to_string();
-                        return Err(MetorexError::UncaughtException {
-                            exception: Object::exception("LocalJumpError", message.clone()),
-                            location: position_to_location(position),
-                            message,
-                        });
-                    }
+                    // `then` and `yield_self` hand back an Enumerator of size
+                    // one when they are called with no block.
                     _ => {
                         return self
                             .build_enumerator(
@@ -2214,12 +2253,7 @@ impl VirtualMachine {
                 } else {
                     vec![receiver.clone()]
                 };
-                let value = block.call(self, block_arguments, position)?;
-                Ok(Some(if method_name == "tap" {
-                    receiver.clone()
-                } else {
-                    value
-                }))
+                block.call(self, block_arguments, position).map(Some)
             }
             "instance_exec" | "instance_eval" => {
                 let block = self.pending_block.take().or_else(|| {
@@ -2269,13 +2303,26 @@ impl VirtualMachine {
                         )?;
                         return Ok(Some(result));
                     }
+                    // The block runs inside a method of BasicObject's, which
+                    // is the name a backtrace gives the place it was called
+                    // from. The frame carries no method of its own, so
+                    // `__method__` in the body still names the one around it.
+                    self.call_stack_push(
+                        crate::vm::CallFrame::new(
+                            format!("BasicObject#{}", method_name),
+                            Some(format!("{}:{}", position.line, position.column)),
+                        )
+                        .nested_in_a_block(0)
+                        .with_source_file(self.current_source_file.clone()),
+                    );
                     let result = self.execute_block_with_receiver(
                         &body,
                         receiver.clone(),
                         positional,
                         position,
-                    )?;
-                    return Ok(Some(result));
+                    );
+                    self.call_stack_pop();
+                    return result.map(Some);
                 }
                 // The String form runs source in the receiver's context. The
                 // trailing file and line arguments only shape the positions
@@ -3428,7 +3475,23 @@ impl VirtualMachine {
         };
         if self.warning_category_enabled("deprecated") {
             self.emit_warning_to_stderr(&notice, position);
+            self.report_string_birthplace(text, position);
         }
+    }
+
+    /// Name where a literal was written, after the notice that a change to it
+    /// will be refused in a later release. Only a run told to record the
+    /// place has one to name.
+    pub(crate) fn report_string_birthplace(
+        &mut self,
+        text: &crate::object::StringValue,
+        position: Position,
+    ) {
+        let Some(written_at) = text.created_at() else {
+            return;
+        };
+        let message = format!("{}: info: the string was created here", written_at);
+        self.emit_warning_to_stderr(&message, position);
     }
 }
 
@@ -3442,4 +3505,18 @@ pub(crate) fn refuses_a_singleton(receiver: &Object) -> bool {
             receiver,
             Object::Int(_) | Object::BigInt(_) | Object::Float(_) | Object::Symbol(_)
         )
+}
+
+impl VirtualMachine {
+    /// Whether the receiver is the object a program runs against at the top
+    /// level, which Ruby calls `main`.
+    pub(crate) fn is_the_main_object(&self, receiver: &Object) -> bool {
+        let Object::Instance(held) = receiver else {
+            return false;
+        };
+        match self.globals().get("__main__") {
+            Some(Object::Instance(main)) => std::rc::Rc::ptr_eq(held, &main),
+            _ => false,
+        }
+    }
 }

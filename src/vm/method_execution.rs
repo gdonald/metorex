@@ -73,8 +73,24 @@ impl VirtualMachine {
             }
             _ => false,
         };
-        let overrides_builtin =
-            !method.body.is_empty() && (backs_a_collection(&receiver) || stands_for_a_class_method);
+        // A method written on the object's own singleton class runs its own
+        // body rather than the native table's, which is what lets a program
+        // stand one in for `Regexp#match` on a single pattern.
+        let stands_on_its_own_singleton = class.is_singleton_class()
+            && !matches!(receiver, Object::Class(_) | Object::Module(_))
+            && class.find_own_method(&method_name).is_some();
+        // A method a refinement puts in place of one the interpreter answers
+        // natively runs its own body, which is the whole point of writing it.
+        let stands_in_a_refinement = method.owner_class.as_ref().is_some_and(|owner| {
+            owner
+                .get_class_var(crate::vm::REFINEMENT_LABEL_KEY)
+                .is_some()
+        });
+        let overrides_builtin = !method.body.is_empty()
+            && (backs_a_collection(&receiver)
+                || stands_for_a_class_method
+                || stands_on_its_own_singleton
+                || stands_in_a_refinement);
         if !overrides_builtin
             && let Some(result) = self.call_native_method(
                 class.as_ref(),
@@ -127,6 +143,11 @@ impl VirtualMachine {
                 self.call_object_method(&receiver, &target, &arguments, position)?
             {
                 return Ok(result);
+            }
+            // A Kernel function is reached without a receiver rather than
+            // through any class's table, so the stub goes there for it.
+            if crate::vm::native_methods::is_kernel_private_function(&target) {
+                return self.call_native_function(&target, arguments, position);
             }
         }
 
@@ -387,12 +408,25 @@ impl VirtualMachine {
                 .and_then(|named| self.file_encodings.get(named).cloned()),
         );
 
+        // A call of a method written in a measured file is what the methods
+        // mode counts.
+        if self.coverage.is_some()
+            && let Some(at) = method.source_location.as_ref()
+            && let Some(named) = at.filename.as_deref()
+        {
+            let named = named.to_string();
+            self.coverage_count_method(&named, &method.name, at.line);
+        }
+
         // A `return` written in a block created inside this body unwinds to
         // this invocation and no other, so the body runs under an id the
         // blocks it makes record.
         let frame = self.next_method_frame;
         self.next_method_frame += 1;
         let saved_frame = self.current_method_frame.replace(frame);
+        // A block opened in this body belongs to this method, whatever block
+        // the call was made from.
+        let saved_lexical_home = self.lexical_home_frame.take();
         self.live_frames.push(frame);
 
         let result = (|| -> Result<Object, MetorexError> {
@@ -470,6 +504,7 @@ impl VirtualMachine {
         self.current_source_encoding = saved_source_encoding;
         self.class_var_home = saved_class_var_home;
         self.current_method_frame = saved_frame;
+        self.lexical_home_frame = saved_lexical_home;
         self.live_frames.pop();
         // A trace reading `binding` off a `return` event sees the method's
         // own locals, which are gone once the scope is popped.
@@ -513,6 +548,9 @@ impl VirtualMachine {
         let frame = self.next_method_frame;
         self.next_method_frame += 1;
         let saved_frame = self.current_method_frame.replace(frame);
+        // A block opened in this body belongs to this method, whatever block
+        // the call was made from.
+        let saved_lexical_home = self.lexical_home_frame.take();
         self.live_frames.push(frame);
 
         let result = (|| -> Result<Object, MetorexError> {
@@ -555,6 +593,7 @@ impl VirtualMachine {
         })();
 
         self.current_method_frame = saved_frame;
+        self.lexical_home_frame = saved_lexical_home;
         self.live_frames.pop();
         self.environment_mut().pop_scope();
         match result {
@@ -659,7 +698,7 @@ impl VirtualMachine {
         // the body raises NameError when the body short-circuited via raise
         // before the assignment actually ran.
         for name in collect_assigned_locals(body) {
-            if self.environment().get(&name).is_none() {
+            if self.environment().assignment_introduces_a_local(&name) {
                 self.environment_mut().hoist(name);
             }
         }
@@ -671,6 +710,11 @@ impl VirtualMachine {
 
             // If this is the last statement, capture its value
             if is_last && let Some(value) = self.terminal_statement_value(statement)? {
+                // The last statement answered here rather than through
+                // `execute_statement`, so it is counted here too.
+                if self.coverage.is_some() {
+                    self.coverage_count(statement.position().line);
+                }
                 last_value = value;
                 continue;
             }

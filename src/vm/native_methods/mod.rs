@@ -34,6 +34,7 @@ pub(crate) mod object_methods;
 mod range_methods;
 pub(crate) mod rational_methods;
 mod syslog_write;
+mod zlib_deflate;
 mod zlib_streams;
 pub(crate) use object_methods::binary_op_for_method_name;
 pub(crate) use rational_methods::{complex_parts, rational_parts};
@@ -1338,10 +1339,15 @@ impl VirtualMachine {
             // A thread is handed an exception to raise where it left off, so
             // one waiting inside `sleep` wakes and raises it there.
             "raise" => {
-                inst.borrow_mut().set_var(
-                    "__thread_raise".to_string(),
-                    Object::array(arguments.to_vec()),
-                );
+                // `raise` with nothing named raises a RuntimeError, and the
+                // thread has to be handed something for it to take.
+                let handed = if arguments.is_empty() {
+                    vec![Object::string("unhandled exception".to_string())]
+                } else {
+                    arguments.to_vec()
+                };
+                inst.borrow_mut()
+                    .set_var("__thread_raise".to_string(), Object::array(handed));
                 inst.borrow_mut()
                     .set_var("__thread_waiting".to_string(), Object::Bool(false));
                 Ok(Some(Object::Nil))

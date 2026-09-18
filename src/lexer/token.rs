@@ -6,7 +6,10 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpolationPart {
     Text(String),
-    Expression(String), // The expression inside {}
+    /// The expression inside `#{}`, with the source line its `#{` was
+    /// written on. Zero where the line is not known, which falls back to the
+    /// line the literal itself starts on.
+    Expression(String, usize),
 }
 
 /// Represents the position of a token in the source code
@@ -286,7 +289,7 @@ impl fmt::Display for TokenKind {
                 for part in parts {
                     match part {
                         InterpolationPart::Text(s) => write!(f, "{}", s)?,
-                        InterpolationPart::Expression(e) => write!(f, "#{{{}}}", e)?,
+                        InterpolationPart::Expression(e, _) => write!(f, "#{{{}}}", e)?,
                     }
                 }
                 write!(f, "`")
@@ -296,7 +299,7 @@ impl fmt::Display for TokenKind {
                 for part in parts {
                     match part {
                         InterpolationPart::Text(s) => write!(f, "{}", s)?,
-                        InterpolationPart::Expression(e) => write!(f, "{{{}}}", e)?,
+                        InterpolationPart::Expression(e, _) => write!(f, "{{{}}}", e)?,
                     }
                 }
                 write!(f, "\"")

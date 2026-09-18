@@ -23,6 +23,10 @@ impl VirtualMachine {
         if !self.tracepoints.is_empty() {
             self.fire_line_event(statement.position())?;
         }
+        let line = statement.position().line;
+        if self.coverage_skip_line.take() != Some(line) && self.coverage.is_some() {
+            self.coverage_count(line);
+        }
         match statement {
             Statement::Expression {
                 expression,
@@ -94,6 +98,23 @@ impl VirtualMachine {
                 Ok(ControlFlow::Value(answer))
             }
             Statement::Return { value, position } => {
+                // A `return` written at the top level ends the file, and the
+                // value written after it goes nowhere, which Ruby says so.
+                if value.is_some() && self.call_stack.is_empty() {
+                    let written_in = self
+                        .current_source_file
+                        .clone()
+                        .or_else(|| {
+                            self.reported_current_file()
+                                .map(|path| path.display().to_string())
+                        })
+                        .unwrap_or_else(|| "-".to_string());
+                    let notice = format!(
+                        "{}: warning: argument of top-level return is ignored",
+                        written_in
+                    );
+                    self.emit_warning_to_stderr(&notice, *position);
+                }
                 let result = match value {
                     Some(expr) => self.evaluate_expression(expr)?,
                     None => Object::Nil,
@@ -164,6 +185,9 @@ impl VirtualMachine {
                 body,
                 position,
             } => self.execute_for(variable, iterable, body, *position),
+            // A `BEGIN` body already ran before the rest of its code unit,
+            // so reaching it where it was written does nothing.
+            Statement::BeginBlock { .. } => Ok(ControlFlow::Next),
             Statement::DeclareLocals { names, .. } => {
                 for name in names {
                     if self.environment().get(name).is_none() {
@@ -201,6 +225,7 @@ impl VirtualMachine {
                 body,
                 is_class_method,
                 position,
+                ..
             } => {
                 let Some(target) = self.def_scope_stack.last().cloned() else {
                     return Err(unimplemented_statement_error(statement));
@@ -520,8 +545,16 @@ impl VirtualMachine {
                 Ok(())
             }
             Expression::InstanceVariable { name, position } => {
-                // Instance variables can only be set within a method (where 'self' is defined)
-                match self.environment().get("self") {
+                // At the top level `self` is `main`, which carries the
+                // program's own instance variables the way any other object
+                // does.
+                let held = self.environment().get("self").or_else(|| {
+                    match self.globals().get("TOPLEVEL_BINDING") {
+                        Some(Object::Binding(binding)) => binding.receiver.clone(),
+                        _ => None,
+                    }
+                });
+                match held {
                     Some(Object::Instance(instance_rc)) => {
                         let is_frozen = instance_rc.borrow().frozen;
                         if is_frozen {
@@ -745,10 +778,9 @@ impl VirtualMachine {
                 // and assigning to it sends `[]=` with the same subscripts.
                 if method == "[]" {
                     let receiver_obj = self.evaluate_expression(receiver)?;
-                    let mut subscripts = Vec::with_capacity(arguments.len() + 1);
-                    for argument in arguments {
-                        subscripts.push(self.evaluate_expression(argument)?);
-                    }
+                    // A `*rest` among the subscripts spreads across them, the
+                    // way it does in any other call's arguments.
+                    let mut subscripts = self.evaluate_arguments(arguments)?;
                     subscripts.push(value);
                     self.send_to_object(receiver_obj, "[]=", subscripts, *position)?;
                     return Ok(());

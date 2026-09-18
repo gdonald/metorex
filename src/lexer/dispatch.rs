@@ -309,6 +309,18 @@ impl<'a> Lexer<'a> {
                     // escape, the same escapes a string literal reads.
                     Some('\\') => {
                         self.advance();
+                        // `?\C-x`, `?\cx`, and `?\M-x` name a control or meta
+                        // character, which above ASCII stands for its byte.
+                        if matches!(self.peek(), Some('c') | Some('C') | Some('M'))
+                            && let Some(byte) = self.read_control_escape()
+                        {
+                            let kind = if byte.is_ascii() {
+                                TokenKind::String((byte as char).to_string())
+                            } else {
+                                TokenKind::ByteString((byte as char).to_string())
+                            };
+                            return Token::new(kind, position);
+                        }
                         let character = self.read_character_escape();
                         Token::new(TokenKind::String(character), position)
                     }

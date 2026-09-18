@@ -134,3 +134,26 @@ fn test_globals_trace_var_hooks_parens_execution() {
     let output = run_example("globals/trace_var/hooks_parens.rb");
     assert_eq!(output, expected);
 }
+
+/// The expected output of both `globals/toplevel_binding/live_locals`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const TOPLEVEL_BINDING_LIVE_LOCALS_OUTPUT: &str = concat!(
+    "nil\n",
+    "1\n",
+    "2\n",
+    "[:counter]\n",
+    "[:counter, :through_the_binding]\n",
+);
+
+#[test]
+fn test_toplevel_binding_live_locals_execution() {
+    let output = run_example("globals/toplevel_binding/live_locals.rb");
+    assert_eq!(output, TOPLEVEL_BINDING_LIVE_LOCALS_OUTPUT);
+}
+
+#[test]
+fn test_toplevel_binding_live_locals_parens_execution() {
+    let output = run_example("globals/toplevel_binding/live_locals_parens.rb");
+    assert_eq!(output, TOPLEVEL_BINDING_LIVE_LOCALS_OUTPUT);
+}

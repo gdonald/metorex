@@ -141,6 +141,10 @@ pub enum Node {
     Backreference {
         target: Target,
         folded: bool,
+        /// Which call level the group's text is read from, where zero is the
+        /// level the reference itself is written at. None reads whatever the
+        /// group last matched, at any level.
+        level: Option<isize>,
     },
     /// The pattern a group holds, matched again here.
     Call(Target),

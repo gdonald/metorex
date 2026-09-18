@@ -506,6 +506,7 @@ fn test_class_definition_scope() {
                 position: Position::default(),
             }],
             position: Position::default(),
+            end_position: Position::default(),
         }],
         position: Position::default(),
     };

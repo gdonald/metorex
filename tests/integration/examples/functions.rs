@@ -357,3 +357,26 @@ fn test_functions_keywords_from_a_hash_no_parens_execution() {
     let output = run_example("functions/keywords_from_a_hash_no_parens.rb");
     assert_eq!(output, KEYWORDS_FROM_A_HASH_OUTPUT);
 }
+
+/// The expected output of both `procs/keyword_and_group_parameters` variants,
+/// which differ only in whether the calls are written with parentheses.
+const KEYWORD_AND_GROUP_PARAMETERS_OUTPUT: &str = concat!(
+    ":ok\n",
+    "no keywords accepted\n",
+    "missing keyword: :a\n",
+    "[[[1, {a: 1}]], {}]\n",
+    "[1, 2]\n",
+    "TypeError\n",
+);
+
+#[test]
+fn test_procs_keyword_and_group_parameters_execution() {
+    let output = run_example("procs/keyword_and_group_parameters.rb");
+    assert_eq!(output, KEYWORD_AND_GROUP_PARAMETERS_OUTPUT);
+}
+
+#[test]
+fn test_procs_keyword_and_group_parameters_no_parens_execution() {
+    let output = run_example("procs/keyword_and_group_parameters_no_parens.rb");
+    assert_eq!(output, KEYWORD_AND_GROUP_PARAMETERS_OUTPUT);
+}

@@ -82,10 +82,21 @@ impl<'a> Lexer<'a> {
     fn lex_percent_r(&mut self, position: Position) -> Token {
         self.advance(); // consume 'r'
         let open = self.peek().unwrap_or('(');
+        // Ruby takes any punctuation as the delimiter and nothing else, so a
+        // letter, a digit, or a space after `%r` opens no literal at all and
+        // the `%` is left to stand on its own, which is the syntax error Ruby
+        // reports.
+        if open.is_alphanumeric() || open.is_whitespace() {
+            return Token::new(TokenKind::Percent, position);
+        }
         let close = matching_close(open);
         self.advance(); // consume opening delimiter
         let mut pattern = String::new();
         let mut escaped = false;
+        // A paired delimiter nests, so `%r( () )` reads its parentheses as
+        // grouping rather than closing at the first one.
+        let mut depth = 1;
+        let mut closed = false;
         // `#{ ... }` holds an expression rather than pattern text, so the
         // braces inside it are counted rather than read as the delimiter.
         let mut interpolating: usize = 0;
@@ -103,8 +114,21 @@ impl<'a> Lexer<'a> {
             // The delimiter closes the pattern before anything else is read
             // of it, which is what lets `#` stand as one.
             if ch == close && !escaped {
+                depth -= 1;
+                if depth == 0 {
+                    self.advance();
+                    closed = true;
+                    break;
+                }
+                pattern.push(ch);
                 self.advance();
-                break;
+                continue;
+            }
+            if ch == open && open != close && !escaped {
+                depth += 1;
+                pattern.push(ch);
+                self.advance();
+                continue;
             }
             if ch == '#' && !escaped {
                 self.advance();
@@ -129,13 +153,20 @@ impl<'a> Lexer<'a> {
             } else if ch == '\\' {
                 self.advance();
                 escaped = true;
-            } else if ch == close {
+            } else if ch == '/' {
+                // Ruby writes a pattern back the way `/.../` spells it, where
+                // a slash stands escaped however the literal was written.
+                pattern.push_str("\\/");
                 self.advance();
-                break;
             } else {
                 pattern.push(ch);
                 self.advance();
             }
+        }
+        // A literal the source never closed is no literal at all, which is
+        // the syntax error Ruby reports.
+        if !closed {
+            return Token::new(TokenKind::Percent, position);
         }
         let mut flags = String::new();
         while let Some(ch) = self.peek() {
@@ -279,6 +310,12 @@ impl<'a> Lexer<'a> {
                             content.push('\\');
                             self.advance();
                         }
+                        // `\#` stands for a `#` that opens nothing, which is
+                        // how a literal writes out `#{` without a hole.
+                        '#' => {
+                            content.push('#');
+                            self.advance();
+                        }
                         'x' => {
                             self.advance();
                             holds_bytes |= self.read_escaped_bytes(&mut content, 16);
@@ -298,6 +335,7 @@ impl<'a> Lexer<'a> {
                     }
                 }
             } else if ch == '#' && ch != close {
+                let hole_line = self.line;
                 self.advance();
                 if self.peek() != Some('{') {
                     content.push('#');
@@ -309,6 +347,7 @@ impl<'a> Lexer<'a> {
                 }
                 parts.push(super::InterpolationPart::Expression(
                     self.read_percent_hole(),
+                    hole_line,
                 ));
             } else if ch == open && open != close {
                 depth += 1;

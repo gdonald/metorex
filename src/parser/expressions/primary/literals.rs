@@ -59,14 +59,21 @@ impl Parser {
                 }
                 // `"#{}"` interpolates nothing at all, which reads as the
                 // empty string rather than as an expression.
-                InterpolationPart::Expression(expr_str) if expr_str.trim().is_empty() => {
+                InterpolationPart::Expression(expr_str, _) if expr_str.trim().is_empty() => {
                     ast_parts.push(crate::ast::node::InterpolationPart::Text(String::new()));
                 }
-                InterpolationPart::Expression(expr_str) => {
+                InterpolationPart::Expression(expr_str, written_on) => {
                     // Parse the embedded expression as a fresh token stream,
                     // numbered from the interpolated string's line so `__LINE__`
                     // inside `#{...}` reflects the real source line.
-                    let expr_lexer = Lexer::with_start_line(&expr_str, position.line);
+                    let expr_lexer = Lexer::with_start_line(
+                        &expr_str,
+                        if written_on > 0 {
+                            written_on
+                        } else {
+                            position.line
+                        },
+                    );
                     let expr_tokens = expr_lexer.tokenize();
                     let mut expr_parser = Parser::new(expr_tokens);
                     let expr = expr_parser.parse_expression()?;
@@ -282,7 +289,7 @@ fn percent_word(word: &str, filled: bool, position: Position) -> Expression {
             crate::lexer::InterpolationPart::Text(text) => {
                 built.push(crate::ast::InterpolationPart::Text(text));
             }
-            crate::lexer::InterpolationPart::Expression(source) => {
+            crate::lexer::InterpolationPart::Expression(source, _) => {
                 let inner = crate::lexer::Lexer::new(&source).tokenize();
                 let Ok(mut statements) = crate::parser::Parser::new(inner).parse() else {
                     return plain;

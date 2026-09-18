@@ -7,6 +7,10 @@
 
 use crate::vm::core::VirtualMachine;
 
+/// What names the core library's own Ruby source. Ruby reports a method
+/// written there as coming from `<internal:...>` rather than from a file.
+pub(crate) const PRELUDE_FILE: &str = "<internal:prelude>";
+
 /// Ruby source evaluated into every fresh VM.
 const PRELUDE_SOURCE: &str = r##"
 module Warning
@@ -1550,6 +1554,18 @@ end
 
 class StopIteration
   attr_accessor :result
+end
+
+# The object a program runs against at the top level. Ruby calls it `main`,
+# and that is what it says of itself.
+class << __main__
+  def to_s
+    "main"
+  end
+
+  def inspect
+    "main"
+  end
 end
 
 class Thread
@@ -3556,6 +3572,28 @@ class Enumerator::ArithmeticSequence < Enumerator
 
   def each(&block)
     return self if block.nil?
+    if walks_as_floats?
+      counted = float_step_count
+      if counted == Float::INFINITY
+        value = @from.to_f
+        loop { block.call(value) }
+        return self
+      end
+      # A step of no width at all reaches nowhere, so the walk stands where
+      # it started rather than counting from it.
+      if @by.to_f.infinite?
+        block.call(@from.to_f) if counted > 0
+        return self
+      end
+      place = 0
+      while place < counted
+        value = place * @by + @from
+        value = @to if @by >= 0 ? @to < value : value < @to
+        block.call(value.to_f)
+        place = place + 1
+      end
+      return self
+    end
     value = @from
     while within?(value)
       block.call(value)
@@ -3563,6 +3601,38 @@ class Enumerator::ArithmeticSequence < Enumerator
     end
     self
   end
+
+  # Whether the walk counts in floats, where the steps are found by counting
+  # rather than by adding one to the last, so rounding does not build up.
+  def walks_as_floats?
+    return false if @to.nil? || @from.nil?
+    @from.is_a?(Float) || @to.is_a?(Float) || @by.is_a?(Float)
+  end
+  private :walks_as_floats?
+
+  # How many steps a float walk takes, read the way Ruby reads it: from the
+  # span divided by the step, widened by the rounding the division carries.
+  def float_step_count
+    first = @from.to_f
+    last = @to.to_f
+    by = @by.to_f
+    if by.infinite?
+      return (by > 0 ? first <= last : first >= last) ? 1 : 0
+    end
+    return Float::INFINITY if by == 0
+    steps = (last - first) / by
+    slack = (first.abs + last.abs + (last - first).abs) / by.abs * Float::EPSILON
+    slack = 0.5 if slack > 0.5
+    if @exclude_end
+      return 0 if steps <= 0
+      steps = steps < 1 ? 0 : (steps - slack).floor
+    else
+      return 0 if steps < 0
+      steps = (steps + slack).floor
+    end
+    steps + 1
+  end
+  private :float_step_count
 
   # Whether a value is still inside the sequence, which for a walk with no
   # end is always.
@@ -3579,6 +3649,7 @@ class Enumerator::ArithmeticSequence < Enumerator
   def size
     return Float::INFINITY if @to.nil? || @from.nil?
     return Float::INFINITY if @to == Float::INFINITY || @to == -Float::INFINITY
+    return float_step_count if walks_as_floats?
     span = @to - @from
     steps = (span / @by).floor
     counted = steps + 1
@@ -5976,16 +6047,53 @@ class IO
 
   # Which of the streams handed in have something to read, or room to write,
   # right now. Nothing is ready answers nil, which is what a caller waits on.
+  # The streams among those named that are ready to be read or written. A
+  # caller that named no timeout waits, and waiting is where every other
+  # thread gets its turn.
   def self.select(readers = nil, writers = nil, errored = nil, timeout = nil)
-    ready_readers = (readers || []).select { |held| IO.__ready__ held, false }
-    ready_writers = (writers || []).select { |held| IO.__ready__ held, true }
-    if ready_readers.empty? && ready_writers.empty?
-      # Metorex runs one thing at a time, so a stream nothing is left to
-      # write to stays unready however long the caller waits.
-      return nil unless timeout.nil?
-      return nil
+    [readers, writers, errored].each do |given|
+      next if given.nil? || given.is_a?(Array)
+      raise TypeError, "wrong argument type #{given.class} (expected Array)"
     end
-    [ready_readers, ready_writers, errored || []]
+    [readers, writers, errored].each do |given|
+      (given || []).each { |held| IO.__as_stream__ held }
+    end
+    deadline = nil
+    unless timeout.nil?
+      waited = timeout.is_a?(Numeric) ? timeout : Float(timeout)
+      raise RangeError, "NaN out of Time range" if waited.is_a?(Float) && waited.nan?
+      raise ArgumentError, "time interval must not be negative" if waited < 0
+      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + waited
+    end
+    loop do
+      ready_readers = (readers || []).select { |held| IO.__ready__ held, false }
+      ready_writers = (writers || []).select { |held| IO.__ready__ held, true }
+      unless ready_readers.empty? && ready_writers.empty?
+        # Nothing is reported as being in error: a stream that cannot be read
+        # or written says so by raising where it is used.
+        return [ready_readers, ready_writers, []]
+      end
+      unless deadline.nil?
+        return nil if Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
+      end
+      # Nothing is ready yet. Handing control over is what lets another
+      # thread write to one of these streams or close it.
+      break unless Thread.__hand_over__
+    end
+    nil
+  end
+
+  # The stream an argument names, which anything answering `to_io` gives.
+  def self.__as_stream__(held)
+    return held if held.is_a? IO
+    unless held.respond_to? :to_io
+      raise TypeError, "no implicit conversion of #{held.class} into IO"
+    end
+    stream = held.to_io
+    unless stream.is_a? IO
+      raise TypeError, "can't convert #{held.class} to IO"
+    end
+    stream
   end
 
   def self.__ready__(held, writing)
@@ -5999,9 +6107,21 @@ class IO
 
   # Two joined streams: what is written to the second is read from the first.
   # With a block the pair is handed over and closed once the block is done.
-  def self.pipe(_external = nil, _internal = nil, **_options)
+  # Two joined streams: what is written to the second is read from the first.
+  # A subclass gets two of its own, built without going through `new`, so a
+  # subclass that rewrites `new` does not decide how a pipe is made.
+  def self.pipe(external = nil, internal = nil, **options)
     reading, writing = IO.__stream__ "pipe", 0, "", 0
-    pair = [IO.__over__(reading, nil, "r"), IO.__over__(writing, nil, "w")]
+    pair = [__over__(reading, nil, "r"), __over__(writing, nil, "w")]
+    # The encodings a pipe is opened with are the read end's: what comes out
+    # of it is what was written in.
+    unless external.nil? && internal.nil? && options.empty?
+      named = external
+      if !named.nil? && !named.is_a?(Encoding) && !named.is_a?(String) && named.respond_to?(:to_str)
+        named = named.to_str
+      end
+      pair[0].set_encoding named, internal, **options
+    end
     return pair unless block_given?
     begin
       yield pair[0], pair[1]
@@ -6014,6 +6134,11 @@ class IO
   def self.__over__(handle, path = nil, mode = nil)
     held = allocate
     held.__send__ :__take__, handle, path, mode
+    # A subclass that writes its own `initialize` has it run the way Ruby
+    # runs one behind `new`, without going through `new` itself.
+    if instance_method(:initialize).owner != IO
+      held.__send__ :initialize, held.fileno, mode.nil? ? "r" : mode
+    end
     held
   end
 
@@ -6966,7 +7091,7 @@ class IO
       __stream_handle__,
       ending.nil? ? "" : ending,
       wanted,
-      paragraph && collected.empty? ? 1 : 0
+      (paragraph ? 2 : 0) + (paragraph && collected.empty? ? 1 : 0)
     )
     collected = collected + held.to_s
     return nil if collected.empty?
@@ -9695,7 +9820,31 @@ class Dir
   end
 end
 
+class Array
+  # An array is its own list of elements, which is what a pattern reads out
+  # of it.
+  def deconstruct
+    self
+  end
+end
+
+class Hash
+  # A hash is its own set of keys, which is what a pattern reads out of it.
+  # The names a pattern asked for make no difference to what is answered.
+  def deconstruct_keys(keys)
+    self
+  end
+end
+
 module Kernel
+  # `tap` hands the object to the block and answers the object itself. Ruby
+  # writes it in Ruby, so it carries a source location and names itself in a
+  # backtrace the way any other Ruby method does.
+  def tap
+    yield self
+    self
+  end
+
   # `putc` writes one character to the standard output stream.
   def putc(held)
     $stdout.putc held
@@ -10401,6 +10550,18 @@ class Thread
   def abort_on_exception=(wanted)
     @__abort_on_exception__ = wanted
   end
+
+  # A thread that dies of an exception writes what it died of, unless it was
+  # told to keep quiet. It is written while the thread is still running, so
+  # the report names it the way it stood when it failed.
+  def __report_terminated__(error)
+    return nil unless report_on_exception
+    return nil unless error.is_a?(Exception)
+    written = "#{inspect} terminated with exception (report_on_exception is true):\n"
+    written += error.full_message(highlight: false, order: :top)
+    $stderr.write written
+    nil
+  end
 end
 
 class Thread
@@ -10426,6 +10587,28 @@ class Thread
 end
 
 class Regexp
+  # A match that runs longer than a pattern was given is given up on, which
+  # this is what it reports.
+  class TimeoutError < RegexpError
+  end
+
+  # How long a match may take before it is given up on. Nothing named here
+  # lets a match take as long as it takes.
+  def self.timeout
+    $__regexp_timeout__
+  end
+
+  def self.timeout=(seconds)
+    if seconds.nil?
+      $__regexp_timeout__ = nil
+      return seconds
+    end
+    held = Float(seconds)
+    raise ArgumentError, "invalid timeout: #{seconds}" unless held > 0
+    $__regexp_timeout__ = held
+    seconds
+  end
+
   IGNORECASE = 1
   EXTENDED = 2
   MULTILINE = 4
@@ -12026,7 +12209,15 @@ impl VirtualMachine {
         let statements = crate::parser::Parser::new(tokens)
             .parse()
             .unwrap_or_else(|errors| panic!("prelude failed to parse: {:?}", errors));
+        // The core library is no file of the program's, so a method written
+        // here names itself the way Ruby names its own Ruby-level core.
+        let held_file = self
+            .current_file
+            .replace(std::path::PathBuf::from(PRELUDE_FILE));
+        let held_source = self.current_source_file.replace(PRELUDE_FILE.to_string());
         self.execute_program(&statements)
             .unwrap_or_else(|error| panic!("prelude failed to run: {}", error));
+        self.current_file = held_file;
+        self.current_source_file = held_source;
     }
 }

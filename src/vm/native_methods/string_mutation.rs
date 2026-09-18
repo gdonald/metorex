@@ -94,6 +94,7 @@ impl VirtualMachine {
             && self.warning_category_enabled("deprecated")
         {
             self.emit_warning_to_stderr(&notice, position);
+            self.report_string_birthplace(target, position);
         }
         if target.is_borrowed() {
             let message = "can't modify string; temporarily locked".to_string();

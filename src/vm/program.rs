@@ -124,6 +124,31 @@ impl VirtualMachine {
         &mut self,
         statements: &[Statement],
     ) -> Result<Option<Object>, MetorexError> {
+        // Ruby's parser reserves every local a file assigns to before any of
+        // it runs, so a name read ahead of its assignment answers nil and
+        // TOPLEVEL_BINDING names it from the start.
+        for name in crate::ast::scope_locals::collect_assigned_locals(statements) {
+            if self.environment().assignment_introduces_a_local(&name) {
+                self.environment_mut().hoist(name);
+            }
+        }
+        // Every `BEGIN` body runs before the rest of the unit, in the order
+        // they were written, and shares the unit's own scope.
+        for statement in statements {
+            if let Statement::BeginBlock { body, position } = statement {
+                // A program read one line at a time runs the same unit once
+                // per line, and the body belongs to the unit rather than to
+                // each pass over it.
+                let site = (
+                    self.current_source_file.clone().unwrap_or_default(),
+                    position.line,
+                    position.column,
+                );
+                if self.opened_blocks.insert(site) {
+                    self.execute_statements_internal(body)?;
+                }
+            }
+        }
         let mut last_value = None;
 
         for statement in statements {
@@ -133,6 +158,9 @@ impl VirtualMachine {
                 position,
             } = statement
             {
+                if self.coverage.is_some() {
+                    self.coverage_count(position.line);
+                }
                 let result = self.evaluate_expression(expression)?;
 
                 // Ruby-style auto-call: if expression statement evaluates to a Method
@@ -357,8 +385,34 @@ impl VirtualMachine {
                                         Some(Object::Block(std::rc::Rc::new(block)));
                                     self.pending_block_from_ampersand = true;
                                 }
-                                _ => args.push(other),
+                                // Anything else is no block at all, which
+                                // Ruby names both sides of.
+                                answered => {
+                                    let named = self.builtins().class_of(&other).ruby_name();
+                                    let gives = self.builtins().class_of(&answered).ruby_name();
+                                    let message = format!(
+                                        "can't convert {} into Proc ({}#to_proc gives {})",
+                                        named, named, gives
+                                    );
+                                    return Err(crate::vm::errors::simple_exception(
+                                        "TypeError",
+                                        &message,
+                                        other_position,
+                                    ));
+                                }
                             }
+                        }
+                        // An object with no `to_proc` of its own is no block,
+                        // and Ruby refuses it rather than counting it among
+                        // the arguments.
+                        other @ Object::Instance(_) => {
+                            let named = self.builtins().class_of(&other).ruby_name();
+                            let message = format!("no implicit conversion of {} into Proc", named);
+                            return Err(crate::vm::errors::simple_exception(
+                                "TypeError",
+                                &message,
+                                other_position,
+                            ));
                         }
                         other => {
                             // Non-block, non-nil &arg: push as positional so

@@ -54,9 +54,11 @@ end
 // ── instance variable / class variable outside context ───────────────────────
 
 #[test]
-fn ivar_outside_method_error() {
-    let err = run_err("@x = 1");
-    assert!(err.contains("instance variable") || err.contains("method"));
+fn ivar_at_the_top_level_belongs_to_main() {
+    // At the top level `self` is `main`, which carries the program's own
+    // instance variables the way any other object does.
+    let result = run("@x = 1\n@x + @never.to_i");
+    assert_eq!(result, Some(Object::Int(1)));
 }
 
 #[test]

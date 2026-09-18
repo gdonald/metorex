@@ -264,3 +264,47 @@ fn test_filesystem_name_matching_parens_execution() {
     let output = run_example("filesystem/name_matching_parens.rb");
     assert_eq!(output, NAME_MATCHING_OUTPUT);
 }
+
+/// The expected output of both `filesystem/waiting_pipes` variants, which
+/// differ only in whether the calls are written with parentheses.
+const WAITING_PIPES_OUTPUT: &str = concat!(
+    "\"hello\"\n",
+    "true\n",
+    "#<Encoding:UTF-16BE>\n",
+    "#<Encoding:UTF-8>\n",
+    "IOError\n"
+);
+
+#[test]
+fn test_filesystem_waiting_pipes_execution() {
+    let output = run_example("filesystem/waiting_pipes.rb");
+    assert_eq!(output, WAITING_PIPES_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_waiting_pipes_parens_execution() {
+    let output = run_example("filesystem/waiting_pipes_parens.rb");
+    assert_eq!(output, WAITING_PIPES_OUTPUT);
+}
+
+/// The expected output of both `filesystem/written_encodings` variants, which differ only in whether the
+/// calls are written with parentheses.
+const WRITTEN_ENCODINGS_OUTPUT: &str = concat!(
+    "[108, 195, 173, 110, 101, 97, 10]\n",
+    "\"línea\\n\"\n",
+    "[195, 169]\n",
+    "\"uno·\"\n",
+    "\"dos·tres\"\n",
+);
+
+#[test]
+fn test_filesystem_written_encodings_execution() {
+    let output = run_example("filesystem/written_encodings.rb");
+    assert_eq!(output, WRITTEN_ENCODINGS_OUTPUT);
+}
+
+#[test]
+fn test_filesystem_written_encodings_parens_execution() {
+    let output = run_example("filesystem/written_encodings_parens.rb");
+    assert_eq!(output, WRITTEN_ENCODINGS_OUTPUT);
+}

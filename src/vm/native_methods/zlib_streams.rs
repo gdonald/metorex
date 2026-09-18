@@ -312,34 +312,19 @@ pub(crate) fn zlib_unwrap_counted_with(
     Some((held, front + used + 4))
 }
 
-/// Write `bytes` as DEFLATE stored blocks, which name no code and so read
-/// back through any decoder.
-pub(crate) fn deflate_stored(bytes: &[u8]) -> Vec<u8> {
-    const BLOCK: usize = 65535;
-    let mut out = Vec::new();
-    let mut pieces = bytes.chunks(BLOCK).peekable();
-    // Nothing to write is one last block holding only the mark that the
-    // block is over, which is the two bytes zlib itself writes.
-    if bytes.is_empty() {
-        out.push(0x03);
-        out.push(0x00);
-        return out;
+/// The same, written against a dictionary. A stream that names one says so in
+/// its header and carries the dictionary's checksum, so a reader can tell
+/// whether it holds the dictionary the writer used.
+pub(crate) fn zlib_wrap_with(bytes: &[u8], dictionary: &[u8]) -> Vec<u8> {
+    let mut out = if dictionary.is_empty() {
+        vec![0x78, 0x9c]
+    } else {
+        vec![0x78, 0xbb]
+    };
+    if !dictionary.is_empty() {
+        out.extend_from_slice(&adler32(1, dictionary).to_be_bytes());
     }
-    while let Some(piece) = pieces.next() {
-        out.push(u8::from(pieces.peek().is_none()));
-        let length = piece.len() as u16;
-        out.extend_from_slice(&length.to_le_bytes());
-        out.extend_from_slice(&(!length).to_le_bytes());
-        out.extend_from_slice(piece);
-    }
-    out
-}
-
-/// Wrap a DEFLATE stream in the two-byte header and Adler-32 that name it a
-/// zlib stream.
-pub(crate) fn zlib_wrap(bytes: &[u8]) -> Vec<u8> {
-    let mut out = vec![0x78, 0x9c];
-    out.extend_from_slice(&deflate_stored(bytes));
+    out.extend_from_slice(&super::zlib_deflate::deflate(bytes, dictionary));
     out.extend_from_slice(&adler32(1, bytes).to_be_bytes());
     out
 }
@@ -390,7 +375,7 @@ pub(crate) fn gzip_wrap(bytes: &[u8], name: Option<&str>, stamp: u32) -> Vec<u8>
         out.extend_from_slice(name.as_bytes());
         out.push(0);
     }
-    out.extend_from_slice(&deflate_stored(bytes));
+    out.extend_from_slice(&super::zlib_deflate::deflate(bytes, &[]));
     out.extend_from_slice(&crc32(0, bytes).to_le_bytes());
     out.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
     out
@@ -441,7 +426,18 @@ impl VirtualMachine {
                     .map(|held| Object::Int(i64::from(held)))
                     .collect(),
             )),
-            "deflate" => Ok(super::pack_format::bytes_to_string(&zlib_wrap(&bytes))),
+            "deflate" => {
+                let dictionary = match arguments.get(3) {
+                    Some(Object::String(held)) => {
+                        super::pack_format::string_to_bytes(&held.as_str().to_string())
+                    }
+                    _ => Vec::new(),
+                };
+                Ok(super::pack_format::bytes_to_string(&zlib_wrap_with(
+                    &bytes,
+                    &dictionary,
+                )))
+            }
             "inflate" => match zlib_unwrap(&bytes) {
                 Some(held) => Ok(super::pack_format::bytes_to_string(&held)),
                 None => Err(refuse("the text")),

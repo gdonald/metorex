@@ -83,6 +83,11 @@ impl VirtualMachine {
                 message,
             });
         }
+        // TOPLEVEL_BINDING stands over the main script's own scope, so the
+        // locals it names are whatever that scope holds right now.
+        if name == "TOPLEVEL_BINDING" {
+            self.refresh_toplevel_binding();
+        }
         if let Some(val) = self.environment().get(name) {
             // A method on `self` wins over a same-named Kernel function, so a
             // bare `to_s` inside a class reaches that class's `to_s` rather
@@ -209,6 +214,14 @@ impl VirtualMachine {
                     bound.receiver = Some(Box::new(Object::Nil));
                     return Ok(Object::Method(Rc::new(bound)));
                 }
+            }
+            // At the top level a bare name may name a method written on
+            // `main` alone, which nothing else answers to.
+            if let Ok(main) = self.eval_self(position)
+                && let Some((owner, method)) = self.lookup_method(&main, name)
+                && !method.is_undefined
+            {
+                return self.invoke_method(owner, method, main, vec![], position);
             }
             return Err(undefined_variable_error(
                 name,

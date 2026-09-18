@@ -18,27 +18,31 @@ use crate::object::{BlockStatement, Object};
 /// in the block's fresh scope when the corresponding argument is missing.
 /// Bind one block parameter. A `|(a, b)|` group spreads the value it is given
 /// across the names in the group, filling nil where the array is shorter.
-fn define_block_param(vm: &mut VirtualMachine, param: &str, value: Object) {
+fn define_block_param(
+    vm: &mut VirtualMachine,
+    param: &str,
+    value: Object,
+) -> Result<(), MetorexError> {
     // The parameter a block takes because its body reads a bare `it` binds
     // that name without declaring it: `local_variables` does not report it,
     // and an `it` already in scope keeps its meaning.
     if param == crate::object::IMPLICIT_IT_PARAM {
-        if vm.environment().get("it").is_none() {
+        if vm.environment().get("it").is_none() || vm.environment().name_is_only_hoisted("it") {
             vm.environment_mut().define_hidden("it".to_string(), value);
         }
-        return;
+        return Ok(());
     }
     // A numbered parameter binds its name without declaring it, the same
     // way the implicit `it` does.
     if crate::parser::names_a_numbered_parameter(param) {
         vm.environment_mut().define_hidden(param.to_string(), value);
-        return;
+        return Ok(());
     }
     let Some(names) = param.strip_prefix(crate::object::DESTRUCTURED_GROUP_PREFIX) else {
         vm.environment_mut().define(param.to_string(), value);
-        return;
+        return Ok(());
     };
-    bind_group_names(vm, names, value);
+    bind_group_names(vm, names, value)
 }
 
 /// The names a destructuring group holds, split at the commas that stand
@@ -69,10 +73,38 @@ fn group_parts(names: &str) -> Vec<String> {
 
 /// Spread one value across the names of a destructuring group. A group may
 /// hold groups of its own, and one name may take whatever the others leave.
-pub(crate) fn bind_group_names(vm: &mut VirtualMachine, names: &str, value: Object) {
-    // A value that is not an Array has nothing to spread: the first name
-    // that is not a splat takes it, the splats take nothing, and the rest
-    // are nil.
+pub(crate) fn bind_group_names(
+    vm: &mut VirtualMachine,
+    names: &str,
+    value: Object,
+) -> Result<(), MetorexError> {
+    // Anything but an Array is asked for `to_ary`, and what that answers
+    // spreads across the names. A value that answers none has nothing to
+    // spread: the first name that is not a splat takes it, the splats take
+    // nothing, and the rest are nil.
+    let value = match &value {
+        Object::Array(_) => value,
+        other if vm.responds_to(other, "to_ary") => {
+            let answered =
+                vm.send_to_object(other.clone(), "to_ary", Vec::new(), Position::new(0, 0, 0))?;
+            match answered {
+                Object::Array(_) => answered,
+                other_answer => {
+                    let named = vm.builtins().class_of(other).ruby_name();
+                    let gives = vm.builtins().class_of(&other_answer).ruby_name();
+                    return Err(crate::vm::errors::simple_exception(
+                        "TypeError",
+                        &format!(
+                            "can't convert {} to Array ({}#to_ary gives {})",
+                            named, named, gives
+                        ),
+                        Position::new(0, 0, 0),
+                    ));
+                }
+            }
+        }
+        _ => value,
+    };
     let (spread, spreads) = match &value {
         Object::Array(elements) => (elements.borrow().clone(), true),
         other => (vec![other.clone()], false),
@@ -106,14 +138,14 @@ pub(crate) fn bind_group_names(vm: &mut VirtualMachine, names: &str, value: Obje
                     Object::array(spread.get(index..upto).unwrap_or(&[]).to_vec())
                 }
                 Some(star) if index > star => {
-                    let from_end = parts.len() - index;
+                    // The names after the splat take the last values, and
+                    // where there are too few they start right after the
+                    // names before the splat and run out into nil.
+                    let after = parts.len() - star - 1;
+                    let from = spread.len().saturating_sub(after).max(star);
                     spread
-                        .len()
-                        .checked_sub(from_end)
-                        // A name after the splat takes from the end, but only
-                        // what the names before the splat left behind.
-                        .filter(|at| *at >= star)
-                        .and_then(|at| spread.get(at).cloned())
+                        .get(from + index - star - 1)
+                        .cloned()
                         .unwrap_or(Object::Nil)
                 }
                 _ => spread.get(index).cloned().unwrap_or(Object::Nil),
@@ -123,7 +155,7 @@ pub(crate) fn bind_group_names(vm: &mut VirtualMachine, names: &str, value: Obje
             .strip_prefix('(')
             .and_then(|rest| rest.strip_suffix(')'))
         {
-            Some(nested) => bind_group_names(vm, nested, taken),
+            Some(nested) => bind_group_names(vm, nested, taken)?,
             None => {
                 let name = part.strip_prefix('*').unwrap_or(part);
                 if name.is_empty() {
@@ -133,6 +165,7 @@ pub(crate) fn bind_group_names(vm: &mut VirtualMachine, names: &str, value: Obje
             }
         }
     }
+    Ok(())
 }
 
 fn bind_block_params(
@@ -140,11 +173,10 @@ fn bind_block_params(
     params: &[String],
     defaults: &[(usize, crate::ast::Expression)],
     arguments: Vec<Object>,
-    strict: bool,
     position: Position,
 ) -> Result<(), MetorexError> {
-    // A lambda refuses a call that leaves out a keyword it declared without
-    // a default, the way a method does. A proc binds nil instead.
+    // A keyword declared without a default has to be given, and a call that
+    // leaves one out is refused the way a method's would be.
     let mut missing_keywords: Vec<String> = Vec::new();
     // A trailing keyword-argument hash feeds the `name:` parameters, and
     // what is left over is bound by position.
@@ -217,11 +249,12 @@ fn bind_block_params(
                         Some((_, default)) => {
                             vm.evaluate_expression(default).unwrap_or(Object::Nil)
                         }
-                        None if strict => {
+                        // A keyword declared without a default has to be
+                        // given, whether the block is a lambda or a proc.
+                        None => {
                             missing_keywords.push(name);
                             continue;
                         }
-                        None => Object::Nil,
                     }
                 }
             };
@@ -312,7 +345,7 @@ fn bind_block_params(
             } else {
                 // A group written among the parameters spreads its value the
                 // same way it does when no splat stands beside it.
-                define_block_param(vm, param, value);
+                define_block_param(vm, param, value)?;
             }
         }
     } else {
@@ -331,7 +364,7 @@ fn bind_block_params(
                     None => Object::Nil,
                 },
             };
-            define_block_param(vm, param, value);
+            define_block_param(vm, param, value)?;
         }
     }
 
@@ -407,9 +440,9 @@ impl VirtualMachine {
         // with nil and drops extras.
         if !destructured {
             let _ = (has_variadic, has_block_param, required, expected);
-            if block.is_lambda {
-                refuse_keywords_for_none_declared(block, &arguments, position)?;
-            }
+            // `|**nil|` says the block takes no keyword arguments at all,
+            // whether it is a lambda or a proc.
+            refuse_keywords_for_none_declared(block, &arguments, position)?;
             strict_arity_check(block, found, position)?;
         }
 
@@ -417,12 +450,20 @@ impl VirtualMachine {
         let frame_location = position_to_location(position);
         let frame_location_string = Some(format!("{}", frame_location));
 
+        let depth = self.block_nesting_depth();
         let frame = match block.defining_method.clone() {
-            Some((callee, defined)) => {
-                CallFrame::method(frame_name.clone(), frame_location_string, callee, defined)
-            }
-            None => CallFrame::boundary(frame_name.clone()),
+            Some((callee, defined)) => CallFrame::method(
+                frame_name.clone(),
+                frame_location_string.clone(),
+                callee,
+                defined,
+            ),
+            // A block written outside any method is still entered from
+            // somewhere, and that is the call site the frame records.
+            None => CallFrame::boundary(frame_name.clone()).with_location(frame_location_string),
         }
+        .nested_in_a_block(depth)
+        .written_in_scope(block.written_in.clone())
         .with_source_file(self.current_source_file.clone());
         // The body runs in the file the block was written in, which is what a
         // backtrace entry for a call made from here has to name.
@@ -524,6 +565,8 @@ impl VirtualMachine {
                 CallFrame::boundary(frame_name.clone()).with_location(frame_location_string.clone())
             }
         }
+        .nested_in_a_block(self.block_nesting_depth())
+        .written_in_scope(block.written_in.clone())
         .with_source_file(self.current_source_file.clone());
         let body_source_file = block
             .source_file
@@ -607,7 +650,6 @@ impl VirtualMachine {
                     block.parameters(),
                     &block.parameter_defaults,
                     arguments,
-                    block.is_lambda,
                     Position::new(0, 0, 0),
                 )?;
 
@@ -617,7 +659,7 @@ impl VirtualMachine {
                 // returns nil instead of NameError when execution
                 // short-circuits via raise.
                 for name in collect_assigned_locals(block.body()) {
-                    if vm.environment().get(&name).is_none() {
+                    if vm.environment().assignment_introduces_a_local(&name) {
                         vm.environment_mut().hoist(name);
                     }
                 }
@@ -627,7 +669,25 @@ impl VirtualMachine {
                 'again: loop {
                     last_value = Object::Nil;
                     for statement in block.body() {
+                        // `def self.name` written here names the receiver the
+                        // block runs against, and that receiver's singleton
+                        // class is the definee, so the method is written there
+                        // under its own name rather than as a class method of
+                        // the singleton.
+                        let written_plainly = statement_for_its_own_receiver(statement);
                         if let Some(definee) = &definee
+                            && let Some(plain) = &written_plainly
+                        {
+                            let definee = std::rc::Rc::clone(definee);
+                            last_value = vm.apply_class_body_statements(
+                                &definee,
+                                std::slice::from_ref(plain),
+                                statement.position(),
+                            )?;
+                            continue;
+                        }
+                        if let Some(definee) = &definee
+                            && written_plainly.is_none()
                             && matches!(
                                 statement,
                                 Statement::MethodDef { .. }
@@ -723,6 +783,24 @@ impl VirtualMachine {
         // inside a class body).
         let saved_def_scope =
             std::mem::replace(&mut self.def_scope_stack, block.captured_def_scope.clone());
+        // A block opened inside this body belongs to the method this one was
+        // written in, so a `return` written two blocks deep unwinds to the
+        // method holding them both.
+        let saved_lexical_home = self.lexical_home_frame.replace(block.home_frame);
+        // The body belongs to the file the block was written in, whatever
+        // file called it, and a literal in it is written in that file's
+        // encoding.
+        let body_source_file = block
+            .source_file
+            .clone()
+            .or_else(|| self.current_source_file.clone());
+        let saved_source_file = std::mem::replace(&mut self.current_source_file, body_source_file);
+        let saved_source_encoding = std::mem::replace(
+            &mut self.current_source_encoding,
+            self.current_source_file
+                .as_ref()
+                .and_then(|named| self.file_encodings.get(named).cloned()),
+        );
         // A class variable written in the body belongs to the class or module
         // the block was written in, which is none at the top level.
         self.class_var_cref_stack
@@ -762,7 +840,6 @@ impl VirtualMachine {
                 &block.binding_parameters(),
                 &block.parameter_defaults,
                 arguments,
-                block.is_lambda,
                 Position::new(0, 0, 0),
             )?;
 
@@ -778,7 +855,7 @@ impl VirtualMachine {
             // returns nil rather than raising NameError. Mirrors Ruby's
             // parser-level local-variable hoisting.
             for name in collect_assigned_locals(block.body()) {
-                if self.environment().get(&name).is_none() {
+                if self.environment().assignment_introduces_a_local(&name) {
                     self.environment_mut().hoist(name);
                 }
             }
@@ -870,6 +947,19 @@ impl VirtualMachine {
         self.environment_mut().pop_scope();
         self.class_var_cref_stack.pop();
         self.def_scope_stack = saved_def_scope;
+        self.lexical_home_frame = saved_lexical_home;
+        // The exception says where it came from while the block's own file is
+        // still the one in force, which is what a backtrace entry names.
+        if let Err(MetorexError::UncaughtException {
+            exception,
+            location,
+            ..
+        }) = &result
+        {
+            self.note_exception_location(exception, location);
+        }
+        self.current_source_file = saved_source_file;
+        self.current_source_encoding = saved_source_encoding;
         // A `break` leaving this body belongs to the invocation that was
         // handed the block, which is the call made from the frame the block
         // was written in.
@@ -896,6 +986,7 @@ impl VirtualMachine {
         &mut self,
         block: &BlockStatement,
         arguments: Vec<Object>,
+        position: Position,
     ) -> Result<ControlFlow, MetorexError> {
         // `{ |x, y| }` handed a single array spreads it across the parameters,
         // which is how `[[1, 2]].each { |x, y| }` binds x and y.
@@ -908,6 +999,23 @@ impl VirtualMachine {
         // A lambda takes its arguments the way a method does, so a yield that
         // does not match its parameters is refused rather than padded.
         strict_arity_check(block, arguments.len(), Position::new(0, 0, 0))?;
+        // A block body is a place of its own in a backtrace, named for the
+        // scope it was written in and for how many blocks deep it sits.
+        let frame_name = block.name().to_string();
+        let depth = self.block_nesting_depth();
+        // A block reached from a method is entered where that method was
+        // called, which is the call site the frame records.
+        let called_at = Some(format!("{}", position_to_location(position)));
+        let frame = match block.defining_method.clone() {
+            Some((callee, defined)) => {
+                CallFrame::method(frame_name.clone(), called_at, callee, defined)
+            }
+            None => CallFrame::boundary(frame_name.clone()).with_location(called_at),
+        }
+        .nested_in_a_block(depth)
+        .written_in_scope(block.written_in.clone())
+        .with_source_file(self.current_source_file.clone());
+        self.call_stack_push(frame);
         self.environment_mut().push_isolated_scope();
         // The body belongs to the file the block was written in.
         let body_source_file = block
@@ -937,14 +1045,13 @@ impl VirtualMachine {
                 &block.binding_parameters(),
                 &block.parameter_defaults,
                 arguments,
-                block.is_lambda,
                 Position::new(0, 0, 0),
             )?;
 
             // Pre-bind syntactically assigned locals to nil — see
             // execute_block_body for the rationale.
             for name in collect_assigned_locals(block.body()) {
-                if self.environment().get(&name).is_none() {
+                if self.environment().assignment_introduces_a_local(&name) {
                     self.environment_mut().hoist(name);
                 }
             }
@@ -977,7 +1084,45 @@ impl VirtualMachine {
         self.current_source_file = saved_source_file;
         self.current_source_encoding = saved_source_encoding;
         self.environment_mut().pop_scope();
+        self.call_stack_pop();
         result
+    }
+}
+
+/// The same definition written without the `self.` that named the receiver.
+/// A block running against a receiver has that receiver's singleton class as
+/// its definee, so the method belongs there under its own name.
+fn statement_for_its_own_receiver(statement: &Statement) -> Option<Statement> {
+    match statement {
+        Statement::FunctionDef {
+            name,
+            parameters,
+            body,
+            singleton_class: Some(named),
+            position,
+        } if named == "self" => Some(Statement::FunctionDef {
+            name: name.clone(),
+            parameters: parameters.clone(),
+            body: body.clone(),
+            singleton_class: None,
+            position: *position,
+        }),
+        Statement::MethodDef {
+            name,
+            parameters,
+            body,
+            is_class_method: true,
+            position,
+            end_position,
+        } => Some(Statement::MethodDef {
+            name: name.clone(),
+            parameters: parameters.clone(),
+            body: body.clone(),
+            is_class_method: false,
+            position: *position,
+            end_position: *end_position,
+        }),
+        _ => None,
     }
 }
 

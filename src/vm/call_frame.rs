@@ -27,6 +27,12 @@ pub struct CallFrame {
     source_file: Option<String>,
     /// What the frame is running.
     kind: FrameKind,
+    /// How many blocks deep the frame sits inside the scope it names. Zero
+    /// where the frame runs the scope itself rather than a block written in
+    /// it, which is what tells `foo` from `block in foo`.
+    block_depth: u32,
+    /// The scope the block this frame runs was written in, for a block frame.
+    written_in: Option<String>,
 }
 
 impl CallFrame {
@@ -37,6 +43,8 @@ impl CallFrame {
             location,
             source_file: None,
             kind: FrameKind::Block,
+            block_depth: 1,
+            written_in: None,
         }
     }
 
@@ -55,6 +63,8 @@ impl CallFrame {
                 callee: callee.into(),
                 defined: defined.into(),
             },
+            block_depth: 0,
+            written_in: None,
         }
     }
 
@@ -65,6 +75,8 @@ impl CallFrame {
             location: None,
             source_file: None,
             kind: FrameKind::Boundary,
+            block_depth: 0,
+            written_in: None,
         }
     }
 
@@ -99,5 +111,28 @@ impl CallFrame {
     /// The file the call site sits in, when it was recorded.
     pub fn source_file(&self) -> Option<&str> {
         self.source_file.as_deref()
+    }
+
+    /// Say the frame runs a block written `depth` blocks inside the scope it
+    /// names.
+    pub fn nested_in_a_block(mut self, depth: u32) -> Self {
+        self.block_depth = depth;
+        self
+    }
+
+    /// How many blocks deep the frame sits inside the scope it names.
+    pub fn block_depth(&self) -> u32 {
+        self.block_depth
+    }
+
+    /// Say which scope the block this frame runs was written in.
+    pub fn written_in_scope(mut self, scope: Option<String>) -> Self {
+        self.written_in = scope;
+        self
+    }
+
+    /// The scope the block this frame runs was written in.
+    pub fn written_in(&self) -> Option<&str> {
+        self.written_in.as_deref()
     }
 }

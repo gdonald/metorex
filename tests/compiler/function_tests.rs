@@ -306,6 +306,7 @@ fn method_def_emits_method_opcode() {
             position: pos(),
         }],
         position: pos(),
+        end_position: pos(),
     }];
     let chunk = compile_stmts(&stmts);
     let ops = opcodes(&chunk);
@@ -327,6 +328,7 @@ fn method_def_stores_compiled_function() {
         ],
         body: vec![],
         position: pos(),
+        end_position: pos(),
     }];
     let chunk = compile_stmts(&stmts);
     let func = find_compiled_function(&chunk).unwrap();

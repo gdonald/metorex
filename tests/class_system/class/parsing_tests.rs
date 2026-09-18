@@ -128,6 +128,7 @@ fn test_class_with_single_method() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -167,6 +168,7 @@ fn test_class_with_multiple_methods() {
                     position: pos(3, 5),
                 }],
                 position: pos(2, 3),
+                end_position: pos(2, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -191,6 +193,7 @@ fn test_class_with_multiple_methods() {
                     position: pos(7, 5),
                 }],
                 position: pos(6, 3),
+                end_position: pos(6, 3),
             },
         ],
         position: pos(1, 1),
@@ -240,6 +243,7 @@ fn test_class_with_constructor() {
                 },
             ],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -287,6 +291,7 @@ fn test_class_with_constructor_and_methods() {
                     },
                 ],
                 position: pos(2, 3),
+                end_position: pos(2, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -308,6 +313,7 @@ fn test_class_with_constructor_and_methods() {
                     position: pos(8, 5),
                 }],
                 position: pos(7, 3),
+                end_position: pos(7, 3),
             },
         ],
         position: pos(1, 1),
@@ -341,6 +347,7 @@ fn test_class_with_instance_variable_initialization() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -399,6 +406,7 @@ fn test_class_with_multiple_instance_variables() {
                 },
             ],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -431,6 +439,7 @@ fn test_class_with_class_variable() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -463,6 +472,7 @@ fn test_class_method_with_default_parameters() {
             ],
             body: vec![],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -483,6 +493,7 @@ fn test_class_method_with_variadic_parameters() {
             parameters: vec![Parameter::variadic("messages".to_string(), pos(2, 11))],
             body: vec![],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -503,6 +514,7 @@ fn test_class_method_with_keyword_parameters() {
             parameters: vec![Parameter::keyword("options".to_string(), pos(2, 17))],
             body: vec![],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -536,6 +548,7 @@ fn test_class_with_getter_and_setter() {
                     position: pos(3, 5),
                 }],
                 position: pos(2, 3),
+                end_position: pos(2, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -549,6 +562,7 @@ fn test_class_with_getter_and_setter() {
                     position: pos(7, 5),
                 }],
                 position: pos(6, 3),
+                end_position: pos(6, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -566,6 +580,7 @@ fn test_class_with_getter_and_setter() {
                     position: pos(11, 5),
                 }],
                 position: pos(10, 3),
+                end_position: pos(10, 3),
             },
         ],
         position: pos(1, 1),
@@ -618,6 +633,7 @@ fn test_class_method_with_conditional() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -723,6 +739,7 @@ fn test_class_method_with_loop() {
                 },
             ],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -751,6 +768,7 @@ fn test_inherited_class_with_override() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -772,6 +790,7 @@ fn test_inherited_class_with_override() {
                 position: pos(9, 5),
             }],
             position: pos(8, 3),
+            end_position: pos(8, 3),
         }],
         position: pos(7, 1),
     };
@@ -799,6 +818,7 @@ fn test_inherited_class_with_additional_methods() {
                     position: pos(3, 5),
                 }],
                 position: pos(2, 3),
+                end_position: pos(2, 3),
             },
             Statement::MethodDef {
                 is_class_method: false,
@@ -812,6 +832,7 @@ fn test_inherited_class_with_additional_methods() {
                     position: pos(7, 5),
                 }],
                 position: pos(6, 3),
+                end_position: pos(6, 3),
             },
         ],
         position: pos(1, 1),
@@ -855,6 +876,7 @@ fn test_class_with_nested_function() {
                 singleton_class: None,
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -893,6 +915,7 @@ fn test_class_with_self_reference() {
                 },
             ],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };
@@ -948,6 +971,7 @@ fn test_class_with_exception_handling() {
                 position: pos(3, 5),
             }],
             position: pos(2, 3),
+            end_position: pos(2, 3),
         }],
         position: pos(1, 1),
     };

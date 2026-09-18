@@ -141,7 +141,8 @@ end
 
 #[test]
 fn case_in_control_flow_exception_at_top_level() {
-    // case/in where no pattern matches → NoMatchingPatternError at top level
+    // case/in where no pattern matches raises NoMatchingPatternError, whose
+    // message is the value that went unmatched.
     let err = run_err(
         r#"
 case "hello"
@@ -150,9 +151,7 @@ in 42
 end
 "#,
     );
-    assert!(
-        err.contains("NoMatchingPattern") || err.contains("pattern") || err.contains("matched")
-    );
+    assert!(err.contains("\"hello\""));
 }
 
 // ── InstanceVariable read with non-instance self ──────────────────────────────

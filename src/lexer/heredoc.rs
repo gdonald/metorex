@@ -75,12 +75,18 @@ impl<'a> Lexer<'a> {
                 break;
             }
         }
-        if let Some(q) = quote
-            && self.peek() == Some(q)
-        {
-            self.advance();
-        }
-        if terminator.is_empty() {
+        // A quoted terminator has to close on the same line. One that does
+        // not is no heredoc at all, and `<<` is left to stand on its own,
+        // which is the syntax error Ruby reports.
+        let quote_closed = match quote {
+            Some(q) if self.peek() == Some(q) => {
+                self.advance();
+                true
+            }
+            Some(_) => false,
+            None => true,
+        };
+        if terminator.is_empty() || !quote_closed {
             // Not actually a heredoc — restore the state and let the caller
             // fall back to the shovel operator.
             self.chars = saved_chars;
@@ -200,7 +206,7 @@ impl<'a> Lexer<'a> {
         // into Text/Expression parts. Otherwise return the raw String.
         if interpolate {
             if body.contains("#{") {
-                return Some(split_interpolated(&body));
+                return Some(split_interpolated(&body, saved_line + 1));
             }
             return Some(TokenKind::String(unescaped(&body)));
         }
@@ -237,6 +243,9 @@ pub(crate) fn unescaped(text: &str) -> String {
             'f' => held.push('\u{c}'),
             'v' => held.push('\u{b}'),
             '0' => held.push('\0'),
+            // A backslash at the end of a line joins it to the next, so
+            // neither the backslash nor the newline stands in the text.
+            '\n' => {}
             'x' => {
                 let mut digits = String::new();
                 while digits.len() < 2 && at < letters.len() && letters[at].is_ascii_hexdigit() {
@@ -274,8 +283,8 @@ pub(crate) fn unescaped(text: &str) -> String {
 /// Split a heredoc body into interpolation parts. Mirrors the `#{expr}`
 /// scanner used for double-quoted strings: balances braces inside the
 /// expression text, and respects `\#{` as an escape for a literal `#{`.
-fn split_interpolated(body: &str) -> TokenKind {
-    let parts = split_interpolation_parts(body);
+fn split_interpolated(body: &str, first_line: usize) -> TokenKind {
+    let parts = split_interpolation_parts_from(body, first_line);
     if parts.is_empty() {
         TokenKind::String(String::new())
     } else if parts
@@ -305,10 +314,24 @@ fn split_interpolated(body: &str) -> TokenKind {
 /// Split a body containing `#{expr}` interpolations into its parts. Balances
 /// braces inside each expression, and treats `\#{` as a literal `#{`.
 pub(crate) fn split_interpolation_parts(body: &str) -> Vec<InterpolationPart> {
+    split_interpolation_parts_from(body, 0)
+}
+
+/// The same split, with the source line the body's first line sits on, so
+/// each `#{` is recorded at the line it was written on. A zero line means the
+/// caller has none to give.
+pub(crate) fn split_interpolation_parts_from(
+    body: &str,
+    first_line: usize,
+) -> Vec<InterpolationPart> {
     let mut parts: Vec<InterpolationPart> = Vec::new();
     let mut current = String::new();
+    let mut line = first_line;
     let mut chars = body.chars().peekable();
     while let Some(ch) = chars.next() {
+        if ch == '\n' && first_line > 0 {
+            line += 1;
+        }
         if ch == '\\' {
             match chars.peek() {
                 Some('#') => {
@@ -361,7 +384,7 @@ pub(crate) fn split_interpolation_parts(body: &str) -> Vec<InterpolationPart> {
                     expr.push(ec);
                 }
             }
-            parts.push(InterpolationPart::Expression(expr));
+            parts.push(InterpolationPart::Expression(expr, line));
         } else {
             current.push(ch);
         }

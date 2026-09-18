@@ -274,7 +274,7 @@ const COPIES_AND_DUMPS_OUTPUT: &str = concat!(
     "\"\\\"\\\\x00\\\"\"\n",
     "\"\\\"caf\\\\u00E9\\\"\"\n",
     "\"\\\"\\\\u{10FFFF}\\\"\"\n",
-    "\"\\\"interp 1 and \\\\\\#@ivar\\\"\"\n",
+    "\"\\\"interp 1 and \\\"\"\n",
 );
 
 #[test]
@@ -358,4 +358,32 @@ fn test_strings_split_shapes_execution() {
 fn test_strings_split_shapes_parens_execution() {
     let output = run_example("strings/split_shapes_parens.rb");
     assert_eq!(output, SPLIT_SHAPES_OUTPUT);
+}
+
+/// The expected output of both `strings/short_interpolation_and_escapes`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const SHORT_INTERPOLATION_AND_ESCAPES_OUTPUT: &str = concat!(
+    "[\"held\", \"gee\", \"again\", \"shared\", \"held[\", \"heldheld\", ",
+    "\"\\#@\", \"\\#@ \", \"\\#@@\", \"\\#$%\"]\n",
+    "[24]\n",
+    "[24]\n",
+    "[248]\n",
+    "[152]\n",
+    "[26]\n",
+    "Encoding::CompatibilityError\n",
+    "main's own\n",
+    "nil\n",
+);
+
+#[test]
+fn test_strings_short_interpolation_and_escapes_execution() {
+    let output = run_example("strings/short_interpolation_and_escapes.rb");
+    assert_eq!(output, SHORT_INTERPOLATION_AND_ESCAPES_OUTPUT);
+}
+
+#[test]
+fn test_strings_short_interpolation_and_escapes_parens_execution() {
+    let output = run_example("strings/short_interpolation_and_escapes_parens.rb");
+    assert_eq!(output, SHORT_INTERPOLATION_AND_ESCAPES_OUTPUT);
 }

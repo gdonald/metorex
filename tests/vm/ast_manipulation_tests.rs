@@ -38,11 +38,17 @@ eval("x * 3")
 
 #[test]
 fn eval_defines_variables_in_scope() {
+    // Code handed to `eval` binds its locals in a scope of its own, so a name
+    // it introduces is gone once it has run.
     let result = run(r#"
-eval("z = 42")
-z
+x = 1
+eval("z = 42; x = 7")
+[x, defined?(z)]
 "#);
-    assert_eq!(result, Some(Object::Int(42)));
+    assert_eq!(
+        result,
+        Some(Object::array(vec![Object::Int(7), Object::Nil]))
+    );
 }
 
 #[test]

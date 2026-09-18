@@ -10,7 +10,7 @@ use crate::vm::utils::position_to_location;
 
 impl VirtualMachine {
     /// Evaluate a bare `self` expression.
-    pub(super) fn eval_self(&self, position: Position) -> Result<Object, MetorexError> {
+    pub(crate) fn eval_self(&self, position: Position) -> Result<Object, MetorexError> {
         if let Some(receiver) = self.environment().get("self") {
             return Ok(receiver);
         }
@@ -33,7 +33,15 @@ impl VirtualMachine {
         name: &str,
         position: Position,
     ) -> Result<Object, MetorexError> {
-        match self.environment().get("self") {
+        // At the top level `self` is `main`, which carries the program's own
+        // instance variables the way any other object does.
+        let held = self.environment().get("self").or_else(|| {
+            match self.globals().get("TOPLEVEL_BINDING") {
+                Some(Object::Binding(binding)) => binding.receiver.clone(),
+                _ => None,
+            }
+        });
+        match held {
             Some(Object::Instance(instance_rc)) => {
                 let instance = instance_rc.borrow();
                 Ok(instance.get_var(name).cloned().unwrap_or(Object::Nil))

@@ -33,6 +33,9 @@ pub struct Parser {
     /// binds looser than `? :`, so one written in a branch belongs to the
     /// whole conditional rather than to that branch.
     pub(crate) ternary_branch_depth: usize,
+    /// How many range operands the parse is inside. `or` and `and` bind
+    /// looser than a range, so neither belongs to one of its ends.
+    pub(crate) range_operand_depth: usize,
     /// Depth of paren-less argument lists currently being parsed. When >0,
     /// identifier-valued arguments must NOT absorb a trailing `do...end` —
     /// the block belongs to the outer method call, per Ruby precedence.
@@ -64,6 +67,16 @@ pub struct Parser {
     /// How deep the walk is inside a `def` body, where an `END` block is
     /// registered once for every call rather than once for the program.
     pub(crate) def_body_depth: usize,
+    /// How many block bodies the parser sits inside. `BEGIN` belongs to the
+    /// top level of a code unit, so one written inside a block is refused.
+    pub(crate) block_body_depth: usize,
+    /// While above zero, a trailing `=> pattern` or `in pattern` is left for
+    /// the construct being read rather than taken as a pattern test. A
+    /// `case` subject and a hash's `=>` both rely on this.
+    pub(crate) refuse_pattern_test: usize,
+    /// The names the `in` clause being read binds, so a repeat among them is
+    /// refused where it is written.
+    pub(crate) pattern_names: std::collections::HashSet<String>,
     /// How deep the walk is inside something a `next` belongs to: a loop
     /// body or a block. A `next` written straight in a method body, with
     /// none of those around it, has nothing to jump to.
@@ -215,6 +228,7 @@ impl Parser {
             in_class_body: false,
             ternary_depth: 0,
             ternary_branch_depth: 0,
+            range_operand_depth: 0,
             paren_less_arg_depth: 0,
             condition_depth: 0,
             in_when_clause: false,
@@ -223,6 +237,9 @@ impl Parser {
             assignment_rhs_depth: 0,
             dict_literal_depth: 0,
             def_body_depth: 0,
+            block_body_depth: 0,
+            refuse_pattern_test: 0,
+            pattern_names: std::collections::HashSet::new(),
             jump_target_depth: 0,
             bound_names: collect_bound_names(&tokens_for_names),
             block_anonymous_params: Vec::new(),

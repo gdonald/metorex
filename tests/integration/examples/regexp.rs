@@ -149,3 +149,78 @@ fn test_regexp_backtracking_engine_no_parens_execution() {
     let output = run_example("regexp/backtracking_engine_no_parens.rb");
     assert_eq!(output, BACKTRACKING_ENGINE_OUTPUT);
 }
+
+/// The expected output of both `regexp/pattern_time_limits` variants, which differ only in whether the
+/// calls are written with parentheses.
+const PATTERN_TIME_LIMITS_OUTPUT: &str = concat!(
+    "nil\n",
+    "0.5\n",
+    "\"(a*)*b\"\n",
+    "nil\n",
+    "\"invalid timeout: 0\"\n",
+    "\"invalid timeout: -1\"\n",
+    "5.0\n",
+    "nil\n",
+    "\"aaa\"\n",
+    "nil\n",
+    "RegexpError\n",
+);
+
+#[test]
+fn test_regexp_pattern_time_limits_execution() {
+    let output = run_example("regexp/pattern_time_limits.rb");
+    assert_eq!(output, PATTERN_TIME_LIMITS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_pattern_time_limits_parens_execution() {
+    let output = run_example("regexp/pattern_time_limits_parens.rb");
+    assert_eq!(output, PATTERN_TIME_LIMITS_OUTPUT);
+}
+
+/// The expected output of both `regexp/match_dispatch` variants, which differ
+/// only in whether the calls are written with parentheses.
+const MATCH_DISPATCH_OUTPUT: &str = concat!(
+    "type mismatch: String given\n",
+    "matched w00t\n",
+    "ll\n",
+    "asked hello\n",
+    "asked hello\n",
+);
+
+#[test]
+fn test_regexp_match_dispatch_execution() {
+    let output = run_example("regexp/match_dispatch.rb");
+    assert_eq!(output, MATCH_DISPATCH_OUTPUT);
+}
+
+#[test]
+fn test_regexp_match_dispatch_no_parens_execution() {
+    let output = run_example("regexp/match_dispatch_no_parens.rb");
+    assert_eq!(output, MATCH_DISPATCH_OUTPUT);
+}
+
+/// The expected output of both `regexp/percent_r_and_conditions` variants,
+/// which differ only in whether the calls are written with parentheses.
+const PERCENT_R_AND_CONDITIONS_OUTPUT: &str = concat!(
+    " () [c]{1} \n",
+    "(?-mix:\\/)\n",
+    "SyntaxError\n",
+    "SyntaxError\n",
+    "SyntaxError\n",
+    "[\"foo1barfoo2\", \"foo2\"]\n",
+    "true\n",
+    "nil\n",
+);
+
+#[test]
+fn test_regexp_percent_r_and_conditions_execution() {
+    let output = run_example("regexp/percent_r_and_conditions.rb");
+    assert_eq!(output, PERCENT_R_AND_CONDITIONS_OUTPUT);
+}
+
+#[test]
+fn test_regexp_percent_r_and_conditions_parens_execution() {
+    let output = run_example("regexp/percent_r_and_conditions_parens.rb");
+    assert_eq!(output, PERCENT_R_AND_CONDITIONS_OUTPUT);
+}

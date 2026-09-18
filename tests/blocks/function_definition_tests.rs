@@ -308,6 +308,7 @@ fn test_simple_method_definition() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        end_position: pos(1, 1),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -332,6 +333,7 @@ fn test_method_with_parameters() {
             position: pos(2, 3),
         }],
         position: pos(1, 1),
+        end_position: pos(1, 1),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -378,6 +380,7 @@ fn test_method_with_default_parameters() {
             },
         ],
         position: pos(1, 1),
+        end_position: pos(1, 1),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));
@@ -671,6 +674,7 @@ fn test_method_with_empty_body() {
         parameters: vec![],
         body: vec![],
         position: pos(1, 1),
+        end_position: pos(1, 1),
     };
 
     assert_eq!(stmt.position(), pos(1, 1));

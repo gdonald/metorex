@@ -35,6 +35,22 @@ pub struct VirtualMachine {
     pub(crate) heap: Rc<RefCell<Heap>>,
     pub(crate) builtins: BuiltinClasses,
     pub(crate) current_file: Option<PathBuf>,
+
+    /// The measurement `Coverage` is running, when one is on.
+    pub(crate) coverage: Option<crate::vm::coverage::CoverageRun>,
+
+    /// A line already counted by a statement loop that runs some statements
+    /// itself and hands the rest to `execute_statement`, so the one it hands
+    /// over is not counted twice.
+    pub(crate) coverage_skip_line: Option<usize>,
+
+    /// The last match each suspended fiber left behind, which it sees again
+    /// when it is resumed.
+    pub(crate) fiber_last_matches: HashMap<usize, Object>,
+
+    /// Where a number variable too big to name a capture has already been
+    /// reported, so each place in the source says so once.
+    pub(crate) reported_big_number_variables: std::collections::HashSet<(String, usize, usize)>,
     /// The tracepoints switched on, in the order they were. Empty almost
     /// always, which is what keeps the check on each statement cheap.
     pub(crate) tracepoints: Vec<Object>,
@@ -75,7 +91,7 @@ pub struct VirtualMachine {
     pub(crate) at_exit_handlers: Vec<Object>,
     /// The places a `BEGIN` block was written, so one reached again while a
     /// program reads its input line by line runs only the first time.
-    pub(crate) opened_blocks: std::collections::HashSet<(usize, usize)>,
+    pub(crate) opened_blocks: std::collections::HashSet<(String, usize, usize)>,
     /// How many frames under the top one a report writes out, or -1 when it
     /// writes every one of them. `--backtrace-limit` settles it.
     pub(crate) backtrace_limit: i64,
@@ -211,6 +227,33 @@ pub struct VirtualMachine {
     /// True while a FrozenError message is being built. Inspecting the object
     /// can itself try to modify it, and the nested error must not recurse.
     pub(crate) rendering_frozen_error: bool,
+    /// The method frame a block opened right now belongs to, while a block
+    /// body is running. A block written inside another belongs to the method
+    /// the outer one was written in, not to whatever method is running it.
+    pub(crate) lexical_home_frame: Option<Option<u64>>,
+    /// The scope the main script's own top level runs in. TOPLEVEL_BINDING
+    /// stands over it, so the locals it names are whatever that scope holds
+    /// when it is asked.
+    pub(crate) main_script_scope: Option<Rc<std::cell::RefCell<crate::scope::Scope>>>,
+    /// The places a pattern was written on its own as a condition. Ruby says
+    /// so about each of them once.
+    pub(crate) regexp_conditions: HashSet<(String, usize, usize, usize)>,
+    /// The value a `case` is matching, with what it answered when it was
+    /// asked for its elements. One `case` asks its own subject once, and
+    /// every clause in it reads that; a value nested inside a pattern is
+    /// asked on its own.
+    pub(crate) deconstructed_values: Vec<(Object, Option<Vec<Object>>)>,
+    /// Why the pattern being tried failed, which a `case` holding a single
+    /// `in` clause names in the error it raises. The first failure recorded
+    /// is the innermost one, which is the one Ruby reports.
+    pub(crate) pattern_failure: Option<crate::vm::pattern_matching::PatternFailure>,
+    /// Whether the program asked for the place each object was made to be
+    /// recorded, which `objspace/trace` and `trace_object_allocations` do.
+    pub(crate) tracing_allocations: bool,
+    /// Whether `--debug-frozen-string-literal` was written, which has every
+    /// string literal remember where it was written so a refused change can
+    /// name the place.
+    pub(crate) debug_frozen_string_literal: bool,
     /// Collections frozen by `freeze`, keyed by the address they live at.
     /// An Array, Hash, or Set has nowhere of its own to record the flag. The
     /// value keeps the collection alive, so its address cannot be recycled by
@@ -281,6 +324,13 @@ pub struct VirtualMachine {
     /// The patterns written with `o`, kept under the site each was written
     /// at so the same one is answered every time that line is reached.
     pub(crate) patterns_built_once: std::collections::HashMap<String, Object>,
+    /// Whether the flip-flop written at each place is on. A range written
+    /// where a condition goes holds its own state between turns.
+    pub(crate) flip_flops: std::collections::HashMap<(String, usize, usize, usize), bool>,
+    /// How long a match of each pattern written with a limit of its own may
+    /// take. A pattern written with `timeout: nil` is held here as None,
+    /// which says it takes as long as it takes whatever the class names.
+    pub(crate) pattern_timeouts: std::collections::HashMap<String, Option<std::time::Duration>>,
     /// The binding of the method body that just finished, which a trace
     /// reading `binding` off a `return` event is handed. Captured before the
     /// body's scope is popped, since the locals are gone after that.
@@ -353,6 +403,10 @@ impl VirtualMachine {
             heap: Rc::new(RefCell::new(Heap::default())),
             builtins,
             current_file: None,
+            coverage: None,
+            coverage_skip_line: None,
+            fiber_last_matches: HashMap::new(),
+            reported_big_number_variables: std::collections::HashSet::new(),
             tracepoints: Vec::new(),
             traced_line: None,
             tracing: false,
@@ -404,6 +458,13 @@ impl VirtualMachine {
             random_at: 0,
             random_seed: Object::Int(seed_from_clock() as i64),
             rendering_frozen_error: false,
+            lexical_home_frame: None,
+            main_script_scope: None,
+            regexp_conditions: HashSet::new(),
+            deconstructed_values: Vec::new(),
+            pattern_failure: None,
+            tracing_allocations: false,
+            debug_frozen_string_literal: false,
             frozen_collections: HashMap::new(),
             built_patterns: std::collections::HashSet::new(),
             identity_sets: HashMap::new(),
@@ -422,6 +483,8 @@ impl VirtualMachine {
             refinement_scopes: vec![Vec::new()],
             def_scope_stack: Vec::new(),
             patterns_built_once: std::collections::HashMap::new(),
+            flip_flops: std::collections::HashMap::new(),
+            pattern_timeouts: std::collections::HashMap::new(),
             traced_binding: None,
             primitive_singleton_classes: std::collections::HashMap::new(),
             method_arg_stack: Vec::new(),
@@ -481,6 +544,39 @@ impl VirtualMachine {
             .define("$!".to_string(), exception.clone());
         self.globals_mut().set_variable("!", exception);
         self.globals_mut().set_variable("@", backtrace);
+    }
+
+    /// Say where an exception the interpreter raised came from, for one that
+    /// carries no place of its own. The backtrace is built from it, so a
+    /// NameError raised by a name lookup names the line that read the name.
+    pub(crate) fn note_exception_location(
+        &self,
+        exception: &Object,
+        location: &crate::error::SourceLocation,
+    ) {
+        if location.line == 0 {
+            return;
+        }
+        if let Object::Exception(details) = exception {
+            let mut held = details.borrow_mut();
+            if held.location.is_none() && held.backtrace.is_none() {
+                let named = location
+                    .filename
+                    .clone()
+                    .or_else(|| self.current_source_file.clone())
+                    .or_else(|| {
+                        self.current_file
+                            .as_ref()
+                            .map(|file| file.display().to_string())
+                    })
+                    .unwrap_or_else(|| "script".to_string());
+                held.location = Some(crate::object::SourceLocation::new(
+                    named,
+                    location.line,
+                    location.column,
+                ));
+            }
+        }
     }
 
     pub(crate) fn set_current_exception(&mut self, exception: Object) {
@@ -727,6 +823,31 @@ impl VirtualMachine {
     /// run by a loop rather than a single closure.
     pub(crate) fn call_stack_push(&mut self, frame: CallFrame) {
         self.call_stack.push(frame);
+    }
+
+    /// How many blocks deep a block about to run sits. One written straight
+    /// in a method or a file is one deep, and one written inside another
+    /// block is one deeper than that.
+    pub(crate) fn block_nesting_depth(&self) -> u32 {
+        match self.call_stack.last() {
+            Some(frame) if frame.block_depth() > 0 => frame.block_depth() + 1,
+            _ => 1,
+        }
+    }
+
+    /// The scope a block written here belongs to. A block written inside
+    /// another belongs to the same scope that one does, whatever the block
+    /// is later called from, so the scope travels along the frames rather
+    /// than being looked up on the stack.
+    pub(crate) fn enclosing_scope_label(&self) -> String {
+        match self.call_stack.last() {
+            Some(frame) if frame.block_depth() > 0 => frame
+                .written_in()
+                .map(|held| held.to_string())
+                .unwrap_or_else(|| "<main>".to_string()),
+            Some(frame) => frame.name().to_string(),
+            None => "<main>".to_string(),
+        }
     }
 
     /// Pop the frame `call_stack_push` added.

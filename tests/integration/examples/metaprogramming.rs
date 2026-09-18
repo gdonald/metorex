@@ -396,7 +396,7 @@ true
 false
 
 === methods ===
-3
+[:fetch, :speak]
 
 === send ===
 Woof!
@@ -436,7 +436,7 @@ true
 false
 
 === methods ===
-3
+[:fetch, :speak]
 
 === send ===
 Woof!

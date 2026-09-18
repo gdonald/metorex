@@ -467,7 +467,7 @@ impl Parser {
             }
         }
         let target = condition_target(&written)?;
-        let target = self.with_level_split(target)?;
+        let (target, _) = self.with_level_split(target)?;
         let then_node = self.parse_branch()?;
         let else_node = if self.eat('|') {
             self.parse_branch()?
@@ -580,11 +580,12 @@ impl Parser {
             }
             'k' => {
                 let target = self.read_reference_name()?;
-                let target = self.with_level_split(target)?;
+                let (target, level) = self.with_level_split(target)?;
                 self.refuse_bad_reference(&target)?;
                 Ok(Node::Backreference {
                     target,
                     folded: self.flags.folded,
+                    level,
                 })
             }
             'g' => {
@@ -616,6 +617,7 @@ impl Parser {
                     return Ok(Node::Backreference {
                         target: Target::Numbered(counted),
                         folded: self.flags.folded,
+                        level: None,
                     });
                 }
                 if ('0'..='7').contains(&letter) {
@@ -692,9 +694,9 @@ impl Parser {
     /// A `\k<name+1>` names a group together with how deep a call it belongs
     /// to. The level is not part of the name, so it is taken off, and what is
     /// left has to name a group the pattern wrote.
-    fn with_level_split(&self, target: Target) -> Read<Target> {
+    fn with_level_split(&self, target: Target) -> Read<(Target, Option<isize>)> {
         let Target::Named(written) = &target else {
-            return Ok(target);
+            return Ok((target, None));
         };
         let Some(at) = written.rfind(['+', '-']) else {
             if self
@@ -702,7 +704,7 @@ impl Parser {
                 .iter()
                 .any(|held| held.as_deref() == Some(written.as_str()))
             {
-                return Ok(target);
+                return Ok((target, None));
             }
             return Err(Trouble("invalid backref number/name".to_string()));
         };
@@ -716,7 +718,13 @@ impl Parser {
         if !self.names.iter().any(|held| held.as_deref() == Some(name)) {
             return Err(Trouble("invalid backref number/name".to_string()));
         }
-        Ok(Target::Named(name.to_string()))
+        let counted: isize = level[1..].parse().unwrap_or(0);
+        let signed = if level.starts_with('-') {
+            -counted
+        } else {
+            counted
+        };
+        Ok((Target::Named(name.to_string()), Some(signed)))
     }
 
     /// Whether a reference points at a group there could be.

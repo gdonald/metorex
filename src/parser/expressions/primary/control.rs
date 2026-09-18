@@ -51,8 +51,24 @@ impl Parser {
             });
         }
         // Parse the expression to match against
-        let expression = Box::new(self.parse_expression()?);
+        self.refuse_pattern_test += 1;
+        let subject = self.parse_expression();
+        self.refuse_pattern_test -= 1;
+        let expression = Box::new(subject?);
         self.skip_whitespace();
+
+        // A `case` written with `in` matches patterns rather than comparing
+        // values, which the statement form already reads.
+        if self.check(&[TokenKind::In]) {
+            let held = self.parse_case_in_body(*expression, start_pos)?;
+            return Ok(Expression::BeginRescue {
+                body: vec![held],
+                rescue_clauses: Vec::new(),
+                else_clause: None,
+                ensure_block: None,
+                position: start_pos,
+            });
+        }
 
         // Parse when clauses
         let mut cases = Vec::new();

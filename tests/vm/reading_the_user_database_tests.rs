@@ -148,6 +148,10 @@ fn coverage_reports_whether_it_is_running() {
     );
     assert_eq!(
         with_coverage("Coverage.supported?(:lines)"),
+        Some(Object::Bool(true))
+    );
+    assert_eq!(
+        with_coverage("Coverage.supported?(:nothing)"),
         Some(Object::Bool(false))
     );
 }

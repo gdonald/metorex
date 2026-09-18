@@ -39,6 +39,11 @@ pub fn escape(text: &str) -> String {
     written
 }
 
+/// A match that ran past the time it was given rather than failing on its
+/// own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimedOut;
+
 /// A pattern read and ready to match.
 pub struct Pattern {
     root: Node,
@@ -145,11 +150,32 @@ impl Pattern {
         subject: &'t str,
         start: usize,
     ) -> Option<Captures<'t, 'p>> {
+        self.captures_within(subject, start, None).ok().flatten()
+    }
+
+    /// The same, given up on once `limit` has passed. Answers Err when the
+    /// match was given up on rather than failing on its own.
+    pub fn captures_within<'t, 'p>(
+        &'p self,
+        subject: &'t str,
+        start: usize,
+        limit: Option<std::time::Duration>,
+    ) -> Result<Option<Captures<'t, 'p>>, TimedOut> {
         let reading = Reading::of(subject);
-        let from = reading.char_index(start)?;
+        let Some(from) = reading.char_index(start) else {
+            return Ok(None);
+        };
         let mut matcher = Matcher::new(&reading.letters, &self.names, &self.root);
-        let found = matcher.search(&self.root, from)?;
-        Some(reading.captures(subject, &self.names, &found))
+        if let Some(limit) = limit {
+            matcher.give_up_after(limit);
+        }
+        let Some(found) = matcher.search(&self.root, from) else {
+            if matcher.gave_up() {
+                return Err(TimedOut);
+            }
+            return Ok(None);
+        };
+        Ok(Some(reading.captures(subject, &self.names, &found)))
     }
 
     /// Where the leftmost match at or after `start` sits, without its groups.

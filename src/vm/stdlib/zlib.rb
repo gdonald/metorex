@@ -290,7 +290,7 @@ module Zlib
 
     def deflate(text, flush = NO_FLUSH)
       @input = @input + Zlib.coerce_text(text) unless text.nil?
-      return "" unless flush == FINISH
+      return "".b unless flush == FINISH
       finish
     end
 
@@ -300,14 +300,14 @@ module Zlib
     end
 
     def finish
-      answer = Zlib.__stream__ "deflate", @input, 0
+      answer = Zlib.__stream__ "deflate", @input, 0, @dictionary.to_s
       @output = answer
       @finished = true
       answer
     end
 
     def flush(_kind = SYNC_FLUSH)
-      ""
+      "".b
     end
 
     def params(level, strategy)
@@ -315,7 +315,10 @@ module Zlib
       nil
     end
 
+    # The dictionary the stream is written against, which a reader needs the
+    # same of to read it back.
     def set_dictionary(text)
+      @dictionary = Zlib.coerce_text text
       text
     end
   end

@@ -377,3 +377,60 @@ fn test_control_flow_yield_placement_no_parens_execution() {
     let output = run_example("control_flow/yield_placement_no_parens.rb");
     assert_eq!(output, YIELD_PLACEMENT_OUTPUT);
 }
+
+/// The expected output of both `control_flow/flip_flop` variants, which
+/// differ only in whether the calls are written with parentheses.
+const FLIP_FLOP_OUTPUT: &str = concat!(
+    "[4, 5, 6]\n",
+    "[4, 5, 6, 7, 8, 9]\n",
+    "[4]\n",
+    "[1, 2, 7, 8]\n"
+);
+
+#[test]
+fn test_control_flow_flip_flop_execution() {
+    let output = run_example("control_flow/flip_flop.rb");
+    assert_eq!(output, FLIP_FLOP_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_flip_flop_parens_execution() {
+    let output = run_example("control_flow/flip_flop_parens.rb");
+    assert_eq!(output, FLIP_FLOP_OUTPUT);
+}
+
+/// The expected output of both `control_flow/return_from_nested_blocks`
+/// variants, which differ only in whether the calls are written with
+/// parentheses.
+const RETURN_FROM_NESTED_BLOCKS_OUTPUT: &str = concat!(
+    ":from_the_inner_block\n",
+    ":from_the_saved_block\n",
+    "SyntaxError\n",
+    "unexpected return\n",
+);
+
+#[test]
+fn test_control_flow_return_from_nested_blocks_execution() {
+    let output = run_example("control_flow/return_from_nested_blocks.rb");
+    assert_eq!(output, RETURN_FROM_NESTED_BLOCKS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_return_from_nested_blocks_no_parens_execution() {
+    let output = run_example("control_flow/return_from_nested_blocks_no_parens.rb");
+    assert_eq!(output, RETURN_FROM_NESTED_BLOCKS_OUTPUT);
+}
+
+#[test]
+fn test_control_flow_pattern_matching_in_execution() {
+    let expected = "empty\none integer 4\na pair\nseven, then 2 more\nAda is 36\nprivileged\nid 11 with 2 extra\norigin\npoint 3,4\na name\nunknown\npinned match\n8080\ntrue\nfalse\n6\nok starting at 1\n{x: 1}: key not found: :y\ny\n{x: 1}\n[1, 2]: 3 === 2 does not return true\n{x: 1}\n";
+    let output = run_example("control_flow/pattern_matching_in.rb");
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_control_flow_pattern_matching_in_no_parens_execution() {
+    let expected = "empty\none integer 4\na pair\nseven, then 2 more\nAda is 36\nprivileged\nid 11 with 2 extra\norigin\npoint 3,4\na name\nunknown\npinned match\n8080\ntrue\nfalse\n6\nok starting at 1\n{x: 1}: key not found: :y\ny\n{x: 1}\n[1, 2]: 3 === 2 does not return true\n{x: 1}\n";
+    let output = run_example("control_flow/pattern_matching_in_no_parens.rb");
+    assert_eq!(output, expected);
+}

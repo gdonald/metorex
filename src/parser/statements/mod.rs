@@ -6,6 +6,7 @@ mod class;
 mod control_flow;
 mod exception;
 pub(crate) mod function;
+mod patterns;
 
 use crate::ast::{BinaryOp, Expression, Statement};
 use crate::error::MetorexError;
@@ -39,7 +40,20 @@ impl Parser {
         self.paren_less_arg_depth = 0;
         let parsed = self.parse_statement_inner();
         self.paren_less_arg_depth = enclosing_arg_depth;
-        parsed
+        // `value => pattern` and `value in pattern` stand where a statement
+        // does, so the test is read once the value has been.
+        let Ok(Statement::Expression {
+            expression,
+            position,
+        }) = parsed
+        else {
+            return parsed;
+        };
+        let expression = self.wrap_with_pattern_test(expression)?;
+        self.wrap_with_modifier(Statement::Expression {
+            expression,
+            position,
+        })
     }
 
     fn parse_statement_inner(&mut self) -> Result<Statement, MetorexError> {
@@ -66,17 +80,23 @@ impl Parser {
             if !opens && self.def_body_depth > 0 {
                 eprintln!("{}: warning: END in method; use at_exit", position.line);
             }
+            // Ruby's parser refuses a `BEGIN` written anywhere but the top
+            // level of a code unit.
+            if opens && (self.def_body_depth > 0 || self.block_body_depth > 0) {
+                return Err(self.error_at_previous("BEGIN is permitted only at toplevel"));
+            }
             self.advance();
             let block = self.parse_brace_block()?;
-            let called = if opens {
-                "__begin_once__"
-            } else {
-                "__end_once__"
-            };
+            if opens {
+                let Expression::Lambda { body, .. } = block else {
+                    return Err(self.error_at_previous("BEGIN expects a block"));
+                };
+                return Ok(Statement::BeginBlock { body, position });
+            }
             return Ok(Statement::Expression {
                 expression: Expression::Call {
                     callee: Box::new(Expression::Identifier {
-                        name: called.to_string(),
+                        name: "__end_once__".to_string(),
                         position,
                     }),
                     arguments: Vec::new(),
@@ -307,6 +327,18 @@ impl Parser {
                         _ => unreachable!(),
                     };
 
+                    // An `if` whose every branch jumps away answers nothing,
+                    // so there is nothing for an assignment to take from it.
+                    if reads_as_void(&final_value) {
+                        return Err(crate::error::MetorexError::syntax_error(
+                            "void value expression",
+                            crate::error::SourceLocation::new(
+                                token.position.line,
+                                token.position.column,
+                                token.position.offset,
+                            ),
+                        ));
+                    }
                     let stmt = Statement::Assignment {
                         target: expr,
                         value: final_value,
@@ -842,6 +874,14 @@ impl Parser {
         else {
             return Ok(stmt);
         };
+        // An `if` whose every branch jumps away answers nothing, so there is
+        // nothing for an assignment to take from it.
+        if reads_as_void(&value) {
+            return Err(crate::error::MetorexError::syntax_error(
+                "void value expression",
+                crate::error::SourceLocation::new(position.line, position.column, position.offset),
+            ));
+        }
         let mut left = crate::ast::Expression::BinaryOp {
             op: BinaryOp::Assign,
             left: Box::new(target),
@@ -1068,4 +1108,35 @@ impl Parser {
         };
         self.wrap_with_modifier(statement)
     }
+}
+
+/// Whether an expression answers nothing at all, because every way through it
+/// jumps away rather than reaching a value. Ruby refuses to read one of these
+/// where a value is wanted.
+fn reads_as_void(expression: &crate::ast::Expression) -> bool {
+    use crate::ast::{Expression, Statement};
+    fn branch_is_void(body: &[Statement]) -> bool {
+        match body.last() {
+            Some(Statement::Return { .. } | Statement::Break { .. }) => true,
+            Some(Statement::Expression { expression, .. }) => reads_as_void(expression),
+            _ => false,
+        }
+    }
+    let Expression::If {
+        then_branch,
+        elsif_branches,
+        else_branch,
+        ..
+    } = expression
+    else {
+        return false;
+    };
+    // Without an else branch the conditional answers nil when the test fails,
+    // so there is a value to take.
+    let Some(otherwise) = else_branch else {
+        return false;
+    };
+    branch_is_void(then_branch)
+        && branch_is_void(otherwise)
+        && elsif_branches.iter().all(|held| branch_is_void(&held.body))
 }

@@ -511,7 +511,7 @@ impl VirtualMachine {
                 let elements = array_rc.borrow().clone();
                 for (index, element) in elements.iter().enumerate() {
                     let args = vec![element.clone(), Object::Int(index as i64)];
-                    match self.execute_block_with_control_flow(&block, args)? {
+                    match self.execute_block_with_control_flow(&block, args, position)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }
@@ -574,7 +574,7 @@ impl VirtualMachine {
                 while let Some(element) = element_at(array_rc, index) {
                     index += 1;
                     let args = vec![element];
-                    match self.execute_block_with_control_flow(&block, args)? {
+                    match self.execute_block_with_control_flow(&block, args, position)? {
                         super::super::ControlFlow::Next
                         | super::super::ControlFlow::Value(_)
                         | super::super::ControlFlow::Redo { .. }

@@ -61,9 +61,9 @@ fn case_when_trailing_comma_before_terminal_token() {
 }
 
 #[test]
-fn rest_pattern_at_top_level_is_parse_error() {
-    let err = parse_err("case 1\nin *x\n  x\nend");
-    assert!(err.contains("pattern") || err.contains("Star") || err.contains("Expected"));
+fn bare_splat_pattern_at_top_level_parses() {
+    let result = run("case [1, 2]\nin *x\n  x.length\nend");
+    assert_eq!(result, Some(Object::Int(2)));
 }
 
 // ── From additional_tests ───────────────────────────────────────────────────

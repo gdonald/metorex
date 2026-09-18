@@ -209,7 +209,7 @@ fn test_remaining_keyword_tokens_display() {
 fn test_interpolated_string_token_display() {
     let parts = vec![
         InterpolationPart::Text("hello ".to_string()),
-        InterpolationPart::Expression("name".to_string()),
+        InterpolationPart::Expression("name".to_string(), 1),
     ];
     let token = TokenKind::InterpolatedString(parts);
     let display = token.to_string();

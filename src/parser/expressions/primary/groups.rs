@@ -44,6 +44,9 @@ impl Parser {
         }
         self.stream.restore_position(opened_at);
         let expr = self.parse_expression_with_assignment()?;
+        // A group may hold `value => pattern` or `value in pattern`, which is
+        // how a test is written where an expression is wanted.
+        let expr = self.wrap_with_pattern_test(expr)?;
         self.skip_whitespace();
         // A group may hold one expression with a trailing modifier, which is
         // what `(123 if true)` and `(count += 1 until done)` spell out.

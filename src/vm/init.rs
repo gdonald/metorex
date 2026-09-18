@@ -372,15 +372,17 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     class_class.set_method_private("initialize");
     globals.set("Class", Object::Class(class_class));
 
+    // The object a program runs against at the top level. Ruby calls it
+    // `main`: an ordinary Object, whose singleton class is where a `def
+    // self.name` written outside every class lands.
+    let main = Object::Instance(Rc::new(std::cell::RefCell::new(
+        crate::object::Instance::new(Rc::clone(&object)),
+    )));
+    globals.set("__main__", main.clone());
     // TOPLEVEL_BINDING — used by eval('code', TOPLEVEL_BINDING) at top level.
-    // Its receiver is the top-level `main` object (an Object instance in Ruby; we
-    // reuse the Object class here since private_methods dispatch works on Class).
     globals.set(
         "TOPLEVEL_BINDING",
-        Object::Binding(Rc::new(Binding::with_receiver(
-            HashMap::new(),
-            Object::Class(Rc::clone(&object)),
-        ))),
+        Object::Binding(Rc::new(Binding::with_receiver(HashMap::new(), main))),
     );
 
     // TrueClass, FalseClass, NilClass — can't be instantiated
@@ -504,6 +506,16 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
         Some(Rc::clone(&standard_error)),
     ));
     let frozen_error = Rc::new(Class::new("FrozenError", Some(Rc::clone(&runtime_error))));
+    // A pattern that covers no value raises this, and a hash pattern missing
+    // a key it named raises the one below it.
+    let no_matching_pattern_error = Rc::new(Class::new(
+        "NoMatchingPatternError",
+        Some(Rc::clone(&standard_error)),
+    ));
+    let no_matching_pattern_key_error = Rc::new(Class::new(
+        "NoMatchingPatternKeyError",
+        Some(Rc::clone(&no_matching_pattern_error)),
+    ));
     let local_jump_error = Rc::new(Class::new(
         "LocalJumpError",
         Some(Rc::clone(&standard_error)),
@@ -569,6 +581,14 @@ pub(super) fn register_exception_classes(globals: &mut GlobalRegistry) {
     }
     globals.set("EncodingError", Object::Class(encoding_error));
     globals.set("FrozenError", Object::Class(frozen_error));
+    globals.set(
+        "NoMatchingPatternError",
+        Object::Class(no_matching_pattern_error),
+    );
+    globals.set(
+        "NoMatchingPatternKeyError",
+        Object::Class(no_matching_pattern_key_error),
+    );
     globals.set("LocalJumpError", Object::Class(local_jump_error));
     globals.set("RegexpError", Object::Class(regexp_error));
     globals.set("UncaughtThrowError", Object::Class(uncaught_throw_error));

@@ -214,7 +214,7 @@ impl VirtualMachine {
                 let walk = (|vm: &mut Self| -> Result<Option<Object>, MetorexError> {
                     for elem in elements {
                         let args = vec![elem.value.clone()];
-                        match vm.execute_block_with_control_flow(&block, args)? {
+                        match vm.execute_block_with_control_flow(&block, args, position)? {
                             super::super::ControlFlow::Next
                             | super::super::ControlFlow::Value(_)
                             | super::super::ControlFlow::Redo { .. }

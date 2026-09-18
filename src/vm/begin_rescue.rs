@@ -76,7 +76,13 @@ impl VirtualMachine {
         let mut final_value = body_result.clone();
         let mut handled = false;
 
-        if let Err(MetorexError::UncaughtException { exception, .. }) = &body_result {
+        if let Err(MetorexError::UncaughtException {
+            exception,
+            location,
+            ..
+        }) = &body_result
+        {
+            self.note_exception_location(exception, location);
             self.set_current_exception(exception.clone());
             for rescue_clause in rescue_clauses {
                 if self.rescue_clause_matches(rescue_clause, exception, rescue_clause.position)? {
@@ -135,6 +141,11 @@ impl VirtualMachine {
         for (i, statement) in statements.iter().enumerate() {
             let is_last = i == statements.len() - 1;
             if is_last && let Some(value) = self.terminal_statement_value(statement)? {
+                // The last statement answered here rather than through
+                // `execute_statement`, so it is counted here too.
+                if self.coverage.is_some() {
+                    self.coverage_count(statement.position().line);
+                }
                 last_value = value;
                 continue;
             }

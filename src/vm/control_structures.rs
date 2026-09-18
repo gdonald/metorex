@@ -18,7 +18,7 @@ impl VirtualMachine {
         elsif_branches: &[ElsifBranch],
         else_branch: &Option<Vec<Statement>>,
     ) -> Result<ControlFlow, MetorexError> {
-        let condition_value = self.evaluate_expression(condition)?;
+        let condition_value = self.evaluate_condition(condition)?;
 
         if is_truthy(&condition_value) {
             self.execute_statements_internal(then_branch)
@@ -47,7 +47,7 @@ impl VirtualMachine {
         then_branch: &[Statement],
         else_branch: &Option<Vec<Statement>>,
     ) -> Result<ControlFlow, MetorexError> {
-        let condition_value = self.evaluate_expression(condition)?;
+        let condition_value = self.evaluate_condition(condition)?;
 
         if !is_truthy(&condition_value) {
             self.execute_statements_internal(then_branch)
@@ -65,7 +65,7 @@ impl VirtualMachine {
         body: &[Statement],
     ) -> Result<ControlFlow, MetorexError> {
         loop {
-            let condition_value = self.evaluate_expression(condition)?;
+            let condition_value = self.evaluate_condition(condition)?;
 
             if !is_truthy(&condition_value) {
                 break;
@@ -132,7 +132,7 @@ impl VirtualMachine {
                     }
                 }
             }
-            let tested = self.evaluate_expression(condition)?;
+            let tested = self.evaluate_condition(condition)?;
             if !is_truthy(&tested) {
                 return Ok(ControlFlow::Value(crate::object::Object::Nil));
             }

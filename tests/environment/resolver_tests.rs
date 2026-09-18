@@ -724,6 +724,7 @@ fn resolver_method_def_with_default_param() {
         parameters: vec![param],
         body: vec![],
         position: pos(),
+        end_position: pos(),
     };
     let result = r.resolve(&[stmt]);
     assert!(!result.has_errors());

@@ -54,7 +54,9 @@ pub(crate) fn embedded_library(name: &str) -> Option<&'static str> {
             Some(include_str!("digest.rb"))
         }
         "matrix" => Some(include_str!("matrix.rb")),
+        "json" => Some(include_str!("json.rb")),
         "objspace" => Some(include_str!("objspace.rb")),
+        "objspace/trace" => Some(include_str!("objspace_trace.rb")),
         "observer" => Some(include_str!("observer.rb")),
         "ostruct" => Some(include_str!("ostruct.rb")),
         "pathname" => Some(include_str!("pathname.rb")),

@@ -38,6 +38,9 @@ enum Rest<'a, 'r> {
         writes: u64,
         next: &'r Rest<'a, 'r>,
     },
+    /// A call to a group's body ends here, so what follows it is read at the
+    /// level the call was written at rather than at the one inside it.
+    Leave { next: &'r Rest<'a, 'r> },
     /// The match has to end at this position and nowhere else, which is how a
     /// lookbehind pins what it reads to where it was written.
     EndsAt(usize),
@@ -59,11 +62,18 @@ pub struct Found {
 /// How many pieces one match may try before the engine gives up.
 const STEP_BUDGET: u64 = 20_000_000;
 
+/// How many pieces deep one match may go. Each sits on a stack frame, and a
+/// pattern that would nest further than this is one no answer is waiting for.
+const NESTING_LIMIT: u32 = 20_000;
+
 pub struct Matcher<'a> {
     letters: &'a [char],
     /// Where the search began, which `\G` stands for.
     search_start: usize,
     slots: Vec<Slot>,
+    /// What each group took at each call level it matched at, so a reference
+    /// written with a level reads the one belonging to its own turn.
+    levelled: Vec<Vec<(u32, (usize, usize))>>,
     /// The body of each group by number, so `\g<name>` can match it again.
     bodies: Vec<Option<&'a Node>>,
     names: &'a [Option<String>],
@@ -71,6 +81,15 @@ pub struct Matcher<'a> {
     keep: Option<usize>,
     steps: u64,
     depth: u32,
+    /// When the match has to be given up on, for a pattern that was written
+    /// with a time limit. None where it may take as long as it takes.
+    deadline: Option<std::time::Instant>,
+    /// Whether the match was given up on rather than failing on its own.
+    pub timed_out: bool,
+    /// How many pieces deep the match is. Each one sits on a stack frame, so
+    /// a pattern that would nest further than this is given up on rather
+    /// than run out of stack.
+    nesting: u32,
 
     /// Whether the pattern captures anything, which decides whether a branch
     /// has to copy the slots before trying it.
@@ -85,13 +104,38 @@ impl<'a> Matcher<'a> {
             letters,
             search_start: 0,
             slots: vec![None; names.len()],
+            levelled: vec![Vec::new(); names.len()],
             bodies,
             names,
             keep: None,
             steps: 0,
             depth: 0,
+            deadline: None,
+            timed_out: false,
+            nesting: 0,
             captures: names.len() > 1,
         }
+    }
+
+    /// Give the match a time limit, after which it is given up on.
+    pub fn give_up_after(&mut self, held: std::time::Duration) {
+        self.deadline = Some(std::time::Instant::now() + held);
+    }
+
+    /// Whether the match has run past the time it was given. The clock is
+    /// read once every so many pieces rather than on each one.
+    fn out_of_time(&mut self) -> bool {
+        let Some(deadline) = self.deadline else {
+            return false;
+        };
+        if !self.steps.is_multiple_of(512) {
+            return false;
+        }
+        if std::time::Instant::now() >= deadline {
+            self.timed_out = true;
+            return true;
+        }
+        false
     }
 
     /// The leftmost match at or after `from`, or None when there is none.
@@ -100,6 +144,9 @@ impl<'a> Matcher<'a> {
         let mut at = from;
         loop {
             self.reset();
+            if self.timed_out {
+                return None;
+            }
             if let Some(end) = self.run(root, at, &Rest::Done) {
                 return Some(Found {
                     start: self.keep.unwrap_or(at),
@@ -126,6 +173,12 @@ impl<'a> Matcher<'a> {
         self.keep = None;
         self.steps = 0;
         self.depth = 0;
+        self.nesting = 0;
+    }
+
+    /// Whether the match was given up on rather than failing on its own.
+    pub fn gave_up(&self) -> bool {
+        self.timed_out
     }
 
     /// What every group holds right now, as one number. A turn of a
@@ -175,9 +228,25 @@ impl<'a> Matcher<'a> {
     /// Match `node` at `at`, then whatever `rest` says follows.
     fn run<'r>(&mut self, node: &'a Node, at: usize, rest: &'r Rest<'a, 'r>) -> Option<usize> {
         self.steps += 1;
-        if self.steps > STEP_BUDGET {
+        if self.steps > STEP_BUDGET || self.out_of_time() {
             return None;
         }
+        if self.nesting >= NESTING_LIMIT {
+            self.timed_out = true;
+            return None;
+        }
+        self.nesting += 1;
+        let answer = self.run_piece(node, at, rest);
+        self.nesting -= 1;
+        answer
+    }
+
+    fn run_piece<'r>(
+        &mut self,
+        node: &'a Node,
+        at: usize,
+        rest: &'r Rest<'a, 'r>,
+    ) -> Option<usize> {
         match node {
             Node::Empty => self.carry_on(rest, at),
             Node::Letter(letter) => {
@@ -322,7 +391,11 @@ impl<'a> Matcher<'a> {
                 negated,
                 node,
             } => self.look(*behind, *negated, node, at, rest),
-            Node::Backreference { target, folded } => self.backreference(target, *folded, at, rest),
+            Node::Backreference {
+                target,
+                folded,
+                level,
+            } => self.backreference(target, *folded, *level, at, rest),
             Node::Call(target) => {
                 let index = self.slot_index(target)?;
                 let body = self.bodies.get(index).copied().flatten()?;
@@ -330,8 +403,20 @@ impl<'a> Matcher<'a> {
                     return None;
                 }
                 self.depth += 1;
-                let outcome = self.run(body, at, rest);
+                // A call reads the group's pattern again and the group takes
+                // what that read, so the name holds the latest of them.
+                let leave = Rest::Leave { next: rest };
+                let frame = Rest::Close {
+                    index,
+                    from: at,
+                    next: &leave,
+                };
+                let saved = self.slots[index];
+                let outcome = self.run(body, at, &frame);
                 self.depth -= 1;
+                if outcome.is_none() {
+                    self.slots[index] = saved;
+                }
                 outcome
             }
             Node::Absent(node) => self.absent(node, at, rest),
@@ -405,11 +490,17 @@ impl<'a> Matcher<'a> {
     /// Carry on with whatever the frames say follows.
     fn carry_on<'r>(&mut self, rest: &'r Rest<'a, 'r>, at: usize) -> Option<usize> {
         self.steps += 1;
-        if self.steps > STEP_BUDGET {
+        if self.steps > STEP_BUDGET || self.out_of_time() {
             return None;
         }
         match rest {
             Rest::Done => Some(at),
+            Rest::Leave { next } => {
+                self.depth -= 1;
+                let answer = self.carry_on(next, at);
+                self.depth += 1;
+                answer
+            }
             Rest::EndsAt(wanted) => {
                 if at == *wanted {
                     return Some(at);
@@ -426,9 +517,13 @@ impl<'a> Matcher<'a> {
             Rest::Close { index, from, next } => {
                 let saved = self.slots[*index];
                 self.slots[*index] = Some((*from, at));
+                // What the group took at this call level, which a reference
+                // written with a level reads back.
+                self.levelled[*index].push((self.depth, (*from, at)));
                 match self.carry_on(next, at) {
                     Some(end) => Some(end),
                     None => {
+                        self.levelled[*index].pop();
                         self.slots[*index] = saved;
                         None
                     }
@@ -595,13 +690,31 @@ impl<'a> Matcher<'a> {
         &mut self,
         target: &Target,
         folded: bool,
+        level: Option<isize>,
         at: usize,
         rest: &'r Rest<'a, 'r>,
     ) -> Option<usize> {
         // A name written on more than one group stands for whichever of them
         // matched, so each is tried in turn.
         for index in self.slot_indexes(target) {
-            let Some((from, to)) = self.slots.get(index).copied().flatten() else {
+            let held = match level {
+                // A reference naming a call level reads what the group took
+                // at that level, which is what tells one turn of a recursive
+                // pattern from the turns around it.
+                Some(level) => {
+                    let wanted = self.depth as isize + level;
+                    self.levelled
+                        .get(index)
+                        .and_then(|held| {
+                            held.iter()
+                                .rev()
+                                .find(|(depth, _)| *depth as isize == wanted)
+                        })
+                        .map(|(_, span)| *span)
+                }
+                None => self.slots.get(index).copied().flatten(),
+            };
+            let Some((from, to)) = held else {
                 continue;
             };
             let width = to - from;

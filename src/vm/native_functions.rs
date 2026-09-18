@@ -185,26 +185,6 @@ impl VirtualMachine {
                     message: msg.to_string(),
                 })
             }
-            // `BEGIN { ... }` runs its body the first time the line is
-            // reached, so a program read one line at a time runs it once.
-            "__begin_once__" => {
-                let Some(block) = self.pending_block.take() else {
-                    let message = "called without a block".to_string();
-                    return Err(MetorexError::UncaughtException {
-                        exception: Object::exception("ArgumentError", message.clone()),
-                        location: crate::vm::utils::position_to_location(position),
-                        message,
-                    });
-                };
-                let written = (position.line, position.column);
-                if !self.opened_blocks.insert(written) {
-                    return Ok(Object::Nil);
-                }
-                let Object::Block(body) = block else {
-                    return Ok(Object::Nil);
-                };
-                self.execute_block_callable(&body, Vec::new(), position)
-            }
             // `END { ... }` registers its body once, however many times the
             // line holding it is read.
             "__end_once__" => {
@@ -216,7 +196,12 @@ impl VirtualMachine {
                         message,
                     });
                 };
-                if self.opened_blocks.insert((position.line, position.column)) {
+                let site = (
+                    self.current_source_file.clone().unwrap_or_default(),
+                    position.line,
+                    position.column,
+                );
+                if self.opened_blocks.insert(site) {
                     self.at_exit_handlers.push(block.clone());
                 }
                 Ok(block)
@@ -418,6 +403,18 @@ impl VirtualMachine {
                     .unwrap_or(Object::Nil);
                 let held = crate::object::Binding::with_receiver(variables, receiver);
                 held.set_order(order);
+                // The method the call sits in, which code run through the
+                // binding names as its own.
+                *held.method.borrow_mut() = self.enclosing_method_names();
+                // The refinements in force here, which code run through the
+                // binding sees.
+                *held.refinements.borrow_mut() = self.snapshot_active_refinements();
+                // The classes and modules open here, which a class opened by
+                // code run through the binding is nested in.
+                *held.nesting.borrow_mut() = match self.method_nesting_stack.last() {
+                    Some(captured) => captured.clone(),
+                    None => self.snapshot_lexical_nesting(),
+                };
                 // Where the call sits, which `source_location` reports.
                 *held.source.borrow_mut() = Some((
                     self.current_file
@@ -1456,42 +1453,97 @@ impl VirtualMachine {
                     _ => None,
                 });
                 let carried_cref_pushed = carried_cref.is_some();
+                // A class opened in the eval'd code is nested where the
+                // binding was taken, so `class Inside; end` run through a
+                // binding taken in a class belongs to that class.
+                // Only a binding taken in a class or module body nests what
+                // the code opens. One taken in an instance method leaves the
+                // eval at the top level, where `main` sits.
+                let saved_def_scope = match &binding {
+                    Some(held) if !held.nesting.borrow().is_empty() => {
+                        let opened: Vec<Rc<crate::class::Class>> =
+                            held.nesting.borrow().iter().rev().map(Rc::clone).collect();
+                        Some(std::mem::replace(&mut self.def_scope_stack, opened))
+                    }
+                    _ => None,
+                };
                 if let Some(cref) = carried_cref {
                     self.class_var_cref_stack.push(Some(cref));
                 }
                 if let Some(b) = &binding {
                     self.environment_mut().push_isolated_scope();
-                    for (name, cell) in b.variables.borrow().iter() {
-                        self.environment_mut()
-                            .define_shared(name.clone(), std::rc::Rc::clone(cell));
+                    // The binding's own order is what `local_variables` inside
+                    // the eval reports after the names the eval binds itself.
+                    for name in b.keys() {
+                        if let Some(cell) = b.get(&name) {
+                            self.environment_mut().define_inherited(name, cell);
+                        }
                     }
                     if let Some(receiver) = &b.receiver {
                         self.environment_mut()
                             .define("self".to_string(), receiver.clone());
+                    }
+                } else {
+                    // Code eval'd without a binding runs in a scope of its
+                    // own that sees the caller's locals. A local the code
+                    // binds belongs to that scope and is gone once it has
+                    // run, which is what Ruby does.
+                    let carried: Vec<(String, std::rc::Rc<std::cell::RefCell<Object>>)> = self
+                        .environment()
+                        .binding_variable_names()
+                        .into_iter()
+                        .filter_map(|name| {
+                            self.environment().get_ref(&name).map(|cell| (name, cell))
+                        })
+                        .collect();
+                    let here = self.environment().get("self");
+                    self.environment_mut().push_isolated_scope();
+                    for (name, cell) in carried {
+                        self.environment_mut().define_inherited(name, cell);
+                    }
+                    if let Some(receiver) = here {
+                        self.environment_mut().define("self".to_string(), receiver);
                     }
                 }
                 // eval runs at top-level of its string: treat as non-method scope.
                 // Refinements activated inside eval are lexical to the eval string.
                 let saved_nesting = self.user_def_nesting;
                 self.user_def_nesting = 0;
-                self.push_refinement_scope();
+                // Code run through a binding sees the refinements in force
+                // where the binding was taken; anything else opens a scope of
+                // its own, since a refinement used inside an eval is lexical
+                // to the string.
+                let carried_refinements: Vec<crate::vm::core::RefinementEntry> = binding
+                    .as_ref()
+                    .map(|held| {
+                        held.refinements
+                            .borrow()
+                            .iter()
+                            .map(|(module, classes)| crate::vm::core::RefinementEntry {
+                                module: Rc::clone(module),
+                                classes: classes.iter().cloned().collect(),
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                self.refinement_scopes.push(carried_refinements);
                 let prev_file = self.current_file.clone();
                 match &filename {
                     Some(f) => self.current_file = Some(std::path::PathBuf::from(f)),
-                    // Code eval'd through a binding with no filename has no
-                    // file behind it, which is what `__FILE__` and `__dir__`
-                    // report there.
-                    None if binding.is_some() => self.current_file = None,
                     // Ruby names the eval'd code after the place it was
                     // written, which is what `__FILE__` reports inside it.
+                    // Code run through a binding is named for the eval that
+                    // ran it rather than for where the binding was taken.
                     None => {
                         let written_in = prev_file
                             .as_ref()
                             .map(|file| file.display().to_string())
                             .unwrap_or_default();
                         self.current_file = Some(std::path::PathBuf::from(format!(
-                            "(eval at {}:{})",
-                            written_in, position.line
+                            "{}{}:{})",
+                            crate::vm::EVAL_FILE_PREFIX,
+                            written_in,
+                            position.line
                         )));
                     }
                 }
@@ -1513,9 +1565,52 @@ impl VirtualMachine {
                     }
                     _ => None,
                 };
+                // Code handed to `eval` is counted into the file it names when
+                // the run was started with `eval` coverage on.
+                if self.coverage_counts_eval()
+                    && let Some(named) = self.current_source_file.clone()
+                {
+                    self.coverage_note_eval(&named, &statements);
+                }
+                // The eval is a place of its own in a backtrace, standing at
+                // the line it was written on in the file that wrote it, so
+                // code inside it still reports back to the program.
+                // The frame reads as the one that ran the eval, which is the
+                // name Ruby gives code inside one and what keeps `__method__`
+                // there naming the method around it.
+                let written_in = self
+                    .call_stack()
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| crate::vm::CallFrame::boundary("<main>"));
+                self.call_stack_push(
+                    written_in
+                        .with_location(Some(format!("{}:{}", position.line, position.column)))
+                        .with_source_file(prev_source_file.clone()),
+                );
+                // Code run through a binding runs where the binding was
+                // taken, so `__method__` names the method it was taken in.
+                let named_method = binding
+                    .as_ref()
+                    .and_then(|held| held.method.borrow().clone());
+                if let Some((callee, defined)) = &named_method {
+                    self.call_stack_push(crate::vm::CallFrame::method(
+                        callee.clone(),
+                        None,
+                        callee.clone(),
+                        defined.clone(),
+                    ));
+                }
                 let result = self.execute_program(&statements);
+                if named_method.is_some() {
+                    self.call_stack_pop();
+                }
+                self.call_stack_pop();
                 if carried_cref_pushed {
                     self.class_var_cref_stack.pop();
+                }
+                if let Some(held) = saved_def_scope {
+                    self.def_scope_stack = held;
                 }
                 if let Some(held) = &binding {
                     // A local the code named that the binding did not have is
@@ -1526,8 +1621,8 @@ impl VirtualMachine {
                             held.set(&name, cell);
                         }
                     }
-                    self.environment_mut().pop_scope();
                 }
+                self.environment_mut().pop_scope();
                 if let Some((class, visibility)) = enclosing {
                     class.set_current_visibility(visibility);
                 }
@@ -1581,16 +1676,19 @@ impl VirtualMachine {
                     .into_iter()
                     .filter(|name| {
                         name != "self"
-                            && !self.seeded_global_names.contains(name)
-                            && !self.environment().resolves_to_root_binding(name)
+                            // A builtin the root scope seeded is not a local,
+                            // but a local of the same name shadows it, and
+                            // that one is reported like any other.
+                            && !(self.seeded_global_names.contains(name)
+                                && self.globals().get(name) == self.environment().get(name))
                             && !self
                                 .environment()
                                 .get(name)
                                 .is_some_and(|value| self.name_is_a_definition(name, &value))
                     })
                     .collect();
-                names.sort();
-                names.dedup();
+                let mut seen = std::collections::HashSet::new();
+                names.retain(|name| seen.insert(name.clone()));
                 let names: Vec<Object> = names.into_iter().map(Object::symbol).collect();
                 Ok(Object::Array(std::rc::Rc::new(std::cell::RefCell::new(
                     names,
@@ -2263,28 +2361,19 @@ impl VirtualMachine {
         let mut here = Instance::new(Rc::clone(&loc_class));
         here.set_var("lineno".to_string(), Object::Int(position.line as i64));
         here.set_var("path".to_string(), Object::string(current_file.clone()));
-        let here_absolute = std::path::Path::new(&current_file)
-            .canonicalize()
-            .map(|resolved| resolved.display().to_string())
-            .unwrap_or_else(|_| current_file.clone());
-        here.set_var("absolute_path".to_string(), Object::string(here_absolute));
+        let here_absolute = match self.absolute_path_for(&current_file) {
+            Some(resolved) => Object::string(resolved),
+            None => Object::Nil,
+        };
+        here.set_var("absolute_path".to_string(), here_absolute);
         let frames: Vec<_> = stack.iter().rev().collect();
+        // Where each frame was called from, with a call made inside the core
+        // library standing for the place that reached it: Ruby names the
+        // program's own file rather than `<internal:...>`.
+        let called_from: Vec<(String, i64)> = frame_call_sites(&frames, &current_file);
         // A frame's own name labels the location it is running at, and Ruby
         // names a block by the scope holding it: `block in <main>`.
-        let label_at = |index: usize| -> String {
-            let name = frames
-                .get(index)
-                .map(|frame| frame.name().to_string())
-                .unwrap_or_else(|| "<main>".to_string());
-            if name != "<block>" {
-                return backtrace_label(&name);
-            }
-            let holder = frames
-                .get(index + 1)
-                .map(|frame| frame.name().to_string())
-                .unwrap_or_else(|| "<main>".to_string());
-            format!("block in {}", holder)
-        };
+        let label_at = |index: usize| -> String { frame_label_at(&frames, index) };
         here.set_var("label".to_string(), Object::string(label_at(0)));
         locations.push(Object::Instance(Rc::new(RefCell::new(here))));
         for (index, frame) in frames.iter().enumerate() {
@@ -2293,41 +2382,20 @@ impl VirtualMachine {
             if frame.location().is_none() {
                 continue;
             }
-            // Frame locations are "line:column" or "file:line:column".
-            let (path, line) = match frame.location() {
-                Some(loc) => {
-                    let parts: Vec<&str> = loc.rsplitn(3, ':').collect();
-                    let line = parts
-                        .get(1)
-                        .and_then(|s| s.parse::<i64>().ok())
-                        .unwrap_or(0);
-                    let path = match parts.get(2) {
-                        Some(path) if !path.is_empty() => (*path).to_string(),
-                        // The frame records the file its call site sits in,
-                        // which is where the location belongs.
-                        _ => frame
-                            .source_file()
-                            .map(|file| file.to_string())
-                            .unwrap_or_else(|| current_file.clone()),
-                    };
-                    (path, line)
-                }
-                None => (
-                    frame
-                        .source_file()
-                        .map(|file| file.to_string())
-                        .unwrap_or_else(|| current_file.clone()),
-                    0,
-                ),
-            };
+            let (path, line) = called_from[index].clone();
+            // A frame entered from nowhere in particular records no line,
+            // and there is no call for a backtrace to name there.
+            if line == 0 {
+                continue;
+            }
             let mut inst = Instance::new(Rc::clone(&loc_class));
             inst.set_var("lineno".to_string(), Object::Int(line));
-            let absolute = std::path::Path::new(&path)
-                .canonicalize()
-                .map(|resolved| resolved.display().to_string())
-                .unwrap_or_else(|_| path.clone());
+            let absolute = match self.absolute_path_for(&path) {
+                Some(resolved) => Object::string(resolved),
+                None => Object::Nil,
+            };
             inst.set_var("path".to_string(), Object::string(path));
-            inst.set_var("absolute_path".to_string(), Object::string(absolute));
+            inst.set_var("absolute_path".to_string(), absolute);
             // A frame records where it was called from, so its location pairs
             // with the name of the frame below it: the one that made the call.
             // A frame records where it was called from, so its location
@@ -2735,6 +2803,14 @@ impl VirtualMachine {
         let class = self.builtins().class_of(obj);
         if let Some(rendered @ Object::String(_)) =
             self.call_native_method(&class, obj, "inspect", &[], position)?
+        {
+            return Ok(rendered);
+        }
+        // The per-class tables answer for the classes they know. Everything
+        // else falls to Object's own, which is where an instance of a class
+        // the program wrote is written out with the variables it holds.
+        if let Some(rendered @ Object::String(_)) =
+            self.call_object_method(obj, "inspect", &[], position)?
         {
             return Ok(rendered);
         }
@@ -3187,14 +3263,7 @@ impl VirtualMachine {
                 return Ok(());
             }
         }
-        use std::io::Write;
-        if stream == "stderr" {
-            eprint!("{}", text);
-            let _ = std::io::stderr().flush();
-        } else {
-            print!("{}", text);
-            let _ = std::io::stdout().flush();
-        }
+        write_to_standard_stream(stream, text);
         Ok(())
     }
 
@@ -3729,17 +3798,54 @@ fn bad_range_value(position: Position) -> MetorexError {
     }
 }
 
+/// The name the frame at `index` reads in a backtrace. A block is named for
+/// the scope it was written in and for how many blocks deep it sits there.
+pub(crate) fn frame_label_at(frames: &[&crate::vm::CallFrame], index: usize) -> String {
+    let Some(frame) = frames.get(index) else {
+        return "<main>".to_string();
+    };
+    let name = frame.name().to_string();
+    let depth = if name == "<block>" {
+        frame.block_depth().max(1)
+    } else {
+        frame.block_depth()
+    };
+    let held = if name == "<block>" {
+        frame.written_in().unwrap_or("<main>").to_string()
+    } else {
+        name
+    };
+    let held = backtrace_label(&held);
+    match depth {
+        0 => held,
+        1 => format!("block in {held}"),
+        counted => format!("block ({counted} levels) in {held}"),
+    }
+}
+
 /// The name a backtrace entry reads. A method defined on one object alone is
 /// named by itself: the singleton class holding it has no name a reader would
 /// know, so only the method's own name is written.
 pub(crate) fn backtrace_label(name: &str) -> String {
-    match name.strip_prefix("#<Class:#<") {
-        Some(_) => match name.rfind('#') {
+    // The body of a file that was required is named for being that, since
+    // the file it belongs to is written alongside the label anyway.
+    if name.starts_with("<file:") {
+        return "<top (required)>".to_string();
+    }
+    if name.starts_with("#<Class:#<") {
+        return match name.rfind('#') {
             Some(at) if at + 1 < name.len() => name[at + 1..].to_string(),
             _ => name.to_string(),
-        },
-        None => name.to_string(),
+        };
     }
+    // A method written in `class << Name` belongs to Name, and that is the
+    // name a reader knows it by.
+    if let Some(rest) = name.strip_prefix("#<Class:")
+        && let Some(at) = rest.find(">.")
+    {
+        return format!("{}{}", &rest[..at], &rest[at + 1..]);
+    }
+    name.to_string()
 }
 
 /// Whether a command written as one string holds a character the shell reads,
@@ -3825,4 +3931,84 @@ impl crate::vm::core::VirtualMachine {
         bound.owner_class = Some(owner);
         Some(Object::Method(std::rc::Rc::new(bound)))
     }
+}
+
+/// Write to one of the standard streams. A stream whose other end has gone
+/// ends the program the way the signal would.
+pub(crate) fn write_to_standard_stream(stream: &str, text: &str) {
+    use std::io::Write as _;
+    let sent = if stream == "stderr" {
+        let mut held = std::io::stderr();
+        held.write_all(text.as_bytes()).and_then(|()| held.flush())
+    } else {
+        let mut held = std::io::stdout();
+        held.write_all(text.as_bytes()).and_then(|()| held.flush())
+    };
+    if let Err(trouble) = sent
+        && trouble.kind() == std::io::ErrorKind::BrokenPipe
+    {
+        die_of_a_broken_pipe();
+    }
+}
+
+/// End the program the way a signal would when the other end of the standard
+/// stream has gone. Ruby lets SIGPIPE through for the standard streams, and a
+/// program in a pipeline is told to stop that way.
+fn die_of_a_broken_pipe() -> ! {
+    // SAFETY: both calls name a signal this process may send itself, and the
+    // disposition restored is the one every program starts with.
+    unsafe {
+        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+        libc::raise(libc::SIGPIPE);
+    }
+    std::process::exit(141)
+}
+
+/// Where each frame was called from, innermost first. A frame reached from
+/// the core library's own Ruby source stands for the place that reached it,
+/// so a backtrace names the program's file rather than `<internal:...>`.
+fn frame_call_sites(frames: &[&crate::vm::CallFrame], current_file: &str) -> Vec<(String, i64)> {
+    let mut sites: Vec<(String, i64)> = frames
+        .iter()
+        .map(|frame| match frame.location() {
+            // Frame locations are "line:column" or "file:line:column".
+            Some(written) => {
+                let parts: Vec<&str> = written.rsplitn(3, ':').collect();
+                let line = parts
+                    .get(1)
+                    .and_then(|held| held.parse::<i64>().ok())
+                    .unwrap_or(0);
+                let path = match parts.get(2) {
+                    Some(path) if !path.is_empty() => (*path).to_string(),
+                    // The frame records the file its call site sits in, which
+                    // is where the location belongs.
+                    _ => frame
+                        .source_file()
+                        .map(|file| file.to_string())
+                        .unwrap_or_else(|| current_file.to_string()),
+                };
+                (path, line)
+            }
+            None => (
+                frame
+                    .source_file()
+                    .map(|file| file.to_string())
+                    .unwrap_or_else(|| current_file.to_string()),
+                0,
+            ),
+        })
+        .collect();
+    // Walking outward, an internal call site takes the one below it, which is
+    // the nearest place in the program itself.
+    let mut carried: Option<(String, i64)> = None;
+    for site in sites.iter_mut().rev() {
+        if site.0.starts_with(crate::vm::INTERNAL_FILE_PREFIX) {
+            if let Some(held) = &carried {
+                *site = held.clone();
+            }
+        } else {
+            carried = Some(site.clone());
+        }
+    }
+    sites
 }

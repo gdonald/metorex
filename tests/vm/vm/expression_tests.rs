@@ -463,8 +463,9 @@ fn evaluates_logical_and_short_circuits_on_false() {
     };
 
     vm.execute_program(&[assignment]).expect("execution failed");
-    // Short-circuit: side_effect should not have been set
-    assert_eq!(vm.environment().get("side_effect"), None);
+    // Short-circuit: the name is reserved the way Ruby's parser reserves one
+    // it sees assigned, and the assignment never ran, so it reads as nil.
+    assert_eq!(vm.environment().get("side_effect"), Some(Object::Nil));
     // Result is the falsy left side
     assert_eq!(vm.environment().get("result"), Some(Object::Bool(false)));
 }
@@ -529,8 +530,9 @@ fn evaluates_logical_or_short_circuits_on_true() {
     };
 
     vm.execute_program(&[assignment]).expect("execution failed");
-    // Short-circuit: side_effect should not have been set
-    assert_eq!(vm.environment().get("side_effect"), None);
+    // Short-circuit: the name is reserved the way Ruby's parser reserves one
+    // it sees assigned, and the assignment never ran, so it reads as nil.
+    assert_eq!(vm.environment().get("side_effect"), Some(Object::Nil));
     // Result is the truthy left side
     assert_eq!(vm.environment().get("result"), Some(Object::Bool(true)));
 }

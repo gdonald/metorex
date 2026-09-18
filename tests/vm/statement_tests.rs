@@ -19,20 +19,11 @@ fn run_err(code: &str) -> String {
     vm.execute_program(&stmts).unwrap_err().to_string()
 }
 
-// ── @var set when self is not an Instance (lines 199-201) ─────────────────────
-// This triggers when trying to set @var in a context where self exists but
-// is not an Instance (e.g., setting @var at top-level where self is absent
-// → None path at 203-209). The Some(_) non-instance path is harder to trigger.
+// ── @var set at the top level, where `self` is `main` ────────────────────────
 
 #[test]
-fn instance_var_set_outside_method_error() {
-    let err = run_err("@foo = 42");
-    assert!(
-        err.contains("instance variable")
-            || err.contains("@foo")
-            || err.contains("method")
-            || err.contains("context")
-    );
+fn instance_var_set_at_the_top_level_belongs_to_main() {
+    assert_eq!(run("@foo = 42\n@foo"), Some(Object::Int(42)));
 }
 
 // ── @@var set when self is None (no context) ──────────────────────────────────
@@ -166,17 +157,11 @@ $count
     assert_eq!(result, Some(Object::Int(15)));
 }
 
-// ── @var read outside method error (None context, lines 464-470) ─────────────
+// ── @var read at the top level, where nothing wrote it ───────────────────────
 
 #[test]
-fn instance_var_read_outside_method_error() {
-    let err = run_err("@foo");
-    assert!(
-        err.contains("instance variable")
-            || err.contains("@foo")
-            || err.contains("method")
-            || err.contains("context")
-    );
+fn instance_var_read_outside_method_answers_nil() {
+    assert_eq!(run("@foo"), Some(Object::Nil));
 }
 
 // ── @@var read outside class error ───────────────────────────────────────────
@@ -333,17 +318,17 @@ test()
     assert_eq!(result, Some(Object::Int(3)));
 }
 #[test]
-fn instance_var_assign_at_top_level_error() {
-    let err = run_err("@foo = 42");
-    assert!(err.contains("Instance variable") || err.contains("@foo") || err.contains("method"));
+fn instance_var_assign_at_top_level_answers_the_value() {
+    assert_eq!(run("@foo = 42"), Some(Object::Int(42)));
 }
 
 // ── Instance variable read at top level ──────────────────────────────────────
 
 #[test]
-fn instance_var_read_at_top_level_error() {
-    let err = run_err("@foo");
-    assert!(err.contains("Instance variable") || err.contains("@foo") || err.contains("method"));
+fn instance_var_read_at_top_level_answers_nil() {
+    // At the top level `self` is `main`, and an instance variable nothing
+    // wrote reads as nil there the way it does on any other object.
+    assert_eq!(run("@foo"), Some(Object::Nil));
 }
 
 // ── Class variable assignment at top level ────────────────────────────────────
@@ -592,6 +577,7 @@ fn method_def_at_top_level_error() {
         parameters: vec![Parameter::simple("x".to_string(), pos)],
         body: vec![],
         position: pos,
+        end_position: pos,
     };
     let result = vm.execute_program(&[stmt]);
     assert!(result.is_err());

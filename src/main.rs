@@ -71,34 +71,15 @@ struct Cli {
     #[arg(short = 'X', hide = true)]
     working_directory_x: Option<String>,
 
-    /// Ignored flags for Ruby compatibility
+    /// Ruby --disable=<feature>, which `--disable-<feature>` is rewritten to
+    /// before the arguments are read.
     #[arg(long = "disable", hide = true)]
-    _disable: Option<String>,
+    disabled_features: Vec<String>,
 
-    /// Ignored: Ruby --enable=<feature>
+    /// Ruby --enable=<feature>, which `--enable-<feature>` is rewritten to
+    /// before the arguments are read.
     #[arg(long = "enable", hide = true)]
-    _enable: Option<String>,
-
-    /// Ruby --enable-frozen-string-literal: every literal in a source that
-    /// says nothing about it is frozen.
-    #[arg(
-        long = "enable-frozen-string-literal",
-        alias = "enable-frozen_string_literal",
-        hide = true,
-        action = clap::ArgAction::SetTrue
-    )]
-    enable_frozen_string_literal: bool,
-
-    /// Ruby --disable-frozen-string-literal: every literal in a source that
-    /// says nothing about it changes, and carries no notice that a later
-    /// release will freeze it.
-    #[arg(
-        long = "disable-frozen-string-literal",
-        alias = "disable-frozen_string_literal",
-        hide = true,
-        action = clap::ArgAction::SetTrue
-    )]
-    disable_frozen_string_literal: bool,
+    enabled_features: Vec<String>,
 
     /// Ruby --debug-frozen-string-literal: a literal remembers where it was
     /// written, which is named when something tries to change it.
@@ -109,48 +90,6 @@ struct Cli {
         action = clap::ArgAction::SetTrue
     )]
     debug_frozen_string_literal: bool,
-
-    /// Ignored: Ruby --enable-gems
-    #[arg(long = "enable-gems", hide = true, action = clap::ArgAction::SetTrue)]
-    _enable_gems: bool,
-
-    /// Ignored: Ruby --enable-did_you_mean, spelled either way
-    #[arg(
-        long = "enable-did_you_mean",
-        alias = "enable-did-you-mean",
-        hide = true,
-        action = clap::ArgAction::SetTrue
-    )]
-    _enable_did_you_mean: bool,
-
-    /// Ignored: Ruby --enable-rubyopt
-    #[arg(long = "enable-rubyopt", hide = true, action = clap::ArgAction::SetTrue)]
-    _enable_rubyopt: bool,
-
-    /// Ignored: Ruby --enable-all
-    #[arg(long = "enable-all", hide = true, action = clap::ArgAction::SetTrue)]
-    _enable_all: bool,
-
-    /// Ignored: Ruby --disable-gems
-    #[arg(long = "disable-gems", hide = true, action = clap::ArgAction::SetTrue)]
-    _disable_gems: bool,
-
-    /// Ignored: Ruby --disable-did_you_mean, spelled either way
-    #[arg(
-        long = "disable-did_you_mean",
-        alias = "disable-did-you-mean",
-        hide = true,
-        action = clap::ArgAction::SetTrue
-    )]
-    _disable_did_you_mean: bool,
-
-    /// Ignored: Ruby --disable-rubyopt
-    #[arg(long = "disable-rubyopt", hide = true, action = clap::ArgAction::SetTrue)]
-    _disable_rubyopt: bool,
-
-    /// Ignored: Ruby --disable-all
-    #[arg(long = "disable-all", hide = true, action = clap::ArgAction::SetTrue)]
-    _disable_all: bool,
 
     /// Ruby -p (the -n loop, printing the line after each pass)
     #[arg(short = 'p', hide = true, action = clap::ArgAction::SetTrue)]
@@ -185,9 +124,10 @@ struct Cli {
     warnings: bool,
 
     /// Ruby -W: a level from 0 to 2, or a warning category to turn on or
-    /// off, such as `-W:deprecated` and `-W:no-experimental`.
-    #[arg(short = 'W', hide = true)]
-    warning_level: Option<String>,
+    /// off, such as `-W:deprecated` and `-W:no-experimental`. Written bare it
+    /// means the loudest level, and it may be written more than once.
+    #[arg(short = 'W', hide = true, action = clap::ArgAction::Append)]
+    warning_levels: Vec<String>,
 
     /// Ruby --external-encoding (the encoding text read and written is in)
     #[arg(long = "external-encoding", hide = true)]
@@ -308,13 +248,20 @@ fn run_program(
     if !opening.is_empty() {
         vm.execute_program(&opening)?;
     }
+    // Ruby reads the files named on the command line, and standard input
+    // when none was. The names are taken off ARGV as they are opened.
+    let named = vm.argv_paths();
+    let mut records = Records::of(named);
+    let mut counted = 0i64;
     loop {
         // The separator may have been changed by the program itself, as a
         // `BEGIN` block does, so it is read again for each record.
         let separator = vm.line_separator();
-        let Some(line) = read_record(&separator) else {
+        let Some(line) = records.next(&separator) else {
             break;
         };
+        counted += 1;
+        vm.set_records_read(counted);
         let held = if reading.chomping {
             line.strip_suffix(&separator).unwrap_or(&line).to_string()
         } else {
@@ -331,28 +278,6 @@ fn run_program(
         }
     }
     Ok(())
-}
-
-/// The directories a `-I` inside RUBYOPT names, in the order they were
-/// written there.
-fn search_paths_in_rubyopt() -> Vec<String> {
-    let Ok(written) = std::env::var("RUBYOPT") else {
-        return Vec::new();
-    };
-    let mut found = Vec::new();
-    let mut words = written.split_whitespace();
-    while let Some(word) = words.next() {
-        if let Some(rest) = word.strip_prefix("-I") {
-            if rest.is_empty() {
-                if let Some(next) = words.next() {
-                    found.push(next.to_string());
-                }
-            } else {
-                found.push(rest.to_string());
-            }
-        }
-    }
-    found
 }
 
 /// The script `-S` names, looked for in RUBYPATH and then in PATH. A name
@@ -379,37 +304,91 @@ fn script_on_search_path(named: &str) -> Option<String> {
 /// Whether a statement is a `BEGIN { ... }` block, which runs once before
 /// anything else the program does.
 fn names_begin_block(statement: &metorex::ast::Statement) -> bool {
-    use metorex::ast::{Expression, Statement};
-    matches!(
-        statement,
-        Statement::Expression {
-            expression: Expression::Call { callee, .. },
-            ..
-        } if matches!(callee.as_ref(), Expression::Identifier { name, .. } if name == "__begin_once__")
-    )
+    matches!(statement, metorex::ast::Statement::BeginBlock { .. })
 }
 
 /// One record from standard input, read up to and including `separator`.
 /// None once the input is spent.
-fn read_record(separator: &str) -> Option<String> {
-    use std::io::Read;
-    let mut collected = Vec::new();
-    let ending = separator.as_bytes();
-    let mut input = std::io::stdin().lock();
-    let mut byte = [0u8; 1];
-    loop {
-        match input.read(&mut byte) {
-            Ok(0) | Err(_) => break,
-            Ok(_) => collected.push(byte[0]),
-        }
-        if !ending.is_empty() && collected.ends_with(ending) {
-            break;
+/// The records the `-n` and `-p` loops read: the contents of every file named
+/// on the command line in turn, and standard input when none was.
+struct Records {
+    /// The files still to be read, in the order they were named.
+    waiting: Vec<String>,
+    /// The bytes of the file being read, and how far through it the reading
+    /// has got.
+    held: Option<(Vec<u8>, usize)>,
+    /// Whether standard input has been read, for a run that names no file.
+    read_stdin: bool,
+    /// Whether the command line named a file at all. A run that did reads
+    /// those and nothing else.
+    named_a_file: bool,
+}
+
+impl Records {
+    fn of(files: Vec<String>) -> Self {
+        Self {
+            named_a_file: !files.is_empty(),
+            waiting: files,
+            held: None,
+            read_stdin: false,
         }
     }
-    if collected.is_empty() {
-        return None;
+
+    /// The next record, or None once every file has been read through.
+    fn next(&mut self, separator: &str) -> Option<String> {
+        loop {
+            if self.held.is_none() && !self.open_the_next()? {
+                continue;
+            }
+            let (bytes, at) = self.held.as_mut()?;
+            if *at >= bytes.len() {
+                self.held = None;
+                continue;
+            }
+            let ending = separator.as_bytes();
+            let stop = if ending.is_empty() {
+                bytes.len()
+            } else {
+                match bytes[*at..]
+                    .windows(ending.len())
+                    .position(|held| held == ending)
+                {
+                    Some(found) => *at + found + ending.len(),
+                    None => bytes.len(),
+                }
+            };
+            let record = String::from_utf8_lossy(&bytes[*at..stop]).into_owned();
+            *at = stop;
+            return Some(record);
+        }
     }
-    Some(String::from_utf8_lossy(&collected).into_owned())
+
+    /// Open the next file, answering whether it holds anything to read. None
+    /// once there is nothing left to open at all.
+    fn open_the_next(&mut self) -> Option<bool> {
+        use std::io::Read;
+        if let Some(named) = self.waiting.first().cloned() {
+            self.waiting.remove(0);
+            match std::fs::read(&named) {
+                Ok(bytes) => {
+                    self.held = Some((bytes, 0));
+                    return Some(true);
+                }
+                Err(trouble) => {
+                    eprintln!("metorex: No such file or directory -- {named} ({trouble})");
+                    return Some(false);
+                }
+            }
+        }
+        if self.read_stdin || self.named_a_file {
+            return None;
+        }
+        self.read_stdin = true;
+        let mut bytes = Vec::new();
+        let _ = std::io::stdin().lock().read_to_end(&mut bytes);
+        self.held = Some((bytes, 0));
+        Some(true)
+    }
 }
 
 /// How the line-reading flags were written on the command line.
@@ -577,13 +556,22 @@ fn apply_encoding_flags(vm: &mut VirtualMachine, cli: &Cli) {
 /// Apply `-I` (include paths), `-r` (require libraries) and `-w` (warnings)
 /// flags to a VM.
 fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
+    // A feature turned on leaves a module behind under the name Ruby gives
+    // it, which is what `defined?` finds.
+    let features = Features::read(cli);
+    if features.gems {
+        vm.define_feature_module("Gem");
+    }
+    if features.did_you_mean {
+        vm.define_feature_module("DidYouMean");
+    }
     // Ruby's `-w` turns on the deprecation warnings a plain run keeps quiet,
     // and `-d` and `-v` turn them on the same way.
     // `-W` with a number says how loud a run is: 0 quiet, 1 the default, and
     // 2 as loud as `-w`. With a name it turns one category on or off.
     let mut named_categories: Vec<(String, bool)> = Vec::new();
     let mut warning_level = None;
-    if let Some(written) = &cli.warning_level {
+    for written in &cli.warning_levels {
         match written.strip_prefix(':') {
             Some(category) => match category.strip_prefix("no-") {
                 Some(category) => named_categories.push((category.to_string(), false)),
@@ -592,7 +580,10 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
             None => warning_level = written.parse::<u8>().ok(),
         }
     }
-    let verbose = cli.warnings || cli.ruby_debug || cli.ruby_version || warning_level == Some(2);
+    // Ruby's `--debug` is `-d` with the frozen-literal reporting turned on
+    // alongside it, so everything `-d` settles reads it too.
+    let ruby_debug = cli.ruby_debug || cli.debug;
+    let verbose = cli.warnings || ruby_debug || cli.ruby_version || warning_level == Some(2);
     if verbose {
         vm.enable_warning_category("deprecated");
     }
@@ -618,7 +609,7 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
         vm.set_in_place_extension(extension);
     }
     vm.set_flag_global("w", cli.warnings);
-    vm.set_flag_global("d", cli.ruby_debug);
+    vm.set_flag_global("d", ruby_debug);
     // `-w`, `-v` and `-d` are the switches `$VERBOSE` reports, and `-W0`
     // turns it off altogether.
     if verbose {
@@ -627,8 +618,11 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
     if warning_level == Some(0) {
         vm.set_verbose_nil();
     }
-    if cli.ruby_debug {
+    if ruby_debug {
         vm.set_debug(true);
+    }
+    if cli.debug_frozen_string_literal || cli.debug {
+        vm.set_debug_frozen_string_literal(true);
     }
 
     // `-0` names the line separator by its octal code, and a bare `-0` means
@@ -637,10 +631,7 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
         vm.set_line_separator(written);
     }
     apply_encoding_flags(vm, cli);
-    // RUBYOPT is read as though its words had been written on the command
-    // line, so a `-I` there adds to the load path too.
-    let mut opened: Vec<String> = search_paths_in_rubyopt();
-    opened.extend(cli.include_paths.iter().cloned());
+    let mut opened: Vec<String> = cli.include_paths.clone();
     // RUBYLIB names directories of its own, which stand after everything a
     // `-I` asked for and before the rest of the path.
     if let Ok(written) = std::env::var("RUBYLIB") {
@@ -661,7 +652,7 @@ fn apply_cli_flags(vm: &mut VirtualMachine, cli: &Cli) {
         vm.append_load_path(path);
     }
     for lib in &cli.require_libs {
-        if let Err(err) = vm.require_library(lib) {
+        if let Err(err) = vm.require_startup_library(lib) {
             eprintln!("Runtime error: {}", err);
             process::exit(1);
         }
@@ -682,18 +673,25 @@ fn main() {
 fn real_main() {
     // Ruby lets `-r`, `-I`, and `-W` carry their value attached (`-rfoo`),
     // which the argument parser only understands as two words.
-    let arguments: Vec<String> = std::env::args()
+    let mut arguments: Vec<String> = std::env::args()
+        .flat_map(spelled_out_flag)
         .flat_map(metorex::split_short_flags)
         .collect();
+    // RUBYOPT is read as though its words had been written on the command
+    // line, ahead of what was, so a flag written there is overridden by the
+    // same flag on the line itself.
+    let from_rubyopt = rubyopt_arguments(&arguments);
+    arguments.splice(1..1, from_rubyopt);
     let cli = Cli::parse_from(arguments);
+    let features = Features::read(&cli);
 
     // Without a magic comment of its own, a source takes the setting the
     // program was started with. Said here rather than with the rest of the
     // flags, since a source is read before a VM is built for it.
-    if cli.enable_frozen_string_literal {
-        metorex::lexer::set_literal_default(metorex::lexer::LiteralDefault::Frozen);
-    } else if cli.disable_frozen_string_literal {
-        metorex::lexer::set_literal_default(metorex::lexer::LiteralDefault::Mutable);
+    match features.frozen_string_literal {
+        Some(true) => metorex::lexer::set_literal_default(metorex::lexer::LiteralDefault::Frozen),
+        Some(false) => metorex::lexer::set_literal_default(metorex::lexer::LiteralDefault::Mutable),
+        None => {}
     }
     // `-K` names the encoding every source is read as, so it has to be known
     // before any of them is read.
@@ -1025,4 +1023,167 @@ fn err_exception(err: &metorex::error::MetorexError) -> Option<metorex::object::
         }
         _ => None,
     }
+}
+
+/// The features `--enable` and `--disable` name, resolved from the command
+/// line. Ruby turns gems, did_you_mean, and RUBYOPT on by default and leaves
+/// frozen string literals to each source unless a flag says otherwise.
+struct Features {
+    gems: bool,
+    did_you_mean: bool,
+    frozen_string_literal: Option<bool>,
+}
+
+/// The feature names Ruby answers to, as `--enable` and `--disable` spell
+/// them. `gem` is the singular Ruby also accepts for `gems`.
+const FEATURE_NAMES: [&str; 5] = [
+    "gems",
+    "gem",
+    "did_you_mean",
+    "rubyopt",
+    "frozen_string_literal",
+];
+
+/// A feature name with the spellings Ruby accepts folded together: a hyphen
+/// reads as an underscore, so `--enable=frozen-string-literal` is the same
+/// flag as `--enable=frozen_string_literal`.
+fn feature_key(written: &str) -> String {
+    written.trim().replace('-', "_")
+}
+
+impl Features {
+    fn read(cli: &Cli) -> Self {
+        let mut held = Features {
+            gems: true,
+            did_you_mean: true,
+            frozen_string_literal: None,
+        };
+        for written in &cli.enabled_features {
+            held.apply(written, true);
+        }
+        for written in &cli.disabled_features {
+            held.apply(written, false);
+        }
+        held
+    }
+
+    /// Turn every feature a `--enable` or `--disable` word names on or off.
+    /// Ruby takes several at once, separated by commas.
+    fn apply(&mut self, written: &str, on: bool) {
+        for part in written.split(',') {
+            match feature_key(part).as_str() {
+                "all" => {
+                    self.gems = on;
+                    self.did_you_mean = on;
+                    self.frozen_string_literal = Some(on);
+                }
+                "gems" | "gem" => self.gems = on,
+                "did_you_mean" => self.did_you_mean = on,
+                "frozen_string_literal" => self.frozen_string_literal = Some(on),
+                // Whether RUBYOPT is read is settled before the arguments
+                // are, so the name is taken here and nothing more is done.
+                "rubyopt" => {}
+                other => {
+                    let flag = if on { "--enable" } else { "--disable" };
+                    eprintln!(
+                        "metorex: warning: unknown argument for {}: '{}'",
+                        flag, other
+                    );
+                    eprintln!(
+                        "metorex: warning: features are [{}].",
+                        FEATURE_NAMES.join(", ")
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// `--enable-<feature>` and `--disable-<feature>` written as one word, read
+/// as the two the argument parser understands. `--debug-frozen-string-literal`
+/// is a flag of its own rather than a feature, so it stands as it is.
+fn spelled_out_flag(argument: String) -> Vec<String> {
+    // A bare `-W` is the loudest level, which the argument parser reads as a
+    // level written out.
+    if argument == "-W" {
+        return vec!["-W2".to_string()];
+    }
+    for flag in ["--enable", "--disable"] {
+        if let Some(named) = argument.strip_prefix(&format!("{flag}-")) {
+            return vec![flag.to_string(), named.to_string()];
+        }
+    }
+    vec![argument]
+}
+
+/// Whether RUBYOPT is read, which `--disable=rubyopt` and `--disable=all`
+/// turn off. Settled by reading the arguments directly, since RUBYOPT's own
+/// words join them before they are parsed.
+fn rubyopt_is_read(arguments: &[String]) -> bool {
+    let mut read = true;
+    let mut words = arguments.iter();
+    while let Some(word) = words.next() {
+        let named = match word.split_once('=') {
+            Some(("--disable", named)) => named.to_string(),
+            _ if word == "--disable" => match words.next() {
+                Some(next) => next.clone(),
+                None => break,
+            },
+            _ => continue,
+        };
+        for part in named.split(',') {
+            if matches!(feature_key(part).as_str(), "rubyopt" | "all") {
+                read = false;
+            }
+        }
+    }
+    read
+}
+
+/// The switches Ruby lets RUBYOPT carry. Anything else there ends the run.
+fn allowed_in_rubyopt(word: &str) -> bool {
+    if let Some(long) = word.strip_prefix("--") {
+        let name = long.split('=').next().unwrap_or("");
+        return matches!(
+            name,
+            "debug"
+                | "disable"
+                | "enable"
+                | "external-encoding"
+                | "internal-encoding"
+                | "verbose"
+                | "backtrace-limit"
+        );
+    }
+    match word.strip_prefix('-').and_then(|rest| rest.chars().next()) {
+        Some(letter) => "dEIKrTUvwW".contains(letter),
+        None => false,
+    }
+}
+
+/// The arguments RUBYOPT stands for, read as though they had been written on
+/// the command line. A switch Ruby does not allow there ends the run.
+fn rubyopt_arguments(arguments: &[String]) -> Vec<String> {
+    if !rubyopt_is_read(arguments) {
+        return Vec::new();
+    }
+    let Ok(written) = std::env::var("RUBYOPT") else {
+        return Vec::new();
+    };
+    let mut read = Vec::new();
+    for word in written.split_whitespace() {
+        if !allowed_in_rubyopt(word) {
+            eprintln!(
+                "metorex: invalid switch in RUBYOPT: {} (RuntimeError)",
+                word
+            );
+            process::exit(1);
+        }
+        read.extend(
+            spelled_out_flag(word.to_string())
+                .into_iter()
+                .flat_map(metorex::split_short_flags),
+        );
+    }
+    read
 }

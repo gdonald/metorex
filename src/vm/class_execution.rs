@@ -641,6 +641,11 @@ impl VirtualMachine {
         let prev_source_file = self.current_source_file.replace(filename.clone());
         let saved_nesting = self.user_def_nesting;
         self.user_def_nesting = 0;
+        // Code handed to `class_eval` is counted into the file it names when
+        // the run was started with `eval` coverage on.
+        if self.coverage_counts_eval() {
+            self.coverage_note_eval(&filename, &statements);
+        }
         let result = self.apply_class_body(class_rc, &statements, position);
         self.user_def_nesting = saved_nesting;
         self.current_file = prev_file;
@@ -775,7 +780,7 @@ impl VirtualMachine {
         let held_home = std::mem::take(&mut self.class_var_home);
         let answer = self.class_body_statements(class, body, position);
         self.class_var_home = held_home;
-        answer
+        refuse_return_from_a_body(answer, position)
     }
 
     fn class_body_statements(
@@ -786,6 +791,11 @@ impl VirtualMachine {
     ) -> Result<Object, MetorexError> {
         let mut last_value = Object::Nil;
         for statement in body {
+            if self.coverage.is_some() {
+                let line = statement.position().line;
+                self.coverage_count(line);
+                self.coverage_skip_line = Some(line);
+            }
             // Bare `private` / `public` / `protected` statements (no args)
             // toggle the default visibility for subsequent method defs.
             if let Statement::Expression {
@@ -861,13 +871,24 @@ impl VirtualMachine {
                     class.define_method(format!("__class__{}", method_name), Rc::new(m));
                     last_value = Object::symbol(method_name.clone());
                 }
+                // `def Named.method` inside a body names the object it says
+                // rather than the class the body opens, so the ordinary route
+                // resolves the receiver.
+                Statement::FunctionDef {
+                    singleton_class: Some(_),
+                    ..
+                } => {
+                    if let ControlFlow::Value(value) = self.execute_statement(statement)? {
+                        last_value = value;
+                    }
+                }
                 Statement::MethodDef {
                     name: method_name,
                     parameters,
                     body: method_body,
                     is_class_method,
                     position: def_position,
-                    ..
+                    end_position: def_end,
                 } => {
                     // Create a Method object
                     let param_names: Vec<String> = parameters
@@ -937,6 +958,14 @@ impl VirtualMachine {
                         if module_function_is_active(class) {
                             self.copy_to_module_function(class, method_name, position)?;
                         }
+                    }
+                    if self.coverage.is_some() {
+                        self.coverage_note_method(
+                            Object::Class(Rc::clone(class)),
+                            method_name,
+                            *def_position,
+                            *def_end,
+                        );
                     }
                     last_value = Object::symbol(method_name.clone());
                 }
@@ -1370,8 +1399,13 @@ impl VirtualMachine {
                                 }
                             }
                             _ => match self.execute_statement(statement)? {
-                                ControlFlow::Value(v) | ControlFlow::Return { value: v, .. } => {
+                                ControlFlow::Value(v) => {
                                     last_value = v;
+                                }
+                                // Ruby's parser refuses a `return` written in
+                                // a class or module body outright.
+                                ControlFlow::Return { position, .. } => {
+                                    return Err(return_in_a_body_error(position));
                                 }
                                 _ => {}
                             },
@@ -1455,6 +1489,15 @@ impl VirtualMachine {
         function.variadic_param = variadic_param;
         function.captured_refinements = self.snapshot_active_refinements();
         function.captured_nesting = self.snapshot_lexical_nesting();
+        // A `def` written outside every class belongs to Object, which is the
+        // name a backtrace gives it however it is reached.
+        if singleton_class.is_none()
+            && self.def_scope_stack.is_empty()
+            && let Some(Object::Class(object_class)) = self.globals().get("Object")
+        {
+            function.owner = Some(object_class.name().to_string());
+            function.owner_class = Some(object_class);
+        }
         let function = Rc::new(function);
 
         // Singleton method: define on the specific class (e.g., TrueClass)
@@ -1469,14 +1512,33 @@ impl VirtualMachine {
                 self.eval_instance_var_read(variable, position).ok()
             } else if let Some(variable) = receiver_name.strip_prefix('$') {
                 self.globals().get(variable)
+            } else if receiver_name == "self" {
+                // At the top level `self` is `main`, which is bound nowhere
+                // in the environment and has to be asked for.
+                self.eval_self(position).ok()
             } else {
                 self.environment()
                     .get(receiver_name)
                     .or_else(|| self.globals().get(receiver_name))
             };
             if sole_instance_receiver.is_some() {
-                if let Some(Object::Class(target_class)) = resolved {
-                    target_class.define_method(name, Rc::clone(&function));
+                match resolved {
+                    Some(Object::Class(target_class)) => {
+                        target_class.define_method(name, Rc::clone(&function));
+                    }
+                    // A `def self.name` written where `self` is an object
+                    // rather than a class names that object alone.
+                    Some(receiver @ Object::Instance(_)) => {
+                        let singleton = self.singleton_class_of(&receiver);
+                        singleton.define_method(name, Rc::clone(&function));
+                        self.invoke_class_hook(
+                            &singleton,
+                            "singleton_method_added",
+                            name,
+                            position,
+                        )?;
+                    }
+                    _ => {}
                 }
                 return Ok(ControlFlow::Value(Object::symbol(name)));
             }
@@ -1505,7 +1567,8 @@ impl VirtualMachine {
                     | Object::Array(_)
                     | Object::Dict(_)
                     | Object::Set(_)
-                    | Object::String(_)),
+                    | Object::String(_)
+                    | Object::Regex(_, _)),
                 ) => {
                     if self.object_is_frozen(&receiver) {
                         return Err(self.frozen_modification_error(&receiver, position));
@@ -1795,7 +1858,11 @@ impl VirtualMachine {
         let answer = self.module_body_statements(module, body);
         self.call_stack_pop();
         self.class_var_home = held_home;
-        answer
+        let written_at = body
+            .first()
+            .map(|statement| statement.position())
+            .unwrap_or_else(|| Position::new(0, 0, 0));
+        refuse_return_from_a_body(answer, written_at)
     }
 
     fn module_body_statements(
@@ -1806,6 +1873,11 @@ impl VirtualMachine {
         module.set_current_visibility("public");
         let mut last_value = Object::Nil;
         for statement in body {
+            if self.coverage.is_some() {
+                let line = statement.position().line;
+                self.coverage_count(line);
+                self.coverage_skip_line = Some(line);
+            }
             // Bare `private` / `public` / `protected` toggle the default
             // visibility for the method definitions that follow, the same way
             // they do in a class body.
@@ -2068,13 +2140,15 @@ impl VirtualMachine {
                     self.invoke_class_hook(module, "method_added", new_name, *alias_pos)?;
                 }
                 // Other statements in module body
-                _ => {
-                    if let ControlFlow::Value(value) | ControlFlow::Return { value, .. } =
-                        self.execute_statement(statement)?
-                    {
+                _ => match self.execute_statement(statement)? {
+                    ControlFlow::Value(value) => {
                         last_value = value;
                     }
-                }
+                    ControlFlow::Return { position, .. } => {
+                        return Err(return_in_a_body_error(position));
+                    }
+                    _ => {}
+                },
             }
         }
         Ok(last_value)
@@ -2621,7 +2695,14 @@ impl VirtualMachine {
             self.rendering_frozen_error = false;
             rendered.unwrap_or_else(|_| "...".to_string())
         };
-        let message = format!("can't modify frozen {}: {}", class_name, rendered);
+        let mut message = format!("can't modify frozen {}: {}", class_name, rendered);
+        // A run told to report where a literal was written names the place
+        // the refused string came from.
+        if let Object::String(text) = receiver
+            && let Some(written_at) = text.created_at()
+        {
+            message.push_str(&format!(", created at {}", written_at));
+        }
         let exception = Object::exception("FrozenError", message.clone());
         if let Object::Exception(details) = &exception {
             details.borrow_mut().receiver = Some(Box::new(receiver.clone()));
@@ -2834,4 +2915,30 @@ fn not_a_module(named: &str, held: &Object, position: Position) -> MetorexError 
     let message = format!("{} is not a module", named);
     let _ = held;
     crate::vm::errors::simple_exception("TypeError", &message, position)
+}
+
+/// Ruby's parser refuses a `return` written directly in a class or module
+/// body, which it reports as a syntax error.
+fn return_in_a_body_error(position: Position) -> MetorexError {
+    crate::vm::errors::syntax_error(
+        "Invalid return in class/module body".to_string(),
+        None,
+        position,
+    )
+}
+
+/// A `return` written in a block inside a class or module body has no method
+/// to return from, so it is refused where the body ends.
+fn refuse_return_from_a_body(
+    answer: Result<Object, MetorexError>,
+    position: Position,
+) -> Result<Object, MetorexError> {
+    match answer {
+        Err(MetorexError::NonLocalReturn { .. }) => Err(crate::vm::errors::simple_exception(
+            "LocalJumpError",
+            "unexpected return",
+            position,
+        )),
+        other => other,
+    }
 }

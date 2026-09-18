@@ -44,6 +44,10 @@ pub struct StringValue {
     /// names the string those directives wrote the address of. Zero where the
     /// string carries none, which is every string but a packed one.
     pointer: std::cell::Cell<u64>,
+    /// Where the literal that made this string was written, as `file:line`.
+    /// Only `--debug-frozen-string-literal` records it, and everything else
+    /// leaves it empty.
+    created_at: RefCell<Option<String>>,
 }
 
 impl StringValue {
@@ -59,6 +63,7 @@ impl StringValue {
             deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
             pointer: std::cell::Cell::new(0),
+            created_at: RefCell::new(None),
         }
     }
 
@@ -75,6 +80,7 @@ impl StringValue {
             deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
             pointer: std::cell::Cell::new(0),
+            created_at: RefCell::new(None),
         }
     }
 
@@ -179,6 +185,17 @@ impl StringValue {
         self.chilled.borrow_mut().take()
     }
 
+    /// Record where the literal that made this string was written.
+    pub fn set_created_at(&self, written_at: String) {
+        *self.created_at.borrow_mut() = Some(written_at);
+    }
+
+    /// Where the literal that made this string was written, for a run that
+    /// asked to be told.
+    pub fn created_at(&self) -> Option<String> {
+        self.created_at.borrow().clone()
+    }
+
     /// Whether the string is one of the interned copies `String#-@` answers.
     pub fn is_deduplicated(&self) -> bool {
         self.deduplicated.get()
@@ -225,6 +242,7 @@ impl Clone for StringValue {
             deduplicated: std::cell::Cell::new(false),
             chilled: RefCell::new(None),
             pointer: std::cell::Cell::new(self.pointer.get()),
+            created_at: RefCell::new(self.created_at.borrow().clone()),
         }
     }
 }

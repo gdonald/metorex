@@ -87,6 +87,25 @@ impl Environment {
         self.current_scope().borrow_mut().hoist(name);
     }
 
+    /// Whether an assignment to `name` in the body being entered introduces a
+    /// local. A name nothing has bound does, and so does one that only a
+    /// builtin method of the same name answers to: `p = 5` makes `p` a local
+    /// of that scope even though `Kernel#p` shares the name.
+    pub fn assignment_introduces_a_local(&self, name: &str) -> bool {
+        match self.get(name) {
+            None => true,
+            Some(value) => {
+                crate::scope::names_a_definition(&value) && self.resolves_to_root_binding(name)
+            }
+        }
+    }
+
+    /// Whether `name` is only reserved for an assignment further down, which
+    /// means no local of that name is in scope where execution stands.
+    pub fn name_is_only_hoisted(&self, name: &str) -> bool {
+        self.current_scope().borrow().is_only_hoisted(name)
+    }
+
     /// Binds a name the program did not declare, which `local_variables`
     /// and a Binding leave out.
     pub fn define_hidden(&mut self, name: String, value: Object) {
@@ -187,6 +206,17 @@ impl Environment {
 
     /// Defines a name a block captured from its definition site. It resolves
     /// like any other variable but is not reported as a local of this scope.
+    /// Binds a name carried in from a Binding in the current scope.
+    pub fn define_inherited(
+        &mut self,
+        name: String,
+        value: std::rc::Rc<std::cell::RefCell<Object>>,
+    ) {
+        self.current_scope()
+            .borrow_mut()
+            .define_inherited(name, value);
+    }
+
     pub fn define_captured(
         &mut self,
         name: String,

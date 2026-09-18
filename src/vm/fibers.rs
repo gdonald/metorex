@@ -167,7 +167,40 @@ impl VirtualMachine {
     /// Hand control to a fiber, with the arguments `resume` was called with.
     /// A fiber that transfers control on rather than yielding is followed
     /// here, so the chain runs on this stack rather than nesting.
+    /// Run a fiber, keeping the last match to itself. `$~` and the numbered
+    /// globals reading it belong to the fiber that set them, so a thread
+    /// starts with none and a match it makes is not seen outside.
     pub(crate) fn fiber_resume(
+        &mut self,
+        handle: usize,
+        fiber: Object,
+        given: Vec<Object>,
+        position: Position,
+    ) -> Result<FiberStep, MetorexError> {
+        let held = self
+            .globals()
+            .get(crate::vm::native_methods::regexp_methods::LAST_MATCH)
+            .unwrap_or(Object::Nil);
+        let carried = self
+            .fiber_last_matches
+            .remove(&handle)
+            .unwrap_or(Object::Nil);
+        self.globals_mut().set(
+            crate::vm::native_methods::regexp_methods::LAST_MATCH,
+            carried,
+        );
+        let stepped = self.fiber_resume_within(handle, fiber, given, position);
+        let left = self
+            .globals()
+            .get(crate::vm::native_methods::regexp_methods::LAST_MATCH)
+            .unwrap_or(Object::Nil);
+        self.fiber_last_matches.insert(handle, left);
+        self.globals_mut()
+            .set(crate::vm::native_methods::regexp_methods::LAST_MATCH, held);
+        stepped
+    }
+
+    fn fiber_resume_within(
         &mut self,
         handle: usize,
         fiber: Object,
@@ -803,11 +836,12 @@ impl VirtualMachine {
             match stepped {
                 Ok(FiberStep::Finished(value)) => self.finish_thread(&thread, value),
                 Ok(FiberStep::Failed(trouble)) => {
-                    self.finish_thread(&thread, Object::Nil);
                     let died_of = match &trouble {
                         MetorexError::UncaughtException { exception, .. } => exception.clone(),
                         other => Object::string(format!("{other}")),
                     };
+                    self.report_thread_death(&thread, &died_of, position);
+                    self.finish_thread(&thread, Object::Nil);
                     if let Object::Instance(instance) = &thread {
                         instance
                             .borrow_mut()
@@ -1140,7 +1174,21 @@ impl VirtualMachine {
             }
             return;
         }
-        if !self.step_pending_threads(position) {
+        // The thread handing control over is asleep for as long as the wait
+        // lasts, whichever thread it is, which is what `status` reports.
+        let running = self.running_thread();
+        if let Object::Instance(instance) = &running {
+            instance
+                .borrow_mut()
+                .set_var("__thread_waiting".to_string(), Object::Bool(true));
+        }
+        let stepped = self.step_pending_threads(position);
+        if let Object::Instance(instance) = &running {
+            instance
+                .borrow_mut()
+                .set_var("__thread_waiting".to_string(), Object::Bool(false));
+        }
+        if !stepped {
             std::thread::sleep(std::time::Duration::from_millis(1));
         }
     }
@@ -1194,12 +1242,13 @@ impl VirtualMachine {
                     return Ok(Some(value));
                 }
                 Ok(FiberStep::Failed(trouble)) => {
+                    let died_of = match &trouble {
+                        MetorexError::UncaughtException { exception, .. } => exception.clone(),
+                        other => Object::string(format!("{other}")),
+                    };
+                    self.report_thread_death(thread, &died_of, position);
                     self.finish_thread(thread, Object::Nil);
                     if let Object::Instance(instance) = thread {
-                        let died_of = match &trouble {
-                            MetorexError::UncaughtException { exception, .. } => exception.clone(),
-                            other => Object::string(format!("{other}")),
-                        };
                         instance
                             .borrow_mut()
                             .set_var("__thread_error".to_string(), died_of);
@@ -1228,6 +1277,20 @@ impl VirtualMachine {
 }
 
 impl VirtualMachine {
+    /// Say on stderr what a thread died of, which a thread does for itself
+    /// while it is still running.
+    fn report_thread_death(&mut self, thread: &Object, died_of: &Object, position: Position) {
+        if !matches!(died_of, Object::Exception(_)) {
+            return;
+        }
+        let _ = self.send_to_object(
+            thread.clone(),
+            "__report_terminated__",
+            vec![died_of.clone()],
+            position,
+        );
+    }
+
     /// The Fiber object a thread's body runs on, which is the thread's root
     /// one.
     fn thread_fiber_object(&mut self, thread: &Object, handle: usize) -> Object {
@@ -1247,6 +1310,12 @@ impl VirtualMachine {
     /// Whether what is running now is a thread's own body, which is what
     /// decides whether waiting hands control back to whoever gave it a turn
     /// or gives the waiting threads one.
+    /// Whether handing control over would let something else run: another
+    /// thread waiting for a turn, or the one that made this one.
+    pub(crate) fn other_threads_are_waiting(&self) -> bool {
+        self.running_a_thread_body() || !self.pending_threads.is_empty()
+    }
+
     pub(crate) fn running_a_thread_body(&self) -> bool {
         self.thread_body_fibers
             .contains(&self.fiber_current_handle())

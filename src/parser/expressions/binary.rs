@@ -17,7 +17,9 @@ impl Parser {
     pub(crate) fn parse_logical_or(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_logical_and()?;
 
-        let keyword_binds_here = self.paren_less_arg_depth == 0 && self.assignment_rhs_depth == 0;
+        let keyword_binds_here = self.paren_less_arg_depth == 0
+            && self.assignment_rhs_depth == 0
+            && self.range_operand_depth == 0;
         while self.check(&[TokenKind::LogicalOr])
             || (keyword_binds_here && self.check(&[TokenKind::KeywordOr]))
         {
@@ -41,7 +43,9 @@ impl Parser {
     pub(crate) fn parse_logical_and(&mut self) -> Result<Expression, MetorexError> {
         let mut expr = self.parse_equality()?;
 
-        let keyword_binds_here = self.paren_less_arg_depth == 0 && self.assignment_rhs_depth == 0;
+        let keyword_binds_here = self.paren_less_arg_depth == 0
+            && self.assignment_rhs_depth == 0
+            && self.range_operand_depth == 0;
         while self.check(&[TokenKind::LogicalAnd])
             || (keyword_binds_here && self.check(&[TokenKind::KeywordAnd]))
         {
@@ -238,7 +242,10 @@ impl Parser {
         if self.check(&[TokenKind::DotDot, TokenKind::DotDotDot]) {
             let op_token = self.advance();
             let exclusive = op_token.kind == TokenKind::DotDotDot;
-            let end = self.parse_logical_or()?;
+            self.range_operand_depth += 1;
+            let end = self.parse_logical_or();
+            self.range_operand_depth -= 1;
+            let end = end?;
             return Ok(Expression::Range {
                 start: Box::new(Expression::NilLiteral {
                     position: op_token.position,
@@ -268,7 +275,12 @@ impl Parser {
                     position: op_token.position,
                 }
             } else {
-                self.parse_logical_or()?
+                {
+                    self.range_operand_depth += 1;
+                    let held = self.parse_logical_or();
+                    self.range_operand_depth -= 1;
+                    held?
+                }
             };
             expr = Expression::Range {
                 start: Box::new(expr),

@@ -289,16 +289,22 @@ impl Parser {
                 expression: value,
                 position: value_position,
             }];
-            let variable_receiver = _singleton_receiver
-                .as_deref()
-                .is_some_and(|receiver| receiver.starts_with('@') || receiver.starts_with('$'));
-            if self.in_class_body && !variable_receiver {
+            // A receiver written out names the object it says rather than
+            // the class the body opens, so it stays a FunctionDef carrying
+            // that name. Only a bare `def name` or `def self.name` belongs to
+            // the body itself.
+            let names_another_receiver = _singleton_receiver.as_deref().is_some_and(|receiver| {
+                receiver.trim_start_matches(SOLE_INSTANCE_RECEIVER) != "self"
+            });
+            if self.in_class_body && !names_another_receiver {
                 return Ok(Statement::MethodDef {
                     name,
                     parameters,
                     body,
                     is_class_method: _singleton_receiver.is_some(),
                     position: start_pos,
+                    // An endless definition closes where its body does.
+                    end_position: self.previous().position,
                 });
             }
             return Ok(with_receiver_setup(
@@ -387,17 +393,20 @@ impl Parser {
             }];
         }
 
-        self.expect(TokenKind::End, "Expected 'end' after function body")?;
+        let closing = self
+            .expect(TokenKind::End, "Expected 'end' after function body")?
+            .position;
 
-        // A `def @obj.name` / `def $stream.name` targets whatever the
-        // variable holds, which is only known at run time, so it stays a
-        // FunctionDef carrying the receiver even inside a class body.
-        let variable_receiver = _singleton_receiver
+        // A receiver written out names the object it says rather than the
+        // class the body opens, so it stays a FunctionDef carrying that name
+        // even inside a class body. Only a bare `def name` or `def self.name`
+        // belongs to the body itself.
+        let names_another_receiver = _singleton_receiver
             .as_deref()
-            .is_some_and(|receiver| receiver.starts_with('@') || receiver.starts_with('$'));
+            .is_some_and(|receiver| receiver.trim_start_matches(SOLE_INSTANCE_RECEIVER) != "self");
 
         // Return MethodDef if we're inside a class, otherwise FunctionDef
-        if self.in_class_body && !variable_receiver {
+        if self.in_class_body && !names_another_receiver {
             let is_class_method = _singleton_receiver.is_some();
             Ok(Statement::MethodDef {
                 name,
@@ -405,6 +414,7 @@ impl Parser {
                 body,
                 is_class_method,
                 position: start_pos,
+                end_position: closing,
             })
         } else {
             Ok(with_receiver_setup(

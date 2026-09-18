@@ -35,5 +35,5 @@ puts Trunk.label.inspect
 
 Branch.include(Leaf)
 puts Tree.new.leaf_name.inspect
-puts Tree.instance_methods.inspect
+puts (Tree.instance_methods - Object.instance_methods).inspect
 puts Seedling.ancestors[0, 3].inspect

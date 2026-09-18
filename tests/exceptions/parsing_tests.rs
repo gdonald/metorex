@@ -516,6 +516,7 @@ fn test_begin_in_method() {
         parameters: vec![],
         body: vec![begin_stmt],
         position: pos(1, 1),
+        end_position: pos(1, 1),
     };
 
     assert_eq!(method.position(), pos(1, 1));
