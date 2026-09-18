@@ -20,7 +20,10 @@ use std::rc::Rc;
 /// cannot convert through.
 /// The waiting, scheduling, and resource-limit settings the operating system
 /// names by number, which Ruby carries as constants on Process.
-pub(crate) const PROCESS_CONSTANTS: [(&str, i64); 26] = [
+/// The list is a slice rather than a sized array because the clocks a
+/// platform keeps differ, so its length is settled by the platform being
+/// built for.
+pub(crate) const PROCESS_CONSTANTS: &[(&str, i64)] = &[
     ("WNOHANG", libc::WNOHANG as i64),
     ("WUNTRACED", libc::WUNTRACED as i64),
     ("PRIO_PROCESS", libc::PRIO_PROCESS as i64),
@@ -737,7 +740,7 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
     globals.set("__Process_Status_class", Object::Class(process_status));
     // The numbers the operating system names its waiting, scheduling, and
     // resource settings by, which Ruby carries as constants on Process.
-    for (name, value) in PROCESS_CONSTANTS {
+    for &(name, value) in PROCESS_CONSTANTS {
         process.set_class_var(name, Object::Int(value));
         globals.set(format!("Process::{}", name), Object::Int(value));
     }

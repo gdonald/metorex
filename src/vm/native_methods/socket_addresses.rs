@@ -757,7 +757,7 @@ impl VirtualMachine {
                         Object::Int(i64::from(index)),
                         address_of_sockaddr(entry.ifa_addr),
                         address_of_sockaddr(entry.ifa_netmask),
-                        address_of_sockaddr(entry.ifa_dstaddr),
+                        address_of_sockaddr(point_to_point_address(entry)),
                     ]));
                 }
                 unsafe { libc::freeifaddrs(held) };
@@ -1347,6 +1347,19 @@ fn peer_path_of(descriptor: i32) -> Option<String> {
 
 /// The address a sockaddr holds, written the way a program reads it, or
 /// nothing when the pointer names no address of a family we can write.
+/// The address at the other end of a point-to-point interface, which each
+/// platform keeps under its own name: BSD calls it the destination address,
+/// while Linux holds it in a union it shares with the broadcast address.
+#[cfg(target_os = "linux")]
+fn point_to_point_address(entry: &libc::ifaddrs) -> *const libc::sockaddr {
+    entry.ifa_ifu
+}
+
+#[cfg(not(target_os = "linux"))]
+fn point_to_point_address(entry: &libc::ifaddrs) -> *const libc::sockaddr {
+    entry.ifa_dstaddr
+}
+
 fn address_of_sockaddr(held: *const libc::sockaddr) -> Object {
     if held.is_null() {
         return Object::Nil;

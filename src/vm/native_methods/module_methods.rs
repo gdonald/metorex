@@ -1336,7 +1336,7 @@ impl VirtualMachine {
         };
         if let Some(named) = named {
             let full = format!("RLIMIT_{named}");
-            for (name, value) in crate::vm::init::PROCESS_CONSTANTS {
+            for &(name, value) in crate::vm::init::PROCESS_CONSTANTS {
                 if name == full {
                     return Ok(value as crate::vm::RlimitResource);
                 }
