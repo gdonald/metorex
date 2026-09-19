@@ -3977,7 +3977,10 @@ pub(crate) fn encoding_reads_bytes(bytes: &[u8], named: &str) -> bool {
     }
 }
 
-// The C library's one-way hash, which `String#crypt` answers with.
+// The C library's one-way hash, which `String#crypt` answers with. BSD keeps
+// it in the C library itself, while Linux keeps it in a library of its own
+// that has to be named for the linker to find it.
+#[cfg_attr(target_os = "linux", link(name = "crypt"))]
 unsafe extern "C" {
     fn crypt(key: *const libc::c_char, salt: *const libc::c_char) -> *mut libc::c_char;
 }
