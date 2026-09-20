@@ -1,4 +1,6 @@
 require 'socket'
+# `nonblock?` comes with this library rather than with the socket itself.
+require 'io/nonblock'
 
 # One setting on a socket names the level it belongs to and the value it was
 # given, whichever way the level and the option are written.

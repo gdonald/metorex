@@ -54,6 +54,29 @@ pub(crate) const PROCESS_CONSTANTS: &[(&str, i64)] = &[
         "CLOCK_THREAD_CPUTIME_ID",
         libc::CLOCK_THREAD_CPUTIME_ID as i64,
     ),
+    // The resource limits and clocks this platform keeps beyond the ones
+    // every Unix has.
+    #[cfg(target_os = "linux")]
+    ("RLIMIT_MSGQUEUE", libc::RLIMIT_MSGQUEUE as i64),
+    #[cfg(target_os = "linux")]
+    ("RLIMIT_NICE", libc::RLIMIT_NICE as i64),
+    #[cfg(target_os = "linux")]
+    ("RLIMIT_RTPRIO", libc::RLIMIT_RTPRIO as i64),
+    #[cfg(target_os = "linux")]
+    ("RLIMIT_RTTIME", libc::RLIMIT_RTTIME as i64),
+    #[cfg(target_os = "linux")]
+    ("RLIMIT_SIGPENDING", libc::RLIMIT_SIGPENDING as i64),
+    #[cfg(target_os = "linux")]
+    ("CLOCK_MONOTONIC_RAW", libc::CLOCK_MONOTONIC_RAW as i64),
+    #[cfg(target_os = "linux")]
+    ("CLOCK_REALTIME_COARSE", libc::CLOCK_REALTIME_COARSE as i64),
+    #[cfg(target_os = "linux")]
+    (
+        "CLOCK_MONOTONIC_COARSE",
+        libc::CLOCK_MONOTONIC_COARSE as i64,
+    ),
+    #[cfg(target_os = "linux")]
+    ("CLOCK_BOOTTIME", libc::CLOCK_BOOTTIME as i64),
     // The clocks this platform keeps beyond the four every Unix has.
     #[cfg(target_os = "macos")]
     ("CLOCK_MONOTONIC_RAW", libc::CLOCK_MONOTONIC_RAW as i64),
@@ -859,9 +882,21 @@ pub(super) fn register_builtin_modules(globals: &mut GlobalRegistry, builtins: &
 
     // ENV — use a Dict so ENV['KEY'] works. Keys are plain strings (no quotes)
     // because object_to_dict_key returns the raw String for Object::String.
+    // A program reads its environment in the encoding the locale names, and
+    // bytes that do not fit that encoding stand for themselves.
+    let charmap = crate::vm::locale_charmap_name();
     let mut env_map = IndexMap::new();
     for (k, v) in std::env::vars() {
-        env_map.insert(k, Object::string(v));
+        let named = match charmap.as_str() {
+            "" => "UTF-8".to_string(),
+            "ANSI_X3.4-1968" | "US-ASCII" if !v.is_ascii() => "ASCII-8BIT".to_string(),
+            "ANSI_X3.4-1968" => "US-ASCII".to_string(),
+            other => other.to_string(),
+        };
+        env_map.insert(
+            k,
+            Object::String(Rc::new(crate::object::StringValue::with_encoding(v, named))),
+        );
     }
     globals.set("ENV", Object::Dict(Rc::new(RefCell::new(env_map))));
 }

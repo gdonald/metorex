@@ -232,9 +232,11 @@ fn an_encoding_is_found_by_the_name_it_goes_by() {
         run("Encoding.find('UTF-8').to_s"),
         Some(Object::string("UTF-8"))
     );
+    // The locale names whichever encoding the machine is set to, so what it
+    // finds is compared against the charmap rather than against one name.
     assert_eq!(
-        run("Encoding.find('locale').to_s"),
-        Some(Object::string("UTF-8"))
+        run("Encoding.find('locale') == Encoding.find(Encoding.locale_charmap)"),
+        Some(Object::Bool(true))
     );
     assert_eq!(
         run("Encoding.find('filesystem').to_s"),

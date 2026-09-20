@@ -6098,6 +6098,12 @@ class IO
 
   def self.__ready__(held, writing)
     stream = held.respond_to?(:to_io) ? held.to_io : held
+    # A socket keeps its own handle rather than a stream's, and the system is
+    # asked about that one.
+    if defined?(BasicSocket) && stream.is_a?(BasicSocket)
+      return true if stream.closed?
+      return Socket.__net__("ready?", stream.handle, "", writing ? 1 : 0)
+    end
     return true unless stream.is_a? IO
     return true if stream.__stream_handle__.nil?
     IO.__stream__ "ready?", stream.__stream_handle__, "", writing ? 1 : 0
@@ -6458,6 +6464,20 @@ class IO
     end
   end
 
+  # Everything left in the stream. One read hands over what the operating
+  # system had ready, which for a file of any size is less than all of it, so
+  # it is asked again until there is nothing more.
+  def __read_to_the_end__
+    collected = +""
+    loop do
+      piece = IO.__stream__("read", __stream_handle__, "", 0).to_s
+      break if piece.empty?
+      collected = collected + piece
+    end
+    collected
+  end
+  private :__read_to_the_end__
+
   # The text a copy reads. A stream reads through its own position, which an
   # offset names a place apart from and leaves where it was.
   def self.__copied_text__(reader, length, offset)
@@ -6762,7 +6782,7 @@ class IO
     @peeked = nil
     waiting = "" if waiting.nil?
     held = if length.nil?
-      waiting + IO.__stream__("read", __stream_handle__, "", 0).to_s
+      waiting + __read_to_the_end__
     elsif waiting.bytesize > wanted
       taken = waiting[0, wanted]
       rest = waiting[wanted, waiting.length - wanted]
@@ -7619,7 +7639,23 @@ class IO
     IO.__stream__ "fcntl", __stream_handle__, "", command.to_i, held
   end
 
-  alias_method :ioctl, :fcntl
+  # Ask the device behind this stream's descriptor to do something. A String
+  # handed over is both what the request reads and where its answer is
+  # written, so it comes back holding what the device put there.
+  def ioctl(request, argument = 0)
+    raise IOError, "closed stream" if closed?
+    if argument.is_a? String
+      # The request writes its answer into the buffer, so one with no room
+      # in it is given some first. Ruby hands the buffer back holding what
+      # the device wrote there.
+      room = argument.empty? ? "\x00" * 8 : argument
+      held = IO.__stream__ "ioctl", __stream_handle__, room, request.to_i, 0
+      argument.replace held[1]
+      return held[0]
+    end
+    number = argument == true ? 1 : (argument == false || argument.nil? ? 0 : argument.to_i)
+    IO.__stream__("ioctl", __stream_handle__, "", request.to_i, number)[0]
+  end
 
   # Point this stream at another place. The descriptor keeps its number, so
   # everything already reading or writing through it reaches the new place.
@@ -8299,7 +8335,9 @@ class File
 
     def <=>(other)
       return nil unless other.is_a?(File::Stat)
-      @fields[:mtime] <=> other.mtime.to_i
+      # Both sides are read as the times they stand for, down to the part of
+      # a second each keeps, so two readings of one file compare equal.
+      self.mtime <=> other.mtime
     end
 
     def inspect
@@ -8310,7 +8348,11 @@ class File
       written = written + ", blksize=#{self.blksize.inspect}, blocks=#{self.blocks.inspect}"
       written = written + ", atime=#{self.atime.inspect}, mtime=#{self.mtime.inspect}"
       written = written + ", ctime=#{self.ctime.inspect}"
-      written = written + ", birthtime=#{self.birthtime.inspect}" unless @fields[:birthtime].nil?
+      # Ruby writes the time a file was made only where it reads one, which
+      # is not every platform, so the description matches what it writes.
+      unless @fields[:birthtime].nil? || RUBY_PLATFORM.include?("linux")
+        written = written + ", birthtime=#{self.birthtime.inspect}"
+      end
       written + ">"
     end
 
@@ -11038,6 +11080,10 @@ class Encoding
   # writing to the environment afterwards does not change it.
   def self.locale_charmap
     return @locale_charmap unless @locale_charmap.nil?
+    # The C library names it, since one locale is called different things on
+    # different platforms.
+    held = Encoding.__charmap__.to_s
+    return @locale_charmap = held unless held.empty?
     named = ENV["LC_ALL"] || ENV["LC_CTYPE"] || ENV["LANG"] || ""
     @locale_charmap = if named.empty? || named == "C" || named == "POSIX"
       "US-ASCII"
@@ -11896,7 +11942,9 @@ class IO
       kind = if null?
         size < PAGE_SIZE ? INTERNAL : MAPPED
       elsif mapped? && !private?
-        INTERNAL
+        # Linux resizes the mapping in place, so the buffer stays mapped.
+        # Elsewhere the bytes are copied into one of the program's own.
+        RUBY_PLATFORM.include?("linux") ? MAPPED : INTERNAL
       else
         @flags & (INTERNAL | MAPPED)
       end

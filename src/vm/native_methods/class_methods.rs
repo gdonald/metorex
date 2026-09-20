@@ -233,6 +233,11 @@ impl VirtualMachine {
         if class_rc.name() == "Socket" && method_name == "__address__" {
             return self.socket_address(arguments, position).map(Some);
         }
+        // The name the C library gives the encoding the locale calls for,
+        // which differs between platforms for one and the same locale.
+        if class_rc.name() == "Encoding" && method_name == "__charmap__" {
+            return Ok(Some(Object::string(crate::vm::locale_charmap_name())));
+        }
         if class_rc.name() == "Socket" && method_name == "__net__" {
             return self.socket_net(arguments, position).map(Some);
         }
@@ -995,7 +1000,28 @@ impl VirtualMachine {
             };
             let settled =
                 match wanted.to_ascii_lowercase().as_str() {
-                    "locale" | "external" | "filesystem" => {
+                    // The locale names an encoding of its own, which is
+                    // what the default external starts as but need not stay.
+                    "locale" => {
+                        let named = Object::Class(Rc::clone(class_rc));
+                        let charmap =
+                            self.send_to_object(named, "locale_charmap", Vec::new(), position)?;
+                        if let charmap @ Object::String(_) = charmap {
+                            return self.call_class_methods(
+                                class_rc,
+                                "find",
+                                std::slice::from_ref(&charmap),
+                                position,
+                            );
+                        }
+                        return Ok(Some(
+                            self.globals()
+                                .get("__Encoding_default_external")
+                                .or_else(|| self.globals().get("Encoding::UTF_8"))
+                                .unwrap_or(Object::Nil),
+                        ));
+                    }
+                    "external" | "filesystem" => {
                         return Ok(Some(
                             self.globals()
                                 .get("__Encoding_default_external")

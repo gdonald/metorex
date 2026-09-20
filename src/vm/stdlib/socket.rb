@@ -91,13 +91,27 @@ class BasicSocket < IO
     true
   end
 
-  # A socket metorex opened answers straight away rather than waiting, and
-  # every read it makes is bounded by a timeout.
+  # Ask the device behind this socket to do something. A String handed over
+  # is both what the request reads and where its answer is written, so it
+  # comes back holding what the device put there.
+  def ioctl(request, argument = 0)
+    if argument.is_a? String
+      held = Socket.__net__ "ioctl", @handle, argument, request.to_i
+      argument.replace held[1]
+      return held[0]
+    end
+    Socket.__net__("ioctl", @handle, "", request.to_i)[0]
+  end
+
+  # Whether the socket answers straight away rather than waiting, which is
+  # how the descriptor itself is set.
   def nonblock?
-    true
+    held = Socket.__net__ "nonblock", @handle, "", 0
+    held.nil? ? true : held
   end
 
   def nonblock= flag
+    Socket.__net__ "set_nonblock", @handle, "", flag ? 1 : 0
     flag
   end
 
@@ -372,102 +386,110 @@ class IPSocket < BasicSocket
 end
 
 class Socket < BasicSocket
+  # The number this platform names a socket constant by. The numbers differ
+  # between platforms, so each name is asked for rather than written out. A
+  # name the platform does not carry keeps the number written here.
+  def self.__number__(name, written)
+    found = Socket.__net__ "constant", 0, name, 0
+    found.nil? ? written : found
+  end
+
   # The families, socket kinds, and protocols the operating system names.
   module Constants
-    AF_UNSPEC = 0
+    AF_UNSPEC = Socket.__number__("AF_UNSPEC", 0)
     AF_IPX = 23
     PF_IPX = 23
-    AF_UNIX = 1
-    AF_LOCAL = 1
-    AF_INET = 2
-    AF_INET6 = 30
+    AF_UNIX = Socket.__number__("AF_UNIX", 1)
+    AF_LOCAL = Socket.__number__("AF_LOCAL", 1)
+    AF_INET = Socket.__number__("AF_INET", 2)
+    AF_INET6 = Socket.__number__("AF_INET6", 30)
 
-    PF_UNSPEC = 0
-    PF_UNIX = 1
-    PF_LOCAL = 1
-    PF_INET = 2
-    PF_INET6 = 30
+    PF_UNSPEC = Socket.__number__("PF_UNSPEC", 0)
+    PF_UNIX = Socket.__number__("PF_UNIX", 1)
+    PF_LOCAL = Socket.__number__("PF_LOCAL", 1)
+    PF_INET = Socket.__number__("PF_INET", 2)
+    PF_INET6 = Socket.__number__("PF_INET6", 30)
 
-    SOCK_STREAM = 1
-    SOCK_DGRAM = 2
-    SOCK_RAW = 3
-    SOCK_RDM = 4
-    SOCK_SEQPACKET = 5
+    SOCK_STREAM = Socket.__number__("SOCK_STREAM", 1)
+    SOCK_DGRAM = Socket.__number__("SOCK_DGRAM", 2)
+    SOCK_RAW = Socket.__number__("SOCK_RAW", 3)
+    SOCK_RDM = Socket.__number__("SOCK_RDM", 4)
+    SOCK_SEQPACKET = Socket.__number__("SOCK_SEQPACKET", 5)
 
-    IPPROTO_IP = 0
-    IPPROTO_ICMP = 1
-    IPPROTO_TCP = 6
-    IPPROTO_UDP = 17
-    IPPROTO_IPV6 = 41
-    IPPROTO_RAW = 255
+    IPPROTO_IP = Socket.__number__("IPPROTO_IP", 0)
+    IPPROTO_ICMP = Socket.__number__("IPPROTO_ICMP", 1)
+    IPPROTO_TCP = Socket.__number__("IPPROTO_TCP", 6)
+    IPPROTO_UDP = Socket.__number__("IPPROTO_UDP", 17)
+    IPPROTO_IPV6 = Socket.__number__("IPPROTO_IPV6", 41)
+    IPPROTO_RAW = Socket.__number__("IPPROTO_RAW", 255)
 
-    SOL_SOCKET = 0xffff
-    SO_DEBUG = 0x0001
-    SO_ACCEPTCONN = 0x0002
-    SO_REUSEADDR = 0x0004
-    SO_KEEPALIVE = 0x0008
-    SO_DONTROUTE = 0x0010
-    SO_BROADCAST = 0x0020
+    SOL_SOCKET = Socket.__number__("SOL_SOCKET", 0xffff)
+    SO_DEBUG = Socket.__number__("SO_DEBUG", 0x0001)
+    SO_ACCEPTCONN = Socket.__number__("SO_ACCEPTCONN", 0x0002)
+    SO_REUSEADDR = Socket.__number__("SO_REUSEADDR", 0x0004)
+    SO_KEEPALIVE = Socket.__number__("SO_KEEPALIVE", 0x0008)
+    SO_DONTROUTE = Socket.__number__("SO_DONTROUTE", 0x0010)
+    SO_BROADCAST = Socket.__number__("SO_BROADCAST", 0x0020)
     SO_USELOOPBACK = 0x0040
-    SO_OOBINLINE = 0x0100
-    SO_REUSEPORT = 0x0200
-    SO_LINGER = 0x0080
-    SO_SNDBUF = 0x1001
-    SO_RCVBUF = 0x1002
-    SO_TYPE = 0x1008
-    SO_ERROR = 0x1007
-    SO_SNDLOWAT = 0x1003
-    SO_RCVLOWAT = 0x1004
-    SO_SNDTIMEO = 0x1005
-    SO_RCVTIMEO = 0x1006
+    SO_OOBINLINE = Socket.__number__("SO_OOBINLINE", 0x0100)
+    SO_REUSEPORT = Socket.__number__("SO_REUSEPORT", 0x0200)
+    SO_LINGER = Socket.__number__("SO_LINGER", 0x0080)
+    SO_SNDBUF = Socket.__number__("SO_SNDBUF", 0x1001)
+    SO_RCVBUF = Socket.__number__("SO_RCVBUF", 0x1002)
+    SO_TYPE = Socket.__number__("SO_TYPE", 0x1008)
+    SO_ERROR = Socket.__number__("SO_ERROR", 0x1007)
+    SO_SNDLOWAT = Socket.__number__("SO_SNDLOWAT", 0x1003)
+    SO_RCVLOWAT = Socket.__number__("SO_RCVLOWAT", 0x1004)
+    SO_SNDTIMEO = Socket.__number__("SO_SNDTIMEO", 0x1005)
+    SO_RCVTIMEO = Socket.__number__("SO_RCVTIMEO", 0x1006)
 
     # What a send or a receive may be told to do differently, as the
     # operating system on this platform numbers them.
-    MSG_OOB = 0x1
-    MSG_PEEK = 0x2
-    MSG_DONTROUTE = 0x4
-    MSG_EOR = 0x8
-    MSG_TRUNC = 0x10
-    MSG_CTRUNC = 0x20
-    MSG_WAITALL = 0x40
-    MSG_DONTWAIT = 0x80
+    MSG_OOB = Socket.__number__("MSG_OOB", 0x1)
+    MSG_PEEK = Socket.__number__("MSG_PEEK", 0x2)
+    MSG_DONTROUTE = Socket.__number__("MSG_DONTROUTE", 0x4)
+    MSG_EOR = Socket.__number__("MSG_EOR", 0x8)
+    MSG_TRUNC = Socket.__number__("MSG_TRUNC", 0x10)
+    MSG_CTRUNC = Socket.__number__("MSG_CTRUNC", 0x20)
+    MSG_WAITALL = Socket.__number__("MSG_WAITALL", 0x40)
+    MSG_DONTWAIT = Socket.__number__("MSG_DONTWAIT", 0x80)
     MSG_EOF = 0x100
     MSG_NOSIGNAL = 0x80000
 
-    TCP_NODELAY = 0x01
-    TCP_MAXSEG = 0x02
+    TCP_NODELAY = Socket.__number__("TCP_NODELAY", 0x01)
+    TCP_MAXSEG = Socket.__number__("TCP_MAXSEG", 0x02)
     TCP_KEEPALIVE = 0x10
     TCP_NOPUSH = 0x04
     TCP_NOOPT = 0x08
 
     # What a message may carry alongside its bytes over a socket named by a
     # path, and what the address resolver reports when it cannot answer.
-    SCM_RIGHTS = 0x01
+    SCM_RIGHTS = Socket.__number__("SCM_RIGHTS", 0x01)
     SCM_TIMESTAMP = 0x02
     SCM_CREDS = 0x03
 
     EAI_ADDRFAMILY = 1
-    EAI_AGAIN = 2
-    EAI_BADFLAGS = 3
-    EAI_FAIL = 4
-    EAI_FAMILY = 5
-    EAI_MEMORY = 6
+    EAI_AGAIN = Socket.__number__("EAI_AGAIN", 2)
+    EAI_BADFLAGS = Socket.__number__("EAI_BADFLAGS", 3)
+    EAI_FAIL = Socket.__number__("EAI_FAIL", 4)
+    EAI_FAMILY = Socket.__number__("EAI_FAMILY", 5)
+    EAI_MEMORY = Socket.__number__("EAI_MEMORY", 6)
     EAI_NODATA = 7
-    EAI_NONAME = 8
-    EAI_SERVICE = 9
-    EAI_SOCKTYPE = 10
-    EAI_SYSTEM = 11
-    EAI_OVERFLOW = 14
+    EAI_NONAME = Socket.__number__("EAI_NONAME", 8)
+    EAI_SERVICE = Socket.__number__("EAI_SERVICE", 9)
+    EAI_SOCKTYPE = Socket.__number__("EAI_SOCKTYPE", 10)
+    EAI_SYSTEM = Socket.__number__("EAI_SYSTEM", 11)
+    EAI_OVERFLOW = Socket.__number__("EAI_OVERFLOW", 14)
 
-    IP_TTL = 4
-    IP_MULTICAST_TTL = 10
-    IP_MULTICAST_LOOP = 11
-    IP_ADD_MEMBERSHIP = 12
-    IP_DROP_MEMBERSHIP = 13
+    IP_TTL = Socket.__number__("IP_TTL", 4)
+    IP_MULTICAST_TTL = Socket.__number__("IP_MULTICAST_TTL", 10)
+    IP_MULTICAST_LOOP = Socket.__number__("IP_MULTICAST_LOOP", 11)
+    IP_ADD_MEMBERSHIP = Socket.__number__("IP_ADD_MEMBERSHIP", 12)
+    IP_DROP_MEMBERSHIP = Socket.__number__("IP_DROP_MEMBERSHIP", 13)
     IP_DEFAULT_MULTICAST_TTL = 1
     IP_DEFAULT_MULTICAST_LOOP = 1
     IP_MAX_MEMBERSHIPS = 4095
-    IPV6_V6ONLY = 27
+    IPV6_V6ONLY = Socket.__number__("IPV6_V6ONLY", 27)
 
     AI_PASSIVE = 1
     AI_CANONNAME = 2
@@ -507,11 +529,21 @@ class Socket < BasicSocket
   # its own, which holds the path rather than an address and a port.
   def self.sockaddr_un(path)
     named = path.to_s
-    if named.length > 103
-      raise ArgumentError, "too long unix socket path (#{named.length} bytes given but 103 bytes max)"
+    room = Socket.__number__ "SOCKADDR_UN_PATH_MAX", 103
+    if named.length > room
+      raise ArgumentError, "too long unix socket path (#{named.length} bytes given but #{room} bytes max)"
     end
-    held = "\x00" * 106
-    ("\x6a\x01" + named + held)[0, 106]
+    size = Socket.__number__ "SOCKADDR_UN_SIZE", 106
+    (Socket.__unix_header__ + named + ("\x00" * size))[0, size]
+  end
+
+  # What stands in front of the path: the length of the whole address and the
+  # family on BSD, and the family on its own, written as two bytes, on Linux.
+  def self.__unix_header__
+    size = Socket.__number__ "SOCKADDR_UN_SIZE", 106
+    family = Socket::AF_UNIX
+    return size.chr + family.chr if Socket.__number__("SOCKADDR_HAS_LEN", 1) == 1
+    family.chr + 0.chr
   end
 
   class << self
@@ -523,7 +555,9 @@ class Socket < BasicSocket
       raise ArgumentError, "not an AF_UNIX sockaddr" unless held.unix?
       return held.unix_path
     end
-    raise ArgumentError, "not an AF_UNIX sockaddr" unless held.to_s.start_with? "\x6a\x01"
+    unless held.to_s.start_with? Socket.__unix_header__
+      raise ArgumentError, "not an AF_UNIX sockaddr"
+    end
     held[2..-1].to_s.split("\x00").first.to_s
   end
 
@@ -532,10 +566,14 @@ class Socket < BasicSocket
       raise ArgumentError, "not an AF_INET/AF_INET6 sockaddr" unless held.ip?
       return [held.ip_port, held.ip_address]
     end
-    if held.to_s.start_with? "\x6a\x01"
+    if held.to_s.start_with? Socket.__unix_header__
       raise ArgumentError, "not an AF_INET/AF_INET6 sockaddr"
     end
-    answered = Socket.__address__ "unpack", held, 0
+    begin
+      answered = Socket.__address__ "unpack", held, 0
+    rescue SocketError
+      raise ArgumentError, "not an AF_INET/AF_INET6 sockaddr"
+    end
     [answered[1], answered[0]]
   end
 
@@ -1272,6 +1310,18 @@ class TCPSocket < IPSocket
   end
   private :read_into_string
 
+  # The same, without waiting for anything to arrive. Nothing there yet is
+  # reported as a wait rather than as the end of the connection.
+  def read_without_waiting(length)
+    waiting = @pending
+    unless waiting.nil? || waiting.empty?
+      @pending = nil
+      return waiting
+    end
+    Socket.__net__ "read_now", @handle, "", length.nil? ? 0 : length.to_i
+  end
+  private :read_without_waiting
+
   # A connection the other end has finished with hands back nothing at all
   # rather than an empty string.
   def recv(length = nil, _flags = nil, buffer = nil)
@@ -1288,8 +1338,12 @@ class TCPSocket < IPSocket
   # yet is reported as a wait rather than as an end, either by raising or by
   # answering the reason, depending on what was asked for.
   def recv_nonblock(length = nil, _flags = 0, buffer = nil, exception: true)
+    # BSD asks the descriptor not to wait and leaves it that way, where Linux
+    # carries the request in the read itself and leaves the descriptor alone.
+    self.nonblock = true unless RUBY_PLATFORM.include? "linux"
     begin
-      held = read length
+      raise IOError, "closed stream" if closed? || read_closed?
+      held = read_without_waiting length
     rescue Errno::EAGAIN, Errno::EWOULDBLOCK => trouble
       return :wait_readable unless exception
       raise IO::EAGAINWaitReadable, trouble.message
@@ -1307,7 +1361,10 @@ class TCPSocket < IPSocket
   def read_nonblock(length = nil, buffer = nil, exception: true)
     recv_nonblock length, 0, buffer, exception: exception
   end
-  alias_method :write_nonblock, :write
+  def write_nonblock(text, exception: true)
+    self.nonblock = true unless RUBY_PLATFORM.include? "linux"
+    write text
+  end
 
   def eof?
     false
@@ -1683,7 +1740,11 @@ class UNIXSocket < BasicSocket
     end
     held = Socket.__net__ "unix_read", @handle, flags.to_i.to_s,
                           length.nil? ? 0 : length.to_i
-    [Socket.filled_buffer(held, buffer), ["AF_UNIX", ""]]
+    # Linux names the path a socket reached its server by as where what it
+    # reads came from, while BSD names nothing at all. A socket the server
+    # accepted has no such path either way.
+    named = RUBY_PLATFORM.include?("linux") ? @peer_path.to_s : ""
+    [Socket.filled_buffer(held, buffer), ["AF_UNIX", named]]
   end
 end
 
@@ -2176,7 +2237,7 @@ class Socket
     taken = if datagram?
               Socket.__net__ "udp_open", 0, address, port
             else
-              Socket.__net__ "listen", 0, address, port
+              Socket.__net__ "bind_only", 0, address, port
             end
     # A datagram socket is already open before it is bound, so the one it
     # started on is let go once the bound one takes its place.
@@ -2212,6 +2273,7 @@ class Socket
       raise Errno::EOPNOTSUPP, "Operation not supported on socket - listen(2)"
     end
     raise ArgumentError, "negative backlog" if wanted.negative?
+    Socket.__net__ "listen_on", @handle, "", wanted
     @listening = true
     0
   end
@@ -2253,6 +2315,14 @@ class Socket
   end
   private :accept_action
 
+  # A socket nothing is listening on has no connection to hand over, which
+  # is what the system call says rather than waiting for one.
+  def __refuse_unless_listening__
+    return if @listening
+    raise Errno::EINVAL, "Invalid argument - accept(2)"
+  end
+  private :__refuse_unless_listening__
+
   # The address a connection came from. It names the kind of socket it is,
   # and no protocol of its own, which is what `accept` reports.
   def accepted_address(handle)
@@ -2287,6 +2357,7 @@ class Socket
   # with the address it came from.
   def sysaccept
     raise IOError, "closed stream" if closed?
+    __refuse_unless_listening__
     handle = Socket.__net__ accept_action, @handle, "", 0
     taken = Socket.new @socket_family, @socket_type
     taken.__send__ :__take_handle__, handle
@@ -2420,10 +2491,16 @@ class Socket
   end
 
   def read_nonblock(length = nil, buffer = nil, exception: true)
+    # BSD asks the descriptor not to wait and leaves it that way, where Linux
+    # carries the request in the read itself and leaves the descriptor alone.
+    self.nonblock = true unless RUBY_PLATFORM.include? "linux"
     recv_nonblock length, 0, buffer, exception: exception
   end
 
-  alias_method :write_nonblock, :write
+  def write_nonblock(text, exception: true)
+    self.nonblock = true unless RUBY_PLATFORM.include? "linux"
+    write text
+  end
 
   # Read a message, saying where it came from as an address rather than as
   # the four-part array a socket of a named kind answers.
@@ -2614,7 +2691,13 @@ class Socket
   # they resolve to.
   def self.getnameinfo(address, flags = 0)
     if address.is_a? String
-      port, host = Socket.unpack_sockaddr_in address
+      # A string that is no address at all is refused the way a lookup
+      # refuses one, rather than the way an unpacking does.
+      begin
+        port, host = Socket.unpack_sockaddr_in address
+      rescue ArgumentError => refused
+        raise SocketError, refused.message
+      end
     elsif address.is_a? Array
       if address.length < 3 || address.length > 4
         raise ArgumentError, "array size should be 3 or 4, #{address.length} given"

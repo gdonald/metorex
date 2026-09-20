@@ -898,3 +898,51 @@ pub(crate) fn seed_from_clock() -> u64 {
         .unwrap_or(0x9E3779B97F4A7C15)
         | 1
 }
+
+/// A method carries the class it was defined in, and a class carries its
+/// methods, so the two hold each other up and neither is freed when the
+/// machine that built them goes. A run that builds many machines, as the test
+/// suite does, would keep every one of them.
+///
+/// Letting go of a machine walks the classes it can reach and has each drop
+/// what points back at it, so the graph comes apart.
+impl Drop for VirtualMachine {
+    fn drop(&mut self) {
+        let mut seen: std::collections::HashSet<usize> = std::collections::HashSet::new();
+        let mut waiting: Vec<Rc<crate::class::Class>> = Vec::new();
+
+        for class in self.builtins.all_classes().into_values() {
+            waiting.push(class);
+        }
+        for (_, held) in self.globals.iter() {
+            if let Object::Class(class) | Object::Module(class) = held {
+                waiting.push(Rc::clone(class));
+            }
+        }
+
+        let mut found: Vec<Rc<crate::class::Class>> = Vec::new();
+        while let Some(class) = waiting.pop() {
+            if !seen.insert(Rc::as_ptr(&class) as usize) {
+                continue;
+            }
+            if let Some(parent) = class.superclass() {
+                waiting.push(parent);
+            }
+            waiting.extend(class.mixin_chain());
+            waiting.extend(class.prepend_chain());
+            if let Some(singleton) = class.singleton_class_slot().clone() {
+                waiting.push(singleton);
+            }
+            for held in class.class_variable_values() {
+                if let Object::Class(inner) | Object::Module(inner) = held {
+                    waiting.push(inner);
+                }
+            }
+            found.push(class);
+        }
+
+        for class in found {
+            class.tear_down();
+        }
+    }
+}

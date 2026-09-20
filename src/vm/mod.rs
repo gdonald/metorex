@@ -65,6 +65,31 @@ pub(crate) const EVAL_FILE_PREFIX: &str = "(eval at ";
 
 /// Where a KeyError keeps the lookup that missed. Not an `@` name, so a
 /// program's own instance variables cannot collide with it.
+/// The name the C library gives the encoding the locale calls for, which
+/// differs between platforms for one and the same locale. A program reads its
+/// environment and its file names in it.
+pub(crate) fn locale_charmap_name() -> String {
+    // Settling the locale changes state the whole process shares, and asking
+    // twice from two threads at once is what the C library refuses, so it is
+    // asked once and the answer kept.
+    static NAMED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    NAMED
+        .get_or_init(|| {
+            // SAFETY: both calls read the library's own state and answer a
+            // pointer into it, which is read before anything else runs.
+            unsafe {
+                let empty = std::ffi::CString::new("").expect("a literal with no zero byte");
+                libc::setlocale(libc::LC_CTYPE, empty.as_ptr());
+                let held = libc::nl_langinfo(libc::CODESET);
+                if held.is_null() {
+                    return String::new();
+                }
+                std::ffi::CStr::from_ptr(held).to_string_lossy().to_string()
+            }
+        })
+        .clone()
+}
+
 pub(crate) const KEY_ERROR_KEY: &str = "__key__";
 /// The hash a `NoMatchingPatternKeyError` found no key in, which the error
 /// answers with `#matchee`.

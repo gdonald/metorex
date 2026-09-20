@@ -65,6 +65,9 @@ module Syslog
   @options = nil
   @facility = nil
   @mask = nil
+  # What the mask was when the log was last closed, which is what it goes back
+  # to on a platform that keeps it in the library.
+  @kept_mask = nil
   @inside_block = false
 
   class << self
@@ -100,6 +103,7 @@ module Syslog
         raise TypeError, "no implicit conversion of #{held.class} into Integer"
       end
       @mask = held.to_i
+      @kept_mask = @mask
     end
 
     # Open the log under a name. With a block the log is handed over and
@@ -109,7 +113,9 @@ module Syslog
       @ident = ident.nil? ? $0 : ident.to_s
       @options = options.nil? ? Constants::LOG_PID | Constants::LOG_CONS : options
       @facility = facility.nil? ? Constants::LOG_USER : facility
-      @mask = 255
+      # The mask lives with the C library rather than with the handle, so on
+      # every platform but Darwin it stands through a close and an open.
+      @mask = @kept_mask.nil? || RUBY_PLATFORM.include?("darwin") ? 255 : @kept_mask
       @opened = true
       return self unless block_given?
       @inside_block = true
@@ -142,6 +148,7 @@ module Syslog
       @ident = nil
       @options = nil
       @facility = nil
+      @kept_mask = @mask
       @mask = nil
       nil
     end
@@ -156,7 +163,9 @@ module Syslog
     # off is dropped before it goes anywhere.
     def log(priority, format = nil, *pieces)
       raise RuntimeError, "must open syslog before write" unless @opened
-      return self if format.nil?
+      if format.nil?
+        raise TypeError, "no implicit conversion of nil into String"
+      end
       return self if @mask & (1 << (priority & 7)) == 0
       written = pieces.empty? ? format.to_s : format.to_s % pieces
       Syslog.__write__ @ident, @options, @facility | (priority & 7), written

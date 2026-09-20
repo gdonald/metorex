@@ -76,7 +76,11 @@ jobs:
       - name: Install Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: "3.3"
+          # The vendored suite is written for the release metorex reports
+          # itself as, and this Ruby runs the mspec driver over it. The
+          # version is pinned rather than left to pick the newest 4.0, so it
+          # is the one docker/Dockerfile unpacks.
+          ruby-version: "4.0.1"
 
       - name: Cache cargo registry
         uses: actions/cache@v5

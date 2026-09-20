@@ -41,14 +41,15 @@ impl VirtualMachine {
         let carried = std::ffi::CString::new("%s").expect("a literal with no zero byte");
         // SAFETY: each pointer names a CString that outlives the call, and
         // the format string takes exactly the one argument given after it.
+        // The C library writes to stderr itself under LOG_PERROR on some
+        // systems and not others, so it is never asked to, and the line is
+        // written here instead.
+        let asked = (*options & !LOG_PERROR) as i32;
         unsafe {
-            libc::openlog(named.as_ptr(), *options as i32, 0);
+            libc::openlog(named.as_ptr(), asked, 0);
             libc::syslog(*priority as i32, carried.as_ptr(), written.as_ptr());
             libc::closelog();
         }
-        // The C library writes to stderr itself under LOG_PERROR on some
-        // systems and not others, so the line is written here instead and
-        // that bit is kept from it.
         if options & LOG_PERROR != 0 {
             let line = format!("{}: {}", ident.as_str(), message.as_str());
             self.emit_warning_to_stderr(&line, position);

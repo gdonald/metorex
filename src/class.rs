@@ -8,7 +8,6 @@ use std::collections::{HashMap, HashSet};
 use std::rc::{Rc, Weak};
 
 /// Runtime class definition with method table and inheritance.
-#[derive(Debug)]
 pub struct Class {
     name: String,
     /// Ruby-visible name, set the first time an anonymous class is assigned
@@ -85,6 +84,14 @@ pub struct Class {
     /// `class Foo; class Bar; end; end`, etc. Returned by
     /// `Module#const_source_location` once the constant is bound.
     const_locations: RefCell<HashMap<String, (String, i64)>>,
+}
+
+/// A class is written out by name alone. Following what it holds would go on
+/// forever, since each of its methods carries the class it was defined in.
+impl std::fmt::Debug for Class {
+    fn fmt(&self, out: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        out.debug_struct("Class").field("name", &self.name).finish()
+    }
 }
 
 impl Class {
@@ -526,6 +533,18 @@ impl Class {
     }
 
     /// Return the superclass if present.
+    /// Let go of everything this class holds that points back at it. A
+    /// method carries the class it was defined in, and a class carries its
+    /// methods, so the two keep each other alive. Nothing reads a class after
+    /// this, and it is what lets the whole graph be freed.
+    pub fn tear_down(&self) {
+        self.methods.borrow_mut().clear();
+        self.class_variables.borrow_mut().clear();
+        self.mixins.borrow_mut().clear();
+        self.prepends.borrow_mut().clear();
+        *self.singleton_class.borrow_mut() = None;
+    }
+
     pub fn superclass(&self) -> Option<Rc<Class>> {
         self.superclass.as_ref().map(Rc::clone)
     }
@@ -907,6 +926,11 @@ impl Class {
     }
 
     /// List all class-variable names (used by refinement bookkeeping).
+    /// What the class holds under its own names, whatever those names are.
+    pub fn class_variable_values(&self) -> Vec<Object> {
+        self.class_variables.borrow().values().cloned().collect()
+    }
+
     pub fn class_var_names(&self) -> Vec<String> {
         self.class_variables.borrow().keys().cloned().collect()
     }

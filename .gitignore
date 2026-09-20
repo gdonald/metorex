@@ -20,3 +20,5 @@ add_tests.md
 
 # mspec writes spec scratch files here when it is run without SPEC_TEMP_DIR.
 rubyspec_temp/
+
+cobertura.xml

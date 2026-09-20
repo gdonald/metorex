@@ -8,6 +8,30 @@ use crate::vm::utils::position_to_location;
 use std::rc::Rc;
 
 impl VirtualMachine {
+    /// The moment a value names, in seconds since the epoch. A Time keeps
+    /// the part of a second as a Rational, so the object is asked what it
+    /// stands for rather than read field by field.
+    fn time_in_seconds(
+        &mut self,
+        value: &Object,
+        now: f64,
+        position: Position,
+    ) -> Result<f64, MetorexError> {
+        match value {
+            Object::Nil => Ok(now),
+            Object::Int(held) => Ok(*held as f64),
+            Object::Float(held) => Ok(*held),
+            other if self.responds_to(other, "to_f") => {
+                match self.send_to_object(other.clone(), "to_f", vec![], position)? {
+                    Object::Float(held) => Ok(held),
+                    Object::Int(held) => Ok(held as f64),
+                    _ => Ok(0.0),
+                }
+            }
+            other => Ok(self_seconds(other).unwrap_or(0.0)),
+        }
+    }
+
     /// The name a value stands for: a String as itself, and anything else
     /// through `to_path`, which is how Ruby reads a path argument.
     fn path_text(
@@ -718,16 +742,8 @@ impl VirtualMachine {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|held| held.as_secs_f64())
                     .unwrap_or_default();
-                let seconds = |value: &Object| -> f64 {
-                    match value {
-                        Object::Nil => now,
-                        Object::Int(held) => *held as f64,
-                        Object::Float(held) => *held,
-                        other => self_seconds(other).unwrap_or(0.0),
-                    }
-                };
-                let accessed = seconds(&arguments[0]);
-                let modified = seconds(&arguments[1]);
+                let accessed = self.time_in_seconds(&arguments[0], now, position)?;
+                let modified = self.time_in_seconds(&arguments[1], now, position)?;
                 let mut touched = 0i64;
                 let named: Vec<String> = arguments[2..]
                     .iter()
@@ -961,9 +977,14 @@ impl VirtualMachine {
                 record("size", Object::Int(held.size() as i64));
                 record("blksize", Object::Int(held.blksize() as i64));
                 record("blocks", Object::Int(held.blocks() as i64));
-                record("atime", Object::Float(held.atime() as f64));
-                record("mtime", Object::Float(held.mtime() as f64));
-                record("ctime", Object::Float(held.ctime() as f64));
+                // A time is kept to the nanosecond, and a whole number of
+                // seconds would drop what a file's `usec` reports.
+                let with_fraction = |seconds: i64, nanoseconds: i64| {
+                    Object::Float(seconds as f64 + nanoseconds as f64 / 1_000_000_000.0)
+                };
+                record("atime", with_fraction(held.atime(), held.atime_nsec()));
+                record("mtime", with_fraction(held.mtime(), held.mtime_nsec()));
+                record("ctime", with_fraction(held.ctime(), held.ctime_nsec()));
                 // Only some platforms keep the time a file was made.
                 let born = held
                     .created()
@@ -1382,6 +1403,13 @@ impl VirtualMachine {
                     {
                         directory_real_path(&expanded)
                     }
+                    // A path that goes up out of a file, as `file/..` does,
+                    // is refused by the system call on some platforms. Ruby
+                    // walks the path itself and takes one step back off what
+                    // it has resolved, which is what happens here.
+                    Err(problem) if problem.raw_os_error() == Some(libc::ENOTDIR) => {
+                        walked_real_path(&expanded)
+                    }
                     other => other,
                 };
                 match resolved {
@@ -1573,11 +1601,19 @@ fn self_seconds(value: &Object) -> Option<f64> {
     if instance.class.name() != "Time" {
         return None;
     }
-    match instance.instance_vars.get("seconds") {
-        Some(Object::Int(held)) => Some(*held as f64),
-        Some(Object::Float(held)) => Some(*held),
-        _ => None,
-    }
+    // A Time keeps the whole seconds apart from the part of a second, and
+    // both are needed for a file to be given the time it names.
+    let whole = match instance.instance_vars.get("seconds") {
+        Some(Object::Int(held)) => *held as f64,
+        Some(Object::Float(held)) => *held,
+        _ => return None,
+    };
+    let fraction = match instance.instance_vars.get("fraction") {
+        Some(Object::Int(held)) => *held as f64,
+        Some(Object::Float(held)) => *held,
+        _ => 0.0,
+    };
+    Some(whole + fraction)
 }
 
 /// Whether a File or Dir class method reads its first argument as a path.
@@ -2337,4 +2373,33 @@ impl VirtualMachine {
         }
         self.directory_path_argument("glob", held, position)
     }
+}
+
+/// A path resolved one part at a time, the way Ruby resolves one: a link is
+/// followed as it is reached, and a step up takes one part off what has been
+/// resolved so far rather than being handed to the system as written.
+fn walked_real_path(path: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    use std::path::Component;
+    let mut held = std::path::PathBuf::from("/");
+    for part in path.components() {
+        match part {
+            Component::RootDir | Component::Prefix(_) => held = std::path::PathBuf::from("/"),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                held.pop();
+            }
+            Component::Normal(name) => {
+                held.push(name);
+                if std::fs::symlink_metadata(&held)?.file_type().is_symlink() {
+                    let target = std::fs::read_link(&held)?;
+                    held = match target.is_absolute() {
+                        true => target,
+                        false => held.parent().unwrap_or(&held).join(&target),
+                    };
+                    held = held.canonicalize()?;
+                }
+            }
+        }
+    }
+    Ok(held)
 }

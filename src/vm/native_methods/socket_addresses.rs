@@ -261,6 +261,11 @@ pub(crate) struct OpenSockets {
 /// thread, so a socket that would block forever has nobody left to write to
 /// it, and waiting is what a deadlock looks like from the inside.
 const WAIT_LIMIT: std::time::Duration = std::time::Duration::from_secs(2);
+/// The longest a wait may run altogether. A machine with more work on it than
+/// cores runs each thread in fits and starts, so a wait that keeps handing
+/// turns over is given more time. This is where that stops, so a wait nothing
+/// can ever end still ends.
+const WAIT_CEILING: std::time::Duration = std::time::Duration::from_secs(20);
 /// How long one read on a socket waits before handing control back. A read
 /// waits for as long as `WAIT_LIMIT` altogether, in steps this short, so
 /// whatever else the program has to run gets a turn in between.
@@ -357,8 +362,77 @@ impl VirtualMachine {
                 )?;
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
                 self.open_sockets.listeners.insert(named, held);
                 Ok(Object::Int(named as i64))
+            }
+            // Take a name and a port without yet waiting for anything to
+            // arrive. A socket that is bound and no more refuses what tries
+            // to reach it, which is what a connection to one is told.
+            "bind_only" => {
+                use std::net::ToSocketAddrs as _;
+                use std::os::unix::io::FromRawFd as _;
+                let wanted: std::net::SocketAddr = (text.as_str(), port as u16)
+                    .to_socket_addrs()
+                    .ok()
+                    .and_then(|mut found| found.next())
+                    .ok_or_else(|| {
+                        crate::vm::errors::simple_exception(
+                            "SocketError",
+                            &format!("bind({text}:{port}): no such address"),
+                            position,
+                        )
+                    })?;
+                let family = match wanted {
+                    std::net::SocketAddr::V4(_) => libc::AF_INET,
+                    std::net::SocketAddr::V6(_) => libc::AF_INET6,
+                };
+                // SAFETY: the descriptor is taken over by the listener built
+                // from it, which closes it when it goes.
+                let held = unsafe {
+                    let descriptor = libc::socket(family, libc::SOCK_STREAM, 0);
+                    if descriptor < 0 {
+                        let problem = std::io::Error::last_os_error();
+                        return Err(crate::vm::errors::simple_exception(
+                            bind_errno_class(&problem),
+                            &format!("bind({text}:{port}): {problem}"),
+                            position,
+                        ));
+                    }
+                    let (address, length) = sockaddr_of(&wanted);
+                    if libc::bind(descriptor, address.as_ptr().cast(), length) < 0 {
+                        let problem = std::io::Error::last_os_error();
+                        libc::close(descriptor);
+                        return Err(crate::vm::errors::simple_exception(
+                            bind_errno_class(&problem),
+                            &format!("bind({text}:{port}): {problem}"),
+                            position,
+                        ));
+                    }
+                    std::net::TcpListener::from_raw_fd(descriptor)
+                };
+                let named = self.open_sockets.next;
+                self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
+                self.open_sockets.listeners.insert(named, held);
+                Ok(Object::Int(named as i64))
+            }
+            // Start waiting for connections on a socket already bound.
+            "listen_on" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Err(refuse("listen on a closed socket".to_string()));
+                };
+                let backlog = if port > 0 { port as i32 } else { 5 };
+                // SAFETY: the descriptor is one this program holds open.
+                if unsafe { libc::listen(descriptor, backlog) } < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("listen: {problem}"),
+                        position,
+                    ));
+                }
+                Ok(Object::Int(0))
             }
             // Reach a name and a port that something is listening on.
             "connect" => {
@@ -367,6 +441,7 @@ impl VirtualMachine {
                 let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
                 self.open_sockets.streams.insert(named, held);
                 Ok(Object::Int(named as i64))
             }
@@ -411,7 +486,8 @@ impl VirtualMachine {
                 // Waiting hands other threads a turn, and they may reach the
                 // same listener, so it is looked up again each time round
                 // rather than borrowed across the wait.
-                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let mut deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let waited_enough = std::time::Instant::now() + WAIT_CEILING;
                 let stream = loop {
                     let listener = self
                         .open_sockets
@@ -424,11 +500,19 @@ impl VirtualMachine {
                     match taken {
                         Ok((held, _)) => break held,
                         Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                            // A thread that could still write is given its
+                            // turn, and the wait is given more time for
+                            // having handed one over, up to a ceiling that a
+                            // wait nothing can ever end still reaches.
                             if std::time::Instant::now() >= deadline {
                                 return Err(timed_out(position));
                             }
                             self.wait_for_other_threads(position);
                             self.raise_if_thread_killed(position)?;
+                            if self.other_threads_are_waiting() {
+                                deadline =
+                                    (std::time::Instant::now() + WAIT_LIMIT).min(waited_enough);
+                            }
                         }
                         Err(problem) => {
                             return Err(crate::vm::errors::simple_exception(
@@ -442,6 +526,7 @@ impl VirtualMachine {
                 let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = stream.set_nonblocking(true);
                 self.open_sockets.streams.insert(named, stream);
                 Ok(Object::Int(named as i64))
             }
@@ -484,6 +569,53 @@ impl VirtualMachine {
                 })?;
                 Ok(Object::Int(bytes.len() as i64))
             }
+            // Whether the socket has something to read, or room to write,
+            // as the system reports it rather than by trying and undoing.
+            "ready?" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Ok(Object::Bool(false));
+                };
+                let mut asked = libc::pollfd {
+                    fd: descriptor,
+                    events: if port != 0 {
+                        libc::POLLOUT
+                    } else {
+                        libc::POLLIN
+                    },
+                    revents: 0,
+                };
+                // SAFETY: the descriptor is one this program holds open, and
+                // the wait of zero asks without waiting.
+                let answered = unsafe { libc::poll(&mut asked, 1, 0) };
+                Ok(Object::Bool(answered > 0 && asked.revents != 0))
+            }
+            // Read what has arrived without waiting for more. Nothing there
+            // yet is reported at once rather than handing the turn over,
+            // which is what a read told not to wait asks for.
+            "read_now" => {
+                let wanted = if port > 0 { port as usize } else { 65536 };
+                let mut buffer = vec![0u8; wanted];
+                let stream = self
+                    .open_sockets
+                    .streams
+                    .get_mut(&handle)
+                    .ok_or_else(|| refuse("read from a closed connection".to_string()))?;
+                match stream.read(&mut buffer) {
+                    Ok(read) => {
+                        buffer.truncate(read);
+                        Ok(super::pack_format::bytes_to_string(&buffer))
+                    }
+                    Err(problem)
+                        if matches!(
+                            problem.kind(),
+                            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                        ) =>
+                    {
+                        Err(timed_out(position))
+                    }
+                    Err(problem) => Err(refuse(format!("read: {problem}"))),
+                }
+            }
             // Read what the other end sent, up to the count asked for.
             "read" => {
                 let wanted = if port > 0 { port as usize } else { 65536 };
@@ -491,7 +623,8 @@ impl VirtualMachine {
                 // Nothing has arrived yet is not the end of the matter, so
                 // whatever else the program has to run gets a turn and the
                 // read is tried again.
-                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let mut deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let waited_enough = std::time::Instant::now() + WAIT_CEILING;
                 let read = loop {
                     let stream = self
                         .open_sockets
@@ -506,11 +639,19 @@ impl VirtualMachine {
                                 std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                             ) =>
                         {
+                            // A thread that could still write is given its
+                            // turn, and the wait is given more time for
+                            // having handed one over, up to a ceiling that a
+                            // wait nothing can ever end still reaches.
                             if std::time::Instant::now() >= deadline {
                                 return Err(timed_out(position));
                             }
                             self.wait_for_other_threads(position);
                             self.raise_if_thread_killed(position)?;
+                            if self.other_threads_are_waiting() {
+                                deadline =
+                                    (std::time::Instant::now() + WAIT_LIMIT).min(waited_enough);
+                            }
                         }
                         Err(problem) => return Err(refuse(format!("read: {problem}"))),
                     }
@@ -643,6 +784,69 @@ impl VirtualMachine {
             }
             // The port a named service is reached on, and the name a port is
             // known by, as the operating system's own table has them.
+            // The number this platform names a socket setting, a family, or a
+            // message flag by. The names differ between platforms, so a
+            // program that writes one of them by hand would be writing the
+            // number another platform uses.
+            "constant" => Ok(socket_constant(&text)
+                .map(Object::Int)
+                .unwrap_or(Object::Nil)),
+            // Ask the device behind the socket to do something, with a
+            // buffer it reads from and writes back into.
+            "ioctl" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Err(refuse("ioctl on a closed socket".to_string()));
+                };
+                let mut buffer = super::pack_format::string_to_bytes(&text);
+                let request = port as libc::c_ulong;
+                // SAFETY: the descriptor is one this program holds open, and
+                // the buffer outlives the call.
+                let answered = if buffer.is_empty() {
+                    unsafe { libc::ioctl(descriptor, request, 0) }
+                } else {
+                    unsafe { libc::ioctl(descriptor, request, buffer.as_mut_ptr()) }
+                };
+                if answered < 0 {
+                    let problem = std::io::Error::last_os_error();
+                    return Err(crate::vm::errors::simple_exception(
+                        errno_class(&problem),
+                        &format!("ioctl: {problem}"),
+                        position,
+                    ));
+                }
+                Ok(Object::array(vec![
+                    Object::Int(i64::from(answered)),
+                    super::pack_format::bytes_to_string(&buffer),
+                ]))
+            }
+            // Whether the socket answers straight away rather than waiting,
+            // as the descriptor itself is set, and setting it.
+            "nonblock" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Ok(Object::Nil);
+                };
+                // SAFETY: the descriptor is one this program holds open.
+                let flags = unsafe { libc::fcntl(descriptor, libc::F_GETFL) };
+                Ok(Object::Bool(flags >= 0 && flags & libc::O_NONBLOCK != 0))
+            }
+            "set_nonblock" => {
+                let Some(descriptor) = self.socket_descriptor(handle) else {
+                    return Ok(Object::Nil);
+                };
+                // SAFETY: the descriptor is one this program holds open.
+                unsafe {
+                    let flags = libc::fcntl(descriptor, libc::F_GETFL);
+                    if flags >= 0 {
+                        let wanted = if port != 0 {
+                            flags | libc::O_NONBLOCK
+                        } else {
+                            flags & !libc::O_NONBLOCK
+                        };
+                        libc::fcntl(descriptor, libc::F_SETFL, wanted);
+                    }
+                }
+                Ok(Object::Bool(port != 0))
+            }
             "service_port" => {
                 let (service, protocol) = match text.split_once('/') {
                     Some((named, kind)) => (named.to_string(), kind.to_string()),
@@ -814,6 +1018,7 @@ impl VirtualMachine {
                 let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
                 self.open_sockets.unix_datagrams.insert(named, held);
                 Ok(Object::Int(named as i64))
             }
@@ -843,7 +1048,8 @@ impl VirtualMachine {
             "unix_dgram_receive" => {
                 let wanted = if port > 0 { port as usize } else { 65536 };
                 let mut buffer = vec![0u8; wanted];
-                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let mut deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let waited_enough = std::time::Instant::now() + WAIT_CEILING;
                 let read = loop {
                     let socket = self
                         .open_sockets
@@ -858,11 +1064,19 @@ impl VirtualMachine {
                                 std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
                             ) =>
                         {
+                            // A thread that could still write is given its
+                            // turn, and the wait is given more time for
+                            // having handed one over, up to a ceiling that a
+                            // wait nothing can ever end still reaches.
                             if std::time::Instant::now() >= deadline {
                                 return Err(timed_out(position));
                             }
                             self.wait_for_other_threads(position);
                             self.raise_if_thread_killed(position)?;
+                            if self.other_threads_are_waiting() {
+                                deadline =
+                                    (std::time::Instant::now() + WAIT_LIMIT).min(waited_enough);
+                            }
                         }
                         Err(problem) => {
                             return Err(crate::vm::errors::simple_exception(
@@ -919,6 +1133,7 @@ impl VirtualMachine {
                     .map_err(|problem| refuse(format!("bind({text}): {problem}")))?;
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
                 self.open_sockets.unix_listeners.insert(named, held);
                 Ok(Object::Int(named as i64))
             }
@@ -940,6 +1155,7 @@ impl VirtualMachine {
                 let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
                 self.open_sockets.unix_streams.insert(named, held);
                 Ok(Object::Int(named as i64))
             }
@@ -959,6 +1175,7 @@ impl VirtualMachine {
                         let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                         let named = self.open_sockets.next;
                         self.open_sockets.next += 1;
+                        let _ = stream.set_nonblocking(true);
                         self.open_sockets.unix_streams.insert(named, stream);
                         Ok(Object::Int(named as i64))
                     }
@@ -982,6 +1199,7 @@ impl VirtualMachine {
                         let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                         let named = self.open_sockets.next;
                         self.open_sockets.next += 1;
+                        let _ = stream.set_nonblocking(true);
                         self.open_sockets.streams.insert(named, stream);
                         Ok(Object::Int(named as i64))
                     }
@@ -992,7 +1210,8 @@ impl VirtualMachine {
                 }
             }
             "unix_accept" => {
-                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let mut deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let waited_enough = std::time::Instant::now() + WAIT_CEILING;
                 let stream = loop {
                     let listener = self
                         .open_sockets
@@ -1005,11 +1224,19 @@ impl VirtualMachine {
                     match taken {
                         Ok((held, _)) => break held,
                         Err(problem) if problem.kind() == std::io::ErrorKind::WouldBlock => {
+                            // A thread that could still write is given its
+                            // turn, and the wait is given more time for
+                            // having handed one over, up to a ceiling that a
+                            // wait nothing can ever end still reaches.
                             if std::time::Instant::now() >= deadline {
                                 return Err(timed_out(position));
                             }
                             self.wait_for_other_threads(position);
                             self.raise_if_thread_killed(position)?;
+                            if self.other_threads_are_waiting() {
+                                deadline =
+                                    (std::time::Instant::now() + WAIT_LIMIT).min(waited_enough);
+                            }
                         }
                         Err(problem) => {
                             return Err(crate::vm::errors::simple_exception(
@@ -1023,6 +1250,7 @@ impl VirtualMachine {
                 let _ = stream.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = stream.set_nonblocking(true);
                 self.open_sockets.unix_streams.insert(named, stream);
                 Ok(Object::Int(named as i64))
             }
@@ -1136,6 +1364,7 @@ impl VirtualMachine {
                 let _ = held.set_read_timeout(Some(POLL_LIMIT));
                 let named = self.open_sockets.next;
                 self.open_sockets.next += 1;
+                let _ = held.set_nonblocking(true);
                 self.open_sockets.datagrams.insert(named, held);
                 Ok(Object::Int(named as i64))
             }
@@ -1185,7 +1414,8 @@ impl VirtualMachine {
                 let waiting = flags & libc::MSG_DONTWAIT as i64 == 0;
                 let wanted = if port > 0 { port as usize } else { 65536 };
                 let mut buffer = vec![0u8; wanted];
-                let deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let mut deadline = std::time::Instant::now() + WAIT_LIMIT;
+                let waited_enough = std::time::Instant::now() + WAIT_CEILING;
                 let (read, from) = loop {
                     let socket = self
                         .open_sockets
@@ -1208,6 +1438,12 @@ impl VirtualMachine {
                             }
                             self.wait_for_other_threads(position);
                             self.raise_if_thread_killed(position)?;
+                            // A turn handed to a thread that could still send
+                            // buys more time, up to the ceiling.
+                            if self.other_threads_are_waiting() {
+                                deadline =
+                                    (std::time::Instant::now() + WAIT_LIMIT).min(waited_enough);
+                            }
                         }
                         Err(problem) => {
                             return Err(crate::vm::errors::simple_exception(
@@ -1333,6 +1569,10 @@ fn peer_path_of(descriptor: i32) -> Option<String> {
     if answered < 0 || held.sun_family != libc::AF_UNIX as libc::sa_family_t {
         return None;
     }
+    // A path is held as the C library's own character type, which is signed
+    // on some platforms and unsigned on others, so the cast is needed on the
+    // one and stands for nothing on the other.
+    #[allow(clippy::unnecessary_cast)]
     let spelled: Vec<u8> = held
         .sun_path
         .iter()
@@ -1430,5 +1670,120 @@ fn receive_descriptor(socket: i32) -> i32 {
             return -1;
         }
         std::ptr::read(libc::CMSG_DATA(header) as *const libc::c_int)
+    }
+}
+
+/// The number the operating system names a socket constant by. A name this
+/// platform does not carry answers None, and the socket library keeps its own
+/// number for that one.
+fn socket_constant(name: &str) -> Option<i64> {
+    let held = match name {
+        "AF_UNSPEC" => libc::AF_UNSPEC,
+        "AF_UNIX" | "AF_LOCAL" => libc::AF_UNIX,
+        "AF_INET" => libc::AF_INET,
+        "AF_INET6" => libc::AF_INET6,
+        "PF_UNSPEC" => libc::PF_UNSPEC,
+        "PF_UNIX" | "PF_LOCAL" => libc::PF_UNIX,
+        "PF_INET" => libc::PF_INET,
+        "PF_INET6" => libc::PF_INET6,
+        "SOCK_STREAM" => libc::SOCK_STREAM,
+        "SOCK_DGRAM" => libc::SOCK_DGRAM,
+        "SOCK_RAW" => libc::SOCK_RAW,
+        "SOCK_RDM" => libc::SOCK_RDM,
+        "SOCK_SEQPACKET" => libc::SOCK_SEQPACKET,
+        "IPPROTO_IP" => libc::IPPROTO_IP,
+        "IPPROTO_ICMP" => libc::IPPROTO_ICMP,
+        "IPPROTO_TCP" => libc::IPPROTO_TCP,
+        "IPPROTO_UDP" => libc::IPPROTO_UDP,
+        "IPPROTO_IPV6" => libc::IPPROTO_IPV6,
+        "IPPROTO_RAW" => libc::IPPROTO_RAW,
+        "SOL_SOCKET" => libc::SOL_SOCKET,
+        "SO_DEBUG" => libc::SO_DEBUG,
+        "SO_ACCEPTCONN" => libc::SO_ACCEPTCONN,
+        "SO_REUSEADDR" => libc::SO_REUSEADDR,
+        "SO_KEEPALIVE" => libc::SO_KEEPALIVE,
+        "SO_DONTROUTE" => libc::SO_DONTROUTE,
+        "SO_BROADCAST" => libc::SO_BROADCAST,
+        "SO_OOBINLINE" => libc::SO_OOBINLINE,
+        "SO_REUSEPORT" => libc::SO_REUSEPORT,
+        "SO_LINGER" => libc::SO_LINGER,
+        "SO_SNDBUF" => libc::SO_SNDBUF,
+        "SO_RCVBUF" => libc::SO_RCVBUF,
+        "SO_TYPE" => libc::SO_TYPE,
+        "SO_ERROR" => libc::SO_ERROR,
+        "SO_SNDLOWAT" => libc::SO_SNDLOWAT,
+        "SO_RCVLOWAT" => libc::SO_RCVLOWAT,
+        "SO_SNDTIMEO" => libc::SO_SNDTIMEO,
+        "SO_RCVTIMEO" => libc::SO_RCVTIMEO,
+        "MSG_OOB" => libc::MSG_OOB,
+        "MSG_PEEK" => libc::MSG_PEEK,
+        "MSG_DONTROUTE" => libc::MSG_DONTROUTE,
+        "MSG_EOR" => libc::MSG_EOR,
+        "MSG_TRUNC" => libc::MSG_TRUNC,
+        "MSG_CTRUNC" => libc::MSG_CTRUNC,
+        "MSG_WAITALL" => libc::MSG_WAITALL,
+        "MSG_DONTWAIT" => libc::MSG_DONTWAIT,
+        "TCP_NODELAY" => libc::TCP_NODELAY,
+        "TCP_MAXSEG" => libc::TCP_MAXSEG,
+        "SCM_RIGHTS" => libc::SCM_RIGHTS,
+        "EAI_AGAIN" => libc::EAI_AGAIN,
+        "EAI_BADFLAGS" => libc::EAI_BADFLAGS,
+        "EAI_FAIL" => libc::EAI_FAIL,
+        "EAI_FAMILY" => libc::EAI_FAMILY,
+        "EAI_MEMORY" => libc::EAI_MEMORY,
+        "EAI_NONAME" => libc::EAI_NONAME,
+        "EAI_SERVICE" => libc::EAI_SERVICE,
+        "EAI_SOCKTYPE" => libc::EAI_SOCKTYPE,
+        "EAI_SYSTEM" => libc::EAI_SYSTEM,
+        "EAI_OVERFLOW" => libc::EAI_OVERFLOW,
+        "IP_TTL" => libc::IP_TTL,
+        "IP_MULTICAST_TTL" => libc::IP_MULTICAST_TTL,
+        "IP_MULTICAST_LOOP" => libc::IP_MULTICAST_LOOP,
+        "IP_ADD_MEMBERSHIP" => libc::IP_ADD_MEMBERSHIP,
+        "IP_DROP_MEMBERSHIP" => libc::IP_DROP_MEMBERSHIP,
+        "IPV6_V6ONLY" => libc::IPV6_V6ONLY,
+        // How an address named by a path is laid out, which is not a
+        // constant the C library names but a shape it settles.
+        "SOCKADDR_UN_SIZE" => {
+            return Some(std::mem::size_of::<libc::sockaddr_un>() as i64);
+        }
+        "SOCKADDR_UN_PATH_MAX" => {
+            let held = libc::sockaddr_un {
+                ..unsafe { std::mem::zeroed() }
+            };
+            return Some(held.sun_path.len() as i64 - 1);
+        }
+        // BSD writes the length of an address in front of the family it
+        // names, where Linux writes the family alone.
+        "SOCKADDR_HAS_LEN" => return Some(i64::from(!cfg!(target_os = "linux"))),
+        _ => return None,
+    };
+    Some(i64::from(held))
+}
+
+/// An address written the way the system call takes it, with the number of
+/// bytes it fills.
+fn sockaddr_of(held: &std::net::SocketAddr) -> (Vec<u8>, libc::socklen_t) {
+    match held {
+        std::net::SocketAddr::V4(address) => {
+            let mut written = unsafe { std::mem::zeroed::<libc::sockaddr_in>() };
+            written.sin_family = libc::AF_INET as libc::sa_family_t;
+            written.sin_port = address.port().to_be();
+            written.sin_addr.s_addr = u32::from_ne_bytes(address.ip().octets());
+            let size = std::mem::size_of::<libc::sockaddr_in>();
+            let bytes =
+                unsafe { std::slice::from_raw_parts((&raw const written).cast::<u8>(), size) };
+            (bytes.to_vec(), size as libc::socklen_t)
+        }
+        std::net::SocketAddr::V6(address) => {
+            let mut written = unsafe { std::mem::zeroed::<libc::sockaddr_in6>() };
+            written.sin6_family = libc::AF_INET6 as libc::sa_family_t;
+            written.sin6_port = address.port().to_be();
+            written.sin6_addr.s6_addr = address.ip().octets();
+            let size = std::mem::size_of::<libc::sockaddr_in6>();
+            let bytes =
+                unsafe { std::slice::from_raw_parts((&raw const written).cast::<u8>(), size) };
+            (bytes.to_vec(), size as libc::socklen_t)
+        }
     }
 }

@@ -3702,7 +3702,10 @@ require 'socket'
 Socket.unpack_sockaddr_in("held")
 "#,
     );
-    assert!(error.contains("not an IP address struct"), "{error}");
+    assert!(
+        error.contains("not an AF_INET/AF_INET6 sockaddr"),
+        "{error}"
+    );
 }
 
 #[test]
@@ -3713,7 +3716,10 @@ require 'socket'
 Socket.unpack_sockaddr_in(["10630000000000000000"].pack("H*"))
 "#,
     );
-    assert!(error.contains("not an IP address struct"), "{error}");
+    assert!(
+        error.contains("not an AF_INET/AF_INET6 sockaddr"),
+        "{error}"
+    );
 }
 
 #[test]

@@ -1153,6 +1153,54 @@ cargo tarpaulin --out Stdout
 scripts/run_ruby_spec.sh
 ```
 
+### Running everything
+
+`./test.sh` runs what CI runs, on this machine and on Linux, on both
+architectures: formatting, clippy, the Rust tests, the Ruby spec suite,
+coverage, and the check that no test sits in `src/`. It stops where a step
+fails, so what went wrong is the last thing on the screen.
+
+```bash
+./test.sh              # all of it
+./test.sh mac          # this machine alone
+./test.sh linux        # both Linux architectures
+./test.sh linux-amd64  # the one CI runs on
+./test.sh linux-arm64
+```
+
+The architecture that is not this machine's runs under emulation. It is slower
+and it catches what only shows there: a spec guarded to x86, the signedness of
+a C character, the width of a pointer.
+
+The image carries the Ruby the vendored suite is written for, which is the
+release metorex reports itself as. It is the same build the CI runner
+installs, unpacked where the runner keeps it. That Ruby runs the mspec driver; each spec
+file is executed by metorex, so the driver's version settles nothing about
+which examples run, but it is what a comparison against real Ruby inside the
+container answers with.
+
+### Building on Linux
+
+Some of what metorex reaches for differs between platforms: the clocks a
+system keeps, where an interface holds its point-to-point address, and which
+library carries `crypt`. CI runs on Linux, so a build that passes on macOS can
+still fail there. `scripts/linux.sh` runs any command against a Linux build in
+the image CI uses, with the working tree mounted and a build directory of its
+own so it leaves the host's build alone. `LINUX_ARCH` picks the architecture,
+`amd64` or `arm64`, and defaults to this machine's.
+
+```bash
+scripts/linux.sh                          # cargo test
+scripts/linux.sh cargo build
+scripts/linux.sh cargo clippy --all-targets
+scripts/linux.sh scripts/run_ruby_spec.sh
+LINUX_ARCH=amd64 scripts/linux.sh cargo test
+
+# Name a test that hangs: the name is printed before the test runs, so the
+# last line with no `ok` after it is the one that stopped.
+scripts/linux.sh cargo test --test all_tests -- --test-threads=1
+```
+
 ## License
 
 See [LICENSE](LICENSE) for details.

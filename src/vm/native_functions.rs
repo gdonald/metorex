@@ -2058,6 +2058,18 @@ impl VirtualMachine {
                 // becoming the shell's own "command not found" exit.
                 let needs_shell = rest.is_empty()
                     && program.contains(|c: char| " \t\n|&;<>()$`\\\"'*?[]#~=%".contains(c));
+                // A program that cannot be found is refused before anything
+                // is started. Leaving it to the spawn reports differently
+                // from one platform to the next: some hand back the error,
+                // and some start a child that exits 127.
+                if !needs_shell && findable_program(&program).is_none() {
+                    let message = format!("No such file or directory - {}", program);
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("Errno::ENOENT", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
                 let status = if !rest.is_empty() {
                     std::process::Command::new(&program).args(&rest).status()
                 } else if needs_shell {
@@ -4011,4 +4023,24 @@ fn frame_call_sites(frames: &[&crate::vm::CallFrame], current_file: &str) -> Vec
         }
     }
     sites
+}
+
+/// Where a program named on the command line sits, which is the name itself
+/// when it holds a slash and otherwise the first place on the path that holds
+/// a file of that name the program may run.
+fn findable_program(program: &str) -> Option<std::path::PathBuf> {
+    use std::os::unix::fs::PermissionsExt as _;
+    let runnable = |path: &std::path::Path| {
+        std::fs::metadata(path)
+            .map(|held| held.is_file() && held.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    };
+    if program.contains('/') {
+        let named = std::path::PathBuf::from(program);
+        return runnable(&named).then_some(named);
+    }
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|held| held.join(program))
+        .find(|held| runnable(held))
 }

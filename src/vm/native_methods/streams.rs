@@ -316,6 +316,41 @@ impl VirtualMachine {
             }
             // `fcntl` asks the operating system about a descriptor, or sets
             // one of the flags it keeps.
+            // Ask the device behind the descriptor to do something, with a
+            // buffer it reads from and writes back into. The filled buffer
+            // is answered beside what the call returned.
+            "ioctl" => {
+                let Some(number) = self.open_streams.number_of(handle) else {
+                    return Err(closed_error(position));
+                };
+                let request = count as libc::c_ulong;
+                let mut buffer = crate::vm::native_methods::pack_format::string_to_bytes(&text);
+                // A request that names no buffer carries a number instead,
+                // which is what the caller sent in place of one.
+                let answered = if buffer.is_empty() {
+                    let held = match arguments.get(4) {
+                        Some(Object::Int(held)) => *held as libc::c_int,
+                        _ => 0,
+                    };
+                    // SAFETY: the descriptor is one this program holds open.
+                    unsafe { libc::ioctl(number, request, held) }
+                } else {
+                    // SAFETY: the buffer outlives the call and the request
+                    // decides how much of it is read and written.
+                    unsafe { libc::ioctl(number, request, buffer.as_mut_ptr()) }
+                };
+                if answered < 0 {
+                    return Err(stream_error(
+                        &std::io::Error::last_os_error(),
+                        "ioctl",
+                        position,
+                    ));
+                }
+                Ok(Object::array(vec![
+                    Object::Int(i64::from(answered)),
+                    crate::vm::native_methods::pack_format::bytes_to_string(&buffer),
+                ]))
+            }
             "fcntl" => {
                 let Some(number) = self.open_streams.number_of(handle) else {
                     return Err(closed_error(position));

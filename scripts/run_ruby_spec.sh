@@ -50,7 +50,17 @@ SPEC_TEMP_ROOT=$(mktemp -d /tmp/mxspec.XXXXXX)
 # the temp directory instead, whether or not the binary is instrumented.
 PROFILE_ROOT=$(mktemp -d -t metorex_profiles.XXXXXX)
 export LLVM_PROFILE_FILE="$PROFILE_ROOT/spec_%p.profraw"
-cleanup_workdir() { rm -rf "$WORK_DIR" "$SPEC_TEMP_ROOT" "$PROFILE_ROOT"; }
+# A run that went wrong keeps what each spec wrote, since the failure may be
+# one that comes and goes and the output is the only record of it. A clean run
+# keeps nothing.
+cleanup_workdir() {
+  rm -rf "$SPEC_TEMP_ROOT" "$PROFILE_ROOT"
+  if [ "$TOTAL_FAILURES" != "0" ] || [ "$TOTAL_ERRORS" != "0" ]; then
+    printf 'what each spec wrote is in %s\n' "$WORK_DIR" >&2
+    return
+  fi
+  rm -rf "$WORK_DIR"
+}
 
 print_totals() {
   printf '\n%s files, %s examples, %s expectations, %s failures, %s errors, %s tagged\n' \

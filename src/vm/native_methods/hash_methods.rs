@@ -95,9 +95,12 @@ impl VirtualMachine {
         if let Some(Object::Class(held)) = self.globals().get("__Encoding_default_internal") {
             return Some(held.name().to_string());
         }
-        match self.globals().get("__Encoding_default_external") {
-            Some(Object::Class(held)) => Some(held.name().to_string()),
-            _ => None,
+        // With nothing named, the environment reads as the locale does,
+        // which is what the C library hands the program its variables in.
+        match crate::vm::locale_charmap_name().as_str() {
+            "" => None,
+            "ANSI_X3.4-1968" => Some("US-ASCII".to_string()),
+            other => Some(other.to_string()),
         }
     }
 
@@ -122,7 +125,10 @@ impl VirtualMachine {
         value: String,
     ) {
         let named = Object::string(key.clone());
-        let held = Object::string(value);
+        // What the environment holds is read back in the encoding the locale
+        // names, so it is kept in that encoding from the moment it is set.
+        let reading = self.environment_reading_encoding();
+        let held = retagged(Object::string(value), &reading);
         // A name that reads back as some other kind of value is kept beside
         // the entry, so `ENV["1"]` stays a name rather than a number.
         if !crate::vm::utils::is_primitive_key(&named) {
@@ -462,11 +468,17 @@ impl VirtualMachine {
                         position,
                     ));
                 }
+                // A name the environment holds is read in the encoding the
+                // locale names, the way its values are.
+                let named = match self.dict_is_environment(dict_rc) {
+                    true => self.environment_reading_encoding(),
+                    false => None,
+                };
                 let dict = dict_rc.borrow();
                 let keys: Vec<Object> = dict
                     .keys()
                     .filter(|k| !is_internal_key(k))
-                    .map(|k| reconstruct_key(&dict, k))
+                    .map(|k| retagged(reconstruct_key(&dict, k), &named))
                     .collect();
                 Ok(Some(Object::Array(Rc::new(RefCell::new(keys)))))
             }
@@ -1073,9 +1085,15 @@ impl VirtualMachine {
                         .make_enumerator(receiver, method_name, arguments, position)
                         .map(Some);
                 };
+                // A name the environment holds is read in the encoding the
+                // locale names, the way its values are.
+                let named = match self.dict_is_environment(dict_rc) {
+                    true => self.environment_reading_encoding(),
+                    false => None,
+                };
                 for (key, value) in self.hash_pairs(dict_rc) {
                     let yielded = if method_name == "each_key" {
-                        key
+                        retagged(key, &named)
                     } else {
                         value
                     };
@@ -2480,9 +2498,15 @@ fn retagged(value: Object, named: &Option<String>) -> Object {
     let (Object::String(text), Some(named)) = (&value, named) else {
         return value;
     };
+    // Bytes that do not read as the encoding the environment is named in
+    // stand for themselves, which is what Ruby hands back for them.
+    let named = match named.as_str() {
+        "US-ASCII" if !text.as_str().is_ascii() => "ASCII-8BIT".to_string(),
+        other => other.to_string(),
+    };
     Object::String(std::rc::Rc::new(crate::object::StringValue::with_encoding(
         text.to_text(),
-        named.clone(),
+        named,
     )))
 }
 

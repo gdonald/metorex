@@ -37,13 +37,15 @@ pub const DEFAULT_RUBY_VERSION: &str = "4.0.1";
 /// an operating system joined by a dash. The spec suite's platform guards
 /// read it, and they look for `darwin` rather than `macos`.
 pub fn reported_ruby_platform() -> String {
-    let architecture = match std::env::consts::ARCH {
-        "aarch64" => "arm64",
-        other => other,
-    };
     let system = match std::env::consts::OS {
         "macos" => "darwin",
         other => other,
+    };
+    // One processor goes by a different name on each platform, and Ruby
+    // reports the name the platform it runs on uses.
+    let architecture = match (std::env::consts::ARCH, system) {
+        ("aarch64", "darwin") => "arm64",
+        (other, _) => other,
     };
     format!("{architecture}-{system}")
 }
