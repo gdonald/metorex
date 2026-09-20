@@ -481,6 +481,21 @@ impl VirtualMachine {
                         });
                     }
                 }
+                // A refinement in force where the call was written stands
+                // ahead of what the receiver's class answers, for a name
+                // reached this way just as for one written out.
+                if let Some(refined) =
+                    crate::vm::method_lookup::find_refinement(receiver, &method, self)
+                {
+                    let class = self.builtins().class_of(receiver);
+                    return Ok(Some(self.invoke_method(
+                        class,
+                        refined,
+                        receiver.clone(),
+                        rest_args,
+                        position,
+                    )?));
+                }
                 // Prefer full lookup (walks singleton class + mixins) so mocked
                 // or per-instance overrides take precedence over the class's
                 // own method table.
@@ -1183,6 +1198,18 @@ impl VirtualMachine {
                 // A method the receiver's class supplies natively is that
                 // class's own, even when Enumerable declares the same name.
                 let shadowed_by_enumerable = self.enumerable_stands_in(receiver, &name_str);
+                // A refinement in force here is what the name stands for
+                // while it lasts, so the method object answers to it.
+                let refined = crate::vm::method_lookup::refinement_target_name(receiver, self)
+                    .and_then(|target| self.find_refined_method(&target, &name_str));
+                if let Some(refined) = refined {
+                    let owner = self.builtins().class_of(receiver);
+                    let mut bound = (*refined).clone();
+                    bound.receiver = Some(Box::new(receiver.clone()));
+                    bound.owner = Some(owner.ruby_name());
+                    bound.owner_class = Some(owner);
+                    return Ok(Some(Object::Method(std::rc::Rc::new(bound))));
+                }
                 if let Some((resolved_class, method)) = self
                     .lookup_method(receiver, &name_str)
                     .filter(|_| !shadowed_by_enumerable)

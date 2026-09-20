@@ -86,6 +86,25 @@ impl VirtualMachine {
                     let value = self.evaluate_expression(expr)?;
                     // Interpolation uses #to_s semantics: a Symbol renders
                     // as its bare name, not the `:name` inspect form.
+                    // A refinement in force says how a value writes itself,
+                    // whatever kind it is, so it is asked before the kind's
+                    // own rendering is used.
+                    if crate::vm::method_lookup::refinement_target_name(&value, self)
+                        .and_then(|target| self.find_refined_method(&target, "to_s"))
+                        .is_some()
+                    {
+                        let written = self.send_to_object(
+                            value.clone(),
+                            "to_s",
+                            Vec::new(),
+                            expr.position(),
+                        )?;
+                        match written {
+                            Object::String(text) => buffer.push_str(&text.as_str()),
+                            other => buffer.push_str(&other.to_string()),
+                        }
+                        continue;
+                    }
                     match &value {
                         Object::Symbol(s) => buffer.push_str(&s.as_str()),
                         // `nil.to_s` is the empty string, so `"#{nil}"` adds

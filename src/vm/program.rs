@@ -120,9 +120,26 @@ impl VirtualMachine {
         }
     }
 
-    fn run_program_statements(
+    /// Run a unit whose `return` belongs to the scope around it rather than
+    /// ending the unit, which is what code handed to `eval` does.
+    pub(crate) fn run_eval_statements(
         &mut self,
         statements: &[Statement],
+    ) -> Result<Option<Object>, MetorexError> {
+        self.run_statements_of_a_unit(statements, true)
+    }
+
+    pub(crate) fn run_program_statements(
+        &mut self,
+        statements: &[Statement],
+    ) -> Result<Option<Object>, MetorexError> {
+        self.run_statements_of_a_unit(statements, false)
+    }
+
+    fn run_statements_of_a_unit(
+        &mut self,
+        statements: &[Statement],
+        a_return_unwinds: bool,
     ) -> Result<Option<Object>, MetorexError> {
         // Ruby's parser reserves every local a file assigns to before any of
         // it runs, so a name read ahead of its assignment answers nil and
@@ -144,8 +161,14 @@ impl VirtualMachine {
                     position.line,
                     position.column,
                 );
-                if self.opened_blocks.insert(site) {
-                    self.execute_statements_internal(body)?;
+                if self.opened_blocks.insert(site)
+                    && let ControlFlow::Return {
+                        value,
+                        position: at,
+                    } = self.execute_statements_internal(body)?
+                    && a_return_unwinds
+                {
+                    return Err(self.unwinding_return(value, at));
                 }
             }
         }
@@ -223,7 +246,15 @@ impl VirtualMachine {
                 ControlFlow::Value(value) => {
                     last_value = Some(value);
                 }
-                ControlFlow::Return { value, .. } => return Ok(Some(value)),
+                ControlFlow::Return {
+                    value,
+                    position: at,
+                } => {
+                    if a_return_unwinds {
+                        return Err(self.unwinding_return(value, at));
+                    }
+                    return Ok(Some(value));
+                }
                 ControlFlow::Exception {
                     exception,
                     position,
@@ -252,6 +283,19 @@ impl VirtualMachine {
         }
 
         Ok(last_value)
+    }
+
+    /// A `return` leaving an eval, which unwinds to the invocation the code
+    /// around the eval belongs to.
+    fn unwinding_return(&self, value: Object, at: crate::lexer::Position) -> MetorexError {
+        // The return belongs to the innermost lambda or method around the
+        // eval, whichever the unwinding reaches first, so it names no frame
+        // of its own.
+        MetorexError::NonLocalReturn {
+            value,
+            location: position_to_location(at),
+            home_frame: None,
+        }
     }
 
     /// Evaluate a list of argument expressions, expanding any splat (`*expr`)
@@ -321,11 +365,28 @@ impl VirtualMachine {
                     // value is nil, the call is treated as if no block were
                     // given (the arg is dropped, not pushed).
                     let value = self.evaluate_expression(expression)?;
+                    // A refinement in force may say how an object becomes a
+                    // block, which stands ahead of whatever its own kind does.
+                    let refined_to_proc =
+                        crate::vm::method_lookup::refinement_target_name(&value, self)
+                            .and_then(|target| self.find_refined_method(&target, "to_proc"))
+                            .is_some();
                     match value {
                         Object::Nil => {}
                         Object::Block(_) => {
                             self.pending_block = Some(value);
                             self.pending_block_from_ampersand = true;
+                        }
+                        other if refined_to_proc => {
+                            let made = self.send_to_object(
+                                other.clone(),
+                                "to_proc",
+                                Vec::new(),
+                                other_position,
+                            )?;
+                            self.pending_block = Some(made);
+                            self.pending_block_from_ampersand = true;
+                            self.pending_block_source = Some(other);
                         }
                         Object::Symbol(sym) => {
                             // `&:method` is symbol-to-proc: synthesize a block

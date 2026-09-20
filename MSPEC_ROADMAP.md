@@ -304,7 +304,9 @@ Parser fixes during Phase 4 work:
   - [x] 4.7.82. core/module/undefined_instance_methods_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.7.83. core/module/used_refinements_spec - 1 file, 4 examples, 4 expectations, 0 failures, 0 errors
   - [x] 4.7.84. core/module/using_spec - 1 file, 20 examples, 20 expectations, 0 failures, 0 errors
-- [ ] 4.8. core/kernel - 110 pass, and the rest are enabled in the runner one file at a time
+  - [x] 4.7.85. core/module/ruby2_keywords_spec - 1 file, 14 examples, 52 expectations, 0 failures, 0 errors
+  - [x] 4.7.86. core/module/refine_spec - 1 file, 38 examples, 46 expectations, 0 failures, 0 errors
+- [ ] 4.8. core/kernel - 111 pass, and the rest are enabled in the runner one file at a time
   - [x] 4.8.1. core/kernel/Array_spec - 1 file, 25 examples, 45 expectations, 0 failures, 0 errors
   - [x] 4.8.2. core/kernel/Complex_spec - 1 file, 66 examples, 126 expectations, 0 failures, 0 errors
   - [x] 4.8.3. core/kernel/Float_spec - 1 file, 193 examples, 297 expectations, 0 failures, 0 errors
@@ -337,7 +339,7 @@ Parser fixes during Phase 4 work:
   - [x] 4.8.30. core/kernel/enum_for_spec - 1 file, 0 examples, 0 expectations, 0 failures, 0 errors (its one example is an unimplemented placeholder upstream)
   - [x] 4.8.31. core/kernel/eql_spec - 1 file, 9 examples, 18 expectations, 0 failures, 0 errors
   - [x] 4.8.32. core/kernel/equal_value_spec - 1 file, 1 examples, 6 expectations, 0 failures, 0 errors
-  - [ ] 4.8.33. core/kernel/eval_spec - 23 of its 56 examples pass; the rest need per-string encodings with magic comments, binding and default-definee semantics, and flip-flop
+  - [x] 4.8.33. core/kernel/eval_spec - 1 file, 56 examples, 104 expectations, 0 failures, 0 errors
   - [x] 4.8.34. core/kernel/exec_spec - 1 file, 3 examples, 3 expectations, 0 failures, 0 errors
   - [x] 4.8.35. core/kernel/exit_spec - 1 file, 30 examples, 112 expectations, 0 failures, 0 errors
   - [x] 4.8.36. core/kernel/extend_spec - 1 file, 10 examples, 10 expectations, 0 failures, 0 errors

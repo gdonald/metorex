@@ -822,11 +822,19 @@ impl VirtualMachine {
         // across tests really do reset the load. The internal
         // `loaded_files` set still tracks the same canonical paths as a
         // convenience for non-Ruby callers, but mirroring to $" comes first.
-        let canonical_str = canonical_path.to_string_lossy().into_owned();
+        // The spelling the file was named by, which is the path it reports
+        // of itself and the one the feature list holds. Ruby lists the path
+        // as it expands, with any symlink along it left as written, so a
+        // program that takes its own entry back out of the list names the
+        // same string it required.
+        let named_path = std::path::absolute(&actual_path)
+            .map(|absolute| without_dot_components(&absolute))
+            .unwrap_or_else(|_| canonical_path.clone());
+        let listed_str = named_path.to_string_lossy().into_owned();
         let already_in_features = if let Some(Object::Array(arr)) = self.globals().get("\"") {
             arr.borrow()
                 .iter()
-                .any(|o| matches!(o, Object::String(s) if *s.as_str() == *canonical_str))
+                .any(|o| matches!(o, Object::String(s) if *s.as_str() == *listed_str))
         } else {
             false
         };
@@ -847,16 +855,12 @@ impl VirtualMachine {
         if record {
             self.mark_file_loaded(canonical_path.clone());
             if let Some(Object::Array(arr)) = self.globals().get("\"") {
-                arr.borrow_mut().push(Object::string(canonical_str.clone()));
+                arr.borrow_mut().push(Object::string(listed_str.clone()));
             }
         }
 
-        // The spelling the file was named by, which is the path it reports of
-        // itself. A symlink keeps the name it was reached through, while
-        // everything that loads the file works from the resolved path.
-        let named_path = std::path::absolute(&actual_path)
-            .map(|absolute| without_dot_components(&absolute))
-            .unwrap_or_else(|_| canonical_path.clone());
+        // A symlink keeps the name it was reached through, while everything
+        // that loads the file works from the resolved path.
         self.reported_files
             .insert(canonical_path.clone(), named_path.clone());
         // Save the current file path to restore later
@@ -883,6 +887,16 @@ impl VirtualMachine {
         }
         let previous_source_encoding =
             std::mem::replace(&mut self.current_source_encoding, named_encoding);
+        // A `frozen_string_literal` comment written after code names nothing,
+        // and a verbose run says so.
+        if crate::lexer::frozen_string_literal_after_a_token(&source)
+            && matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true)))
+        {
+            self.emit_warning_to_stderr(
+                "warning: `frozen_string_literal' is ignored after any tokens",
+                crate::lexer::Position::new(0, 0, 0),
+            );
+        }
 
         // Parse file with error context
         let statements = parse_file(&source, &canonical_path.to_string_lossy()).map_err(|e| {
@@ -902,7 +916,8 @@ impl VirtualMachine {
 
         // Mark this path as actively executing so autoload can tell
         // "file is mid-load" apart from "file already loaded".
-        self.loading_paths.push(canonical_str.clone());
+        self.loading_paths
+            .push(canonical_path.to_string_lossy().into_owned());
 
         // A loaded file's statements run at top level, whatever method the
         // load was called from, so `Module.nesting` inside it follows the

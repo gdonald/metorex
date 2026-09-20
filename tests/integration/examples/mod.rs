@@ -14,6 +14,7 @@ mod dsl;
 mod encodings;
 mod enumerable;
 mod errors;
+mod eval;
 mod file_loading;
 mod filesystem;
 mod functions;
@@ -37,6 +38,7 @@ mod structs;
 mod symbols_and_ranges;
 mod syntax;
 mod tabular_data;
+mod threads;
 
 use crate::common::EXAMPLES_DIR;
 use std::process::Command;

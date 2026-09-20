@@ -118,6 +118,7 @@ fn class_of_block() {
         body: vec![],
         captured_vars: HashMap::new(),
         captured_def_scope: vec![],
+        captured_nesting: vec![],
         defining_method: None,
         is_lambda: false,
         source_file: None,

@@ -46,6 +46,64 @@ pub(crate) fn refinement_target_name(
     }
 }
 
+/// The refinement that covers this object for this name, if one is in force.
+/// A refinement on a class reaches its subclasses, and one on a module reaches
+/// what takes that module in, so the walk goes up the chain. It stops where a
+/// class answers the name itself, since what a descendant writes stands ahead
+/// of what an ancestor's refinement says.
+pub(crate) fn find_refinement(
+    receiver: &Object,
+    name: &str,
+    vm: &crate::vm::VirtualMachine,
+) -> Option<Rc<crate::object::Method>> {
+    if singleton_answers(receiver, name) {
+        return None;
+    }
+    if let Some(key) = refinement_target_name(receiver, vm)
+        && let Some(found) = vm.find_refined_method(&key, name)
+    {
+        return Some(found);
+    }
+    let mut cursor = match receiver {
+        Object::Instance(inst) => Some(Rc::clone(&inst.borrow().class)),
+        _ => Some(vm.builtins().class_of(receiver)),
+    };
+    while let Some(class) = cursor {
+        let key = format!("__refine__{}@{:p}", class.name(), Rc::as_ptr(&class));
+        if let Some(found) = vm.find_refined_method(&key, name) {
+            return Some(found);
+        }
+        for mixin in class.transitive_mixins() {
+            let key = format!("__refine__{}@{:p}", mixin.name(), Rc::as_ptr(&mixin));
+            if let Some(found) = vm.find_refined_method(&key, name) {
+                return Some(found);
+            }
+        }
+        // A class that writes the name itself settles it: the ordinary walk
+        // reaches that one before it reaches any ancestor's refinement.
+        if class.find_own_method(name).is_some() {
+            return None;
+        }
+        cursor = class.superclass();
+    }
+    None
+}
+
+/// Whether the object itself answers to the name, put there by `class << obj`
+/// or `define_singleton_method`. Ruby looks there before it looks at any
+/// refinement in force.
+pub(crate) fn singleton_answers(receiver: &Object, name: &str) -> bool {
+    let Object::Instance(inst) = receiver else {
+        return false;
+    };
+    let held = inst.borrow().singleton_class.borrow().clone();
+    held.is_some_and(|singleton| {
+        singleton
+            .find_own_method(name)
+            .is_some_and(|method| !method.is_undefined)
+    })
+}
+
 fn builtin_key(vm: &crate::vm::VirtualMachine, name: &str) -> String {
     if let Some(Object::Class(c)) = vm.globals().get(name) {
         format!("__refine__{}@{:p}", name, Rc::as_ptr(&c))
@@ -126,9 +184,7 @@ impl VirtualMachine {
 
         // Refinement dispatch: if an active refinement covers this receiver's
         // class and defines this method, use it.
-        if let Some(target_key) = refinement_target_name(&receiver, self)
-            && let Some(method) = self.find_refined_method(&target_key, method_name)
-        {
+        if let Some(method) = find_refinement(&receiver, method_name, self) {
             let class = self.builtins().class_of(&receiver);
             return self.invoke_method(class, method, receiver, arguments, position);
         }
@@ -332,7 +388,12 @@ impl VirtualMachine {
             && module_rc.ruby_name() == "Kernel"
             && crate::vm::native_methods::is_kernel_private_function(method_name)
         {
-            return self.call_native_function(method_name, arguments, position);
+            let held = self
+                .kernel_function_receiver
+                .replace(Object::Module(Rc::clone(module_rc)));
+            let answered = self.call_native_function(method_name, arguments, position);
+            self.kernel_function_receiver = held;
+            return answered;
         }
 
         // Try method_missing as a final fallback
@@ -417,6 +478,13 @@ impl VirtualMachine {
     /// to its module-level and singleton methods, never to its own instance
     /// methods, which belong to the objects it describes rather than to it.
     pub(crate) fn responds_to(&self, receiver: &Object, name: &str) -> bool {
+        // A refinement in force here answers for the receiver too, which is
+        // what `respond_to?` reports while the refinement is active.
+        if let Some(target) = refinement_target_name(receiver, self)
+            && self.find_refined_method(&target, name).is_some()
+        {
+            return true;
+        }
         let (Object::Class(class_rc) | Object::Module(class_rc)) = receiver else {
             // A tombstone left by `undef_method` is not something the object
             // responds to.
@@ -436,6 +504,13 @@ impl VirtualMachine {
         };
         if let Some(method) = module_level_method(class_rc, name) {
             return !method.is_undefined;
+        }
+        // Kernel carries its functions as module functions as well as private
+        // instance methods, so it answers to the names a bare call reaches.
+        if class_rc.ruby_name() == "Kernel"
+            && crate::vm::native_methods::is_kernel_private_function(name)
+        {
+            return true;
         }
         let mut cursor = Some(Rc::clone(class_rc));
         while let Some(current) = cursor {

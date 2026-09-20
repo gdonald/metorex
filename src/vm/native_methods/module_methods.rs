@@ -183,6 +183,7 @@ impl VirtualMachine {
                 method_name,
                 "chomp"
                     | "chop"
+                    | "eval"
                     | "exec"
                     | "exit"
                     | "exit!"
@@ -195,9 +196,14 @@ impl VirtualMachine {
                     | "sprintf"
             )
         {
-            return self
-                .call_native_function(method_name, arguments.to_vec(), position)
-                .map(Some);
+            // Code run through `Kernel.eval` runs against Kernel, which is
+            // the receiver the call was written with.
+            let held = self
+                .kernel_function_receiver
+                .replace(Object::Module(Rc::clone(module_rc)));
+            let answered = self.call_native_function(method_name, arguments.to_vec(), position);
+            self.kernel_function_receiver = held;
+            return answered.map(Some);
         }
         // `Kernel.format` is `sprintf` under its other name.
         if module_rc.name() == "Kernel" && method_name == "format" {

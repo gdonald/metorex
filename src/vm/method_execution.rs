@@ -174,6 +174,20 @@ impl VirtualMachine {
             }
         }
 
+        // A Kernel function is reached without a receiver rather than through
+        // any class's table, so a stub standing in for one goes there for it,
+        // naming the receiver it was bound to.
+        if method.body.is_empty()
+            && method.captured_vars.is_none()
+            && method.owner.as_deref() == Some("Kernel")
+            && crate::vm::native_methods::is_kernel_private_function(&method_name)
+        {
+            let held = self.kernel_function_receiver.replace(receiver.clone());
+            let answered = self.call_native_function(&method_name, arguments, position);
+            self.kernel_function_receiver = held;
+            return answered;
+        }
+
         // For stub methods (empty body, registered on Object for introspection),
         // fall through to base Object native methods (class, to_s, respond_to?, etc.)
         if method.body.is_empty() && method.captured_vars.is_none() {

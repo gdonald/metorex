@@ -390,6 +390,7 @@ fn format_object_block() {
         body: vec![],
         captured_vars: std::collections::HashMap::new(),
         captured_def_scope: vec![],
+        captured_nesting: vec![],
         defining_method: None,
         is_lambda: false,
         source_file: None,
@@ -650,17 +651,13 @@ fn repl_format_module_object() {
 // ── REPL format_object NativeFunction (repl.rs line 271) ────────────────────
 
 #[test]
-fn repl_reports_that_a_builtin_has_no_method_object() {
+fn repl_hands_out_a_method_object_for_a_builtin() {
     let mut repl = ReplCore::new();
     let result = repl.process_line("method(:puts)");
-    let LineResult::Error(message) = result else {
+    let LineResult::Value(value) = result else {
         panic!("Got: {:?}", result)
     };
-    assert!(
-        message.contains("'puts' is not a method"),
-        "Got: {}",
-        message
-    );
+    assert!(value.contains("Method"), "Got: {}", value);
 }
 
 // ============================================================================

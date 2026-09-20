@@ -2087,13 +2087,44 @@ pub(crate) fn name_text(held: &std::rc::Rc<crate::object::StringValue>) -> Strin
     }
 }
 
+/// The text a string spells when it is read back in the named encoding
+/// rather than in the one it carries, which is what a magic comment in
+/// eval'd source asks for.
+pub(crate) fn text_in_encoding(
+    held: &std::rc::Rc<crate::object::StringValue>,
+    named: &str,
+) -> String {
+    if !held.holds_bytes() || held.encoding_name() == named {
+        return name_text(held);
+    }
+    let bytes = string_methods::binary_bytes(held);
+    if named == "EUC-JP" {
+        return euc_jp_table::euc_jp_text(&bytes);
+    }
+    if string_methods::spells_shift_jis(named) {
+        return shift_jis_table::shift_jis_text(&bytes);
+    }
+    if named == "ISO-2022-JP" {
+        return euc_jp_table::iso_2022_jp_text(&bytes);
+    }
+    if let Some(text) = string_methods::latin_text(&bytes, named) {
+        return text;
+    }
+    match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(_) => name_text(held),
+    }
+}
+
 pub(crate) fn is_valid_constant_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
         Some(c) if c.is_uppercase() => {}
         _ => return false,
     }
-    chars.all(|c| c.is_alphanumeric() || c == '_')
+    // A name written in an encoding of its own carries bytes the program
+    // reads as letters, so anything above ASCII counts as one.
+    chars.all(|c| c.is_alphanumeric() || c == '_' || (c as u32) >= 0x80)
 }
 
 pub(crate) use int_methods::{RoundingMode, exact_ratio, split_rounding_mode};

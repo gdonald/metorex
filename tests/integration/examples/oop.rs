@@ -1574,3 +1574,25 @@ fn test_oop_case_equality_of_classes_parens_execution() {
     let output = run_example("oop/case_equality_of_classes_parens.rb");
     assert_eq!(output, CASE_EQUALITY_OF_CLASSES_OUTPUT);
 }
+
+const REFINEMENT_INDIRECT_CALLS_OUTPUT: &str = concat!(
+    "[\"refined\", \"refined\", \"refined\", \"refined\", \"refined\", \"refined\"]\n",
+    "plain\n",
+    "true\n",
+    "refined\n",
+    "true\n",
+    "from the module refinement\n",
+    "from the subclass\n",
+);
+
+#[test]
+fn test_oop_refinement_indirect_calls_execution() {
+    let output = run_example("oop/refinement_indirect_calls.rb");
+    assert_eq!(output, REFINEMENT_INDIRECT_CALLS_OUTPUT);
+}
+
+#[test]
+fn test_oop_refinement_indirect_calls_no_parens_execution() {
+    let output = run_example("oop/refinement_indirect_calls_no_parens.rb");
+    assert_eq!(output, REFINEMENT_INDIRECT_CALLS_OUTPUT);
+}

@@ -126,7 +126,7 @@ run_spec "$SPEC_DIR/core/module/attr_reader_spec.rb"
 run_spec "$SPEC_DIR/core/module/attr_spec.rb"
 run_spec "$SPEC_DIR/core/module/attr_writer_spec.rb"
 run_spec "$SPEC_DIR/core/module/autoload_relative_spec.rb"
-# run_spec "$SPEC_DIR/core/module/autoload_spec.rb"  # needs threads that run alongside each other
+# run_spec "$SPEC_DIR/core/module/autoload_spec.rb"  # 76 of its 79 examples pass; the last two need a file one thread is part-way through loading to hold up another thread asking for a name in it, so no thread reads a module that is only half built
 run_spec "$SPEC_DIR/core/module/case_compare_spec.rb"
 run_spec "$SPEC_DIR/core/module/class_eval_spec.rb"
 run_spec "$SPEC_DIR/core/module/class_exec_spec.rb"
@@ -189,12 +189,12 @@ run_spec "$SPEC_DIR/core/module/public_instance_method_spec.rb"
 run_spec "$SPEC_DIR/core/module/public_instance_methods_spec.rb"
 run_spec "$SPEC_DIR/core/module/public_method_defined_spec.rb"
 run_spec "$SPEC_DIR/core/module/public_spec.rb"
-# run_spec "$SPEC_DIR/core/module/refine_spec.rb"  # 21 of its 38 examples pass; the rest need refinement-aware dispatch through send, Symbol#to_proc, interpolation, method objects, respond_to?, and refining a module a class includes
+run_spec "$SPEC_DIR/core/module/refine_spec.rb"
 run_spec "$SPEC_DIR/core/module/refinements_spec.rb"
 run_spec "$SPEC_DIR/core/module/remove_class_variable_spec.rb"
 run_spec "$SPEC_DIR/core/module/remove_const_spec.rb"
 run_spec "$SPEC_DIR/core/module/remove_method_spec.rb"
-# run_spec "$SPEC_DIR/core/module/ruby2_keywords_spec.rb"  # 6 of its 14 examples pass; the other 8 need a keyword-hash flag on Hash that survives a splat, with Hash.ruby2_keywords_hash and .ruby2_keywords_hash?
+run_spec "$SPEC_DIR/core/module/ruby2_keywords_spec.rb"
 run_spec "$SPEC_DIR/core/module/set_temporary_name_spec.rb"
 run_spec "$SPEC_DIR/core/module/singleton_class_spec.rb"
 run_spec "$SPEC_DIR/core/module/to_s_spec.rb"
@@ -234,7 +234,7 @@ run_spec "$SPEC_DIR/core/kernel/dup_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/enum_for_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/eql_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/equal_value_spec.rb"
-# run_spec "$SPEC_DIR/core/kernel/eval_spec.rb"  # 23 of its 56 examples pass; the rest need per-string encodings with magic comments, binding and default-definee semantics, and flip-flop
+run_spec "$SPEC_DIR/core/kernel/eval_spec.rb"
 run_spec "$SPEC_DIR/core/kernel/exec_spec.rb"
 # run_spec "$SPEC_DIR/core/kernel/exit_spec.rb"  # 26 of its 30 examples pass; the rest need real Thread semantics and a Fiber class
 run_spec "$SPEC_DIR/core/kernel/extend_spec.rb"

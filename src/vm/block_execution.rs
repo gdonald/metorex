@@ -608,6 +608,11 @@ impl VirtualMachine {
         if let Some(home) = lexical {
             self.class_var_home.push(home);
         }
+        // The scopes open around the body are the ones the block was written
+        // in, whatever the receiver it runs against, which is what
+        // `Module.nesting` there reports.
+        self.method_nesting_stack
+            .push(block.captured_nesting.clone());
         // A `def` or an `alias` written at the top of the body belongs to the
         // receiver alone. Anything the body calls out to keeps its own
         // definee, so this reaches only the statements written here.
@@ -752,6 +757,7 @@ impl VirtualMachine {
             vm.environment_mut().pop_scope();
             result
         });
+        self.method_nesting_stack.pop();
         if carried {
             self.class_var_home.pop();
         }
@@ -805,6 +811,12 @@ impl VirtualMachine {
         // the block was written in, which is none at the top level.
         self.class_var_cref_stack
             .push(block.captured_def_scope.last().cloned());
+        // The scopes open around the block are the ones it was written in,
+        // not the ones open in the method that called it, which is what
+        // `Module.nesting` in the body reports and where an `eval` written
+        // there opens what it defines.
+        self.method_nesting_stack
+            .push(block.captured_nesting.clone());
 
         // A trace sees a block body opening and closing, and reads the
         // parameters the block declared off either event.
@@ -820,6 +832,11 @@ impl VirtualMachine {
             vec![("parameters", declared.clone())],
         )?;
 
+        // A lambda is something a `return` carried out of an eval can return
+        // from, so its body says while it runs that one is there.
+        if block.is_lambda {
+            self.lambda_body_depth += 1;
+        }
         let result = (|| -> Result<Object, MetorexError> {
             // Define captured variables using shared references
             for (name, value_ref) in block.captured_vars() {
@@ -944,8 +961,12 @@ impl VirtualMachine {
             Ok(last_value)
         })();
 
+        if block.is_lambda {
+            self.lambda_body_depth -= 1;
+        }
         self.environment_mut().pop_scope();
         self.class_var_cref_stack.pop();
+        self.method_nesting_stack.pop();
         self.def_scope_stack = saved_def_scope;
         self.lexical_home_frame = saved_lexical_home;
         // The exception says where it came from while the block's own file is
@@ -964,6 +985,38 @@ impl VirtualMachine {
         // handed the block, which is the call made from the frame the block
         // was written in.
         match result {
+            // A `return` carried out of an eval stops at the lambda it was
+            // written inside, and passing out of any other block leaves it
+            // looking for the invocation it belongs to.
+            Err(MetorexError::NonLocalReturn {
+                value,
+                location,
+                home_frame,
+            }) => {
+                if block.is_lambda && home_frame.is_none() {
+                    return Ok(value);
+                }
+                // Nothing is left to return from once the return has passed
+                // out of every block, with no lambda around it and no method
+                // running, which is what makes it a LocalJumpError.
+                let nowhere_to_return_to = match block.home_frame {
+                    // A block written outside any method belongs to the unit
+                    // itself, which is not something to return from.
+                    Some(home) => {
+                        home == crate::vm::core::TOP_LEVEL_FRAME
+                            || !self.live_frames.contains(&home)
+                    }
+                    None => true,
+                };
+                if home_frame.is_none() && self.lambda_body_depth == 0 && nowhere_to_return_to {
+                    return Err(escaped_return_error(value, location));
+                }
+                Err(MetorexError::NonLocalReturn {
+                    value,
+                    location,
+                    home_frame,
+                })
+            }
             // `next` written inside an expression unwinds to here, and ends
             // this run of the block with the value it carried.
             Err(MetorexError::BlockNext { value, .. }) => Ok(value),
@@ -1123,6 +1176,31 @@ fn statement_for_its_own_receiver(statement: &Statement) -> Option<Statement> {
             end_position: *end_position,
         }),
         _ => None,
+    }
+}
+
+/// A `return` that left a block without finding the lambda or the method it
+/// belongs to, which Ruby reports the same way as one whose method has
+/// already returned.
+pub(crate) fn escaped_return_error(
+    value: Object,
+    location: crate::error::SourceLocation,
+) -> MetorexError {
+    let message = "unexpected return".to_string();
+    let exception = Object::exception("LocalJumpError", message.clone());
+    if let Object::Exception(details) = &exception {
+        let mut details = details.borrow_mut();
+        details
+            .instance_vars
+            .insert("@exit_value".to_string(), value);
+        details
+            .instance_vars
+            .insert("@reason".to_string(), Object::symbol("return".to_string()));
+    }
+    MetorexError::UncaughtException {
+        exception,
+        location,
+        message,
     }
 }
 

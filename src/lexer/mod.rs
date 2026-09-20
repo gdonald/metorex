@@ -295,6 +295,30 @@ fn literal_default() -> LiteralDefault {
     }
 }
 
+/// Whether a `frozen_string_literal` magic comment was written after code
+/// began, where it settles nothing and Ruby says so under `$VERBOSE`.
+pub fn frozen_string_literal_after_a_token(source: &str) -> bool {
+    let mut a_token_came_first = false;
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let Some(comment) = trimmed.strip_prefix('#') else {
+            a_token_came_first = true;
+            continue;
+        };
+        if a_token_came_first
+            && comment
+                .to_ascii_lowercase()
+                .contains("frozen_string_literal")
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// Whether a magic comment says anything at all about frozen string
 /// literals, whichever way it says it.
 fn names_string_literal_setting(source: &str) -> bool {
@@ -359,43 +383,37 @@ fn encoding_after_coding(comment: &str) -> Option<String> {
     None
 }
 
-/// The encoding a magic comment on one of the first two lines names, or None
-/// when the source names none.
+/// The encoding the source's magic comment names, or None when it names none.
 pub fn named_source_encoding(source: &str) -> Option<String> {
-    for line in source.lines().take(2) {
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with('#') {
-            continue;
-        }
-        let Some(named) = encoding_after_coding(trimmed) else {
-            continue;
-        };
-        let spelled: String = named
-            .chars()
-            .take_while(|held| {
-                held.is_alphanumeric() || *held == '-' || *held == '_' || *held == '.'
-            })
-            .collect();
-        if spelled.is_empty() {
-            return None;
-        }
-        return Some(spelled);
-    }
-    None
+    let trimmed = magic_comment_line(source)?;
+    let named = encoding_after_coding(trimmed)?;
+    let spelled: String = named
+        .chars()
+        .take_while(|held| held.is_alphanumeric() || *held == '-' || *held == '_' || *held == '.')
+        .collect();
+    (!spelled.is_empty()).then_some(spelled)
 }
 
 fn names_binary_encoding(source: &str) -> bool {
-    for line in source.lines().take(2) {
-        let trimmed = line.trim_start();
-        if !trimmed.starts_with('#') {
-            continue;
-        }
-        let Some(named) = encoding_after_coding(trimmed) else {
-            continue;
-        };
-        if named.starts_with("binary") || named.starts_with("ascii-8bit") {
-            return true;
-        }
+    let Some(trimmed) = magic_comment_line(source) else {
+        return false;
+    };
+    match encoding_after_coding(trimmed) {
+        Some(named) => named.starts_with("binary") || named.starts_with("ascii-8bit"),
+        None => false,
     }
-    false
+}
+
+/// The one line a magic comment can be written on: the first, or the second
+/// when a shebang takes the first. A comment further down names nothing, so
+/// an encoding comment after another magic comment is ignored.
+fn magic_comment_line(source: &str) -> Option<&str> {
+    let mut lines = source.lines();
+    let first = lines.next()?.trim_start();
+    let line = if first.starts_with("#!") {
+        lines.next()?.trim_start()
+    } else {
+        first
+    };
+    line.starts_with('#').then_some(line)
 }

@@ -59,6 +59,10 @@ pub struct BlockStatement {
     /// on the same enclosing module that an unbroken straight-line statement
     /// would have hit.
     pub captured_def_scope: Vec<Rc<Class>>,
+    /// The scopes open where the block was written, innermost first, which is
+    /// what `Module.nesting` in the body reports and where an `eval` written
+    /// there opens what it defines.
+    pub captured_nesting: Vec<Rc<Class>>,
     /// The method that lexically encloses this block, as the (callee, defined)
     /// pair `__callee__` and `__method__` report. None for a block created
     /// outside any method.
@@ -115,6 +119,7 @@ impl BlockStatement {
             body,
             captured_vars,
             captured_def_scope: Vec::new(),
+            captured_nesting: Vec::new(),
             defining_method: None,
             is_lambda: false,
             source_file: None,
@@ -144,6 +149,7 @@ impl BlockStatement {
             body,
             captured_vars,
             captured_def_scope,
+            captured_nesting: Vec::new(),
             defining_method,
             is_lambda,
             source_file: None,

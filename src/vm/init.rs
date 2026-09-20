@@ -457,14 +457,10 @@ pub(super) fn register_singletons(globals: &mut GlobalRegistry) {
     globals.set("Struct", Object::Class(struct_class));
 
     // Regexp — stub class so `case x; when Regexp; ...; end` and
-    // `obj.kind_of?(Regexp)` resolve.
-    let regexp_class = Rc::new(Class::new("Regexp", Some(Rc::clone(&object))));
-    globals.set("Regexp", Object::Class(regexp_class));
-
-    // Method — stub class so the constant resolves (`Module.constants`
-    // includes :Method); Method objects themselves are a native type.
-    let method_class = Rc::new(Class::new("Method", Some(Rc::clone(&object))));
-    globals.set("Method", Object::Class(method_class));
+    // `Regexp` and `Method` name the classes the interpreter already built,
+    // which is what `obj.class == Method` compares against. A stub of the
+    // same name here would stand in front of the real one and answer a
+    // different object.
 }
 
 /// Register standard Ruby exception class hierarchy as stubs.

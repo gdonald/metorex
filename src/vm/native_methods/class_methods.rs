@@ -2347,6 +2347,27 @@ impl VirtualMachine {
                     ));
                 }
                 let name_str = self.coerce_method_name(&arguments[0], method_name, position)?;
+                // A refinement in force here is what the name stands for
+                // while it lasts, so the unbound method answers to it.
+                let refined = crate::vm::method_lookup::refinement_target_name(
+                    &Object::Class(Rc::clone(class_rc)),
+                    self,
+                )
+                .or_else(|| {
+                    Some(format!(
+                        "__refine__{}@{:p}",
+                        class_rc.name(),
+                        Rc::as_ptr(class_rc)
+                    ))
+                })
+                .and_then(|target| self.find_refined_method(&target, &name_str));
+                if let Some(refined) = refined {
+                    let mut unbound = (*refined).clone();
+                    unbound.owner = Some(class_rc.name().to_string());
+                    unbound.owner_class = Some(Rc::clone(class_rc));
+                    unbound.origin_class = Some(Rc::clone(class_rc));
+                    return Ok(Some(Object::Method(Rc::new(unbound))));
+                }
                 if let Some((owner, method)) = class_rc.find_method_with_owner(&name_str) {
                     // `public_instance_method` only hands out public methods.
                     if method.is_undefined
@@ -2520,6 +2541,29 @@ impl VirtualMachine {
                     Some(Object::Bool(b)) => *b,
                     _ => true,
                 };
+                // A refinement's body names the class it refines, and it
+                // answers to everything that class answers to as well as to
+                // its own names, so the class is asked the same question and
+                // what it says is listed behind them.
+                if let Some(Object::Class(refined) | Object::Module(refined)) =
+                    class_rc.get_class_var(super::module_methods::REFINEMENT_TARGET_KEY)
+                {
+                    let mut named: Vec<Object> = class_rc
+                        .method_names()
+                        .into_iter()
+                        .map(Object::symbol)
+                        .collect();
+                    if let Some(Object::Array(held)) =
+                        self.call_class_methods(&refined, method_name, arguments, position)?
+                    {
+                        for one in held.borrow().iter() {
+                            if !named.contains(one) {
+                                named.push(one.clone());
+                            }
+                        }
+                    }
+                    return Ok(Some(Object::array(named)));
+                }
                 let mut method_list: Vec<String> = class_rc.method_names();
                 // A `private`/`public` naming an inherited method marks the
                 // visibility here without defining anything, and Ruby counts
@@ -4367,16 +4411,48 @@ impl VirtualMachine {
         name: &str,
         position: Position,
     ) -> Result<(), MetorexError> {
-        let method = module_rc.find_method(name).or_else(|| {
-            // Kernel methods live on Object, which a module does not
-            // inherit from; `module_function :require` copies from there.
-            match self.globals().get("Object") {
-                Some(Object::Class(object_class)) => object_class.find_method(name),
-                _ => None,
-            }
-        });
+        let method = module_rc
+            .find_method(name)
+            .or_else(|| {
+                // A refinement's body names the class it refines, so a name
+                // aliased there is the one that class answers to rather than
+                // one the refinement holds of its own.
+                let Some(Object::Class(refined) | Object::Module(refined)) =
+                    module_rc.get_class_var(super::module_methods::REFINEMENT_TARGET_KEY)
+                else {
+                    return None;
+                };
+                refined.find_method(name)
+            })
+            .or_else(|| {
+                // Kernel methods live on Object, which a module does not
+                // inherit from; `module_function :require` copies from there.
+                match self.globals().get("Object") {
+                    Some(Object::Class(object_class)) => object_class.find_method(name),
+                    _ => None,
+                }
+            });
         let method = match method {
             Some(method) => method,
+            // A refinement aliasing one of the refined class's own names
+            // reaches a method that answers natively rather than out of a
+            // table, so a stub stands for it the way Kernel's do.
+            None if module_rc
+                .get_class_var(super::module_methods::REFINEMENT_TARGET_KEY)
+                .is_some() =>
+            {
+                let mut stub = Method::with_owner(
+                    name.to_string(),
+                    vec!["args".to_string()],
+                    vec![],
+                    module_rc.name().to_string(),
+                );
+                stub.variadic_param = Some((0, "args".to_string()));
+                // The name it stands for is what the refined class answers
+                // to, which is what the call reaches through.
+                stub.original_name = Some(name.to_string());
+                Rc::new(stub)
+            }
             // Kernel's own methods are native rather than table entries; a
             // stub reaches the same implementation when invoked.
             None if is_native_kernel_method(name) => {
@@ -4592,6 +4668,7 @@ pub(crate) const KERNEL_PRIVATE_FUNCTIONS: &[&str] = &[
     "caller_locations",
     "chomp",
     "chop",
+    "eval",
     "exec",
     "exit",
     "exit!",
@@ -4703,6 +4780,7 @@ pub(super) const NATIVE_KERNEL_METHODS: &[(&str, &[&str], bool)] = &[
     ("clone", &["options"], true),
     ("dup", &[], false),
     ("eql?", &["other"], false),
+    ("eval", &["arguments"], true),
     ("equal?", &["other"], false),
     ("extend", &["modules"], true),
     ("freeze", &[], false),
@@ -5274,6 +5352,32 @@ impl VirtualMachine {
                 stub.native_alias = Some(old_name.clone());
                 class_rc.define_method(&new_name, Rc::new(stub));
                 found = true;
+            }
+            // A refinement's body names the class it refines, so a name
+            // given there stands for one that class answers to, whether it
+            // holds an entry for it or answers it natively.
+            if !found
+                && let Some(Object::Class(refined) | Object::Module(refined)) =
+                    class_rc.get_class_var(super::module_methods::REFINEMENT_TARGET_KEY)
+            {
+                if let Some(method) = refined.find_method(&old_name) {
+                    class_rc.define_method(&new_name, method);
+                    found = true;
+                } else if let Some(probe) = sample_of_class(refined.name())
+                    && self.responds_to(&probe, &old_name)
+                {
+                    let mut stub = Method::with_owner(
+                        new_name.clone(),
+                        vec!["args".to_string()],
+                        vec![],
+                        refined.name().to_string(),
+                    );
+                    stub.variadic_param = Some((0, "args".to_string()));
+                    stub.original_name = Some(old_name.clone());
+                    stub.native_alias = Some(old_name.clone());
+                    class_rc.define_method(&new_name, Rc::new(stub));
+                    found = true;
+                }
             }
             // A builtin class answers many of its methods natively,
             // with no entry to copy. A stub carrying the name keeps

@@ -39,6 +39,10 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: Position,
     ) -> Result<Object, MetorexError> {
+        // The receiver the call was written with reaches the function invoked
+        // here and no further, so a function that runs code of its own does
+        // not hand it on to whatever that code calls.
+        let invoked_with = self.kernel_function_receiver.take();
         match name {
             // A receiverless `private` / `public` / `protected` applies to the
             // enclosing class or module; at the top level it applies to Object.
@@ -668,6 +672,13 @@ impl VirtualMachine {
                     Some(object_class) => self.top_level_method(&object_class, &method_name),
                     None => None,
                 };
+                // At the top level the program runs against `main`, which
+                // is where a bare `method(:name)` looks when the scope binds
+                // no `self` of its own.
+                let here = self
+                    .environment()
+                    .get("self")
+                    .or_else(|| self.globals().get("__main__"));
                 // Look up the method in the current environment
                 if let Some(obj) = self.environment().get(&method_name) {
                     if let Object::Method(held) = &obj {
@@ -685,13 +696,13 @@ impl VirtualMachine {
                         format!("'{}' is not a method", method_name),
                         crate::vm::utils::position_to_location(position),
                     );
-                    let Some(receiver) = self.environment().get("self") else {
+                    let Some(receiver) = here else {
                         return Err(not_a_method);
                     };
                     let name = Object::symbol(method_name.to_string());
                     self.send_to_object(receiver, "method", vec![name], position)
                         .map_err(|_| not_a_method)
-                } else if let Some(receiver) = self.environment().get("self") {
+                } else if let Some(receiver) = here {
                     // Inside an instance method a bare `method(:name)` means
                     // `self.method(:name)`, and the name is not a local.
                     let name = Object::symbol(method_name.to_string());
@@ -1369,11 +1380,54 @@ impl VirtualMachine {
                         crate::vm::utils::position_to_location(position),
                     ));
                 }
+                // A value of the program's own stands in for source when it
+                // says how to read itself as a String.
+                let mut arguments = arguments;
+                if !matches!(arguments[0], Object::String(_))
+                    && self.responds_to(&arguments[0], "to_str")
+                {
+                    let spelled =
+                        self.send_to_object(arguments[0].clone(), "to_str", vec![], position)?;
+                    arguments[0] = spelled;
+                }
+                // Only a Binding says where code runs. A Proc names a scope
+                // of its own but is not one.
+                if let Some(held) = arguments.get(1)
+                    && !matches!(held, Object::Binding(_) | Object::Nil)
+                {
+                    // Ruby names a callable by what it is rather than by its
+                    // class, so a Proc reads as `proc` here.
+                    let named = match held {
+                        Object::Block(_) => "proc".to_string(),
+                        other => self.builtins().class_of(other).name().to_string(),
+                    };
+                    let message = format!("wrong argument type {named} (expected binding)");
+                    return Err(MetorexError::UncaughtException {
+                        exception: Object::exception("TypeError", message.clone()),
+                        location: crate::vm::utils::position_to_location(position),
+                        message,
+                    });
+                }
                 let (code, code_encoding) = match &arguments[0] {
                     // Source written in an encoding of its own is read back
-                    // through that encoding before it is lexed.
+                    // through that encoding before it is lexed. A magic
+                    // comment names the encoding the source was written in,
+                    // whatever the string carrying it is tagged with, so
+                    // binary source that says UTF-8 is read as UTF-8.
                     Object::String(s) => {
-                        (crate::vm::native_methods::name_text(s), s.encoding_name())
+                        let tagged = s.encoding_name();
+                        let carried = crate::vm::native_methods::name_text(s);
+                        match crate::lexer::named_source_encoding(&carried).map(|named| {
+                            crate::vm::native_methods::string_methods::canonical_encoding_name(
+                                &named,
+                            )
+                        }) {
+                            Some(named) if named != tagged => (
+                                crate::vm::native_methods::text_in_encoding(s, &named),
+                                named,
+                            ),
+                            _ => (carried, tagged),
+                        }
                     }
                     other => {
                         return Err(MetorexError::runtime_error(
@@ -1399,10 +1453,14 @@ impl VirtualMachine {
                     Some(Object::String(s)) => Some(s.as_str().to_string()),
                     _ => None,
                 };
-                let lineno = match arguments.get(3) {
-                    Some(Object::Int(n)) => (*n).max(1) as usize,
+                // The line the code is counted from, which a program may
+                // name as anything, negative included: it shapes the numbers
+                // a backtrace and a syntax error report.
+                let named_lineno = match arguments.get(3) {
+                    Some(Object::Int(n)) => *n,
                     _ => 1,
                 };
+                let lineno = named_lineno.max(1) as usize;
                 let tokens = crate::lexer::Lexer::with_start_line(&code, lineno)
                     .with_source_encoding(Some(
                         crate::lexer::named_source_encoding(&code)
@@ -1423,13 +1481,25 @@ impl VirtualMachine {
                         let at = errors
                             .first()
                             .and_then(|held| held.location())
-                            .map_or(lineno.max(1), |held| held.line.max(1));
+                            .map_or(0, |held| held.line.max(1).saturating_sub(lineno))
+                            as i64
+                            + named_lineno;
                         let message = match &filename {
                             Some(named) => format!("{named}:{at}: {reported}"),
                             None => format!("eval: parse error: {reported}"),
                         };
                         crate::vm::errors::syntax_error(message, filename.as_deref(), position)
                     })?;
+                // A `frozen_string_literal` comment written after code names
+                // nothing, and a verbose run says so.
+                if crate::lexer::frozen_string_literal_after_a_token(&code)
+                    && matches!(self.globals().get("VERBOSE"), Some(Object::Bool(true)))
+                {
+                    self.emit_warning_to_stderr(
+                        "warning: `frozen_string_literal' is ignored after any tokens",
+                        position,
+                    );
+                }
                 // Ruby reports every string it compiles, which is what a
                 // trace reads the source back out of.
                 self.fire_event(
@@ -1459,14 +1529,23 @@ impl VirtualMachine {
                 // Only a binding taken in a class or module body nests what
                 // the code opens. One taken in an instance method leaves the
                 // eval at the top level, where `main` sits.
-                let saved_def_scope = match &binding {
+                // Code eval'd inside a method body opens what it defines
+                // where that method was written, so `eval "class C; end"` in
+                // a method of A makes A::C rather than a top-level C.
+                let captured_nesting: Option<Vec<Rc<crate::class::Class>>> = match &binding {
                     Some(held) if !held.nesting.borrow().is_empty() => {
-                        let opened: Vec<Rc<crate::class::Class>> =
-                            held.nesting.borrow().iter().rev().map(Rc::clone).collect();
-                        Some(std::mem::replace(&mut self.def_scope_stack, opened))
+                        Some(held.nesting.borrow().iter().rev().map(Rc::clone).collect())
                     }
-                    _ => None,
+                    Some(_) => None,
+                    None if !self.def_scope_stack.is_empty() => None,
+                    None => self
+                        .method_nesting_stack
+                        .last()
+                        .filter(|captured| !captured.is_empty())
+                        .map(|captured| captured.iter().rev().map(Rc::clone).collect()),
                 };
+                let saved_def_scope = captured_nesting
+                    .map(|opened| std::mem::replace(&mut self.def_scope_stack, opened));
                 if let Some(cref) = carried_cref {
                     self.class_var_cref_stack.push(Some(cref));
                 }
@@ -1496,13 +1575,28 @@ impl VirtualMachine {
                             self.environment().get_ref(&name).map(|cell| (name, cell))
                         })
                         .collect();
-                    let here = self.environment().get("self");
+                    // Code runs against whoever the eval was written with,
+                    // which for `Kernel.eval` is Kernel itself and otherwise
+                    // is the self in force where the call was made.
+                    let here = invoked_with
+                        .clone()
+                        .or_else(|| self.environment().get("self"));
                     self.environment_mut().push_isolated_scope();
                     for (name, cell) in carried {
                         self.environment_mut().define_inherited(name, cell);
                     }
                     if let Some(receiver) = here {
                         self.environment_mut().define("self".to_string(), receiver);
+                    }
+                }
+                // A name the code assigns to is a local of the scope the eval
+                // opens, whether or not the line assigning it runs, which is
+                // what leaves `a` behind as nil for a later look.
+                let mut hoisted: Vec<String> = Vec::new();
+                for name in crate::ast::scope_locals::collect_assigned_locals(&statements) {
+                    if self.environment().assignment_introduces_a_local(&name) {
+                        self.environment_mut().hoist(name.clone());
+                        hoisted.push(name);
                     }
                 }
                 // eval runs at top-level of its string: treat as non-method scope.
@@ -1601,7 +1695,15 @@ impl VirtualMachine {
                         defined.clone(),
                     ));
                 }
-                let result = self.execute_program(&statements);
+                // A block written on the eval belongs to the eval, so a
+                // method the code calls is not handed it and a `yield` there
+                // has nothing to run.
+                let held_block = self.pending_block.take();
+                // A `return` written in the code returns from the scope the
+                // eval was written in rather than ending the eval, so it
+                // carries on out rather than being answered here.
+                let result = self.run_eval_statements(&statements);
+                self.pending_block = held_block;
                 if named_method.is_some() {
                     self.call_stack_pop();
                 }
@@ -1619,6 +1721,16 @@ impl VirtualMachine {
                     for (name, cell) in self.environment().current_scope_var_refs() {
                         if !held.has(&name) {
                             held.set(&name, cell);
+                        }
+                    }
+                    // A name the code only assigns to on a line that never
+                    // ran is a local of the scope all the same, and the next
+                    // look through the binding reads it as nil.
+                    for name in &hoisted {
+                        if !held.has(name)
+                            && let Some(cell) = self.environment().get_ref(name)
+                        {
+                            held.set(name, cell);
                         }
                     }
                 }

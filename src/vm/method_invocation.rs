@@ -31,6 +31,13 @@ impl VirtualMachine {
         arguments: Vec<Object>,
         position: crate::lexer::Position,
     ) -> Result<Object, MetorexError> {
+        // A refinement in force here stands ahead of what the receiver's own
+        // class answers, whether the call was written out or reached through
+        // `send`, a Symbol turned into a block, or text being built.
+        if let Some(method) = crate::vm::method_lookup::find_refinement(&receiver, name, self) {
+            let class = self.builtins().class_of(&receiver);
+            return self.invoke_method(class, method, receiver, arguments, position);
+        }
         // A module-level method lives either on the singleton class, put
         // there by `class << Mod`, or under the name-mangled key `def
         // self.name` uses. Neither is reachable by an instance-method lookup.

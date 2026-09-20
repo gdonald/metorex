@@ -134,7 +134,10 @@ class ERB
   def self.compile(template, trim_mode, name)
     trims = trim_mode.to_s
     template = ERB.expand_percent_lines(template) if trims.start_with? "%"
-    pieces = ["#{name} = +'';"]
+    # The compiled source opens with the encoding it is written in, the
+    # way MRI's does, so a line in the template and a line in the source
+    # carry the same number.
+    pieces = ["#coding:UTF-8\n#{name} = +'';"]
     at = 0
     while at < template.length
       opening = template.index "<%", at

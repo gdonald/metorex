@@ -247,6 +247,13 @@ pub struct VirtualMachine {
     /// `in` clause names in the error it raises. The first failure recorded
     /// is the innermost one, which is the one Ruby reports.
     pub(crate) pattern_failure: Option<crate::vm::pattern_matching::PatternFailure>,
+    /// The receiver a Kernel function was written with, which `Kernel.eval`
+    /// and `obj.send(:eval, ...)` run the code against in place of the self
+    /// in force where the call was made.
+    pub(crate) kernel_function_receiver: Option<Object>,
+    /// How many lambda bodies are running, so a `return` carried out of an
+    /// eval can tell whether a lambda is there to return from.
+    pub(crate) lambda_body_depth: usize,
     /// Whether the program asked for the place each object was made to be
     /// recorded, which `objspace/trace` and `trace_object_allocations` do.
     pub(crate) tracing_allocations: bool,
@@ -463,6 +470,8 @@ impl VirtualMachine {
             regexp_conditions: HashSet::new(),
             deconstructed_values: Vec::new(),
             pattern_failure: None,
+            kernel_function_receiver: None,
+            lambda_body_depth: 0,
             tracing_allocations: false,
             debug_frozen_string_literal: false,
             frozen_collections: HashMap::new(),
@@ -667,8 +676,11 @@ impl VirtualMachine {
     /// to the others no matter which was declared first.
     pub(crate) fn refinement_entries_for(module: &Rc<crate::class::Class>) -> Vec<RefinementEntry> {
         let mut entries = Vec::new();
-        let mut sources = vec![Rc::clone(module)];
-        sources.extend(module.transitive_mixins());
+        // What a module includes is recorded first and the module itself
+        // last, since the search runs back through them and a refinement the
+        // module writes stands ahead of one it takes in.
+        let mut sources: Vec<Rc<crate::class::Class>> = module.transitive_mixins();
+        sources.push(Rc::clone(module));
         for source in sources {
             let classes: std::collections::HashSet<String> = source
                 .class_var_names()

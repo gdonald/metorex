@@ -43,6 +43,7 @@ mod reading_switches_tests;
 mod reading_the_user_database_tests;
 mod reflection_tests;
 mod regexp_match_tests;
+mod running_code_from_a_string_tests;
 mod statement_tests;
 mod stepping_and_products_tests;
 mod string_io_tests;
